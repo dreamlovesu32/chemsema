@@ -628,30 +628,103 @@ const viewerTitle = document.getElementById("viewer-title");
 const viewerStats = document.getElementById("viewer-stats");
 const viewerSvg = document.getElementById("viewer-svg");
 
-for (const samplePath of SAMPLE_FILES) {
-  const option = document.createElement("option");
-  option.value = samplePath;
-  option.textContent = samplePath.replace("../tmp/examples/", "");
-  sampleSelect.appendChild(option);
+if (sampleSelect) {
+  for (const samplePath of SAMPLE_FILES) {
+    const option = document.createElement("option");
+    option.value = samplePath;
+    option.textContent = samplePath.replace("../tmp/examples/", "");
+    sampleSelect.appendChild(option);
+  }
+
+  sampleSelect.value = state.currentPath;
+  sampleSelect.addEventListener("change", async (event) => {
+    state.currentPath = event.target.value;
+    await loadAndRender();
+  });
 }
 
-sampleSelect.value = state.currentPath;
-sampleSelect.addEventListener("change", async (event) => {
-  state.currentPath = event.target.value;
+reloadButton?.addEventListener("click", async () => {
   await loadAndRender();
 });
 
-reloadButton.addEventListener("click", async () => {
-  await loadAndRender();
-});
-
-fitButton.addEventListener("click", () => {
+fitButton?.addEventListener("click", () => {
   fitView();
 });
 
 toggleMolecules?.addEventListener("change", () => renderDocument());
 toggleLines?.addEventListener("change", () => renderDocument());
 toggleTexts?.addEventListener("change", () => renderDocument());
+
+const zoomInput = document.getElementById("zoom-input");
+let zoomPercent = 100;
+
+function setZoomPercent(nextZoom) {
+  zoomPercent = Math.max(25, Math.min(400, Math.round(nextZoom)));
+  if (zoomInput) {
+    zoomInput.value = `${zoomPercent}%`;
+  }
+}
+
+document.querySelectorAll("[data-command]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const command = button.dataset.command;
+    if (command === "zoom-in") {
+      setZoomPercent(zoomPercent + 10);
+    } else if (command === "zoom-out") {
+      setZoomPercent(zoomPercent - 10);
+    } else if (command === "fit") {
+      setZoomPercent(100);
+    }
+  });
+});
+
+zoomInput?.addEventListener("change", () => {
+  const parsed = Number.parseInt(String(zoomInput.value || "").replace(/[^\d]/g, ""), 10);
+  setZoomPercent(Number.isFinite(parsed) ? parsed : zoomPercent);
+});
+
+function setActiveTool(toolButton) {
+  document.querySelectorAll(".tool-button").forEach((button) => {
+    button.classList.toggle("is-active", button === toolButton);
+  });
+}
+
+document.querySelectorAll(".tool-button").forEach((button) => {
+  button.addEventListener("click", () => {
+    setActiveTool(button);
+    document.querySelectorAll(".tool-slot.is-open").forEach((slot) => slot.classList.remove("is-open"));
+  });
+});
+
+document.querySelectorAll(".menu-button").forEach((button) => {
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const slot = button.closest(".tool-slot");
+    const willOpen = !slot?.classList.contains("is-open");
+    document.querySelectorAll(".tool-slot.is-open").forEach((openSlot) => openSlot.classList.remove("is-open"));
+    slot?.classList.toggle("is-open", willOpen);
+  });
+});
+
+document.querySelectorAll(".tool-menu button").forEach((button) => {
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const slot = button.closest(".tool-slot");
+    const toolButton = slot?.querySelector(".tool-button");
+    if (toolButton) {
+      toolButton.dataset.current = button.dataset.toolOption || "";
+      setActiveTool(toolButton);
+    }
+    slot?.querySelectorAll(".tool-menu button").forEach((item) => {
+      item.classList.toggle("is-selected", item === button);
+    });
+    slot?.classList.remove("is-open");
+  });
+});
+
+document.addEventListener("click", () => {
+  document.querySelectorAll(".tool-slot.is-open").forEach((slot) => slot.classList.remove("is-open"));
+});
 
 function parseMolblock(molblock) {
   const lines = molblock.replace(/\r/g, "").split("\n");

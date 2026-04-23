@@ -3,57 +3,137 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>chemcore viewer</title>
+    <title>chemcore editor</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body data-view-mode="document">
-    <div class="app-shell">
-      <aside class="sidebar">
-        <div class="sidebar-block">
-          <h1>chemcore viewer</h1>
-          <p class="muted">Read-only SVG viewer for `chemcore` documents.</p>
-        </div>
+    <div class="editor-shell">
+      <header class="editor-topbar" aria-label="Editor toolbar">
+        <div class="toolbar-row toolbar-row-primary">
+          <div class="toolbar-group">
+            <button class="icon-button" type="button" data-command="new" aria-label="New file" title="New file">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h8.5L19 8v12.5H6z"/><path d="M14.5 3.5V8H19"/><path d="M12.5 11v6"/><path d="M9.5 14h6"/></svg>
+            </button>
+            <button class="icon-button" type="button" data-command="open" aria-label="Open file" title="Open file">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7.5h6l2 2h9v9.5H3.5z"/><path d="M3.5 7.5V5h5.2l2 2h6.8v2.5"/><path d="M8 14h8"/><path d="M13 11l3 3-3 3"/></svg>
+            </button>
+            <button class="icon-button" type="button" data-command="save" aria-label="Save" title="Save">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h12l2 2v14H5z"/><path d="M8 4v6h8V4"/><path d="M8 16h8v4H8z"/></svg>
+            </button>
+          </div>
 
-        <div class="sidebar-block">
-          <h2>Views</h2>
-          <div class="view-links">
-            <a class="view-link is-active" href="./index.html">document</a>
-            <a class="view-link" href="./labels.html">labels</a>
+          <div class="toolbar-divider" aria-hidden="true"></div>
+
+          <div class="toolbar-group">
+            <button class="icon-button" type="button" data-command="undo" aria-label="Undo" title="Undo">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7 4.5 11.5 9 16"/><path d="M5 11.5h9.5a5 5 0 0 1 0 10"/></svg>
+            </button>
+            <button class="icon-button" type="button" data-command="redo" aria-label="Redo" title="Redo">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 7 4.5 4.5L15 16"/><path d="M19 11.5H9.5a5 5 0 0 0 0 10"/></svg>
+            </button>
+            <button class="icon-button" type="button" data-command="cut" aria-label="Cut" title="Cut">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6.5" cy="17.5" r="2.2"/><circle cx="17.5" cy="17.5" r="2.2"/><path d="M8.2 16 18 5"/><path d="m6 5 9.8 11"/></svg>
+            </button>
+            <button class="icon-button" type="button" data-command="copy" aria-label="Copy" title="Copy">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="7" width="10" height="12"/><rect x="5" y="4" width="10" height="12"/></svg>
+            </button>
+            <button class="icon-button" type="button" data-command="paste" aria-label="Paste" title="Paste">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5h8v3H8z"/><path d="M6 7h12v13H6z"/><path d="M9 12h6"/><path d="M9 16h5"/></svg>
+            </button>
+          </div>
+
+          <div class="toolbar-divider" aria-hidden="true"></div>
+
+          <div class="toolbar-group zoom-group">
+            <input id="zoom-input" class="zoom-input" type="text" value="100%" aria-label="Zoom percentage" />
+            <button class="icon-button" type="button" data-command="zoom-in" aria-label="Zoom in" title="Zoom in">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/><path d="M10.5 7.5v6"/><path d="M7.5 10.5h6"/></svg>
+            </button>
+            <button class="icon-button" type="button" data-command="zoom-out" aria-label="Zoom out" title="Zoom out">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/><path d="M7.5 10.5h6"/></svg>
+            </button>
+            <button id="fit-button" class="icon-button" type="button" data-command="fit" aria-label="Fit all" title="Fit all">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5"/><path d="M20 9V4h-5"/><path d="M4 15v5h5"/><path d="M20 15v5h-5"/><path d="M8 8h8v8H8z"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="toolbar-row toolbar-row-secondary" aria-label="Secondary toolbar"></div>
+      </header>
+
+      <aside class="tool-rail" aria-label="Drawing tools">
+        <div class="tool-slot">
+          <button class="tool-button is-active" type="button" data-tool="select" data-current="free" aria-label="Select" title="Select">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4.5 18.5 12 12 14l-2.5 6z"/></svg>
+          </button>
+          <button class="menu-button" type="button" aria-label="Selection variants" title="Selection variants">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg>
+          </button>
+          <div class="tool-menu">
+            <button type="button" data-tool-option="free" aria-label="Free selection" title="Free selection">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6c5-4 14 1 13 7-1 7-12 7-14 1"/></svg>
+            </button>
+            <button type="button" data-tool-option="box" aria-label="Box selection" title="Box selection">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" stroke-dasharray="2 2"/></svg>
+            </button>
           </div>
         </div>
 
-        <div class="sidebar-block">
-          <label for="sample-select">Sample</label>
-          <select id="sample-select"></select>
+        <div class="tool-slot">
+          <button class="tool-button" type="button" data-tool="bond" data-current="single" aria-label="Bond" title="Bond">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 17 19 7"/></svg>
+          </button>
+          <button class="menu-button" type="button" aria-label="Bond variants" title="Bond variants">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg>
+          </button>
+          <div class="tool-menu">
+            <button type="button" data-tool-option="single" aria-label="Single bond" title="Single bond"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 17 19 7"/></svg></button>
+            <button type="button" data-tool-option="double" aria-label="Double bond" title="Double bond"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 15 18 6"/><path d="M6 18 19 9"/></svg></button>
+            <button type="button" data-tool-option="triple" aria-label="Triple bond" title="Triple bond"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 14 17.5 5"/><path d="M6 17 19 8"/><path d="M7.5 20 20.5 11"/></svg></button>
+            <button type="button" data-tool-option="dashed" aria-label="Dashed bond" title="Dashed bond"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 17 7 15.5"/><path d="M9.5 13.8 11.5 12.4"/><path d="M14 10.6 16 9.2"/><path d="M18.5 7.5 19 7"/></svg></button>
+          </div>
         </div>
 
-        <div class="sidebar-block">
-          <button id="reload-button" type="button">Reload</button>
-          <button id="fit-button" type="button">Fit View</button>
+        <div class="tool-slot">
+          <button class="tool-button" type="button" data-tool="wedge" data-current="solid" aria-label="Wedge bond" title="Wedge bond">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path class="filled" d="M6 17 19 6 14 19z"/></svg>
+          </button>
+          <button class="menu-button" type="button" aria-label="Wedge variants" title="Wedge variants">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg>
+          </button>
+          <div class="tool-menu">
+            <button type="button" data-tool-option="solid" aria-label="Solid wedge" title="Solid wedge"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="filled" d="M6 17 19 6 14 19z"/></svg></button>
+            <button type="button" data-tool-option="hashed" aria-label="Hashed wedge" title="Hashed wedge"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 17 19 6"/><path d="M9 16.4 7.6 14.9"/><path d="M12 15.5 9.4 12.7"/><path d="M15 14.6 11.2 10.6"/><path d="M18 13.7 13 8.4"/></svg></button>
+          </div>
         </div>
 
-        <div class="sidebar-block">
-          <h2>Layers</h2>
-          <label class="check"><input id="toggle-molecules" type="checkbox" checked /> molecules</label>
-          <label class="check"><input id="toggle-lines" type="checkbox" checked /> lines</label>
-          <label class="check"><input id="toggle-texts" type="checkbox" checked /> texts</label>
-        </div>
-
-        <div class="sidebar-block">
-          <h2>Document</h2>
-          <pre id="doc-meta" class="meta"></pre>
-        </div>
+        <button class="tool-button" type="button" data-tool="erase" aria-label="Erase" title="Erase">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 16 8-8 4 4-8 8H7z"/><path d="M5 20h12"/></svg>
+        </button>
+        <button class="tool-button" type="button" data-tool="arrow" aria-label="Arrow" title="Arrow">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15"/><path d="m14 7 5 5-5 5"/></svg>
+        </button>
+        <button class="tool-button" type="button" data-tool="text" aria-label="Text" title="Text">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14"/><path d="M12 6v14"/><path d="M8 20h8"/></svg>
+        </button>
+        <button class="tool-button" type="button" data-tool="shape" aria-label="Shape" title="Shape">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="10" height="10"/><circle cx="16.5" cy="16.5" r="3.5"/></svg>
+        </button>
+        <button class="tool-button" type="button" data-tool="template" aria-label="Template" title="Template">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 4 7 4v8l-7 4-7-4V8z"/><path d="M8.5 9.5v5"/><path d="M15.5 9.5v5"/></svg>
+        </button>
       </aside>
 
-      <main class="viewer-panel">
-        <div class="viewer-toolbar">
-          <span id="viewer-title">No document loaded</span>
-          <span id="viewer-stats" class="muted"></span>
-        </div>
+      <main class="canvas-panel">
         <div id="viewer-container" class="viewer-container">
           <svg id="viewer-svg" xmlns="http://www.w3.org/2000/svg"></svg>
         </div>
       </main>
+
+      <select id="sample-select" class="visually-hidden" aria-label="Sample document"></select>
+      <button id="reload-button" class="visually-hidden" type="button" aria-label="Reload"></button>
+      <span id="viewer-title" class="visually-hidden">No document loaded</span>
+      <span id="viewer-stats" class="visually-hidden"></span>
+      <pre id="doc-meta" class="visually-hidden"></pre>
     </div>
 
     <script type="module" src="./app.js"></script>
