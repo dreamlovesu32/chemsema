@@ -5,7 +5,7 @@ use crate::{
     BondPreview, ChemcoreDocument, DoubleBond, DoubleBondPlacement, DragState, EditorOptions,
     EndpointHit, OverlayState, Point, PointerEvent, RenderPrimitive, RenderRole, SelectionState,
     Tool, ToolState, BOND_CENTER_FOCUS_WIDTH, BOND_CENTER_HIT_RADIUS, DEFAULT_BOND_LENGTH,
-    DRAG_START_THRESHOLD, ENDPOINT_HIT_RADIUS,
+    DRAG_START_THRESHOLD, ENDPOINT_FOCUS_RADIUS, ENDPOINT_HIT_RADIUS,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -70,7 +70,7 @@ impl Engine {
             out.push(RenderPrimitive::Circle {
                 role: RenderRole::HoverEndpoint,
                 center: hover.point,
-                radius: ENDPOINT_HIT_RADIUS,
+                radius: ENDPOINT_FOCUS_RADIUS,
                 fill: "rgba(47,111,237,0.24)".to_string(),
                 stroke: "rgba(47,111,237,0.78)".to_string(),
                 stroke_width: 1.4,
@@ -556,7 +556,7 @@ impl Engine {
             out.push(RenderPrimitive::Circle {
                 role: RenderRole::SelectionNode,
                 center: entry.world_point_for_node(node),
-                radius: ENDPOINT_HIT_RADIUS,
+                radius: ENDPOINT_FOCUS_RADIUS,
                 fill: "rgba(47,111,237,0.16)".to_string(),
                 stroke: "rgba(47,111,237,0.86)".to_string(),
                 stroke_width: 1.6,

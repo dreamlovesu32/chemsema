@@ -1,6 +1,7 @@
 use chemcore_engine::{
     BondVariant, DoubleBondPlacement, Engine, PointerEvent, RenderPrimitive, Tool, ToolState,
-    BOND_CENTER_FOCUS_WIDTH, DEFAULT_BOND_LENGTH, DEFAULT_BOND_STROKE, ENDPOINT_HIT_RADIUS,
+    BOND_CENTER_FOCUS_LENGTH, BOND_CENTER_FOCUS_WIDTH, DEFAULT_BOND_LENGTH, DEFAULT_BOND_STROKE,
+    ENDPOINT_FOCUS_RADIUS,
 };
 
 fn bond_tool() -> ToolState {
@@ -63,6 +64,10 @@ fn hover_focuses_existing_endpoint() {
     let hover = engine.state().overlay.hover_endpoint.as_ref().unwrap();
     assert_eq!(hover.point.x, 336.0);
     assert_eq!(hover.point.y, 260.0);
+    assert!(engine.render_list().iter().any(|primitive| matches!(
+        primitive,
+        RenderPrimitive::Circle { radius, .. } if (*radius - ENDPOINT_FOCUS_RADIUS).abs() < 0.001
+    )));
 }
 
 #[test]
@@ -233,10 +238,10 @@ fn bond_tool_focuses_bond_center_and_cycles_double_styles() {
         .iter()
         .map(|point| point.y)
         .fold(f64::NEG_INFINITY, f64::max);
-    assert!((max_x - min_x - BOND_CENTER_FOCUS_WIDTH).abs() < 0.001);
+    assert!((max_x - min_x - BOND_CENTER_FOCUS_LENGTH).abs() < 0.001);
     assert!((max_y - min_y - BOND_CENTER_FOCUS_WIDTH).abs() < 0.001);
-    assert!((min_x - (300.0 + ENDPOINT_HIT_RADIUS)).abs() < 0.001);
-    assert!((max_x - (336.0 - ENDPOINT_HIT_RADIUS)).abs() < 0.001);
+    assert!((min_x - 309.0).abs() < 0.001);
+    assert!((max_x - 327.0).abs() < 0.001);
 
     engine.pointer_down(PointerEvent {
         x: 318.0,

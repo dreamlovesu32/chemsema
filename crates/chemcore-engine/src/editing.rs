@@ -6,10 +6,12 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
+pub const ENDPOINT_FOCUS_RADIUS: f64 = 4.5;
 pub const ENDPOINT_HIT_RADIUS: f64 = 9.0;
 pub const BOND_HIT_RADIUS: f64 = 6.0;
-pub const BOND_CENTER_FOCUS_WIDTH: f64 = ENDPOINT_HIT_RADIUS * 2.0;
-pub const BOND_CENTER_HIT_RADIUS: f64 = BOND_CENTER_FOCUS_WIDTH;
+pub const BOND_CENTER_FOCUS_LENGTH: f64 = 18.0;
+pub const BOND_CENTER_FOCUS_WIDTH: f64 = 9.0;
+pub const BOND_CENTER_HIT_RADIUS: f64 = BOND_CENTER_FOCUS_LENGTH;
 pub const DRAG_START_THRESHOLD: f64 = 4.0;
 pub const GLOBAL_SNAP_ANGLES: &[f64] = &[
     0.0, 30.0, 45.0, 60.0, 90.0, 120.0, 135.0, 150.0, 180.0, 210.0, 225.0, 240.0, 270.0, 300.0,
@@ -252,8 +254,9 @@ pub fn hit_test_bond_center(
             (begin_point.y + end_point.y) / 2.0,
         );
         let distance = point.distance(center);
+        let focus_radius = bond_center_focus_radius(begin_point, end_point);
         if point_in_bond_center_focus(point, begin_point, end_point)
-            && distance <= radius.max(BOND_CENTER_FOCUS_WIDTH)
+            && distance <= radius.max(focus_radius)
             && best.as_ref().map_or(true, |hit| distance < hit.distance)
         {
             best = Some(BondCenterHit {
@@ -467,7 +470,13 @@ fn point_in_bond_center_focus(point: Point, start: Point, end: Point) -> bool {
 
 pub fn bond_center_focus_length(start: Point, end: Point) -> f64 {
     let length = start.distance(end);
-    (length - ENDPOINT_HIT_RADIUS * 2.0)
+    (length - ENDPOINT_FOCUS_RADIUS * 2.0)
         .max(0.0)
-        .min(BOND_CENTER_FOCUS_WIDTH)
+        .min(BOND_CENTER_FOCUS_LENGTH)
+}
+
+fn bond_center_focus_radius(start: Point, end: Point) -> f64 {
+    let half_length = bond_center_focus_length(start, end) / 2.0;
+    let half_width = BOND_CENTER_FOCUS_WIDTH / 2.0;
+    half_length.hypot(half_width)
 }
