@@ -1,0 +1,184 @@
+{
+  "format": {
+    "name": "chemcore",
+    "version": "0.1"
+  },
+  "document": {
+    "id": "doc_001",
+    "title": "minimal reaction page",
+    "page": {
+      "width": 1024,
+      "height": 768,
+      "background": "#ffffff"
+    },
+    "meta": {
+      "createdBy": "chemcore",
+      "sourceFormat": "manual"
+    }
+  },
+  "styles": {
+    "style_molecule_default": {
+      "kind": "molecule",
+      "stroke": "#111111",
+      "strokeWidth": 1.2,
+      "fontFamily": "Helvetica",
+      "fontSize": 11
+    },
+    "style_text_default": {
+      "kind": "text",
+      "fontFamily": "Helvetica",
+      "fontSize": 12,
+      "fontWeight": 400,
+      "fill": "#111111",
+      "stroke": null
+    },
+    "style_line_default": {
+      "kind": "stroke",
+      "stroke": "#222222",
+      "strokeWidth": 1.5,
+      "lineCap": "round",
+      "lineJoin": "round"
+    }
+  },
+  "objects": [
+    {
+      "id": "obj_group_1",
+      "type": "group",
+      "name": "reaction block",
+      "visible": true,
+      "locked": false,
+      "zIndex": 0,
+      "transform": {
+        "translate": [
+          0,
+          0
+        ],
+        "rotate": 0,
+        "scale": [
+          1,
+          1
+        ]
+      },
+      "styleRef": null,
+      "meta": {
+        "kind": "reaction_block"
+      },
+      "payload": {
+        "children": [
+          "obj_mol_1",
+          "obj_line_1",
+          "obj_text_1"
+        ]
+      }
+    },
+    {
+      "id": "obj_mol_1",
+      "type": "molecule",
+      "name": "substrate",
+      "visible": true,
+      "locked": false,
+      "zIndex": 10,
+      "transform": {
+        "translate": [
+          96,
+          72
+        ],
+        "rotate": 0,
+        "scale": [
+          1,
+          1
+        ]
+      },
+      "styleRef": "style_molecule_default",
+      "meta": {
+        "source": "manual",
+        "collapsed": false
+      },
+      "payload": {
+        "resourceRef": "mol_a",
+        "bbox": [
+          0,
+          0,
+          88,
+          42
+        ],
+        "role": "substrate"
+      }
+    },
+    {
+      "id": "obj_line_1",
+      "type": "line",
+      "name": "reaction line",
+      "visible": true,
+      "locked": false,
+      "zIndex": 15,
+      "transform": {
+        "translate": [
+          0,
+          0
+        ],
+        "rotate": 0,
+        "scale": [
+          1,
+          1
+        ]
+      },
+      "styleRef": "style_line_default",
+      "meta": {},
+      "payload": {
+        "kind": "polyline",
+        "points": [
+          [
+            260,
+            120
+          ],
+          [
+            380,
+            120
+          ]
+        ],
+        "head": "end",
+        "tail": "none"
+      }
+    },
+    {
+      "id": "obj_text_1",
+      "type": "text",
+      "name": "condition label",
+      "visible": true,
+      "locked": false,
+      "zIndex": 20,
+      "transform": {
+        "translate": [
+          220,
+          88
+        ],
+        "rotate": 0,
+        "scale": [
+          1,
+          1
+        ]
+      },
+      "styleRef": "style_text_default",
+      "meta": {},
+      "payload": {
+        "text": "PhB(OH)2 (1.0 equiv)",
+        "box": [
+          0,
+          0,
+          140,
+          18
+        ],
+        "align": "left",
+        "valign": "middle"
+      }
+    }
+  ],
+  "resources": {
+    "mol_a": {
+      "type": "molecule2d",
+      "encoding": "molblock2d",
+      "data": ""
+    }
+  }
+}

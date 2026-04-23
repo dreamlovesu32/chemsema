@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>chemcore viewer</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body data-view-mode="document">
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="sidebar-block">
+          <h1>chemcore viewer</h1>
+          <p class="muted">Read-only SVG viewer for `chemcore` documents.</p>
+        </div>
+
+        <div class="sidebar-block">
+          <h2>Views</h2>
+          <div class="view-links">
+            <a class="view-link is-active" href="./index.html">document</a>
+            <a class="view-link" href="./labels.html">labels</a>
+          </div>
+        </div>
+
+        <div class="sidebar-block">
+          <label for="sample-select">Sample</label>
+          <select id="sample-select"></select>
+        </div>
+
+        <div class="sidebar-block">
+          <button id="reload-button" type="button">Reload</button>
+          <button id="fit-button" type="button">Fit View</button>
+        </div>
+
+        <div class="sidebar-block">
+          <h2>Layers</h2>
+          <label class="check"><input id="toggle-molecules" type="checkbox" checked /> molecules</label>
+          <label class="check"><input id="toggle-lines" type="checkbox" checked /> lines</label>
+          <label class="check"><input id="toggle-texts" type="checkbox" checked /> texts</label>
+        </div>
+
+        <div class="sidebar-block">
+          <h2>Document</h2>
+          <pre id="doc-meta" class="meta"></pre>
+        </div>
+      </aside>
+
+      <main class="viewer-panel">
+        <div class="viewer-toolbar">
+          <span id="viewer-title">No document loaded</span>
+          <span id="viewer-stats" class="muted"></span>
+        </div>
+        <div id="viewer-container" class="viewer-container">
+          <svg id="viewer-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+        </div>
+      </main>
+    </div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

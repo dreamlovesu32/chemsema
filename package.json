@@ -1,0 +1,22 @@
+{
+  "name": "chemcore",
+  "version": "1.0.0",
+  "description": "`chemcore` 是一个跨平台的化学文档核心。",
+  "type": "module",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "example": "examples"
+  },
+  "scripts": {
+    "build:glyph-wasm": "bash scripts/build-glyph-wasm.sh",
+    "screenshot": "node scripts/viewer-screenshot.mjs",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "playwright": "^1.59.1"
+  }
+}

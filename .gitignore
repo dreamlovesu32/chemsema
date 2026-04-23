@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Build outputs
+build/
+build-wasm/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+Makefile
+
+# Local/generated imports and previews
+tmp/
+
+# Local sample source binaries
+*.pdf
+*.jpg
+*.jpeg
+
+# OS/editor
+.DS_Store
+*.swp
+*.swo

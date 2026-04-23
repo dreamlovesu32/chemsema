@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>chemcore label view</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body data-view-mode="label-debug">
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="sidebar-block">
+          <h1>label view</h1>
+          <p class="muted">Black-background label-only debug view for per-character white backing shapes.</p>
+        </div>
+
+        <div class="sidebar-block">
+          <h2>Views</h2>
+          <div class="view-links">
+            <a class="view-link" href="./index.html">document</a>
+            <a class="view-link is-active" href="./labels.html">labels</a>
+          </div>
+        </div>
+
+        <div class="sidebar-block">
+          <label for="sample-select">Sample</label>
+          <select id="sample-select"></select>
+        </div>
+
+        <div class="sidebar-block">
+          <button id="reload-button" type="button">Reload</button>
+          <button id="fit-button" type="button">Fit View</button>
+        </div>
+
+        <div class="sidebar-block">
+          <h2>Document</h2>
+          <pre id="doc-meta" class="meta"></pre>
+        </div>
+      </aside>
+
+      <main class="viewer-panel">
+        <div class="viewer-toolbar">
+          <span id="viewer-title">No document loaded</span>
+          <span id="viewer-stats" class="muted"></span>
+        </div>
+        <div id="viewer-container" class="viewer-container">
+          <svg id="viewer-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+        </div>
+      </main>
+    </div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

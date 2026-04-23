@@ -1,0 +1,270 @@
+:root {
+  color-scheme: light;
+  --bg: #f3efe7;
+  --panel: #fffdf8;
+  --ink: #000000;
+  --muted: #6a6055;
+  --line: #d6c8b6;
+  --accent: #9f5b2d;
+  --accent-soft: #f3dcc8;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: #ffffff;
+  color: var(--ink);
+  font-family: "IBM Plex Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+button,
+select {
+  font: inherit;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  min-height: 100vh;
+}
+
+.sidebar {
+  border-right: 1px solid var(--line);
+  background: #faf8f4;
+  backdrop-filter: blur(16px);
+  padding: 24px 20px;
+}
+
+.sidebar-block + .sidebar-block {
+  margin-top: 24px;
+}
+
+.sidebar h1,
+.sidebar h2 {
+  margin: 0 0 10px;
+  font-family: "Iowan Old Style", "Palatino Linotype", serif;
+  font-weight: 600;
+}
+
+.sidebar h1 {
+  font-size: 30px;
+}
+
+.sidebar h2 {
+  font-size: 17px;
+}
+
+.sidebar label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.sidebar select,
+.sidebar button {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.view-links {
+  display: flex;
+  gap: 10px;
+}
+
+.view-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--ink);
+  background: var(--panel);
+  text-decoration: none;
+}
+
+.view-link.is-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.sidebar button + button {
+  margin-top: 10px;
+}
+
+.sidebar button {
+  cursor: pointer;
+}
+
+.sidebar button:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.meta {
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  white-space: pre-wrap;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.viewer-panel {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-width: 0;
+}
+
+.viewer-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  border-bottom: 1px solid var(--line);
+  padding: 18px 22px;
+  background: #fcfbf8;
+}
+
+#viewer-title {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.viewer-container {
+  position: relative;
+  overflow: auto;
+  padding: 24px;
+}
+
+#viewer-svg {
+  width: 100%;
+  height: calc(100vh - 120px);
+  min-height: 640px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 20px 60px rgba(50, 33, 16, 0.08);
+}
+
+.chem-text {
+  font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+  fill: #000000;
+  font-size: 12px;
+}
+
+.mol-bond {
+  stroke: #000000;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.mol-atom-label {
+  paint-order: normal;
+  stroke: none;
+  stroke-width: 0;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.mol-group-label {
+  font-style: italic;
+}
+
+.debug-box {
+  fill: none;
+  stroke: rgba(159, 91, 45, 0.25);
+  stroke-dasharray: 5 4;
+}
+
+body[data-view-mode="label-debug"] {
+  background: #000000;
+  color: #f0f0f0;
+}
+
+body[data-view-mode="label-debug"] .sidebar {
+  background: #0c0c0c;
+  border-right-color: #2e2e2e;
+}
+
+body[data-view-mode="label-debug"] .viewer-toolbar {
+  background: #0c0c0c;
+  border-bottom-color: #2e2e2e;
+}
+
+body[data-view-mode="label-debug"] .muted {
+  color: #b7b7b7;
+}
+
+body[data-view-mode="label-debug"] .sidebar select,
+body[data-view-mode="label-debug"] .sidebar button,
+body[data-view-mode="label-debug"] .meta,
+body[data-view-mode="label-debug"] .view-link {
+  border-color: #3a3a3a;
+  background: #131313;
+  color: #f0f0f0;
+}
+
+body[data-view-mode="label-debug"] #viewer-svg {
+  background: #000000;
+  border-color: #2e2e2e;
+  box-shadow: none;
+}
+
+body[data-view-mode="label-debug"] .mol-atom-label {
+  fill: #000000;
+  stroke: none;
+  paint-order: normal;
+}
+
+body[data-view-mode="label-debug"] .mol-atom-label tspan {
+  fill: #000000 !important;
+  stroke: none !important;
+}
+
+body[data-view-mode="label-debug"] .mol-group-label {
+  fill: #000000;
+  stroke: none;
+  paint-order: normal;
+}
+
+body[data-view-mode="label-debug"] .label-knockout-shape {
+  fill: #ffffff;
+  stroke: none;
+}
+
+@media (max-width: 960px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+}
