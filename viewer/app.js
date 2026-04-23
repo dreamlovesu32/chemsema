@@ -21,10 +21,25 @@ const VIEW_MODE = document.body.dataset.viewMode || "document";
 const LABEL_DEBUG_MODE = VIEW_MODE === "label-debug";
 
 const state = {
-  currentPath: SAMPLE_FILES[0],
+  currentPath: LABEL_DEBUG_MODE ? SAMPLE_FILES[0] : null,
   currentDocument: null,
   glyphKernel: null,
+  editor: {
+    hoverEndpoint: null,
+    drag: null,
+    preview: null,
+    idCounter: 1,
+  },
 };
+
+if (typeof window !== "undefined") {
+  window.__chemcoreDebug = {
+    state,
+    get document() {
+      return state.currentDocument;
+    },
+  };
+}
 
 const DEFAULT_TEXT_FONT_SIZE = 12;
 const LABEL_FONT_SIZE = 11;
@@ -39,6 +54,12 @@ const HASH_WEDGE_END_INSET = 0.18;
 const SOLID_WEDGE_END_INSET = 0.55;
 const CHEMDRAW_PAGE_BACKGROUND = "#ffffff";
 const CHEMDRAW_INK = "#000000";
+const EDITOR_PAGE = { width: 1200, height: 800, background: "#ffffff" };
+const EDITOR_FALLBACK_BOND_LENGTH = 14.4;
+const ENDPOINT_HIT_RADIUS_PX = 10;
+const DRAG_START_THRESHOLD_PX = 4;
+const GLOBAL_SNAP_ANGLES = [0, 30, 45, 60, 90, 120, 135, 150, 180, 210, 225, 240, 270, 300, 315, 330];
+const RELATIVE_BOND_ANGLES = [30, 60, 90, 120, 150, 180];
 const CHEMDRAW_COLOR_MAP = new Map([
   ["#d61f1f", "#ff0000"],
   ["#1b32d8", "#0000ff"],
@@ -685,6 +706,14 @@ document.querySelectorAll("[data-command]").forEach((button) => {
       setZoomPercent(zoomPercent - 10);
     } else if (command === "fit") {
       setZoomPercent(100);
+    } else if (command === "new") {
+      state.currentPath = null;
+      state.editor.hoverEndpoint = null;
+      state.editor.drag = null;
+      state.editor.preview = null;
+      state.currentDocument = createBlankDocument();
+      renderDocument();
+      fitView();
     }
   });
 });
@@ -875,6 +904,560 @@ secondaryToolbar?.addEventListener("click", (event) => {
 });
 
 renderSecondaryToolbar();
+
+function createBlankDocument() {
+  return {
+    format: {
+      name: "chemcore",
+      version: "0.1",
+    },
+    document: {
+      id: "doc_editor_untitled",
+      title: "Untitled",
+      page: { ...EDITOR_PAGE },
+      meta: {
+        createdBy: "chemcore",
+        sourceFormat: "chemcore",
+      },
+    },
+    styles: {
+      style_molecule_default: {
+        kind: "molecule",
+        stroke: CHEMDRAW_INK,
+        strokeWidth: BOND_STROKE,
+        fontFamily: "Arial",
+        fontSize: LABEL_FONT_SIZE,
+      },
+    },
+    objects: [
+      {
+        id: "obj_editor_molecule",
+        type: "molecule",
+        name: "molecule",
+        visible: true,
+        locked: false,
+        zIndex: 10,
+        transform: {
+          translate: [0, 0],
+          rotate: 0,
+          scale: [1, 1],
+        },
+        styleRef: "style_molecule_default",
+        meta: {
+          source: "editor",
+        },
+        payload: {
+          resourceRef: "mol_editor",
+          bbox: [0, 0, EDITOR_PAGE.width, EDITOR_PAGE.height],
+        },
+      },
+    ],
+    resources: {
+      mol_editor: {
+        type: "molecule_fragment2d",
+        encoding: "chemcore.molecule.fragment2d",
+        data: {
+          schema: "chemcore.molecule.fragment2d",
+          bbox: [0, 0, EDITOR_PAGE.width, EDITOR_PAGE.height],
+          nodes: [],
+          bonds: [],
+          meta: {
+            source: "editor",
+          },
+        },
+      },
+    },
+  };
+}
+
+function editableMoleculeEntry() {
+  const documentData = state.currentDocument;
+  if (!documentData) {
+    return null;
+  }
+  const object = documentData.objects.find((item) => item.type === "molecule" && item.payload?.resourceRef);
+  const resource = object ? documentData.resources?.[object.payload.resourceRef] : null;
+  if (!object || resource?.type !== "molecule_fragment2d" || !resource.data) {
+    return null;
+  }
+  return { object, resource, fragment: resource.data };
+}
+
+function nextEditorId(prefix) {
+  state.editor.idCounter += 1;
+  return `${prefix}_${Date.now().toString(36)}_${state.editor.idCounter.toString(36)}`;
+}
+
+function svgPointFromEvent(event) {
+  const rect = viewerSvg.getBoundingClientRect();
+  const viewBox = viewerSvg.viewBox.baseVal;
+  const width = viewBox?.width || rect.width || EDITOR_PAGE.width;
+  const height = viewBox?.height || rect.height || EDITOR_PAGE.height;
+  return {
+    x: (event.clientX - rect.left) * (width / Math.max(1, rect.width)) + (viewBox?.x || 0),
+    y: (event.clientY - rect.top) * (height / Math.max(1, rect.height)) + (viewBox?.y || 0),
+  };
+}
+
+function svgUnitsForPixels(pixels) {
+  const rect = viewerSvg.getBoundingClientRect();
+  const viewBox = viewerSvg.viewBox.baseVal;
+  const width = viewBox?.width || EDITOR_PAGE.width;
+  return pixels * (width / Math.max(1, rect.width));
+}
+
+function screenDistanceToSvgUnits(pixels) {
+  return svgUnitsForPixels(pixels);
+}
+
+function worldPointForNode(entry, node) {
+  const [tx, ty] = entry.object.transform?.translate || [0, 0];
+  return {
+    x: tx + Number(node.position?.[0] || 0),
+    y: ty + Number(node.position?.[1] || 0),
+  };
+}
+
+function localPointForWorld(entry, point) {
+  const [tx, ty] = entry.object.transform?.translate || [0, 0];
+  return [round2(point.x - tx), round2(point.y - ty)];
+}
+
+function round2(value) {
+  return Math.round(value * 100) / 100;
+}
+
+function editorNodes(entry = editableMoleculeEntry()) {
+  if (!entry) {
+    return [];
+  }
+  return (entry.fragment.nodes || []).map((node) => ({
+    node,
+    point: worldPointForNode(entry, node),
+  }));
+}
+
+function findEditorEndpoint(point) {
+  const entry = editableMoleculeEntry();
+  if (!entry) {
+    return null;
+  }
+  const radius = screenDistanceToSvgUnits(ENDPOINT_HIT_RADIUS_PX);
+  let best = null;
+  for (const candidate of editorNodes(entry)) {
+    const distance = Math.hypot(candidate.point.x - point.x, candidate.point.y - point.y);
+    if (distance <= radius && (!best || distance < best.distance)) {
+      best = {
+        entry,
+        node: candidate.node,
+        nodeId: candidate.node.id,
+        point: candidate.point,
+        distance,
+      };
+    }
+  }
+  return best;
+}
+
+function normalizedAngle(degrees) {
+  return ((degrees % 360) + 360) % 360;
+}
+
+function angleBetweenPoints(from, to) {
+  return normalizedAngle((Math.atan2(to.y - from.y, to.x - from.x) * 180) / Math.PI);
+}
+
+function directionFromAngle(degrees) {
+  const radians = (normalizedAngle(degrees) * Math.PI) / 180;
+  return { x: Math.cos(radians), y: Math.sin(radians) };
+}
+
+function angularDistance(a, b) {
+  const diff = Math.abs(normalizedAngle(a) - normalizedAngle(b));
+  return Math.min(diff, 360 - diff);
+}
+
+function angleInClockwiseArc(angle, start, end) {
+  const span = normalizedAngle(end - start);
+  const offset = normalizedAngle(angle - start);
+  return offset <= span;
+}
+
+function adjacentDirections(entry, nodeId) {
+  const nodeMap = new Map((entry.fragment.nodes || []).map((node) => [node.id, node]));
+  const node = nodeMap.get(nodeId);
+  if (!node) {
+    return [];
+  }
+  const point = worldPointForNode(entry, node);
+  const out = [];
+  for (const bond of entry.fragment.bonds || []) {
+    if (bond.begin !== nodeId && bond.end !== nodeId) {
+      continue;
+    }
+    const otherNode = nodeMap.get(bond.begin === nodeId ? bond.end : bond.begin);
+    if (!otherNode) {
+      continue;
+    }
+    out.push(angleBetweenPoints(point, worldPointForNode(entry, otherNode)));
+  }
+  return out;
+}
+
+function largestAngularGap(directions) {
+  if (!directions.length) {
+    return { start: 0, end: 360, size: 360, center: 0 };
+  }
+  const sorted = [...new Set(directions.map((angle) => Math.round(normalizedAngle(angle) * 1000) / 1000))]
+    .sort((a, b) => a - b);
+  let best = { start: sorted[0], end: sorted[0], size: 0, center: sorted[0] };
+  for (let index = 0; index < sorted.length; index += 1) {
+    const start = sorted[index];
+    const end = index === sorted.length - 1 ? sorted[0] + 360 : sorted[index + 1];
+    const size = end - start;
+    if (size > best.size) {
+      best = {
+        start,
+        end,
+        size,
+        center: normalizedAngle(start + size / 2),
+      };
+    }
+  }
+  return best;
+}
+
+function defaultBondLength() {
+  const lengths = [];
+  const documentData = state.currentDocument;
+  for (const object of documentData?.objects || []) {
+    if (object.type !== "molecule") {
+      continue;
+    }
+    const resource = documentData.resources?.[object.payload?.resourceRef];
+    const fragment = resource?.data;
+    if (resource?.type !== "molecule_fragment2d" || !fragment) {
+      continue;
+    }
+    const entry = { object, resource, fragment };
+    const nodeMap = new Map((fragment.nodes || []).map((node) => [node.id, node]));
+    for (const bond of fragment.bonds || []) {
+      if (Number(bond.order || 1) !== 1 || bond.stereo) {
+        continue;
+      }
+      const begin = nodeMap.get(bond.begin);
+      const end = nodeMap.get(bond.end);
+      if (!begin || !end) {
+        continue;
+      }
+      const p1 = worldPointForNode(entry, begin);
+      const p2 = worldPointForNode(entry, end);
+      const length = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+      if (length >= 5 && length <= 80) {
+        lengths.push(length);
+      }
+    }
+  }
+  if (!lengths.length) {
+    return EDITOR_FALLBACK_BOND_LENGTH;
+  }
+  lengths.sort((a, b) => a - b);
+  return lengths[Math.floor(lengths.length / 2)];
+}
+
+function candidateAnglesForAnchor(anchor, mouseAngle = null) {
+  const entry = anchor?.entry || null;
+  const directions = entry && anchor?.nodeId ? adjacentDirections(entry, anchor.nodeId) : [];
+  if (!directions.length) {
+    return GLOBAL_SNAP_ANGLES;
+  }
+  const candidates = new Set(GLOBAL_SNAP_ANGLES);
+  for (const base of directions) {
+    for (const relative of RELATIVE_BOND_ANGLES) {
+      candidates.add(Math.round(normalizedAngle(base + relative) * 1000) / 1000);
+      candidates.add(Math.round(normalizedAngle(base - relative) * 1000) / 1000);
+    }
+  }
+  const gap = largestAngularGap(directions);
+  return [...candidates].sort((a, b) => {
+    const aInGap = angleInClockwiseArc(a, gap.start, gap.end);
+    const bInGap = angleInClockwiseArc(b, gap.start, gap.end);
+    if (aInGap !== bInGap) {
+      return aInGap ? -1 : 1;
+    }
+    if (mouseAngle !== null) {
+      const angleDiff = angularDistance(a, mouseAngle) - angularDistance(b, mouseAngle);
+      if (Math.abs(angleDiff) > 1e-6) {
+        return angleDiff;
+      }
+    }
+    return angularDistance(a, gap.center) - angularDistance(b, gap.center);
+  });
+}
+
+function snapAngleForAnchor(anchor, mousePoint) {
+  const mouseAngle = angleBetweenPoints(anchor.point, mousePoint);
+  const entry = anchor?.entry || null;
+  const directions = entry && anchor?.nodeId ? adjacentDirections(entry, anchor.nodeId) : [];
+  const gap = largestAngularGap(directions);
+  const candidates = candidateAnglesForAnchor(anchor, mouseAngle);
+  let best = candidates[0] || 0;
+  let bestScore = Infinity;
+  for (const candidate of candidates) {
+    let score = angularDistance(candidate, mouseAngle);
+    if (directions.length >= 2 && !angleInClockwiseArc(candidate, gap.start, gap.end)) {
+      score += 25;
+    }
+    if (directions.length >= 2) {
+      const satisfied = directions.filter((angle) =>
+        RELATIVE_BOND_ANGLES.some((allowed) => Math.abs(angularDistance(candidate, angle) - allowed) < 0.001),
+      ).length;
+      score += (directions.length - satisfied) * 8;
+    }
+    if (score < bestScore) {
+      bestScore = score;
+      best = candidate;
+    }
+  }
+  return best;
+}
+
+function defaultAngleForAnchor(anchor) {
+  const directions = anchor?.entry && anchor?.nodeId ? adjacentDirections(anchor.entry, anchor.nodeId) : [];
+  if (!directions.length) {
+    return 0;
+  }
+  if (directions.length === 1) {
+    const candidates = [normalizedAngle(directions[0] + 120), normalizedAngle(directions[0] - 120)];
+    return candidates.sort((a, b) => {
+      const da = directionFromAngle(a);
+      const db = directionFromAngle(b);
+      if (Math.abs(da.y - db.y) > 1e-6) return da.y - db.y;
+      return db.x - da.x;
+    })[0];
+  }
+  return largestAngularGap(directions).center;
+}
+
+function endpointFromAnchor(anchor, angle, length = defaultBondLength()) {
+  const direction = directionFromAngle(angle);
+  return {
+    x: anchor.point.x + direction.x * length,
+    y: anchor.point.y + direction.y * length,
+  };
+}
+
+function updateFragmentBounds(entry, points) {
+  const fragment = entry.fragment;
+  const object = entry.object;
+  const [tx, ty] = object.transform?.translate || [0, 0];
+  const xs = [];
+  const ys = [];
+  for (const node of fragment.nodes || []) {
+    xs.push(Number(node.position?.[0] || 0));
+    ys.push(Number(node.position?.[1] || 0));
+  }
+  for (const point of points || []) {
+    xs.push(point.x - tx);
+    ys.push(point.y - ty);
+  }
+  if (!xs.length) {
+    return;
+  }
+  const minX = Math.min(0, ...xs) - 8;
+  const minY = Math.min(0, ...ys) - 8;
+  const maxX = Math.max(EDITOR_PAGE.width, ...xs) + 8;
+  const maxY = Math.max(EDITOR_PAGE.height, ...ys) + 8;
+  fragment.bbox = [0, 0, round2(maxX - Math.min(0, minX)), round2(maxY - Math.min(0, minY))];
+  object.payload.bbox = fragment.bbox;
+}
+
+function createCarbonNode(entry, point) {
+  const node = {
+    id: nextEditorId("n"),
+    element: "C",
+    atomicNumber: 6,
+    position: localPointForWorld(entry, point),
+    charge: 0,
+    numHydrogens: 0,
+    isExternalConnectionPoint: false,
+    isPlaceholder: false,
+  };
+  entry.fragment.nodes.push(node);
+  return node;
+}
+
+function addSingleBond(anchor, endPoint) {
+  const entry = anchor.entry || editableMoleculeEntry();
+  if (!entry) {
+    return;
+  }
+  entry.fragment.nodes ||= [];
+  entry.fragment.bonds ||= [];
+  let beginNode = anchor.node || null;
+  if (!beginNode) {
+    beginNode = createCarbonNode(entry, anchor.point);
+  }
+  const endNode = createCarbonNode(entry, endPoint);
+  entry.fragment.bonds.push({
+    id: nextEditorId("b"),
+    begin: beginNode.id,
+    end: endNode.id,
+    order: 1,
+  });
+  updateFragmentBounds(entry, [anchor.point, endPoint]);
+  state.editor.hoverEndpoint = {
+    entry,
+    node: endNode,
+    nodeId: endNode.id,
+    point: worldPointForNode(entry, endNode),
+    distance: 0,
+  };
+  renderDocument();
+}
+
+function editorAnchorFromPoint(point) {
+  return findEditorEndpoint(point) || {
+    entry: editableMoleculeEntry(),
+    node: null,
+    nodeId: null,
+    point,
+    distance: 0,
+  };
+}
+
+function updateEditorPreview(anchor, endPoint) {
+  state.editor.preview = {
+    start: anchor.point,
+    end: endPoint,
+  };
+  renderEditorOverlay();
+}
+
+function clearEditorPreview() {
+  state.editor.preview = null;
+  renderEditorOverlay();
+}
+
+function canDrawSingleBond() {
+  return editorState.activeTool === "bond" && editorState.bondType === "single" && !LABEL_DEBUG_MODE;
+}
+
+function handleEditorPointerMove(event) {
+  if (!canDrawSingleBond()) {
+    state.editor.hoverEndpoint = null;
+    clearEditorPreview();
+    return;
+  }
+  const point = svgPointFromEvent(event);
+  const drag = state.editor.drag;
+  if (drag) {
+    const distance = Math.hypot(event.clientX - drag.startClient.x, event.clientY - drag.startClient.y);
+    drag.hasDragged = drag.hasDragged || distance >= DRAG_START_THRESHOLD_PX;
+    if (drag.hasDragged) {
+      const angle = snapAngleForAnchor(drag.anchor, point);
+      const end = endpointFromAnchor(drag.anchor, angle, drag.length);
+      drag.previewEnd = end;
+      updateEditorPreview(drag.anchor, end);
+    }
+    return;
+  }
+
+  const endpoint = findEditorEndpoint(point);
+  const previous = state.editor.hoverEndpoint?.nodeId || null;
+  state.editor.hoverEndpoint = endpoint;
+  if ((endpoint?.nodeId || null) !== previous) {
+    renderEditorOverlay();
+  }
+}
+
+function handleEditorPointerDown(event) {
+  if (!canDrawSingleBond() || event.button !== 0) {
+    return;
+  }
+  const point = svgPointFromEvent(event);
+  const anchor = editorAnchorFromPoint(point);
+  if (!anchor.entry) {
+    return;
+  }
+  event.preventDefault();
+  viewerSvg.setPointerCapture?.(event.pointerId);
+  state.editor.drag = {
+    anchor,
+    startClient: { x: event.clientX, y: event.clientY },
+    length: defaultBondLength(),
+    hasDragged: false,
+    previewEnd: null,
+  };
+}
+
+function handleEditorPointerUp(event) {
+  const drag = state.editor.drag;
+  if (!drag) {
+    return;
+  }
+  event.preventDefault();
+  viewerSvg.releasePointerCapture?.(event.pointerId);
+  const end = drag.hasDragged && drag.previewEnd
+    ? drag.previewEnd
+    : endpointFromAnchor(drag.anchor, defaultAngleForAnchor(drag.anchor), drag.length);
+  state.editor.drag = null;
+  state.editor.preview = null;
+  addSingleBond(drag.anchor, end);
+}
+
+function handleEditorPointerLeave() {
+  if (state.editor.drag) {
+    return;
+  }
+  state.editor.hoverEndpoint = null;
+  clearEditorPreview();
+}
+
+function renderEditorOverlay() {
+  viewerSvg.querySelector('[data-layer="editor-overlay"]')?.remove();
+  if (LABEL_DEBUG_MODE) {
+    return;
+  }
+  const overlay = makeSvgNode("g", { "data-layer": "editor-overlay", "pointer-events": "none" });
+  const hover = state.editor.hoverEndpoint;
+  if (hover?.point && canDrawSingleBond()) {
+    overlay.appendChild(makeSvgNode("circle", {
+      cx: hover.point.x,
+      cy: hover.point.y,
+      r: screenDistanceToSvgUnits(ENDPOINT_HIT_RADIUS_PX),
+      class: "editor-endpoint-halo",
+    }));
+  }
+  const preview = state.editor.preview;
+  if (preview?.start && preview?.end) {
+    overlay.appendChild(makeSvgNode("line", {
+      x1: preview.start.x,
+      y1: preview.start.y,
+      x2: preview.end.x,
+      y2: preview.end.y,
+      class: "editor-bond-preview",
+      "stroke-width": BOND_STROKE,
+    }));
+    overlay.appendChild(makeSvgNode("circle", {
+      cx: preview.end.x,
+      cy: preview.end.y,
+      r: screenDistanceToSvgUnits(5),
+      class: "editor-preview-end",
+    }));
+  }
+  viewerSvg.appendChild(overlay);
+}
+
+viewerSvg?.addEventListener("pointermove", handleEditorPointerMove);
+viewerSvg?.addEventListener("pointerdown", handleEditorPointerDown);
+viewerSvg?.addEventListener("pointerup", handleEditorPointerUp);
+viewerSvg?.addEventListener("pointercancel", () => {
+  state.editor.drag = null;
+  state.editor.preview = null;
+  renderEditorOverlay();
+});
+viewerSvg?.addEventListener("pointerleave", handleEditorPointerLeave);
 
 function parseMolblock(molblock) {
   const lines = molblock.replace(/\r/g, "").split("\n");
@@ -2818,6 +3401,7 @@ function renderDocument() {
   viewerStats.textContent = Object.entries(counts)
     .map(([type, count]) => `${type}: ${count}`)
     .join(" | ");
+  renderEditorOverlay();
 }
 
 function fitView() {
@@ -2839,12 +3423,15 @@ async function loadDocument(path) {
 async function loadAndRender() {
   viewerTitle.textContent = "Loading...";
   try {
-    const documentData = await loadDocument(state.currentPath);
+    state.editor.hoverEndpoint = null;
+    state.editor.drag = null;
+    state.editor.preview = null;
+    const documentData = state.currentPath ? await loadDocument(state.currentPath) : createBlankDocument();
     state.currentDocument = documentData;
     viewerTitle.textContent = documentData.document.title || state.currentPath;
     docMeta.textContent = JSON.stringify(
       {
-        sample: state.currentPath,
+        sample: state.currentPath || "blank",
         page: documentData.document.page,
         meta: documentData.document.meta,
       },

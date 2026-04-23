@@ -315,6 +315,7 @@ button {
   min-width: 0;
   min-height: 0;
   background: var(--canvas);
+  cursor: crosshair;
 }
 
 .chem-text {
@@ -349,6 +350,24 @@ button {
 
 .label-knockout-shape {
   stroke: none;
+}
+
+.editor-endpoint-halo {
+  fill: rgba(47, 111, 237, 0.18);
+  stroke: rgba(47, 111, 237, 0.55);
+  stroke-width: 1;
+}
+
+.editor-bond-preview {
+  stroke: rgba(0, 0, 0, 0.72);
+  stroke-linecap: round;
+  stroke-dasharray: 2.5 2;
+}
+
+.editor-preview-end {
+  fill: rgba(47, 111, 237, 0.16);
+  stroke: rgba(47, 111, 237, 0.5);
+  stroke-width: 0.8;
 }
 
 /* Legacy label-debug page support. */
