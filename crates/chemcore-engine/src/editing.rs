@@ -6,11 +6,10 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
-pub const ENDPOINT_HIT_RADIUS: f64 = 16.0;
+pub const ENDPOINT_HIT_RADIUS: f64 = 9.0;
 pub const BOND_HIT_RADIUS: f64 = 6.0;
-pub const BOND_CENTER_HIT_RADIUS: f64 = 9.0;
-pub const BOND_CENTER_FOCUS_RADIUS: f64 = 1.5;
-pub const DOUBLE_BOND_FOCUS_WIDTH: f64 = 10.0;
+pub const BOND_CENTER_FOCUS_WIDTH: f64 = ENDPOINT_HIT_RADIUS * 2.0;
+pub const BOND_CENTER_HIT_RADIUS: f64 = BOND_CENTER_FOCUS_WIDTH;
 pub const DRAG_START_THRESHOLD: f64 = 4.0;
 pub const GLOBAL_SNAP_ANGLES: &[f64] = &[
     0.0, 30.0, 45.0, 60.0, 90.0, 120.0, 135.0, 150.0, 180.0, 210.0, 225.0, 240.0, 270.0, 300.0,
@@ -252,12 +251,11 @@ pub fn hit_test_bond_center(
             (begin_point.x + end_point.x) / 2.0,
             (begin_point.y + end_point.y) / 2.0,
         );
-        let distance = if bond.order == 1 {
-            point.distance(center)
-        } else {
-            point_to_segment_distance(point, begin_point, end_point)
-        };
-        if distance <= radius && best.as_ref().map_or(true, |hit| distance < hit.distance) {
+        let distance = point.distance(center);
+        if point_in_bond_center_focus(point, begin_point, end_point)
+            && distance <= radius.max(BOND_CENTER_FOCUS_WIDTH)
+            && best.as_ref().map_or(true, |hit| distance < hit.distance)
+        {
             best = Some(BondCenterHit {
                 bond_id: bond.id.clone(),
                 point: center,
@@ -446,4 +444,30 @@ fn point_to_segment_distance(point: Point, start: Point, end: Point) -> f64 {
     }
     let t = (((point.x - start.x) * dx + (point.y - start.y) * dy) / length_sq).clamp(0.0, 1.0);
     point.distance(Point::new(start.x + dx * t, start.y + dy * t))
+}
+
+fn point_in_bond_center_focus(point: Point, start: Point, end: Point) -> bool {
+    let dx = end.x - start.x;
+    let dy = end.y - start.y;
+    let length = dx.hypot(dy);
+    if length <= crate::EPSILON {
+        return false;
+    }
+    let focus_length = bond_center_focus_length(start, end);
+    if focus_length <= crate::EPSILON {
+        return false;
+    }
+    let center = Point::new((start.x + end.x) / 2.0, (start.y + end.y) / 2.0);
+    let ux = dx / length;
+    let uy = dy / length;
+    let local_x = (point.x - center.x) * ux + (point.y - center.y) * uy;
+    let local_y = -(point.x - center.x) * uy + (point.y - center.y) * ux;
+    local_x.abs() <= focus_length / 2.0 && local_y.abs() <= BOND_CENTER_FOCUS_WIDTH / 2.0
+}
+
+pub fn bond_center_focus_length(start: Point, end: Point) -> f64 {
+    let length = start.distance(end);
+    (length - ENDPOINT_HIT_RADIUS * 2.0)
+        .max(0.0)
+        .min(BOND_CENTER_FOCUS_WIDTH)
 }

@@ -1,11 +1,11 @@
 use crate::{
-    anchor_from_point, can_draw_single_bond, can_focus_bond_center, can_focus_endpoint,
-    default_angle_for_anchor, endpoint_from_angle, hit_test_bond_center, hit_test_endpoint,
-    render_document, select_at, snapped_angle_for_anchor, Bond, BondAnchor, BondPreview,
-    ChemcoreDocument, DoubleBond, DoubleBondPlacement, DragState, EditorOptions, EndpointHit,
-    OverlayState, Point, PointerEvent, RenderPrimitive, RenderRole, SelectionState, Tool,
-    ToolState, BOND_CENTER_FOCUS_RADIUS, BOND_CENTER_HIT_RADIUS, DEFAULT_BOND_LENGTH,
-    DOUBLE_BOND_FOCUS_WIDTH, DRAG_START_THRESHOLD, ENDPOINT_HIT_RADIUS,
+    anchor_from_point, bond_center_focus_length, can_draw_single_bond, can_focus_bond_center,
+    can_focus_endpoint, default_angle_for_anchor, endpoint_from_angle, hit_test_bond_center,
+    hit_test_endpoint, render_document, select_at, snapped_angle_for_anchor, Bond, BondAnchor,
+    BondPreview, ChemcoreDocument, DoubleBond, DoubleBondPlacement, DragState, EditorOptions,
+    EndpointHit, OverlayState, Point, PointerEvent, RenderPrimitive, RenderRole, SelectionState,
+    Tool, ToolState, BOND_CENTER_FOCUS_WIDTH, BOND_CENTER_HIT_RADIUS, DEFAULT_BOND_LENGTH,
+    DRAG_START_THRESHOLD, ENDPOINT_HIT_RADIUS,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -77,22 +77,19 @@ impl Engine {
             });
         }
         if let Some(hover) = &self.state.overlay.hover_bond_center {
-            if hover.order == 2 {
+            let focus_length = bond_center_focus_length(hover.begin, hover.end);
+            if focus_length > crate::EPSILON {
                 out.push(RenderPrimitive::Polygon {
                     role: RenderRole::HoverBondCenter,
-                    points: oriented_rect_points(hover.begin, hover.end, DOUBLE_BOND_FOCUS_WIDTH),
+                    points: centered_oriented_rect_points(
+                        hover.begin,
+                        hover.end,
+                        focus_length,
+                        BOND_CENTER_FOCUS_WIDTH,
+                    ),
                     fill: "rgba(47,111,237,0.11)".to_string(),
                     stroke: "rgba(47,111,237,0.72)".to_string(),
                     stroke_width: 1.2,
-                });
-            } else {
-                out.push(RenderPrimitive::Circle {
-                    role: RenderRole::HoverBondCenter,
-                    center: hover.point,
-                    radius: BOND_CENTER_FOCUS_RADIUS,
-                    fill: "rgba(47,111,237,0.18)".to_string(),
-                    stroke: "rgba(47,111,237,0.82)".to_string(),
-                    stroke_width: 1.4,
                 });
             }
         }
@@ -577,26 +574,36 @@ fn opposite_double_bond_placement(placement: DoubleBondPlacement) -> DoubleBondP
     }
 }
 
-fn oriented_rect_points(start: Point, end: Point, width: f64) -> Vec<Point> {
+fn centered_oriented_rect_points(
+    start: Point,
+    end: Point,
+    length_along_bond: f64,
+    width_across_bond: f64,
+) -> Vec<Point> {
     let dx = end.x - start.x;
     let dy = end.y - start.y;
-    let length = dx.hypot(dy);
-    if length <= crate::EPSILON {
-        let half = width / 2.0;
+    let bond_length = dx.hypot(dy);
+    let center = Point::new((start.x + end.x) / 2.0, (start.y + end.y) / 2.0);
+    if bond_length <= crate::EPSILON {
+        let half = width_across_bond / 2.0;
         return vec![
-            Point::new(start.x - half, start.y - half),
-            Point::new(start.x + half, start.y - half),
-            Point::new(start.x + half, start.y + half),
-            Point::new(start.x - half, start.y + half),
+            Point::new(center.x - half, center.y - half),
+            Point::new(center.x + half, center.y - half),
+            Point::new(center.x + half, center.y + half),
+            Point::new(center.x - half, center.y + half),
         ];
     }
-    let nx = -dy / length * width / 2.0;
-    let ny = dx / length * width / 2.0;
+    let ux = dx / bond_length;
+    let uy = dy / bond_length;
+    let tx = ux * length_along_bond / 2.0;
+    let ty = uy * length_along_bond / 2.0;
+    let nx = -uy * width_across_bond / 2.0;
+    let ny = ux * width_across_bond / 2.0;
     vec![
-        Point::new(start.x + nx, start.y + ny),
-        Point::new(end.x + nx, end.y + ny),
-        Point::new(end.x - nx, end.y - ny),
-        Point::new(start.x - nx, start.y - ny),
+        Point::new(center.x - tx + nx, center.y - ty + ny),
+        Point::new(center.x + tx + nx, center.y + ty + ny),
+        Point::new(center.x + tx - nx, center.y + ty - ny),
+        Point::new(center.x - tx - nx, center.y - ty - ny),
     ]
 }
 

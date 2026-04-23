@@ -1,6 +1,6 @@
 use chemcore_engine::{
     BondVariant, DoubleBondPlacement, Engine, PointerEvent, RenderPrimitive, Tool, ToolState,
-    BOND_CENTER_FOCUS_RADIUS, DEFAULT_BOND_LENGTH, DEFAULT_BOND_STROKE,
+    BOND_CENTER_FOCUS_WIDTH, DEFAULT_BOND_LENGTH, DEFAULT_BOND_STROKE, ENDPOINT_HIT_RADIUS,
 };
 
 fn bond_tool() -> ToolState {
@@ -209,10 +209,34 @@ fn bond_tool_focuses_bond_center_and_cycles_double_styles() {
     assert_eq!(center.point.x, 318.0);
     assert_eq!(center.point.y, 260.0);
     assert_eq!(center.order, 1);
-    assert!(engine.render_list().iter().any(|primitive| matches!(
-        primitive,
-        RenderPrimitive::Circle { radius, .. } if (*radius - BOND_CENTER_FOCUS_RADIUS).abs() < 0.001
-    )));
+    let center_rect = engine
+        .render_list()
+        .into_iter()
+        .find_map(|primitive| match primitive {
+            RenderPrimitive::Polygon { points, .. } if points.len() == 4 => Some(points),
+            _ => None,
+        })
+        .expect("single-bond center focus should render as a 4-point rectangle");
+    let min_x = center_rect
+        .iter()
+        .map(|point| point.x)
+        .fold(f64::INFINITY, f64::min);
+    let max_x = center_rect
+        .iter()
+        .map(|point| point.x)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let min_y = center_rect
+        .iter()
+        .map(|point| point.y)
+        .fold(f64::INFINITY, f64::min);
+    let max_y = center_rect
+        .iter()
+        .map(|point| point.y)
+        .fold(f64::NEG_INFINITY, f64::max);
+    assert!((max_x - min_x - BOND_CENTER_FOCUS_WIDTH).abs() < 0.001);
+    assert!((max_y - min_y - BOND_CENTER_FOCUS_WIDTH).abs() < 0.001);
+    assert!((min_x - (300.0 + ENDPOINT_HIT_RADIUS)).abs() < 0.001);
+    assert!((max_x - (336.0 - ENDPOINT_HIT_RADIUS)).abs() < 0.001);
 
     engine.pointer_down(PointerEvent {
         x: 318.0,

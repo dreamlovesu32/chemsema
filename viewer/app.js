@@ -1500,11 +1500,12 @@ function solidWedgeWideContactDirectionsForMol(bond, wideAtomIndex, parsedMol, a
   return directions;
 }
 
-function renderRetreatedBondSegment(group, { start, end, color, startBoxes = null, endBoxes = null, shapeGap = null }) {
+function renderRetreatedBondSegment(group, { start, end, color, startBoxes = null, endBoxes = null, shapeGap = null, strokeWidth = BOND_STROKE }) {
   const segment = retreatBondSegmentEndpoints(start, end, { startBoxes, endBoxes, shapeGap });
   renderBondSegment(group, {
     ...segment,
     color,
+    strokeWidth,
   });
 }
 
@@ -1534,7 +1535,10 @@ function renderDoubleBond(group, start, end, doublePosition, color, options = {}
   const length = Math.hypot(dx, dy) || 1;
   const normalX = -dy / length;
   const normalY = dx / length;
-  const sideInset = Math.min(DOUBLE_BOND_SIDE_INSET, Math.max(0.9, length * 0.14));
+  const strokeWidth = Number(options.strokeWidth || BOND_STROKE);
+  const scale = strokeWidth / BOND_STROKE;
+  const doubleOffset = DOUBLE_BOND_OFFSET * scale;
+  const sideInset = Math.min(DOUBLE_BOND_SIDE_INSET * scale, Math.max(0.9 * scale, length * 0.14));
   const terminalStart = Boolean(options.terminalStart);
   const terminalEnd = Boolean(options.terminalEnd);
   const alignStart = terminalStart || Boolean(options.alignStart);
@@ -1550,14 +1554,15 @@ function renderDoubleBond(group, start, end, doublePosition, color, options = {}
       startBoxes: options.startBoxes,
       endBoxes: options.endBoxes,
       shapeGap: options.shapeGap,
+      strokeWidth,
     });
     const offsetStart = {
-      x: start.x + normalX * DOUBLE_BOND_OFFSET * side,
-      y: start.y + normalY * DOUBLE_BOND_OFFSET * side,
+      x: start.x + normalX * doubleOffset * side,
+      y: start.y + normalY * doubleOffset * side,
     };
     const offsetEnd = {
-      x: end.x + normalX * DOUBLE_BOND_OFFSET * side,
-      y: end.y + normalY * DOUBLE_BOND_OFFSET * side,
+      x: end.x + normalX * doubleOffset * side,
+      y: end.y + normalY * doubleOffset * side,
     };
     const shortSegment = insetBondSegment(
       offsetStart,
@@ -1571,11 +1576,15 @@ function renderDoubleBond(group, start, end, doublePosition, color, options = {}
       startBoxes: options.startBoxes,
       endBoxes: options.endBoxes,
       shapeGap: options.shapeGap,
+      strokeWidth,
     });
     return;
   }
 
-  renderBondLines(group, start, end, [-DOUBLE_BOND_OFFSET / 2, DOUBLE_BOND_OFFSET / 2], color, options);
+  renderBondLines(group, start, end, [-doubleOffset / 2, doubleOffset / 2], color, {
+    ...options,
+    strokeWidth,
+  });
 }
 
 function renderBond(group, parsedMol, bond, atomPoints, hiddenAtoms, labelMetrics) {
@@ -2484,6 +2493,7 @@ function renderFragmentBond(group, bond, nodeMap, bonds, originX, originY, textG
       startBoxes: beginCollisionBoxes,
       endBoxes: endCollisionBoxes,
       shapeGap,
+      strokeWidth,
     });
     return;
   }
@@ -2492,6 +2502,7 @@ function renderFragmentBond(group, bond, nodeMap, bonds, originX, originY, textG
       startBoxes: beginCollisionBoxes,
       endBoxes: endCollisionBoxes,
       shapeGap,
+      strokeWidth,
     });
     return;
   }
