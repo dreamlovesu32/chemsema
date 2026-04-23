@@ -142,6 +142,7 @@ pub struct DragState {
     pub start: Point,
     pub has_dragged: bool,
     pub preview_end: Option<Point>,
+    pub target: Option<BondAnchor>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -179,9 +180,21 @@ pub fn hit_test_endpoint(
     point: Point,
     radius: f64,
 ) -> Option<EndpointHit> {
+    hit_test_endpoint_excluding(document, point, radius, None)
+}
+
+pub fn hit_test_endpoint_excluding(
+    document: &ChemcoreDocument,
+    point: Point,
+    radius: f64,
+    excluded_node_id: Option<&str>,
+) -> Option<EndpointHit> {
     let entry = document.editable_fragment()?;
     let mut best: Option<EndpointHit> = None;
     for node in &entry.fragment.nodes {
+        if excluded_node_id == Some(node.id.as_str()) {
+            continue;
+        }
         let node_point = entry.world_point_for_node(node);
         let distance = point.distance(node_point);
         if distance <= radius && best.as_ref().map_or(true, |hit| distance < hit.distance) {

@@ -3,6 +3,7 @@ use chemcore_engine::{
     BOND_CENTER_FOCUS_LENGTH, BOND_CENTER_FOCUS_WIDTH, DEFAULT_BOND_LENGTH, DEFAULT_BOND_STROKE,
     ENDPOINT_FOCUS_RADIUS,
 };
+use std::collections::BTreeMap;
 
 fn bond_tool() -> ToolState {
     ToolState {
@@ -14,6 +15,19 @@ fn bond_tool() -> ToolState {
 fn fragment_counts(engine: &Engine) -> (usize, usize) {
     let entry = engine.state().document.editable_fragment().unwrap();
     (entry.fragment.nodes.len(), entry.fragment.bonds.len())
+}
+
+fn node_degrees(engine: &Engine) -> BTreeMap<String, usize> {
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let mut degrees = BTreeMap::new();
+    for node in &entry.fragment.nodes {
+        degrees.insert(node.id.clone(), 0);
+    }
+    for bond in &entry.fragment.bonds {
+        *degrees.entry(bond.begin.clone()).or_insert(0) += 1;
+        *degrees.entry(bond.end.clone()).or_insert(0) += 1;
+    }
+    degrees
 }
 
 #[test]
@@ -140,6 +154,86 @@ fn drag_from_endpoint_uses_fixed_length_and_angle_snap() {
     let length = ((last.position[0] - 336.0).powi(2) + (last.position[1] - 260.0).powi(2)).sqrt();
     assert!((length - DEFAULT_BOND_LENGTH).abs() < 0.01, "{length}");
     assert_eq!(fragment_counts(&engine), (3, 2));
+}
+
+#[test]
+fn dragged_bond_endpoint_reuses_focused_existing_endpoint() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    engine.pointer_down(PointerEvent {
+        x: 300.0,
+        y: 260.0,
+        button: Some(0),
+    });
+    engine.pointer_up(PointerEvent {
+        x: 300.0,
+        y: 260.0,
+        button: Some(0),
+    });
+
+    engine.pointer_down(PointerEvent {
+        x: 336.0,
+        y: 260.0,
+        button: Some(0),
+    });
+    engine.pointer_move(PointerEvent {
+        x: 318.0,
+        y: 228.82,
+        button: None,
+    });
+    engine.pointer_up(PointerEvent {
+        x: 318.0,
+        y: 228.82,
+        button: Some(0),
+    });
+
+    engine.pointer_down(PointerEvent {
+        x: 318.0,
+        y: 228.82,
+        button: Some(0),
+    });
+    engine.pointer_move(PointerEvent {
+        x: 304.0,
+        y: 263.0,
+        button: None,
+    });
+    let hover = engine.state().overlay.hover_endpoint.as_ref().unwrap();
+    assert_eq!(hover.point.x, 300.0);
+    assert_eq!(hover.point.y, 260.0);
+    let preview = engine.state().overlay.preview.as_ref().unwrap();
+    assert_eq!(preview.end.x, 300.0);
+    assert_eq!(preview.end.y, 260.0);
+    engine.pointer_up(PointerEvent {
+        x: 304.0,
+        y: 263.0,
+        button: Some(0),
+    });
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    assert_eq!(entry.fragment.nodes.len(), 3);
+    assert_eq!(entry.fragment.bonds.len(), 3);
+    assert_eq!(
+        node_degrees(&engine).values().copied().collect::<Vec<_>>(),
+        vec![2, 2, 2]
+    );
+
+    engine.pointer_move(PointerEvent {
+        x: 309.0,
+        y: 244.41,
+        button: None,
+    });
+    engine.pointer_down(PointerEvent {
+        x: 309.0,
+        y: 244.41,
+        button: Some(0),
+    });
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let closed_bond = entry.fragment.bonds.last().unwrap();
+    assert_eq!(closed_bond.order, 2);
+    assert_ne!(
+        closed_bond.double.as_ref().map(|double| double.placement),
+        Some(DoubleBondPlacement::Center),
+    );
 }
 
 #[test]

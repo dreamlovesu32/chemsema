@@ -1,11 +1,12 @@
 use crate::{
     anchor_from_point, bond_center_focus_length, can_draw_single_bond, can_focus_bond_center,
     can_focus_endpoint, default_angle_for_anchor, endpoint_from_angle, hit_test_bond_center,
-    hit_test_endpoint, render_document, select_at, snapped_angle_for_anchor, Bond, BondAnchor,
-    BondPreview, ChemcoreDocument, DoubleBond, DoubleBondPlacement, DragState, EditorOptions,
-    EndpointHit, OverlayState, Point, PointerEvent, RenderPrimitive, RenderRole, SelectionState,
-    Tool, ToolState, BOND_CENTER_FOCUS_WIDTH, BOND_CENTER_HIT_RADIUS, DEFAULT_BOND_LENGTH,
-    DRAG_START_THRESHOLD, ENDPOINT_FOCUS_RADIUS, ENDPOINT_HIT_RADIUS,
+    hit_test_endpoint, hit_test_endpoint_excluding, render_document, select_at,
+    snapped_angle_for_anchor, Bond, BondAnchor, BondPreview, ChemcoreDocument, DoubleBond,
+    DoubleBondPlacement, DragState, EditorOptions, EndpointHit, OverlayState, Point, PointerEvent,
+    RenderPrimitive, RenderRole, SelectionState, Tool, ToolState, BOND_CENTER_FOCUS_WIDTH,
+    BOND_CENTER_HIT_RADIUS, DEFAULT_BOND_LENGTH, DRAG_START_THRESHOLD, ENDPOINT_FOCUS_RADIUS,
+    ENDPOINT_HIT_RADIUS,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -134,8 +135,20 @@ impl Engine {
                 drag.has_dragged = true;
             }
             if drag.has_dragged {
-                let angle = snapped_angle_for_anchor(&self.state.document, &drag.anchor, point);
-                let end = endpoint_from_angle(&drag.anchor, angle, self.options.bond_length);
+                self.state.overlay.hover_endpoint = None;
+                let target = self.drag_target_endpoint(&drag.anchor, point);
+                let end = if let Some(target) = target {
+                    self.state.overlay.hover_endpoint = Some(target.clone());
+                    drag.target = Some(BondAnchor {
+                        node_id: Some(target.node_id.clone()),
+                        point: target.point,
+                    });
+                    target.point
+                } else {
+                    drag.target = None;
+                    let angle = snapped_angle_for_anchor(&self.state.document, &drag.anchor, point);
+                    endpoint_from_angle(&drag.anchor, angle, self.options.bond_length)
+                };
                 drag.preview_end = Some(end);
                 self.state.overlay.preview = Some(BondPreview {
                     start: drag.anchor.point,
@@ -197,6 +210,7 @@ impl Engine {
                 start: point,
                 has_dragged: false,
                 preview_end: None,
+                target: None,
             });
             return;
         }
@@ -213,6 +227,7 @@ impl Engine {
             start: point,
             has_dragged: false,
             preview_end: None,
+            target: None,
         });
     }
 
@@ -220,18 +235,29 @@ impl Engine {
         let Some(drag) = self.drag.take() else {
             return;
         };
-        let end = if drag.has_dragged {
-            drag.preview_end.unwrap_or_else(|| {
-                let angle =
-                    snapped_angle_for_anchor(&self.state.document, &drag.anchor, event.point());
-                endpoint_from_angle(&drag.anchor, angle, self.options.bond_length)
-            })
+        let end_anchor = if drag.has_dragged {
+            if let Some(target) = drag.target {
+                target
+            } else {
+                let end = drag.preview_end.unwrap_or_else(|| {
+                    let angle =
+                        snapped_angle_for_anchor(&self.state.document, &drag.anchor, event.point());
+                    endpoint_from_angle(&drag.anchor, angle, self.options.bond_length)
+                });
+                BondAnchor {
+                    node_id: None,
+                    point: end,
+                }
+            }
         } else {
             let angle = default_angle_for_anchor(&self.state.document, &drag.anchor);
-            endpoint_from_angle(&drag.anchor, angle, self.options.bond_length)
+            BondAnchor {
+                node_id: None,
+                point: endpoint_from_angle(&drag.anchor, angle, self.options.bond_length),
+            }
         };
         self.state.overlay.preview = None;
-        self.add_single_bond(drag.anchor, end);
+        self.add_single_bond_between(drag.anchor, end_anchor);
     }
 
     pub fn clear_interaction(&mut self) {
@@ -240,13 +266,35 @@ impl Engine {
     }
 
     pub fn add_single_bond(&mut self, anchor: BondAnchor, end: Point) {
+        self.add_single_bond_between(
+            anchor,
+            BondAnchor {
+                node_id: None,
+                point: end,
+            },
+        );
+    }
+
+    pub fn add_single_bond_between(&mut self, anchor: BondAnchor, end: BondAnchor) -> bool {
+        if let (Some(begin_id), Some(end_id)) = (&anchor.node_id, &end.node_id) {
+            if begin_id == end_id || self.bond_exists(begin_id, end_id) {
+                return false;
+            }
+        }
         self.push_undo_snapshot();
         self.state.selection = SelectionState::default();
         let begin_id = match anchor.node_id {
             Some(node_id) => node_id,
             None => self.insert_carbon(anchor.point),
         };
-        let end_id = self.insert_carbon(end);
+        let end_id = match end.node_id {
+            Some(node_id) => node_id,
+            None => self.insert_carbon(end.point),
+        };
+        if begin_id == end_id || self.bond_exists(&begin_id, &end_id) {
+            self.undo_stack.pop();
+            return false;
+        }
         let bond_id = self.next_id("b");
         let mut entry = self
             .state
@@ -274,6 +322,7 @@ impl Engine {
                 distance: 0.0,
             });
         self.state.overlay.hover_endpoint = endpoint;
+        true
     }
 
     pub fn cycle_bond_center_style(&mut self, bond_id: &str) -> bool {
@@ -377,6 +426,25 @@ impl Engine {
 
     pub fn can_redo(&self) -> bool {
         !self.redo_stack.is_empty()
+    }
+
+    fn drag_target_endpoint(&self, anchor: &BondAnchor, point: Point) -> Option<EndpointHit> {
+        hit_test_endpoint_excluding(
+            &self.state.document,
+            point,
+            ENDPOINT_HIT_RADIUS,
+            anchor.node_id.as_deref(),
+        )
+    }
+
+    fn bond_exists(&self, begin_id: &str, end_id: &str) -> bool {
+        let Some(entry) = self.state.document.editable_fragment() else {
+            return false;
+        };
+        entry.fragment.bonds.iter().any(|bond| {
+            (bond.begin == begin_id && bond.end == end_id)
+                || (bond.begin == end_id && bond.end == begin_id)
+        })
     }
 
     fn insert_carbon(&mut self, point: Point) -> String {
