@@ -1000,6 +1000,11 @@ secondaryToolbar?.addEventListener("click", (event) => {
 renderSecondaryToolbar();
 
 function svgPointFromEvent(event) {
+  const screenMatrix = viewerSvg.getScreenCTM?.();
+  if (screenMatrix) {
+    const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(screenMatrix.inverse());
+    return { x: point.x, y: point.y };
+  }
   const rect = viewerSvg.getBoundingClientRect();
   const viewBox = viewerSvg.viewBox.baseVal;
   const page = state.currentDocument?.document?.page || { width: 1200, height: 800 };
