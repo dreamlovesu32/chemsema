@@ -135,3 +135,41 @@ fn drag_from_endpoint_uses_fixed_length_and_angle_snap() {
     assert!((length - DEFAULT_BOND_LENGTH).abs() < 0.01, "{length}");
     assert_eq!(fragment_counts(&engine), (3, 2));
 }
+
+#[test]
+fn select_delete_and_undo_redo_round_trip() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    engine.pointer_down(PointerEvent {
+        x: 300.0,
+        y: 260.0,
+        button: Some(0),
+    });
+    engine.pointer_up(PointerEvent {
+        x: 300.0,
+        y: 260.0,
+        button: Some(0),
+    });
+    assert_eq!(fragment_counts(&engine), (2, 1));
+    assert!(engine.can_undo());
+
+    engine.set_tool_state(ToolState {
+        active_tool: Tool::Select,
+        bond_variant: BondVariant::Single,
+    });
+    engine.pointer_down(PointerEvent {
+        x: 318.0,
+        y: 260.0,
+        button: Some(0),
+    });
+    assert_eq!(engine.state().selection.bonds.len(), 1);
+
+    assert!(engine.delete_selection());
+    assert_eq!(fragment_counts(&engine), (0, 0));
+
+    assert!(engine.undo());
+    assert_eq!(fragment_counts(&engine), (2, 1));
+
+    assert!(engine.redo());
+    assert_eq!(fragment_counts(&engine), (0, 0));
+}

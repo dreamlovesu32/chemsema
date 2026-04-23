@@ -129,6 +129,16 @@ button {
   background: var(--hover);
 }
 
+.icon-button:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+.icon-button:disabled:hover {
+  border-color: transparent;
+  background: transparent;
+}
+
 .icon-button:active,
 .tool-button:active,
 .secondary-button:active,
@@ -363,6 +373,17 @@ button {
   stroke: rgba(0, 0, 0, 0.72);
   stroke-linecap: round;
   stroke-dasharray: 2.5 2;
+}
+
+.editor-selection-bond {
+  stroke: rgba(47, 111, 237, 0.72);
+  stroke-linecap: round;
+}
+
+.editor-selection-node {
+  fill: rgba(47, 111, 237, 0.16);
+  stroke: rgba(47, 111, 237, 0.86);
+  stroke-width: 1.6;
 }
 
 .editor-preview-end {

@@ -1,17 +1,19 @@
 use crate::{
     anchor_from_point, can_draw_single_bond, can_focus_endpoint, default_angle_for_anchor,
-    endpoint_from_angle, hit_test_endpoint, render_document, snapped_angle_for_anchor, Bond,
-    BondAnchor, BondPreview, ChemcoreDocument, DragState, EditorOptions, EndpointHit, OverlayState,
-    Point, PointerEvent, RenderPrimitive, ToolState, DEFAULT_BOND_LENGTH, DRAG_START_THRESHOLD,
-    ENDPOINT_HIT_RADIUS,
+    endpoint_from_angle, hit_test_endpoint, render_document, select_at, snapped_angle_for_anchor,
+    Bond, BondAnchor, BondPreview, ChemcoreDocument, DragState, EditorOptions, EndpointHit,
+    OverlayState, Point, PointerEvent, RenderPrimitive, RenderRole, SelectionState, Tool,
+    ToolState, DEFAULT_BOND_LENGTH, DRAG_START_THRESHOLD, ENDPOINT_HIT_RADIUS,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EngineState {
     pub document: ChemcoreDocument,
     pub tool: ToolState,
+    pub selection: SelectionState,
     pub overlay: OverlayState,
 }
 
@@ -20,6 +22,8 @@ pub struct Engine {
     drag: Option<DragState>,
     options: EditorOptions,
     next_id: u64,
+    undo_stack: Vec<ChemcoreDocument>,
+    redo_stack: Vec<ChemcoreDocument>,
 }
 
 impl Default for Engine {
@@ -34,11 +38,14 @@ impl Engine {
             state: EngineState {
                 document: ChemcoreDocument::blank(),
                 tool: ToolState::default(),
+                selection: SelectionState::default(),
                 overlay: OverlayState::default(),
             },
             drag: None,
             options: EditorOptions::default(),
             next_id: 1,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
         }
     }
 
@@ -56,8 +63,10 @@ impl Engine {
 
     pub fn render_list(&self) -> Vec<RenderPrimitive> {
         let mut out = render_document(&self.state.document);
+        out.extend(self.selection_render_list());
         if let Some(hover) = &self.state.overlay.hover_endpoint {
             out.push(RenderPrimitive::Circle {
+                role: RenderRole::HoverEndpoint,
                 center: hover.point,
                 radius: ENDPOINT_HIT_RADIUS,
                 fill: "rgba(47,111,237,0.24)".to_string(),
@@ -67,10 +76,19 @@ impl Engine {
         }
         if let Some(preview) = &self.state.overlay.preview {
             out.push(RenderPrimitive::Line {
+                role: RenderRole::PreviewBond,
                 from: preview.start,
                 to: preview.end,
                 stroke: "rgba(0,0,0,0.72)".to_string(),
                 stroke_width: self.options.bond_stroke_width,
+            });
+            out.push(RenderPrimitive::Circle {
+                role: RenderRole::PreviewEnd,
+                center: preview.end,
+                radius: 5.0,
+                fill: "#ffffff".to_string(),
+                stroke: "rgba(47,111,237,0.86)".to_string(),
+                stroke_width: 1.2,
             });
         }
         out
@@ -83,6 +101,10 @@ impl Engine {
 
     pub fn pointer_move(&mut self, event: PointerEvent) {
         let point = event.point();
+        if self.state.tool.active_tool == Tool::Select {
+            self.clear_interaction();
+            return;
+        }
         if !can_focus_endpoint(&self.state.tool) {
             self.clear_interaction();
             return;
@@ -110,6 +132,11 @@ impl Engine {
     }
 
     pub fn pointer_down(&mut self, event: PointerEvent) {
+        if self.state.tool.active_tool == Tool::Select {
+            self.state.selection = select_at(&self.state.document, event.point());
+            self.clear_interaction();
+            return;
+        }
         if !can_draw_single_bond(&self.state.tool) {
             return;
         }
@@ -149,6 +176,8 @@ impl Engine {
     }
 
     pub fn add_single_bond(&mut self, anchor: BondAnchor, end: Point) {
+        self.push_undo_snapshot();
+        self.state.selection = SelectionState::default();
         let begin_id = match anchor.node_id {
             Some(node_id) => node_id,
             None => self.insert_carbon(anchor.point),
@@ -182,6 +211,66 @@ impl Engine {
         self.state.overlay.hover_endpoint = endpoint;
     }
 
+    pub fn delete_selection(&mut self) -> bool {
+        if self.state.selection.is_empty() {
+            return false;
+        }
+        self.push_undo_snapshot();
+        let selection = self.state.selection.clone();
+        let Some(mut entry) = self.state.document.editable_fragment_mut() else {
+            self.undo_stack.pop();
+            return false;
+        };
+
+        let selected_nodes: BTreeSet<String> = selection.nodes.into_iter().collect();
+        let selected_bonds: BTreeSet<String> = selection.bonds.into_iter().collect();
+        entry.fragment.bonds.retain(|bond| {
+            !selected_bonds.contains(&bond.id)
+                && !selected_nodes.contains(&bond.begin)
+                && !selected_nodes.contains(&bond.end)
+        });
+
+        let connected_nodes: BTreeSet<String> = entry
+            .fragment
+            .bonds
+            .iter()
+            .flat_map(|bond| [bond.begin.clone(), bond.end.clone()])
+            .collect();
+        entry.fragment.nodes.retain(|node| {
+            !selected_nodes.contains(&node.id) && connected_nodes.contains(&node.id)
+        });
+        entry.update_bounds();
+        self.state.selection = SelectionState::default();
+        self.clear_interaction();
+        true
+    }
+
+    pub fn undo(&mut self) -> bool {
+        let Some(previous) = self.undo_stack.pop() else {
+            return false;
+        };
+        self.redo_stack.push(self.state.document.clone());
+        self.restore_document(previous);
+        true
+    }
+
+    pub fn redo(&mut self) -> bool {
+        let Some(next) = self.redo_stack.pop() else {
+            return false;
+        };
+        self.undo_stack.push(self.state.document.clone());
+        self.restore_document(next);
+        true
+    }
+
+    pub fn can_undo(&self) -> bool {
+        !self.undo_stack.is_empty()
+    }
+
+    pub fn can_redo(&self) -> bool {
+        !self.redo_stack.is_empty()
+    }
+
     fn insert_carbon(&mut self, point: Point) -> String {
         let node_id = self.next_id("n");
         let entry = self
@@ -201,6 +290,98 @@ impl Engine {
         let value = self.next_id;
         self.next_id += 1;
         format!("{prefix}_{value}")
+    }
+
+    fn push_undo_snapshot(&mut self) {
+        self.undo_stack.push(self.state.document.clone());
+        self.redo_stack.clear();
+    }
+
+    fn restore_document(&mut self, document: ChemcoreDocument) {
+        self.state.document = document;
+        self.state.selection = SelectionState::default();
+        self.clear_interaction();
+        self.next_id = self.infer_next_id();
+    }
+
+    fn infer_next_id(&self) -> u64 {
+        let mut max_id = 0;
+        if let Some(entry) = self.state.document.editable_fragment() {
+            for id in entry
+                .fragment
+                .nodes
+                .iter()
+                .map(|node| node.id.as_str())
+                .chain(entry.fragment.bonds.iter().map(|bond| bond.id.as_str()))
+            {
+                if let Some((_, suffix)) = id.rsplit_once('_') {
+                    if let Ok(value) = suffix.parse::<u64>() {
+                        max_id = max_id.max(value);
+                    }
+                }
+            }
+        }
+        max_id + 1
+    }
+
+    fn selection_render_list(&self) -> Vec<RenderPrimitive> {
+        let mut out = Vec::new();
+        let Some(entry) = self.state.document.editable_fragment() else {
+            return out;
+        };
+        let selected_bonds: BTreeSet<&str> = self
+            .state
+            .selection
+            .bonds
+            .iter()
+            .map(String::as_str)
+            .collect();
+        let selected_nodes: BTreeSet<&str> = self
+            .state
+            .selection
+            .nodes
+            .iter()
+            .map(String::as_str)
+            .collect();
+
+        for bond in &entry.fragment.bonds {
+            if !selected_bonds.contains(bond.id.as_str()) {
+                continue;
+            }
+            let Some(begin) = entry
+                .fragment
+                .nodes
+                .iter()
+                .find(|node| node.id == bond.begin)
+            else {
+                continue;
+            };
+            let Some(end) = entry.fragment.nodes.iter().find(|node| node.id == bond.end) else {
+                continue;
+            };
+            out.push(RenderPrimitive::Line {
+                role: RenderRole::SelectionBond,
+                from: entry.world_point_for_node(begin),
+                to: entry.world_point_for_node(end),
+                stroke: "rgba(47,111,237,0.72)".to_string(),
+                stroke_width: self.options.bond_stroke_width + 5.0,
+            });
+        }
+
+        for node in &entry.fragment.nodes {
+            if !selected_nodes.contains(node.id.as_str()) {
+                continue;
+            }
+            out.push(RenderPrimitive::Circle {
+                role: RenderRole::SelectionNode,
+                center: entry.world_point_for_node(node),
+                radius: ENDPOINT_HIT_RADIUS,
+                fill: "rgba(47,111,237,0.16)".to_string(),
+                stroke: "rgba(47,111,237,0.86)".to_string(),
+                stroke_width: 1.6,
+            });
+        }
+        out
     }
 }
 

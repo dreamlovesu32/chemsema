@@ -711,6 +711,7 @@ function syncDocumentFromEngine() {
   if (documentData) {
     state.currentDocument = documentData;
   }
+  refreshCommandAvailability();
 }
 
 function currentEditorEngineState() {
@@ -727,6 +728,41 @@ function resetEditorEngine() {
   syncDocumentFromEngine();
 }
 
+function refreshCommandAvailability() {
+  const undoButton = document.querySelector('[data-command="undo"]');
+  const redoButton = document.querySelector('[data-command="redo"]');
+  if (undoButton) {
+    undoButton.disabled = !state.editorEngine?.canUndo?.();
+  }
+  if (redoButton) {
+    redoButton.disabled = !state.editorEngine?.canRedo?.();
+  }
+}
+
+function runEditorCommand(command) {
+  if (!isEditingRustDocument()) {
+    return false;
+  }
+  let changed = false;
+  if (command === "undo") {
+    changed = state.editorEngine.undo();
+  } else if (command === "redo") {
+    changed = state.editorEngine.redo();
+  } else if (command === "delete") {
+    changed = state.editorEngine.deleteSelection();
+  } else {
+    return false;
+  }
+  if (changed) {
+    syncDocumentFromEngine();
+    renderDocument();
+  } else {
+    renderEditorOverlay();
+    refreshCommandAvailability();
+  }
+  return true;
+}
+
 function setZoomPercent(nextZoom) {
   zoomPercent = Math.max(25, Math.min(400, Math.round(nextZoom)));
   if (zoomInput) {
@@ -737,6 +773,9 @@ function setZoomPercent(nextZoom) {
 document.querySelectorAll("[data-command]").forEach((button) => {
   button.addEventListener("click", () => {
     const command = button.dataset.command;
+    if (runEditorCommand(command)) {
+      return;
+    }
     if (command === "zoom-in") {
       setZoomPercent(zoomPercent + 10);
     } else if (command === "zoom-out") {
@@ -755,6 +794,25 @@ document.querySelectorAll("[data-command]").forEach((button) => {
 zoomInput?.addEventListener("change", () => {
   const parsed = Number.parseInt(String(zoomInput.value || "").replace(/[^\d]/g, ""), 10);
   setZoomPercent(Number.isFinite(parsed) ? parsed : zoomPercent);
+});
+
+document.addEventListener("keydown", (event) => {
+  const target = event.target;
+  if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement) {
+    return;
+  }
+  const commandKey = event.ctrlKey || event.metaKey;
+  let command = null;
+  if (commandKey && event.key.toLowerCase() === "z" && !event.shiftKey) {
+    command = "undo";
+  } else if ((commandKey && event.key.toLowerCase() === "y") || (commandKey && event.shiftKey && event.key.toLowerCase() === "z")) {
+    command = "redo";
+  } else if (event.key === "Delete" || event.key === "Backspace") {
+    command = "delete";
+  }
+  if (command && runEditorCommand(command)) {
+    event.preventDefault();
+  }
 });
 
 function toolbarButton(value, title, svg, selected = false) {
@@ -959,7 +1017,7 @@ function editorBondStrokeWidth() {
 }
 
 function routeEditorPointerEvents() {
-  return isEditingRustDocument() && editorState.activeTool === "bond";
+  return isEditingRustDocument() && (editorState.activeTool === "bond" || editorState.activeTool === "select");
 }
 
 function handleEditorPointerMove(event) {
@@ -983,6 +1041,7 @@ function handleEditorPointerDown(event) {
   event.preventDefault();
   viewerSvg.setPointerCapture?.(event.pointerId);
   state.editorEngine.pointerDown(point.x, point.y);
+  syncDocumentFromEngine();
   renderEditorOverlay();
 }
 
@@ -1011,34 +1070,41 @@ function renderEditorOverlay() {
   if (!isEditingRustDocument()) {
     return;
   }
-  const engineState = currentEditorEngineState();
-  const overlayState = engineState?.overlay || {};
+  const renderList = parseEngineJson(state.editorEngine.renderListJson(), []) || [];
   const overlay = makeSvgNode("g", { "data-layer": "editor-overlay", "pointer-events": "none" });
-  const hover = overlayState.hoverEndpoint;
-  if (hover?.point && editorState.activeTool === "bond") {
-    overlay.appendChild(makeSvgNode("circle", {
-      cx: hover.point.x,
-      cy: hover.point.y,
-      r: 16,
-      class: "editor-endpoint-halo",
-    }));
-  }
-  const preview = overlayState.preview;
-  if (preview?.start && preview?.end) {
-    overlay.appendChild(makeSvgNode("line", {
-      x1: preview.start.x,
-      y1: preview.start.y,
-      x2: preview.end.x,
-      y2: preview.end.y,
-      class: "editor-bond-preview",
-      "stroke-width": editorBondStrokeWidth(),
-    }));
-    overlay.appendChild(makeSvgNode("circle", {
-      cx: preview.end.x,
-      cy: preview.end.y,
-      r: 5,
-      class: "editor-preview-end",
-    }));
+  for (const primitive of renderList) {
+    if (primitive.role === "document-bond") {
+      continue;
+    }
+    if (primitive.kind === "line" && primitive.from && primitive.to) {
+      const className = primitive.role === "selection-bond" ? "editor-selection-bond" : "editor-bond-preview";
+      overlay.appendChild(makeSvgNode("line", {
+        x1: primitive.from.x,
+        y1: primitive.from.y,
+        x2: primitive.to.x,
+        y2: primitive.to.y,
+        class: className,
+        "stroke-width": primitive.strokeWidth || primitive.stroke_width || editorBondStrokeWidth(),
+        "data-role": primitive.role,
+      }));
+    } else if (primitive.kind === "circle" && primitive.center) {
+      const classByRole = {
+        "hover-endpoint": "editor-endpoint-halo",
+        "preview-end": "editor-preview-end",
+        "selection-node": "editor-selection-node",
+      };
+      const className = classByRole[primitive.role];
+      if (!className) {
+        continue;
+      }
+      overlay.appendChild(makeSvgNode("circle", {
+        cx: primitive.center.x,
+        cy: primitive.center.y,
+        r: primitive.radius,
+        class: className,
+        "data-role": primitive.role,
+      }));
+    }
   }
   if (overlay.childNodes.length) {
     viewerSvg.appendChild(overlay);

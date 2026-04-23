@@ -2,19 +2,34 @@ use crate::{ChemcoreDocument, Point, DEFAULT_BOND_STROKE};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RenderRole {
+    DocumentBond,
+    HoverEndpoint,
+    PreviewBond,
+    PreviewEnd,
+    SelectionBond,
+    SelectionNode,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum RenderPrimitive {
     Line {
+        role: RenderRole,
         from: Point,
         to: Point,
         stroke: String,
+        #[serde(rename = "strokeWidth")]
         stroke_width: f64,
     },
     Circle {
+        role: RenderRole,
         center: Point,
         radius: f64,
         fill: String,
         stroke: String,
+        #[serde(rename = "strokeWidth")]
         stroke_width: f64,
     },
 }
@@ -40,6 +55,7 @@ pub fn render_document(document: &ChemcoreDocument) -> Vec<RenderPrimitive> {
             continue;
         };
         out.push(RenderPrimitive::Line {
+            role: RenderRole::DocumentBond,
             from: entry.world_point_for_node(begin),
             to: entry.world_point_for_node(end),
             stroke: "#000000".to_string(),

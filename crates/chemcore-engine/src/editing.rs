@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
 pub const ENDPOINT_HIT_RADIUS: f64 = 16.0;
+pub const BOND_HIT_RADIUS: f64 = 6.0;
 pub const DRAG_START_THRESHOLD: f64 = 4.0;
 pub const GLOBAL_SNAP_ANGLES: &[f64] = &[
     0.0, 30.0, 45.0, 60.0, 90.0, 120.0, 135.0, 150.0, 180.0, 210.0, 225.0, 240.0, 270.0, 300.0,
@@ -92,6 +93,28 @@ pub struct EndpointHit {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct BondHit {
+    pub bond_id: String,
+    pub begin: Point,
+    pub end: Point,
+    pub distance: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SelectionState {
+    pub nodes: Vec<String>,
+    pub bonds: Vec<String>,
+}
+
+impl SelectionState {
+    pub fn is_empty(&self) -> bool {
+        self.nodes.is_empty() && self.bonds.is_empty()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BondAnchor {
     pub node_id: Option<String>,
     pub point: Point,
@@ -146,6 +169,52 @@ pub fn hit_test_endpoint(
         }
     }
     best
+}
+
+pub fn hit_test_bond(document: &ChemcoreDocument, point: Point, radius: f64) -> Option<BondHit> {
+    let entry = document.editable_fragment()?;
+    let mut best: Option<BondHit> = None;
+    for bond in &entry.fragment.bonds {
+        let Some(begin) = entry
+            .fragment
+            .nodes
+            .iter()
+            .find(|node| node.id == bond.begin)
+        else {
+            continue;
+        };
+        let Some(end) = entry.fragment.nodes.iter().find(|node| node.id == bond.end) else {
+            continue;
+        };
+        let begin_point = entry.world_point_for_node(begin);
+        let end_point = entry.world_point_for_node(end);
+        let distance = point_to_segment_distance(point, begin_point, end_point);
+        if distance <= radius && best.as_ref().map_or(true, |hit| distance < hit.distance) {
+            best = Some(BondHit {
+                bond_id: bond.id.clone(),
+                begin: begin_point,
+                end: end_point,
+                distance,
+            });
+        }
+    }
+    best
+}
+
+pub fn select_at(document: &ChemcoreDocument, point: Point) -> SelectionState {
+    if let Some(endpoint) = hit_test_endpoint(document, point, ENDPOINT_HIT_RADIUS) {
+        return SelectionState {
+            nodes: vec![endpoint.node_id],
+            bonds: Vec::new(),
+        };
+    }
+    if let Some(bond) = hit_test_bond(document, point, BOND_HIT_RADIUS) {
+        return SelectionState {
+            nodes: Vec::new(),
+            bonds: vec![bond.bond_id],
+        };
+    }
+    SelectionState::default()
 }
 
 pub fn anchor_from_point(document: &ChemcoreDocument, point: Point) -> Option<BondAnchor> {
@@ -296,4 +365,15 @@ pub fn nearest_angle(target: f64, candidates: &[f64]) -> f64 {
 
 pub fn node_by_id<'a>(nodes: &'a [Node], node_id: &str) -> Option<&'a Node> {
     nodes.iter().find(|node| node.id == node_id)
+}
+
+fn point_to_segment_distance(point: Point, start: Point, end: Point) -> f64 {
+    let dx = end.x - start.x;
+    let dy = end.y - start.y;
+    let length_sq = dx * dx + dy * dy;
+    if length_sq <= crate::EPSILON {
+        return point.distance(start);
+    }
+    let t = (((point.x - start.x) * dx + (point.y - start.y) * dy) / length_sq).clamp(0.0, 1.0);
+    point.distance(Point::new(start.x + dx * t, start.y + dy * t))
 }

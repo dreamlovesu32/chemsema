@@ -11,8 +11,29 @@ export class WasmEngine {
         const ptr = this.__destroy_into_raw();
         wasm.__wbg_wasmengine_free(ptr, 0);
     }
+    /**
+     * @returns {boolean}
+     */
+    canRedo() {
+        const ret = wasm.wasmengine_canRedo(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
+     * @returns {boolean}
+     */
+    canUndo() {
+        const ret = wasm.wasmengine_canUndo(this.__wbg_ptr);
+        return ret !== 0;
+    }
     clearInteraction() {
         wasm.wasmengine_clearInteraction(this.__wbg_ptr);
+    }
+    /**
+     * @returns {boolean}
+     */
+    deleteSelection() {
+        const ret = wasm.wasmengine_deleteSelection(this.__wbg_ptr);
+        return ret !== 0;
     }
     /**
      * @returns {string}
@@ -61,6 +82,13 @@ export class WasmEngine {
      */
     pointerUp(x, y) {
         wasm.wasmengine_pointerUp(this.__wbg_ptr, x, y);
+    }
+    /**
+     * @returns {boolean}
+     */
+    redo() {
+        const ret = wasm.wasmengine_redo(this.__wbg_ptr);
+        return ret !== 0;
     }
     /**
      * @returns {string}
@@ -114,6 +142,13 @@ export class WasmEngine {
         } finally {
             wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
         }
+    }
+    /**
+     * @returns {boolean}
+     */
+    undo() {
+        const ret = wasm.wasmengine_undo(this.__wbg_ptr);
+        return ret !== 0;
     }
 }
 if (Symbol.dispose) WasmEngine.prototype[Symbol.dispose] = WasmEngine.prototype.free;

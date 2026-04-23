@@ -32,6 +32,9 @@ Chemcore 的编辑能力从现在开始以 Rust 核心为准。Web、Windows、i
 - 端点点击按 120 度延伸
 - 拖拽时固定键长并做角度吸附
 - WASM API 输出当前 `chemcore.json` 和 overlay 状态
+- 选择单个端点或键
+- 删除当前选择
+- 基于文档快照的 undo/redo 骨架
 
 旧的 JS 单键几何、命中、吸附和加键逻辑已经从 `viewer/app.js` 删除。viewer 现在只把 pointer 事件转成文档坐标，交给 Rust WASM engine。
 

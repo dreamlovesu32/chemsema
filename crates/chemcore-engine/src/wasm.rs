@@ -51,6 +51,29 @@ impl WasmEngine {
         self.inner.clear_interaction();
     }
 
+    pub fn undo(&mut self) -> bool {
+        self.inner.undo()
+    }
+
+    pub fn redo(&mut self) -> bool {
+        self.inner.redo()
+    }
+
+    #[wasm_bindgen(js_name = deleteSelection)]
+    pub fn delete_selection(&mut self) -> bool {
+        self.inner.delete_selection()
+    }
+
+    #[wasm_bindgen(js_name = canUndo)]
+    pub fn can_undo(&self) -> bool {
+        self.inner.can_undo()
+    }
+
+    #[wasm_bindgen(js_name = canRedo)]
+    pub fn can_redo(&self) -> bool {
+        self.inner.can_redo()
+    }
+
     #[wasm_bindgen(js_name = stateJson)]
     pub fn state_json(&self) -> Result<String, JsValue> {
         self.inner

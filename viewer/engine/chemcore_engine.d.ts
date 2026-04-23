@@ -4,15 +4,20 @@
 export class WasmEngine {
     free(): void;
     [Symbol.dispose](): void;
+    canRedo(): boolean;
+    canUndo(): boolean;
     clearInteraction(): void;
+    deleteSelection(): boolean;
     documentJson(): string;
     constructor();
     pointerDown(x: number, y: number): void;
     pointerMove(x: number, y: number): void;
     pointerUp(x: number, y: number): void;
+    redo(): boolean;
     renderListJson(): string;
     setTool(active_tool: string, bond_variant: string): void;
     stateJson(): string;
+    undo(): boolean;
 }
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
@@ -20,15 +25,20 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly __wbg_wasmengine_free: (a: number, b: number) => void;
+    readonly wasmengine_canRedo: (a: number) => number;
+    readonly wasmengine_canUndo: (a: number) => number;
     readonly wasmengine_clearInteraction: (a: number) => void;
+    readonly wasmengine_deleteSelection: (a: number) => number;
     readonly wasmengine_documentJson: (a: number) => [number, number, number, number];
     readonly wasmengine_new: () => number;
     readonly wasmengine_pointerDown: (a: number, b: number, c: number) => void;
     readonly wasmengine_pointerMove: (a: number, b: number, c: number) => void;
     readonly wasmengine_pointerUp: (a: number, b: number, c: number) => void;
+    readonly wasmengine_redo: (a: number) => number;
     readonly wasmengine_renderListJson: (a: number) => [number, number, number, number];
     readonly wasmengine_setTool: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly wasmengine_stateJson: (a: number) => [number, number, number, number];
+    readonly wasmengine_undo: (a: number) => number;
     readonly __wbindgen_externrefs: WebAssembly.Table;
     readonly __externref_table_dealloc: (a: number) => void;
     readonly __wbindgen_free: (a: number, b: number, c: number) => void;
