@@ -70,6 +70,43 @@ function isSuperscriptFace(face) {
   return (value & 64) !== 0 && (value & 32) === 0;
 }
 
+function scriptKindForRun(run) {
+  const script = String(run?.script || "").toLowerCase();
+  if (script === "subscript") {
+    return 1;
+  }
+  if (script === "superscript") {
+    return 2;
+  }
+  return state.glyphKernel.scriptKindForFace(run?.face);
+}
+
+function isSubscriptRun(run) {
+  const script = String(run?.script || "").toLowerCase();
+  return script === "subscript" || (!script && isSubscriptFace(run?.face));
+}
+
+function isSuperscriptRun(run) {
+  const script = String(run?.script || "").toLowerCase();
+  return script === "superscript" || (!script && isSuperscriptFace(run?.face));
+}
+
+function fontWeightForRun(run, fallbackFace = 0) {
+  if (run?.fontWeight !== undefined && run?.fontWeight !== null) {
+    return Number(run.fontWeight);
+  }
+  const face = Number(run?.face ?? fallbackFace ?? 0);
+  return (face & 1) ? 700 : undefined;
+}
+
+function fontStyleForRun(run, fallbackFace = 0) {
+  if (run?.fontStyle) {
+    return run.fontStyle;
+  }
+  const face = Number(run?.face ?? fallbackFace ?? 0);
+  return (face & 2) ? "italic" : undefined;
+}
+
 function boxCenter(box) {
   return {
     x: (box.x1 + box.x2) / 2,
@@ -1225,12 +1262,30 @@ function retreatPointFromShapes(point, target, shapes, gap = 0.05) {
   return offsetPointAlongRay(point, direction, shift + 0.01);
 }
 
+function labelBox(label, originX, originY) {
+  const box = label?.box || label?.bbox || null;
+  return box ? localBoxFromAbsolute(box, originX, originY) : null;
+}
+
+function labelSourceText(label) {
+  return label?.sourceText || label?.inputText || label?.text || "";
+}
+
+function labelLayoutMode(label) {
+  return label?.layout || label?.layoutMode || "default";
+}
+
+function labelAttachment(label) {
+  return label?.attachment || label?.attachmentLayout || label?.labelAlignment || "";
+}
+
+function labelConnectionAnchor(label) {
+  return label?.anchor || label?.connectionAnchor || "start";
+}
+
 function attachedGroupCollisionBox(node, originX, originY) {
   const label = node?.label;
-  if (!label?.bbox) {
-    return null;
-  }
-  const box = localBoxFromAbsolute(label.bbox, originX, originY);
+  const box = labelBox(label, originX, originY);
   if (!box) {
     return null;
   }
@@ -1276,13 +1331,14 @@ function isCenteredAtomicLabel(label) {
 }
 
 function getChemicalLabelMode(label) {
-  if (label?.layoutMode && label.layoutMode !== "default") {
-    return label.layoutMode;
+  const layout = labelLayoutMode(label);
+  if (layout && layout !== "default") {
+    return layout;
   }
   if (isCenteredAtomicLabel(label)) {
     return "centered-atom";
   }
-  return label?.layoutMode || "default";
+  return layout || "default";
 }
 
 function getFragmentLabelMode(node, label) {
@@ -1290,10 +1346,10 @@ function getFragmentLabelMode(node, label) {
 }
 
 function centeredAttachedGroupCollisionBox(node, originX, originY) {
-  const label = node?.label;
-  if (label?.bbox) {
+  const box = labelBox(node?.label, originX, originY);
+  if (box) {
     return {
-      ...localBoxFromAbsolute(label.bbox, originX, originY),
+      ...box,
       margin: 0.4,
     };
   }
@@ -1321,7 +1377,9 @@ function fragmentNodeDegree(bonds, nodeId) {
 
 function isFragmentBondStereo(bond) {
   const display = bond?.display || "";
-  return Boolean(bond?.stereoStyle)
+  return Boolean(bond?.stereo?.kind)
+    || Boolean(bond?.stereo?.wideEnd)
+    || Boolean(bond?.stereoStyle)
     || Boolean(bond?.stereoEnd)
     || display === "WedgeBegin"
     || display === "WedgeEnd"
@@ -1333,7 +1391,7 @@ function isFragmentBondSideDouble(bond) {
   if (Number(bond?.order || 1) !== 2) {
     return false;
   }
-  const sideMode = String(bond.doubleStyle || bond.doublePosition || "").toLowerCase();
+  const sideMode = String(bond.double?.placement || bond.doubleStyle || bond.doublePosition || "").toLowerCase();
   return sideMode === "left" || sideMode === "right";
 }
 
@@ -1352,7 +1410,7 @@ function hasVisibleFragmentNodeLabel(node) {
   if (!label) {
     return false;
   }
-  const text = String(label.text || label.inputText || "").trim();
+  const text = String(label.text || labelSourceText(label) || "").trim();
   return Boolean(text);
 }
 
@@ -1560,11 +1618,11 @@ function glyphRunsForLabel(label, runsOverride = null, textOverride = null) {
         glyphs.push({
           char,
           codepoint: char.codePointAt(0),
-          scriptKind: state.glyphKernel.scriptKindForFace(run.face),
+          scriptKind: scriptKindForRun(run),
           fill: normalizeDisplayColor(run.fill || label.fill),
           fontFamily: run.fontFamily || label.fontFamily || "Arial",
-          fontWeight: (Number(run.face || 0) & 1) ? 700 : undefined,
-          fontStyle: (Number(run.face || 0) & 2) ? "italic" : undefined,
+          fontWeight: fontWeightForRun(run),
+          fontStyle: fontStyleForRun(run),
         });
       }
     }
@@ -1581,8 +1639,8 @@ function glyphRunsForLabel(label, runsOverride = null, textOverride = null) {
       scriptKind: /^\d$/.test(char) ? 1 : 0,
       fill: normalizeDisplayColor(label.fill),
       fontFamily: label.fontFamily || "Arial",
-      fontWeight: (Number(label.face || 0) & 1) ? 700 : undefined,
-      fontStyle: (Number(label.face || 0) & 2) ? "italic" : undefined,
+      fontWeight: fontWeightForRun(label),
+      fontStyle: fontStyleForRun(label),
     });
   }
   return glyphs;
@@ -1606,7 +1664,7 @@ function anchorGlyphIndexForLabel(label, glyphs) {
   if (Number.isInteger(explicit) && explicit >= 0 && explicit < glyphs.length) {
     return explicit;
   }
-  if ((label?.connectionAnchor || "") === "end") {
+  if (labelConnectionAnchor(label) === "end") {
     const last = lastVisibleGlyphIndex(glyphs);
     return last >= 0 ? last : null;
   }
@@ -1615,14 +1673,14 @@ function anchorGlyphIndexForLabel(label, glyphs) {
 }
 
 function alignForLabel(label, mode) {
-  const layout = String(label?.attachmentLayout || label?.labelAlignment || "").toLowerCase();
+  const layout = String(labelAttachment(label)).toLowerCase();
   if (layout === "above" || mode === "hetero-h-above" || mode === "attached-group-above") {
     return LABEL_ALIGN.above;
   }
   if (layout === "below") {
     return LABEL_ALIGN.below;
   }
-  if (layout === "right" || (label?.connectionAnchor || "") === "end") {
+  if (layout === "right" || labelConnectionAnchor(label) === "end") {
     return LABEL_ALIGN.left;
   }
   return LABEL_ALIGN.right;
@@ -1711,13 +1769,14 @@ function renderFragmentText(group, node, nodeMap, bonds, originX, originY) {
   if (!label?.text || !label.position) {
     return null;
   }
-  const box = label.bbox ? localBoxFromAbsolute(label.bbox, originX, originY) : null;
+  const box = labelBox(label, originX, originY);
   const point = localPointFromAbsolute(label.position, originX, originY);
   const lines = getFragmentLabelLines(label);
   const lineCount = Math.max(1, lines.length);
   const fontSize = Math.max(
     9.5,
-    ...((label.runs || []).map((run) => Number(run.size) || 0)),
+    Number(label.fontSize || label.size || 0),
+    ...((label.runs || []).map((run) => Number(run.fontSize || run.size) || 0)),
   );
   const nodePoint = localPointFromAbsolute(node.position, originX, originY);
   const mode = getFragmentLabelMode(node, label);
@@ -1745,7 +1804,7 @@ function renderFragmentText(group, node, nodeMap, bonds, originX, originY) {
   }
 
   if (lineCount === 1 || mode === "hetero-h-above" || mode === "hetero-h-right") {
-    const text = mode === "hetero-h-above" ? (label.inputText || label.text) : label.text;
+    const text = mode === "hetero-h-above" ? labelSourceText(label) : label.text;
     const glyphs = glyphRunsForLabel(label, null, text);
     const anchorGlyphIndex = anchorGlyphIndexForLabel(label, glyphs);
     const align = alignForLabel(label, mode);
@@ -1802,9 +1861,9 @@ function renderFragmentBond(group, bond, nodeMap, bonds, originX, originY, textG
   const endShape = textGeometry?.get(endNode.id) || null;
   const beginPoint = connectionPointForNode(beginNode, beginMode, beginShape, originX, originY);
   const endPoint = connectionPointForNode(endNode, endMode, endShape, originX, originY);
-  const stereoStyle = bond.stereoStyle || null;
-  const stereoEnd = bond.stereoEnd || null;
-  const legacyDisplay = bond.display || "";
+  const stereoStyle = bond.stereo?.kind || bond.stereoStyle || null;
+  const stereoEnd = bond.stereo?.wideEnd || bond.stereoEnd || null;
+  const legacyDisplay = bond.display || bond.meta?.import?.cdxml?.display || "";
   const isStereoBond = Boolean(stereoStyle) || legacyDisplay === "WedgeBegin" || legacyDisplay === "WedgedHashBegin" || legacyDisplay === "WedgeEnd" || legacyDisplay === "WedgedHashEnd";
   const stereoTargetsBegin = (stereoStyle === "solid-wedge" && stereoEnd === "begin")
     || (stereoStyle === "hashed-wedge" && stereoEnd === "begin")
@@ -1825,22 +1884,22 @@ function renderFragmentBond(group, bond, nodeMap, bonds, originX, originY, textG
   const beginBox = beginCollisionBoxes?.length
     ? null
     : (beginMode === "default" || beginMode === "centered-atom")
-      ? (beginNode.label?.bbox ? localBoxFromAbsolute(beginNode.label.bbox, originX, originY) : null)
+      ? labelBox(beginNode.label, originX, originY)
       : beginMode === "attached-group"
         ? (beginShape ? null : attachedGroupCollisionBox(beginNode, originX, originY))
         : beginMode === "attached-group-above"
-          ? (beginNode.label?.bbox ? localBoxFromAbsolute(beginNode.label.bbox, originX, originY) : null)
+          ? labelBox(beginNode.label, originX, originY)
         : beginMode === "attached-group-center"
           ? (beginShape ? null : centeredAttachedGroupCollisionBox(beginNode, originX, originY))
         : centeredLabelBox(beginPoint, 3.2, 3.2);
   const endBox = endCollisionBoxes?.length
     ? null
     : (endMode === "default" || endMode === "centered-atom")
-      ? (endNode.label?.bbox ? localBoxFromAbsolute(endNode.label.bbox, originX, originY) : null)
+      ? labelBox(endNode.label, originX, originY)
       : endMode === "attached-group"
         ? (endShape ? null : attachedGroupCollisionBox(endNode, originX, originY))
         : endMode === "attached-group-above"
-          ? (endNode.label?.bbox ? localBoxFromAbsolute(endNode.label.bbox, originX, originY) : null)
+          ? labelBox(endNode.label, originX, originY)
         : endMode === "attached-group-center"
           ? (endShape ? null : centeredAttachedGroupCollisionBox(endNode, originX, originY))
         : centeredLabelBox(endPoint, 3.2, 3.2);
@@ -1932,7 +1991,7 @@ function renderFragmentBond(group, bond, nodeMap, bonds, originX, originY, textG
   }
 
   if (bond.order === 2) {
-    renderDoubleBond(group, start, end, bond.doubleStyle || bond.doublePosition || null, color, {
+    renderDoubleBond(group, start, end, bond.double?.placement || bond.doubleStyle || bond.doublePosition || null, color, {
       terminalStart: fragmentNodeDegree(bonds, bond.begin) === 1,
       terminalEnd: fragmentNodeDegree(bonds, bond.end) === 1,
       alignStart: beginHasLabel,
@@ -2355,17 +2414,16 @@ function renderTextObject(svgRoot, object) {
         "text-anchor": textAnchor,
       });
       for (const run of runs) {
-        const face = Number(run.face || 0);
         const runFontSize = Number(run.fontSize || fontSize);
-        const isSub = isSubscriptFace(face);
-        const isSuper = isSuperscriptFace(face);
+        const isSub = isSubscriptRun(run);
+        const isSuper = isSuperscriptRun(run);
         const isSubOrSuper = isSub || isSuper;
         const tspan = makeSvgNode("tspan", {
           fill: run.fill ? normalizeDisplayColor(run.fill) : undefined,
           "font-size": isSubOrSuper ? Math.max(7, runFontSize * 0.72) : runFontSize,
           "font-family": run.fontFamily || undefined,
-          "font-weight": (face & 1) ? 700 : undefined,
-          "font-style": (face & 2) ? "italic" : undefined,
+          "font-weight": fontWeightForRun(run),
+          "font-style": fontStyleForRun(run),
           "baseline-shift": isSub ? "-28%" : isSuper ? "48%" : undefined,
           dx: isSuper ? "-0.02em" : undefined,
         });

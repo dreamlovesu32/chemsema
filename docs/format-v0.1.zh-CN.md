@@ -156,7 +156,8 @@
   仍然可以保留逐 token 的样式，比如 `SO2` 里的下标 `2`
 - 归一化后的显示 runs 应当只保留化学上有意义的行内格式，例如上下标；
   不应直接把 CDXML `face` 这类源格式里的字重/字形样式原样当作结构标签显示规则
-- 但为了保真，原始 source runs 仍然可以单独保存在 `inputRuns` 或导入元数据里
+- 但为了保真，原始 source runs 仍然可以保留；它们应放在
+  `meta.import.<source>` 下，而不是和归一化显示字段并列
 
 这类内容应当保留在分子资源或分子专属 payload 里，而不是建模成独立的文档文本框。
 
@@ -337,14 +338,111 @@ text 对象表示带定位信息的富文本内容。
 "runs": [
   {
     "text": "SO",
-    "marks": []
+    "fontFamily": "Arial",
+    "fontSize": 10,
+    "fill": "#000000",
+    "fontWeight": 700,
+    "fontStyle": "normal",
+    "script": "normal"
   },
   {
     "text": "4",
-    "marks": ["subscript"]
+    "fontFamily": "Arial",
+    "fontSize": 10,
+    "fill": "#000000",
+    "fontWeight": 700,
+    "fontStyle": "normal",
+    "script": "subscript"
   }
 ]
 ```
+
+`script` 可取 `normal | subscript | superscript`。CDXML 的 `face`、`font`、
+`color` 这类源格式字段应在导入阶段解码成这些显式字段；原始值可以保留在
+`meta.import.cdxml` 中，用于调试或未来 round-trip。
+
+## Molecule Fragment2D
+
+`molecule_fragment2d` resource 用局部坐标保存节点和键。字段应直接表达化学
+语义和渲染意图，而不是暴露源格式的位掩码。
+
+节点 label 示例：
+
+```json
+{
+  "id": "n1",
+  "element": "N",
+  "atomicNumber": 7,
+  "position": [47.4, 29.96],
+  "charge": 0,
+  "numHydrogens": 0,
+  "label": {
+    "text": "N",
+    "sourceText": "N",
+    "position": [43.79, 33.86],
+    "box": [43.79, 25.52, 51.01, 33.86],
+    "layout": "default",
+    "anchor": "start",
+    "runs": [
+      {
+        "text": "N",
+        "fontFamily": "Arial",
+        "fontSize": 10,
+        "fill": "#000000",
+        "fontWeight": 400,
+        "fontStyle": "normal",
+        "script": "normal"
+      }
+    ]
+  }
+}
+```
+
+键示例：
+
+```json
+{
+  "id": "b1",
+  "begin": "n1",
+  "end": "n2",
+  "order": 1,
+  "stereo": {
+    "kind": "solid-wedge",
+    "wideEnd": "end"
+  }
+}
+```
+
+```json
+{
+  "id": "b2",
+  "begin": "n2",
+  "end": "n3",
+  "order": 2,
+  "double": {
+    "placement": "right"
+  }
+}
+```
+
+分子 label 字段：
+
+- `text`：归一化后的显示文本
+- `sourceText`：可选，化学重排前的原始 label 文本
+- `position`：局部 label 点
+- `box`：局部 label 包围盒
+- `layout`：label 布局模式，例如 `default`、`attached-group`、
+  `attached-group-above` 或 `centered-atom`
+- `anchor`：label 内部连接锚点，通常是 `start | center | end`
+- `runs`：归一化显示 runs
+- `lineRuns`：可选，逐渲染行的归一化 runs
+
+键字段：
+
+- `order`：数字键级
+- `stereo.kind`：`solid-wedge | hashed-wedge`
+- `stereo.wideEnd`：`begin | end`
+- `double.placement`：`left | right | center`
 
 ## Line 对象
 

@@ -54,6 +54,25 @@ DEFAULT_STYLES: dict[str, dict[str, Any]] = {
     },
 }
 
+ELEMENT_SYMBOLS = [
+    None,
+    "H", "He",
+    "Li", "Be", "B", "C", "N", "O", "F", "Ne",
+    "Na", "Mg", "Al", "Si", "P", "S", "Cl", "Ar",
+    "K", "Ca", "Sc", "Ti", "V", "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn",
+    "Ga", "Ge", "As", "Se", "Br", "Kr",
+    "Rb", "Sr", "Y", "Zr", "Nb", "Mo", "Tc", "Ru", "Rh", "Pd", "Ag", "Cd",
+    "In", "Sn", "Sb", "Te", "I", "Xe",
+    "Cs", "Ba", "La", "Ce", "Pr", "Nd", "Pm", "Sm", "Eu", "Gd", "Tb", "Dy",
+    "Ho", "Er", "Tm", "Yb", "Lu",
+    "Hf", "Ta", "W", "Re", "Os", "Ir", "Pt", "Au", "Hg",
+    "Tl", "Pb", "Bi", "Po", "At", "Rn",
+    "Fr", "Ra", "Ac", "Th", "Pa", "U", "Np", "Pu", "Am", "Cm", "Bk", "Cf",
+    "Es", "Fm", "Md", "No", "Lr",
+    "Rf", "Db", "Sg", "Bh", "Hs", "Mt", "Ds", "Rg", "Cn",
+    "Nh", "Fl", "Mc", "Lv", "Ts", "Og",
+]
+
 
 def _hex_to_rgb(color: str | None) -> tuple[int, int, int] | None:
     if not color or not isinstance(color, str):
@@ -92,6 +111,55 @@ def _build_shaded_gradient(fill: str | None) -> dict[str, Any] | None:
             {"offset": "100%", "color": _mix_colors(fill, (0, 0, 0), 0.12)},
         ],
     }
+
+
+def _compact_json(value: Any) -> Any:
+    if isinstance(value, dict):
+        compacted = {key: _compact_json(item) for key, item in value.items()}
+        return {key: item for key, item in compacted.items() if item is not None and item != {} and item != []}
+    if isinstance(value, list):
+        return [_compact_json(item) for item in value]
+    return value
+
+
+def _script_for_face(face: Any) -> str:
+    value = int(face or 0)
+    if (value & 32) and not (value & 64):
+        return "subscript"
+    if (value & 64) and not (value & 32):
+        return "superscript"
+    return "normal"
+
+
+def _normalized_display_run(run: dict[str, Any]) -> dict[str, Any]:
+    face = int(run.get("face") or 0)
+    return {
+        "text": str(run.get("text") or ""),
+        "fontFamily": run.get("fontFamily") or "Arial",
+        "fontSize": round(float(run.get("fontSize") or run.get("size") or 10.0), 2),
+        "fill": run.get("fill") or "#111111",
+        "fontWeight": 700 if (face & 1) else 400,
+        "fontStyle": "italic" if (face & 2) else "normal",
+        "script": _script_for_face(face),
+    }
+
+
+def _normalized_display_runs(runs: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    return [_normalized_display_run(run) for run in (runs or [])]
+
+
+def _atomic_number_for_element(value: Any) -> int:
+    try:
+        atomic_number = int(value or 6)
+    except Exception:
+        atomic_number = 6
+    if atomic_number <= 0 or atomic_number >= len(ELEMENT_SYMBOLS):
+        return 6
+    return atomic_number
+
+
+def _element_symbol_for_atomic_number(atomic_number: int) -> str:
+    return ELEMENT_SYMBOLS[atomic_number] or "C"
 
 
 def _base_name(cdxml_base: str) -> str:
@@ -571,43 +639,45 @@ def _normalize_fragment_label(
     layout_mode = _fragment_layout_mode(node, label)
     position = label.get("position")
     bbox = label.get("bbox")
-    runs = _normalize_molecule_display_runs(label.get("runs"))
+    display_runs = _normalize_molecule_display_runs(label.get("runs"))
     input_runs = [dict(run) for run in (label.get("sourceRuns") or [])]
     lines = label.get("lines")
     line_runs = None
     if not lines and layout_mode == "attached-group-above":
         lines = _attached_group_above_lines(label.get("text") or "")
     if layout_mode == "attached-group-above":
-        line_runs = (
-            _split_attached_group_above_runs(label.get("sourceText") or label.get("text") or "", input_runs or runs)
-            or _split_attached_group_above_runs(label.get("text") or "", runs)
+        raw_line_runs = (
+            _split_attached_group_above_runs(label.get("sourceText") or label.get("text") or "", input_runs or display_runs)
+            or _split_attached_group_above_runs(label.get("text") or "", display_runs)
         )
-    return {
+        if raw_line_runs:
+            line_runs = [_normalized_display_runs(line) for line in raw_line_runs]
+    return _compact_json({
         "text": label.get("text") or "",
-        "inputText": label.get("sourceText") or label.get("text") or "",
+        "sourceText": label.get("sourceText") or label.get("text") or "",
         "position": _local_point(position, origin),
-        "bbox": _local_bbox(bbox, origin),
-        "runs": runs,
-        "inputRuns": input_runs or runs,
+        "box": _local_bbox(bbox, origin),
+        "runs": _normalized_display_runs(display_runs),
         "align": label.get("align") or "left",
-        "attachmentLayout": label.get("labelAlignment") or None,
+        "layout": layout_mode,
+        "attachment": label.get("labelAlignment") or None,
+        "anchor": _connection_anchor_for_label(label),
         "lines": list(lines) if lines else None,
         "lineRuns": line_runs,
         "fontFamily": label.get("fontFamily") or "Arial",
         "fill": label.get("fill") or "#111111",
-        "size": float(label.get("size") or 10.0),
-        "layoutMode": layout_mode,
-        "connectionAnchor": _connection_anchor_for_label(label),
+        "fontSize": round(float(label.get("size") or 10.0), 2),
         "meta": {
             "import": {
                 "cdxml": {
                     "font": label.get("font"),
                     "color": label.get("color"),
                     "lineStarts": label.get("lineStarts"),
+                    "sourceRuns": input_runs or None,
                 }
             }
         },
-    }
+    })
 
 
 def _normalize_fragment_bond(bond: dict[str, Any]) -> dict[str, Any]:
@@ -631,14 +701,23 @@ def _normalize_fragment_bond(bond: dict[str, Any]) -> dict[str, Any]:
     if double_style not in {"left", "right", "center"}:
         double_style = "center"
 
-    return {
+    stereo = None
+    if stereo_style and stereo_end:
+        stereo = {
+            "kind": stereo_style,
+            "wideEnd": stereo_end,
+        }
+
+    order = int(bond.get("order") or 1)
+    return _compact_json({
         "id": bond.get("id"),
         "begin": bond.get("begin"),
         "end": bond.get("end"),
-        "order": int(bond.get("order") or 1),
-        "stereoStyle": stereo_style,
-        "stereoEnd": stereo_end,
-        "doubleStyle": double_style,
+        "order": order,
+        "stereo": stereo,
+        "double": {
+            "placement": double_style,
+        } if order == 2 else None,
         "meta": {
             "import": {
                 "cdxml": {
@@ -647,7 +726,7 @@ def _normalize_fragment_bond(bond: dict[str, Any]) -> dict[str, Any]:
                 }
             }
         },
-    }
+    })
 
 
 def _normalize_fragment(fragment: dict[str, Any]) -> dict[str, Any]:
@@ -657,9 +736,11 @@ def _normalize_fragment(fragment: dict[str, Any]) -> dict[str, Any]:
 
     nodes: list[dict[str, Any]] = []
     for node in fragment.get("nodes", []):
-        normalized = {
+        atomic_number = _atomic_number_for_element(node.get("element"))
+        normalized = _compact_json({
             "id": node.get("id"),
-            "element": node.get("element"),
+            "element": _element_symbol_for_atomic_number(atomic_number),
+            "atomicNumber": atomic_number,
             "position": _local_point(node.get("position"), origin),
             "charge": int(node.get("charge") or 0),
             "numHydrogens": int(node.get("numHydrogens") or 0),
@@ -671,10 +752,11 @@ def _normalize_fragment(fragment: dict[str, Any]) -> dict[str, Any]:
                     "cdxml": {
                         "nodeType": node.get("nodeType"),
                         "labelDisplay": node.get("labelDisplay"),
+                        "element": node.get("element"),
                     }
                 }
             },
-        }
+        })
         nodes.append(normalized)
 
     return {
@@ -992,7 +1074,7 @@ def convert_cdxml_to_document(cdxml_base: str) -> dict[str, Any]:
                 font_size = float((block or {}).get("fontSize") or 10.0)
                 line_height = max(font_size * 1.1, height / max(1, len(cell_lines)))
                 source_runs = (block or {}).get("runs") or []
-                display_runs = _expand_display_runs(
+                display_runs = _normalized_display_runs(_expand_display_runs(
                     [
                         {
                             "text": run.get("text", ""),
@@ -1003,7 +1085,7 @@ def convert_cdxml_to_document(cdxml_base: str) -> dict[str, Any]:
                         }
                         for run in source_runs
                     ]
-                )
+                ))
                 objects.append(
                     {
                         "id": f"obj_text_table_{table_index:02d}_{row_index:03d}_{col_index:02d}",
@@ -1077,7 +1159,7 @@ def convert_cdxml_to_document(cdxml_base: str) -> dict[str, Any]:
         font_size = float(block.get("fontSize") or 10.0)
         line_height = max(font_size * 1.1, height / line_count)
         source_runs = block.get("runs") or []
-        display_runs = _expand_display_runs(
+        display_runs = _normalized_display_runs(_expand_display_runs(
             [
                 {
                     "text": run.get("text", ""),
@@ -1088,7 +1170,7 @@ def convert_cdxml_to_document(cdxml_base: str) -> dict[str, Any]:
                 }
                 for run in source_runs
             ]
-        )
+        ))
         objects.append(
             {
                 "id": f"obj_text_{idx:03d}",

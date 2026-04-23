@@ -161,8 +161,8 @@ Examples include `CN`, `Ph`, `N3`, `t-Bu`, `HN`, or stacked hetero labels such a
 - normalized display runs should preserve chemistry-relevant inline formatting
   such as subscript and superscript, but should not directly inherit
   source-format text styling like CDXML `face` weight/style flags
-- raw source runs may still be preserved separately for import fidelity, for
-  example in `inputRuns` or import metadata
+- raw source runs may still be preserved for import fidelity, but they belong
+  under `meta.import.<source>`, not beside normalized display fields
 
 They should live inside molecule resources or molecule-specific payloads, not be
 modeled as standalone document text boxes.
@@ -351,14 +351,114 @@ Recommended inline model:
 "runs": [
   {
     "text": "SO",
-    "marks": []
+    "fontFamily": "Arial",
+    "fontSize": 10,
+    "fill": "#000000",
+    "fontWeight": 700,
+    "fontStyle": "normal",
+    "script": "normal"
   },
   {
     "text": "4",
-    "marks": ["subscript"]
+    "fontFamily": "Arial",
+    "fontSize": 10,
+    "fill": "#000000",
+    "fontWeight": 700,
+    "fontStyle": "normal",
+    "script": "subscript"
   }
 ]
 ```
+
+`script` is one of `normal | subscript | superscript`. Import-specific flags
+such as CDXML `face`, `font`, or `color` should be decoded into these explicit
+fields. Raw source values may be kept in `meta.import.cdxml` for debugging and
+round-trip work.
+
+## Molecule Fragment2D
+
+`molecule_fragment2d` resources store nodes and bonds in local coordinates.
+Fields should describe chemistry and rendering intent directly rather than
+exposing source-format bit masks.
+
+Example node label:
+
+```json
+{
+  "id": "n1",
+  "element": "N",
+  "atomicNumber": 7,
+  "position": [47.4, 29.96],
+  "charge": 0,
+  "numHydrogens": 0,
+  "label": {
+    "text": "N",
+    "sourceText": "N",
+    "position": [43.79, 33.86],
+    "box": [43.79, 25.52, 51.01, 33.86],
+    "layout": "default",
+    "anchor": "start",
+    "runs": [
+      {
+        "text": "N",
+        "fontFamily": "Arial",
+        "fontSize": 10,
+        "fill": "#000000",
+        "fontWeight": 400,
+        "fontStyle": "normal",
+        "script": "normal"
+      }
+    ]
+  }
+}
+```
+
+Example bonds:
+
+```json
+{
+  "id": "b1",
+  "begin": "n1",
+  "end": "n2",
+  "order": 1,
+  "stereo": {
+    "kind": "solid-wedge",
+    "wideEnd": "end"
+  }
+}
+```
+
+```json
+{
+  "id": "b2",
+  "begin": "n2",
+  "end": "n3",
+  "order": 2,
+  "double": {
+    "placement": "right"
+  }
+}
+```
+
+Molecule label fields:
+
+- `text`: normalized display text
+- `sourceText`: optional original label text before chemistry-oriented
+  reordering
+- `position`: local label point
+- `box`: local label bounding box
+- `layout`: label layout mode such as `default`, `attached-group`,
+  `attached-group-above`, or `centered-atom`
+- `anchor`: connection anchor inside the label, usually `start | center | end`
+- `runs`: normalized display runs
+- `lineRuns`: optional normalized runs per rendered line
+
+Bond fields:
+
+- `order`: numeric bond order
+- `stereo.kind`: `solid-wedge | hashed-wedge`
+- `stereo.wideEnd`: `begin | end`
+- `double.placement`: `left | right | center`
 
 ## Line Object
 
