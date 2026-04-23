@@ -1,5 +1,6 @@
 use chemcore_engine::{
-    BondVariant, Engine, PointerEvent, Tool, ToolState, DEFAULT_BOND_LENGTH, DEFAULT_BOND_STROKE,
+    BondVariant, DoubleBondPlacement, Engine, PointerEvent, Tool, ToolState, DEFAULT_BOND_LENGTH,
+    DEFAULT_BOND_STROKE,
 };
 
 fn bond_tool() -> ToolState {
@@ -172,4 +173,63 @@ fn select_delete_and_undo_redo_round_trip() {
 
     assert!(engine.redo());
     assert_eq!(fragment_counts(&engine), (0, 0));
+}
+
+#[test]
+fn double_bond_tool_focuses_bond_center_and_converts_to_side_double() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    engine.pointer_down(PointerEvent {
+        x: 300.0,
+        y: 260.0,
+        button: Some(0),
+    });
+    engine.pointer_up(PointerEvent {
+        x: 300.0,
+        y: 260.0,
+        button: Some(0),
+    });
+    engine.pointer_down(PointerEvent {
+        x: 336.0,
+        y: 260.0,
+        button: Some(0),
+    });
+    engine.pointer_up(PointerEvent {
+        x: 336.0,
+        y: 260.0,
+        button: Some(0),
+    });
+
+    engine.set_tool_state(ToolState {
+        active_tool: Tool::Bond,
+        bond_variant: BondVariant::Double,
+    });
+    engine.pointer_move(PointerEvent {
+        x: 318.0,
+        y: 260.0,
+        button: None,
+    });
+
+    let center = engine.state().overlay.hover_bond_center.as_ref().unwrap();
+    assert_eq!(center.point.x, 318.0);
+    assert_eq!(center.point.y, 260.0);
+
+    engine.pointer_down(PointerEvent {
+        x: 318.0,
+        y: 260.0,
+        button: Some(0),
+    });
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let bond = &entry.fragment.bonds[0];
+    assert_eq!(bond.order, 2);
+    assert_eq!(
+        bond.double.as_ref().map(|double| double.placement),
+        Some(DoubleBondPlacement::Right),
+    );
+    assert_ne!(
+        bond.double.as_ref().map(|double| double.placement),
+        Some(DoubleBondPlacement::Center),
+    );
+    assert!(engine.can_undo());
 }

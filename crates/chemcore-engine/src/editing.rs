@@ -8,6 +8,7 @@ use std::collections::HashSet;
 
 pub const ENDPOINT_HIT_RADIUS: f64 = 16.0;
 pub const BOND_HIT_RADIUS: f64 = 6.0;
+pub const BOND_CENTER_HIT_RADIUS: f64 = 9.0;
 pub const DRAG_START_THRESHOLD: f64 = 4.0;
 pub const GLOBAL_SNAP_ANGLES: &[f64] = &[
     0.0, 30.0, 45.0, 60.0, 90.0, 120.0, 135.0, 150.0, 180.0, 210.0, 225.0, 240.0, 270.0, 300.0,
@@ -100,6 +101,14 @@ pub struct BondHit {
     pub distance: f64,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BondCenterHit {
+    pub bond_id: String,
+    pub point: Point,
+    pub distance: f64,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct SelectionState {
@@ -133,6 +142,7 @@ pub struct DragState {
 #[serde(rename_all = "camelCase")]
 pub struct OverlayState {
     pub hover_endpoint: Option<EndpointHit>,
+    pub hover_bond_center: Option<BondCenterHit>,
     pub preview: Option<BondPreview>,
 }
 
@@ -144,6 +154,10 @@ pub struct BondPreview {
 
 pub fn can_draw_single_bond(tool_state: &ToolState) -> bool {
     tool_state.active_tool == Tool::Bond && tool_state.bond_variant == BondVariant::Single
+}
+
+pub fn can_focus_bond_center(tool_state: &ToolState) -> bool {
+    tool_state.active_tool == Tool::Bond && tool_state.bond_variant == BondVariant::Double
 }
 
 pub fn can_focus_endpoint(tool_state: &ToolState) -> bool {
@@ -194,6 +208,46 @@ pub fn hit_test_bond(document: &ChemcoreDocument, point: Point, radius: f64) -> 
                 bond_id: bond.id.clone(),
                 begin: begin_point,
                 end: end_point,
+                distance,
+            });
+        }
+    }
+    best
+}
+
+pub fn hit_test_bond_center(
+    document: &ChemcoreDocument,
+    point: Point,
+    radius: f64,
+) -> Option<BondCenterHit> {
+    let entry = document.editable_fragment()?;
+    let mut best: Option<BondCenterHit> = None;
+    for bond in &entry.fragment.bonds {
+        if bond.order != 1 {
+            continue;
+        }
+        let Some(begin) = entry
+            .fragment
+            .nodes
+            .iter()
+            .find(|node| node.id == bond.begin)
+        else {
+            continue;
+        };
+        let Some(end) = entry.fragment.nodes.iter().find(|node| node.id == bond.end) else {
+            continue;
+        };
+        let begin_point = entry.world_point_for_node(begin);
+        let end_point = entry.world_point_for_node(end);
+        let center = Point::new(
+            (begin_point.x + end_point.x) / 2.0,
+            (begin_point.y + end_point.y) / 2.0,
+        );
+        let distance = point.distance(center);
+        if distance <= radius && best.as_ref().map_or(true, |hit| distance < hit.distance) {
+            best = Some(BondCenterHit {
+                bond_id: bond.id.clone(),
+                point: center,
                 distance,
             });
         }

@@ -233,7 +233,22 @@ pub struct Bond {
     pub begin: String,
     pub end: String,
     pub order: u8,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub double: Option<DoubleBond>,
     pub stroke_width: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DoubleBond {
+    pub placement: DoubleBondPlacement,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DoubleBondPlacement {
+    Left,
+    Right,
+    Center,
 }
 
 pub struct EditableFragment<'a> {

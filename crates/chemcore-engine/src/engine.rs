@@ -1,9 +1,11 @@
 use crate::{
-    anchor_from_point, can_draw_single_bond, can_focus_endpoint, default_angle_for_anchor,
-    endpoint_from_angle, hit_test_endpoint, render_document, select_at, snapped_angle_for_anchor,
-    Bond, BondAnchor, BondPreview, ChemcoreDocument, DragState, EditorOptions, EndpointHit,
+    anchor_from_point, can_draw_single_bond, can_focus_bond_center, can_focus_endpoint,
+    default_angle_for_anchor, endpoint_from_angle, hit_test_bond_center, hit_test_endpoint,
+    render_document, select_at, snapped_angle_for_anchor, Bond, BondAnchor, BondPreview,
+    ChemcoreDocument, DoubleBond, DoubleBondPlacement, DragState, EditorOptions, EndpointHit,
     OverlayState, Point, PointerEvent, RenderPrimitive, RenderRole, SelectionState, Tool,
-    ToolState, DEFAULT_BOND_LENGTH, DRAG_START_THRESHOLD, ENDPOINT_HIT_RADIUS,
+    ToolState, BOND_CENTER_HIT_RADIUS, DEFAULT_BOND_LENGTH, DRAG_START_THRESHOLD,
+    ENDPOINT_HIT_RADIUS,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -74,6 +76,16 @@ impl Engine {
                 stroke_width: 1.4,
             });
         }
+        if let Some(hover) = &self.state.overlay.hover_bond_center {
+            out.push(RenderPrimitive::Circle {
+                role: RenderRole::HoverBondCenter,
+                center: hover.point,
+                radius: BOND_CENTER_HIT_RADIUS,
+                fill: "rgba(47,111,237,0.18)".to_string(),
+                stroke: "rgba(47,111,237,0.82)".to_string(),
+                stroke_width: 1.4,
+            });
+        }
         if let Some(preview) = &self.state.overlay.preview {
             out.push(RenderPrimitive::Line {
                 role: RenderRole::PreviewBond,
@@ -103,6 +115,12 @@ impl Engine {
         let point = event.point();
         if self.state.tool.active_tool == Tool::Select {
             self.clear_interaction();
+            return;
+        }
+        if can_focus_bond_center(&self.state.tool) {
+            self.state.overlay.hover_endpoint = None;
+            self.state.overlay.hover_bond_center =
+                hit_test_bond_center(&self.state.document, point, BOND_CENTER_HIT_RADIUS);
             return;
         }
         if !can_focus_endpoint(&self.state.tool) {
@@ -135,6 +153,14 @@ impl Engine {
         if self.state.tool.active_tool == Tool::Select {
             self.state.selection = select_at(&self.state.document, event.point());
             self.clear_interaction();
+            return;
+        }
+        if can_focus_bond_center(&self.state.tool) {
+            if let Some(hit) =
+                hit_test_bond_center(&self.state.document, event.point(), BOND_CENTER_HIT_RADIUS)
+            {
+                self.convert_single_bond_to_double(&hit.bond_id);
+            }
             return;
         }
         if !can_draw_single_bond(&self.state.tool) {
@@ -194,6 +220,7 @@ impl Engine {
             begin: begin_id,
             end: end_id.clone(),
             order: 1,
+            double: None,
             stroke_width: self.options.bond_stroke_width,
         });
         entry.update_bounds();
@@ -209,6 +236,36 @@ impl Engine {
                 distance: 0.0,
             });
         self.state.overlay.hover_endpoint = endpoint;
+    }
+
+    pub fn convert_single_bond_to_double(&mut self, bond_id: &str) -> bool {
+        let Some(placement) = self.default_double_bond_placement(bond_id) else {
+            return false;
+        };
+        self.push_undo_snapshot();
+        let Some(mut entry) = self.state.document.editable_fragment_mut() else {
+            self.undo_stack.pop();
+            return false;
+        };
+        let Some(bond) = entry
+            .fragment
+            .bonds
+            .iter_mut()
+            .find(|bond| bond.id == bond_id)
+        else {
+            self.undo_stack.pop();
+            return false;
+        };
+        if bond.order != 1 {
+            self.undo_stack.pop();
+            return false;
+        }
+        bond.order = 2;
+        bond.double = Some(DoubleBond { placement });
+        entry.update_bounds();
+        self.state.selection = SelectionState::default();
+        self.clear_interaction();
+        true
     }
 
     pub fn delete_selection(&mut self) -> bool {
@@ -322,6 +379,79 @@ impl Engine {
             }
         }
         max_id + 1
+    }
+
+    fn default_double_bond_placement(&self, bond_id: &str) -> Option<DoubleBondPlacement> {
+        let entry = self.state.document.editable_fragment()?;
+        let bond = entry
+            .fragment
+            .bonds
+            .iter()
+            .find(|bond| bond.id == bond_id && bond.order == 1)?;
+        let begin = entry
+            .fragment
+            .nodes
+            .iter()
+            .find(|node| node.id == bond.begin)?;
+        let end = entry
+            .fragment
+            .nodes
+            .iter()
+            .find(|node| node.id == bond.end)?;
+        let begin_point = entry.world_point_for_node(begin);
+        let end_point = entry.world_point_for_node(end);
+        let dx = end_point.x - begin_point.x;
+        let dy = end_point.y - begin_point.y;
+        let length = dx.hypot(dy);
+        if length <= crate::EPSILON {
+            return Some(DoubleBondPlacement::Left);
+        }
+        let normal_x = -dy / length;
+        let normal_y = dx / length;
+        let mut score = 0.0;
+        for other in &entry.fragment.bonds {
+            if other.id == bond.id {
+                continue;
+            }
+            if other.begin == bond.begin || other.end == bond.begin {
+                let other_id = if other.begin == bond.begin {
+                    &other.end
+                } else {
+                    &other.begin
+                };
+                if let Some(neighbor) = entry
+                    .fragment
+                    .nodes
+                    .iter()
+                    .find(|node| &node.id == other_id)
+                {
+                    let point = entry.world_point_for_node(neighbor);
+                    score +=
+                        (point.x - begin_point.x) * normal_x + (point.y - begin_point.y) * normal_y;
+                }
+            } else if other.begin == bond.end || other.end == bond.end {
+                let other_id = if other.begin == bond.end {
+                    &other.end
+                } else {
+                    &other.begin
+                };
+                if let Some(neighbor) = entry
+                    .fragment
+                    .nodes
+                    .iter()
+                    .find(|node| &node.id == other_id)
+                {
+                    let point = entry.world_point_for_node(neighbor);
+                    score +=
+                        (point.x - end_point.x) * normal_x + (point.y - end_point.y) * normal_y;
+                }
+            }
+        }
+        if score >= 0.0 {
+            Some(DoubleBondPlacement::Left)
+        } else {
+            Some(DoubleBondPlacement::Right)
+        }
     }
 
     fn selection_render_list(&self) -> Vec<RenderPrimitive> {

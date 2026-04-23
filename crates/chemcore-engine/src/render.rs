@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 pub enum RenderRole {
     DocumentBond,
     HoverEndpoint,
+    HoverBondCenter,
     PreviewBond,
     PreviewEnd,
     SelectionBond,

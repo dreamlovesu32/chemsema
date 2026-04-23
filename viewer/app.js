@@ -1095,6 +1095,7 @@ function renderEditorOverlay() {
     } else if (primitive.kind === "circle" && primitive.center) {
       const classByRole = {
         "hover-endpoint": "editor-endpoint-halo",
+        "hover-bond-center": "editor-bond-center-halo",
         "preview-end": "editor-preview-end",
         "selection-node": "editor-selection-node",
       };
