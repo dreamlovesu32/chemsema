@@ -1956,6 +1956,11 @@ function pointToLineDistance(point, linePoint, direction) {
   return Math.abs((point.x - linePoint.x) * direction.y - (point.y - linePoint.y) * direction.x);
 }
 
+function comparableMainBondLengths(a, b) {
+  const tolerance = Math.max(0.4, Math.max(a, b) * 0.015);
+  return Math.abs(a - b) <= tolerance;
+}
+
 function sideDoubleJoinPointForFragmentEndpoint(bond, sharedNodeId, bonds, nodeMap, originX, originY, doubleOffset) {
   const sharedNode = nodeMap.get(sharedNodeId);
   if (!sharedNode || hasVisibleFragmentNodeLabel(sharedNode)) {
@@ -1974,6 +1979,9 @@ function sideDoubleJoinPointForFragmentEndpoint(bond, sharedNodeId, bonds, nodeM
     }
     const otherLine = sideDoubleOffsetLineForFragmentEndpoint(otherBond, sharedNodeId, nodeMap, originX, originY, doubleOffset);
     if (!otherLine) {
+      continue;
+    }
+    if (!comparableMainBondLengths(currentLine.length, otherLine.length)) {
       continue;
     }
     const cross = currentLine.direction.x * otherLine.direction.y - currentLine.direction.y * otherLine.direction.x;
