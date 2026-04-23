@@ -55,8 +55,9 @@ const SOLID_WEDGE_END_INSET = 0.55;
 const CHEMDRAW_PAGE_BACKGROUND = "#ffffff";
 const CHEMDRAW_INK = "#000000";
 const EDITOR_SCALE = 2.5;
-const EDITOR_PAGE = { width: 1200 * EDITOR_SCALE, height: 800 * EDITOR_SCALE, background: "#ffffff" };
+const EDITOR_PAGE = { width: 1200, height: 800, background: "#ffffff" };
 const EDITOR_FALLBACK_BOND_LENGTH = 14.4 * EDITOR_SCALE;
+const EDITOR_BOND_STROKE = BOND_STROKE * EDITOR_SCALE;
 const ENDPOINT_HIT_RADIUS_PX = 10;
 const DRAG_START_THRESHOLD_PX = 4;
 const GLOBAL_SNAP_ANGLES = [0, 30, 45, 60, 90, 120, 135, 150, 180, 210, 225, 240, 270, 300, 315, 330];
@@ -925,7 +926,7 @@ function createBlankDocument() {
       style_molecule_default: {
         kind: "molecule",
         stroke: CHEMDRAW_INK,
-        strokeWidth: BOND_STROKE,
+        strokeWidth: EDITOR_BOND_STROKE,
         fontFamily: "Arial",
         fontSize: LABEL_FONT_SIZE,
       },
@@ -1305,6 +1306,7 @@ function addSingleBond(anchor, endPoint) {
     begin: beginNode.id,
     end: endNode.id,
     order: 1,
+    strokeWidth: EDITOR_BOND_STROKE,
   });
   updateFragmentBounds(entry, [anchor.point, endPoint]);
   state.editor.hoverEndpoint = {
@@ -1438,7 +1440,7 @@ function renderEditorOverlay() {
       x2: preview.end.x,
       y2: preview.end.y,
       class: "editor-bond-preview",
-      "stroke-width": BOND_STROKE,
+      "stroke-width": EDITOR_BOND_STROKE,
     }));
     overlay.appendChild(makeSvgNode("circle", {
       cx: preview.end.x,
@@ -1744,11 +1746,12 @@ function renderBondLines(group, start, end, offsets, color, options = {}) {
     renderBondSegment(group, {
       ...segment,
       color,
+      strokeWidth: options.strokeWidth,
     });
   }
 }
 
-function renderBondSegment(group, { start, end, color }) {
+function renderBondSegment(group, { start, end, color, strokeWidth = BOND_STROKE }) {
   group.appendChild(
     makeSvgNode("line", {
       x1: start.x,
@@ -1757,7 +1760,7 @@ function renderBondSegment(group, { start, end, color }) {
       y2: end.y,
       class: "mol-bond",
       stroke: color,
-      "stroke-width": BOND_STROKE,
+      "stroke-width": strokeWidth,
     }),
   );
 }
@@ -2730,6 +2733,7 @@ function renderFragmentBond(group, bond, nodeMap, bonds, originX, originY, textG
   ({ start, end } = lineEndpointsForFragmentBond(start, end, beginBox, endBox));
   const display = legacyDisplay;
   const color = CHEMDRAW_INK;
+  const strokeWidth = Number(bond.strokeWidth || BOND_STROKE);
 
   if (stereoStyle === "solid-wedge" && stereoEnd === "end") {
     renderSolidWedge(group, start, end, color, {
@@ -2821,6 +2825,7 @@ function renderFragmentBond(group, bond, nodeMap, bonds, originX, originY, textG
     startBoxes: beginCollisionBoxes,
     endBoxes: endCollisionBoxes,
     shapeGap,
+    strokeWidth,
   });
 }
 
