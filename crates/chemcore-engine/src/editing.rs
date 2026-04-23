@@ -162,7 +162,11 @@ pub fn can_draw_single_bond(tool_state: &ToolState) -> bool {
 }
 
 pub fn can_focus_bond_center(tool_state: &ToolState) -> bool {
-    tool_state.active_tool == Tool::Bond && tool_state.bond_variant == BondVariant::Double
+    tool_state.active_tool == Tool::Bond
+        && matches!(
+            tool_state.bond_variant,
+            BondVariant::Single | BondVariant::Double
+        )
 }
 
 pub fn can_focus_endpoint(tool_state: &ToolState) -> bool {

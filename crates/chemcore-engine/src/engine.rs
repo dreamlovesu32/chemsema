@@ -127,12 +127,6 @@ impl Engine {
             self.clear_interaction();
             return;
         }
-        if can_focus_bond_center(&self.state.tool) {
-            self.state.overlay.hover_endpoint = None;
-            self.state.overlay.hover_bond_center =
-                hit_test_bond_center(&self.state.document, point, BOND_CENTER_HIT_RADIUS);
-            return;
-        }
         if !can_focus_endpoint(&self.state.tool) {
             self.clear_interaction();
             return;
@@ -155,6 +149,24 @@ impl Engine {
             return;
         }
 
+        self.state.overlay.hover_endpoint = None;
+        self.state.overlay.hover_bond_center = None;
+        if self.state.tool.bond_variant == crate::BondVariant::Single {
+            if let Some(endpoint) =
+                hit_test_endpoint(&self.state.document, point, ENDPOINT_HIT_RADIUS)
+            {
+                self.state.overlay.hover_endpoint = Some(endpoint);
+                return;
+            }
+        }
+        if can_focus_bond_center(&self.state.tool) {
+            if let Some(center) =
+                hit_test_bond_center(&self.state.document, point, BOND_CENTER_HIT_RADIUS)
+            {
+                self.state.overlay.hover_bond_center = Some(center);
+                return;
+            }
+        }
         self.state.overlay.hover_endpoint =
             hit_test_endpoint(&self.state.document, point, ENDPOINT_HIT_RADIUS);
     }
@@ -165,18 +177,37 @@ impl Engine {
             self.clear_interaction();
             return;
         }
-        if can_focus_bond_center(&self.state.tool) {
-            if let Some(hit) =
-                hit_test_bond_center(&self.state.document, event.point(), BOND_CENTER_HIT_RADIUS)
-            {
-                self.convert_single_bond_to_double(&hit.bond_id);
+        if !can_draw_single_bond(&self.state.tool) {
+            if can_focus_bond_center(&self.state.tool) {
+                if let Some(hit) = hit_test_bond_center(
+                    &self.state.document,
+                    event.point(),
+                    BOND_CENTER_HIT_RADIUS,
+                ) {
+                    self.cycle_bond_center_style(&hit.bond_id);
+                }
             }
             return;
         }
-        if !can_draw_single_bond(&self.state.tool) {
+        let point = event.point();
+        if let Some(endpoint) = hit_test_endpoint(&self.state.document, point, ENDPOINT_HIT_RADIUS)
+        {
+            self.drag = Some(DragState {
+                anchor: BondAnchor {
+                    node_id: Some(endpoint.node_id),
+                    point: endpoint.point,
+                },
+                start: point,
+                has_dragged: false,
+                preview_end: None,
+            });
             return;
         }
-        let point = event.point();
+        if let Some(hit) = hit_test_bond_center(&self.state.document, point, BOND_CENTER_HIT_RADIUS)
+        {
+            self.cycle_bond_center_style(&hit.bond_id);
+            return;
+        }
         let Some(anchor) = anchor_from_point(&self.state.document, point) else {
             return;
         };
@@ -248,8 +279,8 @@ impl Engine {
         self.state.overlay.hover_endpoint = endpoint;
     }
 
-    pub fn convert_single_bond_to_double(&mut self, bond_id: &str) -> bool {
-        let Some(placement) = self.default_double_bond_placement(bond_id) else {
+    pub fn cycle_bond_center_style(&mut self, bond_id: &str) -> bool {
+        let Some(default_placement) = self.default_double_bond_placement(bond_id) else {
             return false;
         };
         self.push_undo_snapshot();
@@ -266,12 +297,25 @@ impl Engine {
             self.undo_stack.pop();
             return false;
         };
-        if bond.order != 1 {
+        if bond.order != 1 && bond.order != 2 {
             self.undo_stack.pop();
             return false;
         }
+        let opposite_placement = opposite_double_bond_placement(default_placement);
+        let next_placement = if bond.order == 1 {
+            default_placement
+        } else {
+            match bond.double.as_ref().map(|double| double.placement) {
+                Some(current) if current == default_placement => DoubleBondPlacement::Center,
+                Some(DoubleBondPlacement::Center) => opposite_placement,
+                Some(current) if current == opposite_placement => default_placement,
+                _ => default_placement,
+            }
+        };
         bond.order = 2;
-        bond.double = Some(DoubleBond { placement });
+        bond.double = Some(DoubleBond {
+            placement: next_placement,
+        });
         entry.update_bounds();
         self.state.selection = SelectionState::default();
         self.clear_interaction();
@@ -397,7 +441,7 @@ impl Engine {
             .fragment
             .bonds
             .iter()
-            .find(|bond| bond.id == bond_id && bond.order == 1)?;
+            .find(|bond| bond.id == bond_id && (bond.order == 1 || bond.order == 2))?;
         let begin = entry
             .fragment
             .nodes
@@ -522,6 +566,14 @@ impl Engine {
             });
         }
         out
+    }
+}
+
+fn opposite_double_bond_placement(placement: DoubleBondPlacement) -> DoubleBondPlacement {
+    match placement {
+        DoubleBondPlacement::Left => DoubleBondPlacement::Right,
+        DoubleBondPlacement::Right => DoubleBondPlacement::Left,
+        DoubleBondPlacement::Center => DoubleBondPlacement::Right,
     }
 }
 

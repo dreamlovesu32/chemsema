@@ -32,8 +32,8 @@ Chemcore 的编辑能力从现在开始以 Rust 核心为准。Web、Windows、i
 - 端点点击按 120 度延伸
 - 拖拽时固定键长并做角度吸附
 - WASM API 输出当前 `chemcore.json` 和 overlay 状态
-- 双键工具下的键中心聚焦
-- 点击单键中心转换为偏置双键，默认写入 `double.placement = left/right`
+- 键工具下的键中心聚焦
+- 单键按钮状态下点击键中心循环：偏置双键、居中等长双键、另一侧偏置双键
 - 选择单个端点或键
 - 删除当前选择
 - 基于文档快照的 undo/redo 骨架

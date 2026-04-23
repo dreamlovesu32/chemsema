@@ -176,7 +176,7 @@ fn select_delete_and_undo_redo_round_trip() {
 }
 
 #[test]
-fn double_bond_tool_focuses_bond_center_and_converts_to_side_double() {
+fn bond_tool_focuses_bond_center_and_cycles_double_styles() {
     let mut engine = Engine::new();
     engine.set_tool_state(bond_tool());
     engine.pointer_down(PointerEvent {
@@ -198,11 +198,6 @@ fn double_bond_tool_focuses_bond_center_and_converts_to_side_double() {
         x: 336.0,
         y: 260.0,
         button: Some(0),
-    });
-
-    engine.set_tool_state(ToolState {
-        active_tool: Tool::Bond,
-        bond_variant: BondVariant::Double,
     });
     engine.pointer_move(PointerEvent {
         x: 318.0,
@@ -249,4 +244,28 @@ fn double_bond_tool_focuses_bond_center_and_converts_to_side_double() {
         primitive,
         RenderPrimitive::Polygon { points, .. } if points.len() == 4
     )));
+
+    engine.pointer_down(PointerEvent {
+        x: 318.0,
+        y: 260.0,
+        button: Some(0),
+    });
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let bond = &entry.fragment.bonds[0];
+    assert_eq!(
+        bond.double.as_ref().map(|double| double.placement),
+        Some(DoubleBondPlacement::Center),
+    );
+
+    engine.pointer_down(PointerEvent {
+        x: 318.0,
+        y: 260.0,
+        button: Some(0),
+    });
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let bond = &entry.fragment.bonds[0];
+    assert_eq!(
+        bond.double.as_ref().map(|double| double.placement),
+        Some(DoubleBondPlacement::Left),
+    );
 }
