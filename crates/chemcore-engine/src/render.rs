@@ -2468,13 +2468,8 @@ fn render_stereo_bond(
                 stroke_width,
                 !contact_kernel.uses_endpoint(&bond.id, &bond.end),
             );
-            push_bond_polygon(out, &bond.id, points, stroke, stroke, 0.0, object_id.clone());
-            for knockout in compute_fragment_hashed_wedge_knockout_polygons(
-                start,
-                end,
-                if end_has_label { SOLID_WEDGE_END_INSET } else { 0.0 },
-                stroke_width,
-            ) {
+            push_bond_polygon(out, &bond.id, points.clone(), stroke, stroke, 0.0, object_id.clone());
+            for knockout in compute_fragment_hashed_wedge_knockout_polygons(&points, stroke_width) {
                 push_knockout_polygon(out, knockout, object_id.clone());
             }
         }
@@ -2492,13 +2487,8 @@ fn render_stereo_bond(
                 stroke_width,
                 !contact_kernel.uses_endpoint(&bond.id, &bond.begin),
             );
-            push_bond_polygon(out, &bond.id, points, stroke, stroke, 0.0, object_id.clone());
-            for knockout in compute_fragment_hashed_wedge_knockout_polygons(
-                end,
-                start,
-                if begin_has_label { SOLID_WEDGE_END_INSET } else { 0.0 },
-                stroke_width,
-            ) {
+            push_bond_polygon(out, &bond.id, points.clone(), stroke, stroke, 0.0, object_id.clone());
+            for knockout in compute_fragment_hashed_wedge_knockout_polygons(&points, stroke_width) {
                 push_knockout_polygon(out, knockout, object_id.clone());
             }
         }
@@ -2607,11 +2597,27 @@ fn compute_fragment_solid_wedge_points(
         bond.begin.as_str()
     };
     let start_retreat = contact_kernel.endpoint_retreat(&bond.id, narrow_node_id);
-    let end_retreat = if is_hashed_wedge_bond(bond) {
+    let mut end_retreat = if is_hashed_wedge_bond(bond) {
         0.0
     } else {
         contact_kernel.endpoint_retreat(&bond.id, wide_node_id)
     };
+    if is_hashed_wedge_bond(bond) && allow_endpoint_contacts {
+        end_retreat = end_retreat.max(
+            endpoint_retreat_against_center_double_outer_line(
+                object,
+                bonds,
+                node_map,
+                bond,
+                wide_node_id,
+                end,
+                Vector::new(start.x - end.x, start.y - end.y).normalized(),
+                solid_wedge_half_width(stroke_width),
+                stroke_width,
+            )
+            .unwrap_or(0.0),
+        );
+    }
     let (start, end) = apply_segment_endpoint_retreats(start, end, start_retreat, end_retreat);
     let direction = Vector::new(end.x - start.x, end.y - start.y);
     let length = direction.length().max(1.0);
@@ -2643,23 +2649,6 @@ fn compute_fragment_solid_wedge_points(
     }
 
     if is_hashed_wedge_bond(bond) {
-        if allow_endpoint_contacts {
-            if let Some((join_plus, join_minus)) = hashed_wedge_cap_points_against_center_double_outer_line(
-                object,
-                bonds,
-                node_map,
-                bond,
-                wide_node_id,
-                tip_plus,
-                tip_minus,
-                end,
-                cap_plus,
-                cap_minus,
-                stroke_width,
-            ) {
-                return bond_polygon_from_endpoint_profiles(start_profile, vec![join_plus, join_minus]);
-            }
-        }
         return bond_polygon_from_endpoint_profiles(start_profile, vec![cap_plus, cap_minus]);
     }
 
@@ -2702,26 +2691,23 @@ fn compute_fragment_solid_wedge_points(
 }
 
 fn compute_fragment_hashed_wedge_knockout_polygons(
-    start: Point,
-    end: Point,
-    end_inset: f64,
+    polygon: &[Point],
     stroke_width: f64,
 ) -> Vec<Vec<Point>> {
-    let direction = Vector::new(end.x - start.x, end.y - start.y);
+    if polygon.len() != 4 {
+        return Vec::new();
+    }
+    let tip_plus = polygon[0];
+    let cap_plus = polygon[1];
+    let cap_minus = polygon[2];
+    let tip_minus = polygon[3];
+    let tip_center = midpoint(tip_plus, tip_minus);
+    let cap_center = midpoint(cap_plus, cap_minus);
+    let direction = Vector::new(cap_center.x - tip_center.x, cap_center.y - tip_center.y);
     let length = direction.length();
     if length <= EPSILON {
         return Vec::new();
     }
-    let unit = direction.normalized();
-    let normal = Vector::new(-unit.y, unit.x);
-    let width = solid_wedge_half_width(stroke_width);
-    let cap_inset = end_inset.min(length * 0.22);
-    let cap_center = Point::new(end.x - unit.x * cap_inset, end.y - unit.y * cap_inset);
-    let tip_half_width = solid_wedge_tip_half_width(stroke_width);
-    let tip_plus = Point::new(start.x + normal.x * tip_half_width, start.y + normal.y * tip_half_width);
-    let tip_minus = Point::new(start.x - normal.x * tip_half_width, start.y - normal.y * tip_half_width);
-    let cap_plus = Point::new(cap_center.x + normal.x * width, cap_center.y + normal.y * width);
-    let cap_minus = Point::new(cap_center.x - normal.x * width, cap_center.y - normal.y * width);
 
     let mut knockouts = Vec::new();
     for (gap_start, gap_end) in hashed_wedge_gap_intervals(length, stroke_width) {
@@ -2876,20 +2862,6 @@ fn bold_band_cap_points(
     let base_plus = Point::new(endpoint.x + normal.x * half_width, endpoint.y + normal.y * half_width);
     let base_minus = Point::new(endpoint.x - normal.x * half_width, endpoint.y - normal.y * half_width);
     if is_hash_bond(bond) {
-        if let Some(current) = boundary_lines_from_endpoint(endpoint, forward, half_width) {
-            if let Some((join_plus, join_minus)) = endpoint_join_points_against_center_double_outer_line(
-                object,
-                bonds,
-                node_map,
-                bond,
-                shared_node_id,
-                current,
-                forward,
-                stroke_width,
-            ) {
-                return (join_plus, join_minus);
-            }
-        }
         return (base_plus, base_minus);
     }
     if let Some(join_plus) = bold_edge_join_point(
@@ -3027,26 +2999,6 @@ fn solid_wedge_cap_points(
     cap_minus: Point,
     stroke_width: f64,
 ) -> Option<(Point, Point)> {
-    if matches!(
-        bond_stereo_kind(bond),
-        Some(BondStereoKind::HashedWedgeBegin | BondStereoKind::HashedWedgeEnd)
-    ) {
-        if let Some(join_points) = hashed_wedge_cap_points_against_center_double_outer_line(
-            object,
-            bonds,
-            node_map,
-            bond,
-            shared_node_id,
-            tip_plus,
-            tip_minus,
-            endpoint,
-            cap_plus,
-            cap_minus,
-            stroke_width,
-        ) {
-            return Some(join_points);
-        }
-    }
     if let Some(join_points) =
         wide_endpoint_join_points_against_main_lines(object, bonds, node_map, bond, shared_node_id, stroke_width)
     {
@@ -3558,7 +3510,7 @@ fn wide_endpoint_join_points_against_main_lines(
         ) else {
             continue;
         };
-        let Some(candidate) = paired_boundary_line_join_points(current, other) else {
+        let Some(candidate) = extended_boundary_line_join_points(current, other) else {
             continue;
         };
         if best.as_ref().is_none_or(|(_, best_score)| candidate.1 < *best_score) {
@@ -3802,7 +3754,17 @@ fn centered_double_outer_line_boundary_pair_for_direction(
         return None;
     }
     let center = main_bond_center_line_for_endpoint(object, node_map, bond, shared_node_id)?;
-    let line_side = main_contact_side(center.direction, reference_direction)?;
+    // Choose the centered-double child line by the bond's global axis rather than the
+    // endpoint-local axis. At `bond.end`, the local axis points back into the bond, which
+    // would flip the side test and make hash bonds / hashed wedges retreat to the wrong line.
+    let axis = if shared_node_id == bond.begin {
+        center.direction
+    } else if shared_node_id == bond.end {
+        Vector::new(-center.direction.x, -center.direction.y)
+    } else {
+        return None;
+    };
+    let line_side = main_contact_side(axis, reference_direction)?;
     centered_double_line_boundary_pair_for_endpoint(
         object,
         node_map,
@@ -3815,16 +3777,17 @@ fn centered_double_outer_line_boundary_pair_for_direction(
     .map(|(lines, _)| lines)
 }
 
-fn endpoint_join_points_against_center_double_outer_line(
+fn endpoint_retreat_against_center_double_outer_line(
     object: &SceneObject,
     bonds: &[Bond],
     node_map: &BTreeMap<&str, &Node>,
     bond: &Bond,
     shared_node_id: &str,
-    current: [LineGeometry; 2],
-    reference_direction: Vector,
+    endpoint: Point,
+    forward: Vector,
+    half_width: f64,
     stroke_width: f64,
-) -> Option<(Point, Point)> {
+) -> Option<f64> {
     let shared_node = node_map.get(shared_node_id).copied()?;
     if shared_node
         .label
@@ -3833,7 +3796,8 @@ fn endpoint_join_points_against_center_double_outer_line(
     {
         return None;
     }
-    let mut best: Option<([Point; 2], f64)> = None;
+    let current = boundary_lines_from_endpoint(endpoint, forward, half_width)?;
+    let mut best: Option<f64> = None;
     for other_bond in bonds {
         if other_bond.id == bond.id {
             continue;
@@ -3847,90 +3811,33 @@ fn endpoint_join_points_against_center_double_outer_line(
             node_map,
             other_bond,
             shared_node_id,
-            reference_direction,
+            forward,
             other_stroke_width,
         ) else {
             continue;
         };
-        let Some(candidate) = paired_boundary_line_join_points(current, other) else {
+        let Some((points, _)) = extended_boundary_line_join_points(current, other) else {
             continue;
         };
-        if best.as_ref().is_none_or(|(_, best_score)| candidate.1 < *best_score) {
-            best = Some(candidate);
+        let retreat = points
+            .into_iter()
+            .zip(current.into_iter())
+            .map(|(point, line)| {
+                let delta = Vector::new(point.x - line.point.x, point.y - line.point.y);
+                vector_dot(delta, line.direction).max(0.0)
+            })
+            .fold(0.0, f64::max);
+        if retreat <= EPSILON {
+            continue;
+        }
+        if best.is_none_or(|current_best| retreat < current_best) {
+            best = Some(retreat);
         }
     }
-    best.map(|(points, _)| (points[0], points[1]))
+    best
 }
 
 #[allow(clippy::too_many_arguments)]
-fn hashed_wedge_cap_points_against_center_double_outer_line(
-    object: &SceneObject,
-    bonds: &[Bond],
-    node_map: &BTreeMap<&str, &Node>,
-    bond: &Bond,
-    shared_node_id: &str,
-    tip_plus: Point,
-    tip_minus: Point,
-    endpoint: Point,
-    cap_plus: Point,
-    cap_minus: Point,
-    stroke_width: f64,
-) -> Option<(Point, Point)> {
-    let shared_node = node_map.get(shared_node_id).copied()?;
-    if shared_node
-        .label
-        .as_ref()
-        .is_some_and(|label| label.has_visible_text())
-    {
-        return None;
-    }
-    let tip_center = midpoint(tip_plus, tip_minus);
-    let reference_direction = Vector::new(tip_center.x - endpoint.x, tip_center.y - endpoint.y);
-    let current = [
-        LineGeometry {
-            point: tip_plus,
-            direction: Vector::new(cap_plus.x - tip_plus.x, cap_plus.y - tip_plus.y),
-            shared: endpoint,
-            length: endpoint.distance(tip_plus),
-            offset_distance: stroke_width * 0.5,
-        },
-        LineGeometry {
-            point: tip_minus,
-            direction: Vector::new(cap_minus.x - tip_minus.x, cap_minus.y - tip_minus.y),
-            shared: endpoint,
-            length: endpoint.distance(tip_minus),
-            offset_distance: stroke_width * 0.5,
-        },
-    ];
-    let mut best: Option<([Point; 2], f64)> = None;
-    for other_bond in bonds {
-        if other_bond.id == bond.id {
-            continue;
-        }
-        if other_bond.begin != shared_node_id && other_bond.end != shared_node_id {
-            continue;
-        }
-        let other_stroke_width = stroke_width.max(other_bond.stroke_width.max(VIEWER_BOND_STROKE));
-        let Some(other) = centered_double_outer_line_boundary_pair_for_direction(
-            object,
-            node_map,
-            other_bond,
-            shared_node_id,
-            reference_direction,
-            other_stroke_width,
-        ) else {
-            continue;
-        };
-        let Some(candidate) = extended_boundary_line_join_points(current, other) else {
-            continue;
-        };
-        if best.as_ref().is_none_or(|(_, best_score)| candidate.1 < *best_score) {
-            best = Some(candidate);
-        }
-    }
-    best.map(|(points, _)| (points[0], points[1]))
-}
-
 fn main_bond_center_line_for_endpoint(
     object: &SceneObject,
     node_map: &BTreeMap<&str, &Node>,
@@ -4371,8 +4278,43 @@ fn render_fragment_line_with_profiles(
 ) {
     let clipped_start = clip_point_out_of_box(start, end, start_box, 0.8);
     let clipped_end = clip_point_out_of_box(end, clipped_start, end_box, 0.8);
-    let start_retreat = contact_kernel.endpoint_retreat(&bond.id, &bond.begin);
-    let end_retreat = contact_kernel.endpoint_retreat(&bond.id, &bond.end);
+    let mut start_retreat = contact_kernel.endpoint_retreat(&bond.id, &bond.begin);
+    let mut end_retreat = contact_kernel.endpoint_retreat(&bond.id, &bond.end);
+    if is_hash_bond(bond) && line_weight == BondLineWeight::Bold && !dash_array.is_empty() {
+        let direction = Vector::new(clipped_end.x - clipped_start.x, clipped_end.y - clipped_start.y);
+        if direction.length() > EPSILON {
+            let unit = direction.normalized();
+            let half_width = line_weight_stroke_width(stroke_width, line_weight) * 0.5;
+            start_retreat = start_retreat.max(
+                endpoint_retreat_against_center_double_outer_line(
+                    object,
+                    bonds,
+                    node_map,
+                    bond,
+                    &bond.begin,
+                    clipped_start,
+                    unit,
+                    half_width,
+                    stroke_width,
+                )
+                .unwrap_or(0.0),
+            );
+            end_retreat = end_retreat.max(
+                endpoint_retreat_against_center_double_outer_line(
+                    object,
+                    bonds,
+                    node_map,
+                    bond,
+                    &bond.end,
+                    clipped_end,
+                    Vector::new(-unit.x, -unit.y),
+                    half_width,
+                    stroke_width,
+                )
+                .unwrap_or(0.0),
+            );
+        }
+    }
     let (clipped_start, clipped_end) =
         apply_segment_endpoint_retreats(clipped_start, clipped_end, start_retreat, end_retreat);
     let mut start_endpoint_profile = start_endpoint_profile_override.or_else(|| {

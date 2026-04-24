@@ -2,7 +2,7 @@
 
 Author: Jiajun Zhang
 
-Time range: 2026-04-24 00:28 to 2026-04-25 00:25, Asia/Shanghai
+Time range: 2026-04-24 00:28 to 2026-04-25 00:47, Asia/Shanghai
 
 ## Summary
 
@@ -10,7 +10,7 @@ The main outcome today was not another round of local fixes on top of the old bo
 
 Previously, main bonds, side lines, bold bonds, wedges, dashed bonds, and centered doubles all had partially separate contact rules. Many cases were held together by local heuristics, which is why the viewer could still show spikes, seams, wrong retreats, or preview/final mismatches even when individual cases looked close.
 
-Today we moved that layer onto a contour-driven Rust rendering path. Solid bonds are treated as polygons, bond contact is resolved through contour intersections, and drag preview now renders through the same `render_document` path as final placement. What the user sees while dragging is now much closer to the exact geometry that lands in the document.
+Today we moved that layer onto a contour-driven Rust rendering path. Solid bonds are treated as polygons, bond contact is resolved through contour intersections, and drag preview now renders through the same `render_document` path as final placement. The later refinements also settled the final centered-double rule for the hash family: both `hash bond` and `hashed wedge` keep their standard mother shapes and retreat axially instead of switching to slanted intersection caps.
 
 ## Bond Contact Kernel Rewrite
 
@@ -34,7 +34,7 @@ Several bond types were moved onto one shared geometry model today:
 - All solid bonds are handled as polygons rather than `line` primitives. A plain single bond and a bold bond are now the same geometry type with different widths.
 - Solid wedges are no longer treated as triangles. They now render as trapezoids with a very short narrow-end cap, which makes later contact and width handling fit the same polygon framework.
 - Dashed bonds no longer depend on SVG dash styling. They are built as solid mother polygons and then cut into segments with white knockout gaps.
-- Hash bonds and hashed wedges now follow the same idea: a bold mother shape sliced by denser white gaps, with equal black segment lengths and slightly flexible white spacing.
+- Hash bonds and hashed wedges now follow the same idea: a bold mother shape sliced by denser white gaps, with equal black segment lengths and white spacing allowed to vary within a tolerance before the segment count changes.
 
 This matters because contact rules no longer depend on whether a shape happened to be rendered as a line or a polygon. Once an object has explicit contours, contact can fall back to the same contour-intersection logic.
 
@@ -71,7 +71,12 @@ First, when they touch ordinary main-bond geometry, their mother outlines stay u
 - a `hash bond` remains a standard rectangle,
 - a `hashed wedge` remains a standard trapezoid.
 
-They no longer deform like solid bonds to actively fit neighboring geometry. The only intentional exception that remains is their centered-double behavior, where they retreat to the relevant outer reference line.
+They no longer deform like solid bonds to actively fit neighboring geometry. The later centered-double refinement settled the intended rule more explicitly:
+
+- `hash bond` keeps its rectangular cap and only retreats along its own axis,
+- `hashed wedge` also keeps a standard trapezoid and only retreats along its own axis,
+- the hashed wedge still changes shape when shortened because its wide-end width stays fixed while its length changes,
+- and both keep equal black segment lengths while allowing controlled white-gap variation.
 
 Second, in multi-bond nodes:
 
@@ -119,6 +124,8 @@ This round was also accepted through direct viewer interaction checks for:
 - three-way and higher-degree contacts,
 - side-double and centered-double edge cases,
 - hash bond and hashed wedge behavior against ordinary bonds, centered doubles, and multi-bond nodes,
+- the final “retreat without changing the mother shape” rule for hash-family bonds against centered doubles,
+- and hashed-wedge knockout spacing following the actual trapezoid after retreat,
 - and consistency between drag preview and final placement.
 
 ## Commit Timeline
@@ -126,6 +133,7 @@ This round was also accepted through direct viewer interaction checks for:
 | Commit | Summary |
 | --- | --- |
 | `1951a84` | Rewrote the bond contact rendering kernel and moved drag preview onto the same Rust render path. |
+| `387c2ab` | Added the bilingual developer log for 2026-04-25. |
 
 ## Remaining Risks and Next Steps
 

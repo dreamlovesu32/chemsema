@@ -256,16 +256,6 @@ fn point_lies_on_segment(
     dot <= length_squared + tolerance
 }
 
-fn point_lies_on_line(
-    point: chemcore_engine::Point,
-    from: chemcore_engine::Point,
-    to: chemcore_engine::Point,
-    tolerance: f64,
-) -> bool {
-    ((point.x - from.x) * (to.y - from.y) - (point.y - from.y) * (to.x - from.x)).abs()
-        <= tolerance
-}
-
 fn point_lies_on_polygon_boundary(
     point: chemcore_engine::Point,
     polygon: &[chemcore_engine::Point],
@@ -277,20 +267,6 @@ fn point_lies_on_polygon_boundary(
     (0..polygon.len()).any(|index| {
         let next = (index + 1) % polygon.len();
         point_lies_on_segment(point, polygon[index], polygon[next], tolerance)
-    })
-}
-
-fn point_lies_on_polygon_edge_line(
-    point: chemcore_engine::Point,
-    polygon: &[chemcore_engine::Point],
-    tolerance: f64,
-) -> bool {
-    if polygon.len() < 2 {
-        return false;
-    }
-    (0..polygon.len()).any(|index| {
-        let next = (index + 1) % polygon.len();
-        point_lies_on_line(point, polygon[index], polygon[next], tolerance)
     })
 }
 
@@ -1529,32 +1505,26 @@ fn render_document_retreats_hash_bond_mother_polygon_against_center_double_outer
     );
 
     let primitives = render_document(&document);
-    let polygons = object_bond_polygons_with_ids(&primitives);
-    let centered_double: Vec<_> = polygons
-        .iter()
-        .filter(|(bond_id, _)| bond_id == "b1")
-        .map(|(_, points)| points.clone())
-        .collect();
-    let hash_bond = polygons
-        .iter()
-        .find_map(|(bond_id, points)| (bond_id == "b2").then_some(points.clone()))
+    let hash_bond = object_bond_polygons_with_ids(&primitives)
+        .into_iter()
+        .find_map(|(bond_id, points)| (bond_id == "b2").then_some(points))
         .expect("hash bond polygon");
     let connected_end = closest_points_to_target(&hash_bond, chemcore_engine::Point::new(56.0, 40.0), 2);
+    let unit = chemcore_engine::Point::new(18.0, -28.0);
+    let unit_length = (unit.x * unit.x + unit.y * unit.y).sqrt();
+    let unit_x = unit.x / unit_length;
+    let unit_y = unit.y / unit_length;
+    let projections: Vec<_> = connected_end
+        .iter()
+        .map(|point| (point.x - 56.0) * unit_x + (point.y - 40.0) * unit_y)
+        .collect();
 
-    assert_eq!(centered_double.len(), 2);
     assert_eq!(connected_end.len(), 2);
-    assert_eq!(
-        centered_double
-            .iter()
-            .filter(|polygon| {
-                connected_end
-                    .iter()
-                    .all(|point| point_lies_on_polygon_edge_line(*point, polygon, 1.0e-4))
-            })
-            .count(),
-        1,
-        "{centered_double:?} {hash_bond:?}"
+    assert!(
+        (projections[0] - projections[1]).abs() <= 1.0e-4,
+        "{hash_bond:?} {projections:?}"
     );
+    assert!(projections.iter().all(|projection| *projection > 0.05), "{hash_bond:?} {projections:?}");
     assert!(object_knockout_polygons(&primitives).len() >= 1);
 }
 
@@ -1590,32 +1560,29 @@ fn render_document_retreats_hashed_wedge_mother_polygon_against_center_double_ou
     );
 
     let primitives = render_document(&document);
-    let polygons = object_bond_polygons_with_ids(&primitives);
-    let centered_double: Vec<_> = polygons
-        .iter()
-        .filter(|(bond_id, _)| bond_id == "b1")
-        .map(|(_, points)| points.clone())
-        .collect();
-    let hashed_wedge = polygons
-        .iter()
-        .find_map(|(bond_id, points)| (bond_id == "b2").then_some(points.clone()))
+    let hashed_wedge = object_bond_polygons_with_ids(&primitives)
+        .into_iter()
+        .find_map(|(bond_id, points)| (bond_id == "b2").then_some(points))
         .expect("hashed wedge polygon");
     let connected_end =
         closest_points_to_target(&hashed_wedge, chemcore_engine::Point::new(56.0, 40.0), 2);
+    let unit = chemcore_engine::Point::new(18.0, -28.0);
+    let unit_length = (unit.x * unit.x + unit.y * unit.y).sqrt();
+    let unit_x = unit.x / unit_length;
+    let unit_y = unit.y / unit_length;
+    let projections: Vec<_> = connected_end
+        .iter()
+        .map(|point| (point.x - 56.0) * unit_x + (point.y - 40.0) * unit_y)
+        .collect();
 
-    assert_eq!(centered_double.len(), 2);
     assert_eq!(connected_end.len(), 2);
-    assert_eq!(
-        centered_double
-            .iter()
-            .filter(|polygon| {
-                connected_end
-                    .iter()
-                    .all(|point| point_lies_on_polygon_edge_line(*point, polygon, 1.0e-4))
-            })
-            .count(),
-        1,
-        "{centered_double:?} {hashed_wedge:?}"
+    assert!(
+        (projections[0] - projections[1]).abs() <= 1.0e-4,
+        "{hashed_wedge:?} {projections:?}"
+    );
+    assert!(
+        projections.iter().all(|projection| *projection > 0.05),
+        "{hashed_wedge:?} {projections:?}"
     );
     assert!(object_knockout_polygons(&primitives).len() >= 1);
 }
@@ -1829,32 +1796,26 @@ fn render_document_retreats_hash_bond_against_solid_dashed_center_double_outer_l
     );
 
     let primitives = render_document(&document);
-    let polygons = object_bond_polygons_with_ids(&primitives);
-    let centered_double: Vec<_> = polygons
-        .iter()
-        .filter(|(bond_id, _)| bond_id == "b1")
-        .map(|(_, points)| points.clone())
-        .collect();
-    let hash_bond = polygons
-        .iter()
-        .find_map(|(bond_id, points)| (bond_id == "b2").then_some(points.clone()))
+    let hash_bond = object_bond_polygons_with_ids(&primitives)
+        .into_iter()
+        .find_map(|(bond_id, points)| (bond_id == "b2").then_some(points))
         .expect("hash bond polygon");
     let connected_end = closest_points_to_target(&hash_bond, chemcore_engine::Point::new(56.0, 40.0), 2);
+    let unit = chemcore_engine::Point::new(18.0, -28.0);
+    let unit_length = (unit.x * unit.x + unit.y * unit.y).sqrt();
+    let unit_x = unit.x / unit_length;
+    let unit_y = unit.y / unit_length;
+    let projections: Vec<_> = connected_end
+        .iter()
+        .map(|point| (point.x - 56.0) * unit_x + (point.y - 40.0) * unit_y)
+        .collect();
 
-    assert_eq!(centered_double.len(), 2);
     assert_eq!(connected_end.len(), 2);
-    assert_eq!(
-        centered_double
-            .iter()
-            .filter(|polygon| {
-                connected_end
-                    .iter()
-                    .all(|point| point_lies_on_polygon_edge_line(*point, polygon, 1.0e-4))
-            })
-            .count(),
-        1,
-        "{centered_double:?} {hash_bond:?}"
+    assert!(
+        (projections[0] - projections[1]).abs() <= 1.0e-4,
+        "{hash_bond:?} {projections:?}"
     );
+    assert!(projections.iter().all(|projection| *projection > 0.05), "{hash_bond:?} {projections:?}");
     assert!(object_knockout_polygons(&primitives).len() >= 1);
 }
 
@@ -1894,32 +1855,29 @@ fn render_document_retreats_hashed_wedge_against_double_dashed_center_double_out
     );
 
     let primitives = render_document(&document);
-    let polygons = object_bond_polygons_with_ids(&primitives);
-    let centered_double: Vec<_> = polygons
-        .iter()
-        .filter(|(bond_id, _)| bond_id == "b1")
-        .map(|(_, points)| points.clone())
-        .collect();
-    let hashed_wedge = polygons
-        .iter()
-        .find_map(|(bond_id, points)| (bond_id == "b2").then_some(points.clone()))
+    let hashed_wedge = object_bond_polygons_with_ids(&primitives)
+        .into_iter()
+        .find_map(|(bond_id, points)| (bond_id == "b2").then_some(points))
         .expect("hashed wedge polygon");
     let connected_end =
         closest_points_to_target(&hashed_wedge, chemcore_engine::Point::new(56.0, 40.0), 2);
+    let unit = chemcore_engine::Point::new(18.0, -28.0);
+    let unit_length = (unit.x * unit.x + unit.y * unit.y).sqrt();
+    let unit_x = unit.x / unit_length;
+    let unit_y = unit.y / unit_length;
+    let projections: Vec<_> = connected_end
+        .iter()
+        .map(|point| (point.x - 56.0) * unit_x + (point.y - 40.0) * unit_y)
+        .collect();
 
-    assert_eq!(centered_double.len(), 2);
     assert_eq!(connected_end.len(), 2);
-    assert_eq!(
-        centered_double
-            .iter()
-            .filter(|polygon| {
-                connected_end
-                    .iter()
-                    .all(|point| point_lies_on_polygon_edge_line(*point, polygon, 1.0e-4))
-            })
-            .count(),
-        1,
-        "{centered_double:?} {hashed_wedge:?}"
+    assert!(
+        (projections[0] - projections[1]).abs() <= 1.0e-4,
+        "{hashed_wedge:?} {projections:?}"
+    );
+    assert!(
+        projections.iter().all(|projection| *projection > 0.05),
+        "{hashed_wedge:?} {projections:?}"
     );
     assert!(object_knockout_polygons(&primitives).len() >= 1);
 }
