@@ -97,18 +97,18 @@ It does not yet include:
 - molecule-wide collision routing
 - Python bindings
 
-## Web Viewer Binding
+## Web Status
 
-The web viewer consumes the same C ABI through Emscripten:
+The glyph kernel is still available as a native / wasm geometry component, but the current web viewer no longer depends on a dedicated glyph-runtime wrapper in its main rendering path.
 
-- [viewer/glyph_kernel_runtime.js](../viewer/glyph_kernel_runtime.js) wraps the wasm module.
-- [viewer/chemcore_glyph_kernel.js](../viewer/chemcore_glyph_kernel.js) and `viewer/chemcore_glyph_kernel.wasm` are generated artifacts.
-- [viewer/app.js](../viewer/app.js) renders molecule labels from kernel placements and uses kernel background shapes for label debug and wedge retreat.
+- [viewer/app.js](../viewer/app.js) now consumes Rust core render primitives for document graphics, bonds, labels, and knockouts.
+- `npm run build:glyph-wasm` still builds the standalone glyph-kernel wasm for experiments, previews, and low-level validation.
+- The old `viewer/glyph_kernel_runtime.js` integration has been removed.
 
-Build the web binding with:
+Build the standalone wasm binding with:
 
 ```bash
 npm run build:glyph-wasm
 ```
 
-The old browser measurement implementation has been removed. The viewer no longer calls `getExtentOfChar`, `getBBox`, canvas glyph scanning, or the previous JS optical-contact modules for chemical label geometry.
+The old browser measurement implementation has been removed. The viewer no longer calls `getExtentOfChar`, `getBBox`, canvas glyph scanning, or the previous JS glyph-runtime path as the source of truth for chemical label geometry.

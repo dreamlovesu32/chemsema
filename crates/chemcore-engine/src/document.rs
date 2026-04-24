@@ -1,5 +1,6 @@
 use crate::{round2, Point};
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
 pub const DEFAULT_PAGE_WIDTH: f64 = 1200.0;
@@ -7,13 +8,20 @@ pub const DEFAULT_PAGE_HEIGHT: f64 = 800.0;
 pub const DEFAULT_BOND_LENGTH: f64 = 36.0;
 pub const DEFAULT_BOND_STROKE: f64 = 2.125;
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChemcoreDocument {
     pub format: FormatInfo,
     pub document: DocumentInfo,
-    pub styles: BTreeMap<String, Style>,
+    #[serde(default)]
+    pub styles: BTreeMap<String, Value>,
+    #[serde(default)]
     pub objects: Vec<SceneObject>,
+    #[serde(default)]
     pub resources: BTreeMap<String, Resource>,
 }
 
@@ -22,12 +30,13 @@ impl ChemcoreDocument {
         let mut styles = BTreeMap::new();
         styles.insert(
             "style_molecule_default".to_string(),
-            Style::Molecule {
-                stroke: "#000000".to_string(),
-                stroke_width: DEFAULT_BOND_STROKE,
-                font_family: "Arial".to_string(),
-                font_size: 11.0,
-            },
+            json!({
+                "kind": "molecule",
+                "stroke": "#000000",
+                "strokeWidth": DEFAULT_BOND_STROKE,
+                "fontFamily": "Arial",
+                "fontSize": 11.0
+            }),
         );
 
         let mut resources = BTreeMap::new();
@@ -36,7 +45,8 @@ impl ChemcoreDocument {
             Resource {
                 resource_type: "molecule_fragment2d".to_string(),
                 encoding: "chemcore.molecule.fragment2d".to_string(),
-                data: MoleculeFragment::blank(),
+                data: ResourceData::Fragment(MoleculeFragment::blank()),
+                meta: Value::Null,
             },
         );
 
@@ -53,6 +63,7 @@ impl ChemcoreDocument {
                     height: DEFAULT_PAGE_HEIGHT,
                     background: "#ffffff".to_string(),
                 },
+                meta: Value::Null,
             },
             styles,
             objects: vec![SceneObject {
@@ -63,10 +74,12 @@ impl ChemcoreDocument {
                 locked: false,
                 z_index: 10,
                 transform: Transform::identity(),
-                style_ref: "style_molecule_default".to_string(),
-                payload: MoleculeObjectPayload {
-                    resource_ref: "mol_editor".to_string(),
-                    bbox: [0.0, 0.0, DEFAULT_PAGE_WIDTH, DEFAULT_PAGE_HEIGHT],
+                style_ref: Some("style_molecule_default".to_string()),
+                meta: Value::Null,
+                payload: ObjectPayload {
+                    resource_ref: Some("mol_editor".to_string()),
+                    bbox: Some([0.0, 0.0, DEFAULT_PAGE_WIDTH, DEFAULT_PAGE_HEIGHT]),
+                    extra: BTreeMap::new(),
                 },
             }],
             resources,
@@ -78,11 +91,15 @@ impl ChemcoreDocument {
             .objects
             .iter()
             .position(|object| object.object_type == "molecule")?;
-        let resource_ref = self.objects[object_index].payload.resource_ref.clone();
+        let resource_ref = self.objects[object_index]
+            .payload
+            .resource_ref
+            .clone()?;
         let resource = self.resources.get_mut(&resource_ref)?;
+        let fragment = resource.data.as_fragment_mut()?;
         Some(EditableFragmentMut {
             object: &mut self.objects[object_index],
-            fragment: &mut resource.data,
+            fragment,
         })
     }
 
@@ -91,10 +108,12 @@ impl ChemcoreDocument {
             .objects
             .iter()
             .find(|object| object.object_type == "molecule")?;
-        let resource = self.resources.get(&object.payload.resource_ref)?;
+        let resource_ref = object.payload.resource_ref.as_ref()?;
+        let resource = self.resources.get(resource_ref)?;
+        let fragment = resource.data.as_fragment()?;
         Some(EditableFragment {
             object,
-            fragment: &resource.data,
+            fragment,
         })
     }
 }
@@ -110,6 +129,8 @@ pub struct DocumentInfo {
     pub id: String,
     pub title: String,
     pub page: Page,
+    #[serde(default)]
+    pub meta: Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -120,30 +141,27 @@ pub struct Page {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "kind")]
-pub enum Style {
-    #[serde(rename = "molecule", rename_all = "camelCase")]
-    Molecule {
-        stroke: String,
-        stroke_width: f64,
-        font_family: String,
-        font_size: f64,
-    },
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SceneObject {
     pub id: String,
     #[serde(rename = "type")]
     pub object_type: String,
+    #[serde(default)]
     pub name: String,
+    #[serde(default = "default_true")]
     pub visible: bool,
+    #[serde(default)]
     pub locked: bool,
+    #[serde(default)]
     pub z_index: i32,
+    #[serde(default)]
     pub transform: Transform,
-    pub style_ref: String,
-    pub payload: MoleculeObjectPayload,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub style_ref: Option<String>,
+    #[serde(default)]
+    pub meta: Value,
+    #[serde(default)]
+    pub payload: ObjectPayload,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -163,11 +181,21 @@ impl Transform {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+impl Default for Transform {
+    fn default() -> Self {
+        Self::identity()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
-pub struct MoleculeObjectPayload {
-    pub resource_ref: String,
-    pub bbox: [f64; 4],
+pub struct ObjectPayload {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resource_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bbox: Option<[f64; 4]>,
+    #[serde(flatten, default)]
+    pub extra: BTreeMap<String, Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -176,15 +204,52 @@ pub struct Resource {
     #[serde(rename = "type")]
     pub resource_type: String,
     pub encoding: String,
-    pub data: MoleculeFragment,
+    pub data: ResourceData,
+    #[serde(default)]
+    pub meta: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ResourceData {
+    Fragment(MoleculeFragment),
+    Text(String),
+    Json(Value),
+}
+
+impl ResourceData {
+    pub fn as_fragment(&self) -> Option<&MoleculeFragment> {
+        match self {
+            Self::Fragment(fragment) => Some(fragment),
+            _ => None,
+        }
+    }
+
+    pub fn as_fragment_mut(&mut self) -> Option<&mut MoleculeFragment> {
+        match self {
+            Self::Fragment(fragment) => Some(fragment),
+            _ => None,
+        }
+    }
+
+    pub fn as_text(&self) -> Option<&str> {
+        match self {
+            Self::Text(text) => Some(text.as_str()),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MoleculeFragment {
     pub schema: String,
     pub bbox: [f64; 4],
+    #[serde(default)]
     pub nodes: Vec<Node>,
+    #[serde(default)]
     pub bonds: Vec<Bond>,
+    #[serde(default)]
+    pub meta: Value,
 }
 
 impl MoleculeFragment {
@@ -194,6 +259,7 @@ impl MoleculeFragment {
             bbox: [0.0, 0.0, DEFAULT_PAGE_WIDTH, DEFAULT_PAGE_HEIGHT],
             nodes: Vec::new(),
             bonds: Vec::new(),
+            meta: Value::Null,
         }
     }
 }
@@ -207,6 +273,14 @@ pub struct Node {
     pub position: [f64; 2],
     pub charge: i32,
     pub num_hydrogens: u8,
+    #[serde(default)]
+    pub is_external_connection_point: bool,
+    #[serde(default)]
+    pub is_placeholder: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<NodeLabel>,
+    #[serde(default)]
+    pub meta: Value,
 }
 
 impl Node {
@@ -218,12 +292,83 @@ impl Node {
             position: [round2(point.x), round2(point.y)],
             charge: 0,
             num_hydrogens: 0,
+            is_external_connection_point: false,
+            is_placeholder: false,
+            label: None,
+            meta: Value::Null,
         }
     }
 
     pub fn point(&self) -> Point {
         Point::new(self.position[0], self.position[1])
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NodeLabel {
+    pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_text: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub position: Option<[f64; 2]>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub box_field: Option<[f64; 4]>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub runs: Vec<LabelRun>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub line_runs: Vec<Vec<LabelRun>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub lines: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub align: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layout: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attachment: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anchor: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font_family: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fill: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font_size: Option<f64>,
+    #[serde(default, rename = "box", skip_serializing_if = "Option::is_none")]
+    pub box_value: Option<[f64; 4]>,
+    #[serde(default)]
+    pub meta: Value,
+}
+
+impl NodeLabel {
+    pub fn bbox(&self) -> Option<[f64; 4]> {
+        self.box_value.or(self.box_field)
+    }
+
+    pub fn has_visible_text(&self) -> bool {
+        !self.text.trim().is_empty()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct LabelRun {
+    #[serde(default)]
+    pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font_family: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font_size: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fill: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font_weight: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font_style: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub script: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub face: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -235,12 +380,68 @@ pub struct Bond {
     pub order: u8,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub double: Option<DoubleBond>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stereo: Option<BondStereo>,
+    #[serde(default)]
     pub stroke_width: f64,
+    #[serde(default)]
+    pub line_styles: BondLineStyles,
+    #[serde(default)]
+    pub line_weights: BondLineWeights,
+    #[serde(default)]
+    pub meta: Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DoubleBond {
     pub placement: DoubleBondPlacement,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub center_exit_side: Option<DoubleBondPlacement>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct BondLineStyles {
+    #[serde(default)]
+    pub main: BondLinePattern,
+    #[serde(default)]
+    pub left: BondLinePattern,
+    #[serde(default)]
+    pub right: BondLinePattern,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct BondLineWeights {
+    #[serde(default)]
+    pub main: BondLineWeight,
+    #[serde(default)]
+    pub left: BondLineWeight,
+    #[serde(default)]
+    pub right: BondLineWeight,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum BondLinePattern {
+    #[default]
+    Solid,
+    Dashed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum BondLineWeight {
+    #[default]
+    Normal,
+    Bold,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BondStereo {
+    pub kind: String,
+    pub wide_end: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -293,6 +494,6 @@ impl EditableFragmentMut<'_> {
             max_y = max_y.max(node.position[1] + 8.0);
         }
         self.fragment.bbox = [0.0, 0.0, round2(max_x), round2(max_y)];
-        self.object.payload.bbox = self.fragment.bbox;
+        self.object.payload.bbox = Some(self.fragment.bbox);
     }
 }

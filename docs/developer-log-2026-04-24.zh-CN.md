@@ -141,7 +141,7 @@ glyph 相关验证覆盖：
 - `scripts/glyph_kernel_reference.py`
 - `cpp/chemcore_glyph_kernel/tools/chemcore_glyph_svg_demo.cpp`
 - `docs/assets/viewer` 下的预览图；
-- `viewer/glyph_kernel_runtime.js` 的前台集成。
+- `npm run build:glyph-wasm` 的独立 wasm 构建。
 
 关键结果是：viewer 不再把浏览器 `getBBox`、`getExtentOfChar` 或 canvas 扫描当成化学标签几何的权威来源。
 

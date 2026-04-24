@@ -2,6 +2,7 @@ mod document;
 mod editing;
 mod engine;
 mod geometry;
+mod legacy_mol;
 mod render;
 
 pub use document::*;

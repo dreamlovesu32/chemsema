@@ -24,31 +24,45 @@ impl WasmEngine {
     }
 
     #[wasm_bindgen(js_name = pointerMove)]
-    pub fn pointer_move(&mut self, x: f64, y: f64) {
-        self.inner.pointer_move(PointerEvent { x, y, button: None });
+    pub fn pointer_move(&mut self, x: f64, y: f64, alt_key: bool) {
+        self.inner.pointer_move(PointerEvent {
+            x,
+            y,
+            button: None,
+            alt_key,
+        });
     }
 
     #[wasm_bindgen(js_name = pointerDown)]
-    pub fn pointer_down(&mut self, x: f64, y: f64) {
+    pub fn pointer_down(&mut self, x: f64, y: f64, alt_key: bool) {
         self.inner.pointer_down(PointerEvent {
             x,
             y,
             button: Some(0),
+            alt_key,
         });
     }
 
     #[wasm_bindgen(js_name = pointerUp)]
-    pub fn pointer_up(&mut self, x: f64, y: f64) {
+    pub fn pointer_up(&mut self, x: f64, y: f64, alt_key: bool) {
         self.inner.pointer_up(PointerEvent {
             x,
             y,
             button: Some(0),
+            alt_key,
         });
     }
 
     #[wasm_bindgen(js_name = clearInteraction)]
     pub fn clear_interaction(&mut self) {
         self.inner.clear_interaction();
+    }
+
+    #[wasm_bindgen(js_name = loadDocumentJson)]
+    pub fn load_document_json(&mut self, json: &str) -> Result<(), JsValue> {
+        self.inner
+            .load_document_json(json)
+            .map_err(|error| JsValue::from_str(&error))
     }
 
     pub fn undo(&mut self) -> bool {

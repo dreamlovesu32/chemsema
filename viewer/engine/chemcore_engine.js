@@ -56,6 +56,17 @@ export class WasmEngine {
             wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
         }
     }
+    /**
+     * @param {string} json
+     */
+    loadDocumentJson(json) {
+        const ptr0 = passStringToWasm0(json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmengine_loadDocumentJson(this.__wbg_ptr, ptr0, len0);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
     constructor() {
         const ret = wasm.wasmengine_new();
         this.__wbg_ptr = ret >>> 0;
@@ -65,23 +76,26 @@ export class WasmEngine {
     /**
      * @param {number} x
      * @param {number} y
+     * @param {boolean} alt_key
      */
-    pointerDown(x, y) {
-        wasm.wasmengine_pointerDown(this.__wbg_ptr, x, y);
+    pointerDown(x, y, alt_key) {
+        wasm.wasmengine_pointerDown(this.__wbg_ptr, x, y, alt_key);
     }
     /**
      * @param {number} x
      * @param {number} y
+     * @param {boolean} alt_key
      */
-    pointerMove(x, y) {
-        wasm.wasmengine_pointerMove(this.__wbg_ptr, x, y);
+    pointerMove(x, y, alt_key) {
+        wasm.wasmengine_pointerMove(this.__wbg_ptr, x, y, alt_key);
     }
     /**
      * @param {number} x
      * @param {number} y
+     * @param {boolean} alt_key
      */
-    pointerUp(x, y) {
-        wasm.wasmengine_pointerUp(this.__wbg_ptr, x, y);
+    pointerUp(x, y, alt_key) {
+        wasm.wasmengine_pointerUp(this.__wbg_ptr, x, y, alt_key);
     }
     /**
      * @returns {boolean}

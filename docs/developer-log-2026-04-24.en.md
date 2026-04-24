@@ -141,7 +141,7 @@ The glyph work is covered by:
 - `scripts/glyph_kernel_reference.py`
 - `cpp/chemcore_glyph_kernel/tools/chemcore_glyph_svg_demo.cpp`
 - generated preview assets under `docs/assets/viewer`
-- viewer integration through `viewer/glyph_kernel_runtime.js`
+- standalone glyph-kernel wasm build through `npm run build:glyph-wasm`
 
 The important conceptual validation is that the viewer no longer depends on browser `getBBox`, `getExtentOfChar`, or canvas scanning as the source of truth for chemical label geometry.
 

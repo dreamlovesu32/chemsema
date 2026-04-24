@@ -67,7 +67,7 @@ pub struct ToolState {
 impl Default for ToolState {
     fn default() -> Self {
         Self {
-            active_tool: Tool::Select,
+            active_tool: Tool::Bond,
             bond_variant: BondVariant::Single,
         }
     }
@@ -79,6 +79,8 @@ pub struct PointerEvent {
     pub y: f64,
     #[serde(default)]
     pub button: Option<u8>,
+    #[serde(default)]
+    pub alt_key: bool,
 }
 
 impl PointerEvent {
@@ -141,6 +143,7 @@ pub struct DragState {
     pub anchor: BondAnchor,
     pub start: Point,
     pub has_dragged: bool,
+    pub free_length: bool,
     pub preview_end: Option<Point>,
     pub target: Option<BondAnchor>,
 }
@@ -159,16 +162,12 @@ pub struct BondPreview {
     pub end: Point,
 }
 
-pub fn can_draw_single_bond(tool_state: &ToolState) -> bool {
-    tool_state.active_tool == Tool::Bond && tool_state.bond_variant == BondVariant::Single
+pub fn can_draw_bond(tool_state: &ToolState) -> bool {
+    tool_state.active_tool == Tool::Bond
 }
 
 pub fn can_focus_bond_center(tool_state: &ToolState) -> bool {
     tool_state.active_tool == Tool::Bond
-        && matches!(
-            tool_state.bond_variant,
-            BondVariant::Single | BondVariant::Double
-        )
 }
 
 pub fn can_focus_endpoint(tool_state: &ToolState) -> bool {
@@ -246,7 +245,7 @@ pub fn hit_test_bond_center(
     let entry = document.editable_fragment()?;
     let mut best: Option<BondCenterHit> = None;
     for bond in &entry.fragment.bonds {
-        if bond.order != 1 && bond.order != 2 {
+        if bond.order < 1 {
             continue;
         }
         let Some(begin) = entry
@@ -343,7 +342,11 @@ pub fn adjacent_directions(entry: &EditableFragment<'_>, node_id: &str) -> Vec<f
     out
 }
 
-pub fn default_angle_for_anchor(document: &ChemcoreDocument, anchor: &BondAnchor) -> f64 {
+fn default_angle_for_anchor_with_single_neighbor_delta(
+    document: &ChemcoreDocument,
+    anchor: &BondAnchor,
+    single_neighbor_delta: f64,
+) -> f64 {
     let Some(node_id) = &anchor.node_id else {
         return 0.0;
     };
@@ -354,8 +357,8 @@ pub fn default_angle_for_anchor(document: &ChemcoreDocument, anchor: &BondAnchor
     match directions.len() {
         0 => 0.0,
         1 => {
-            let a = normalize_angle(directions[0] + 120.0);
-            let b = normalize_angle(directions[0] - 120.0);
+            let a = normalize_angle(directions[0] + single_neighbor_delta);
+            let b = normalize_angle(directions[0] - single_neighbor_delta);
             let da = direction_from_angle(a);
             let db = direction_from_angle(b);
             if (da.y - db.y).abs() > 1.0e-9 {
@@ -372,6 +375,33 @@ pub fn default_angle_for_anchor(document: &ChemcoreDocument, anchor: &BondAnchor
         }
         _ => largest_angular_gap(&directions).center,
     }
+}
+
+pub fn default_angle_for_anchor(document: &ChemcoreDocument, anchor: &BondAnchor) -> f64 {
+    default_angle_for_anchor_with_single_neighbor_delta(document, anchor, 120.0)
+}
+
+pub fn default_angle_for_anchor_for_variant(
+    document: &ChemcoreDocument,
+    anchor: &BondAnchor,
+    bond_variant: BondVariant,
+) -> f64 {
+    if bond_variant == BondVariant::Triple {
+        if let Some(node_id) = &anchor.node_id {
+            if let Some(entry) = document.editable_fragment() {
+                let directions = adjacent_directions(&entry, node_id);
+                if directions.len() == 1 {
+                    return normalize_angle(directions[0] + 180.0);
+                }
+            }
+        }
+    }
+    let single_neighbor_delta = if bond_variant == BondVariant::Triple {
+        180.0
+    } else {
+        120.0
+    };
+    default_angle_for_anchor_with_single_neighbor_delta(document, anchor, single_neighbor_delta)
 }
 
 pub fn snapped_angle_for_anchor(

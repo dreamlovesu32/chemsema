@@ -54,8 +54,8 @@ button {
 
 .editor-shell {
   display: grid;
-  grid-template-columns: 48px minmax(0, 1fr);
-  grid-template-rows: 72px minmax(0, 1fr);
+  grid-template-columns: 60px minmax(0, 1fr);
+  grid-template-rows: 94px minmax(0, 1fr);
   width: 100vw;
   height: 100vh;
   background: var(--canvas);
@@ -65,7 +65,7 @@ button {
   grid-column: 1 / -1;
   grid-row: 1;
   display: grid;
-  grid-template-rows: 40px 32px;
+  grid-template-rows: 52px 42px;
   border-bottom: 1px solid var(--line-strong);
   background: var(--chrome);
   user-select: none;
@@ -117,8 +117,8 @@ button {
 }
 
 .icon-button {
-  width: 31px;
-  height: 31px;
+  width: 43px;
+  height: 43px;
 }
 
 .icon-button:hover,
@@ -149,8 +149,8 @@ button {
 .icon-button svg,
 .tool-button svg,
 .secondary-button svg {
-  width: 20px;
-  height: 20px;
+  width: 30px;
+  height: 30px;
   overflow: visible;
 }
 
@@ -188,7 +188,7 @@ button {
 
 .zoom-input {
   width: 58px;
-  height: 28px;
+  height: 36px;
   border: 1px solid var(--line-strong);
   border-radius: 6px;
   padding: 0 7px;
@@ -218,8 +218,8 @@ button {
 }
 
 .tool-button {
-  width: 38px;
-  height: 34px;
+  width: 50px;
+  height: 46px;
 }
 
 .tool-button.is-active {
@@ -229,8 +229,8 @@ button {
 }
 
 .secondary-button {
-  width: 29px;
-  height: 25px;
+  width: 41px;
+  height: 37px;
   flex: 0 0 auto;
   color: var(--ink);
 }
@@ -301,6 +301,7 @@ button {
 .canvas-panel {
   grid-column: 2;
   grid-row: 2;
+  position: relative;
   min-width: 0;
   min-height: 0;
   background: var(--canvas);
@@ -334,10 +335,14 @@ button {
   font-size: 12px;
 }
 
-.mol-bond {
-  stroke: #000000;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+.mol-bond-stroked {
+  stroke-linecap: butt;
+  stroke-linejoin: miter;
+}
+
+.mol-bond-filled {
+  stroke: none;
+  stroke-width: 0;
 }
 
 .mol-atom-label {
@@ -350,12 +355,6 @@ button {
 
 .mol-group-label {
   font-style: italic;
-}
-
-.debug-box {
-  fill: none;
-  stroke: rgba(47, 111, 237, 0.25);
-  stroke-dasharray: 5 4;
 }
 
 .label-knockout-shape {
@@ -381,12 +380,6 @@ button {
   stroke: rgba(47, 111, 237, 0.72);
   stroke-width: 1.2;
   filter: drop-shadow(0 0 4px rgba(47, 111, 237, 0.35));
-}
-
-.editor-bond-preview {
-  stroke: rgba(0, 0, 0, 0.72);
-  stroke-linecap: round;
-  stroke-dasharray: 2.5 2;
 }
 
 .editor-selection-bond {
