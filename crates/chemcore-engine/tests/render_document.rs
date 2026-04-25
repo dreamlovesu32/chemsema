@@ -116,6 +116,20 @@ fn object_knockout_polygons(primitives: &[RenderPrimitive]) -> Vec<Vec<chemcore_
         .collect()
 }
 
+fn object_knockout_rect_count(primitives: &[RenderPrimitive]) -> usize {
+    primitives
+        .iter()
+        .filter(|primitive| {
+            matches!(
+                primitive,
+                RenderPrimitive::Rect { role, object_id, .. }
+                    if *role == RenderRole::DocumentKnockout
+                        && object_id.as_deref() == Some("obj_molecule_001")
+            )
+        })
+        .count()
+}
+
 fn object_bond_polygons_with_ids(
     primitives: &[RenderPrimitive],
 ) -> Vec<(String, Vec<chemcore_engine::Point>)> {
@@ -803,6 +817,58 @@ fn render_document_emits_fragment_label_text_and_knockout() {
     assert_eq!(label_lines[0].2[0].text, "H");
     assert_eq!(label_lines[1].2[0].text, "N");
     assert!(label_lines[1].1 > label_lines[0].1);
+}
+
+#[test]
+fn render_document_uses_label_glyph_polygons_for_knockout_and_endpoint_clipping() {
+    let document = fragment_document(
+        json!([
+            {
+                "id": "n1",
+                "element": "N",
+                "atomicNumber": 7,
+                "position": [19.0, 20.0],
+                "charge": 0,
+                "numHydrogens": 0,
+                "label": {
+                    "text": "NH",
+                    "position": [18.0, 20.0],
+                    "box": [18.0, 16.0, 25.0, 24.0],
+                    "glyphPolygons": [
+                        [[18.0, 17.0], [20.0, 17.0], [20.0, 23.0], [18.0, 23.0]],
+                        [[21.0, 17.0], [23.0, 17.0], [23.0, 23.0], [21.0, 23.0]]
+                    ]
+                }
+            },
+            {
+                "id": "n2",
+                "element": "C",
+                "atomicNumber": 6,
+                "position": [60.0, 20.0],
+                "charge": 0,
+                "numHydrogens": 0
+            }
+        ]),
+        json!([
+            {
+                "id": "b1",
+                "begin": "n1",
+                "end": "n2",
+                "order": 1,
+                "strokeWidth": 0.85
+            }
+        ]),
+    );
+
+    let primitives = render_document(&document);
+    let knockouts = object_knockout_polygons(&primitives);
+    assert_eq!(knockouts.len(), 2, "{knockouts:?}");
+    assert_eq!(object_knockout_rect_count(&primitives), 0);
+
+    let centerlines = object_bond_centerlines(&primitives);
+    assert_eq!(centerlines.len(), 1, "{centerlines:?}");
+    let start_x = centerlines[0].0.x.min(centerlines[0].1.x);
+    assert!((start_x - 23.0).abs() <= 1.0e-3, "{centerlines:?}");
 }
 
 #[test]

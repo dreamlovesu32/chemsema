@@ -22,11 +22,13 @@ pub(super) fn render_fragment_bond(
     let mut finish = world_point(object, end);
     let begin_box = label_box_world(begin, object);
     let end_box = label_box_world(end, object);
+    let begin_polygons = label_polygons_world(begin, object);
+    let end_polygons = label_polygons_world(end, object);
     let begin_has_label = begin.label.as_ref().is_some_and(|label| label.has_visible_text());
     let end_has_label = end.label.as_ref().is_some_and(|label| label.has_visible_text());
 
-    start = clip_point_out_of_box(start, finish, begin_box, 1.8);
-    finish = clip_point_out_of_box(finish, start, end_box, 1.8);
+    start = clip_point_out_of_label_geometry(start, finish, begin_box, &begin_polygons, 1.8);
+    finish = clip_point_out_of_label_geometry(finish, start, end_box, &end_polygons, 1.8);
 
     if let Some(stereo) = bond_stereo_kind(bond) {
         render_stereo_bond(

@@ -361,22 +361,29 @@ pub(super) fn render_fragment_label(
             .and_then(|style_ref| document.styles.get(style_ref))
             .and_then(|style| style_string(style, "fill"))
     });
-    if let Some(box_value) = label_box_world(node, object) {
-        out.push(RenderPrimitive::Rect {
-            role: RenderRole::DocumentKnockout,
-            object_id: object_id.clone(),
-            x: box_value.x1,
-            y: box_value.y1,
-            width: (box_value.x2 - box_value.x1).max(0.0),
-            height: (box_value.y2 - box_value.y1).max(0.0),
-            fill: Some(document.document.page.background.clone()),
-            stroke: None,
-            stroke_width: 0.0,
-            rx: None,
-            ry: None,
-            dash_array: Vec::new(),
-            fill_gradient: None,
-        });
+    let knockout_polygons = label_polygons_world(node, object);
+    if knockout_polygons.is_empty() {
+        if let Some(box_value) = label_box_world(node, object) {
+            out.push(RenderPrimitive::Rect {
+                role: RenderRole::DocumentKnockout,
+                object_id: object_id.clone(),
+                x: box_value.x1,
+                y: box_value.y1,
+                width: (box_value.x2 - box_value.x1).max(0.0),
+                height: (box_value.y2 - box_value.y1).max(0.0),
+                fill: Some(document.document.page.background.clone()),
+                stroke: None,
+                stroke_width: 0.0,
+                rx: None,
+                ry: None,
+                dash_array: Vec::new(),
+                fill_gradient: None,
+            });
+        }
+    } else {
+        for polygon in knockout_polygons {
+            push_knockout_polygon(out, polygon, object_id.clone());
+        }
     }
 
     let lines = fragment_label_lines(label);

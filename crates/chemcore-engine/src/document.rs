@@ -334,6 +334,8 @@ pub struct NodeLabel {
     pub fill: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub font_size: Option<f64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub glyph_polygons: Vec<Vec<[f64; 2]>>,
     #[serde(default, rename = "box", skip_serializing_if = "Option::is_none")]
     pub box_value: Option<[f64; 4]>,
     #[serde(default)]
@@ -347,6 +349,18 @@ impl NodeLabel {
 
     pub fn has_visible_text(&self) -> bool {
         !self.text.trim().is_empty()
+    }
+
+    pub fn glyph_polygons(&self) -> Vec<Vec<Point>> {
+        self.glyph_polygons
+            .iter()
+            .map(|polygon| {
+                polygon
+                    .iter()
+                    .map(|point| Point::new(point[0], point[1]))
+                    .collect()
+            })
+            .collect()
     }
 }
 

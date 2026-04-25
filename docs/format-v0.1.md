@@ -452,6 +452,9 @@ Molecule label fields:
 - `anchor`: connection anchor inside the label, usually `start | center | end`
 - `runs`: normalized display runs
 - `lineRuns`: optional normalized runs per rendered line
+- `glyphPolygons`: optional per-glyph optical polygons in local coordinates; when
+  present, renderers may use them for label knockout and bond clipping instead of
+  the coarse label `box`
 
 Bond fields:
 

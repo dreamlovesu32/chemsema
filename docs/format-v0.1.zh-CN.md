@@ -436,6 +436,9 @@ text 对象表示带定位信息的富文本内容。
 - `anchor`：label 内部连接锚点，通常是 `start | center | end`
 - `runs`：归一化显示 runs
 - `lineRuns`：可选，逐渲染行的归一化 runs
+- `glyphPolygons`：可选，局部坐标系下的逐字形 optical polygon；存在时，
+  renderer 可优先用它做 label knockout 和 bond clipping，而不是只用粗颗粒
+  的 `box`
 
 键字段：
 

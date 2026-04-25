@@ -1575,6 +1575,79 @@ fn label_box_world(node: &Node, object: &SceneObject) -> Option<RectBox> {
     })
 }
 
+fn label_polygons_world(node: &Node, object: &SceneObject) -> Vec<Vec<Point>> {
+    node.label
+        .as_ref()
+        .map(|label| {
+            label
+                .glyph_polygons()
+                .into_iter()
+                .map(|polygon| {
+                    compact_polygon_points(
+                        polygon
+                            .into_iter()
+                            .map(|point| {
+                                Point::new(
+                                    point.x + object.transform.translate[0],
+                                    point.y + object.transform.translate[1],
+                                )
+                            })
+                            .collect(),
+                    )
+                })
+                .filter(|polygon| polygon.len() >= 3)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn segment_intersection_fraction(start: Point, end: Point, first: Point, second: Point) -> Option<f64> {
+    let direction = Vector::new(end.x - start.x, end.y - start.y);
+    let edge = Vector::new(second.x - first.x, second.y - first.y);
+    let denom = vector_cross(direction, edge);
+    if denom.abs() <= EPSILON {
+        return None;
+    }
+    let offset = Vector::new(first.x - start.x, first.y - start.y);
+    let t = vector_cross(offset, edge) / denom;
+    let u = vector_cross(offset, direction) / denom;
+    if (0.0..=1.0).contains(&t) && (0.0..=1.0).contains(&u) {
+        Some(t)
+    } else {
+        None
+    }
+}
+
+fn clip_point_out_of_polygons(start: Point, end: Point, polygons: &[Vec<Point>]) -> Point {
+    let mut best_t: Option<f64> = None;
+    for polygon in polygons {
+        if polygon.len() < 3 {
+            continue;
+        }
+        let mut polygon_t: Option<f64> = None;
+        for index in 0..polygon.len() {
+            let next = (index + 1) % polygon.len();
+            let Some(t) = segment_intersection_fraction(start, end, polygon[index], polygon[next]) else {
+                continue;
+            };
+            if t <= EPSILON {
+                continue;
+            }
+            if polygon_t.is_none_or(|current| t > current) {
+                polygon_t = Some(t);
+            }
+        }
+        if let Some(t) = polygon_t {
+            if best_t.is_none_or(|current| t > current) {
+                best_t = Some(t);
+            }
+        }
+    }
+    best_t
+        .map(|t| Point::new(start.x + (end.x - start.x) * t, start.y + (end.y - start.y) * t))
+        .unwrap_or(start)
+}
+
 fn clip_point_out_of_box(
     start: Point,
     end: Point,
@@ -1613,6 +1686,19 @@ fn clip_point_out_of_box(
         .min_by(|a, b| a.0.total_cmp(&b.0))
         .map(|(_, point)| point)
         .unwrap_or(start)
+}
+
+fn clip_point_out_of_label_geometry(
+    start: Point,
+    end: Point,
+    rect: Option<RectBox>,
+    polygons: &[Vec<Point>],
+    margin: f64,
+) -> Point {
+    if polygons.is_empty() {
+        return clip_point_out_of_box(start, end, rect, margin);
+    }
+    clip_point_out_of_polygons(start, end, polygons)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1679,8 +1765,17 @@ fn render_fragment_line_with_profiles(
     start_endpoint_profile_override: Option<Vec<Point>>,
     end_endpoint_profile_override: Option<Vec<Point>>,
 ) {
-    let clipped_start = clip_point_out_of_box(start, end, start_box, 0.8);
-    let clipped_end = clip_point_out_of_box(end, clipped_start, end_box, 0.8);
+    let start_polygons = node_map
+        .get(bond.begin.as_str())
+        .map(|node| label_polygons_world(node, object))
+        .unwrap_or_default();
+    let end_polygons = node_map
+        .get(bond.end.as_str())
+        .map(|node| label_polygons_world(node, object))
+        .unwrap_or_default();
+    let clipped_start = clip_point_out_of_label_geometry(start, end, start_box, &start_polygons, 0.8);
+    let clipped_end =
+        clip_point_out_of_label_geometry(end, clipped_start, end_box, &end_polygons, 0.8);
     let mut start_retreat = contact_kernel.endpoint_retreat(&bond.id, &bond.begin);
     let mut end_retreat = contact_kernel.endpoint_retreat(&bond.id, &bond.end);
     if is_hash_bond(bond) && line_weight == BondLineWeight::Bold && !dash_array.is_empty() {
