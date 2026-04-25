@@ -1,4 +1,6 @@
-use chemcore_engine::{render_document, ChemcoreDocument, RenderPrimitive, RenderRole};
+use chemcore_engine::{
+    angular_distance, render_document, ChemcoreDocument, RenderPrimitive, RenderRole,
+};
 use serde_json::json;
 
 fn fragment_document(nodes: serde_json::Value, bonds: serde_json::Value) -> ChemcoreDocument {
@@ -234,8 +236,13 @@ fn shared_point_count(
     second: &[chemcore_engine::Point],
     tolerance: f64,
 ) -> usize {
-    first.iter()
-        .filter(|point| second.iter().any(|other| point.distance(*other) <= tolerance))
+    first
+        .iter()
+        .filter(|point| {
+            second
+                .iter()
+                .any(|other| point.distance(*other) <= tolerance)
+        })
         .count()
 }
 
@@ -245,9 +252,11 @@ fn polygons_have_same_vertices(
     tolerance: f64,
 ) -> bool {
     first.len() == second.len()
-        && first
-            .iter()
-            .all(|point| second.iter().any(|other| point.distance(*other) <= tolerance))
+        && first.iter().all(|point| {
+            second
+                .iter()
+                .any(|other| point.distance(*other) <= tolerance)
+        })
 }
 
 fn point_lies_on_segment(
@@ -256,13 +265,11 @@ fn point_lies_on_segment(
     to: chemcore_engine::Point,
     tolerance: f64,
 ) -> bool {
-    let cross =
-        (point.x - from.x) * (to.y - from.y) - (point.y - from.y) * (to.x - from.x);
+    let cross = (point.x - from.x) * (to.y - from.y) - (point.y - from.y) * (to.x - from.x);
     if cross.abs() > tolerance {
         return false;
     }
-    let dot =
-        (point.x - from.x) * (to.x - from.x) + (point.y - from.y) * (to.y - from.y);
+    let dot = (point.x - from.x) * (to.x - from.x) + (point.y - from.y) * (to.y - from.y);
     if dot < -tolerance {
         return false;
     }
@@ -303,9 +310,8 @@ fn side_double_outer_polygon_for_bond(
         .iter()
         .filter(|(current_bond_id, _)| current_bond_id == bond_id)
         .max_by(|a, b| {
-            average_closest_distance_to_point(&a.1, shared_node, 2).total_cmp(
-                &average_closest_distance_to_point(&b.1, shared_node, 2),
-            )
+            average_closest_distance_to_point(&a.1, shared_node, 2)
+                .total_cmp(&average_closest_distance_to_point(&b.1, shared_node, 2))
         })
         .map(|(_, points)| points.clone())
         .expect("side double outer polygon")
@@ -320,9 +326,8 @@ fn side_double_main_polygon_for_bond(
         .iter()
         .filter(|(current_bond_id, _)| current_bond_id == bond_id)
         .min_by(|a, b| {
-            average_closest_distance_to_point(&a.1, shared_node, 2).total_cmp(
-                &average_closest_distance_to_point(&b.1, shared_node, 2),
-            )
+            average_closest_distance_to_point(&a.1, shared_node, 2)
+                .total_cmp(&average_closest_distance_to_point(&b.1, shared_node, 2))
         })
         .map(|(_, points)| points.clone())
         .expect("side double main polygon")
@@ -421,7 +426,11 @@ fn debug_print_joined_single_and_bold_bond_vertices() {
     );
 
     let polygons = object_bond_polygons(&render_document(&document));
-    assert_eq!(polygons.len(), 2, "joined single+bold should render as two 4-point polygons");
+    assert_eq!(
+        polygons.len(),
+        2,
+        "joined single+bold should render as two 4-point polygons"
+    );
 
     let first = polygons
         .iter()
@@ -505,7 +514,9 @@ fn render_document_emits_arrow_line_primitives() {
                 object_id,
                 points,
                 ..
-            } if *role == RenderRole::DocumentGraphic && object_id.as_deref() == Some("obj_line_001") => {
+            } if *role == RenderRole::DocumentGraphic
+                && object_id.as_deref() == Some("obj_line_001") =>
+            {
                 Some(points.clone())
             }
             _ => None,
@@ -584,7 +595,9 @@ fn render_document_emits_text_lines_from_runs() {
                 runs,
                 text_anchor,
                 ..
-            } if *role == RenderRole::DocumentText && object_id.as_deref() == Some("obj_text_001") => {
+            } if *role == RenderRole::DocumentText
+                && object_id.as_deref() == Some("obj_text_001") =>
+            {
                 Some((*x, *y, runs.clone(), text_anchor.clone()))
             }
             _ => None,
@@ -592,7 +605,9 @@ fn render_document_emits_text_lines_from_runs() {
         .collect();
 
     assert_eq!(text_lines.len(), 2);
-    assert!(text_lines.iter().all(|(x, _, _, _)| (*x - 30.0).abs() < 0.001));
+    assert!(text_lines
+        .iter()
+        .all(|(x, _, _, _)| (*x - 30.0).abs() < 0.001));
     assert_eq!(text_lines[0].2[0].text, "Na");
     assert_eq!(text_lines[1].2[0].text, "Cl");
     assert!(text_lines[1].1 > text_lines[0].1);
@@ -663,7 +678,9 @@ fn render_document_emits_shape_rect_with_style() {
                 dash_array,
                 fill_gradient,
                 ..
-            } if *role == RenderRole::DocumentGraphic && object_id.as_deref() == Some("obj_shape_001") => {
+            } if *role == RenderRole::DocumentGraphic
+                && object_id.as_deref() == Some("obj_shape_001") =>
+            {
                 Some((
                     *x,
                     *y,
@@ -691,8 +708,10 @@ fn render_document_emits_shape_rect_with_style() {
     assert_eq!(rect.7, Some(6.0));
     assert_eq!(rect.8, vec![3.2, 2.8]);
     assert_eq!(
-        rect.9
-            .and_then(|value| value.get("stops").and_then(|stops| stops.as_array()).map(|stops| stops.len())),
+        rect.9.and_then(|value| value
+            .get("stops")
+            .and_then(|stops| stops.as_array())
+            .map(|stops| stops.len())),
         Some(2)
     );
 }
@@ -806,14 +825,18 @@ fn render_document_emits_fragment_label_text_and_knockout() {
                 y,
                 runs,
                 ..
-            } if *role == RenderRole::DocumentText && object_id.as_deref() == Some("obj_molecule_001") => {
+            } if *role == RenderRole::DocumentText
+                && object_id.as_deref() == Some("obj_molecule_001") =>
+            {
                 Some((*x, *y, runs.clone()))
             }
             _ => None,
         })
         .collect();
     assert_eq!(label_lines.len(), 2);
-    assert!(label_lines.iter().all(|(x, _, _)| (*x - 28.4).abs() < 0.001));
+    assert!(label_lines
+        .iter()
+        .all(|(x, _, _)| (*x - 28.4).abs() < 0.001));
     assert_eq!(label_lines[0].2[0].text, "H");
     assert_eq!(label_lines[1].2[0].text, "N");
     assert!(label_lines[1].1 > label_lines[0].1);
@@ -1027,7 +1050,9 @@ fn render_document_emits_polygon_for_bold_single_bond() {
                 object_id,
                 points,
                 ..
-            } if role == RenderRole::DocumentBond && object_id.as_deref() == Some("obj_molecule_001") => {
+            } if role == RenderRole::DocumentBond
+                && object_id.as_deref() == Some("obj_molecule_001") =>
+            {
                 Some(points)
             }
             _ => None,
@@ -1104,7 +1129,10 @@ fn render_document_emits_main_contact_patches_for_connected_bold_and_single_bond
     let polygons = centered_bond_polygons(&primitives, chemcore_engine::Point::new(56.0, 40.0));
     assert_eq!(polygons.len(), 2);
     assert!(polygons.iter().all(|points| points.len() == 4));
-    assert!(polygons.iter().all(|points| polygon_area(points) > 0.01), "{polygons:?}");
+    assert!(
+        polygons.iter().all(|points| polygon_area(points) > 0.01),
+        "{polygons:?}"
+    );
 
     assert!(!primitives.iter().any(|primitive| matches!(
         primitive,
@@ -1134,7 +1162,10 @@ fn render_document_emits_two_way_main_contact_patches_for_plain_singles() {
     let polygons = centered_bond_polygons(&primitives, chemcore_engine::Point::new(56.0, 40.0));
     assert_eq!(polygons.len(), 2);
     assert!(polygons.iter().all(|points| points.len() == 4));
-    assert!(polygons.iter().all(|points| polygon_area(points) > 0.01), "{polygons:?}");
+    assert!(
+        polygons.iter().all(|points| polygon_area(points) > 0.01),
+        "{polygons:?}"
+    );
 
     let total_bond_polygons: Vec<_> = primitives
         .iter()
@@ -1144,7 +1175,9 @@ fn render_document_emits_two_way_main_contact_patches_for_plain_singles() {
                 object_id,
                 points,
                 ..
-            } if *role == RenderRole::DocumentBond && object_id.as_deref() == Some("obj_molecule_001") => {
+            } if *role == RenderRole::DocumentBond
+                && object_id.as_deref() == Some("obj_molecule_001") =>
+            {
                 Some(points.clone())
             }
             _ => None,
@@ -1191,7 +1224,8 @@ fn render_document_emits_equal_length_cross_segments_for_bold_dashed_bond() {
     assert!(knockouts.len() >= 2, "{knockouts:?}");
     assert!(knockouts
         .iter()
-        .all(|points| points.iter().any(|point| point.y > 40.0) && points.iter().any(|point| point.y < 40.0)));
+        .all(|points| points.iter().any(|point| point.y > 40.0)
+            && points.iter().any(|point| point.y < 40.0)));
     let (axis_from, axis_to) = bond_axis_from_points(&polygons[0]).expect("hash bond axis");
     let (bond_start, bond_end) =
         projection_range_on_axis(&polygons[0], axis_from, axis_to).expect("hash bond range");
@@ -1313,7 +1347,9 @@ fn render_document_emits_primitives_for_wedge_and_hashed_wedge() {
                 object_id,
                 points,
                 ..
-            } if *role == RenderRole::DocumentBond && object_id.as_deref() == Some("obj_molecule_001") => {
+            } if *role == RenderRole::DocumentBond
+                && object_id.as_deref() == Some("obj_molecule_001") =>
+            {
                 Some(points.len())
             }
             _ => None,
@@ -1321,7 +1357,10 @@ fn render_document_emits_primitives_for_wedge_and_hashed_wedge() {
         .collect();
     let knockout_polygons = object_knockout_polygons(&primitives);
 
-    assert!(bond_polygons.iter().all(|count| *count == 4), "{bond_polygons:?}");
+    assert!(
+        bond_polygons.iter().all(|count| *count == 4),
+        "{bond_polygons:?}"
+    );
     assert!(bond_polygons.len() >= 2);
     assert!(knockout_polygons.len() >= 1);
 }
@@ -1359,7 +1398,10 @@ fn render_document_emits_main_contact_patches_for_connected_single_and_solid_wed
     let primitives = render_document(&document);
     let polygons = centered_bond_polygons(&primitives, chemcore_engine::Point::new(56.0, 40.0));
     assert_eq!(polygons.len(), 2);
-    assert_eq!(polygons.iter().filter(|points| points.len() == 4).count(), 2);
+    assert_eq!(
+        polygons.iter().filter(|points| points.len() == 4).count(),
+        2
+    );
 
     let wedge_polygon = primitives
         .iter()
@@ -1369,7 +1411,9 @@ fn render_document_emits_main_contact_patches_for_connected_single_and_solid_wed
                 object_id,
                 points,
                 ..
-            } if *role == RenderRole::DocumentBond && object_id.as_deref() == Some("obj_molecule_001") => {
+            } if *role == RenderRole::DocumentBond
+                && object_id.as_deref() == Some("obj_molecule_001") =>
+            {
                 Some(points.clone())
             }
             _ => None,
@@ -1575,7 +1619,8 @@ fn render_document_retreats_hash_bond_mother_polygon_against_center_double_outer
         .into_iter()
         .find_map(|(bond_id, points)| (bond_id == "b2").then_some(points))
         .expect("hash bond polygon");
-    let connected_end = closest_points_to_target(&hash_bond, chemcore_engine::Point::new(56.0, 40.0), 2);
+    let connected_end =
+        closest_points_to_target(&hash_bond, chemcore_engine::Point::new(56.0, 40.0), 2);
     let unit = chemcore_engine::Point::new(18.0, -28.0);
     let unit_length = (unit.x * unit.x + unit.y * unit.y).sqrt();
     let unit_x = unit.x / unit_length;
@@ -1590,7 +1635,10 @@ fn render_document_retreats_hash_bond_mother_polygon_against_center_double_outer
         (projections[0] - projections[1]).abs() <= 1.0e-4,
         "{hash_bond:?} {projections:?}"
     );
-    assert!(projections.iter().all(|projection| *projection > 0.05), "{hash_bond:?} {projections:?}");
+    assert!(
+        projections.iter().all(|projection| *projection > 0.05),
+        "{hash_bond:?} {projections:?}"
+    );
     assert!(object_knockout_polygons(&primitives).len() >= 1);
 }
 
@@ -1729,13 +1777,19 @@ fn render_document_keeps_hash_bond_original_and_retreats_other_bonds_in_multi_bo
         .find_map(|(bond_id, points)| (bond_id == "b3").then_some(points.clone()))
         .expect("branch two polygon");
 
-    assert!(polygons_have_same_vertices(&isolated_hash, &hash_bond, 1.0e-4));
+    assert!(polygons_have_same_vertices(
+        &isolated_hash,
+        &hash_bond,
+        1.0e-4
+    ));
     assert!(
-        average_closest_distance_to_point(&branch_one, chemcore_engine::Point::new(56.0, 40.0), 2) > 0.5,
+        average_closest_distance_to_point(&branch_one, chemcore_engine::Point::new(56.0, 40.0), 2)
+            > 0.5,
         "{branch_one:?}"
     );
     assert!(
-        average_closest_distance_to_point(&branch_two, chemcore_engine::Point::new(56.0, 40.0), 2) > 0.5,
+        average_closest_distance_to_point(&branch_two, chemcore_engine::Point::new(56.0, 40.0), 2)
+            > 0.5,
         "{branch_two:?}"
     );
 }
@@ -1810,11 +1864,13 @@ fn render_document_keeps_hashed_wedge_original_and_retreats_other_bonds_in_multi
         1.0e-4,
     ));
     assert!(
-        average_closest_distance_to_point(&branch_one, chemcore_engine::Point::new(56.0, 40.0), 2) > 0.5,
+        average_closest_distance_to_point(&branch_one, chemcore_engine::Point::new(56.0, 40.0), 2)
+            > 0.5,
         "{branch_one:?}"
     );
     assert!(
-        average_closest_distance_to_point(&branch_two, chemcore_engine::Point::new(56.0, 40.0), 2) > 0.5,
+        average_closest_distance_to_point(&branch_two, chemcore_engine::Point::new(56.0, 40.0), 2)
+            > 0.5,
         "{branch_two:?}"
     );
     assert!(object_knockout_polygons(&primitives).len() >= 1);
@@ -1866,7 +1922,8 @@ fn render_document_retreats_hash_bond_against_solid_dashed_center_double_outer_l
         .into_iter()
         .find_map(|(bond_id, points)| (bond_id == "b2").then_some(points))
         .expect("hash bond polygon");
-    let connected_end = closest_points_to_target(&hash_bond, chemcore_engine::Point::new(56.0, 40.0), 2);
+    let connected_end =
+        closest_points_to_target(&hash_bond, chemcore_engine::Point::new(56.0, 40.0), 2);
     let unit = chemcore_engine::Point::new(18.0, -28.0);
     let unit_length = (unit.x * unit.x + unit.y * unit.y).sqrt();
     let unit_x = unit.x / unit_length;
@@ -1881,7 +1938,10 @@ fn render_document_retreats_hash_bond_against_solid_dashed_center_double_outer_l
         (projections[0] - projections[1]).abs() <= 1.0e-4,
         "{hash_bond:?} {projections:?}"
     );
-    assert!(projections.iter().all(|projection| *projection > 0.05), "{hash_bond:?} {projections:?}");
+    assert!(
+        projections.iter().all(|projection| *projection > 0.05),
+        "{hash_bond:?} {projections:?}"
+    );
     assert!(object_knockout_polygons(&primitives).len() >= 1);
 }
 
@@ -2001,7 +2061,10 @@ fn render_document_scales_side_double_offset_with_bond_length() {
         .max_by(|a, b| a.total_cmp(b))
         .unwrap();
 
-    assert!((long_offset - short_offset * 2.0).abs() < 0.05, "{short_offset} {long_offset}");
+    assert!(
+        (long_offset - short_offset * 2.0).abs() < 0.05,
+        "{short_offset} {long_offset}"
+    );
 }
 
 #[test]
@@ -2044,9 +2107,18 @@ fn render_document_keeps_terminal_side_double_outer_line_equal_length() {
     let short_axis = bond_axis_from_points(&polygons[short_index]).expect("short axis");
     let long_axis = bond_axis_from_points(&polygons[long_index]).expect("long axis");
 
-    assert!((short_length - long_length).abs() < 0.05, "{short_length} {long_length}");
-    assert!((short_axis.0.x - 20.0).abs() < 0.05 && (short_axis.1.x - 56.0).abs() < 0.05, "{short_axis:?}");
-    assert!((long_axis.0.x - 20.0).abs() < 0.05 && (long_axis.1.x - 56.0).abs() < 0.05, "{long_axis:?}");
+    assert!(
+        (short_length - long_length).abs() < 0.05,
+        "{short_length} {long_length}"
+    );
+    assert!(
+        (short_axis.0.x - 20.0).abs() < 0.05 && (short_axis.1.x - 56.0).abs() < 0.05,
+        "{short_axis:?}"
+    );
+    assert!(
+        (long_axis.0.x - 20.0).abs() < 0.05 && (long_axis.1.x - 56.0).abs() < 0.05,
+        "{long_axis:?}"
+    );
 }
 
 #[test]
@@ -2239,6 +2311,215 @@ fn render_document_keeps_center_double_original_for_angles_over_162_degrees() {
 }
 
 #[test]
+fn render_document_keeps_center_double_equal_at_labeled_endpoint() {
+    let document = fragment_document(
+        json!([
+            {
+                "id": "n1",
+                "element": "C",
+                "atomicNumber": 6,
+                "position": [20.0, 60.0],
+                "charge": 0,
+                "numHydrogens": 0
+            },
+            {
+                "id": "n2",
+                "element": "N",
+                "atomicNumber": 7,
+                "position": [56.0, 40.0],
+                "charge": 0,
+                "numHydrogens": 0,
+                "label": {
+                    "text": "N",
+                    "position": [56.0, 45.0],
+                    "box": [51.0, 34.0, 61.0, 46.0]
+                }
+            }
+        ]),
+        json!([
+            {
+                "id": "b1",
+                "begin": "n1",
+                "end": "n2",
+                "order": 2,
+                "strokeWidth": 0.85,
+                "double": { "placement": "center" }
+            }
+        ]),
+    );
+
+    let polygons: Vec<_> = object_bond_polygons_with_ids(&render_document(&document))
+        .into_iter()
+        .filter(|(bond_id, _)| bond_id == "b1")
+        .map(|(_, points)| points)
+        .collect();
+    assert_eq!(polygons.len(), 2);
+
+    let axis = chemcore_engine::Point::new(20.0 - 56.0, 60.0 - 40.0);
+    let axis_length = (axis.x * axis.x + axis.y * axis.y).sqrt();
+    let unit_x = axis.x / axis_length;
+    let unit_y = axis.y / axis_length;
+    let endpoint_retreats: Vec<_> = polygons
+        .iter()
+        .map(|polygon| {
+            let (from, to) = bond_axis_from_points(polygon).expect("bond axis");
+            let endpoint = if from.distance(chemcore_engine::Point::new(56.0, 40.0))
+                <= to.distance(chemcore_engine::Point::new(56.0, 40.0))
+            {
+                from
+            } else {
+                to
+            };
+            (endpoint.x - 56.0) * unit_x + (endpoint.y - 40.0) * unit_y
+        })
+        .collect();
+
+    assert!(
+        (endpoint_retreats[0] - endpoint_retreats[1]).abs() <= 1.0e-4,
+        "{polygons:?} {endpoint_retreats:?}"
+    );
+    assert!(
+        endpoint_retreats.iter().all(|retreat| *retreat > 0.0),
+        "{polygons:?} {endpoint_retreats:?}"
+    );
+}
+
+#[test]
+fn render_document_keeps_terminal_side_double_offset_with_label_retreat() {
+    let unlabeled = fragment_document(
+        json!([
+            { "id": "n1", "element": "C", "atomicNumber": 6, "position": [20.0, 40.0], "charge": 0, "numHydrogens": 0 },
+            { "id": "n2", "element": "N", "atomicNumber": 7, "position": [56.0, 40.0], "charge": 0, "numHydrogens": 0 }
+        ]),
+        json!([
+            {
+                "id": "b1",
+                "begin": "n1",
+                "end": "n2",
+                "order": 2,
+                "strokeWidth": 0.85,
+                "double": { "placement": "right" }
+            }
+        ]),
+    );
+    let labeled = fragment_document(
+        json!([
+            { "id": "n1", "element": "C", "atomicNumber": 6, "position": [20.0, 40.0], "charge": 0, "numHydrogens": 0 },
+            {
+                "id": "n2",
+                "element": "N",
+                "atomicNumber": 7,
+                "position": [56.0, 40.0],
+                "charge": 0,
+                "numHydrogens": 0,
+                "label": {
+                    "text": "N",
+                    "position": [56.0, 45.0],
+                    "box": [51.0, 34.0, 61.0, 46.0]
+                }
+            }
+        ]),
+        json!([
+            {
+                "id": "b1",
+                "begin": "n1",
+                "end": "n2",
+                "order": 2,
+                "strokeWidth": 0.85,
+                "double": { "placement": "right" }
+            }
+        ]),
+    );
+
+    let unlabeled_polygons: Vec<_> = object_bond_polygons_with_ids(&render_document(&unlabeled))
+        .into_iter()
+        .filter(|(bond_id, _)| bond_id == "b1")
+        .map(|(_, points)| points)
+        .collect();
+    let labeled_polygons: Vec<_> = object_bond_polygons_with_ids(&render_document(&labeled))
+        .into_iter()
+        .filter(|(bond_id, _)| bond_id == "b1")
+        .map(|(_, points)| points)
+        .collect();
+    assert_eq!(unlabeled_polygons.len(), 2);
+    assert_eq!(labeled_polygons.len(), 2);
+
+    let unlabeled_axes: Vec<_> = unlabeled_polygons
+        .iter()
+        .map(|polygon| bond_axis_from_points(polygon).expect("bond axis"))
+        .collect();
+    let labeled_axes: Vec<_> = labeled_polygons
+        .iter()
+        .map(|polygon| bond_axis_from_points(polygon).expect("bond axis"))
+        .collect();
+    let unlabeled_gap = ((unlabeled_axes[0].0.y + unlabeled_axes[0].1.y) * 0.5
+        - (unlabeled_axes[1].0.y + unlabeled_axes[1].1.y) * 0.5)
+        .abs();
+    let labeled_gap = ((labeled_axes[0].0.y + labeled_axes[0].1.y) * 0.5
+        - (labeled_axes[1].0.y + labeled_axes[1].1.y) * 0.5)
+        .abs();
+
+    assert!(
+        (unlabeled_gap - labeled_gap).abs() <= 1.0e-4,
+        "{unlabeled_gap} {labeled_gap}"
+    );
+}
+
+#[test]
+fn render_document_keeps_center_double_parallel_with_branches_and_labeled_endpoint() {
+    let document = fragment_document(
+        json!([
+            { "id": "n1", "element": "C", "atomicNumber": 6, "position": [44.0, 22.0], "charge": 0, "numHydrogens": 0 },
+            { "id": "n2", "element": "C", "atomicNumber": 6, "position": [56.0, 40.0], "charge": 0, "numHydrogens": 0 },
+            { "id": "n3", "element": "C", "atomicNumber": 6, "position": [44.0, 58.0], "charge": 0, "numHydrogens": 0 },
+            {
+                "id": "n4",
+                "element": "N",
+                "atomicNumber": 7,
+                "position": [92.0, 40.0],
+                "charge": 0,
+                "numHydrogens": 0,
+                "label": {
+                    "text": "N",
+                    "position": [92.0, 45.0],
+                    "box": [87.0, 34.0, 97.0, 46.0]
+                }
+            },
+            { "id": "n5", "element": "C", "atomicNumber": 6, "position": [110.0, 22.0], "charge": 0, "numHydrogens": 0 }
+        ]),
+        json!([
+            { "id": "b1", "begin": "n2", "end": "n4", "order": 2, "strokeWidth": 0.85, "double": { "placement": "center" } },
+            { "id": "b2", "begin": "n2", "end": "n1", "order": 1, "strokeWidth": 0.85 },
+            { "id": "b3", "begin": "n2", "end": "n3", "order": 1, "strokeWidth": 0.85 },
+            { "id": "b4", "begin": "n4", "end": "n5", "order": 1, "strokeWidth": 0.85 }
+        ]),
+    );
+
+    let polygons: Vec<_> = object_bond_polygons_with_ids(&render_document(&document))
+        .into_iter()
+        .filter(|(bond_id, _)| bond_id == "b1")
+        .map(|(_, points)| points)
+        .collect();
+    assert_eq!(polygons.len(), 2, "{polygons:?}");
+
+    let axes: Vec<_> = polygons
+        .iter()
+        .map(|polygon| bond_axis_from_points(polygon).expect("bond axis"))
+        .collect();
+    let first_direction =
+        chemcore_engine::Point::new(axes[0].1.x - axes[0].0.x, axes[0].1.y - axes[0].0.y);
+    let second_direction =
+        chemcore_engine::Point::new(axes[1].1.x - axes[1].0.x, axes[1].1.y - axes[1].0.y);
+    let first_angle = first_direction.y.atan2(first_direction.x).to_degrees();
+    let second_angle = second_direction.y.atan2(second_direction.x).to_degrees();
+
+    assert!(
+        angular_distance(first_angle, second_angle) <= 1.0e-4,
+        "{polygons:?} {first_angle} {second_angle}"
+    );
+}
+
+#[test]
 fn render_document_extends_center_double_lines_to_branch_bonds_and_branches_join_each_other() {
     let document = fragment_document(
         json!([
@@ -2303,20 +2584,16 @@ fn render_document_extends_center_double_lines_to_branch_bonds_and_branches_join
         }),
         "{center_double:?} {branch_up:?} {branch_down:?}"
     );
-    assert!(
-        center_double.iter().any(|polygon| {
-            [polygon[1], polygon[2]]
-                .iter()
-                .all(|point| point_lies_on_polygon_boundary(*point, &branch_up, 1.0e-4))
-        })
-    );
-    assert!(
-        center_double.iter().any(|polygon| {
-            [polygon[1], polygon[2]]
-                .iter()
-                .all(|point| point_lies_on_polygon_boundary(*point, &branch_down, 1.0e-4))
-        })
-    );
+    assert!(center_double.iter().any(|polygon| {
+        [polygon[1], polygon[2]]
+            .iter()
+            .all(|point| point_lies_on_polygon_boundary(*point, &branch_up, 1.0e-4))
+    }));
+    assert!(center_double.iter().any(|polygon| {
+        [polygon[1], polygon[2]]
+            .iter()
+            .all(|point| point_lies_on_polygon_boundary(*point, &branch_down, 1.0e-4))
+    }));
     assert_eq!(shared_point_count(&branch_up, &branch_down, 1.0e-4), 2);
 }
 
@@ -2360,16 +2637,10 @@ fn render_document_joins_same_side_double_outer_polygons() {
         "b2",
         chemcore_engine::Point::new(56.0, 40.0),
     );
-    let b1_main = side_double_main_polygon_for_bond(
-        &polygons,
-        "b1",
-        chemcore_engine::Point::new(56.0, 40.0),
-    );
-    let b2_main = side_double_main_polygon_for_bond(
-        &polygons,
-        "b2",
-        chemcore_engine::Point::new(56.0, 40.0),
-    );
+    let b1_main =
+        side_double_main_polygon_for_bond(&polygons, "b1", chemcore_engine::Point::new(56.0, 40.0));
+    let b2_main =
+        side_double_main_polygon_for_bond(&polygons, "b2", chemcore_engine::Point::new(56.0, 40.0));
 
     assert_eq!(shared_point_count(&b1_outer, &b2_outer, 1.0e-4), 2);
     assert_eq!(shared_point_count(&b1_outer, &b1_main, 1.0e-4), 0);
@@ -2588,9 +2859,9 @@ fn render_document_retreats_side_double_outer_polygon_against_center_double_refe
         .filter(|(bond_id, _)| bond_id == "b2")
         .collect();
 
-    assert!(centered_double.iter().all(|(_, points)| {
-        shared_point_count(&side_double_outer, points, 1.0e-4) == 0
-    }));
+    assert!(centered_double
+        .iter()
+        .all(|(_, points)| { shared_point_count(&side_double_outer, points, 1.0e-4) == 0 }));
 }
 
 #[test]
@@ -2628,7 +2899,10 @@ fn render_document_scales_triple_offset_with_bond_length() {
         .max_by(|a, b| a.total_cmp(b))
         .unwrap();
 
-    assert!((long_offset - short_offset * 2.0).abs() < 0.05, "{short_offset} {long_offset}");
+    assert!(
+        (long_offset - short_offset * 2.0).abs() < 0.05,
+        "{short_offset} {long_offset}"
+    );
 }
 
 #[test]
@@ -2675,8 +2949,13 @@ fn render_document_keeps_solid_wedge_cap_width_constant_when_bond_is_longer() {
     let short_polygon = render_document(&short_document)
         .into_iter()
         .find_map(|primitive| match primitive {
-            RenderPrimitive::Polygon { role, object_id, points, .. }
-                if role == RenderRole::DocumentBond && object_id.as_deref() == Some("obj_molecule_001") =>
+            RenderPrimitive::Polygon {
+                role,
+                object_id,
+                points,
+                ..
+            } if role == RenderRole::DocumentBond
+                && object_id.as_deref() == Some("obj_molecule_001") =>
             {
                 Some(points)
             }
@@ -2686,8 +2965,13 @@ fn render_document_keeps_solid_wedge_cap_width_constant_when_bond_is_longer() {
     let long_polygon = render_document(&long_document)
         .into_iter()
         .find_map(|primitive| match primitive {
-            RenderPrimitive::Polygon { role, object_id, points, .. }
-                if role == RenderRole::DocumentBond && object_id.as_deref() == Some("obj_molecule_001") =>
+            RenderPrimitive::Polygon {
+                role,
+                object_id,
+                points,
+                ..
+            } if role == RenderRole::DocumentBond
+                && object_id.as_deref() == Some("obj_molecule_001") =>
             {
                 Some(points)
             }
@@ -2702,7 +2986,10 @@ fn render_document_keeps_solid_wedge_cap_width_constant_when_bond_is_longer() {
         + (long_polygon[1].y - long_polygon[2].y).powi(2))
     .sqrt();
 
-    assert!((short_width - long_width).abs() < 0.05, "{short_width} {long_width}");
+    assert!(
+        (short_width - long_width).abs() < 0.05,
+        "{short_width} {long_width}"
+    );
 }
 
 #[test]
@@ -2724,7 +3011,10 @@ fn render_document_emits_three_way_main_contact_patches() {
     let primitives = render_document(&document);
     let polygons = centered_bond_polygons(&primitives, chemcore_engine::Point::new(56.0, 40.0));
     assert_eq!(polygons.len(), 3);
-    assert_eq!(polygons.iter().filter(|points| points.len() == 5).count(), 3);
+    assert_eq!(
+        polygons.iter().filter(|points| points.len() == 5).count(),
+        3
+    );
     assert!(polygons.iter().all(|points| polygon_area(points) > 0.01));
 }
 
@@ -2749,6 +3039,9 @@ fn render_document_emits_four_way_main_contact_patches() {
     let primitives = render_document(&document);
     let polygons = centered_bond_polygons(&primitives, chemcore_engine::Point::new(56.0, 40.0));
     assert_eq!(polygons.len(), 4);
-    assert_eq!(polygons.iter().filter(|points| points.len() == 5).count(), 4);
+    assert_eq!(
+        polygons.iter().filter(|points| points.len() == 5).count(),
+        4
+    );
     assert!(polygons.iter().all(|points| polygon_area(points) > 0.01));
 }

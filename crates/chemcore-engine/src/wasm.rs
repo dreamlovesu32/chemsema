@@ -78,6 +78,11 @@ impl WasmEngine {
         self.inner.delete_selection()
     }
 
+    #[wasm_bindgen(js_name = replaceHoveredEndpointLabel)]
+    pub fn replace_hovered_endpoint_label(&mut self, label: &str) -> bool {
+        self.inner.replace_hovered_endpoint_label(label)
+    }
+
     #[wasm_bindgen(js_name = canUndo)]
     pub fn can_undo(&self) -> bool {
         self.inner.can_undo()

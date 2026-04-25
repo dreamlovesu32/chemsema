@@ -349,7 +349,8 @@ impl Engine {
             return false;
         }
         let bond_id = self.next_id("b");
-        let pending_double = self.pending_double_state();
+        let pending_double =
+            self.pending_double_state_for_new_bond(&begin_id, &end_id, order.max(1));
         let pending_line_styles = self.pending_line_styles();
         let pending_line_weights = self.pending_line_weights();
         let pending_stereo = self.pending_bond_stereo();
@@ -359,8 +360,8 @@ impl Engine {
             .editable_fragment_mut()
             .expect("blank document always has an editable fragment");
         entry.fragment.bonds.push(Bond {
-            id: bond_id,
-            begin: begin_id,
+            id: bond_id.clone(),
+            begin: begin_id.clone(),
             end: end_id.clone(),
             order: order.max(1),
             double: pending_double,
@@ -370,6 +371,28 @@ impl Engine {
             line_weights: pending_line_weights,
             meta: serde_json::Value::Null,
         });
+        update_terminal_double_bond_placement_after_new_attachment(
+            entry.fragment,
+            &begin_id,
+            &bond_id,
+        );
+        update_terminal_double_bond_placement_after_new_attachment(
+            entry.fragment,
+            &end_id,
+            &bond_id,
+        );
+        refresh_generated_node_label_geometry_for_node(
+            entry.fragment,
+            entry.object.transform.translate,
+            &begin_id,
+            self.options.bond_stroke_width,
+        );
+        refresh_generated_node_label_geometry_for_node(
+            entry.fragment,
+            entry.object.transform.translate,
+            &end_id,
+            self.options.bond_stroke_width,
+        );
         entry.update_bounds();
 
         let endpoint = entry
@@ -446,10 +469,10 @@ impl Engine {
         }
         entry.fragment.bonds.push(Bond {
             id: "__preview_bond".to_string(),
-            begin: begin_id,
-            end: end_id,
+            begin: begin_id.clone(),
+            end: end_id.clone(),
             order: order.max(1),
-            double: self.pending_double_state(),
+            double: self.pending_double_state_for_new_bond(&begin_id, &end_id, order.max(1)),
             stereo: self.pending_bond_stereo(),
             stroke_width: self.options.bond_stroke_width,
             line_styles: self.pending_line_styles(),
@@ -461,9 +484,23 @@ impl Engine {
     }
 
     pub fn cycle_bond_center_style(&mut self, bond_id: &str) -> bool {
-        let default_placement = self
-            .default_double_bond_placement(bond_id)
+        let (current_order, was_double_before) = self
+            .state
+            .document
+            .editable_fragment()
+            .and_then(|entry| entry.fragment.bonds.iter().find(|bond| bond.id == bond_id))
+            .map(|bond| (bond.order, bond.order == 2 && bond.double.is_some()))
+            .unwrap_or((1, false));
+        let default_side = self
+            .preferred_double_bond_side(bond_id)
             .unwrap_or(DoubleBondPlacement::Right);
+        let default_placement =
+            if current_order == 1 && self.should_default_center_double_bond(bond_id) {
+                DoubleBondPlacement::Center
+            } else {
+                default_side
+            };
+        let should_freeze_after_change = was_double_before;
         self.push_undo_snapshot();
         let Some(mut entry) = self.state.document.editable_fragment_mut() else {
             self.undo_stack.pop();
@@ -495,6 +532,9 @@ impl Engine {
         if !changed {
             self.undo_stack.pop();
             return false;
+        }
+        if let Some(double) = bond.double.as_mut() {
+            double.frozen = should_freeze_after_change;
         }
         entry.update_bounds();
         self.state.selection = SelectionState::default();
@@ -533,6 +573,64 @@ impl Engine {
         entry.update_bounds();
         self.state.selection = SelectionState::default();
         self.clear_interaction();
+        true
+    }
+
+    pub fn replace_hovered_endpoint_label(&mut self, label: &str) -> bool {
+        let Some(hovered_node_id) = self
+            .state
+            .overlay
+            .hover_endpoint
+            .as_ref()
+            .map(|hit| hit.node_id.clone())
+        else {
+            return false;
+        };
+
+        self.push_undo_snapshot();
+        let Some(mut entry) = self.state.document.editable_fragment_mut() else {
+            self.undo_stack.pop();
+            return false;
+        };
+        let object_translate = entry.object.transform.translate;
+        let Some(node_index) = entry
+            .fragment
+            .nodes
+            .iter()
+            .position(|node| node.id == hovered_node_id)
+        else {
+            self.undo_stack.pop();
+            return false;
+        };
+        let node = &mut entry.fragment.nodes[node_index];
+
+        if !apply_node_label_replacement(node, label) {
+            self.undo_stack.pop();
+            return false;
+        }
+
+        let node_position = node.position;
+        refresh_generated_node_label_geometry_for_node(
+            entry.fragment,
+            object_translate,
+            &hovered_node_id,
+            self.options.bond_stroke_width,
+        );
+        entry.update_bounds();
+        let hover_point = crate::Point::new(
+            object_translate[0] + node_position[0],
+            object_translate[1] + node_position[1],
+        );
+        self.drag = None;
+        self.state.selection = SelectionState::default();
+        self.state.overlay.hover_bond_center = None;
+        self.state.overlay.preview = None;
+        self.state.overlay.hover_endpoint = Some(EndpointHit {
+            node_id: hovered_node_id,
+            point: hover_point,
+            distance: 0.0,
+            label_anchor: None,
+        });
         true
     }
 
@@ -661,7 +759,7 @@ impl Engine {
         max_id + 1
     }
 
-    fn default_double_bond_placement(&self, bond_id: &str) -> Option<DoubleBondPlacement> {
+    fn preferred_double_bond_side(&self, bond_id: &str) -> Option<DoubleBondPlacement> {
         let entry = self.state.document.editable_fragment()?;
         let bond = entry
             .fragment
@@ -727,11 +825,42 @@ impl Engine {
                 }
             }
         }
-        if score >= 0.0 {
+        if score <= 0.0 {
             Some(DoubleBondPlacement::Left)
         } else {
             Some(DoubleBondPlacement::Right)
         }
+    }
+
+    fn should_default_center_double_bond(&self, bond_id: &str) -> bool {
+        let Some(entry) = self.state.document.editable_fragment() else {
+            return false;
+        };
+        let Some(bond) = entry
+            .fragment
+            .bonds
+            .iter()
+            .find(|bond| bond.id == bond_id && (bond.order == 1 || bond.order == 2))
+        else {
+            return false;
+        };
+        let begin_connections = entry
+            .fragment
+            .bonds
+            .iter()
+            .filter(|other| {
+                other.id != bond.id && (other.begin == bond.begin || other.end == bond.begin)
+            })
+            .count();
+        let end_connections = entry
+            .fragment
+            .bonds
+            .iter()
+            .filter(|other| {
+                other.id != bond.id && (other.begin == bond.end || other.end == bond.end)
+            })
+            .count();
+        begin_connections + end_connections >= 2
     }
 
     fn pending_bond_order(&self) -> u8 {
@@ -742,14 +871,46 @@ impl Engine {
         }
     }
 
-    fn pending_double_state(&self) -> Option<DoubleBond> {
+    fn pending_double_state_for_new_bond(
+        &self,
+        begin_id: &str,
+        end_id: &str,
+        order: u8,
+    ) -> Option<DoubleBond> {
         match self.state.tool.bond_variant {
-            BondVariant::Double | BondVariant::DashedDouble => Some(DoubleBond {
-                placement: DoubleBondPlacement::Right,
-                center_exit_side: None,
-            }),
+            BondVariant::Double | BondVariant::DashedDouble if order >= 2 => {
+                let placement = if self.should_default_center_for_new_bond(begin_id, end_id) {
+                    DoubleBondPlacement::Center
+                } else {
+                    DoubleBondPlacement::Right
+                };
+                Some(DoubleBond {
+                    placement,
+                    center_exit_side: None,
+                    frozen: false,
+                })
+            }
             _ => None,
         }
+    }
+
+    fn should_default_center_for_new_bond(&self, begin_id: &str, end_id: &str) -> bool {
+        let Some(entry) = self.state.document.editable_fragment() else {
+            return false;
+        };
+        let begin_connections = entry
+            .fragment
+            .bonds
+            .iter()
+            .filter(|bond| bond.begin == begin_id || bond.end == begin_id)
+            .count();
+        let end_connections = entry
+            .fragment
+            .bonds
+            .iter()
+            .filter(|bond| bond.begin == end_id || bond.end == end_id)
+            .count();
+        begin_connections + end_connections >= 2
     }
 
     fn pending_line_styles(&self) -> BondLineStyles {
@@ -863,6 +1024,409 @@ impl Engine {
     }
 }
 
+fn apply_node_label_replacement(node: &mut crate::Node, label: &str) -> bool {
+    let Some(replacement) = classify_node_label_replacement(label) else {
+        return false;
+    };
+
+    match replacement {
+        NodeLabelReplacement::Carbon => {
+            let changed = node.element != "C"
+                || node.atomic_number != 6
+                || node.is_placeholder
+                || node.label.is_some();
+            if !changed {
+                return false;
+            }
+            node.element = "C".to_string();
+            node.atomic_number = 6;
+            node.is_placeholder = false;
+            node.label = None;
+            true
+        }
+        NodeLabelReplacement::Element {
+            element,
+            atomic_number,
+        } => {
+            let next_label = make_centered_node_label(element, node.position);
+            let changed = node.element != element
+                || node.atomic_number != atomic_number
+                || node.is_placeholder
+                || !same_node_label(node.label.as_ref(), Some(&next_label));
+            if !changed {
+                return false;
+            }
+            node.element = element.to_string();
+            node.atomic_number = atomic_number;
+            node.is_placeholder = false;
+            node.label = Some(next_label);
+            true
+        }
+        NodeLabelReplacement::Abbreviation(text) => {
+            let next_label = make_centered_node_label(text, node.position);
+            let changed = node.element != "C"
+                || node.atomic_number != 6
+                || !node.is_placeholder
+                || !same_node_label(node.label.as_ref(), Some(&next_label));
+            if !changed {
+                return false;
+            }
+            node.element = "C".to_string();
+            node.atomic_number = 6;
+            node.is_placeholder = true;
+            node.label = Some(next_label);
+            true
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum NodeLabelReplacement<'a> {
+    Carbon,
+    Element { element: &'a str, atomic_number: u8 },
+    Abbreviation(&'a str),
+}
+
+fn classify_node_label_replacement(label: &str) -> Option<NodeLabelReplacement<'_>> {
+    match label {
+        "C" => Some(NodeLabelReplacement::Carbon),
+        "H" => Some(NodeLabelReplacement::Element {
+            element: "H",
+            atomic_number: 1,
+        }),
+        "N" => Some(NodeLabelReplacement::Element {
+            element: "N",
+            atomic_number: 7,
+        }),
+        "O" => Some(NodeLabelReplacement::Element {
+            element: "O",
+            atomic_number: 8,
+        }),
+        "S" => Some(NodeLabelReplacement::Element {
+            element: "S",
+            atomic_number: 16,
+        }),
+        "P" => Some(NodeLabelReplacement::Element {
+            element: "P",
+            atomic_number: 15,
+        }),
+        "F" => Some(NodeLabelReplacement::Element {
+            element: "F",
+            atomic_number: 9,
+        }),
+        "Cl" => Some(NodeLabelReplacement::Element {
+            element: "Cl",
+            atomic_number: 17,
+        }),
+        "Br" => Some(NodeLabelReplacement::Element {
+            element: "Br",
+            atomic_number: 35,
+        }),
+        "I" => Some(NodeLabelReplacement::Element {
+            element: "I",
+            atomic_number: 53,
+        }),
+        "Si" => Some(NodeLabelReplacement::Element {
+            element: "Si",
+            atomic_number: 14,
+        }),
+        "Na" => Some(NodeLabelReplacement::Element {
+            element: "Na",
+            atomic_number: 11,
+        }),
+        "B" => Some(NodeLabelReplacement::Element {
+            element: "B",
+            atomic_number: 5,
+        }),
+        "D" => Some(NodeLabelReplacement::Element {
+            element: "D",
+            atomic_number: 1,
+        }),
+        "Me" => Some(NodeLabelReplacement::Abbreviation("Me")),
+        "Ph" => Some(NodeLabelReplacement::Abbreviation("Ph")),
+        _ => None,
+    }
+}
+
+fn make_centered_node_label(text: &str, position: [f64; 2]) -> crate::NodeLabel {
+    let font_size = 15.0;
+    let (label_position, label_box) = estimated_centered_label_geometry(text, position, font_size);
+    crate::NodeLabel {
+        text: text.to_string(),
+        source_text: Some(text.to_string()),
+        position: Some(label_position),
+        box_field: Some(label_box),
+        runs: vec![crate::LabelRun {
+            text: text.to_string(),
+            font_family: Some("Arial".to_string()),
+            font_size: Some(font_size),
+            fill: Some("#000000".to_string()),
+            font_weight: Some(700),
+            font_style: Some("normal".to_string()),
+            script: Some("normal".to_string()),
+            face: None,
+        }],
+        line_runs: Vec::new(),
+        lines: Vec::new(),
+        align: Some("center".to_string()),
+        layout: None,
+        attachment: None,
+        anchor: Some("middle".to_string()),
+        font_family: Some("Arial".to_string()),
+        fill: Some("#000000".to_string()),
+        font_size: Some(font_size),
+        glyph_polygons: Vec::new(),
+        box_value: Some(label_box),
+        meta: serde_json::Value::Null,
+    }
+}
+
+fn same_node_label(current: Option<&crate::NodeLabel>, next: Option<&crate::NodeLabel>) -> bool {
+    match (current, next) {
+        (None, None) => true,
+        (Some(current), Some(next)) => current.text == next.text && current.align == next.align,
+        _ => false,
+    }
+}
+
+fn estimated_centered_label_geometry(
+    text: &str,
+    center: [f64; 2],
+    font_size: f64,
+) -> ([f64; 2], [f64; 4]) {
+    let char_count = text.chars().count().max(1) as f64;
+    let width = (font_size * 0.68 * char_count + font_size * 0.10).max(font_size * 0.72);
+    let height = (font_size * 0.84).max(8.0);
+    let half_width = width * 0.5;
+    let half_height = height * 0.5;
+    let x1 = center[0] - half_width;
+    let y1 = center[1] - half_height;
+    let x2 = center[0] + half_width;
+    let y2 = center[1] + half_height;
+    ([center[0], y2], [x1, y1, x2, y2])
+}
+
+fn refresh_generated_node_label_geometry_for_node(
+    fragment: &mut crate::MoleculeFragment,
+    object_translate: [f64; 2],
+    node_id: &str,
+    stroke_width: f64,
+) {
+    let Some(node_index) = fragment.nodes.iter().position(|node| node.id == node_id) else {
+        return;
+    };
+    let Some(label_text) = fragment.nodes[node_index]
+        .label
+        .as_ref()
+        .and_then(|label| is_generated_centered_label(label).then(|| label.text.clone()))
+    else {
+        return;
+    };
+    let world_center =
+        generated_label_center_world(fragment, node_id, object_translate, stroke_width);
+    let local_center = [
+        world_center.x - object_translate[0],
+        world_center.y - object_translate[1],
+    ];
+    fragment.nodes[node_index].label = Some(make_centered_node_label(&label_text, local_center));
+}
+
+fn is_generated_centered_label(label: &crate::NodeLabel) -> bool {
+    label.align.as_deref() == Some("center")
+        && label.anchor.as_deref() == Some("middle")
+        && label.glyph_polygons.is_empty()
+        && label.runs.len() == 1
+}
+
+fn generated_label_center_world(
+    fragment: &crate::MoleculeFragment,
+    node_id: &str,
+    object_translate: [f64; 2],
+    stroke_width: f64,
+) -> Point {
+    let Some(node) = fragment.nodes.iter().find(|node| node.id == node_id) else {
+        return Point::new(object_translate[0], object_translate[1]);
+    };
+    let node_world = Point::new(
+        object_translate[0] + node.position[0],
+        object_translate[1] + node.position[1],
+    );
+    let connected: Vec<_> = fragment
+        .bonds
+        .iter()
+        .filter(|bond| bond.begin == node_id || bond.end == node_id)
+        .collect();
+    if connected.len() != 1 || connected[0].order != 2 {
+        return node_world;
+    }
+    let bond = connected[0];
+    let Some(other) = fragment.nodes.iter().find(|other| {
+        (bond.begin == node_id && other.id == bond.end)
+            || (bond.end == node_id && other.id == bond.begin)
+    }) else {
+        return node_world;
+    };
+    let placement = bond
+        .double
+        .as_ref()
+        .map(|double| double.placement)
+        .unwrap_or(DoubleBondPlacement::Center);
+    if placement == DoubleBondPlacement::Center {
+        return node_world;
+    }
+    let other_world = Point::new(
+        object_translate[0] + other.position[0],
+        object_translate[1] + other.position[1],
+    );
+    let dx = other_world.x - node_world.x;
+    let dy = other_world.y - node_world.y;
+    let length = dx.hypot(dy);
+    if length <= crate::EPSILON {
+        return node_world;
+    }
+    let side = if placement == DoubleBondPlacement::Left {
+        -1.0
+    } else {
+        1.0
+    };
+    let normal_x = -dy / length;
+    let normal_y = dx / length;
+    let offset =
+        0.5 * double_bond_offset_distance_for_points(node_world, other_world, stroke_width) * side;
+    Point::new(
+        node_world.x + normal_x * offset,
+        node_world.y + normal_y * offset,
+    )
+}
+
+fn double_bond_offset_distance_for_points(start: Point, end: Point, stroke_width: f64) -> f64 {
+    const DOUBLE_BOND_OFFSET: f64 = 2.2;
+    const VIEWER_BOND_STROKE: f64 = crate::DEFAULT_BOND_STROKE;
+    DOUBLE_BOND_OFFSET
+        * (stroke_width / VIEWER_BOND_STROKE)
+        * ((start.distance(end) / DEFAULT_BOND_LENGTH.max(crate::EPSILON)).max(0.01))
+}
+
+fn update_terminal_double_bond_placement_after_new_attachment(
+    fragment: &mut crate::MoleculeFragment,
+    attached_node_id: &str,
+    new_bond_id: &str,
+) {
+    let connected_bond_ids: Vec<_> = fragment
+        .bonds
+        .iter()
+        .filter(|bond| bond.begin == attached_node_id || bond.end == attached_node_id)
+        .map(|bond| bond.id.clone())
+        .collect();
+    for bond_id in connected_bond_ids {
+        if bond_id != new_bond_id {
+            update_unfrozen_double_bond_auto_placement(fragment, &bond_id, new_bond_id);
+        }
+    }
+}
+
+fn update_unfrozen_double_bond_auto_placement(
+    fragment: &mut crate::MoleculeFragment,
+    double_bond_id: &str,
+    new_bond_id: &str,
+) {
+    let Some(double_index) = fragment
+        .bonds
+        .iter()
+        .position(|bond| bond.id == double_bond_id && bond.order == 2)
+    else {
+        return;
+    };
+    let Some(double) = fragment.bonds[double_index].double.as_ref() else {
+        return;
+    };
+    if double.frozen {
+        return;
+    }
+
+    let bond = fragment.bonds[double_index].clone();
+    let Some(begin) = fragment.nodes.iter().find(|node| node.id == bond.begin) else {
+        return;
+    };
+    let Some(end) = fragment.nodes.iter().find(|node| node.id == bond.end) else {
+        return;
+    };
+    let begin_point = begin.point();
+    let end_point = end.point();
+    let axis_x = end_point.x - begin_point.x;
+    let axis_y = end_point.y - begin_point.y;
+    let axis_length = axis_x.hypot(axis_y);
+    if axis_length <= crate::EPSILON {
+        return;
+    }
+    let normal_x = -axis_y / axis_length;
+    let normal_y = axis_x / axis_length;
+
+    let mut left_count = 0usize;
+    let mut right_count = 0usize;
+    let mut new_bond_side: Option<DoubleBondPlacement> = None;
+    for other in &fragment.bonds {
+        if other.id == bond.id {
+            continue;
+        }
+        let shared_id = if other.begin == bond.begin || other.end == bond.begin {
+            Some(bond.begin.as_str())
+        } else if other.begin == bond.end || other.end == bond.end {
+            Some(bond.end.as_str())
+        } else {
+            None
+        };
+        let Some(shared_id) = shared_id else {
+            continue;
+        };
+        let other_id = if other.begin == shared_id {
+            other.end.as_str()
+        } else {
+            other.begin.as_str()
+        };
+        let Some(shared_node) = fragment.nodes.iter().find(|node| node.id == shared_id) else {
+            continue;
+        };
+        let Some(other_node) = fragment.nodes.iter().find(|node| node.id == other_id) else {
+            continue;
+        };
+        let side_score =
+            (other_node.position[0] - shared_node.position[0]) * normal_x
+                + (other_node.position[1] - shared_node.position[1]) * normal_y;
+        let side = if side_score < -crate::EPSILON {
+            Some(DoubleBondPlacement::Left)
+        } else if side_score > crate::EPSILON {
+            Some(DoubleBondPlacement::Right)
+        } else {
+            None
+        };
+        match side {
+            Some(DoubleBondPlacement::Left) => left_count += 1,
+            Some(DoubleBondPlacement::Right) => right_count += 1,
+            _ => {}
+        }
+        if other.id == new_bond_id {
+            new_bond_side = side;
+        }
+    }
+
+    let placement = if left_count > right_count {
+        Some(DoubleBondPlacement::Left)
+    } else if right_count > left_count {
+        Some(DoubleBondPlacement::Right)
+    } else {
+        new_bond_side
+    };
+    let Some(placement) = placement else {
+        return;
+    };
+    fragment.bonds[double_index].double = Some(crate::DoubleBond {
+        placement,
+        center_exit_side: None,
+        frozen: false,
+    });
+}
+
 fn opposite_double_bond_placement(placement: DoubleBondPlacement) -> DoubleBondPlacement {
     match placement {
         DoubleBondPlacement::Left => DoubleBondPlacement::Right,
@@ -958,6 +1522,7 @@ fn cycle_dashed_double_bond_style(
                 bond.double = Some(DoubleBond {
                     placement: DoubleBondPlacement::Center,
                     center_exit_side: Some(exit_side),
+                    frozen: false,
                 });
                 bond.line_styles.main = BondLinePattern::Solid;
                 bond.line_styles.left = BondLinePattern::Dashed;
@@ -973,6 +1538,7 @@ fn cycle_dashed_double_bond_style(
                 bond.double = Some(DoubleBond {
                     placement: DoubleBondPlacement::Center,
                     center_exit_side: None,
+                    frozen: false,
                 });
                 return true;
             }
@@ -984,6 +1550,7 @@ fn cycle_dashed_double_bond_style(
                 bond.double = Some(DoubleBond {
                     placement: DoubleBondPlacement::Center,
                     center_exit_side: Some(opposite_double_bond_placement(first_dashed)),
+                    frozen: false,
                 });
                 return true;
             }
@@ -996,6 +1563,7 @@ fn cycle_dashed_double_bond_style(
             bond.double = Some(DoubleBond {
                 placement: exit_side,
                 center_exit_side: None,
+                frozen: false,
             });
             bond.line_styles.main = BondLinePattern::Solid;
             bond.line_styles.left = BondLinePattern::Solid;
@@ -1031,6 +1599,7 @@ fn advance_plain_dashed_double_cycle(
     bond.double = Some(DoubleBond {
         placement: next_placement,
         center_exit_side: None,
+        frozen: false,
     });
 
     let next_dashed_side = match next_placement {
@@ -1057,6 +1626,7 @@ fn advance_plain_double_cycle(bond: &mut Bond, default_placement: DoubleBondPlac
     bond.double = Some(DoubleBond {
         placement: next_placement,
         center_exit_side: None,
+        frozen: false,
     });
     bond.stereo = None;
     bond.line_styles = BondLineStyles::default();
@@ -1078,6 +1648,7 @@ fn replace_with_plain_double_bond_style(bond: &mut Bond, placement: DoubleBondPl
     bond.double = Some(DoubleBond {
         placement,
         center_exit_side: None,
+        frozen: false,
     });
     bond.stereo = None;
     bond.line_styles = BondLineStyles::default();
@@ -1114,6 +1685,7 @@ fn replace_with_plain_dashed_double_bond_style(
     bond.double = Some(DoubleBond {
         placement,
         center_exit_side: None,
+        frozen: false,
     });
     bond.stereo = None;
     bond.line_styles = BondLineStyles::default();
@@ -1201,6 +1773,7 @@ fn init_bold_double_bond_style(
             bond.double = Some(DoubleBond {
                 placement,
                 center_exit_side: None,
+                frozen: false,
             });
             bond.line_weights.main = BondLineWeight::Bold;
         }
@@ -1208,6 +1781,7 @@ fn init_bold_double_bond_style(
             bond.double = Some(DoubleBond {
                 placement: DoubleBondPlacement::Center,
                 center_exit_side: Some(opposite_double_bond_placement(default_placement)),
+                frozen: false,
             });
             *outer_line_weight_mut(&mut bond.line_weights, default_placement) =
                 BondLineWeight::Bold;
@@ -1230,6 +1804,7 @@ fn cycle_bold_single_bond_style(
     bond.double = Some(DoubleBond {
         placement: side,
         center_exit_side: None,
+        frozen: false,
     });
     bond.line_weights.main = BondLineWeight::Bold;
     bond.line_weights.left = BondLineWeight::Normal;
@@ -1258,6 +1833,7 @@ fn cycle_bold_double_bond_style(
             bond.double = Some(DoubleBond {
                 placement: DoubleBondPlacement::Center,
                 center_exit_side: Some(exit_side),
+                frozen: false,
             });
             bond.line_weights.main = BondLineWeight::Normal;
             bond.line_weights.left = BondLineWeight::Normal;
@@ -1272,6 +1848,7 @@ fn cycle_bold_double_bond_style(
                 bond.double = Some(DoubleBond {
                     placement: DoubleBondPlacement::Center,
                     center_exit_side: Some(opposite_double_bond_placement(default_side)),
+                    frozen: false,
                 });
                 return true;
             }
@@ -1284,6 +1861,7 @@ fn cycle_bold_double_bond_style(
             bond.double = Some(DoubleBond {
                 placement: exit_side,
                 center_exit_side: None,
+                frozen: false,
             });
             bond.line_weights.main = BondLineWeight::Bold;
             bond.line_weights.left = BondLineWeight::Normal;

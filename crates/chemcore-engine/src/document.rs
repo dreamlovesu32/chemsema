@@ -405,6 +405,8 @@ pub struct DoubleBond {
     pub placement: DoubleBondPlacement,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub center_exit_side: Option<DoubleBondPlacement>,
+    #[serde(default)]
+    pub frozen: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

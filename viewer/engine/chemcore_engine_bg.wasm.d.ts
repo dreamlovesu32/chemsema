@@ -14,6 +14,7 @@ export const wasmengine_pointerMove: (a: number, b: number, c: number, d: number
 export const wasmengine_pointerUp: (a: number, b: number, c: number, d: number) => void;
 export const wasmengine_redo: (a: number) => number;
 export const wasmengine_renderListJson: (a: number) => [number, number, number, number];
+export const wasmengine_replaceHoveredEndpointLabel: (a: number, b: number, c: number) => number;
 export const wasmengine_setTool: (a: number, b: number, c: number, d: number, e: number) => void;
 export const wasmengine_stateJson: (a: number) => [number, number, number, number];
 export const wasmengine_undo: (a: number) => number;

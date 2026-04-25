@@ -126,6 +126,16 @@ export class WasmEngine {
         }
     }
     /**
+     * @param {string} label
+     * @returns {boolean}
+     */
+    replaceHoveredEndpointLabel(label) {
+        const ptr0 = passStringToWasm0(label, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmengine_replaceHoveredEndpointLabel(this.__wbg_ptr, ptr0, len0);
+        return ret !== 0;
+    }
+    /**
      * @param {string} active_tool
      * @param {string} bond_variant
      */

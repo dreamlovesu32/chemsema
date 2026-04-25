@@ -14,10 +14,12 @@ pub const BOND_CENTER_FOCUS_WIDTH: f64 = 9.0;
 pub const BOND_CENTER_HIT_RADIUS: f64 = BOND_CENTER_FOCUS_LENGTH;
 pub const DRAG_START_THRESHOLD: f64 = 4.0;
 pub const GLOBAL_SNAP_ANGLES: &[f64] = &[
-    0.0, 30.0, 45.0, 60.0, 90.0, 120.0, 135.0, 150.0, 180.0, 210.0, 225.0, 240.0, 270.0, 300.0,
-    315.0, 330.0,
+    0.0, 15.0, 30.0, 45.0, 60.0, 75.0, 90.0, 105.0, 120.0, 135.0, 150.0, 165.0, 180.0, 195.0,
+    210.0, 225.0, 240.0, 255.0, 270.0, 285.0, 300.0, 315.0, 330.0, 345.0,
 ];
-pub const RELATIVE_BOND_ANGLES: &[f64] = &[30.0, 60.0, 90.0, 120.0, 150.0, 180.0];
+pub const RELATIVE_BOND_ANGLES: &[f64] = &[
+    15.0, 30.0, 45.0, 60.0, 75.0, 90.0, 105.0, 120.0, 135.0, 150.0, 165.0, 180.0,
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]

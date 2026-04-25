@@ -1,7 +1,7 @@
 use chemcore_engine::{
     BondLinePattern, BondLineWeight, BondVariant, DoubleBondPlacement, Engine, PointerEvent,
-    RenderPrimitive, RenderRole, Tool, ToolState, BOND_CENTER_FOCUS_LENGTH, BOND_CENTER_FOCUS_WIDTH,
-    DEFAULT_BOND_LENGTH, DEFAULT_BOND_STROKE, ENDPOINT_FOCUS_RADIUS,
+    RenderPrimitive, RenderRole, Tool, ToolState, BOND_CENTER_FOCUS_LENGTH,
+    BOND_CENTER_FOCUS_WIDTH, DEFAULT_BOND_LENGTH, DEFAULT_BOND_STROKE, ENDPOINT_FOCUS_RADIUS,
 };
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -98,6 +98,15 @@ fn click(engine: &mut Engine, x: f64, y: f64) {
         x,
         y,
         button: Some(0),
+        alt_key: false,
+    });
+}
+
+fn hover(engine: &mut Engine, x: f64, y: f64) {
+    engine.pointer_move(PointerEvent {
+        x,
+        y,
+        button: None,
         alt_key: false,
     });
 }
@@ -219,12 +228,7 @@ fn hover_focuses_existing_endpoint() {
         alt_key: false,
     });
 
-    engine.pointer_move(PointerEvent {
-        x: 337.0,
-        y: 263.0,
-        button: None,
-        alt_key: false,
-    });
+    hover(&mut engine, 337.0, 263.0);
 
     let hover = engine.state().overlay.hover_endpoint.as_ref().unwrap();
     assert_eq!(hover.point.x, 336.0);
@@ -233,6 +237,83 @@ fn hover_focuses_existing_endpoint() {
         primitive,
         RenderPrimitive::Circle { radius, .. } if (*radius - ENDPOINT_FOCUS_RADIUS).abs() < 0.001
     )));
+}
+
+#[test]
+fn hovered_endpoint_can_be_replaced_with_element_label() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+
+    click(&mut engine, 300.0, 260.0);
+    hover(&mut engine, 337.0, 263.0);
+
+    assert!(engine.replace_hovered_endpoint_label("N"));
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let node = entry
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| node.position == [336.0, 260.0])
+        .unwrap();
+    assert_eq!(node.element, "N");
+    assert_eq!(node.atomic_number, 7);
+    assert!(!node.is_placeholder);
+    assert_eq!(
+        node.label.as_ref().map(|label| label.text.as_str()),
+        Some("N")
+    );
+}
+
+#[test]
+fn hovered_endpoint_can_be_replaced_with_abbreviation_label() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+
+    click(&mut engine, 300.0, 260.0);
+    hover(&mut engine, 337.0, 263.0);
+
+    assert!(engine.replace_hovered_endpoint_label("Ph"));
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let node = entry
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| node.position == [336.0, 260.0])
+        .unwrap();
+    assert_eq!(node.element, "C");
+    assert_eq!(node.atomic_number, 6);
+    assert!(node.is_placeholder);
+    assert_eq!(
+        node.label.as_ref().map(|label| label.text.as_str()),
+        Some("Ph")
+    );
+}
+
+#[test]
+fn hovered_endpoint_can_be_cleared_back_to_carbon() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+
+    click(&mut engine, 300.0, 260.0);
+    hover(&mut engine, 337.0, 263.0);
+    assert!(engine.replace_hovered_endpoint_label("Me"));
+    hover(&mut engine, 337.0, 263.0);
+
+    assert!(engine.replace_hovered_endpoint_label("C"));
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let node = entry
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| node.position == [336.0, 260.0])
+        .unwrap();
+    assert_eq!(node.element, "C");
+    assert_eq!(node.atomic_number, 6);
+    assert!(!node.is_placeholder);
+    assert!(node.label.is_none());
 }
 
 #[test]
@@ -285,8 +366,16 @@ fn click_on_label_glyph_uses_rightmost_label_anchor_for_horizontal_bond() {
 
     let entry = engine.state().document.editable_fragment().unwrap();
     let last = entry.fragment.nodes.last().unwrap();
-    assert!((last.position[0] - 357.0).abs() < 0.01, "{:?}", last.position);
-    assert!((last.position[1] - 260.0).abs() < 0.01, "{:?}", last.position);
+    assert!(
+        (last.position[0] - 357.0).abs() < 0.01,
+        "{:?}",
+        last.position
+    );
+    assert!(
+        (last.position[1] - 260.0).abs() < 0.01,
+        "{:?}",
+        last.position
+    );
 }
 
 #[test]
@@ -326,8 +415,16 @@ fn drag_from_label_glyph_uses_focused_glyph_for_vertical_bond() {
 
     let entry = engine.state().document.editable_fragment().unwrap();
     let last = entry.fragment.nodes.last().unwrap();
-    assert!((last.position[0] - 305.0).abs() < 0.01, "{:?}", last.position);
-    assert!((last.position[1] - 224.0).abs() < 0.01, "{:?}", last.position);
+    assert!(
+        (last.position[0] - 305.0).abs() < 0.01,
+        "{:?}",
+        last.position
+    );
+    assert!(
+        (last.position[1] - 224.0).abs() < 0.01,
+        "{:?}",
+        last.position
+    );
 }
 
 #[test]
@@ -373,8 +470,16 @@ fn drag_from_connected_label_uses_rightmost_group_uppercase_anchor() {
 
     let entry = engine.state().document.editable_fragment().unwrap();
     let last = entry.fragment.nodes.last().unwrap();
-    assert!((last.position[0] - 349.0).abs() < 0.01, "{:?}", last.position);
-    assert!((last.position[1] - 260.0).abs() < 0.01, "{:?}", last.position);
+    assert!(
+        (last.position[0] - 349.0).abs() < 0.01,
+        "{:?}",
+        last.position
+    );
+    assert!(
+        (last.position[1] - 260.0).abs() < 0.01,
+        "{:?}",
+        last.position
+    );
 }
 
 #[test]
@@ -459,6 +564,42 @@ fn drag_from_endpoint_uses_fixed_length_and_angle_snap() {
 }
 
 #[test]
+fn drag_from_endpoint_snaps_to_15_degree_increment() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, 300.0, 260.0);
+
+    engine.pointer_down(PointerEvent {
+        x: 336.0,
+        y: 260.0,
+        button: Some(0),
+        alt_key: false,
+    });
+    engine.pointer_move(PointerEvent {
+        x: 371.0,
+        y: 271.0,
+        button: None,
+        alt_key: false,
+    });
+    engine.pointer_up(PointerEvent {
+        x: 371.0,
+        y: 271.0,
+        button: Some(0),
+        alt_key: false,
+    });
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let last = entry.fragment.nodes.last().unwrap();
+    let dx = last.position[0] - 336.0;
+    let dy = last.position[1] - 260.0;
+    let angle = dy.atan2(dx).to_degrees().rem_euclid(360.0);
+
+    assert!((angle - 15.0).abs() < 0.01, "{angle} {:?}", last.position);
+    let length = (dx.powi(2) + dy.powi(2)).sqrt();
+    assert!((length - DEFAULT_BOND_LENGTH).abs() < 0.01, "{length}");
+}
+
+#[test]
 fn drag_preview_renders_document_geometry_instead_of_overlay_line() {
     let mut engine = Engine::new();
     engine.set_tool_state(bond_tool());
@@ -529,8 +670,16 @@ fn alt_drag_from_endpoint_uses_mouse_distance_without_snap() {
 
     let entry = engine.state().document.editable_fragment().unwrap();
     let last = entry.fragment.nodes.last().unwrap();
-    assert!((last.position[0] - 389.0).abs() < 0.001, "{:?}", last.position);
-    assert!((last.position[1] - 301.0).abs() < 0.001, "{:?}", last.position);
+    assert!(
+        (last.position[0] - 389.0).abs() < 0.001,
+        "{:?}",
+        last.position
+    );
+    assert!(
+        (last.position[1] - 301.0).abs() < 0.001,
+        "{:?}",
+        last.position
+    );
     let length = ((last.position[0] - 336.0).powi(2) + (last.position[1] - 260.0).powi(2)).sqrt();
     assert!((length - DEFAULT_BOND_LENGTH).abs() > 5.0, "{length}");
 }
@@ -580,7 +729,9 @@ fn click_on_blank_canvas_creates_horizontal_double_bond() {
     let entry = engine.state().document.editable_fragment().unwrap();
     assert_eq!(entry.fragment.nodes.len(), 2);
     assert_eq!(entry.fragment.bonds.len(), 1);
-    assert_eq!(entry.fragment.bonds[0].order, 2);
+    let bond = &entry.fragment.bonds[0];
+    assert_eq!(bond.order, 2);
+    assert_eq!(bond.double.as_ref().map(|double| double.frozen), Some(false));
 }
 
 #[test]
@@ -642,7 +793,10 @@ fn click_on_blank_canvas_creates_horizontal_dashed_single_bond() {
     let entry = engine.state().document.editable_fragment().unwrap();
     assert_eq!(entry.fragment.bonds.len(), 1);
     assert_eq!(entry.fragment.bonds[0].order, 1);
-    assert_eq!(entry.fragment.bonds[0].line_styles.main, BondLinePattern::Dashed);
+    assert_eq!(
+        entry.fragment.bonds[0].line_styles.main,
+        BondLinePattern::Dashed
+    );
 }
 
 #[test]
@@ -659,6 +813,7 @@ fn click_on_blank_canvas_creates_horizontal_dashed_double_bond() {
         bond.double.as_ref().map(|double| double.placement),
         Some(DoubleBondPlacement::Right)
     );
+    assert_eq!(bond.double.as_ref().map(|double| double.frozen), Some(false));
     assert_eq!(bond.line_styles.main, BondLinePattern::Solid);
     assert_eq!(bond.line_styles.right, BondLinePattern::Dashed);
 }
@@ -689,6 +844,7 @@ fn dashed_double_tool_cycles_side_center_and_opposite_side() {
             DoubleBondPlacement::Left | DoubleBondPlacement::Right
         ));
         assert_eq!(bond.order, 2);
+        assert_eq!(bond.double.as_ref().map(|double| double.frozen), Some(false));
         assert_eq!(
             match side {
                 DoubleBondPlacement::Left => bond.line_styles.left,
@@ -800,7 +956,10 @@ fn dashed_tool_click_on_single_bond_makes_it_dashed() {
     });
 
     let entry = engine.state().document.editable_fragment().unwrap();
-    assert_eq!(entry.fragment.bonds[0].line_styles.main, BondLinePattern::Dashed);
+    assert_eq!(
+        entry.fragment.bonds[0].line_styles.main,
+        BondLinePattern::Dashed
+    );
     assert_eq!(entry.fragment.bonds[0].stroke_width, DEFAULT_BOND_STROKE);
 }
 
@@ -870,7 +1029,10 @@ fn dashed_tool_cycles_side_double_states() {
         DoubleBondPlacement::Right => DoubleBondPlacement::Left,
         DoubleBondPlacement::Center => unreachable!("side double should not be centered"),
     };
-    assert_eq!(bond.double.as_ref().map(|double| double.placement), Some(active_side));
+    assert_eq!(
+        bond.double.as_ref().map(|double| double.placement),
+        Some(active_side)
+    );
     assert_eq!(bond.line_styles.main, BondLinePattern::Solid);
     assert_eq!(
         match active_side {
@@ -889,7 +1051,10 @@ fn dashed_tool_cycles_side_double_states() {
     });
     let entry = engine.state().document.editable_fragment().unwrap();
     let bond = &entry.fragment.bonds[0];
-    assert_eq!(bond.double.as_ref().map(|double| double.placement), Some(active_side));
+    assert_eq!(
+        bond.double.as_ref().map(|double| double.placement),
+        Some(active_side)
+    );
     assert_eq!(bond.line_styles.main, BondLinePattern::Dashed);
     assert_eq!(
         match active_side {
@@ -922,7 +1087,10 @@ fn dashed_tool_cycles_side_double_states() {
     });
     let entry = engine.state().document.editable_fragment().unwrap();
     let bond = &entry.fragment.bonds[0];
-    assert_eq!(bond.double.as_ref().map(|double| double.placement), Some(opposite_side));
+    assert_eq!(
+        bond.double.as_ref().map(|double| double.placement),
+        Some(opposite_side)
+    );
     assert_eq!(bond.line_styles.main, BondLinePattern::Solid);
     assert_eq!(
         match opposite_side {
@@ -980,7 +1148,10 @@ fn dashed_tool_cycles_center_double_states() {
     });
     let entry = engine.state().document.editable_fragment().unwrap();
     let bond = &entry.fragment.bonds[0];
-    assert_eq!(bond.double.as_ref().map(|double| double.placement), Some(DoubleBondPlacement::Center));
+    assert_eq!(
+        bond.double.as_ref().map(|double| double.placement),
+        Some(DoubleBondPlacement::Center)
+    );
     let first_dashed = if bond.line_styles.left == BondLinePattern::Dashed {
         DoubleBondPlacement::Left
     } else {
@@ -1030,7 +1201,10 @@ fn dashed_tool_cycles_center_double_states() {
     });
     let entry = engine.state().document.editable_fragment().unwrap();
     let bond = &entry.fragment.bonds[0];
-    assert_eq!(bond.double.as_ref().map(|double| double.placement), Some(second_dashed));
+    assert_eq!(
+        bond.double.as_ref().map(|double| double.placement),
+        Some(second_dashed)
+    );
     assert_eq!(bond.line_styles.main, BondLinePattern::Solid);
     assert_eq!(
         match second_dashed {
@@ -1071,7 +1245,10 @@ fn click_on_blank_canvas_creates_horizontal_bold_single_bond() {
     let entry = engine.state().document.editable_fragment().unwrap();
     assert_eq!(entry.fragment.bonds.len(), 1);
     assert_eq!(entry.fragment.bonds[0].order, 1);
-    assert_eq!(entry.fragment.bonds[0].line_weights.main, BondLineWeight::Bold);
+    assert_eq!(
+        entry.fragment.bonds[0].line_weights.main,
+        BondLineWeight::Bold
+    );
     assert_eq!(entry.fragment.bonds[0].stroke_width, DEFAULT_BOND_STROKE);
 }
 
@@ -1102,7 +1279,10 @@ fn bold_tool_click_on_single_bond_makes_it_bold() {
 
     let entry = engine.state().document.editable_fragment().unwrap();
     assert_eq!(entry.fragment.bonds[0].order, 1);
-    assert_eq!(entry.fragment.bonds[0].line_weights.main, BondLineWeight::Bold);
+    assert_eq!(
+        entry.fragment.bonds[0].line_weights.main,
+        BondLineWeight::Bold
+    );
     assert_eq!(entry.fragment.bonds[0].stroke_width, DEFAULT_BOND_STROKE);
 }
 
@@ -1256,7 +1436,10 @@ fn bold_tool_cycles_plain_center_double_into_bold_states() {
         DoubleBondPlacement::Right => DoubleBondPlacement::Left,
         DoubleBondPlacement::Center => unreachable!(),
     };
-    assert_eq!(bond.double.as_ref().map(|double| double.placement), Some(exit_side));
+    assert_eq!(
+        bond.double.as_ref().map(|double| double.placement),
+        Some(exit_side)
+    );
     assert_eq!(bond.line_weights.main, BondLineWeight::Bold);
     assert_eq!(bond.line_weights.left, BondLineWeight::Normal);
     assert_eq!(bond.line_weights.right, BondLineWeight::Normal);
@@ -1560,7 +1743,7 @@ fn all_bond_tools_can_focus_existing_triple_bond_center() {
             x: 318.0,
             y: 260.0,
             button: None,
-        alt_key: false,
+            alt_key: false,
         });
 
         let hover = engine
@@ -1594,7 +1777,7 @@ fn single_tool_resets_styled_bonds_before_entering_double_cycle() {
             x: 318.0,
             y: 260.0,
             button: Some(0),
-        alt_key: false,
+            alt_key: false,
         });
 
         let entry = engine.state().document.editable_fragment().unwrap();
@@ -1609,7 +1792,7 @@ fn single_tool_resets_styled_bonds_before_entering_double_cycle() {
             x: 318.0,
             y: 260.0,
             button: Some(0),
-        alt_key: false,
+            alt_key: false,
         });
 
         let entry = engine.state().document.editable_fragment().unwrap();
@@ -1644,7 +1827,7 @@ fn double_tool_converts_other_styles_into_expected_double_states() {
             x: 318.0,
             y: 260.0,
             button: Some(0),
-        alt_key: false,
+            alt_key: false,
         });
 
         let entry = engine.state().document.editable_fragment().unwrap();
@@ -1654,6 +1837,11 @@ fn double_tool_converts_other_styles_into_expected_double_states() {
             bond.double.as_ref().map(|double| double.placement),
             Some(DoubleBondPlacement::Left | DoubleBondPlacement::Right)
         ));
+        assert_eq!(
+            bond.double.as_ref().map(|double| double.frozen),
+            Some(false),
+            "{source:?}"
+        );
         assert!(bond.stereo.is_none(), "{source:?}");
         assert_eq!(bond.line_styles.main, BondLinePattern::Solid, "{source:?}");
         assert_eq!(bond.line_weights.main, BondLineWeight::Normal, "{source:?}");
@@ -1835,7 +2023,7 @@ fn dragged_bond_endpoint_reuses_focused_existing_endpoint() {
     let entry = engine.state().document.editable_fragment().unwrap();
     let closed_bond = entry.fragment.bonds.last().unwrap();
     assert_eq!(closed_bond.order, 2);
-    assert_ne!(
+    assert_eq!(
         closed_bond.double.as_ref().map(|double| double.placement),
         Some(DoubleBondPlacement::Center),
     );
@@ -2017,7 +2205,7 @@ fn bond_tool_focuses_bond_center_and_cycles_double_styles() {
     assert_eq!(bond.order, 2);
     assert_eq!(
         bond.double.as_ref().map(|double| double.placement),
-        Some(DoubleBondPlacement::Right),
+        Some(DoubleBondPlacement::Left),
     );
     assert_ne!(
         bond.double.as_ref().map(|double| double.placement),
@@ -2061,6 +2249,366 @@ fn bond_tool_focuses_bond_center_and_cycles_double_styles() {
     let bond = &entry.fragment.bonds[0];
     assert_eq!(
         bond.double.as_ref().map(|double| double.placement),
-        Some(DoubleBondPlacement::Left),
+        Some(DoubleBondPlacement::Right),
     );
+}
+
+#[test]
+fn double_tool_defaults_to_center_on_three_connected_node() {
+    let mut engine = Engine::new();
+    engine.add_single_bond(
+        chemcore_engine::BondAnchor {
+            node_id: None,
+            point: chemcore_engine::Point::new(300.0, 260.0),
+            label_anchor: None,
+        },
+        chemcore_engine::Point::new(336.0, 260.0),
+    );
+    engine.add_single_bond_between(
+        chemcore_engine::BondAnchor {
+            node_id: Some("n_2".to_string()),
+            point: chemcore_engine::Point::new(336.0, 260.0),
+            label_anchor: None,
+        },
+        chemcore_engine::BondAnchor {
+            node_id: None,
+            point: chemcore_engine::Point::new(354.0, 228.82),
+            label_anchor: None,
+        },
+    );
+    engine.add_single_bond_between(
+        chemcore_engine::BondAnchor {
+            node_id: Some("n_2".to_string()),
+            point: chemcore_engine::Point::new(336.0, 260.0),
+            label_anchor: None,
+        },
+        chemcore_engine::BondAnchor {
+            node_id: None,
+            point: chemcore_engine::Point::new(354.0, 291.18),
+            label_anchor: None,
+        },
+    );
+
+    engine.set_tool_state(double_bond_tool());
+    engine.pointer_down(PointerEvent {
+        x: 318.0,
+        y: 260.0,
+        button: Some(0),
+        alt_key: false,
+    });
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let bond = entry
+        .fragment
+        .bonds
+        .iter()
+        .find(|bond| bond.begin == "n_1" && bond.end == "n_2")
+        .unwrap();
+    assert_eq!(bond.order, 2);
+    assert_eq!(
+        bond.double.as_ref().map(|double| double.placement),
+        Some(DoubleBondPlacement::Center)
+    );
+}
+
+#[test]
+fn adding_third_bond_to_unfrozen_center_double_moves_to_more_substituted_side() {
+    let mut engine = Engine::new();
+    engine.add_single_bond(
+        chemcore_engine::BondAnchor {
+            node_id: None,
+            point: chemcore_engine::Point::new(300.0, 260.0),
+            label_anchor: None,
+        },
+        chemcore_engine::Point::new(336.0, 260.0),
+    );
+    engine.add_single_bond_between(
+        chemcore_engine::BondAnchor {
+            node_id: Some("n_1".to_string()),
+            point: chemcore_engine::Point::new(300.0, 260.0),
+            label_anchor: None,
+        },
+        chemcore_engine::BondAnchor {
+            node_id: None,
+            point: chemcore_engine::Point::new(282.0, 228.82),
+            label_anchor: None,
+        },
+    );
+    engine.add_single_bond_between(
+        chemcore_engine::BondAnchor {
+            node_id: Some("n_2".to_string()),
+            point: chemcore_engine::Point::new(336.0, 260.0),
+            label_anchor: None,
+        },
+        chemcore_engine::BondAnchor {
+            node_id: None,
+            point: chemcore_engine::Point::new(354.0, 228.82),
+            label_anchor: None,
+        },
+    );
+
+    engine.set_tool_state(double_bond_tool());
+    engine.pointer_down(PointerEvent {
+        x: 318.0,
+        y: 260.0,
+        button: Some(0),
+        alt_key: false,
+    });
+
+    {
+        let entry = engine.state().document.editable_fragment().unwrap();
+        let bond = &entry.fragment.bonds[0];
+        assert_eq!(
+            bond.double.as_ref().map(|double| double.placement),
+            Some(DoubleBondPlacement::Center)
+        );
+        assert_eq!(bond.double.as_ref().map(|double| double.frozen), Some(false));
+    }
+
+    engine.add_single_bond_between(
+        chemcore_engine::BondAnchor {
+            node_id: Some("n_1".to_string()),
+            point: chemcore_engine::Point::new(300.0, 260.0),
+            label_anchor: None,
+        },
+        chemcore_engine::BondAnchor {
+            node_id: None,
+            point: chemcore_engine::Point::new(282.0, 291.18),
+            label_anchor: None,
+        },
+    );
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let bond = &entry.fragment.bonds[0];
+    assert_eq!(
+        bond.double.as_ref().map(|double| double.placement),
+        Some(DoubleBondPlacement::Left)
+    );
+    assert_eq!(bond.double.as_ref().map(|double| double.frozen), Some(false));
+}
+
+#[test]
+fn adding_fourth_bond_to_unfrozen_center_double_moves_to_last_drawn_side_on_tie() {
+    let mut engine = Engine::new();
+    engine.add_single_bond(
+        chemcore_engine::BondAnchor {
+            node_id: None,
+            point: chemcore_engine::Point::new(300.0, 260.0),
+            label_anchor: None,
+        },
+        chemcore_engine::Point::new(336.0, 260.0),
+    );
+    engine.add_single_bond_between(
+        chemcore_engine::BondAnchor {
+            node_id: Some("n_1".to_string()),
+            point: chemcore_engine::Point::new(300.0, 260.0),
+            label_anchor: None,
+        },
+        chemcore_engine::BondAnchor {
+            node_id: None,
+            point: chemcore_engine::Point::new(282.0, 228.82),
+            label_anchor: None,
+        },
+    );
+    engine.add_single_bond_between(
+        chemcore_engine::BondAnchor {
+            node_id: Some("n_2".to_string()),
+            point: chemcore_engine::Point::new(336.0, 260.0),
+            label_anchor: None,
+        },
+        chemcore_engine::BondAnchor {
+            node_id: None,
+            point: chemcore_engine::Point::new(354.0, 228.82),
+            label_anchor: None,
+        },
+    );
+
+    engine.set_tool_state(double_bond_tool());
+    engine.pointer_down(PointerEvent {
+        x: 318.0,
+        y: 260.0,
+        button: Some(0),
+        alt_key: false,
+    });
+
+    engine.add_single_bond_between(
+        chemcore_engine::BondAnchor {
+            node_id: Some("n_1".to_string()),
+            point: chemcore_engine::Point::new(300.0, 260.0),
+            label_anchor: None,
+        },
+        chemcore_engine::BondAnchor {
+            node_id: None,
+            point: chemcore_engine::Point::new(282.0, 291.18),
+            label_anchor: None,
+        },
+    );
+    engine.add_single_bond_between(
+        chemcore_engine::BondAnchor {
+            node_id: Some("n_2".to_string()),
+            point: chemcore_engine::Point::new(336.0, 260.0),
+            label_anchor: None,
+        },
+        chemcore_engine::BondAnchor {
+            node_id: None,
+            point: chemcore_engine::Point::new(354.0, 291.18),
+            label_anchor: None,
+        },
+    );
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let bond = &entry.fragment.bonds[0];
+    assert_eq!(
+        bond.double.as_ref().map(|double| double.placement),
+        Some(DoubleBondPlacement::Right)
+    );
+    assert_eq!(bond.double.as_ref().map(|double| double.frozen), Some(false));
+}
+
+#[test]
+fn adding_cis_substituent_to_unfrozen_monosubstituted_double_moves_to_inner_side() {
+    let mut engine = Engine::new();
+    engine.add_single_bond(
+        chemcore_engine::BondAnchor {
+            node_id: None,
+            point: chemcore_engine::Point::new(300.0, 260.0),
+            label_anchor: None,
+        },
+        chemcore_engine::Point::new(336.0, 260.0),
+    );
+    engine.add_single_bond_between(
+        chemcore_engine::BondAnchor {
+            node_id: Some("n_1".to_string()),
+            point: chemcore_engine::Point::new(300.0, 260.0),
+            label_anchor: None,
+        },
+        chemcore_engine::BondAnchor {
+            node_id: None,
+            point: chemcore_engine::Point::new(282.0, 228.82),
+            label_anchor: None,
+        },
+    );
+
+    engine.set_tool_state(double_bond_tool());
+    engine.pointer_down(PointerEvent {
+        x: 318.0,
+        y: 260.0,
+        button: Some(0),
+        alt_key: false,
+    });
+
+    {
+        let entry = engine.state().document.editable_fragment().unwrap();
+        let bond = &entry.fragment.bonds[0];
+        assert_eq!(
+            bond.double.as_ref().map(|double| double.placement),
+            Some(DoubleBondPlacement::Left)
+        );
+        assert_eq!(bond.double.as_ref().map(|double| double.frozen), Some(false));
+    }
+
+    engine.add_single_bond_between(
+        chemcore_engine::BondAnchor {
+            node_id: Some("n_2".to_string()),
+            point: chemcore_engine::Point::new(336.0, 260.0),
+            label_anchor: None,
+        },
+        chemcore_engine::BondAnchor {
+            node_id: None,
+            point: chemcore_engine::Point::new(354.0, 228.82),
+            label_anchor: None,
+        },
+    );
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let bond = &entry.fragment.bonds[0];
+    assert_eq!(
+        bond.double.as_ref().map(|double| double.placement),
+        Some(DoubleBondPlacement::Left)
+    );
+    assert_eq!(bond.double.as_ref().map(|double| double.frozen), Some(false));
+}
+
+#[test]
+fn frozen_double_bond_keeps_manual_style_after_new_attachment() {
+    let mut engine = Engine::new();
+    engine.add_single_bond(
+        chemcore_engine::BondAnchor {
+            node_id: None,
+            point: chemcore_engine::Point::new(300.0, 260.0),
+            label_anchor: None,
+        },
+        chemcore_engine::Point::new(336.0, 260.0),
+    );
+    engine.add_single_bond_between(
+        chemcore_engine::BondAnchor {
+            node_id: Some("n_1".to_string()),
+            point: chemcore_engine::Point::new(300.0, 260.0),
+            label_anchor: None,
+        },
+        chemcore_engine::BondAnchor {
+            node_id: None,
+            point: chemcore_engine::Point::new(282.0, 228.82),
+            label_anchor: None,
+        },
+    );
+    engine.add_single_bond_between(
+        chemcore_engine::BondAnchor {
+            node_id: Some("n_2".to_string()),
+            point: chemcore_engine::Point::new(336.0, 260.0),
+            label_anchor: None,
+        },
+        chemcore_engine::BondAnchor {
+            node_id: None,
+            point: chemcore_engine::Point::new(354.0, 228.82),
+            label_anchor: None,
+        },
+    );
+
+    engine.set_tool_state(double_bond_tool());
+    engine.pointer_down(PointerEvent {
+        x: 318.0,
+        y: 260.0,
+        button: Some(0),
+        alt_key: false,
+    });
+    engine.pointer_down(PointerEvent {
+        x: 318.0,
+        y: 260.0,
+        button: Some(0),
+        alt_key: false,
+    });
+
+    let manual_placement = {
+        let entry = engine.state().document.editable_fragment().unwrap();
+        let bond = &entry.fragment.bonds[0];
+        let placement = bond.double.as_ref().map(|double| double.placement);
+        assert!(matches!(
+            placement,
+            Some(DoubleBondPlacement::Left | DoubleBondPlacement::Right)
+        ));
+        assert_eq!(bond.double.as_ref().map(|double| double.frozen), Some(true));
+        placement
+    };
+
+    engine.add_single_bond_between(
+        chemcore_engine::BondAnchor {
+            node_id: Some("n_1".to_string()),
+            point: chemcore_engine::Point::new(300.0, 260.0),
+            label_anchor: None,
+        },
+        chemcore_engine::BondAnchor {
+            node_id: None,
+            point: chemcore_engine::Point::new(282.0, 291.18),
+            label_anchor: None,
+        },
+    );
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let bond = &entry.fragment.bonds[0];
+    assert_eq!(
+        bond.double.as_ref().map(|double| double.placement),
+        manual_placement
+    );
+    assert_eq!(bond.double.as_ref().map(|double| double.frozen), Some(true));
 }

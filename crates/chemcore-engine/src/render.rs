@@ -1353,12 +1353,15 @@ fn centered_double_outer_line_boundary_pair_for_direction(
         return None;
     };
     let line_side = main_contact_side(axis, reference_direction)?;
+    let begin = world_point(object, node_map.get(bond.begin.as_str()).copied()?);
+    let end = world_point(object, node_map.get(bond.end.as_str()).copied()?);
     centered_double_line_boundary_pair_for_endpoint(
         object,
         node_map,
         bond,
         shared_node_id,
         line_side,
+        double_bond_offset_distance(begin, end, stroke_width) * 0.5,
         stroke_width,
         centered_double_line_weight_for_side(bond, line_side),
     )
@@ -1879,6 +1882,9 @@ fn render_fragment_line(
         line_weight,
         object_id,
         true,
+        true,
+        true,
+        true,
         None,
         None,
     );
@@ -1902,6 +1908,9 @@ fn render_fragment_line_with_profiles(
     dash_array: Vec<f64>,
     line_weight: BondLineWeight,
     object_id: Option<String>,
+    clip_against_label_geometry: bool,
+    allow_start_join: bool,
+    allow_end_join: bool,
     inherit_kernel_profiles: bool,
     start_endpoint_profile_override: Option<Vec<Point>>,
     end_endpoint_profile_override: Option<Vec<Point>>,
@@ -1914,10 +1923,15 @@ fn render_fragment_line_with_profiles(
         .get(bond.end.as_str())
         .map(|node| label_polygons_world(node, object))
         .unwrap_or_default();
-    let clipped_start =
-        clip_point_out_of_label_geometry(start, end, start_box, &start_polygons, 0.8);
-    let clipped_end =
-        clip_point_out_of_label_geometry(end, clipped_start, end_box, &end_polygons, 0.8);
+    let (clipped_start, clipped_end) = if clip_against_label_geometry {
+        let clipped_start =
+            clip_point_out_of_label_geometry(start, end, start_box, &start_polygons, 0.8);
+        let clipped_end =
+            clip_point_out_of_label_geometry(end, clipped_start, end_box, &end_polygons, 0.8);
+        (clipped_start, clipped_end)
+    } else {
+        (start, end)
+    };
     let mut start_retreat = contact_kernel.endpoint_retreat(&bond.id, &bond.begin);
     let mut end_retreat = contact_kernel.endpoint_retreat(&bond.id, &bond.end);
     if is_hash_bond(bond) && line_weight == BondLineWeight::Bold && !dash_array.is_empty() {
@@ -1995,8 +2009,8 @@ fn render_fragment_line_with_profiles(
             clipped_start,
             clipped_end,
             stroke_width,
-            allow_main_line_join && !use_start_contact_kernel,
-            allow_main_line_join && !use_end_contact_kernel,
+            allow_main_line_join && allow_start_join && !use_start_contact_kernel,
+            allow_main_line_join && allow_end_join && !use_end_contact_kernel,
             start_endpoint_profile.clone(),
             end_endpoint_profile.clone(),
         ) {
@@ -2029,8 +2043,10 @@ fn render_fragment_line_with_profiles(
                 clipped_end,
                 line_weight_stroke_width(stroke_width, line_weight),
                 is_joinable_main_line_render(bond, allow_bold_contacts, line_weight)
+                    && allow_start_join
                     && !use_start_contact_kernel,
                 is_joinable_main_line_render(bond, allow_bold_contacts, line_weight)
+                    && allow_end_join
                     && !use_end_contact_kernel,
                 start_endpoint_profile.clone(),
                 end_endpoint_profile.clone(),
@@ -2535,8 +2551,8 @@ fn fragment_outer_bond_offset_for_side(
         return Some(triple_bond_offset_distance(start, end, stroke_width));
     }
     let placement = side_double_placement(bond)?;
-    if (placement == DoubleBondPlacement::Left && side > 0.0)
-        || (placement == DoubleBondPlacement::Right && side < 0.0)
+    if (placement == DoubleBondPlacement::Left && side < 0.0)
+        || (placement == DoubleBondPlacement::Right && side > 0.0)
     {
         return Some(double_bond_offset_distance(start, end, stroke_width));
     }
@@ -2548,8 +2564,8 @@ fn outer_bond_candidate_sides(bond: &Bond) -> Vec<f64> {
         return vec![1.0, -1.0];
     }
     match side_double_placement(bond) {
-        Some(DoubleBondPlacement::Left) => vec![1.0],
-        Some(DoubleBondPlacement::Right) => vec![-1.0],
+        Some(DoubleBondPlacement::Left) => vec![-1.0],
+        Some(DoubleBondPlacement::Right) => vec![1.0],
         _ => Vec::new(),
     }
 }
@@ -2621,6 +2637,7 @@ fn centered_double_line_boundary_pair_for_endpoint(
     bond: &Bond,
     shared_node_id: &str,
     line_side: f64,
+    offset_distance: f64,
     stroke_width: f64,
     line_weight: BondLineWeight,
 ) -> Option<([LineGeometry; 2], LineGeometry)> {
@@ -2633,7 +2650,6 @@ fn centered_double_line_boundary_pair_for_endpoint(
     }
     let unit = forward.normalized();
     let normal = Vector::new(-unit.y, unit.x);
-    let offset_distance = double_bond_offset_distance(begin, end, stroke_width) * 0.5;
     let (shared, direction) = if shared_node_id == bond.begin {
         (begin, unit)
     } else if shared_node_id == bond.end {
@@ -3015,6 +3031,7 @@ fn center_double_endpoint_profile_for_line_side(
     bond: &Bond,
     shared_node_id: &str,
     line_side: f64,
+    offset_distance: f64,
     stroke_width: f64,
     line_weight: BondLineWeight,
 ) -> Option<Vec<Point>> {
@@ -3026,7 +3043,6 @@ fn center_double_endpoint_profile_for_line_side(
     {
         return None;
     }
-
     let current_stroke_width = stroke_width.max(bond.stroke_width.max(VIEWER_BOND_STROKE));
     let (current, current_center) = centered_double_line_boundary_pair_for_endpoint(
         object,
@@ -3034,6 +3050,7 @@ fn center_double_endpoint_profile_for_line_side(
         bond,
         shared_node_id,
         line_side,
+        offset_distance,
         current_stroke_width,
         line_weight,
     )?;

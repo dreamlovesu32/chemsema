@@ -906,6 +906,51 @@ zoomInput?.addEventListener("change", () => {
   setZoomPercent(Number.isFinite(parsed) ? parsed : zoomPercent);
 });
 
+const HOVER_ENDPOINT_SHORTCUT_LABELS = {
+  h: "H",
+  n: "N",
+  o: "O",
+  s: "S",
+  P: "P",
+  p: "Ph",
+  f: "F",
+  l: "Cl",
+  b: "Br",
+  i: "I",
+  m: "Me",
+  S: "Si",
+  N: "Na",
+  B: "B",
+  d: "D",
+};
+
+function hoverEndpointShortcutLabelForEvent(event) {
+  if (!isEditingRustDocument() || editorState.activeTool !== "bond") {
+    return null;
+  }
+  if (event.ctrlKey || event.metaKey || event.altKey) {
+    return null;
+  }
+  if (event.key === "c") {
+    return "C";
+  }
+  return HOVER_ENDPOINT_SHORTCUT_LABELS[event.key] || null;
+}
+
+function runHoverEndpointShortcut(event) {
+  const label = hoverEndpointShortcutLabelForEvent(event);
+  if (!label) {
+    return false;
+  }
+  const changed = state.editorEngine?.replaceHoveredEndpointLabel?.(label);
+  if (!changed) {
+    return false;
+  }
+  syncDocumentFromEngine();
+  renderDocument();
+  return true;
+}
+
 document.addEventListener("keydown", (event) => {
   const target = event.target;
   if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement) {
@@ -921,6 +966,10 @@ document.addEventListener("keydown", (event) => {
     command = "delete";
   }
   if (command && runEditorCommand(command)) {
+    event.preventDefault();
+    return;
+  }
+  if (runHoverEndpointShortcut(event)) {
     event.preventDefault();
   }
 });

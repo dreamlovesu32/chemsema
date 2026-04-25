@@ -18,8 +18,10 @@ pub(super) fn render_fragment_bond(
         return;
     };
     let stroke_width = bond_stroke_width(document, object, bond);
-    let mut start = world_point(object, begin);
-    let mut finish = world_point(object, end);
+    let actual_start = world_point(object, begin);
+    let actual_finish = world_point(object, end);
+    let mut start = actual_start;
+    let mut finish = actual_finish;
     let begin_box = label_box_world(begin, object);
     let end_box = label_box_world(end, object);
     let begin_polygons = label_polygons_world(begin, object);
@@ -66,6 +68,8 @@ pub(super) fn render_fragment_bond(
             bond,
             start,
             finish,
+            actual_start,
+            actual_finish,
             begin_box,
             end_box,
             begin_has_label,
@@ -87,6 +91,8 @@ pub(super) fn render_fragment_bond(
             bond,
             start,
             finish,
+            actual_start,
+            actual_finish,
             begin_box,
             end_box,
             begin_has_label,
@@ -128,6 +134,8 @@ fn render_double_bond(
     bond: &Bond,
     start: Point,
     end: Point,
+    actual_start: Point,
+    actual_end: Point,
     begin_box: Option<RectBox>,
     end_box: Option<RectBox>,
     begin_has_label: bool,
@@ -137,14 +145,14 @@ fn render_double_bond(
     object_id: Option<String>,
 ) {
     let side_mode = bond.double.as_ref().map(|double| double.placement);
-    let double_offset = double_bond_offset_distance(start, end, stroke_width);
+    let double_offset = double_bond_offset_distance(actual_start, actual_end, stroke_width);
 
     match side_mode {
         Some(DoubleBondPlacement::Left) | Some(DoubleBondPlacement::Right) => {
             let side = if side_mode == Some(DoubleBondPlacement::Left) {
-                1.0
-            } else {
                 -1.0
+            } else {
+                1.0
             };
             render_fragment_line(
                 out,
@@ -175,6 +183,8 @@ fn render_double_bond(
                 end,
                 begin_box,
                 end_box,
+                actual_start,
+                actual_end,
                 begin_has_label,
                 end_has_label,
                 stroke,
@@ -196,6 +206,8 @@ fn render_double_bond(
                 end,
                 begin_box,
                 end_box,
+                begin_has_label,
+                end_has_label,
                 stroke,
                 stroke_width,
                 object_id,
@@ -217,6 +229,8 @@ fn render_center_double_bond_lines(
     end: Point,
     begin_box: Option<RectBox>,
     end_box: Option<RectBox>,
+    begin_has_label: bool,
+    end_has_label: bool,
     stroke: &str,
     stroke_width: f64,
     object_id: Option<String>,
@@ -247,6 +261,7 @@ fn render_center_double_bond_lines(
             bond,
             &bond.begin,
             line_side,
+            double_offset * 0.5,
             stroke_width,
             weight,
         );
@@ -258,6 +273,7 @@ fn render_center_double_bond_lines(
             bond,
             &bond.end,
             line_side,
+            double_offset * 0.5,
             stroke_width,
             weight,
         );
@@ -279,6 +295,9 @@ fn render_center_double_bond_lines(
             weight,
             object_id.clone(),
             false,
+            !begin_has_label,
+            !end_has_label,
+            false,
             start_endpoint_profile,
             end_endpoint_profile,
         );
@@ -295,6 +314,8 @@ fn render_triple_bond(
     bond: &Bond,
     start: Point,
     end: Point,
+    actual_start: Point,
+    actual_end: Point,
     begin_box: Option<RectBox>,
     end_box: Option<RectBox>,
     begin_has_label: bool,
@@ -303,7 +324,7 @@ fn render_triple_bond(
     stroke_width: f64,
     object_id: Option<String>,
 ) {
-    let triple_offset = triple_bond_offset_distance(start, end, stroke_width);
+    let triple_offset = triple_bond_offset_distance(actual_start, actual_end, stroke_width);
 
     render_fragment_line(
         out,
@@ -335,6 +356,8 @@ fn render_triple_bond(
         end,
         begin_box,
         end_box,
+        actual_start,
+        actual_end,
         begin_has_label,
         end_has_label,
         stroke,
@@ -357,6 +380,8 @@ fn render_outer_bond_lines(
     end: Point,
     begin_box: Option<RectBox>,
     end_box: Option<RectBox>,
+    actual_start: Point,
+    actual_end: Point,
     begin_has_label: bool,
     end_has_label: bool,
     stroke: &str,
@@ -365,7 +390,7 @@ fn render_outer_bond_lines(
     sides: &[f64],
     offset_distance: f64,
 ) {
-    let length = start.distance(end);
+    let length = actual_start.distance(actual_end);
     let is_side_double = side_double_placement(bond).is_some();
     let side_inset = if is_side_double {
         offset_distance * (3.0f64).sqrt() / 3.0
@@ -437,6 +462,9 @@ fn render_outer_bond_lines(
             line_pattern_dash_array(line_pattern),
             line_weight,
             object_id.clone(),
+            true,
+            true,
+            true,
             false,
             start_endpoint_profile,
             end_endpoint_profile,

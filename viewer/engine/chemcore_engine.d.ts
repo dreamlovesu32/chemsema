@@ -16,6 +16,7 @@ export class WasmEngine {
     pointerUp(x: number, y: number, alt_key: boolean): void;
     redo(): boolean;
     renderListJson(): string;
+    replaceHoveredEndpointLabel(label: string): boolean;
     setTool(active_tool: string, bond_variant: string): void;
     stateJson(): string;
     undo(): boolean;
@@ -38,6 +39,7 @@ export interface InitOutput {
     readonly wasmengine_pointerUp: (a: number, b: number, c: number, d: number) => void;
     readonly wasmengine_redo: (a: number) => number;
     readonly wasmengine_renderListJson: (a: number) => [number, number, number, number];
+    readonly wasmengine_replaceHoveredEndpointLabel: (a: number, b: number, c: number) => number;
     readonly wasmengine_setTool: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly wasmengine_stateJson: (a: number) => [number, number, number, number];
     readonly wasmengine_undo: (a: number) => number;
