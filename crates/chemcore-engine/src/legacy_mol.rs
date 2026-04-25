@@ -75,8 +75,12 @@ pub(crate) fn parse_molblock(molblock: &str) -> Option<LegacyMol> {
             .get(4 + atom_count + index)
             .copied()
             .unwrap_or_default();
-        let begin = parse_i32(slice_ascii(line, 0, 3)).unwrap_or(1).saturating_sub(1) as usize;
-        let end = parse_i32(slice_ascii(line, 3, 6)).unwrap_or(1).saturating_sub(1) as usize;
+        let begin = parse_i32(slice_ascii(line, 0, 3))
+            .unwrap_or(1)
+            .saturating_sub(1) as usize;
+        let end = parse_i32(slice_ascii(line, 3, 6))
+            .unwrap_or(1)
+            .saturating_sub(1) as usize;
         let order = parse_i32(slice_ascii(line, 6, 9)).unwrap_or(1).max(1) as u8;
         let stereo = parse_i32(slice_ascii(line, 9, 12)).unwrap_or(0).max(0) as u8;
         bonds.push(LegacyBond {
@@ -90,7 +94,11 @@ pub(crate) fn parse_molblock(molblock: &str) -> Option<LegacyMol> {
     for line in lines.iter().skip(4 + atom_count + bond_count) {
         if line.starts_with("M  CHG") {
             let parts: Vec<&str> = line.split_whitespace().collect();
-            let pair_count = parts.get(2).and_then(|value| parse_i32(value)).unwrap_or(0).max(0) as usize;
+            let pair_count = parts
+                .get(2)
+                .and_then(|value| parse_i32(value))
+                .unwrap_or(0)
+                .max(0) as usize;
             for pair_index in 0..pair_count {
                 let atom_index = parts
                     .get(3 + pair_index * 2)
@@ -108,7 +116,11 @@ pub(crate) fn parse_molblock(molblock: &str) -> Option<LegacyMol> {
 
         if line.starts_with("M  STY") {
             let parts: Vec<&str> = line.split_whitespace().collect();
-            let pair_count = parts.get(2).and_then(|value| parse_i32(value)).unwrap_or(0).max(0) as usize;
+            let pair_count = parts
+                .get(2)
+                .and_then(|value| parse_i32(value))
+                .unwrap_or(0)
+                .max(0) as usize;
             for pair_index in 0..pair_count {
                 let sgroup_id = parts.get(3 + pair_index * 2).copied().unwrap_or_default();
                 let sgroup_type = parts.get(4 + pair_index * 2).copied().unwrap_or_default();
@@ -129,14 +141,20 @@ pub(crate) fn parse_molblock(molblock: &str) -> Option<LegacyMol> {
         if line.starts_with("M  SAL") {
             let parts: Vec<&str> = line.split_whitespace().collect();
             let sgroup_id = parts.get(2).copied().unwrap_or_default();
-            let count = parts.get(3).and_then(|value| parse_i32(value)).unwrap_or(0).max(0) as usize;
-            let entry = sgroups.entry(sgroup_id.to_string()).or_insert_with(|| LegacySgroup {
-                kind: String::new(),
-                atoms: Vec::new(),
-                label: String::new(),
-                bonds: Vec::new(),
-                vectors: BTreeMap::new(),
-            });
+            let count = parts
+                .get(3)
+                .and_then(|value| parse_i32(value))
+                .unwrap_or(0)
+                .max(0) as usize;
+            let entry = sgroups
+                .entry(sgroup_id.to_string())
+                .or_insert_with(|| LegacySgroup {
+                    kind: String::new(),
+                    atoms: Vec::new(),
+                    label: String::new(),
+                    bonds: Vec::new(),
+                    vectors: BTreeMap::new(),
+                });
             for item_index in 0..count {
                 let atom_index = parts
                     .get(4 + item_index)
@@ -151,14 +169,20 @@ pub(crate) fn parse_molblock(molblock: &str) -> Option<LegacyMol> {
         if line.starts_with("M  SBL") {
             let parts: Vec<&str> = line.split_whitespace().collect();
             let sgroup_id = parts.get(2).copied().unwrap_or_default();
-            let count = parts.get(3).and_then(|value| parse_i32(value)).unwrap_or(0).max(0) as usize;
-            let entry = sgroups.entry(sgroup_id.to_string()).or_insert_with(|| LegacySgroup {
-                kind: String::new(),
-                atoms: Vec::new(),
-                label: String::new(),
-                bonds: Vec::new(),
-                vectors: BTreeMap::new(),
-            });
+            let count = parts
+                .get(3)
+                .and_then(|value| parse_i32(value))
+                .unwrap_or(0)
+                .max(0) as usize;
+            let entry = sgroups
+                .entry(sgroup_id.to_string())
+                .or_insert_with(|| LegacySgroup {
+                    kind: String::new(),
+                    atoms: Vec::new(),
+                    label: String::new(),
+                    bonds: Vec::new(),
+                    vectors: BTreeMap::new(),
+                });
             for item_index in 0..count {
                 let bond_index = parts
                     .get(4 + item_index)
@@ -203,8 +227,14 @@ pub(crate) fn parse_molblock(molblock: &str) -> Option<LegacyMol> {
                 .unwrap_or(1)
                 .saturating_sub(1) as usize;
             let vector = Vector::new(
-                parts.get(4).and_then(|value| parse_f64(value)).unwrap_or(0.0),
-                parts.get(5).and_then(|value| parse_f64(value)).unwrap_or(0.0),
+                parts
+                    .get(4)
+                    .and_then(|value| parse_f64(value))
+                    .unwrap_or(0.0),
+                parts
+                    .get(5)
+                    .and_then(|value| parse_f64(value))
+                    .unwrap_or(0.0),
             );
             sgroups
                 .entry(sgroup_id.to_string())
@@ -234,10 +264,22 @@ pub(crate) fn parse_molblock(molblock: &str) -> Option<LegacyMol> {
     if atoms.is_empty() {
         return None;
     }
-    let min_x = atoms.iter().map(|atom| atom.x).fold(f64::INFINITY, f64::min);
-    let max_x = atoms.iter().map(|atom| atom.x).fold(f64::NEG_INFINITY, f64::max);
-    let min_y = atoms.iter().map(|atom| atom.y).fold(f64::INFINITY, f64::min);
-    let max_y = atoms.iter().map(|atom| atom.y).fold(f64::NEG_INFINITY, f64::max);
+    let min_x = atoms
+        .iter()
+        .map(|atom| atom.x)
+        .fold(f64::INFINITY, f64::min);
+    let max_x = atoms
+        .iter()
+        .map(|atom| atom.x)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let min_y = atoms
+        .iter()
+        .map(|atom| atom.y)
+        .fold(f64::INFINITY, f64::min);
+    let max_y = atoms
+        .iter()
+        .map(|atom| atom.y)
+        .fold(f64::NEG_INFINITY, f64::max);
 
     Some(LegacyMol {
         atoms,

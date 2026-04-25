@@ -41,11 +41,16 @@ fn fragment_label_lines(label: &crate::NodeLabel) -> Vec<String> {
     }
 }
 
-fn fragment_label_runs_for_line(label: &crate::NodeLabel, index: usize, line: &str) -> Vec<LabelRun> {
+fn fragment_label_runs_for_line(
+    label: &crate::NodeLabel,
+    index: usize,
+    line: &str,
+) -> Vec<LabelRun> {
     if let Some(line_runs) = label.line_runs.get(index) {
         return line_runs.clone();
     }
-    if index == 0 && !label.runs.is_empty() && !label.text.contains('\n') && label.lines.is_empty() {
+    if index == 0 && !label.runs.is_empty() && !label.text.contains('\n') && label.lines.is_empty()
+    {
         return label.runs.clone();
     }
     vec![LabelRun {
@@ -138,7 +143,9 @@ pub(super) fn render_line_object(
         .and_then(|value| style_string(value, "stroke"))
         .unwrap_or_else(|| "#222222".to_string());
     let stroke_width = style
-        .and_then(|value| style_number(value, "strokeWidth").or_else(|| style_number(value, "stroke_width")))
+        .and_then(|value| {
+            style_number(value, "strokeWidth").or_else(|| style_number(value, "stroke_width"))
+        })
         .unwrap_or(1.6);
     let line_cap = style
         .and_then(|value| style_string(value, "lineCap"))
@@ -207,10 +214,13 @@ pub(super) fn render_text_object(
         .style_ref
         .as_ref()
         .and_then(|style_ref| document.styles.get(style_ref));
-    let font_size = payload_number(&object.payload, "fontSize").or_else(|| {
-        style.and_then(|value| style_number(value, "fontSize").or_else(|| style_number(value, "font_size")))
-    })
-    .unwrap_or(12.0);
+    let font_size = payload_number(&object.payload, "fontSize")
+        .or_else(|| {
+            style.and_then(|value| {
+                style_number(value, "fontSize").or_else(|| style_number(value, "font_size"))
+            })
+        })
+        .unwrap_or(12.0);
     let line_height = payload_number(&object.payload, "lineHeight").unwrap_or(15.0);
     let align = payload_string(&object.payload, "align").unwrap_or_else(|| "left".to_string());
     let text_anchor = text_anchor(&align);
@@ -240,9 +250,10 @@ pub(super) fn render_text_object(
             }
             return;
         }
-        for (index, line) in split_preserved_text_lines(&payload_string(&object.payload, "text").unwrap_or_default())
-            .into_iter()
-            .enumerate()
+        for (index, line) in
+            split_preserved_text_lines(&payload_string(&object.payload, "text").unwrap_or_default())
+                .into_iter()
+                .enumerate()
         {
             push_text(
                 out,
@@ -304,7 +315,9 @@ pub(super) fn render_shape_object(
     let fill = style.and_then(|value| style_nullable_string(value, "fill"));
     let stroke = style.and_then(|value| style_nullable_string(value, "stroke"));
     let stroke_width = style
-        .and_then(|value| style_number(value, "strokeWidth").or_else(|| style_number(value, "stroke_width")))
+        .and_then(|value| {
+            style_number(value, "strokeWidth").or_else(|| style_number(value, "stroke_width"))
+        })
         .unwrap_or(1.0);
     let dash_array = style
         .and_then(|value| style_number_array(value, "dashArray"))
@@ -312,7 +325,8 @@ pub(super) fn render_shape_object(
     let fill_gradient = style
         .and_then(|value| value.get("fillGradient").cloned())
         .filter(|value| !value.is_null());
-    let corner_radius = payload_number(&object.payload, "cornerRadius").filter(|value| *value > 0.0);
+    let corner_radius =
+        payload_number(&object.payload, "cornerRadius").filter(|value| *value > 0.0);
 
     out.push(RenderPrimitive::Rect {
         role: RenderRole::DocumentGraphic,

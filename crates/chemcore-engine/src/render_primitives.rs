@@ -79,7 +79,11 @@ pub enum RenderPrimitive {
         ry: Option<f64>,
         #[serde(rename = "dashArray", default, skip_serializing_if = "Vec::is_empty")]
         dash_array: Vec<f64>,
-        #[serde(rename = "fillGradient", default, skip_serializing_if = "Option::is_none")]
+        #[serde(
+            rename = "fillGradient",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
         fill_gradient: Option<JsonValue>,
     },
     Polyline {
@@ -108,13 +112,25 @@ pub enum RenderPrimitive {
         text: String,
         #[serde(rename = "fontSize")]
         font_size: f64,
-        #[serde(rename = "fontFamily", default, skip_serializing_if = "Option::is_none")]
+        #[serde(
+            rename = "fontFamily",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
         font_family: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         fill: Option<String>,
-        #[serde(rename = "textAnchor", default, skip_serializing_if = "Option::is_none")]
+        #[serde(
+            rename = "textAnchor",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
         text_anchor: Option<String>,
-        #[serde(rename = "lineHeight", default, skip_serializing_if = "Option::is_none")]
+        #[serde(
+            rename = "lineHeight",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
         line_height: Option<f64>,
         #[serde(rename = "preserveLines", default)]
         preserve_lines: bool,

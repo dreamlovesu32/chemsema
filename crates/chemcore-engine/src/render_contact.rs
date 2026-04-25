@@ -136,7 +136,9 @@ pub(super) fn build_main_bond_contact_kernel<'a>(
             continue;
         }
 
-        let has_hash_obstacle = incident_bonds.iter().any(|bond| is_hash_contact_obstacle(bond));
+        let has_hash_obstacle = incident_bonds
+            .iter()
+            .any(|bond| is_hash_contact_obstacle(bond));
         if has_hash_obstacle {
             if incident_bonds.len() > 2 {
                 for bond in &incident_bonds {
@@ -267,17 +269,29 @@ pub(super) fn main_bond_endpoint_geometry<'a>(
         let narrow_half_width = solid_wedge_tip_half_width(stroke_width);
         let wide_half_width = solid_wedge_half_width(stroke_width);
         return match stereo_kind {
-            BondStereoKind::SolidWedgeEnd | BondStereoKind::HashedWedgeEnd if node_id == bond.end => {
-                let base_plus =
-                    Point::new(center.x + normal.x * wide_half_width, center.y + normal.y * wide_half_width);
-                let base_minus =
-                    Point::new(center.x - normal.x * wide_half_width, center.y - normal.y * wide_half_width);
-                let tip_plus =
-                    Point::new(other.x + normal.x * narrow_half_width, other.y + normal.y * narrow_half_width);
-                let tip_minus =
-                    Point::new(other.x - normal.x * narrow_half_width, other.y - normal.y * narrow_half_width);
-                let plus_direction = Vector::new(tip_plus.x - base_plus.x, tip_plus.y - base_plus.y);
-                let minus_direction = Vector::new(tip_minus.x - base_minus.x, tip_minus.y - base_minus.y);
+            BondStereoKind::SolidWedgeEnd | BondStereoKind::HashedWedgeEnd
+                if node_id == bond.end =>
+            {
+                let base_plus = Point::new(
+                    center.x + normal.x * wide_half_width,
+                    center.y + normal.y * wide_half_width,
+                );
+                let base_minus = Point::new(
+                    center.x - normal.x * wide_half_width,
+                    center.y - normal.y * wide_half_width,
+                );
+                let tip_plus = Point::new(
+                    other.x + normal.x * narrow_half_width,
+                    other.y + normal.y * narrow_half_width,
+                );
+                let tip_minus = Point::new(
+                    other.x - normal.x * narrow_half_width,
+                    other.y - normal.y * narrow_half_width,
+                );
+                let plus_direction =
+                    Vector::new(tip_plus.x - base_plus.x, tip_plus.y - base_plus.y);
+                let minus_direction =
+                    Vector::new(tip_minus.x - base_minus.x, tip_minus.y - base_minus.y);
                 Some(MainBondEndpointGeometry {
                     bond,
                     center,
@@ -298,17 +312,29 @@ pub(super) fn main_bond_endpoint_geometry<'a>(
                     },
                 })
             }
-            BondStereoKind::SolidWedgeBegin | BondStereoKind::HashedWedgeBegin if node_id == bond.begin => {
-                let base_plus =
-                    Point::new(center.x + normal.x * wide_half_width, center.y + normal.y * wide_half_width);
-                let base_minus =
-                    Point::new(center.x - normal.x * wide_half_width, center.y - normal.y * wide_half_width);
-                let tip_plus =
-                    Point::new(other.x + normal.x * narrow_half_width, other.y + normal.y * narrow_half_width);
-                let tip_minus =
-                    Point::new(other.x - normal.x * narrow_half_width, other.y - normal.y * narrow_half_width);
-                let plus_direction = Vector::new(tip_plus.x - base_plus.x, tip_plus.y - base_plus.y);
-                let minus_direction = Vector::new(tip_minus.x - base_minus.x, tip_minus.y - base_minus.y);
+            BondStereoKind::SolidWedgeBegin | BondStereoKind::HashedWedgeBegin
+                if node_id == bond.begin =>
+            {
+                let base_plus = Point::new(
+                    center.x + normal.x * wide_half_width,
+                    center.y + normal.y * wide_half_width,
+                );
+                let base_minus = Point::new(
+                    center.x - normal.x * wide_half_width,
+                    center.y - normal.y * wide_half_width,
+                );
+                let tip_plus = Point::new(
+                    other.x + normal.x * narrow_half_width,
+                    other.y + normal.y * narrow_half_width,
+                );
+                let tip_minus = Point::new(
+                    other.x - normal.x * narrow_half_width,
+                    other.y - normal.y * narrow_half_width,
+                );
+                let plus_direction =
+                    Vector::new(tip_plus.x - base_plus.x, tip_plus.y - base_plus.y);
+                let minus_direction =
+                    Vector::new(tip_minus.x - base_minus.x, tip_minus.y - base_minus.y);
                 Some(MainBondEndpointGeometry {
                     bond,
                     center,
@@ -333,16 +359,26 @@ pub(super) fn main_bond_endpoint_geometry<'a>(
             | BondStereoKind::SolidWedgeBegin
             | BondStereoKind::HashedWedgeEnd
             | BondStereoKind::HashedWedgeBegin => {
-                let base_plus =
-                    Point::new(center.x + normal.x * narrow_half_width, center.y + normal.y * narrow_half_width);
-                let base_minus =
-                    Point::new(center.x - normal.x * narrow_half_width, center.y - normal.y * narrow_half_width);
-                let cap_plus =
-                    Point::new(other.x + normal.x * wide_half_width, other.y + normal.y * wide_half_width);
-                let cap_minus =
-                    Point::new(other.x - normal.x * wide_half_width, other.y - normal.y * wide_half_width);
-                let plus_direction = Vector::new(cap_plus.x - base_plus.x, cap_plus.y - base_plus.y);
-                let minus_direction = Vector::new(cap_minus.x - base_minus.x, cap_minus.y - base_minus.y);
+                let base_plus = Point::new(
+                    center.x + normal.x * narrow_half_width,
+                    center.y + normal.y * narrow_half_width,
+                );
+                let base_minus = Point::new(
+                    center.x - normal.x * narrow_half_width,
+                    center.y - normal.y * narrow_half_width,
+                );
+                let cap_plus = Point::new(
+                    other.x + normal.x * wide_half_width,
+                    other.y + normal.y * wide_half_width,
+                );
+                let cap_minus = Point::new(
+                    other.x - normal.x * wide_half_width,
+                    other.y - normal.y * wide_half_width,
+                );
+                let plus_direction =
+                    Vector::new(cap_plus.x - base_plus.x, cap_plus.y - base_plus.y);
+                let minus_direction =
+                    Vector::new(cap_minus.x - base_minus.x, cap_minus.y - base_minus.y);
                 Some(MainBondEndpointGeometry {
                     bond,
                     center,
@@ -371,8 +407,14 @@ pub(super) fn main_bond_endpoint_geometry<'a>(
     }
 
     let half_width = line_weight_stroke_width(stroke_width, bond.line_weights.main) * 0.5;
-    let base_plus = Point::new(center.x + normal.x * half_width, center.y + normal.y * half_width);
-    let base_minus = Point::new(center.x - normal.x * half_width, center.y - normal.y * half_width);
+    let base_plus = Point::new(
+        center.x + normal.x * half_width,
+        center.y + normal.y * half_width,
+    );
+    let base_minus = Point::new(
+        center.x - normal.x * half_width,
+        center.y - normal.y * half_width,
+    );
     Some(MainBondEndpointGeometry {
         bond,
         center,
@@ -502,7 +544,11 @@ fn push_two_bond_contact_triangles(
     outer: Point,
 ) {
     for points in [
-        compact_polygon_points(vec![geometry.center, geometry.base_for_side(inner_side), inner]),
+        compact_polygon_points(vec![
+            geometry.center,
+            geometry.base_for_side(inner_side),
+            inner,
+        ]),
         compact_polygon_points(vec![
             geometry.center,
             outer,
@@ -569,15 +615,18 @@ fn append_multi_bond_main_contact(
             };
             profile = compact_polygon_points(profile);
             if profile.len() >= 3 && polygon_area_signed(&profile).abs() > 1.0e-4 {
-                kernel.endpoint_profiles.insert(
-                    MainBondEndpointKey::new(&current.bond.id, node_id),
-                    profile,
-                );
+                kernel
+                    .endpoint_profiles
+                    .insert(MainBondEndpointKey::new(&current.bond.id, node_id), profile);
             }
             continue;
         }
 
-        let points = compact_polygon_points(vec![current.center, previous_intersection, next_intersection]);
+        let points = compact_polygon_points(vec![
+            current.center,
+            previous_intersection,
+            next_intersection,
+        ]);
         if points.len() >= 3 && polygon_area_signed(&points).abs() > 1.0e-4 {
             kernel.patches.push(MainBondContactPatch { points });
         }
@@ -613,10 +662,16 @@ pub(super) fn bond_ray_is_acute(axis: Vector, other_axis: Vector) -> bool {
     vector_dot(axis.normalized(), other_axis.normalized()) > EPSILON
 }
 
-fn extended_main_contour_intersection(first: MainBondContour, second: MainBondContour) -> MainContourJoin {
-    if let Some((intersection, _, _)) =
-        line_intersection_with_parameters(first.base, first.direction, second.base, second.direction)
-    {
+fn extended_main_contour_intersection(
+    first: MainBondContour,
+    second: MainBondContour,
+) -> MainContourJoin {
+    if let Some((intersection, _, _)) = line_intersection_with_parameters(
+        first.base,
+        first.direction,
+        second.base,
+        second.direction,
+    ) {
         return MainContourJoin {
             first: intersection,
             second: intersection,
@@ -625,7 +680,10 @@ fn extended_main_contour_intersection(first: MainBondContour, second: MainBondCo
     bounded_main_contour_intersection(first, second)
 }
 
-fn bounded_main_contour_intersection(first: MainBondContour, second: MainBondContour) -> MainContourJoin {
+fn bounded_main_contour_intersection(
+    first: MainBondContour,
+    second: MainBondContour,
+) -> MainContourJoin {
     let max_distance = (first.half_width.max(second.half_width) * MAIN_CONTACT_MITER_LIMIT)
         .min(first.extent.min(second.extent) * 0.38);
     let fallback_distance = max_distance.min(
@@ -648,10 +706,15 @@ fn bounded_main_contour_intersection(first: MainBondContour, second: MainBondCon
 
     let first_unit = first.direction.normalized();
     let second_unit = second.direction.normalized();
-    let first_projection =
-        vector_dot(Vector::new(intersection.x - first.base.x, intersection.y - first.base.y), first_unit);
+    let first_projection = vector_dot(
+        Vector::new(intersection.x - first.base.x, intersection.y - first.base.y),
+        first_unit,
+    );
     let second_projection = vector_dot(
-        Vector::new(intersection.x - second.base.x, intersection.y - second.base.y),
+        Vector::new(
+            intersection.x - second.base.x,
+            intersection.y - second.base.y,
+        ),
         second_unit,
     );
     if first_projection.abs() <= max_distance && second_projection.abs() <= max_distance {
@@ -740,8 +803,14 @@ mod tests {
     #[test]
     fn centered_double_extension_threshold_uses_162_degrees() {
         let axis = Vector::new(1.0, 0.0);
-        let skip_axis = Vector::new((-170.0_f64).to_radians().cos(), (-170.0_f64).to_radians().sin());
-        let extend_axis = Vector::new((-150.0_f64).to_radians().cos(), (-150.0_f64).to_radians().sin());
+        let skip_axis = Vector::new(
+            (-170.0_f64).to_radians().cos(),
+            (-170.0_f64).to_radians().sin(),
+        );
+        let extend_axis = Vector::new(
+            (-150.0_f64).to_radians().cos(),
+            (-150.0_f64).to_radians().sin(),
+        );
 
         assert!(center_double_skips_extension(axis, skip_axis));
         assert!(!center_double_skips_extension(axis, extend_axis));
@@ -750,12 +819,7 @@ mod tests {
     #[test]
     fn bounded_main_contour_intersection_clamps_far_miter() {
         let first = contour(Point::new(0.0, 1.0), Vector::new(1.0, 0.0), 20.0, 1.0);
-        let second = contour(
-            Point::new(0.0, -1.0),
-            Vector::new(1.0, 0.1),
-            20.0,
-            1.0,
-        );
+        let second = contour(Point::new(0.0, -1.0), Vector::new(1.0, 0.1), 20.0, 1.0);
 
         let join = bounded_main_contour_intersection(first, second);
         approx_eq(join.first.distance(first.base), 4.0);

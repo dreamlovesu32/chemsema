@@ -24,8 +24,14 @@ pub(super) fn render_fragment_bond(
     let end_box = label_box_world(end, object);
     let begin_polygons = label_polygons_world(begin, object);
     let end_polygons = label_polygons_world(end, object);
-    let begin_has_label = begin.label.as_ref().is_some_and(|label| label.has_visible_text());
-    let end_has_label = end.label.as_ref().is_some_and(|label| label.has_visible_text());
+    let begin_has_label = begin
+        .label
+        .as_ref()
+        .is_some_and(|label| label.has_visible_text());
+    let end_has_label = end
+        .label
+        .as_ref()
+        .is_some_and(|label| label.has_visible_text());
 
     start = clip_point_out_of_label_geometry(start, finish, begin_box, &begin_polygons, 1.8);
     finish = clip_point_out_of_label_geometry(finish, start, end_box, &end_polygons, 1.8);
@@ -218,8 +224,18 @@ fn render_center_double_bond_lines(
 ) {
     let (normal_x, normal_y) = unit_normal(start, end);
     for (line_side, offset, pattern, weight) in [
-        (-1.0, -double_offset / 2.0, bond.line_styles.left, bond.line_weights.left),
-        (1.0, double_offset / 2.0, bond.line_styles.right, bond.line_weights.right),
+        (
+            -1.0,
+            -double_offset / 2.0,
+            bond.line_styles.left,
+            bond.line_weights.left,
+        ),
+        (
+            1.0,
+            double_offset / 2.0,
+            bond.line_styles.right,
+            bond.line_weights.right,
+        ),
     ] {
         let line_start = Point::new(start.x + normal_x * offset, start.y + normal_y * offset);
         let line_end = Point::new(end.x + normal_x * offset, end.y + normal_y * offset);
@@ -456,7 +472,11 @@ fn render_stereo_bond(
                 &bond.end,
                 start,
                 end,
-                if end_has_label { SOLID_WEDGE_END_INSET } else { 0.0 },
+                if end_has_label {
+                    SOLID_WEDGE_END_INSET
+                } else {
+                    0.0
+                },
                 stroke_width,
                 !contact_kernel.uses_endpoint(&bond.id, &bond.end),
             );
@@ -472,7 +492,11 @@ fn render_stereo_bond(
                 &bond.begin,
                 end,
                 start,
-                if begin_has_label { SOLID_WEDGE_END_INSET } else { 0.0 },
+                if begin_has_label {
+                    SOLID_WEDGE_END_INSET
+                } else {
+                    0.0
+                },
                 stroke_width,
                 !contact_kernel.uses_endpoint(&bond.id, &bond.begin),
             );
@@ -488,11 +512,23 @@ fn render_stereo_bond(
                 &bond.end,
                 start,
                 end,
-                if end_has_label { SOLID_WEDGE_END_INSET } else { 0.0 },
+                if end_has_label {
+                    SOLID_WEDGE_END_INSET
+                } else {
+                    0.0
+                },
                 stroke_width,
                 !contact_kernel.uses_endpoint(&bond.id, &bond.end),
             );
-            push_bond_polygon(out, &bond.id, points.clone(), stroke, stroke, 0.0, object_id.clone());
+            push_bond_polygon(
+                out,
+                &bond.id,
+                points.clone(),
+                stroke,
+                stroke,
+                0.0,
+                object_id.clone(),
+            );
             for knockout in compute_fragment_hashed_wedge_knockout_polygons(&points, stroke_width) {
                 push_knockout_polygon(out, knockout, object_id.clone());
             }
@@ -507,11 +543,23 @@ fn render_stereo_bond(
                 &bond.begin,
                 end,
                 start,
-                if begin_has_label { SOLID_WEDGE_END_INSET } else { 0.0 },
+                if begin_has_label {
+                    SOLID_WEDGE_END_INSET
+                } else {
+                    0.0
+                },
                 stroke_width,
                 !contact_kernel.uses_endpoint(&bond.id, &bond.begin),
             );
-            push_bond_polygon(out, &bond.id, points.clone(), stroke, stroke, 0.0, object_id.clone());
+            push_bond_polygon(
+                out,
+                &bond.id,
+                points.clone(),
+                stroke,
+                stroke,
+                0.0,
+                object_id.clone(),
+            );
             for knockout in compute_fragment_hashed_wedge_knockout_polygons(&points, stroke_width) {
                 push_knockout_polygon(out, knockout, object_id.clone());
             }
@@ -532,12 +580,24 @@ pub(super) fn compute_solid_wedge_points(
     let normal = Vector::new(-unit.y, unit.x);
     let tip_half_width = solid_wedge_tip_half_width(stroke_width);
     let width = solid_wedge_half_width(stroke_width);
-    let tip_plus = Point::new(start.x + normal.x * tip_half_width, start.y + normal.y * tip_half_width);
-    let tip_minus = Point::new(start.x - normal.x * tip_half_width, start.y - normal.y * tip_half_width);
+    let tip_plus = Point::new(
+        start.x + normal.x * tip_half_width,
+        start.y + normal.y * tip_half_width,
+    );
+    let tip_minus = Point::new(
+        start.x - normal.x * tip_half_width,
+        start.y - normal.y * tip_half_width,
+    );
     let cap_inset = end_inset.min(length * 0.22);
     let cap_center = Point::new(end.x - unit.x * cap_inset, end.y - unit.y * cap_inset);
-    let cap_plus = Point::new(cap_center.x + normal.x * width, cap_center.y + normal.y * width);
-    let cap_minus = Point::new(cap_center.x - normal.x * width, cap_center.y - normal.y * width);
+    let cap_plus = Point::new(
+        cap_center.x + normal.x * width,
+        cap_center.y + normal.y * width,
+    );
+    let cap_minus = Point::new(
+        cap_center.x - normal.x * width,
+        cap_center.y - normal.y * width,
+    );
 
     let contacts = contact_entries(&wide_contact_directions, normal);
     let has_plus = contacts.iter().any(|entry| entry.side > 0.0);
@@ -650,12 +710,24 @@ fn compute_fragment_solid_wedge_points(
     let normal = Vector::new(-unit.y, unit.x);
     let tip_half_width = solid_wedge_tip_half_width(stroke_width);
     let width = solid_wedge_half_width(stroke_width);
-    let tip_plus = Point::new(start.x + normal.x * tip_half_width, start.y + normal.y * tip_half_width);
-    let tip_minus = Point::new(start.x - normal.x * tip_half_width, start.y - normal.y * tip_half_width);
+    let tip_plus = Point::new(
+        start.x + normal.x * tip_half_width,
+        start.y + normal.y * tip_half_width,
+    );
+    let tip_minus = Point::new(
+        start.x - normal.x * tip_half_width,
+        start.y - normal.y * tip_half_width,
+    );
     let cap_inset = end_inset.min(length * 0.22);
     let cap_center = Point::new(end.x - unit.x * cap_inset, end.y - unit.y * cap_inset);
-    let cap_plus = Point::new(cap_center.x + normal.x * width, cap_center.y + normal.y * width);
-    let cap_minus = Point::new(cap_center.x - normal.x * width, cap_center.y - normal.y * width);
+    let cap_plus = Point::new(
+        cap_center.x + normal.x * width,
+        cap_center.y + normal.y * width,
+    );
+    let cap_minus = Point::new(
+        cap_center.x - normal.x * width,
+        cap_center.y - normal.y * width,
+    );
     let start_profile = endpoint_profile_global(
         if start_retreat > EPSILON {
             None
@@ -668,7 +740,8 @@ fn compute_fragment_solid_wedge_points(
 
     if end_retreat <= EPSILON {
         if let Some(profile) = contact_kernel.endpoint_profile(&bond.id, wide_node_id) {
-            let end_profile = endpoint_profile_global(Some(profile), true, vec![cap_plus, cap_minus]);
+            let end_profile =
+                endpoint_profile_global(Some(profile), true, vec![cap_plus, cap_minus]);
             return bond_polygon_from_endpoint_profiles(start_profile, end_profile);
         }
     }
@@ -740,7 +813,10 @@ fn compute_fragment_hashed_wedge_knockout_polygons(
         let mut bottom_end = lerp_point(tip_minus, cap_minus, t1);
         let mut bottom_start = lerp_point(tip_minus, cap_minus, t0);
         let overdraw = HASH_WEDGE_EDGE_OVERDRAW * (stroke_width / VIEWER_BOND_STROKE);
-        for (upper, lower) in [(&mut top_start, &mut bottom_start), (&mut top_end, &mut bottom_end)] {
+        for (upper, lower) in [
+            (&mut top_start, &mut bottom_start),
+            (&mut top_end, &mut bottom_end),
+        ] {
             let mid = Point::new((upper.x + lower.x) * 0.5, (upper.y + lower.y) * 0.5);
             let upper_out = Vector::new(upper.x - mid.x, upper.y - mid.y).normalized();
             let lower_out = Vector::new(lower.x - mid.x, lower.y - mid.y).normalized();
@@ -749,7 +825,12 @@ fn compute_fragment_hashed_wedge_knockout_polygons(
             lower.x += lower_out.x * overdraw;
             lower.y += lower_out.y * overdraw;
         }
-        knockouts.push(compact_polygon_points(vec![top_start, top_end, bottom_end, bottom_start]));
+        knockouts.push(compact_polygon_points(vec![
+            top_start,
+            top_end,
+            bottom_end,
+            bottom_start,
+        ]));
     }
     knockouts
 }

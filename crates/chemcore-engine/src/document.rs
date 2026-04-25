@@ -91,10 +91,7 @@ impl ChemcoreDocument {
             .objects
             .iter()
             .position(|object| object.object_type == "molecule")?;
-        let resource_ref = self.objects[object_index]
-            .payload
-            .resource_ref
-            .clone()?;
+        let resource_ref = self.objects[object_index].payload.resource_ref.clone()?;
         let resource = self.resources.get_mut(&resource_ref)?;
         let fragment = resource.data.as_fragment_mut()?;
         Some(EditableFragmentMut {
@@ -111,10 +108,7 @@ impl ChemcoreDocument {
         let resource_ref = object.payload.resource_ref.as_ref()?;
         let resource = self.resources.get(resource_ref)?;
         let fragment = resource.data.as_fragment()?;
-        Some(EditableFragment {
-            object,
-            fragment,
-        })
+        Some(EditableFragment { object, fragment })
     }
 }
 

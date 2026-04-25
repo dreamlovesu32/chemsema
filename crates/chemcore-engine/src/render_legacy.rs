@@ -23,10 +23,12 @@ pub(super) fn render_legacy_molecule_object(
     let Some(parsed) = parse_molblock(molblock) else {
         return;
     };
-    let bbox = object
-        .payload
-        .bbox
-        .unwrap_or([0.0, 0.0, (parsed.max_x - parsed.min_x).max(1.0), (parsed.max_y - parsed.min_y).max(1.0)]);
+    let bbox = object.payload.bbox.unwrap_or([
+        0.0,
+        0.0,
+        (parsed.max_x - parsed.min_x).max(1.0),
+        (parsed.max_y - parsed.min_y).max(1.0),
+    ]);
     let atom_points: Vec<Point> = parsed
         .atoms
         .iter()
@@ -218,9 +220,11 @@ fn legacy_atom_label_offset(parsed: &LegacyMol, atom_index: usize) -> Vector {
     if neighbors.is_empty() {
         return Vector::new(0.0, 0.0);
     }
-    let (vx, vy) = neighbors.iter().fold((0.0, 0.0), |(sum_x, sum_y), neighbor| {
-        (sum_x + neighbor.x - atom.x, sum_y + neighbor.y - atom.y)
-    });
+    let (vx, vy) = neighbors
+        .iter()
+        .fold((0.0, 0.0), |(sum_x, sum_y), neighbor| {
+            (sum_x + neighbor.x - atom.x, sum_y + neighbor.y - atom.y)
+        });
     let length = vx.hypot(vy).max(1.0);
     Vector::new((-vx / length) * 4.5, (vy / length) * 4.5)
 }
@@ -233,7 +237,10 @@ fn legacy_line_endpoints_with_label_padding(
 ) -> (Point, Point) {
     let direction = Vector::new(end.x - start.x, end.y - start.y).normalized();
     (
-        Point::new(start.x + direction.x * start_pad, start.y + direction.y * start_pad),
+        Point::new(
+            start.x + direction.x * start_pad,
+            start.y + direction.y * start_pad,
+        ),
         Point::new(end.x - direction.x * end_pad, end.y - direction.y * end_pad),
     )
 }
@@ -258,7 +265,11 @@ fn legacy_choose_double_bond_side(parsed: &LegacyMol, bond: &LegacyMolBond) -> f
     for neighbor in legacy_bond_neighbors(parsed, bond.end, bond.begin) {
         score += (neighbor.x - end.x) * normal_x + (neighbor.y - end.y) * normal_y;
     }
-    if score >= 0.0 { -1.0 } else { 1.0 }
+    if score >= 0.0 {
+        -1.0
+    } else {
+        1.0
+    }
 }
 
 fn render_legacy_bond(
@@ -281,8 +292,14 @@ fn render_legacy_bond(
     let Some(end_point) = atom_points.get(bond.end).copied() else {
         return;
     };
-    let start_pad = label_metrics.get(bond.begin).map(|metrics| metrics.pad).unwrap_or(0.0);
-    let end_pad = label_metrics.get(bond.end).map(|metrics| metrics.pad).unwrap_or(0.0);
+    let start_pad = label_metrics
+        .get(bond.begin)
+        .map(|metrics| metrics.pad)
+        .unwrap_or(0.0);
+    let end_pad = label_metrics
+        .get(bond.end)
+        .map(|metrics| metrics.pad)
+        .unwrap_or(0.0);
 
     if bond.stereo == 1 {
         let (start, end) =
@@ -290,7 +307,11 @@ fn render_legacy_bond(
         let points = compute_solid_wedge_points(
             start,
             end,
-            if end_pad > 0.0 { SOLID_WEDGE_END_INSET } else { 0.0 },
+            if end_pad > 0.0 {
+                SOLID_WEDGE_END_INSET
+            } else {
+                0.0
+            },
             legacy_wide_contact_directions(parsed, bond, bond.end, atom_points, hidden_atoms),
             stroke_width,
         );
@@ -479,8 +500,16 @@ fn render_legacy_triple_bond(
         let (short_start, short_end) = inset_bond_segment(
             offset_start,
             offset_end,
-            if degree_a == 1 || align_start { 0.0 } else { side_inset },
-            if degree_b == 1 || align_end { 0.0 } else { side_inset },
+            if degree_a == 1 || align_start {
+                0.0
+            } else {
+                side_inset
+            },
+            if degree_b == 1 || align_end {
+                0.0
+            } else {
+                side_inset
+            },
         );
         push_line(
             out,
@@ -610,13 +639,22 @@ fn legacy_build_collapsed_groups(
             break;
         }
 
-        let anchor_point = anchor_point.unwrap_or_else(|| Point::new(
-            points.iter().map(|point| point.x).sum::<f64>() / points.len() as f64,
-            points.iter().map(|point| point.y).sum::<f64>() / points.len() as f64,
-        ));
+        let anchor_point = anchor_point.unwrap_or_else(|| {
+            Point::new(
+                points.iter().map(|point| point.x).sum::<f64>() / points.len() as f64,
+                points.iter().map(|point| point.y).sum::<f64>() / points.len() as f64,
+            )
+        });
         let direction = direction.unwrap_or_else(|| {
-            if let Some(outside_atom) = connections.first().and_then(|index| atom_points.get(*index)).copied() {
-                Vector::new(anchor_point.x - outside_atom.x, anchor_point.y - outside_atom.y)
+            if let Some(outside_atom) = connections
+                .first()
+                .and_then(|index| atom_points.get(*index))
+                .copied()
+            {
+                Vector::new(
+                    anchor_point.x - outside_atom.x,
+                    anchor_point.y - outside_atom.y,
+                )
             } else {
                 Vector::new(0.0, -1.0)
             }
@@ -641,7 +679,9 @@ fn legacy_bond_stroke_width(document: &ChemcoreDocument, object: &SceneObject) -
         .style_ref
         .as_ref()
         .and_then(|style_ref| document.styles.get(style_ref))
-        .and_then(|style| style_number(style, "strokeWidth").or_else(|| style_number(style, "stroke_width")))
+        .and_then(|style| {
+            style_number(style, "strokeWidth").or_else(|| style_number(style, "stroke_width"))
+        })
         .unwrap_or(VIEWER_BOND_STROKE)
 }
 
@@ -659,6 +699,8 @@ fn legacy_label_font_size(document: &ChemcoreDocument, object: &SceneObject) -> 
         .style_ref
         .as_ref()
         .and_then(|style_ref| document.styles.get(style_ref))
-        .and_then(|style| style_number(style, "fontSize").or_else(|| style_number(style, "font_size")))
+        .and_then(|style| {
+            style_number(style, "fontSize").or_else(|| style_number(style, "font_size"))
+        })
         .unwrap_or(11.0)
 }

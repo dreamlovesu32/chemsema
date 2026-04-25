@@ -28,11 +28,11 @@ use legacy_render::render_legacy_molecule_object;
 use object_render::{
     render_line_object, render_molecule_object, render_shape_object, render_text_object,
 };
-pub use primitives::{RenderPrimitive, RenderRole};
 use primitives::{
-    push_bond_line, push_bond_polygon, push_knockout_polygon, push_line, push_polygon, push_polyline,
-    push_text,
+    push_bond_line, push_bond_polygon, push_knockout_polygon, push_line, push_polygon,
+    push_polyline, push_text,
 };
+pub use primitives::{RenderPrimitive, RenderRole};
 
 const VIEWER_BOND_STROKE: f64 = 0.85;
 const DOUBLE_BOND_OFFSET: f64 = 2.85;
@@ -97,7 +97,11 @@ struct ArrowHeadGeometry {
 
 pub fn render_document(document: &ChemcoreDocument) -> Vec<RenderPrimitive> {
     let mut out = Vec::new();
-    let mut objects: Vec<&SceneObject> = document.objects.iter().filter(|object| object.visible).collect();
+    let mut objects: Vec<&SceneObject> = document
+        .objects
+        .iter()
+        .filter(|object| object.visible)
+        .collect();
     objects.sort_by(|a, b| a.z_index.cmp(&b.z_index).then_with(|| a.id.cmp(&b.id)));
 
     for object in objects {
@@ -113,7 +117,11 @@ pub fn render_document(document: &ChemcoreDocument) -> Vec<RenderPrimitive> {
     out
 }
 
-fn endpoint_profile_global(profile: Option<Vec<Point>>, reverse: bool, default_profile: Vec<Point>) -> Vec<Point> {
+fn endpoint_profile_global(
+    profile: Option<Vec<Point>>,
+    reverse: bool,
+    default_profile: Vec<Point>,
+) -> Vec<Point> {
     let points = if let Some(mut profile) = profile {
         if reverse {
             profile.reverse();
@@ -125,7 +133,10 @@ fn endpoint_profile_global(profile: Option<Vec<Point>>, reverse: bool, default_p
     compact_polygon_points(points)
 }
 
-fn bond_polygon_from_endpoint_profiles(start_profile: Vec<Point>, end_profile: Vec<Point>) -> Vec<Point> {
+fn bond_polygon_from_endpoint_profiles(
+    start_profile: Vec<Point>,
+    end_profile: Vec<Point>,
+) -> Vec<Point> {
     let mut points = Vec::with_capacity(start_profile.len() + end_profile.len());
     if let Some(first) = start_profile.first().copied() {
         points.push(first);
@@ -240,8 +251,14 @@ fn compute_bold_bond_points(
         vec![start_plus, start_minus]
     } else {
         vec![
-            Point::new(start.x + normal.x * half_width, start.y + normal.y * half_width),
-            Point::new(start.x - normal.x * half_width, start.y - normal.y * half_width),
+            Point::new(
+                start.x + normal.x * half_width,
+                start.y + normal.y * half_width,
+            ),
+            Point::new(
+                start.x - normal.x * half_width,
+                start.y - normal.y * half_width,
+            ),
         ]
     };
     let end_profile = if let Some(profile) = end_endpoint_profile {
@@ -312,7 +329,10 @@ fn apply_segment_endpoint_retreats(
     let start_shift = start_retreat.max(0.0) * scale;
     let end_shift = end_retreat.max(0.0) * scale;
     (
-        Point::new(start.x + unit.x * start_shift, start.y + unit.y * start_shift),
+        Point::new(
+            start.x + unit.x * start_shift,
+            start.y + unit.y * start_shift,
+        ),
         Point::new(end.x - unit.x * end_shift, end.y - unit.y * end_shift),
     )
 }
@@ -330,8 +350,14 @@ fn bold_band_cap_points(
     interior_point: Point,
     stroke_width: f64,
 ) -> (Point, Point) {
-    let base_plus = Point::new(endpoint.x + normal.x * half_width, endpoint.y + normal.y * half_width);
-    let base_minus = Point::new(endpoint.x - normal.x * half_width, endpoint.y - normal.y * half_width);
+    let base_plus = Point::new(
+        endpoint.x + normal.x * half_width,
+        endpoint.y + normal.y * half_width,
+    );
+    let base_minus = Point::new(
+        endpoint.x - normal.x * half_width,
+        endpoint.y - normal.y * half_width,
+    );
     if is_hash_bond(bond) {
         return (base_plus, base_minus);
     }
@@ -387,7 +413,10 @@ fn bold_band_cap_points(
                 continue;
             };
             let other_point = world_point(object, other_node);
-            let vector = Vector::new(other_point.x - shared_point.x, other_point.y - shared_point.y);
+            let vector = Vector::new(
+                other_point.x - shared_point.x,
+                other_point.y - shared_point.y,
+            );
             if vector.length() > 1.0e-6 {
                 contact_directions.push(vector);
             }
@@ -419,7 +448,12 @@ fn bold_band_cap_points(
             let minus_intersection = line_intersection(
                 base_minus,
                 forward,
-                far_side_contact_line_point(endpoint, minus.direction, interior_point, stroke_width),
+                far_side_contact_line_point(
+                    endpoint,
+                    minus.direction,
+                    interior_point,
+                    stroke_width,
+                ),
                 minus.direction,
             )
             .unwrap_or(base_minus);
@@ -438,14 +472,24 @@ fn bold_band_cap_points(
             let plus_intersection = line_intersection(
                 base_plus,
                 forward,
-                far_side_contact_line_point(endpoint, contact.direction, interior_point, stroke_width),
+                far_side_contact_line_point(
+                    endpoint,
+                    contact.direction,
+                    interior_point,
+                    stroke_width,
+                ),
                 contact.direction,
             )
             .unwrap_or(base_plus);
             let minus_intersection = line_intersection(
                 base_minus,
                 forward,
-                far_side_contact_line_point(endpoint, contact.direction, interior_point, stroke_width),
+                far_side_contact_line_point(
+                    endpoint,
+                    contact.direction,
+                    interior_point,
+                    stroke_width,
+                ),
                 contact.direction,
             )
             .unwrap_or(base_minus);
@@ -470,9 +514,14 @@ fn solid_wedge_cap_points(
     cap_minus: Point,
     stroke_width: f64,
 ) -> Option<(Point, Point)> {
-    if let Some(join_points) =
-        wide_endpoint_join_points_against_main_lines(object, bonds, node_map, bond, shared_node_id, stroke_width)
-    {
+    if let Some(join_points) = wide_endpoint_join_points_against_main_lines(
+        object,
+        bonds,
+        node_map,
+        bond,
+        shared_node_id,
+        stroke_width,
+    ) {
         return Some(join_points);
     }
     let join_plus = solid_wedge_edge_join_point(
@@ -661,7 +710,10 @@ fn bold_edge_join_point(
                 if distance > other_line.length.max(forward.length()) * 0.45 {
                     continue;
                 }
-                if best.as_ref().is_none_or(|(_, best_distance)| distance < *best_distance) {
+                if best
+                    .as_ref()
+                    .is_none_or(|(_, best_distance)| distance < *best_distance)
+                {
                     best = Some((intersection, distance));
                 }
                 continue;
@@ -693,7 +745,10 @@ fn bold_edge_join_point(
             if distance > other_line.length.max(forward.length()) * 0.45 {
                 continue;
             }
-            if best.as_ref().is_none_or(|(_, best_distance)| distance < *best_distance) {
+            if best
+                .as_ref()
+                .is_none_or(|(_, best_distance)| distance < *best_distance)
+            {
                 best = Some((intersection, distance));
             }
         }
@@ -746,8 +801,14 @@ fn compute_hashed_wedge_segments(
             ));
         } else {
             segments.push((
-                Point::new(center.x - normal.x * half_width, center.y - normal.y * half_width),
-                Point::new(center.x + normal.x * half_width, center.y + normal.y * half_width),
+                Point::new(
+                    center.x - normal.x * half_width,
+                    center.y - normal.y * half_width,
+                ),
+                Point::new(
+                    center.x + normal.x * half_width,
+                    center.y + normal.y * half_width,
+                ),
                 segment_width,
             ));
         }
@@ -756,10 +817,7 @@ fn compute_hashed_wedge_segments(
 }
 
 fn lerp_point(from: Point, to: Point, t: f64) -> Point {
-    Point::new(
-        from.x + (to.x - from.x) * t,
-        from.y + (to.y - from.y) * t,
-    )
+    Point::new(from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t)
 }
 
 fn has_joinable_main_line(bond: &Bond) -> bool {
@@ -793,14 +851,20 @@ fn boundary_lines_from_endpoint(
     let normal = Vector::new(-unit.y, unit.x);
     Some([
         LineGeometry {
-            point: Point::new(endpoint.x + normal.x * half_width, endpoint.y + normal.y * half_width),
+            point: Point::new(
+                endpoint.x + normal.x * half_width,
+                endpoint.y + normal.y * half_width,
+            ),
             direction: unit,
             shared: endpoint,
             length,
             offset_distance: half_width,
         },
         LineGeometry {
-            point: Point::new(endpoint.x - normal.x * half_width, endpoint.y - normal.y * half_width),
+            point: Point::new(
+                endpoint.x - normal.x * half_width,
+                endpoint.y - normal.y * half_width,
+            ),
             direction: unit,
             shared: endpoint,
             length,
@@ -817,7 +881,11 @@ fn main_line_boundary_lines_for_endpoint(
     stroke_width: f64,
 ) -> Option<[LineGeometry; 2]> {
     let center_line = main_bond_center_line_for_endpoint(object, node_map, bond, shared_node_id)?;
-    boundary_lines_from_endpoint(center_line.shared, center_line.direction, stroke_width * 0.5)
+    boundary_lines_from_endpoint(
+        center_line.shared,
+        center_line.direction,
+        stroke_width * 0.5,
+    )
 }
 
 fn wide_boundary_line_pair_for_endpoint(
@@ -827,7 +895,8 @@ fn wide_boundary_line_pair_for_endpoint(
     shared_node_id: &str,
     stroke_width: f64,
 ) -> Option<[LineGeometry; 2]> {
-    let lines = wide_boundary_lines_for_endpoint(object, node_map, bond, shared_node_id, stroke_width);
+    let lines =
+        wide_boundary_lines_for_endpoint(object, node_map, bond, shared_node_id, stroke_width);
     if lines.len() != 2 {
         return None;
     }
@@ -842,7 +911,10 @@ struct BoundaryJoinCandidate {
     u: f64,
 }
 
-fn boundary_line_join_candidate(current: &LineGeometry, other: &LineGeometry) -> Option<BoundaryJoinCandidate> {
+fn boundary_line_join_candidate(
+    current: &LineGeometry,
+    other: &LineGeometry,
+) -> Option<BoundaryJoinCandidate> {
     let (intersection, t, u) = line_intersection_with_parameters(
         current.point,
         current.direction,
@@ -855,8 +927,8 @@ fn boundary_line_join_candidate(current: &LineGeometry, other: &LineGeometry) ->
         return None;
     }
     let distance = intersection.distance(current.shared);
-    let max_join_distance =
-        current.length.min(other.length) * 0.55 + current.offset_distance.max(other.offset_distance) * 4.0;
+    let max_join_distance = current.length.min(other.length) * 0.55
+        + current.offset_distance.max(other.offset_distance) * 4.0;
     if distance > max_join_distance {
         return None;
     }
@@ -880,10 +952,22 @@ fn paired_boundary_line_join_points(
 ) -> Option<([Point; 2], f64)> {
     let direct = boundary_line_join_candidate(&current[0], &other[0])
         .zip(boundary_line_join_candidate(&current[1], &other[1]))
-        .map(|(plus, minus)| ([plus.point, minus.point], plus.score + minus.score, [plus, minus]));
+        .map(|(plus, minus)| {
+            (
+                [plus.point, minus.point],
+                plus.score + minus.score,
+                [plus, minus],
+            )
+        });
     let swapped = boundary_line_join_candidate(&current[0], &other[1])
         .zip(boundary_line_join_candidate(&current[1], &other[0]))
-        .map(|(plus, minus)| ([plus.point, minus.point], plus.score + minus.score, [plus, minus]));
+        .map(|(plus, minus)| {
+            (
+                [plus.point, minus.point],
+                plus.score + minus.score,
+                [plus, minus],
+            )
+        });
     match (direct, swapped) {
         (Some(a), Some(b)) => {
             if is_trivial_boundary_assignment(a.2) && !is_trivial_boundary_assignment(b.2) {
@@ -906,28 +990,38 @@ fn extended_boundary_line_join_points(
     current: [LineGeometry; 2],
     other: [LineGeometry; 2],
 ) -> Option<([Point; 2], f64)> {
-    let direct = line_intersection(current[0].point, current[0].direction, other[0].point, other[0].direction)
-        .zip(line_intersection(
-            current[1].point,
-            current[1].direction,
-            other[1].point,
-            other[1].direction,
-        ))
-        .map(|(plus, minus)| {
-            let score = plus.distance(current[0].shared) + minus.distance(current[1].shared);
-            ([plus, minus], score)
-        });
-    let swapped = line_intersection(current[0].point, current[0].direction, other[1].point, other[1].direction)
-        .zip(line_intersection(
-            current[1].point,
-            current[1].direction,
-            other[0].point,
-            other[0].direction,
-        ))
-        .map(|(plus, minus)| {
-            let score = plus.distance(current[0].shared) + minus.distance(current[1].shared);
-            ([plus, minus], score)
-        });
+    let direct = line_intersection(
+        current[0].point,
+        current[0].direction,
+        other[0].point,
+        other[0].direction,
+    )
+    .zip(line_intersection(
+        current[1].point,
+        current[1].direction,
+        other[1].point,
+        other[1].direction,
+    ))
+    .map(|(plus, minus)| {
+        let score = plus.distance(current[0].shared) + minus.distance(current[1].shared);
+        ([plus, minus], score)
+    });
+    let swapped = line_intersection(
+        current[0].point,
+        current[0].direction,
+        other[1].point,
+        other[1].direction,
+    )
+    .zip(line_intersection(
+        current[1].point,
+        current[1].direction,
+        other[0].point,
+        other[0].direction,
+    ))
+    .map(|(plus, minus)| {
+        let score = plus.distance(current[0].shared) + minus.distance(current[1].shared);
+        ([plus, minus], score)
+    });
 
     match (direct, swapped) {
         (Some(a), Some(b)) => {
@@ -959,7 +1053,8 @@ fn wide_endpoint_join_points_against_main_lines(
     {
         return None;
     }
-    let current = wide_boundary_line_pair_for_endpoint(object, node_map, bond, shared_node_id, stroke_width)?;
+    let current =
+        wide_boundary_line_pair_for_endpoint(object, node_map, bond, shared_node_id, stroke_width)?;
     let mut best: Option<([Point; 2], f64)> = None;
     for other_bond in bonds {
         if other_bond.id == bond.id {
@@ -984,7 +1079,10 @@ fn wide_endpoint_join_points_against_main_lines(
         let Some(candidate) = extended_boundary_line_join_points(current, other) else {
             continue;
         };
-        if best.as_ref().is_none_or(|(_, best_score)| candidate.1 < *best_score) {
+        if best
+            .as_ref()
+            .is_none_or(|(_, best_score)| candidate.1 < *best_score)
+        {
             best = Some(candidate);
         }
     }
@@ -1035,7 +1133,10 @@ fn main_line_join_points_against_wide_bonds(
         let Some(candidate) = paired_boundary_line_join_points(current, other) else {
             continue;
         };
-        if best.as_ref().is_none_or(|(_, best_score)| candidate.1 < *best_score) {
+        if best
+            .as_ref()
+            .is_none_or(|(_, best_score)| candidate.1 < *best_score)
+        {
             best = Some(candidate);
         }
     }
@@ -1059,7 +1160,10 @@ fn main_line_far_boundary_for_wide_bond(
     let center = main_bond_center_line_for_endpoint(object, node_map, bond, shared_node_id)?;
     let unit = center.direction.normalized();
     let normal = Vector::new(-unit.y, unit.x);
-    let to_contact = Vector::new(contact_sample.x - center.shared.x, contact_sample.y - center.shared.y);
+    let to_contact = Vector::new(
+        contact_sample.x - center.shared.x,
+        contact_sample.y - center.shared.y,
+    );
     let contact_side = (to_contact.x * normal.x + to_contact.y * normal.y).signum();
     let far_side = if contact_side.abs() <= EPSILON {
         -1.0
@@ -1115,19 +1219,28 @@ fn bold_main_line_join_polygon(
         ) else {
             continue;
         };
-        let Some(plus_intersection) =
-            line_intersection(base_plus, current[0].direction, far_boundary.point, far_boundary.direction)
-        else {
+        let Some(plus_intersection) = line_intersection(
+            base_plus,
+            current[0].direction,
+            far_boundary.point,
+            far_boundary.direction,
+        ) else {
             continue;
         };
-        let Some(minus_intersection) =
-            line_intersection(base_minus, current[1].direction, far_boundary.point, far_boundary.direction)
-        else {
+        let Some(minus_intersection) = line_intersection(
+            base_minus,
+            current[1].direction,
+            far_boundary.point,
+            far_boundary.direction,
+        ) else {
             continue;
         };
         let score = plus_intersection.distance(endpoint) + minus_intersection.distance(endpoint);
         let polygon = vec![base_plus, plus_intersection, minus_intersection, base_minus];
-        if best.as_ref().is_none_or(|(_, best_score)| score < *best_score) {
+        if best
+            .as_ref()
+            .is_none_or(|(_, best_score)| score < *best_score)
+        {
             best = Some((polygon, score));
         }
     }
@@ -1156,7 +1269,8 @@ fn main_line_polygon_points(
     let unit = direction.normalized();
     let half_width = stroke_width * 0.5;
     let mut start_lines = boundary_lines_from_endpoint(start, unit, half_width)?;
-    let mut end_lines = boundary_lines_from_endpoint(end, Vector::new(-unit.x, -unit.y), half_width)?;
+    let mut end_lines =
+        boundary_lines_from_endpoint(end, Vector::new(-unit.x, -unit.y), half_width)?;
 
     if start_endpoint_profile.is_none() && allow_start_join {
         if let Some((join_plus, join_minus)) = main_line_join_points_against_wide_bonds(
@@ -1198,7 +1312,10 @@ fn main_line_polygon_points(
         vec![end_lines[1].point, end_lines[0].point],
     );
 
-    Some(bond_polygon_from_endpoint_profiles(start_profile, end_profile))
+    Some(bond_polygon_from_endpoint_profiles(
+        start_profile,
+        end_profile,
+    ))
 }
 
 fn is_centered_double_bond(bond: &Bond) -> bool {
@@ -1408,10 +1525,14 @@ fn wide_boundary_lines_for_endpoint(
         return Vec::new();
     };
     let Some((tip_center, cap_center)) = (match stereo_kind {
-        BondStereoKind::SolidWedgeEnd | BondStereoKind::HashedWedgeEnd if shared_node_id == bond.end => {
+        BondStereoKind::SolidWedgeEnd | BondStereoKind::HashedWedgeEnd
+            if shared_node_id == bond.end =>
+        {
             Some((begin, end))
         }
-        BondStereoKind::SolidWedgeBegin | BondStereoKind::HashedWedgeBegin if shared_node_id == bond.begin => {
+        BondStereoKind::SolidWedgeBegin | BondStereoKind::HashedWedgeBegin
+            if shared_node_id == bond.begin =>
+        {
             Some((end, begin))
         }
         _ => None,
@@ -1471,7 +1592,9 @@ fn bond_stroke_width(document: &ChemcoreDocument, object: &SceneObject, bond: &B
         .style_ref
         .as_ref()
         .and_then(|style_ref| document.styles.get(style_ref))
-        .and_then(|style| style_number(style, "strokeWidth").or_else(|| style_number(style, "stroke_width")))
+        .and_then(|style| {
+            style_number(style, "strokeWidth").or_else(|| style_number(style, "stroke_width"))
+        })
         .unwrap_or(DEFAULT_BOND_STROKE)
 }
 
@@ -1523,7 +1646,10 @@ fn payload_points(payload: &ObjectPayload, key: &str) -> Vec<Point> {
         .flatten()
         .filter_map(|value| {
             let coords = value.as_array()?;
-            Some(Point::new(coords.first()?.as_f64()?, coords.get(1)?.as_f64()?))
+            Some(Point::new(
+                coords.first()?.as_f64()?,
+                coords.get(1)?.as_f64()?,
+            ))
         })
         .collect()
 }
@@ -1545,11 +1671,20 @@ fn payload_runs(payload: &ObjectPayload, key: &str) -> Vec<LabelRun> {
 fn payload_arrow_head(payload: &ObjectPayload, key: &str) -> Option<ArrowHeadGeometry> {
     let value = payload.extra.get(key)?;
     Some(ArrowHeadGeometry {
-        length: value.get("length").and_then(JsonValue::as_f64).unwrap_or(8.0),
+        length: value
+            .get("length")
+            .and_then(JsonValue::as_f64)
+            .unwrap_or(8.0),
         width: value
             .get("width")
             .and_then(JsonValue::as_f64)
-            .unwrap_or_else(|| value.get("length").and_then(JsonValue::as_f64).unwrap_or(8.0) * 0.55),
+            .unwrap_or_else(|| {
+                value
+                    .get("length")
+                    .and_then(JsonValue::as_f64)
+                    .unwrap_or(8.0)
+                    * 0.55
+            }),
         head_full: value
             .get("head")
             .and_then(JsonValue::as_str)
@@ -1601,7 +1736,12 @@ fn label_polygons_world(node: &Node, object: &SceneObject) -> Vec<Vec<Point>> {
         .unwrap_or_default()
 }
 
-fn segment_intersection_fraction(start: Point, end: Point, first: Point, second: Point) -> Option<f64> {
+fn segment_intersection_fraction(
+    start: Point,
+    end: Point,
+    first: Point,
+    second: Point,
+) -> Option<f64> {
     let direction = Vector::new(end.x - start.x, end.y - start.y);
     let edge = Vector::new(second.x - first.x, second.y - first.y);
     let denom = vector_cross(direction, edge);
@@ -1627,7 +1767,8 @@ fn clip_point_out_of_polygons(start: Point, end: Point, polygons: &[Vec<Point>])
         let mut polygon_t: Option<f64> = None;
         for index in 0..polygon.len() {
             let next = (index + 1) % polygon.len();
-            let Some(t) = segment_intersection_fraction(start, end, polygon[index], polygon[next]) else {
+            let Some(t) = segment_intersection_fraction(start, end, polygon[index], polygon[next])
+            else {
                 continue;
             };
             if t <= EPSILON {
@@ -1644,16 +1785,16 @@ fn clip_point_out_of_polygons(start: Point, end: Point, polygons: &[Vec<Point>])
         }
     }
     best_t
-        .map(|t| Point::new(start.x + (end.x - start.x) * t, start.y + (end.y - start.y) * t))
+        .map(|t| {
+            Point::new(
+                start.x + (end.x - start.x) * t,
+                start.y + (end.y - start.y) * t,
+            )
+        })
         .unwrap_or(start)
 }
 
-fn clip_point_out_of_box(
-    start: Point,
-    end: Point,
-    rect: Option<RectBox>,
-    margin: f64,
-) -> Point {
+fn clip_point_out_of_box(start: Point, end: Point, rect: Option<RectBox>, margin: f64) -> Point {
     let Some(expanded) = rect.map(|box_value| box_value.expanded(margin)) else {
         return start;
     };
@@ -1773,13 +1914,17 @@ fn render_fragment_line_with_profiles(
         .get(bond.end.as_str())
         .map(|node| label_polygons_world(node, object))
         .unwrap_or_default();
-    let clipped_start = clip_point_out_of_label_geometry(start, end, start_box, &start_polygons, 0.8);
+    let clipped_start =
+        clip_point_out_of_label_geometry(start, end, start_box, &start_polygons, 0.8);
     let clipped_end =
         clip_point_out_of_label_geometry(end, clipped_start, end_box, &end_polygons, 0.8);
     let mut start_retreat = contact_kernel.endpoint_retreat(&bond.id, &bond.begin);
     let mut end_retreat = contact_kernel.endpoint_retreat(&bond.id, &bond.end);
     if is_hash_bond(bond) && line_weight == BondLineWeight::Bold && !dash_array.is_empty() {
-        let direction = Vector::new(clipped_end.x - clipped_start.x, clipped_end.y - clipped_start.y);
+        let direction = Vector::new(
+            clipped_end.x - clipped_start.x,
+            clipped_end.y - clipped_start.y,
+        );
         if direction.length() > EPSILON {
             let unit = direction.normalized();
             let half_width = line_weight_stroke_width(stroke_width, line_weight) * 0.5;
@@ -1883,14 +2028,24 @@ fn render_fragment_line_with_profiles(
                 clipped_start,
                 clipped_end,
                 line_weight_stroke_width(stroke_width, line_weight),
-                is_joinable_main_line_render(bond, allow_bold_contacts, line_weight) && !use_start_contact_kernel,
-                is_joinable_main_line_render(bond, allow_bold_contacts, line_weight) && !use_end_contact_kernel,
+                is_joinable_main_line_render(bond, allow_bold_contacts, line_weight)
+                    && !use_start_contact_kernel,
+                is_joinable_main_line_render(bond, allow_bold_contacts, line_weight)
+                    && !use_end_contact_kernel,
                 start_endpoint_profile.clone(),
                 end_endpoint_profile.clone(),
             )
         };
         if let Some(points) = polygon_points {
-            push_bond_polygon(out, &bond.id, points, stroke, stroke, 0.0, object_id.clone());
+            push_bond_polygon(
+                out,
+                &bond.id,
+                points,
+                stroke,
+                stroke,
+                0.0,
+                object_id.clone(),
+            );
             let knockouts = if line_weight == BondLineWeight::Bold {
                 hash_bond_knockout_polygons(
                     clipped_start,
@@ -1912,7 +2067,10 @@ fn render_fragment_line_with_profiles(
         }
     }
     if line_weight == BondLineWeight::Bold && dash_array.is_empty() {
-        let direction = Vector::new(clipped_end.x - clipped_start.x, clipped_end.y - clipped_start.y);
+        let direction = Vector::new(
+            clipped_end.x - clipped_start.x,
+            clipped_end.y - clipped_start.y,
+        );
         if direction.length() > EPSILON {
             if !use_start_contact_kernel {
                 if let Some(points) = bold_main_line_join_polygon(
@@ -1925,7 +2083,15 @@ fn render_fragment_line_with_profiles(
                     direction,
                     stroke_width,
                 ) {
-                    push_bond_polygon(out, &bond.id, points, stroke, stroke, 0.0, object_id.clone());
+                    push_bond_polygon(
+                        out,
+                        &bond.id,
+                        points,
+                        stroke,
+                        stroke,
+                        0.0,
+                        object_id.clone(),
+                    );
                 }
             }
             if !use_end_contact_kernel {
@@ -1939,7 +2105,15 @@ fn render_fragment_line_with_profiles(
                     Vector::new(-direction.x, -direction.y),
                     stroke_width,
                 ) {
-                    push_bond_polygon(out, &bond.id, points, stroke, stroke, 0.0, object_id.clone());
+                    push_bond_polygon(
+                        out,
+                        &bond.id,
+                        points,
+                        stroke,
+                        stroke,
+                        0.0,
+                        object_id.clone(),
+                    );
                 }
             }
         }
@@ -2020,7 +2194,9 @@ fn split_runs_by_line(runs: &[LabelRun]) -> Vec<Vec<LabelRun>> {
             if !segment.is_empty() {
                 let mut next_run = run.clone();
                 next_run.text = (*segment).to_string();
-                out.last_mut().expect("line vector always exists").push(next_run);
+                out.last_mut()
+                    .expect("line vector always exists")
+                    .push(next_run);
             }
             if index + 1 < segments.len() {
                 out.push(Vec::new());
@@ -2081,14 +2257,22 @@ fn unit_normal(start: Point, end: Point) -> (f64, f64) {
     (-dy / length, dx / length)
 }
 
-fn inset_bond_segment(start: Point, end: Point, inset_start: f64, inset_end: f64) -> (Point, Point) {
+fn inset_bond_segment(
+    start: Point,
+    end: Point,
+    inset_start: f64,
+    inset_end: f64,
+) -> (Point, Point) {
     let direction = Vector::new(end.x - start.x, end.y - start.y);
     let length = direction.length().max(1.0);
     let unit = direction.normalized();
     let clamped_start = inset_start.max(0.0).min(length * 0.45);
     let clamped_end = inset_end.max(0.0).min(length * 0.45);
     (
-        Point::new(start.x + unit.x * clamped_start, start.y + unit.y * clamped_start),
+        Point::new(
+            start.x + unit.x * clamped_start,
+            start.y + unit.y * clamped_start,
+        ),
         Point::new(end.x - unit.x * clamped_end, end.y - unit.y * clamped_end),
     )
 }
@@ -2125,7 +2309,11 @@ fn dash_gap_intervals(length: f64, dash_array: &[f64]) -> Vec<(f64, f64)> {
     if length <= EPSILON {
         return Vec::new();
     }
-    let segments: Vec<f64> = dash_array.iter().copied().filter(|value| *value > EPSILON).collect();
+    let segments: Vec<f64> = dash_array
+        .iter()
+        .copied()
+        .filter(|value| *value > EPSILON)
+        .collect();
     if segments.is_empty() {
         return Vec::new();
     }
@@ -2165,8 +2353,9 @@ fn equal_black_segment_gap_intervals(
         return Vec::new();
     }
 
-    let mut stripe_count =
-        ((usable_length + target_gap_length) / (stripe_length + target_gap_length)).round() as usize;
+    let mut stripe_count = ((usable_length + target_gap_length)
+        / (stripe_length + target_gap_length))
+        .round() as usize;
     stripe_count = stripe_count.max(2);
     while stripe_count > 1 && stripe_length * stripe_count as f64 > usable_length + EPSILON {
         stripe_count -= 1;
@@ -2212,7 +2401,8 @@ fn dashed_bond_knockout_polygons(
     dash_gap_intervals(length, dash_array)
         .into_iter()
         .map(|(gap_start, gap_end)| {
-            let segment_start = Point::new(start.x + unit.x * gap_start, start.y + unit.y * gap_start);
+            let segment_start =
+                Point::new(start.x + unit.x * gap_start, start.y + unit.y * gap_start);
             let segment_end = Point::new(start.x + unit.x * gap_end, start.y + unit.y * gap_end);
             compact_polygon_points(vec![
                 Point::new(
@@ -2236,11 +2426,7 @@ fn dashed_bond_knockout_polygons(
         .collect()
 }
 
-fn hash_bond_knockout_polygons(
-    start: Point,
-    end: Point,
-    stroke_width: f64,
-) -> Vec<Vec<Point>> {
+fn hash_bond_knockout_polygons(start: Point, end: Point, stroke_width: f64) -> Vec<Vec<Point>> {
     let direction = Vector::new(end.x - start.x, end.y - start.y);
     let length = direction.length();
     if length <= EPSILON {
@@ -2382,7 +2568,8 @@ fn outer_bond_offset_line_for_endpoint(
 ) -> Option<LineGeometry> {
     let begin = world_point(object, node_map.get(bond.begin.as_str()).copied()?);
     let end = world_point(object, node_map.get(bond.end.as_str()).copied()?);
-    let offset_distance = fragment_outer_bond_offset_for_side(bond, side, stroke_width, begin, end)?;
+    let offset_distance =
+        fragment_outer_bond_offset_for_side(bond, side, stroke_width, begin, end)?;
     let forward = Vector::new(end.x - begin.x, end.y - begin.y);
     let length = forward.length();
     if length <= EPSILON {
@@ -2477,10 +2664,8 @@ fn boundary_lines_with_profile_terminals(
         return lines;
     }
     let terminals = [profile[0], *profile.last().unwrap_or(&profile[0])];
-    let direct =
-        terminals[0].distance(lines[0].point) + terminals[1].distance(lines[1].point);
-    let swapped =
-        terminals[0].distance(lines[1].point) + terminals[1].distance(lines[0].point);
+    let direct = terminals[0].distance(lines[0].point) + terminals[1].distance(lines[1].point);
+    let swapped = terminals[0].distance(lines[1].point) + terminals[1].distance(lines[0].point);
     if direct <= swapped {
         lines[0].point = terminals[0];
         lines[1].point = terminals[1];
@@ -2502,7 +2687,8 @@ fn main_bond_drawn_boundary_pair_for_endpoint(
     if is_hash_contact_obstacle(bond) {
         return None;
     }
-    let geometry = main_bond_endpoint_geometry(object, node_map, bond, shared_node_id, stroke_width)?;
+    let geometry =
+        main_bond_endpoint_geometry(object, node_map, bond, shared_node_id, stroke_width)?;
     let mut lines = [
         LineGeometry {
             point: geometry.base_plus,
@@ -2575,7 +2761,8 @@ fn outer_bond_drawn_boundary_pairs_for_endpoint(
 }
 
 fn main_bond_candidate_sides(bond: &Bond) -> Vec<f64> {
-    if bond.line_weights.main == BondLineWeight::Bold && bond.line_styles.main == BondLinePattern::Solid
+    if bond.line_weights.main == BondLineWeight::Bold
+        && bond.line_styles.main == BondLinePattern::Solid
     {
         vec![1.0, -1.0]
     } else {
@@ -2611,7 +2798,16 @@ fn main_bond_boundary_line_for_endpoint(
         line_weight_stroke_width(stroke_width, BondLineWeight::Bold) * 0.5
     };
     let point = if side == 0.0 {
-        far_side_contact_line_point(shared, direction, if shared_node_id == bond.begin { end } else { begin }, stroke_width)
+        far_side_contact_line_point(
+            shared,
+            direction,
+            if shared_node_id == bond.begin {
+                end
+            } else {
+                begin
+            },
+            stroke_width,
+        )
     } else {
         Point::new(
             shared.x + normal.x * offset_distance * side,
@@ -2700,7 +2896,10 @@ fn outer_bond_endpoint_profile_for_side(
             let Some(candidate) = extended_boundary_line_join_points(current, other) else {
                 continue;
             };
-            if best.as_ref().is_none_or(|(_, best_score)| candidate.1 < *best_score) {
+            if best
+                .as_ref()
+                .is_none_or(|(_, best_score)| candidate.1 < *best_score)
+            {
                 best = Some(candidate);
             }
         }
@@ -2726,7 +2925,10 @@ fn outer_bond_endpoint_profile_for_side(
         return Some(compact_polygon_points(vec![points[0], points[1]]));
     }
     if straight_through_profile {
-        return Some(compact_polygon_points(vec![current[0].point, current[1].point]));
+        return Some(compact_polygon_points(vec![
+            current[0].point,
+            current[1].point,
+        ]));
     }
     None
 }
@@ -2743,8 +2945,14 @@ fn line_geometry_local_side(line: LineGeometry) -> Option<f64> {
 }
 
 fn line_geometries_share_side(first: LineGeometry, second: LineGeometry) -> bool {
-    let first_offset = Vector::new(first.point.x - first.shared.x, first.point.y - first.shared.y);
-    let second_offset = Vector::new(second.point.x - second.shared.x, second.point.y - second.shared.y);
+    let first_offset = Vector::new(
+        first.point.x - first.shared.x,
+        first.point.y - first.shared.y,
+    );
+    let second_offset = Vector::new(
+        second.point.x - second.shared.x,
+        second.point.y - second.shared.y,
+    );
     vector_dot(first_offset, second_offset) > EPSILON
 }
 
@@ -2756,10 +2964,13 @@ fn side_double_outer_line_requires_acute_retreat(
     current_center: LineGeometry,
     current_local_side: f64,
 ) -> bool {
-    let Some(other_axis) = bond_axis_line_for_endpoint(object, node_map, other_bond, shared_node_id) else {
+    let Some(other_axis) =
+        bond_axis_line_for_endpoint(object, node_map, other_bond, shared_node_id)
+    else {
         return false;
     };
-    let Some(contact_side) = main_contact_side(current_center.direction, other_axis.direction) else {
+    let Some(contact_side) = main_contact_side(current_center.direction, other_axis.direction)
+    else {
         return false;
     };
     (contact_side - current_local_side).abs() <= 1.0e-6
@@ -2861,7 +3072,9 @@ fn center_double_endpoint_profile_for_line_side(
             if center_double_skips_extension(current_center.direction, other_center.direction) {
                 continue;
             }
-            let Some(contact_side) = main_contact_side(current_center.direction, other_center.direction) else {
+            let Some(contact_side) =
+                main_contact_side(current_center.direction, other_center.direction)
+            else {
                 continue;
             };
             if (contact_side - current_local_side).abs() > 1.0e-6 {
@@ -2870,7 +3083,10 @@ fn center_double_endpoint_profile_for_line_side(
             let Some(candidate) = extended_boundary_line_join_points(current, other) else {
                 continue;
             };
-            if best.as_ref().is_none_or(|(_, best_score)| candidate.1 < *best_score) {
+            if best
+                .as_ref()
+                .is_none_or(|(_, best_score)| candidate.1 < *best_score)
+            {
                 best = Some(candidate);
             }
         }
@@ -2879,8 +3095,14 @@ fn center_double_endpoint_profile_for_line_side(
     best.map(|(points, _)| compact_polygon_points(vec![points[0], points[1]]))
 }
 
-fn line_intersection(point: Point, direction: Vector, other_point: Point, other_direction: Vector) -> Option<Point> {
-    line_intersection_with_parameters(point, direction, other_point, other_direction).map(|value| value.0)
+fn line_intersection(
+    point: Point,
+    direction: Vector,
+    other_point: Point,
+    other_direction: Vector,
+) -> Option<Point> {
+    line_intersection_with_parameters(point, direction, other_point, other_direction)
+        .map(|value| value.0)
 }
 
 fn line_intersection_with_parameters(
@@ -2938,12 +3160,29 @@ fn far_side_contact_line_point(
     stroke_width: f64,
 ) -> Point {
     let normal = Vector::new(-contact_direction.y, contact_direction.x);
-    let to_interior = Vector::new(interior_point.x - contact_point.x, interior_point.y - contact_point.y);
+    let to_interior = Vector::new(
+        interior_point.x - contact_point.x,
+        interior_point.y - contact_point.y,
+    );
     let interior_side = (to_interior.x * normal.x + to_interior.y * normal.y).signum();
     let offset = stroke_width * 0.55;
     Point::new(
-        contact_point.x - normal.x * if interior_side == 0.0 { 1.0 } else { interior_side } * offset,
-        contact_point.y - normal.y * if interior_side == 0.0 { 1.0 } else { interior_side } * offset,
+        contact_point.x
+            - normal.x
+                * if interior_side == 0.0 {
+                    1.0
+                } else {
+                    interior_side
+                }
+                * offset,
+        contact_point.y
+            - normal.y
+                * if interior_side == 0.0 {
+                    1.0
+                } else {
+                    interior_side
+                }
+                * offset,
     )
 }
 
@@ -3107,8 +3346,16 @@ mod tests {
 
     #[test]
     fn boundary_line_join_candidate_rejects_far_backward_intersection() {
-        let current = line_geometry(Point::new(0.0, 0.0), Vector::new(1.0, 0.0), Point::new(0.0, 0.0));
-        let other = line_geometry(Point::new(-5.0, -1.0), Vector::new(0.0, 1.0), Point::new(-5.0, 0.0));
+        let current = line_geometry(
+            Point::new(0.0, 0.0),
+            Vector::new(1.0, 0.0),
+            Point::new(0.0, 0.0),
+        );
+        let other = line_geometry(
+            Point::new(-5.0, -1.0),
+            Vector::new(0.0, 1.0),
+            Point::new(-5.0, 0.0),
+        );
 
         assert!(boundary_line_join_candidate(&current, &other).is_none());
     }
@@ -3116,12 +3363,28 @@ mod tests {
     #[test]
     fn paired_boundary_line_join_points_avoids_trivial_assignment() {
         let current = [
-            line_geometry(Point::new(0.0, 1.0), Vector::new(1.0, 0.0), Point::new(0.0, 0.0)),
-            line_geometry(Point::new(0.0, -1.0), Vector::new(1.0, 0.0), Point::new(0.0, 0.0)),
+            line_geometry(
+                Point::new(0.0, 1.0),
+                Vector::new(1.0, 0.0),
+                Point::new(0.0, 0.0),
+            ),
+            line_geometry(
+                Point::new(0.0, -1.0),
+                Vector::new(1.0, 0.0),
+                Point::new(0.0, 0.0),
+            ),
         ];
         let other = [
-            line_geometry(Point::new(0.0, -1.0), Vector::new(1.0, 1.0), Point::new(0.0, 0.0)),
-            line_geometry(Point::new(0.0, 1.0), Vector::new(1.0, -1.0), Point::new(0.0, 0.0)),
+            line_geometry(
+                Point::new(0.0, -1.0),
+                Vector::new(1.0, 1.0),
+                Point::new(0.0, 0.0),
+            ),
+            line_geometry(
+                Point::new(0.0, 1.0),
+                Vector::new(1.0, -1.0),
+                Point::new(0.0, 0.0),
+            ),
         ];
 
         let (points, _) = paired_boundary_line_join_points(current, other).expect("join points");
