@@ -1,5 +1,6 @@
 use chemcore_engine::{
-    BondAnchor, BondVariant, Engine, Point, PointerEvent, TextEditTarget, Tool, ToolState,
+    BondAnchor, BondVariant, Engine, Point, PointerEvent, TextEditLayoutRequest,
+    TextEditSelection, TextEditTarget, Tool, ToolState,
 };
 
 fn px(value: f64) -> f64 {
@@ -55,6 +56,13 @@ fn node_anchor(node_id: &str, point: Point) -> BondAnchor {
     }
 }
 
+fn approx_eq(left: f64, right: f64, tolerance: f64) {
+    assert!(
+        (left - right).abs() <= tolerance,
+        "left={left:?} right={right:?} tolerance={tolerance:?}"
+    );
+}
+
 #[test]
 fn begin_and_apply_text_object_edit_creates_text_scene_object() {
     let mut engine = Engine::new();
@@ -91,6 +99,35 @@ fn begin_and_apply_text_object_edit_creates_text_scene_object() {
             .and_then(serde_json::Value::as_str),
         Some("reaction note")
     );
+}
+
+#[test]
+fn preview_text_edit_layout_returns_kernel_caret_and_selection_geometry() {
+    let mut engine = Engine::new();
+    let session = engine
+        .begin_text_edit(px_point(120.0, 88.0))
+        .expect("text session should be created");
+
+    let layout = engine.preview_text_edit_layout(&TextEditLayoutRequest {
+        session: chemcore_engine::TextEditSession {
+            text: "Hello".to_string(),
+            ..session
+        },
+        selection: Some(TextEditSelection { anchor: 2, focus: 5 }),
+    });
+
+    assert_eq!(layout.text, "Hello");
+    assert_eq!(layout.anchor_offset, [0.0, 0.0]);
+    assert_eq!(layout.lines.len(), 1);
+    assert_eq!(layout.lines[0].start_offset, 0);
+    assert_eq!(layout.lines[0].end_offset, 5);
+    assert_eq!(layout.caret_positions.len(), 6);
+    assert_eq!(layout.caret_positions.last().map(|caret| caret.offset), Some(5));
+    assert_eq!(layout.selection.as_ref().map(|selection| selection.start), Some(2));
+    assert_eq!(layout.selection.as_ref().map(|selection| selection.end), Some(5));
+    assert_eq!(layout.selection_rects.len(), 1);
+    assert!(layout.width >= px(8.0));
+    assert!(layout.height >= layout.line_height);
 }
 
 #[test]
@@ -215,6 +252,67 @@ fn endpoint_text_edit_defaults_to_chemical_and_formats_charge() {
     assert_eq!(label.runs[0].script.as_deref(), Some("normal"));
     assert_eq!(label.runs[1].text, "2+");
     assert_eq!(label.runs[1].script.as_deref(), Some("superscript"));
+}
+
+#[test]
+fn preview_text_edit_layout_matches_committed_endpoint_label_geometry() {
+    let mut engine = Engine::new();
+    click(&mut engine, 300.0, 260.0);
+    let node = engine
+        .state()
+        .document
+        .editable_fragment()
+        .expect("editable fragment should exist")
+        .fragment
+        .nodes
+        .first()
+        .cloned()
+        .expect("node should exist");
+    let session = engine
+        .begin_text_edit(Point::new(node.position[0], node.position[1]))
+        .expect("endpoint session should be created");
+    let edited_session = chemcore_engine::TextEditSession {
+        text: "H2SO4".to_string(),
+        source_runs: Vec::new(),
+        ..session.clone()
+    };
+
+    let layout = engine.preview_text_edit_layout(&TextEditLayoutRequest {
+        session: edited_session.clone(),
+        selection: Some(TextEditSelection { anchor: 5, focus: 5 }),
+    });
+
+    assert!(engine.apply_text_edit(edited_session));
+    let node = engine
+        .state()
+        .document
+        .editable_fragment()
+        .expect("editable fragment should exist")
+        .fragment
+        .nodes
+        .first()
+        .expect("node should exist");
+    let label = node.label.as_ref().expect("label should be generated");
+    let box_value = label.box_field.expect("label box should exist");
+    approx_eq(layout.width, box_value[2] - box_value[0], 0.02);
+    approx_eq(layout.height, box_value[3] - box_value[1], 0.02);
+    approx_eq(layout.anchor_offset[0], session.target.world_point().x.value() - box_value[0], 0.02);
+    approx_eq(layout.anchor_offset[1], session.target.world_point().y.value() - box_value[1], 0.02);
+    assert_eq!(
+        layout.lines.first().map(|line| {
+            line.runs
+                .iter()
+                .map(|run| (run.text.clone(), run.script.clone().unwrap_or_default()))
+                .collect::<Vec<_>>()
+        }),
+        Some(
+            label
+                .runs
+                .iter()
+                .map(|run| (run.text.clone(), run.script.clone().unwrap_or_default()))
+                .collect::<Vec<_>>()
+        )
+    );
 }
 
 #[test]

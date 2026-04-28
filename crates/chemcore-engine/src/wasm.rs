@@ -108,6 +108,14 @@ impl WasmEngine {
         .map_err(|error| JsValue::from_str(&error.to_string()))
     }
 
+    #[wasm_bindgen(js_name = previewTextEditLayout)]
+    pub fn preview_text_edit_layout(&self, request_json: &str) -> Result<String, JsValue> {
+        let request: crate::TextEditLayoutRequest = serde_json::from_str(request_json)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        serde_json::to_string(&self.inner.preview_text_edit_layout(&request))
+            .map_err(|error| JsValue::from_str(&error.to_string()))
+    }
+
     #[wasm_bindgen(js_name = canUndo)]
     pub fn can_undo(&self) -> bool {
         self.inner.can_undo()

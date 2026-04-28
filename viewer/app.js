@@ -282,6 +282,59 @@ function editorSessionToEngineSession(session) {
   return mapTextSessionLengths(session, cssPxToCm);
 }
 
+function mapTextEditLayoutLengths(layout, convert) {
+  if (!layout || typeof layout !== "object") {
+    return layout;
+  }
+  return {
+    ...layout,
+    lineHeight: layout.lineHeight == null ? layout.lineHeight : convert(Number(layout.lineHeight)),
+    width: layout.width == null ? layout.width : convert(Number(layout.width)),
+    height: layout.height == null ? layout.height : convert(Number(layout.height)),
+    anchorOffset: Array.isArray(layout.anchorOffset)
+      ? {
+        x: convert(Number(layout.anchorOffset[0] || 0)),
+        y: convert(Number(layout.anchorOffset[1] || 0)),
+      }
+      : layout.anchorOffset,
+    sourceRuns: mapRunsFontSize(layout.sourceRuns, convert),
+    displayRuns: mapRunsFontSize(layout.displayRuns, convert),
+    lines: Array.isArray(layout.lines)
+      ? layout.lines.map((line) => ({
+        ...line,
+        x: line.x == null ? line.x : convert(Number(line.x)),
+        y: line.y == null ? line.y : convert(Number(line.y)),
+        baselineY: line.baselineY == null ? line.baselineY : convert(Number(line.baselineY)),
+        height: line.height == null ? line.height : convert(Number(line.height)),
+        runs: mapRunsFontSize(line.runs, convert),
+        caretOffsets: Array.isArray(line.caretOffsets)
+          ? line.caretOffsets.map((caret) => ({
+            ...caret,
+            x: caret.x == null ? caret.x : convert(Number(caret.x)),
+          }))
+          : line.caretOffsets,
+      }))
+      : layout.lines,
+    caretPositions: Array.isArray(layout.caretPositions)
+      ? layout.caretPositions.map((caret) => ({
+        ...caret,
+        x: caret.x == null ? caret.x : convert(Number(caret.x)),
+        y: caret.y == null ? caret.y : convert(Number(caret.y)),
+        height: caret.height == null ? caret.height : convert(Number(caret.height)),
+      }))
+      : layout.caretPositions,
+    selectionRects: Array.isArray(layout.selectionRects)
+      ? layout.selectionRects.map((rect) => ({
+        ...rect,
+        x: rect.x == null ? rect.x : convert(Number(rect.x)),
+        y: rect.y == null ? rect.y : convert(Number(rect.y)),
+        width: rect.width == null ? rect.width : convert(Number(rect.width)),
+        height: rect.height == null ? rect.height : convert(Number(rect.height)),
+      }))
+      : layout.selectionRects,
+  };
+}
+
 function previewTextRunsForEditor(sessionJson) {
   const session = parseEngineJson(sessionJson, null);
   if (!session || !state.editorEngine?.previewTextRuns) {
@@ -298,6 +351,25 @@ function previewTextRunsForEditor(sessionJson) {
     sourceRuns: mapRunsFontSize(preview.sourceRuns, cmToCssPx),
     displayRuns: mapRunsFontSize(preview.displayRuns, cmToCssPx),
   });
+}
+
+function previewTextEditLayoutFromKernel(session, selectionOffsets = null) {
+  if (!state.editorEngine?.previewTextEditLayout) {
+    return null;
+  }
+  const preview = parseEngineJson(
+    state.editorEngine.previewTextEditLayout(JSON.stringify({
+      session: editorSessionToEngineSession(session),
+      selection: selectionOffsets
+        ? {
+          anchor: Number(selectionOffsets.anchor ?? 0),
+          focus: Number(selectionOffsets.focus ?? selectionOffsets.anchor ?? 0),
+        }
+        : null,
+    })),
+    null,
+  );
+  return preview ? mapTextEditLayoutLengths(preview, cmToCssPx) : null;
 }
 
 function editorCssFontFamily(fontFamily) {
@@ -1488,8 +1560,10 @@ const textEditorController = createTextEditorController({
   styleAtOffset: styleAtEditorOffsetModel,
   cssColorToHex,
   editorRootBaseStyle,
+  editorRootFontFamily,
   editorSourceRunsFromSession,
   previewTextRunsFromKernel,
+  previewTextEditLayoutFromKernel,
   displayRunsForEditor,
   renderRunNode: editorRunNode,
   defaultLineHeight: defaultTextEditorLineHeight,
@@ -1669,14 +1743,11 @@ function positionActiveTextEditor() {
   }
   const root = activeTextEditor.root;
   const align = root.style.textAlign || "left";
-  const anchorOffset = editorAnchorOffset(root, activeTextEditor.session, {
-    preferSessionOffset: !activeTextEditor.hasUserEdited,
-  });
-  const renderOffset = editorRenderOffset();
+  const anchorOffset = activeTextEditor.layout?.anchorOffset || { x: 0, y: 0 };
   const scale = editorDisplayScale();
   root.style.left = `${point.x}px`;
   root.style.top = `${point.y}px`;
-  root.style.transform = `translate(${-(anchorOffset.x + renderOffset.x) * scale}px, ${-(anchorOffset.y + renderOffset.y) * scale}px) scale(${scale})`;
+  root.style.transform = `translate(${-anchorOffset.x * scale}px, ${-anchorOffset.y * scale}px) scale(${scale})`;
   root.dataset.anchor = align === "right"
     ? "end"
     : align === "center"
@@ -1705,46 +1776,26 @@ function syncTextEditorSize() {
   syncEditorVisualMetrics();
   const root = activeTextEditor.root;
   const display = activeTextEditor.display || root;
-  const svg = display.querySelector?.('svg[data-editor-text-svg="true"]');
-  let width = 8;
-  let height = Math.max(Number.parseFloat(root.style.minHeight || "15"), 1);
-  let renderOffsetX = 0;
-  let renderOffsetY = 0;
-  if (svg?.getBBox) {
-    const content = svg.querySelector?.('[data-editor-text-content="true"]');
-    const box = content?.getBBox?.() || svg.getBBox();
-    const borderSlack = 1;
-    renderOffsetX = Math.max(0, -box.x);
-    renderOffsetY = Math.max(0, -box.y);
-    width = Math.max(8, Math.ceil(renderOffsetX + Math.max(0, box.x + box.width) + borderSlack));
-    height = Math.max(
-      Number.parseFloat(root.style.minHeight || "15"),
-      Math.ceil(renderOffsetY + Math.max(0, box.y + box.height) + borderSlack),
-    );
-    root.dataset.renderWidth = String(width);
-    root.dataset.renderOffsetX = String(renderOffsetX);
-    root.dataset.renderOffsetY = String(renderOffsetY);
-    svg.setAttribute("width", String(width));
-    svg.setAttribute("height", String(height));
-    svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-    if (content) {
-      content.setAttribute("transform", `translate(${renderOffsetX} ${renderOffsetY})`);
-    }
-  } else {
-    display.style.width = "max-content";
-    display.style.height = "auto";
-    width = Math.max(8, Math.ceil(display.scrollWidth + 2));
-    height = Math.max(Number.parseFloat(root.style.minHeight || "15"), display.scrollHeight + 2);
-    root.dataset.renderOffsetX = "0";
-    root.dataset.renderOffsetY = "0";
-  }
-  if (activeTextEditor) {
-    activeTextEditor.renderOffset = { x: renderOffsetX, y: renderOffsetY };
-  }
+  const layout = activeTextEditor.layout;
+  const width = Math.max(8, Math.ceil(Number(layout?.width || 0)));
+  const height = Math.max(
+    Number.parseFloat(root.style.minHeight || "15"),
+    Math.ceil(Number(layout?.height || 0) || 0),
+  );
+  root.dataset.renderWidth = String(width);
+  root.dataset.renderOffsetX = "0";
+  root.dataset.renderOffsetY = "0";
+  activeTextEditor.renderOffset = { x: 0, y: 0 };
   root.style.width = `${width}px`;
   root.style.height = `${height}px`;
   display.style.width = `${width}px`;
   display.style.height = `${height}px`;
+  const svg = display.querySelector?.('svg[data-editor-text-svg="true"]');
+  if (svg) {
+    svg.setAttribute("width", String(width));
+    svg.setAttribute("height", String(height));
+    svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  }
   updateCustomEditorChrome();
   positionActiveTextEditor();
 }
@@ -1782,7 +1833,7 @@ function editorScriptBaselineShift(baseFontSize, script) {
 }
 
 function editorRenderOffset() {
-  return activeTextEditor?.renderOffset || { x: 0, y: 0 };
+  return { x: 0, y: 0 };
 }
 
 function editorVisualScale() {
@@ -1811,147 +1862,15 @@ function effectiveEditorRunBaselineShift(run, fallbackFontSize) {
 }
 
 function buildEditorTextLayout() {
-  if (!activeTextEditor?.root) {
-    return null;
-  }
-  const fallbackFontSize = Number.parseFloat(activeTextEditor.root.dataset.baseFontSize || `${editorState.textFontSize}`) || editorState.textFontSize;
-  const lineHeight = Number.parseFloat(activeTextEditor.root.style.lineHeight || `${defaultTextEditorLineHeight(fallbackFontSize)}`)
-    || defaultTextEditorLineHeight(fallbackFontSize);
-  const runs = expandedEditorRuns(activeTextEditor.sourceRuns || []);
-  const cacheKey = JSON.stringify({
-    runs,
-    fontSize: fallbackFontSize,
-    lineHeight,
-  });
-  if (activeTextEditor.layoutCache?.key === cacheKey) {
-    return activeTextEditor.layoutCache;
-  }
-
-  const lines = [];
-  const characters = [];
-  const caretPositions = [];
-  let lineIndex = 0;
-  let x = 0;
-  let offset = 0;
-  let line = {
-    index: 0,
-    startOffset: 0,
-    endOffset: 0,
-    y: 0,
-    height: lineHeight,
-    caretOffsets: [],
-  };
-  lines.push(line);
-  caretPositions.push({ offset: 0, x: 0, y: line.y, height: Math.max(1, lineHeight), lineIndex: 0 });
-  line.caretOffsets.push(caretPositions[0]);
-
-  for (const run of runs) {
-    const baseFontSize = Number(run.fontSize || fallbackFontSize || editorState.textFontSize);
-    const runFontSize = effectiveEditorRunFontSize(run, fallbackFontSize);
-    const baselineShift = effectiveEditorRunBaselineShift(run, fallbackFontSize);
-    for (const ch of String(run.text || "")) {
-      if (ch === "\n") {
-        line.endOffset = offset;
-        lineIndex += 1;
-        x = 0;
-        line = {
-          index: lineIndex,
-          startOffset: offset + 1,
-          endOffset: offset + 1,
-          y: lineIndex * lineHeight,
-          height: lineHeight,
-          caretOffsets: [],
-        };
-        lines.push(line);
-        offset += 1;
-        const caret = { offset, x: 0, y: line.y, height: Math.max(1, lineHeight), lineIndex };
-        caretPositions.push(caret);
-        line.caretOffsets.push(caret);
-        continue;
-      }
-      const profile = lookupEditorGlyphProfile(ch);
-      const baselineY = line.y + lineHeight * 0.82 + baselineShift
-        + editorChargeSignBaselineAdjustment(profile, baseFontSize, run.script);
-      const width = (profile.advanceEm + editorGlyphLayoutConfig().trackingEm) * runFontSize;
-      const rawTop = baselineY + (profile.inkTopEm - profile.padYEm) * runFontSize;
-      const rawBottom = baselineY + (profile.inkBottomEm + profile.padYEm) * runFontSize;
-      const charTop = Math.max(line.y, rawTop);
-      const charHeight = Math.max(1, Math.min(lineHeight, rawBottom - rawTop));
-      characters.push({
-        offset,
-        char: ch,
-        x,
-        width,
-        y: charTop,
-        height: charHeight,
-        lineIndex,
-      });
-      x += width;
-      offset += 1;
-      const caret = { offset, x, y: line.y, height: Math.max(1, lineHeight), lineIndex };
-      caretPositions.push(caret);
-      line.caretOffsets.push(caret);
-      line.endOffset = offset;
-    }
-  }
-
-  if (!lines.length) {
-    lines.push({
-      index: 0,
-      startOffset: 0,
-      endOffset: 0,
-      y: 0,
-      height: lineHeight,
-      caretOffsets: [caretPositions[0]],
-    });
-  }
-
-  const layout = {
-    key: cacheKey,
-    text: activeTextEditor.plainText,
-    lineHeight,
-    lines,
-    characters,
-    caretPositions,
-  };
-  activeTextEditor.layoutCache = layout;
-  return layout;
+  return activeTextEditor?.layout || null;
 }
 
 function editorAnchorOffset(root, session, options = {}) {
-  const preferSessionOffset = Boolean(options.preferSessionOffset);
-  if (session?.target?.kind !== "endpoint-label") {
-    return { x: 0, y: 0 };
-  }
-  const sessionOffset = normalizeSessionAnchorOffset(session?.anchorOffset);
-  if (sessionOffset) {
-    if (preferSessionOffset) {
-      return sessionOffset;
-    }
-    const measuredOffset = measureEndpointEditorAnchorOffset(root);
-    return measuredOffset || sessionOffset;
-  }
-  return fallbackEndpointEditorAnchorOffset(root);
+  return activeTextEditor?.layout?.anchorOffset || { x: 0, y: 0 };
 }
 
 function fallbackEndpointEditorAnchorOffset(root) {
-  const layout = buildEditorTextLayout();
-  const fallbackFontSize = Number.parseFloat(root?.dataset?.baseFontSize || `${editorState.textFontSize}`)
-    || editorState.textFontSize;
-  if (layout) {
-    const character = layout.characters.find((entry) => /[A-Z]/.test(entry.char))
-      || layout.characters.find((entry) => /\S/.test(entry.char));
-    if (character) {
-      return {
-        x: character.x + character.width * 0.5,
-        y: character.lineIndex * layout.lineHeight + fallbackFontSize * 0.42,
-      };
-    }
-  }
-  return {
-    x: 0,
-    y: fallbackFontSize * 0.42,
-  };
+  return activeTextEditor?.layout?.anchorOffset || { x: 0, y: 0 };
 }
 
 function normalizeSessionAnchorOffset(value) {
@@ -1967,43 +1886,7 @@ function normalizeSessionAnchorOffset(value) {
 }
 
 function measureEndpointEditorAnchorOffset(root) {
-  const svg = root?.querySelector?.('svg[data-editor-text-svg="true"]');
-  if (svg) {
-    const lineNodes = [...svg.querySelectorAll('[data-editor-text-line]')];
-    for (const lineNode of lineNodes) {
-      const text = String(lineNode.textContent || "");
-      const uppercaseIndex = [...text].findIndex((character) => /[A-Z]/.test(character));
-      const nonSpaceIndex = [...text].findIndex((character) => /\S/.test(character));
-      const charIndex = uppercaseIndex >= 0 ? uppercaseIndex : nonSpaceIndex;
-      if (charIndex >= 0 && typeof lineNode.getExtentOfChar === "function") {
-        try {
-          const extent = lineNode.getExtentOfChar(charIndex);
-          if (extent && Number.isFinite(extent.x) && Number.isFinite(extent.y)) {
-            return {
-              x: extent.x + extent.width * 0.5,
-              y: extent.y + extent.height * 0.5,
-            };
-          }
-        } catch {
-          // Fall back to the layout model when SVG extent APIs are unavailable.
-        }
-      }
-    }
-  }
-  const layout = buildEditorTextLayout();
-  if (!layout) {
-    return null;
-  }
-  const character = layout.characters.find((entry) => /[A-Z]/.test(entry.char))
-    || layout.characters.find((entry) => /\S/.test(entry.char));
-  if (!character) {
-    return null;
-  }
-  const renderOffset = editorRenderOffset();
-  return {
-    x: renderOffset.x + character.x + character.width * 0.5,
-    y: renderOffset.y + character.y + character.height * 0.5,
-  };
+  return activeTextEditor?.layout?.anchorOffset || null;
 }
 
 function estimatedEditorCharWidth(character, fontSize) {
@@ -2091,33 +1974,12 @@ function renderEditorSelectionSegments(selection, selectionLayer) {
   if (!layout) {
     return;
   }
-  const grouped = new Map();
-  const renderOffset = editorRenderOffset();
-  for (const character of layout.characters) {
-    if (character.offset < selection.start || character.offset >= selection.end) {
-      continue;
-    }
-    const current = grouped.get(character.lineIndex);
-    if (!current) {
-      grouped.set(character.lineIndex, {
-        x1: character.x,
-        x2: character.x + character.width,
-        y: character.y,
-        height: character.height,
-      });
-      continue;
-    }
-    current.x1 = Math.min(current.x1, character.x);
-    current.x2 = Math.max(current.x2, character.x + character.width);
-    current.y = Math.min(current.y, character.y);
-    current.height = Math.max(current.height, character.height);
-  }
-  for (const segment of grouped.values()) {
+  for (const segment of layout.selectionRects || []) {
     const node = document.createElement("div");
     node.className = "text-editor-selection-segment";
-    node.style.left = `${renderOffset.x + segment.x1}px`;
-    node.style.top = `${renderOffset.y + segment.y}px`;
-    node.style.width = `${Math.max(1, segment.x2 - segment.x1)}px`;
+    node.style.left = `${segment.x}px`;
+    node.style.top = `${segment.y}px`;
+    node.style.width = `${Math.max(1, segment.width)}px`;
     node.style.height = `${Math.max(1, segment.height)}px`;
     selectionLayer.appendChild(node);
   }
@@ -2143,14 +2005,14 @@ function measureEditorCaretRect(offset) {
   if (!layout) {
     return null;
   }
-  const caret = layout.caretPositions[Math.max(0, Math.min(layout.caretPositions.length - 1, offset))];
+  const caret = layout.caretPositions?.find((entry) => entry.offset === offset)
+    || layout.caretPositions?.[Math.max(0, Math.min((layout.caretPositions?.length || 1) - 1, offset))];
   if (!caret) {
     return null;
   }
-  const renderOffset = editorRenderOffset();
   return {
-    x: renderOffset.x + caret.x,
-    y: renderOffset.y + caret.y,
+    x: caret.x,
+    y: caret.y,
     width: 0,
     height: caret.height,
   };
@@ -2171,7 +2033,7 @@ function editorLineIndexForOffset(offset) {
   }
   for (let index = 0; index < layout.lines.length; index += 1) {
     const line = layout.lines[index];
-    if (line.caretOffsets.some((entry) => entry.offset === offset)) {
+    if (line.caretOffsets?.some((entry) => entry.offset === offset)) {
       return index;
     }
   }
@@ -2199,9 +2061,8 @@ function editorOffsetFromPointerEvent(event) {
   }
   const rect = activeTextEditor.display.getBoundingClientRect();
   const scale = editorDisplayScale();
-  const renderOffset = editorRenderOffset();
-  const localX = (event.clientX - rect.left) / scale - renderOffset.x;
-  const localY = (event.clientY - rect.top) / scale - renderOffset.y;
+  const localX = (event.clientX - rect.left) / scale;
+  const localY = (event.clientY - rect.top) / scale;
   let line = layout.lines[0];
   let bestDistance = Number.POSITIVE_INFINITY;
   for (const candidate of layout.lines) {

@@ -141,67 +141,54 @@ function normalizedSelectionRange(selectionOffsets) {
 }
 
 export function fillTextEditorContent(root, session, selectionOffsets, options) {
-  const {
-    resolveDisplayRuns,
-    defaultLineHeight,
-    scriptScale,
-    scriptShiftEm,
-  } = options;
+  const { scriptScale, scriptShiftEm } = options;
   root.innerHTML = "";
-  const runs = resolveDisplayRuns(session);
-  const align = root.style.textAlign || session.align || "left";
-  const baseFontSize = Number.parseFloat(root.dataset.baseFontSize || `${session.fontSize || 10}`) || 10;
-  const fontSize = Number.parseFloat(root.style.fontSize || `${baseFontSize}`) || baseFontSize;
-  const lineHeight = Number.parseFloat(root.style.lineHeight || `${defaultLineHeight(fontSize)}`)
-    || defaultLineHeight(fontSize);
-  const box = Array.isArray(session?.boxValue) ? session.boxValue : null;
-  const initialWidth = Math.max(
-    8,
-    Number(root.dataset.renderWidth || 0)
-      || (box
-        ? Math.max(
-          0,
-          Number(box[2] || 0) - Number(box[0] || 0),
-          Number(box[2] || 0),
-        )
-        : 0),
-  );
-  const lines = splitRunsIntoLines(runs);
-  const selectionRange = normalizedSelectionRange(selectionOffsets);
+  const layout = session;
+  const lines = Array.isArray(layout?.lines) && layout.lines.length
+    ? layout.lines
+    : [{
+      index: 0,
+      x: 0,
+      y: 0,
+      baselineY: Number.parseFloat(root.style.fontSize || root.dataset.baseFontSize || "10") * 0.82,
+      height: Number.parseFloat(root.style.lineHeight || root.dataset.baseLineHeight || "10.5"),
+      textAnchor: "start",
+      runs: [],
+    }];
+  const selectionRange = normalizedSelectionRange(layout?.selection || selectionOffsets);
   let textOffset = 0;
+  const svgWidth = Math.max(8, Number(layout?.width || 0));
+  const svgHeight = Math.max(1, Number(layout?.height || 0));
   const svg = makeSvgNode("svg", {
     class: "text-editor-svg",
-    width: initialWidth,
-    height: Math.max(lineHeight, lineHeight * Math.max(1, lines.length)),
-    viewBox: `0 0 ${initialWidth} ${Math.max(lineHeight, lineHeight * Math.max(1, lines.length))}`,
+    width: svgWidth,
+    height: svgHeight,
+    viewBox: `0 0 ${svgWidth} ${svgHeight}`,
     "data-editor-text-svg": "true",
   });
-  const content = makeSvgNode("g", {
-    "data-editor-text-content": "true",
-  });
-  const anchor = textAnchorForAlign(align);
-  const x = anchorXForAlign(align, initialWidth);
-  const baseline = fontSize * 0.82;
+  const content = makeSvgNode("g", { "data-editor-text-content": "true" });
 
-  for (let lineIndex = 0; lineIndex < Math.max(1, lines.length); lineIndex += 1) {
-    const lineRuns = lines[lineIndex] || [];
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const line = lines[lineIndex] || {};
+    const lineRuns = Array.isArray(line.runs) ? line.runs : [];
+    const baseFontSize = lineRuns.find((run) => Number.isFinite(Number(run.fontSize)))
+      ? Number(lineRuns.find((run) => Number.isFinite(Number(run.fontSize))).fontSize)
+      : Number.parseFloat(root.dataset.baseFontSize || `${layout?.lineHeight || 10}`) || 10;
     const textNode = makeSvgNode("text", {
-      x,
-      y: baseline + lineIndex * lineHeight,
+      x: Number(line.x || 0),
+      y: Number(line.baselineY || 0),
       "data-editor-text-line": String(lineIndex),
       class: "chem-text",
-      "font-size": fontSize,
+      "font-size": baseFontSize,
       "dominant-baseline": "alphabetic",
-      "text-anchor": anchor,
-      fill: session.fill ? normalizeDisplayColor(session.fill) : undefined,
-      "font-family": session.fontFamily ? displayLabelFontFamily(session.fontFamily) : undefined,
+      "text-anchor": line.textAnchor || "start",
     });
     for (const run of lineRuns) {
       const runText = String(run.text || "");
       const runStart = textOffset;
       const runEnd = runStart + textLength(runText);
       const isSelected = selectionRange && runStart < selectionRange.end && runEnd > selectionRange.start;
-      const runFontSize = Number(run.fontSize || fontSize);
+      const runFontSize = Number(run.fontSize || baseFontSize);
       const isSub = isSubscriptRun(run);
       const isSuper = isSuperscriptRun(run);
       const scale = isSub ? scriptScale("subscript") : isSuper ? scriptScale("superscript") : 1;
@@ -235,11 +222,11 @@ export function fillTextEditorContent(root, session, selectionOffsets, options) 
     content.appendChild(textNode);
   }
 
-  if (!runs.length && !textLength(session.text || "")) {
+  if (!textLength(layout?.text || "")) {
     const placeholder = makeSvgNode("text", {
       x: 0,
-      y: baseline,
-      "font-size": fontSize,
+      y: Number(lines[0]?.baselineY || 0),
+      "font-size": Number.parseFloat(root.dataset.baseFontSize || "10") || 10,
       "dominant-baseline": "alphabetic",
       fill: "transparent",
     });

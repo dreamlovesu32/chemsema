@@ -1,17 +1,8 @@
 import { fillTextEditorContent as renderTextEditorContent } from "./text_editor_render.js";
 
 export function createTextEditorController(deps) {
-  function renderEditorContent(root, session, selectionOffsets = null) {
-    renderTextEditorContent(root, session, selectionOffsets, {
-      resolveDisplayRuns: (nextSession) => deps.displayRunsForEditor(
-        Array.isArray(nextSession.sourceRuns) && nextSession.sourceRuns.length
-          ? nextSession.sourceRuns
-          : nextSession.text
-            ? [{ text: String(nextSession.text || ""), script: nextSession.defaultChemical ? "chemical" : "normal" }]
-            : [],
-        deps.getActiveEditor()?.root || root,
-        { target: nextSession.target },
-      ),
+  function renderEditorContent(root, layout, selectionOffsets = null) {
+    renderTextEditorContent(root, layout, selectionOffsets, {
       defaultLineHeight: deps.defaultLineHeight,
       scriptScale: deps.scriptScale,
       scriptShiftEm: deps.scriptShiftEm,
@@ -112,21 +103,29 @@ export function createTextEditorController(deps) {
       focus: deps.textLength(editor.plainText),
     };
     editor.isNormalizingChemical = true;
-    const baseStyle = deps.editorRootBaseStyle(editor.root);
-    const preview = deps.previewTextRunsFromKernel(editor.sourceRuns, editor.root, {
+    const nextLayout = deps.previewTextEditLayoutFromKernel({
       target: editor.session?.target,
-    });
-    editor.sourceRuns = preview?.sourceRuns
-      || deps.normalizeRuns(editor.sourceRuns, baseStyle);
-    editor.plainText = deps.runsPlainText(editor.sourceRuns);
-    const nextSelection = deps.normalizeSelection(editor.plainText, requestedSelection);
-    renderEditorContent(editor.display || editor.root, {
       sourceRuns: editor.sourceRuns,
       text: editor.plainText,
+      fontFamily: deps.editorRootFontFamily(editor.root),
+      fontSize: Number(editor.root.dataset.baseFontSize || deps.editorState.textFontSize),
+      fill: deps.cssColorToHex(editor.root.style.color || deps.editorState.textColor),
+      align: editor.root.style.textAlign || deps.editorState.textAlign,
+      lineHeight: Number(editor.root.dataset.baseLineHeight || deps.defaultTextEditorLineHeight(deps.editorState.textFontSize)),
       defaultChemical: editor.root.dataset.defaultChemical === "true",
-      target: editor.session?.target,
+    }, requestedSelection);
+    editor.sourceRuns = nextLayout?.sourceRuns || editor.sourceRuns;
+    editor.plainText = nextLayout?.text || deps.runsPlainText(editor.sourceRuns);
+    editor.layout = nextLayout;
+    editor.layoutCache = nextLayout;
+    const nextSelection = nextLayout?.selection || deps.normalizeSelection(editor.plainText, requestedSelection);
+    renderEditorContent(editor.display || editor.root, nextLayout || {
+      text: editor.plainText,
+      lines: [],
+      width: 8,
+      height: Number(editor.root.dataset.baseLineHeight || deps.defaultTextEditorLineHeight(deps.editorState.textFontSize)),
+      selection: nextSelection,
     }, nextSelection);
-    editor.layoutCache = null;
     setActiveEditorSelection(nextSelection, false);
     editor.isNormalizingChemical = false;
     deps.syncTextEditorSize();
@@ -550,11 +549,11 @@ export function createTextEditorController(deps) {
       dragSelecting: false,
       preferredCaretX: null,
       renderOffset: { x: 0, y: 0 },
+      layout: null,
       layoutCache: null,
       composition: null,
     });
     deps.syncTextToolbarStateFromSession(session);
-    deps.positionActiveTextEditor();
     if (shouldSelectAll) {
       setActiveEditorSelection({ anchor: 0, focus: deps.textLength(editor.plainText) }, false);
     } else {

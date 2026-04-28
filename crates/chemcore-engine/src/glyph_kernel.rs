@@ -192,6 +192,13 @@ struct RowRender {
 
 static SHARED_GLYPH_PROFILES: OnceLock<SharedGlyphProfiles> = OnceLock::new();
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct SharedGlyphMetrics {
+    pub advance: f64,
+    pub top: f64,
+    pub bottom: f64,
+}
+
 pub fn build_label_glyph_polygons(
     runs: &[LabelRun],
     line_runs: &[Vec<LabelRun>],
@@ -910,6 +917,23 @@ pub(crate) fn shared_script_scale_factor(script: Option<&str>) -> f64 {
 
 pub(crate) fn shared_estimated_char_width(character: char, font_size: f64) -> f64 {
     lookup_glyph_profile(character).advance_em * font_size
+}
+
+pub(crate) fn shared_glyph_metrics(
+    character: char,
+    font_size: f64,
+    script: Option<&str>,
+) -> SharedGlyphMetrics {
+    let config = LayoutConfig {
+        font_size_px: font_size,
+        ..LayoutConfig::default()
+    };
+    let placement = layout_glyph(character, script_kind(script), config, 0.0, 0.0);
+    SharedGlyphMetrics {
+        advance: placement.advance_px,
+        top: placement.background_box_px[1],
+        bottom: placement.background_box_px[3],
+    }
 }
 
 impl SharedGlyphProfiles {
