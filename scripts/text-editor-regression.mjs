@@ -4,11 +4,12 @@ import { chromium } from "playwright";
 
 const url = process.argv[2] || "http://127.0.0.1:8765/viewer/";
 const output = process.argv[3] || path.resolve("tmp/text-editor-regression.png");
+const deviceScaleFactor = Number(process.env.DEVICE_SCALE_FACTOR || 1.25);
 
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({
   viewport: { width: 1600, height: 1200 },
-  deviceScaleFactor: 1.25,
+  deviceScaleFactor,
 });
 page.setDefaultTimeout(8000);
 
@@ -33,6 +34,17 @@ function pointInBox(box, xRatio, yRatio) {
     x: box.x + box.width * xRatio,
     y: box.y + box.height * yRatio,
   };
+}
+
+function assertBoxesClose(actual, expected, label, tolerance = 1) {
+  assert(actual, `${label}: missing actual box`);
+  assert(expected, `${label}: missing expected box`);
+  for (const key of ["x", "y", "width", "height"]) {
+    assert(
+      Math.abs(actual[key] - expected[key]) <= tolerance,
+      `${label}: ${key} changed by ${actual[key] - expected[key]}px`,
+    );
+  }
 }
 
 async function clickTool(tool) {
@@ -98,9 +110,12 @@ await page.waitForFunction(() => Array.from(
   (node) => node.textContent || "",
 ).join("") === "24");
 assert.equal(await currentEditorText(), "H2SO4");
+const labelEditorTextBox = await page.locator(".text-editor-svg text").first().boundingBox();
 
 logStep("commit-label");
-const blankPoint = await clientPointFromWorld(220, 120);
+const blankCanvasBox = await viewerContainer.boundingBox();
+assert(blankCanvasBox, "viewer container is not visible before label commit");
+const blankPoint = pointInBox(blankCanvasBox, 0.1, 0.1);
 await page.mouse.click(blankPoint.x, blankPoint.y);
 await page.waitForFunction(() => Array.from(
   document.querySelectorAll("#viewer-svg text"),
@@ -112,9 +127,12 @@ const labelNode = page.locator("#viewer-svg text").filter({ hasText: "H2SO4" }).
 await labelNode.waitFor();
 const labelBox = await labelNode.boundingBox();
 assert(labelBox, "committed label is not visible");
+assertBoxesClose(labelBox, labelEditorTextBox, "label edit-to-commit geometry");
 await page.mouse.click(labelBox.x + labelBox.width / 2, labelBox.y + labelBox.height / 2);
 await page.waitForFunction(() => document.querySelector(".text-editor-display")?.textContent?.includes("H2SO4"));
 assert.equal(await selectedEditorText(), "H2SO4");
+const reopenedLabelTextBox = await page.locator(".text-editor-svg text").first().boundingBox();
+assertBoxesClose(reopenedLabelTextBox, labelBox, "label reopen geometry");
 
 logStep("zoom-editor");
 const editorBeforeZoom = await page.locator(".text-editor").boundingBox();
@@ -146,6 +164,7 @@ assert.equal(await page.evaluate(() => window.__chemcoreDebug.insertEditorText("
 assert.equal(await currentEditorText(), "Hello");
 const hasScriptedRuns = await page.evaluate(() => document.querySelector('.text-editor-display [data-script="subscript"], .text-editor-display [data-script="superscript"]') !== null);
 assert.equal(hasScriptedRuns, false, "plain text editor unexpectedly applied chemical scripts");
+const plainEditorTextBox = await page.locator(".text-editor-svg text").first().boundingBox();
 
 logStep("commit-plain-text");
 const secondBlankPoint = pointInBox(visibleCanvasBox, 0.72, 0.18);
@@ -159,9 +178,12 @@ const plainTextNode = page.locator("#viewer-svg text").filter({ hasText: "Hello"
 await plainTextNode.waitFor();
 const plainTextBox = await plainTextNode.boundingBox();
 assert(plainTextBox, "committed plain text is not visible");
+assertBoxesClose(plainTextBox, plainEditorTextBox, "plain text edit-to-commit geometry");
 await page.mouse.click(plainTextBox.x + plainTextBox.width / 2, plainTextBox.y + plainTextBox.height / 2);
 await page.waitForFunction(() => document.querySelector(".text-editor-display")?.textContent?.includes("Hello"));
 assert.equal(await selectedEditorText(), "Hello");
+const reopenedPlainTextBox = await page.locator(".text-editor-svg text").first().boundingBox();
+assertBoxesClose(reopenedPlainTextBox, plainTextBox, "plain text reopen geometry");
 
 logStep("screenshot");
 await page.screenshot({ path: output, fullPage: true });

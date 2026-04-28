@@ -5,6 +5,11 @@ import { chromium } from "playwright";
 
 const url = process.argv[2] || "http://127.0.0.1:8765/viewer/";
 const outputDir = process.argv[3] || path.resolve("tmp/label-anchor-regression");
+const ANCHOR_TEST_START = { x: 1, y: 1 };
+const ANCHOR_TEST_END = { x: 2.058, y: 1 };
+const ANCHOR_BRANCH_END = { x: 2.9, y: 1.7 };
+const SIDE_LABEL_MIN_OFFSET_CM = 0.06;
+const CENTER_LABEL_MAX_DRIFT_CM = 0.06;
 
 fs.mkdirSync(outputDir, { recursive: true });
 
@@ -215,8 +220,8 @@ await resetDocument();
 let fragment = await engineEval({
   action: "drawBond",
   bondVariant: "double",
-  start: { x: 100, y: 100 },
-  end: { x: 140, y: 100 },
+  start: ANCHOR_TEST_START,
+  end: ANCHOR_TEST_END,
 });
 let focusNode = terminalNode(fragment);
 fragment = await engineEval({
@@ -229,7 +234,7 @@ let { bond, normal } = bondAndNormal(fragment, focusNode.id);
 let center = labelCenter(focusNode);
 let projection = normalProjection(focusNode, center, normal);
 assert.equal(bond.double?.placement, "right");
-assert(projection > 0.4, `terminal side double label did not move to side line midpoint: ${projection}`);
+assert(projection > SIDE_LABEL_MIN_OFFSET_CM, `terminal side double label did not move to side line midpoint: ${projection}`);
 await saveWorldCrop("terminal-side-double.png", sceneBounds(fragment, focusNode.id));
 
 logStep("center-double");
@@ -237,8 +242,8 @@ await resetDocument();
 fragment = await engineEval({
   action: "drawBond",
   bondVariant: "double",
-  start: { x: 100, y: 100 },
-  end: { x: 140, y: 100 },
+  start: ANCHOR_TEST_START,
+  end: ANCHOR_TEST_END,
 });
 focusNode = terminalNode(fragment);
 const centerBondId = fragment.bonds[0].id;
@@ -256,7 +261,7 @@ focusNode = fragment.nodes.find((candidate) => candidate.id === focusNode.id);
 center = labelCenter(focusNode);
 projection = normalProjection(focusNode, center, normal);
 assert.equal(bond.double?.placement, "center");
-assert(Math.abs(projection) < 0.25, `center double label should stay on main bond anchor: ${projection}`);
+assert(Math.abs(projection) < CENTER_LABEL_MAX_DRIFT_CM, `center double label should stay on main bond anchor: ${projection}`);
 await saveWorldCrop("center-double.png", sceneBounds(fragment, focusNode.id));
 
 logStep("branched-double");
@@ -264,8 +269,8 @@ await resetDocument();
 fragment = await engineEval({
   action: "drawBond",
   bondVariant: "double",
-  start: { x: 100, y: 100 },
-  end: { x: 140, y: 100 },
+  start: ANCHOR_TEST_START,
+  end: ANCHOR_TEST_END,
 });
 focusNode = terminalNode(fragment);
 fragment = await engineEval({
@@ -276,13 +281,13 @@ fragment = await engineEval({
 fragment = await engineEval({
   action: "addBranchFromLabel",
   nodeId: focusNode.id,
-  end: { x: 172, y: 128 },
+  end: ANCHOR_BRANCH_END,
 });
 focusNode = fragment.nodes.find((candidate) => candidate.id === focusNode.id);
 ({ normal } = bondAndNormal(fragment, focusNode.id));
 center = labelCenter(focusNode);
 projection = normalProjection(focusNode, center, normal);
-assert(Math.abs(projection) < 0.25, `branched double label should fall back to main bond anchor: ${projection}`);
+assert(Math.abs(projection) < CENTER_LABEL_MAX_DRIFT_CM, `branched double label should fall back to main bond anchor: ${projection}`);
 await saveWorldCrop("branched-double.png", sceneBounds(fragment, focusNode.id, 24));
 
 await browser.close();

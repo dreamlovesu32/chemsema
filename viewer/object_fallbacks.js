@@ -9,8 +9,13 @@ import {
   normalizeDisplayColor,
   wrapTextLines,
 } from "./render_support.js";
+import { cssPxToCm } from "./units.js";
 
-const DEFAULT_TEXT_FONT_SIZE = 12;
+const DEFAULT_TEXT_FONT_SIZE = 0.2645833;
+const DEFAULT_TEXT_LINE_HEIGHT = cssPxToCm(10.5);
+const DEFAULT_LINE_STROKE_WIDTH = cssPxToCm(1.6);
+const DEFAULT_TEXT_WRAP_WIDTH = cssPxToCm(160);
+const DEFAULT_SHAPE_STROKE_WIDTH = cssPxToCm(1);
 
 export function renderLineObject(svgRoot, object, styles) {
   const points = object.payload.points || [];
@@ -20,7 +25,7 @@ export function renderLineObject(svgRoot, object, styles) {
 
   const style = styles?.[object.styleRef] || {};
   const stroke = style.stroke || "#222222";
-  const strokeWidth = style.strokeWidth || 1.6;
+  const strokeWidth = style.strokeWidth || DEFAULT_LINE_STROKE_WIDTH;
   const lineCap = style.lineCap || "round";
   const lineJoin = style.lineJoin || "round";
   const arrowHead = object.payload.arrowHead || null;
@@ -110,11 +115,11 @@ export function renderTextObject(svgRoot, object) {
         .filter(Boolean)
     : wrapTextLines(
         String(object.payload.text || ""),
-        Number(object.payload.box?.[2] || 160),
+        Number(object.payload.box?.[2] || DEFAULT_TEXT_WRAP_WIDTH),
         fontSize,
       );
   const align = object.payload.align || "left";
-  const lineHeight = Number(object.payload.lineHeight || 15);
+  const lineHeight = Number(object.payload.lineHeight || DEFAULT_TEXT_LINE_HEIGHT);
   const textAnchor = align === "center" ? "middle" : align === "right" ? "end" : "start";
 
   if (object.payload.preserveLines && object.payload.runs?.length) {
@@ -152,7 +157,7 @@ export function renderTextObject(svgRoot, object) {
         const isSubOrSuper = isSub || isSuper;
         const tspan = makeSvgNode("tspan", {
           fill: run.fill ? normalizeDisplayColor(run.fill) : undefined,
-          "font-size": isSubOrSuper ? Math.max(7, runFontSize * 0.72) : runFontSize,
+          "font-size": isSubOrSuper ? Math.max(cssPxToCm(7), runFontSize * 0.72) : runFontSize,
           "font-family": run.fontFamily ? displayLabelFontFamily(run.fontFamily) : undefined,
           "font-weight": fontWeightForRun(run),
           "font-style": fontStyleForRun(run),
@@ -198,7 +203,7 @@ export function renderShapeObject(svgRoot, object, styles) {
     height,
     fill: style.fill || "none",
     stroke: style.stroke || "none",
-    "stroke-width": style.strokeWidth || 1,
+    "stroke-width": style.strokeWidth || DEFAULT_SHAPE_STROKE_WIDTH,
   };
   if (gradient?.stops?.length) {
     const defs = ensureSvgDefs(svgRoot);

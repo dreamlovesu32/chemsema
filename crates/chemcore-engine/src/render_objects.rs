@@ -1,4 +1,7 @@
 use super::*;
+use crate::{
+    DEFAULT_MOLECULE_LABEL_FONT_SIZE_CM, DEFAULT_TEXT_FONT_SIZE_CM, DEFAULT_TEXT_LINE_HEIGHT_CM,
+};
 
 fn text_anchor(align: &str) -> String {
     match align {
@@ -9,11 +12,14 @@ fn text_anchor(align: &str) -> String {
 }
 
 fn fragment_label_font_size(label: &crate::NodeLabel) -> f64 {
-    let mut size = label.font_size.unwrap_or(0.0).max(9.5);
+    let mut size = label
+        .font_size
+        .unwrap_or(0.0)
+        .max(DEFAULT_MOLECULE_LABEL_FONT_SIZE_CM);
     for run in &label.runs {
         size = size.max(run.font_size.unwrap_or(0.0));
     }
-    size.max(9.5)
+    size.max(DEFAULT_MOLECULE_LABEL_FONT_SIZE_CM)
 }
 
 fn fragment_label_lines(label: &crate::NodeLabel) -> Vec<String> {
@@ -147,7 +153,7 @@ pub(super) fn render_line_object(
         .and_then(|value| {
             style_number(value, "strokeWidth").or_else(|| style_number(value, "stroke_width"))
         })
-        .unwrap_or(1.6);
+        .unwrap_or(px_to_cm(1.6));
     let line_cap = style
         .and_then(|value| style_string(value, "lineCap"))
         .unwrap_or_else(|| "round".to_string());
@@ -221,11 +227,14 @@ pub(super) fn render_text_object(
                 style_number(value, "fontSize").or_else(|| style_number(value, "font_size"))
             })
         })
-        .unwrap_or(12.0);
-    let line_height = payload_number(&object.payload, "lineHeight").unwrap_or(15.0);
+        .unwrap_or(DEFAULT_TEXT_FONT_SIZE_CM);
+    let line_height =
+        payload_number(&object.payload, "lineHeight").unwrap_or(DEFAULT_TEXT_LINE_HEIGHT_CM);
     let align = payload_string(&object.payload, "align").unwrap_or_else(|| "left".to_string());
     let text_anchor = text_anchor(&align);
-    let font_family = style.and_then(|value| style_string(value, "fontFamily"));
+    let font_family = style
+        .and_then(|value| style_string(value, "fontFamily"))
+        .or_else(|| Some("Arial".to_string()));
     let fill = style.and_then(|value| style_string(value, "fill"));
     let object_id = Some(object.id.clone());
 
@@ -272,7 +281,7 @@ pub(super) fn render_text_object(
         return;
     }
 
-    let box_width = payload_box_width(&object.payload, "box").unwrap_or(160.0);
+    let box_width = payload_box_width(&object.payload, "box").unwrap_or(px_to_cm(160.0));
     for (index, line) in wrap_text_lines(
         &payload_string(&object.payload, "text").unwrap_or_default(),
         box_width,
@@ -319,7 +328,7 @@ pub(super) fn render_shape_object(
         .and_then(|value| {
             style_number(value, "strokeWidth").or_else(|| style_number(value, "stroke_width"))
         })
-        .unwrap_or(1.0);
+        .unwrap_or(px_to_cm(1.0));
     let dash_array = style
         .and_then(|value| style_number_array(value, "dashArray"))
         .unwrap_or_default();

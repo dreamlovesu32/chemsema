@@ -1,4 +1,4 @@
-use crate::{BondVariant, Engine, PointerEvent, Tool, ToolState};
+use crate::{BondVariant, Engine, Point, PointerEvent, Tool, ToolState, WorldCm, WorldPoint};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -25,32 +25,29 @@ impl WasmEngine {
 
     #[wasm_bindgen(js_name = pointerMove)]
     pub fn pointer_move(&mut self, x: f64, y: f64, alt_key: bool) {
-        self.inner.pointer_move(PointerEvent {
-            x,
-            y,
-            button: None,
+        self.inner.pointer_move(PointerEvent::from_world_point(
+            WorldPoint::new(WorldCm(x), WorldCm(y)),
+            None,
             alt_key,
-        });
+        ));
     }
 
     #[wasm_bindgen(js_name = pointerDown)]
     pub fn pointer_down(&mut self, x: f64, y: f64, alt_key: bool) {
-        self.inner.pointer_down(PointerEvent {
-            x,
-            y,
-            button: Some(0),
+        self.inner.pointer_down(PointerEvent::from_world_point(
+            WorldPoint::new(WorldCm(x), WorldCm(y)),
+            Some(0),
             alt_key,
-        });
+        ));
     }
 
     #[wasm_bindgen(js_name = pointerUp)]
     pub fn pointer_up(&mut self, x: f64, y: f64, alt_key: bool) {
-        self.inner.pointer_up(PointerEvent {
-            x,
-            y,
-            button: Some(0),
+        self.inner.pointer_up(PointerEvent::from_world_point(
+            WorldPoint::new(WorldCm(x), WorldCm(y)),
+            Some(0),
             alt_key,
-        });
+        ));
     }
 
     #[wasm_bindgen(js_name = clearInteraction)]
@@ -87,7 +84,7 @@ impl WasmEngine {
     pub fn begin_text_edit(&mut self, x: f64, y: f64) -> Result<String, JsValue> {
         let session = self
             .inner
-            .begin_text_edit(crate::Point::new(x, y))
+            .begin_text_edit(Point::from_world(WorldPoint::new(WorldCm(x), WorldCm(y))))
             .ok_or_else(|| JsValue::from_str("No text edit target"))?;
         serde_json::to_string(&session).map_err(|error| JsValue::from_str(&error.to_string()))
     }
@@ -151,6 +148,7 @@ impl Default for WasmEngine {
 fn parse_tool(value: &str) -> Tool {
     match value {
         "bond" => Tool::Bond,
+        "delete" => Tool::Delete,
         "text" => Tool::Text,
         "shape" => Tool::Shape,
         "templates" => Tool::Templates,

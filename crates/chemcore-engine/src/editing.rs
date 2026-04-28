@@ -1,18 +1,25 @@
 use crate::{
-    angle_between, angle_in_clockwise_arc, angular_distance, direction_from_angle,
-    largest_angular_gap, normalize_angle, split_label_groups, ChemcoreDocument, EditableFragment,
-    Node, Point, DEFAULT_BOND_LENGTH,
+    angle_between, angle_in_clockwise_arc, angular_distance, css_px, direction_from_angle,
+    largest_angular_gap, normalize_angle, split_label_groups, world_cm, ChemcoreDocument,
+    EditableFragment, Node, Point, WorldCm, WorldPoint, DEFAULT_BOND_LENGTH,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{HashSet, VecDeque};
 
-pub const ENDPOINT_FOCUS_RADIUS: f64 = 4.5;
-pub const ENDPOINT_HIT_RADIUS: f64 = 9.0;
-pub const BOND_HIT_RADIUS: f64 = 6.0;
-pub const BOND_CENTER_FOCUS_LENGTH: f64 = 18.0;
-pub const BOND_CENTER_FOCUS_WIDTH: f64 = 9.0;
-pub const BOND_CENTER_HIT_RADIUS: f64 = BOND_CENTER_FOCUS_LENGTH;
-pub const DRAG_START_THRESHOLD: f64 = 4.0;
+pub const ENDPOINT_FOCUS_RADIUS_CM: WorldCm = world_cm(0.1);
+pub const ENDPOINT_HIT_RADIUS_CM: WorldCm = css_px(9.0).to_world_cm();
+pub const BOND_HIT_RADIUS_CM: WorldCm = css_px(6.0).to_world_cm();
+pub const BOND_CENTER_FOCUS_LENGTH_CM: WorldCm = world_cm(0.8);
+pub const BOND_CENTER_FOCUS_WIDTH_CM: WorldCm = world_cm(0.2);
+pub const BOND_CENTER_HIT_RADIUS_CM: WorldCm = BOND_CENTER_FOCUS_LENGTH_CM;
+pub const DRAG_START_THRESHOLD_CM: WorldCm = css_px(4.0).to_world_cm();
+pub const ENDPOINT_FOCUS_RADIUS: f64 = ENDPOINT_FOCUS_RADIUS_CM.value();
+pub const ENDPOINT_HIT_RADIUS: f64 = ENDPOINT_HIT_RADIUS_CM.value();
+pub const BOND_HIT_RADIUS: f64 = BOND_HIT_RADIUS_CM.value();
+pub const BOND_CENTER_FOCUS_LENGTH: f64 = BOND_CENTER_FOCUS_LENGTH_CM.value();
+pub const BOND_CENTER_FOCUS_WIDTH: f64 = BOND_CENTER_FOCUS_WIDTH_CM.value();
+pub const BOND_CENTER_HIT_RADIUS: f64 = BOND_CENTER_HIT_RADIUS_CM.value();
+pub const DRAG_START_THRESHOLD: f64 = DRAG_START_THRESHOLD_CM.value();
 pub const BLANK_CANVAS_DEFAULT_ANGLE: f64 = 330.0;
 pub const GLOBAL_SNAP_ANGLES: &[f64] = &[
     0.0, 15.0, 30.0, 45.0, 60.0, 75.0, 90.0, 105.0, 120.0, 135.0, 150.0, 165.0, 180.0, 195.0,
@@ -27,6 +34,7 @@ pub const RELATIVE_BOND_ANGLES: &[f64] = &[
 pub enum Tool {
     Select,
     Bond,
+    Delete,
     Text,
     Shape,
     Templates,
@@ -61,6 +69,16 @@ impl Default for EditorOptions {
     }
 }
 
+impl EditorOptions {
+    pub const fn bond_length_world_cm(&self) -> WorldCm {
+        WorldCm(self.bond_length)
+    }
+
+    pub const fn bond_stroke_world_cm(&self) -> WorldCm {
+        WorldCm(self.bond_stroke_width)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolState {
     pub active_tool: Tool,
@@ -87,8 +105,21 @@ pub struct PointerEvent {
 }
 
 impl PointerEvent {
+    pub const fn from_world_point(point: WorldPoint, button: Option<u8>, alt_key: bool) -> Self {
+        Self {
+            x: point.x.value(),
+            y: point.y.value(),
+            button,
+            alt_key,
+        }
+    }
+
     pub fn point(&self) -> Point {
-        Point::new(self.x, self.y)
+        Point::from_world(self.world_point())
+    }
+
+    pub const fn world_point(&self) -> WorldPoint {
+        WorldPoint::new(WorldCm(self.x), WorldCm(self.y))
     }
 }
 
@@ -198,11 +229,14 @@ pub fn can_draw_bond(tool_state: &ToolState) -> bool {
 }
 
 pub fn can_focus_bond_center(tool_state: &ToolState) -> bool {
-    tool_state.active_tool == Tool::Bond
+    matches!(tool_state.active_tool, Tool::Bond | Tool::Delete)
 }
 
 pub fn can_focus_endpoint(tool_state: &ToolState) -> bool {
-    matches!(tool_state.active_tool, Tool::Bond | Tool::Text)
+    matches!(
+        tool_state.active_tool,
+        Tool::Bond | Tool::Delete | Tool::Text
+    )
 }
 
 pub fn hit_test_endpoint(
@@ -884,4 +918,33 @@ fn bond_center_focus_radius(start: Point, end: Point) -> f64 {
     let half_length = bond_center_focus_length(start, end) / 2.0;
     let half_width = BOND_CENTER_FOCUS_WIDTH / 2.0;
     half_length.hypot(half_width)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pointer_event_world_point_round_trip() {
+        let event = PointerEvent::from_world_point(
+            WorldPoint::new(WorldCm(7.94), WorldCm(6.88)),
+            Some(0),
+            true,
+        );
+        assert_eq!(
+            event.world_point(),
+            WorldPoint::new(WorldCm(7.94), WorldCm(6.88))
+        );
+        assert_eq!(event.point(), Point::new(7.94, 6.88));
+    }
+
+    #[test]
+    fn editor_options_accessors_expose_world_cm() {
+        let options = EditorOptions {
+            bond_length: 1.058,
+            bond_stroke_width: 0.035,
+        };
+        assert_eq!(options.bond_length_world_cm(), WorldCm(1.058));
+        assert_eq!(options.bond_stroke_world_cm(), WorldCm(0.035));
+    }
 }

@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::{WorldCm, WorldPoint};
+
 pub const EPSILON: f64 = 1.0e-9;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -11,6 +13,17 @@ pub struct Point {
 impl Point {
     pub const fn new(x: f64, y: f64) -> Self {
         Self { x, y }
+    }
+
+    pub const fn from_world(point: WorldPoint) -> Self {
+        Self {
+            x: point.x.value(),
+            y: point.y.value(),
+        }
+    }
+
+    pub const fn world(self) -> WorldPoint {
+        WorldPoint::new(WorldCm(self.x), WorldCm(self.y))
     }
 
     pub fn distance(self, other: Self) -> f64 {
@@ -61,6 +74,10 @@ impl Vector {
 
 pub fn round2(value: f64) -> f64 {
     (value * 100.0).round() / 100.0
+}
+
+pub fn round6(value: f64) -> f64 {
+    (value * 1_000_000.0).round() / 1_000_000.0
 }
 
 pub fn normalize_angle(degrees: f64) -> f64 {

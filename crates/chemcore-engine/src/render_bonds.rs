@@ -35,8 +35,21 @@ pub(super) fn render_fragment_bond(
         .as_ref()
         .is_some_and(|label| label.has_visible_text());
 
-    start = clip_point_out_of_label_geometry(start, finish, begin_box, &begin_polygons, 1.8);
-    finish = clip_point_out_of_label_geometry(finish, start, end_box, &end_polygons, 1.8);
+    const LABEL_GEOMETRY_CLIP_MARGIN: f64 = crate::LABEL_GEOMETRY_CLIP_MARGIN_CM.value();
+    start = clip_point_out_of_label_geometry(
+        start,
+        finish,
+        begin_box,
+        &begin_polygons,
+        LABEL_GEOMETRY_CLIP_MARGIN,
+    );
+    finish = clip_point_out_of_label_geometry(
+        finish,
+        start,
+        end_box,
+        &end_polygons,
+        LABEL_GEOMETRY_CLIP_MARGIN,
+    );
 
     if let Some(stereo) = bond_stereo_kind(bond) {
         render_stereo_bond(
@@ -145,7 +158,6 @@ fn render_double_bond(
     object_id: Option<String>,
 ) {
     let side_mode = bond.double.as_ref().map(|double| double.placement);
-    let double_offset = double_bond_offset_distance(actual_start, actual_end, stroke_width);
 
     match side_mode {
         Some(DoubleBondPlacement::Left) | Some(DoubleBondPlacement::Right) => {
@@ -154,6 +166,13 @@ fn render_double_bond(
             } else {
                 1.0
             };
+            let double_offset = double_bond_center_distance_for_weights(
+                actual_start,
+                actual_end,
+                stroke_width,
+                bond.line_weights.main,
+                outer_line_weight(bond, side),
+            );
             render_fragment_line(
                 out,
                 object,
@@ -195,6 +214,13 @@ fn render_double_bond(
             );
         }
         _ => {
+            let double_offset = double_bond_center_distance_for_weights(
+                actual_start,
+                actual_end,
+                stroke_width,
+                bond.line_weights.left,
+                bond.line_weights.right,
+            );
             render_center_double_bond_lines(
                 out,
                 object,

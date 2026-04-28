@@ -376,7 +376,10 @@ fn glyph_placements_for_runs(
     let mut cursor_x = start_x;
 
     for run in runs {
-        let font_size = run.font_size.unwrap_or(fallback_font_size).max(1.0);
+        let font_size = run
+            .font_size
+            .unwrap_or(fallback_font_size)
+            .max(crate::css_px(1.0).to_world_cm().value());
         let config = LayoutConfig {
             font_size_px: font_size,
             ..LayoutConfig::default()
@@ -874,10 +877,9 @@ fn escape_xml_char(ch: char) -> String {
 
 fn shared_glyph_profiles() -> &'static SharedGlyphProfiles {
     SHARED_GLYPH_PROFILES.get_or_init(|| {
-        let manifest: SharedGlyphProfilesJson = serde_json::from_str(include_str!(
-            "../../../shared/glyph_profiles.json"
-        ))
-        .expect("shared glyph profile manifest must be valid JSON");
+        let manifest: SharedGlyphProfilesJson =
+            serde_json::from_str(include_str!("../../../shared/glyph_profiles.json"))
+                .expect("shared glyph profile manifest must be valid JSON");
         SharedGlyphProfiles::from_json(manifest)
     })
 }
@@ -918,7 +920,9 @@ impl SharedGlyphProfiles {
             let character = chars
                 .next()
                 .filter(|_| chars.next().is_none())
-                .unwrap_or_else(|| panic!("glyph profile key must be exactly one character: {key:?}"));
+                .unwrap_or_else(|| {
+                    panic!("glyph profile key must be exactly one character: {key:?}")
+                });
             specials.insert(character, glyph_profile_from_json(&value));
         }
         Self {

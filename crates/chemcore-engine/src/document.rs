@@ -1,12 +1,16 @@
-use crate::{round2, Point};
+use crate::{
+    round2, Point, DEFAULT_BOND_LENGTH_CM, DEFAULT_BOND_STROKE_CM,
+    DEFAULT_MOLECULE_LABEL_FONT_SIZE_CM, DEFAULT_PAGE_HEIGHT_CM, DEFAULT_PAGE_WIDTH_CM,
+    DEFAULT_TEXT_BLOCK_PADDING_CM,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
-pub const DEFAULT_PAGE_WIDTH: f64 = 1200.0;
-pub const DEFAULT_PAGE_HEIGHT: f64 = 800.0;
-pub const DEFAULT_BOND_LENGTH: f64 = 36.0;
-pub const DEFAULT_BOND_STROKE: f64 = 2.125;
+pub const DEFAULT_PAGE_WIDTH: f64 = DEFAULT_PAGE_WIDTH_CM;
+pub const DEFAULT_PAGE_HEIGHT: f64 = DEFAULT_PAGE_HEIGHT_CM;
+pub const DEFAULT_BOND_LENGTH: f64 = DEFAULT_BOND_LENGTH_CM;
+pub const DEFAULT_BOND_STROKE: f64 = DEFAULT_BOND_STROKE_CM;
 
 fn default_true() -> bool {
     true
@@ -35,7 +39,7 @@ impl ChemcoreDocument {
                 "stroke": "#000000",
                 "strokeWidth": DEFAULT_BOND_STROKE,
                 "fontFamily": "Arial",
-                "fontSize": 11.0
+                "fontSize": DEFAULT_MOLECULE_LABEL_FONT_SIZE_CM
             }),
         );
 
@@ -502,8 +506,8 @@ impl EditableFragmentMut<'_> {
         let mut max_x = DEFAULT_PAGE_WIDTH;
         let mut max_y = DEFAULT_PAGE_HEIGHT;
         for node in &self.fragment.nodes {
-            max_x = max_x.max(node.position[0] + 8.0);
-            max_y = max_y.max(node.position[1] + 8.0);
+            max_x = max_x.max(node.position[0] + DEFAULT_TEXT_BLOCK_PADDING_CM);
+            max_y = max_y.max(node.position[1] + DEFAULT_TEXT_BLOCK_PADDING_CM);
         }
         self.fragment.bbox = [0.0, 0.0, round2(max_x), round2(max_y)];
         self.object.payload.bbox = Some(self.fragment.bbox);

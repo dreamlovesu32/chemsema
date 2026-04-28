@@ -12,7 +12,9 @@ export function createTextEditorController(deps) {
         deps.getActiveEditor()?.root || root,
         { target: nextSession.target },
       ),
-      renderRunNode: deps.renderRunNode,
+      defaultLineHeight: deps.defaultLineHeight,
+      scriptScale: deps.scriptScale,
+      scriptShiftEm: deps.scriptShiftEm,
     });
   }
 
@@ -61,8 +63,8 @@ export function createTextEditorController(deps) {
     editor.pendingStyleCaretOffset = caretOffset;
     editor.preferredCaretX = null;
     editor.root.dataset.defaultChemical = style.script === "chemical" ? "true" : "false";
-    editor.root.style.fontFamily = style.fontFamily || editor.root.style.fontFamily;
-    editor.root.style.fontSize = `${Number(style.fontSize || deps.editorState.textFontSize)}px`;
+    deps.applyEditorRootFontFamily(editor.root, style.fontFamily);
+    editor.root.dataset.baseFontSize = String(Number(style.fontSize || deps.editorState.textFontSize));
     editor.root.style.color = style.fill || editor.root.style.color;
   }
 
@@ -507,17 +509,17 @@ export function createTextEditorController(deps) {
     root.dataset.defaultChemical = session.defaultChemical ? "true" : "false";
     root.dataset.baseFontSize = String(Number(session.fontSize || deps.editorState.textFontSize));
     root.dataset.baseLineHeight = String(Number(session.lineHeight || deps.defaultTextEditorLineHeight(session.fontSize || deps.editorState.textFontSize)));
-    root.style.fontFamily = session.fontFamily || deps.editorState.textFontFamily;
+    deps.applyEditorRootFontFamily(root, session.fontFamily || deps.editorState.textFontFamily);
     const fontSize = Number(session.fontSize || deps.editorState.textFontSize);
     const lineHeight = Number(session.lineHeight || deps.defaultTextEditorLineHeight(fontSize));
-    root.style.fontSize = `${fontSize}px`;
-    root.style.lineHeight = `${lineHeight}px`;
     root.style.color = session.fill || deps.editorState.textColor;
     root.style.textAlign = session.align || "left";
     root.style.minWidth = "8px";
     root.style.minHeight = `${lineHeight}px`;
     const display = document.createElement("div");
     display.className = "text-editor-display";
+    const selectionLayer = document.createElement("div");
+    selectionLayer.className = "text-editor-selection-layer";
     const caret = document.createElement("div");
     caret.className = "text-editor-caret";
     const input = document.createElement("textarea");
@@ -525,6 +527,7 @@ export function createTextEditorController(deps) {
     input.spellcheck = false;
     input.setAttribute("aria-label", "text editor input");
     root.appendChild(display);
+    root.appendChild(selectionLayer);
     root.appendChild(caret);
     root.appendChild(input);
     renderEditorContent(display, session);
@@ -533,6 +536,7 @@ export function createTextEditorController(deps) {
     const editor = setEditor({
       root,
       display,
+      selectionLayer,
       caret,
       input,
       session,
@@ -545,6 +549,7 @@ export function createTextEditorController(deps) {
       isNormalizingChemical: false,
       dragSelecting: false,
       preferredCaretX: null,
+      renderOffset: { x: 0, y: 0 },
       layoutCache: null,
       composition: null,
     });

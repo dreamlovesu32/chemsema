@@ -1,3 +1,5 @@
+import { cssPxToCm } from "./units.js";
+
 const CHEMDRAW_INK = "#000000";
 const CHEMDRAW_COLOR_MAP = new Map([
   ["#d61f1f", "#ff0000"],
@@ -14,7 +16,13 @@ export function normalizeDisplayColor(color, fallback = CHEMDRAW_INK) {
 
 export function displayLabelFontFamily(fontFamily) {
   const value = String(fontFamily || "").trim();
-  if (!value || /^(arial|helvetica|texgyreheros|tex gyre heros)$/i.test(value)) {
+  if (!value || /^(arial)$/i.test(value)) {
+    return "Arial, \"Helvetica Neue\", Helvetica, sans-serif";
+  }
+  if (/^(helvetica)$/i.test(value)) {
+    return "Helvetica, Arial, sans-serif";
+  }
+  if (/^(texgyreheros|tex gyre heros)$/i.test(value)) {
     return "\"TeX Gyre Heros\", Arial, Helvetica, sans-serif";
   }
   return `${value}, "TeX Gyre Heros", Arial, Helvetica, sans-serif`;
@@ -78,7 +86,7 @@ export function ensureSvgDefs(svgRoot) {
 
 export function wrapTextLines(text, maxWidth, fontSize) {
   const rawLines = String(text || "").split("\n");
-  const maxChars = Math.max(8, Math.floor(maxWidth / Math.max(6, fontSize * 0.6)));
+  const maxChars = Math.max(8, Math.floor(maxWidth / Math.max(cssPxToCm(6), fontSize * 0.6)));
   const out = [];
 
   for (const rawLine of rawLines) {

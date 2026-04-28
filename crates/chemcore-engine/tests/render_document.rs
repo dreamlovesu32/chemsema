@@ -2060,10 +2060,73 @@ fn render_document_scales_side_double_offset_with_bond_length() {
         .map(|(from, to)| ((from.y + to.y) / 2.0 - 80.0).abs())
         .max_by(|a, b| a.total_cmp(b))
         .unwrap();
+    let stroke_width = 0.85;
+    let short_inner_gap = short_offset - stroke_width;
+    let long_inner_gap = long_offset - stroke_width;
 
     assert!(
-        (long_offset - short_offset * 2.0).abs() < 0.05,
+        (long_inner_gap - short_inner_gap * 2.0).abs() < 0.05,
         "{short_offset} {long_offset}"
+    );
+}
+
+#[test]
+fn render_document_increases_side_double_offset_for_bold_main_line() {
+    let normal_document = fragment_document(
+        json!([
+            { "id": "n1", "element": "C", "atomicNumber": 6, "position": [20.0, 40.0], "charge": 0, "numHydrogens": 0 },
+            { "id": "n2", "element": "C", "atomicNumber": 6, "position": [56.0, 40.0], "charge": 0, "numHydrogens": 0 }
+        ]),
+        json!([
+            {
+                "id": "b1",
+                "begin": "n1",
+                "end": "n2",
+                "order": 2,
+                "strokeWidth": 0.85,
+                "double": { "placement": "right" }
+            }
+        ]),
+    );
+    let bold_document = fragment_document(
+        json!([
+            { "id": "n1", "element": "C", "atomicNumber": 6, "position": [20.0, 40.0], "charge": 0, "numHydrogens": 0 },
+            { "id": "n2", "element": "C", "atomicNumber": 6, "position": [56.0, 40.0], "charge": 0, "numHydrogens": 0 }
+        ]),
+        json!([
+            {
+                "id": "b1",
+                "begin": "n1",
+                "end": "n2",
+                "order": 2,
+                "strokeWidth": 0.85,
+                "double": { "placement": "right" },
+                "lineWeights": {
+                    "main": "bold",
+                    "left": "normal",
+                    "right": "normal"
+                }
+            }
+        ]),
+    );
+
+    let normal_lines = object_bond_centerlines(&render_document(&normal_document));
+    let bold_lines = object_bond_centerlines(&render_document(&bold_document));
+
+    let normal_offset = normal_lines
+        .iter()
+        .map(|(from, to)| ((from.y + to.y) / 2.0 - 40.0).abs())
+        .max_by(|a, b| a.total_cmp(b))
+        .unwrap();
+    let bold_offset = bold_lines
+        .iter()
+        .map(|(from, to)| ((from.y + to.y) / 2.0 - 40.0).abs())
+        .max_by(|a, b| a.total_cmp(b))
+        .unwrap();
+
+    assert!(
+        bold_offset > normal_offset + 0.01,
+        "{normal_offset} {bold_offset}"
     );
 }
 
@@ -2990,6 +3053,57 @@ fn render_document_keeps_solid_wedge_cap_width_constant_when_bond_is_longer() {
         (short_width - long_width).abs() < 0.05,
         "{short_width} {long_width}"
     );
+}
+
+#[test]
+fn render_document_uses_explicit_solid_wedge_wide_and_tip_widths() {
+    let document = fragment_document(
+        json!([
+            { "id": "n1", "element": "C", "atomicNumber": 6, "position": [20.0, 40.0], "charge": 0, "numHydrogens": 0 },
+            { "id": "n2", "element": "C", "atomicNumber": 6, "position": [56.0, 40.0], "charge": 0, "numHydrogens": 0 }
+        ]),
+        json!([
+            {
+                "id": "b1",
+                "begin": "n1",
+                "end": "n2",
+                "order": 1,
+                "strokeWidth": 0.85,
+                "stereo": {
+                    "kind": "solid-wedge",
+                    "wideEnd": "end"
+                }
+            }
+        ]),
+    );
+
+    let polygon = render_document(&document)
+        .into_iter()
+        .find_map(|primitive| match primitive {
+            RenderPrimitive::Polygon {
+                role,
+                object_id,
+                points,
+                ..
+            } if role == RenderRole::DocumentBond
+                && object_id.as_deref() == Some("obj_molecule_001") =>
+            {
+                Some(points)
+            }
+            _ => None,
+        })
+        .expect("solid wedge polygon");
+
+    let tip_width =
+        ((polygon[0].x - polygon[3].x).powi(2) + (polygon[0].y - polygon[3].y).powi(2)).sqrt();
+    let wide_width =
+        ((polygon[1].x - polygon[2].x).powi(2) + (polygon[1].y - polygon[2].y).powi(2)).sqrt();
+
+    assert!(
+        (tip_width - chemcore_engine::DEFAULT_BOND_STROKE_CM).abs() < 0.01,
+        "{tip_width}"
+    );
+    assert!((wide_width - 0.2115).abs() < 0.01, "{wide_width}");
 }
 
 #[test]

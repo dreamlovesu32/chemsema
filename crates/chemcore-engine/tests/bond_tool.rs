@@ -6,18 +6,30 @@ use chemcore_engine::{
 use serde_json::json;
 use std::collections::BTreeMap;
 
-const FIRST_END_X: f64 = 331.18;
-const FIRST_END_Y: f64 = 242.0;
-const FIRST_END_HOVER_X: f64 = 332.18;
-const FIRST_END_HOVER_Y: f64 = 245.0;
-const FIRST_CENTER_X: f64 = 315.59;
-const FIRST_CENTER_Y: f64 = 251.0;
-const FIRST_END_SINGLE_EXTEND_X: f64 = 362.36;
-const FIRST_END_SINGLE_EXTEND_Y: f64 = 260.0;
-const FIRST_END_TRIPLE_EXTEND_X: f64 = 362.36;
-const FIRST_END_TRIPLE_EXTEND_Y: f64 = 224.0;
-const ROOT_SINGLE_BRANCH_X: f64 = 300.0;
-const ROOT_SINGLE_BRANCH_Y: f64 = 296.0;
+const fn px(value: f64) -> f64 {
+    chemcore_engine::px_to_cm(value)
+}
+
+fn px_point(x: f64, y: f64) -> chemcore_engine::Point {
+    chemcore_engine::Point::new(px(x), px(y))
+}
+
+const FIRST_START_X: f64 = 7.94;
+const FIRST_START_Y: f64 = 6.88;
+const FIRST_END_X: f64 = 8.85;
+const FIRST_END_Y: f64 = 6.35;
+const FIRST_END_HOVER_X: f64 = FIRST_END_X + px(1.0);
+const FIRST_END_HOVER_Y: f64 = FIRST_END_Y + px(2.0);
+const FIRST_CENTER_X: f64 = (FIRST_START_X + FIRST_END_X) * 0.5;
+const FIRST_CENTER_Y: f64 = (FIRST_START_Y + FIRST_END_Y) * 0.5;
+const FIRST_END_SINGLE_EXTEND_X: f64 = 9.77;
+const FIRST_END_SINGLE_EXTEND_Y: f64 = 6.88;
+const FIRST_END_TRIPLE_EXTEND_X: f64 = 9.76;
+const FIRST_END_TRIPLE_EXTEND_Y: f64 = 5.82;
+const ROOT_SINGLE_BRANCH_X: f64 = px(300.0);
+const ROOT_SINGLE_BRANCH_Y: f64 = 7.94;
+const ROOT_OPPOSITE_BRANCH_X: f64 = 8.85;
+const ROOT_OPPOSITE_BRANCH_Y: f64 = 7.41;
 
 fn bond_tool() -> ToolState {
     ToolState {
@@ -37,6 +49,13 @@ fn double_bond_tool() -> ToolState {
     ToolState {
         active_tool: Tool::Bond,
         bond_variant: BondVariant::Double,
+    }
+}
+
+fn delete_tool() -> ToolState {
+    ToolState {
+        active_tool: Tool::Delete,
+        bond_variant: BondVariant::Single,
     }
 }
 
@@ -100,6 +119,47 @@ fn node_degrees(engine: &Engine) -> BTreeMap<String, usize> {
     degrees
 }
 
+fn bond_order(engine: &Engine, bond_id: &str) -> Option<u8> {
+    engine
+        .state()
+        .document
+        .editable_fragment()
+        .and_then(|entry| {
+            entry
+                .fragment
+                .bonds
+                .iter()
+                .find(|bond| bond.id == bond_id)
+                .map(|bond| bond.order)
+        })
+}
+
+fn bond_center_point(engine: &Engine, bond_id: &str) -> chemcore_engine::Point {
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let bond = entry
+        .fragment
+        .bonds
+        .iter()
+        .find(|bond| bond.id == bond_id)
+        .expect("bond should exist");
+    let begin = entry
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == bond.begin)
+        .expect("begin node should exist");
+    let end = entry
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == bond.end)
+        .expect("end node should exist");
+    chemcore_engine::Point::new(
+        (begin.position[0] + end.position[0]) * 0.5,
+        (begin.position[1] + end.position[1]) * 0.5,
+    )
+}
+
 fn click(engine: &mut Engine, x: f64, y: f64) {
     engine.pointer_down(PointerEvent {
         x,
@@ -125,7 +185,12 @@ fn hover(engine: &mut Engine, x: f64, y: f64) {
 }
 
 fn rect_polygon(x1: f64, y1: f64, x2: f64, y2: f64) -> serde_json::Value {
-    json!([[x1, y1], [x2, y1], [x2, y2], [x1, y2]])
+    json!([
+        [px(x1), px(y1)],
+        [px(x2), px(y1)],
+        [px(x2), px(y2)],
+        [px(x1), px(y2)]
+    ])
 }
 
 fn load_label_document(
@@ -139,7 +204,7 @@ fn load_label_document(
         "document": {
             "id": "doc_test",
             "title": "label test",
-            "page": { "width": 400.0, "height": 320.0, "background": "#ffffff" }
+            "page": { "width": px(400.0), "height": px(320.0), "background": "#ffffff" }
         },
         "styles": {
             "style_molecule_default": {
@@ -147,7 +212,7 @@ fn load_label_document(
                 "stroke": "#000000",
                 "strokeWidth": DEFAULT_BOND_STROKE,
                 "fontFamily": "Arial",
-                "fontSize": 11.0
+                "fontSize": chemcore_engine::DEFAULT_MOLECULE_LABEL_FONT_SIZE_CM
             }
         },
         "objects": [{
@@ -165,26 +230,26 @@ fn load_label_document(
                 "encoding": "chemcore.molecule.fragment2d",
                 "data": {
                     "schema": "chemcore.molecule.fragment2d",
-                    "bbox": [0.0, 0.0, 400.0, 320.0],
+                    "bbox": [0.0, 0.0, px(400.0), px(320.0)],
                     "nodes": [{
                         "id": "n1",
                         "element": "N",
                         "atomicNumber": 7,
-                        "position": [300.0, 260.0],
+                        "position": [px(300.0), px(260.0)],
                         "charge": 0,
                         "numHydrogens": 0,
                         "label": {
                             "text": label_text,
                             "sourceText": label_text,
-                            "position": [297.0, 260.0],
-                            "box": [294.0, 256.0, 324.0, 264.0],
+                            "position": [px(297.0), px(260.0)],
+                            "box": [px(294.0), px(256.0), px(324.0), px(264.0)],
                             "glyphPolygons": glyph_polygons
                         }
                     }, {
                         "id": "n0",
                         "element": "C",
                         "atomicNumber": 6,
-                        "position": [264.0, 260.0],
+                        "position": [px(264.0), px(260.0)],
                         "charge": 0,
                         "numHydrogens": 0
                     }],
@@ -204,14 +269,14 @@ fn click_on_blank_canvas_creates_up_right_single_bond() {
     engine.set_tool_state(bond_tool());
 
     engine.pointer_down(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
     engine.pointer_up(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
@@ -219,8 +284,11 @@ fn click_on_blank_canvas_creates_up_right_single_bond() {
     let entry = engine.state().document.editable_fragment().unwrap();
     assert_eq!(entry.fragment.nodes.len(), 2);
     assert_eq!(entry.fragment.bonds.len(), 1);
-    assert_eq!(entry.fragment.nodes[0].position, [300.0, 260.0]);
-    assert_eq!(entry.fragment.nodes[1].position, [331.18, 242.0]);
+    assert_eq!(
+        entry.fragment.nodes[0].position,
+        [FIRST_START_X, FIRST_START_Y]
+    );
+    assert_eq!(entry.fragment.nodes[1].position, [FIRST_END_X, FIRST_END_Y]);
     assert_eq!(entry.fragment.bonds[0].stroke_width, DEFAULT_BOND_STROKE);
 }
 
@@ -229,14 +297,14 @@ fn hover_focuses_existing_endpoint() {
     let mut engine = Engine::new();
     engine.set_tool_state(bond_tool());
     engine.pointer_down(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
     engine.pointer_up(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
@@ -257,7 +325,7 @@ fn hovered_endpoint_can_be_replaced_with_element_label() {
     let mut engine = Engine::new();
     engine.set_tool_state(bond_tool());
 
-    click(&mut engine, 300.0, 260.0);
+    click(&mut engine, px(300.0), px(260.0));
     hover(&mut engine, FIRST_END_HOVER_X, FIRST_END_HOVER_Y);
 
     assert!(engine.replace_hovered_endpoint_label("N"));
@@ -278,7 +346,7 @@ fn hovered_endpoint_can_be_replaced_with_element_label() {
     );
     assert_eq!(
         node.label.as_ref().and_then(|label| label.font_size),
-        Some(12.0)
+        Some(chemcore_engine::DEFAULT_MOLECULE_LABEL_FONT_SIZE_CM)
     );
     assert_eq!(
         node.label.as_ref().and_then(|label| label.align.as_deref()),
@@ -291,7 +359,7 @@ fn hovered_endpoint_can_be_replaced_with_abbreviation_label() {
     let mut engine = Engine::new();
     engine.set_tool_state(bond_tool());
 
-    click(&mut engine, 300.0, 260.0);
+    click(&mut engine, px(300.0), px(260.0));
     hover(&mut engine, FIRST_END_HOVER_X, FIRST_END_HOVER_Y);
 
     assert!(engine.replace_hovered_endpoint_label("Ph"));
@@ -312,7 +380,7 @@ fn hovered_endpoint_can_be_replaced_with_abbreviation_label() {
     );
     assert_eq!(
         node.label.as_ref().and_then(|label| label.font_size),
-        Some(12.0)
+        Some(chemcore_engine::DEFAULT_MOLECULE_LABEL_FONT_SIZE_CM)
     );
     assert_eq!(
         node.label.as_ref().and_then(|label| label.align.as_deref()),
@@ -339,7 +407,7 @@ fn labeled_node_center_no_longer_focuses_plain_endpoint() {
     load_label_document(&mut engine, "CuF3", glyph_polygons, bonds);
     engine.set_tool_state(bond_tool());
 
-    hover(&mut engine, 300.0, 260.0);
+    hover(&mut engine, px(300.0), px(260.0));
     assert!(engine.state().overlay.hover_endpoint.is_none());
 }
 
@@ -348,7 +416,7 @@ fn hovered_endpoint_can_be_cleared_back_to_carbon() {
     let mut engine = Engine::new();
     engine.set_tool_state(bond_tool());
 
-    click(&mut engine, 300.0, 260.0);
+    click(&mut engine, px(300.0), px(260.0));
     hover(&mut engine, FIRST_END_HOVER_X, FIRST_END_HOVER_Y);
     assert!(engine.replace_hovered_endpoint_label("Me"));
     hover(&mut engine, FIRST_END_HOVER_X, FIRST_END_HOVER_Y);
@@ -385,21 +453,24 @@ fn hover_focuses_label_glyph_anchor() {
     );
 
     engine.pointer_move(PointerEvent {
-        x: 305.0,
-        y: 260.0,
+        x: px(305.0),
+        y: px(260.0),
         button: None,
         alt_key: false,
     });
 
     let hover = engine.state().overlay.hover_endpoint.as_ref().unwrap();
     assert_eq!(hover.node_id, "n1");
-    assert!((hover.point.x - 305.0).abs() < 0.001, "{hover:?}");
-    assert!((hover.point.y - 260.0).abs() < 0.001, "{hover:?}");
+    assert!((hover.point.x - px(305.0)).abs() < 0.001, "{hover:?}");
+    assert!((hover.point.y - px(260.0)).abs() < 0.001, "{hover:?}");
     let anchor = hover
         .label_anchor
         .as_ref()
         .expect("label anchor should exist");
-    assert_eq!(anchor.glyph_box, [302.0, 256.0, 308.0, 264.0]);
+    let expected_glyph_box = [px(302.0), px(256.0), px(308.0), px(264.0)];
+    for (actual, expected) in anchor.glyph_box.iter().zip(expected_glyph_box) {
+        assert!((*actual - expected).abs() < 0.001, "{anchor:?}");
+    }
 
     let render_list = engine.render_list();
     assert!(render_list.iter().any(|primitive| {
@@ -412,10 +483,10 @@ fn hover_focuses_label_glyph_anchor() {
                 width,
                 height,
                 ..
-            } if (*x - 302.0).abs() < 0.001
-                && (*y - 256.0).abs() < 0.001
-                && (*width - 6.0).abs() < 0.001
-                && (*height - 8.0).abs() < 0.001
+            } if (*x - px(302.0)).abs() < 0.001
+                && (*y - px(256.0)).abs() < 0.001
+                && (*width - px(6.0)).abs() < 0.001
+                && (*height - px(8.0)).abs() < 0.001
         )
     }));
 }
@@ -436,17 +507,17 @@ fn click_on_label_glyph_uses_rightmost_label_anchor_for_horizontal_bond() {
         json!([]),
     );
 
-    click(&mut engine, 305.0, 260.0);
+    click(&mut engine, px(305.0), px(260.0));
 
     let entry = engine.state().document.editable_fragment().unwrap();
     let last = entry.fragment.nodes.last().unwrap();
     assert!(
-        (last.position[0] - 357.0).abs() < 0.01,
+        (last.position[0] - 9.55).abs() < 0.01,
         "{:?}",
         last.position
     );
     assert!(
-        (last.position[1] - 260.0).abs() < 0.01,
+        (last.position[1] - FIRST_START_Y).abs() < 0.01,
         "{:?}",
         last.position
     );
@@ -469,20 +540,20 @@ fn drag_from_label_glyph_uses_focused_glyph_for_vertical_bond() {
     );
 
     engine.pointer_down(PointerEvent {
-        x: 305.0,
-        y: 260.0,
+        x: px(305.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
     engine.pointer_move(PointerEvent {
-        x: 305.0,
-        y: 220.0,
+        x: px(305.0),
+        y: px(220.0),
         button: None,
         alt_key: false,
     });
     engine.pointer_up(PointerEvent {
-        x: 305.0,
-        y: 220.0,
+        x: px(305.0),
+        y: px(220.0),
         button: Some(0),
         alt_key: false,
     });
@@ -490,12 +561,12 @@ fn drag_from_label_glyph_uses_focused_glyph_for_vertical_bond() {
     let entry = engine.state().document.editable_fragment().unwrap();
     let last = entry.fragment.nodes.last().unwrap();
     assert!(
-        (last.position[0] - 305.0).abs() < 0.01,
+        (last.position[0] - 8.07).abs() < 0.01,
         "{:?}",
         last.position
     );
     assert!(
-        (last.position[1] - 224.0).abs() < 0.01,
+        (last.position[1] - FIRST_END_TRIPLE_EXTEND_Y).abs() < 0.01,
         "{:?}",
         last.position
     );
@@ -524,20 +595,20 @@ fn drag_from_connected_label_uses_rightmost_group_uppercase_anchor() {
     );
 
     engine.pointer_down(PointerEvent {
-        x: 305.0,
-        y: 260.0,
+        x: px(305.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
     engine.pointer_move(PointerEvent {
-        x: 360.0,
-        y: 260.0,
+        x: px(360.0),
+        y: px(260.0),
         button: None,
         alt_key: false,
     });
     engine.pointer_up(PointerEvent {
-        x: 360.0,
-        y: 260.0,
+        x: px(360.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
@@ -545,12 +616,12 @@ fn drag_from_connected_label_uses_rightmost_group_uppercase_anchor() {
     let entry = engine.state().document.editable_fragment().unwrap();
     let last = entry.fragment.nodes.last().unwrap();
     assert!(
-        (last.position[0] - 349.0).abs() < 0.01,
+        (last.position[0] - 9.34).abs() < 0.01,
         "{:?}",
         last.position
     );
     assert!(
-        (last.position[1] - 260.0).abs() < 0.01,
+        (last.position[1] - FIRST_START_Y).abs() < 0.01,
         "{:?}",
         last.position
     );
@@ -561,14 +632,14 @@ fn click_on_single_bond_endpoint_extends_at_120_degrees() {
     let mut engine = Engine::new();
     engine.set_tool_state(bond_tool());
     engine.pointer_down(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
     engine.pointer_up(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
@@ -603,9 +674,9 @@ fn click_on_single_bond_endpoint_extends_at_120_degrees() {
 fn click_on_single_bond_endpoint_prefers_rightward_120_degree_branch_for_single_bond_component() {
     let mut engine = Engine::new();
     engine.set_tool_state(bond_tool());
-    click(&mut engine, 300.0, 260.0);
+    click(&mut engine, px(300.0), px(260.0));
 
-    click(&mut engine, 300.0, 260.0);
+    click(&mut engine, px(300.0), px(260.0));
 
     let entry = engine.state().document.editable_fragment().unwrap();
     assert_eq!(entry.fragment.nodes.len(), 3);
@@ -618,10 +689,10 @@ fn click_on_single_bond_endpoint_prefers_rightward_120_degree_branch_for_single_
 fn click_on_endpoint_prefers_candidate_closer_to_same_component_bond_geometry() {
     let mut engine = Engine::new();
     engine.set_tool_state(bond_tool());
-    click(&mut engine, 300.0, 260.0);
+    click(&mut engine, px(300.0), px(260.0));
     click(&mut engine, FIRST_END_X, FIRST_END_Y);
 
-    click(&mut engine, 300.0, 260.0);
+    click(&mut engine, px(300.0), px(260.0));
 
     let entry = engine.state().document.editable_fragment().unwrap();
     assert_eq!(entry.fragment.nodes.len(), 4);
@@ -634,18 +705,24 @@ fn click_on_endpoint_prefers_candidate_closer_to_same_component_bond_geometry() 
 fn click_on_endpoint_ignores_disconnected_bond_geometry_when_choosing_direction() {
     let mut engine = Engine::new();
     engine.set_tool_state(bond_tool());
-    click(&mut engine, 300.0, 260.0);
+    click(&mut engine, px(300.0), px(260.0));
     click(&mut engine, FIRST_END_X, FIRST_END_Y);
 
     click(&mut engine, ROOT_SINGLE_BRANCH_X, ROOT_SINGLE_BRANCH_Y);
 
-    click(&mut engine, 300.0, 260.0);
+    click(&mut engine, px(300.0), px(260.0));
 
     let entry = engine.state().document.editable_fragment().unwrap();
     assert_eq!(entry.fragment.nodes.len(), 5);
     let point = entry.fragment.nodes[4].position;
-    assert!((point[0] - 331.18).abs() < 0.01, "{point:?}");
-    assert!((point[1] - 278.0).abs() < 0.01, "{point:?}");
+    assert!(
+        (point[0] - ROOT_OPPOSITE_BRANCH_X).abs() < 0.01,
+        "{point:?}"
+    );
+    assert!(
+        (point[1] - ROOT_OPPOSITE_BRANCH_Y).abs() < 0.01,
+        "{point:?}"
+    );
 }
 
 #[test]
@@ -653,14 +730,14 @@ fn drag_from_endpoint_uses_fixed_length_and_angle_snap() {
     let mut engine = Engine::new();
     engine.set_tool_state(bond_tool());
     engine.pointer_down(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
     engine.pointer_up(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
@@ -672,15 +749,15 @@ fn drag_from_endpoint_uses_fixed_length_and_angle_snap() {
         alt_key: false,
     });
     engine.pointer_move(PointerEvent {
-        x: 370.0,
-        y: 292.0,
+        x: px(370.0),
+        y: px(292.0),
         button: None,
         alt_key: false,
     });
     assert!(engine.state().overlay.preview.is_some());
     engine.pointer_up(PointerEvent {
-        x: 370.0,
-        y: 292.0,
+        x: px(370.0),
+        y: px(292.0),
         button: Some(0),
         alt_key: false,
     });
@@ -698,7 +775,7 @@ fn drag_from_endpoint_uses_fixed_length_and_angle_snap() {
 fn drag_from_endpoint_snaps_to_15_degree_increment() {
     let mut engine = Engine::new();
     engine.set_tool_state(bond_tool());
-    click(&mut engine, 300.0, 260.0);
+    click(&mut engine, px(300.0), px(260.0));
 
     engine.pointer_down(PointerEvent {
         x: FIRST_END_X,
@@ -707,14 +784,14 @@ fn drag_from_endpoint_snaps_to_15_degree_increment() {
         alt_key: false,
     });
     engine.pointer_move(PointerEvent {
-        x: 371.0,
-        y: 271.0,
+        x: px(371.0),
+        y: px(271.0),
         button: None,
         alt_key: false,
     });
     engine.pointer_up(PointerEvent {
-        x: 371.0,
-        y: 271.0,
+        x: px(371.0),
+        y: px(271.0),
         button: Some(0),
         alt_key: false,
     });
@@ -725,7 +802,7 @@ fn drag_from_endpoint_snaps_to_15_degree_increment() {
     let dy = last.position[1] - FIRST_END_Y;
     let angle = dy.atan2(dx).to_degrees().rem_euclid(360.0);
 
-    assert!((angle - 30.0).abs() < 0.01, "{angle} {:?}", last.position);
+    assert!((angle - 45.0).abs() < 0.01, "{angle} {:?}", last.position);
     let length = (dx.powi(2) + dy.powi(2)).sqrt();
     assert!((length - DEFAULT_BOND_LENGTH).abs() < 0.01, "{length}");
 }
@@ -734,7 +811,7 @@ fn drag_from_endpoint_snaps_to_15_degree_increment() {
 fn drag_preview_renders_document_geometry_instead_of_overlay_line() {
     let mut engine = Engine::new();
     engine.set_tool_state(bond_tool());
-    click(&mut engine, 300.0, 260.0);
+    click(&mut engine, px(300.0), px(260.0));
 
     engine.pointer_down(PointerEvent {
         x: FIRST_END_X,
@@ -743,8 +820,8 @@ fn drag_preview_renders_document_geometry_instead_of_overlay_line() {
         alt_key: false,
     });
     engine.pointer_move(PointerEvent {
-        x: 370.0,
-        y: 292.0,
+        x: px(370.0),
+        y: px(292.0),
         button: None,
         alt_key: false,
     });
@@ -775,7 +852,7 @@ fn drag_preview_renders_document_geometry_instead_of_overlay_line() {
 fn alt_drag_from_endpoint_uses_mouse_distance_without_snap() {
     let mut engine = Engine::new();
     engine.set_tool_state(bond_tool());
-    click(&mut engine, 300.0, 260.0);
+    click(&mut engine, px(300.0), px(260.0));
 
     engine.pointer_down(PointerEvent {
         x: FIRST_END_X,
@@ -784,17 +861,17 @@ fn alt_drag_from_endpoint_uses_mouse_distance_without_snap() {
         alt_key: true,
     });
     engine.pointer_move(PointerEvent {
-        x: 389.0,
-        y: 301.0,
+        x: px(389.0),
+        y: px(301.0),
         button: None,
         alt_key: true,
     });
     let preview = engine.state().overlay.preview.as_ref().unwrap();
-    assert!((preview.end.x - 389.0).abs() < 0.001, "{preview:?}");
-    assert!((preview.end.y - 301.0).abs() < 0.001, "{preview:?}");
+    assert!((preview.end.x - px(389.0)).abs() < 0.001, "{preview:?}");
+    assert!((preview.end.y - px(301.0)).abs() < 0.001, "{preview:?}");
     engine.pointer_up(PointerEvent {
-        x: 389.0,
-        y: 301.0,
+        x: px(389.0),
+        y: px(301.0),
         button: Some(0),
         alt_key: true,
     });
@@ -802,19 +879,19 @@ fn alt_drag_from_endpoint_uses_mouse_distance_without_snap() {
     let entry = engine.state().document.editable_fragment().unwrap();
     let last = entry.fragment.nodes.last().unwrap();
     assert!(
-        (last.position[0] - 389.0).abs() < 0.001,
+        (last.position[0] - 10.29).abs() < 0.001,
         "{:?}",
         last.position
     );
     assert!(
-        (last.position[1] - 301.0).abs() < 0.001,
+        (last.position[1] - 7.96).abs() < 0.001,
         "{:?}",
         last.position
     );
     let length = ((last.position[0] - FIRST_END_X).powi(2)
         + (last.position[1] - FIRST_END_Y).powi(2))
     .sqrt();
-    assert!((length - DEFAULT_BOND_LENGTH).abs() > 5.0, "{length}");
+    assert!((length - DEFAULT_BOND_LENGTH).abs() > px(5.0), "{length}");
 }
 
 #[test]
@@ -823,14 +900,14 @@ fn click_on_blank_canvas_creates_up_right_triple_bond() {
     engine.set_tool_state(triple_bond_tool());
 
     engine.pointer_down(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
     engine.pointer_up(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
@@ -838,7 +915,7 @@ fn click_on_blank_canvas_creates_up_right_triple_bond() {
     let entry = engine.state().document.editable_fragment().unwrap();
     assert_eq!(entry.fragment.nodes.len(), 2);
     assert_eq!(entry.fragment.bonds.len(), 1);
-    assert_eq!(entry.fragment.nodes[1].position, [331.18, 242.0]);
+    assert_eq!(entry.fragment.nodes[1].position, [FIRST_END_X, FIRST_END_Y]);
     assert_eq!(entry.fragment.bonds[0].order, 3);
 }
 
@@ -848,14 +925,14 @@ fn click_on_blank_canvas_creates_up_right_double_bond() {
     engine.set_tool_state(double_bond_tool());
 
     engine.pointer_down(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
     engine.pointer_up(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
@@ -863,7 +940,7 @@ fn click_on_blank_canvas_creates_up_right_double_bond() {
     let entry = engine.state().document.editable_fragment().unwrap();
     assert_eq!(entry.fragment.nodes.len(), 2);
     assert_eq!(entry.fragment.bonds.len(), 1);
-    assert_eq!(entry.fragment.nodes[1].position, [331.18, 242.0]);
+    assert_eq!(entry.fragment.nodes[1].position, [FIRST_END_X, FIRST_END_Y]);
     let bond = &entry.fragment.bonds[0];
     assert_eq!(bond.order, 2);
     assert_eq!(
@@ -877,14 +954,14 @@ fn click_on_triple_bond_endpoint_extends_at_180_degrees() {
     let mut engine = Engine::new();
     engine.set_tool_state(triple_bond_tool());
     engine.pointer_down(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
     engine.pointer_up(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
@@ -922,20 +999,20 @@ fn click_on_blank_canvas_creates_up_right_dashed_single_bond() {
     engine.set_tool_state(dashed_bond_tool());
 
     engine.pointer_down(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
     engine.pointer_up(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
 
     let entry = engine.state().document.editable_fragment().unwrap();
-    assert_eq!(entry.fragment.nodes[1].position, [331.18, 242.0]);
+    assert_eq!(entry.fragment.nodes[1].position, [FIRST_END_X, FIRST_END_Y]);
     assert_eq!(entry.fragment.bonds.len(), 1);
     assert_eq!(entry.fragment.bonds[0].order, 1);
     assert_eq!(
@@ -949,10 +1026,10 @@ fn click_on_blank_canvas_creates_up_right_dashed_double_bond() {
     let mut engine = Engine::new();
     engine.set_tool_state(dashed_double_bond_tool());
 
-    click(&mut engine, 300.0, 260.0);
+    click(&mut engine, px(300.0), px(260.0));
 
     let entry = engine.state().document.editable_fragment().unwrap();
-    assert_eq!(entry.fragment.nodes[1].position, [331.18, 242.0]);
+    assert_eq!(entry.fragment.nodes[1].position, [FIRST_END_X, FIRST_END_Y]);
     let bond = &entry.fragment.bonds[0];
     assert_eq!(bond.order, 2);
     assert_eq!(
@@ -971,7 +1048,7 @@ fn click_on_blank_canvas_creates_up_right_dashed_double_bond() {
 fn dashed_double_tool_cycles_side_center_and_opposite_side() {
     let mut engine = Engine::new();
     engine.set_tool_state(bond_tool());
-    click(&mut engine, 300.0, 260.0);
+    click(&mut engine, px(300.0), px(260.0));
 
     engine.set_tool_state(dashed_double_bond_tool());
     engine.pointer_down(PointerEvent {
@@ -1087,14 +1164,14 @@ fn dashed_tool_click_on_single_bond_makes_it_dashed() {
     let mut engine = Engine::new();
     engine.set_tool_state(bond_tool());
     engine.pointer_down(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
     engine.pointer_up(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
@@ -1119,7 +1196,7 @@ fn dashed_tool_click_on_single_bond_makes_it_dashed() {
 fn dashed_tool_resets_non_double_styles_to_plain_dashed_single() {
     let mut engine = Engine::new();
     engine.set_tool_state(bold_bond_tool());
-    click(&mut engine, 300.0, 260.0);
+    click(&mut engine, px(300.0), px(260.0));
 
     engine.set_tool_state(dashed_bond_tool());
     engine.pointer_down(PointerEvent {
@@ -1144,14 +1221,14 @@ fn dashed_tool_cycles_side_double_states() {
     let mut engine = Engine::new();
     engine.set_tool_state(bond_tool());
     engine.pointer_down(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
     engine.pointer_up(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
@@ -1267,14 +1344,14 @@ fn dashed_tool_cycles_center_double_states() {
     let mut engine = Engine::new();
     engine.set_tool_state(bond_tool());
     engine.pointer_down(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
     engine.pointer_up(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
@@ -1382,14 +1459,14 @@ fn click_on_blank_canvas_creates_horizontal_bold_single_bond() {
     engine.set_tool_state(bold_bond_tool());
 
     engine.pointer_down(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
     engine.pointer_up(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
@@ -1409,14 +1486,14 @@ fn bold_tool_click_on_single_bond_makes_it_bold() {
     let mut engine = Engine::new();
     engine.set_tool_state(bond_tool());
     engine.pointer_down(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
     engine.pointer_up(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
@@ -1443,14 +1520,14 @@ fn bold_tool_cycles_single_and_side_double_states() {
     let mut engine = Engine::new();
     engine.set_tool_state(bond_tool());
     engine.pointer_down(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
     engine.pointer_up(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
@@ -1523,14 +1600,14 @@ fn bold_tool_cycles_plain_center_double_into_bold_states() {
     let mut engine = Engine::new();
     engine.set_tool_state(bond_tool());
     engine.pointer_down(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
     engine.pointer_up(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
@@ -1603,14 +1680,14 @@ fn click_on_blank_canvas_creates_horizontal_bold_dashed_bond() {
     engine.set_tool_state(bold_dashed_bond_tool());
 
     engine.pointer_down(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
     engine.pointer_up(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
@@ -1627,14 +1704,14 @@ fn bold_dashed_tool_click_on_endpoint_creates_bold_dashed_bond() {
     let mut engine = Engine::new();
     engine.set_tool_state(bond_tool());
     engine.pointer_down(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
     engine.pointer_up(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
@@ -1665,14 +1742,14 @@ fn bold_dashed_tool_replaces_existing_bond_regardless_of_order() {
     let mut engine = Engine::new();
     engine.set_tool_state(triple_bond_tool());
     engine.pointer_down(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
     engine.pointer_up(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
@@ -1707,20 +1784,20 @@ fn click_on_blank_canvas_creates_up_right_wedge_bond() {
     engine.set_tool_state(wedge_bond_tool());
 
     engine.pointer_down(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
     engine.pointer_up(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
 
     let entry = engine.state().document.editable_fragment().unwrap();
-    assert_eq!(entry.fragment.nodes[1].position, [331.18, 242.0]);
+    assert_eq!(entry.fragment.nodes[1].position, [FIRST_END_X, FIRST_END_Y]);
     let bond = &entry.fragment.bonds[0];
     let stereo = bond.stereo.as_ref().unwrap();
     assert_eq!(bond.order, 1);
@@ -1734,20 +1811,20 @@ fn click_on_blank_canvas_creates_up_right_hashed_wedge_bond() {
     engine.set_tool_state(hashed_wedge_bond_tool());
 
     engine.pointer_down(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
     engine.pointer_up(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
 
     let entry = engine.state().document.editable_fragment().unwrap();
-    assert_eq!(entry.fragment.nodes[1].position, [331.18, 242.0]);
+    assert_eq!(entry.fragment.nodes[1].position, [FIRST_END_X, FIRST_END_Y]);
     let bond = &entry.fragment.bonds[0];
     let stereo = bond.stereo.as_ref().unwrap();
     assert_eq!(bond.order, 1);
@@ -1760,14 +1837,14 @@ fn wedge_tool_replaces_bond_and_toggles_direction() {
     let mut engine = Engine::new();
     engine.set_tool_state(triple_bond_tool());
     engine.pointer_down(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
     engine.pointer_up(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
@@ -1806,14 +1883,14 @@ fn hashed_wedge_tool_replaces_bond_and_toggles_direction() {
     let mut engine = Engine::new();
     engine.set_tool_state(double_bond_tool());
     engine.pointer_down(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
     engine.pointer_up(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
@@ -1863,7 +1940,7 @@ fn all_bond_tools_can_extend_from_existing_endpoint() {
     for tool in tools {
         let mut engine = Engine::new();
         engine.set_tool_state(bond_tool());
-        click(&mut engine, 300.0, 260.0);
+        click(&mut engine, px(300.0), px(260.0));
 
         engine.set_tool_state(tool.clone());
         click(&mut engine, FIRST_END_X, FIRST_END_Y);
@@ -1890,7 +1967,7 @@ fn all_bond_tools_can_focus_existing_triple_bond_center() {
     for tool in tools {
         let mut engine = Engine::new();
         engine.set_tool_state(triple_bond_tool());
-        click(&mut engine, 300.0, 260.0);
+        click(&mut engine, px(300.0), px(260.0));
 
         engine.set_tool_state(tool.clone());
         engine.pointer_move(PointerEvent {
@@ -1924,7 +2001,7 @@ fn single_tool_resets_styled_bonds_before_entering_double_cycle() {
     for source in source_tools {
         let mut engine = Engine::new();
         engine.set_tool_state(source.clone());
-        click(&mut engine, 300.0, 260.0);
+        click(&mut engine, px(300.0), px(260.0));
 
         engine.set_tool_state(bond_tool());
         engine.pointer_down(PointerEvent {
@@ -1974,7 +2051,7 @@ fn double_tool_converts_other_styles_into_expected_double_states() {
     for source in plain_sources {
         let mut engine = Engine::new();
         engine.set_tool_state(source.clone());
-        click(&mut engine, 300.0, 260.0);
+        click(&mut engine, px(300.0), px(260.0));
 
         engine.set_tool_state(double_bond_tool());
         engine.pointer_down(PointerEvent {
@@ -2003,7 +2080,7 @@ fn double_tool_converts_other_styles_into_expected_double_states() {
 
     let mut engine = Engine::new();
     engine.set_tool_state(bold_bond_tool());
-    click(&mut engine, 300.0, 260.0);
+    click(&mut engine, px(300.0), px(260.0));
 
     engine.set_tool_state(double_bond_tool());
     engine.pointer_down(PointerEvent {
@@ -2028,7 +2105,7 @@ fn double_tool_converts_other_styles_into_expected_double_states() {
 fn triple_tool_replaces_existing_style_with_plain_triple() {
     let mut engine = Engine::new();
     engine.set_tool_state(bold_dashed_bond_tool());
-    click(&mut engine, 300.0, 260.0);
+    click(&mut engine, px(300.0), px(260.0));
 
     engine.set_tool_state(triple_bond_tool());
     engine.pointer_down(PointerEvent {
@@ -2051,7 +2128,7 @@ fn triple_tool_replaces_existing_style_with_plain_triple() {
 fn wedge_tools_preserve_orientation_when_switching_kinds() {
     let mut engine = Engine::new();
     engine.set_tool_state(wedge_bond_tool());
-    click(&mut engine, 300.0, 260.0);
+    click(&mut engine, px(300.0), px(260.0));
 
     engine.pointer_down(PointerEvent {
         x: FIRST_CENTER_X,
@@ -2098,14 +2175,14 @@ fn dragged_bond_endpoint_reuses_focused_existing_endpoint() {
     let mut engine = Engine::new();
     engine.set_tool_state(bond_tool());
     engine.pointer_down(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
     engine.pointer_up(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
@@ -2136,20 +2213,20 @@ fn dragged_bond_endpoint_reuses_focused_existing_endpoint() {
         alt_key: false,
     });
     engine.pointer_move(PointerEvent {
-        x: 304.0,
-        y: 263.0,
+        x: px(304.0),
+        y: px(263.0),
         button: None,
         alt_key: false,
     });
     let hover = engine.state().overlay.hover_endpoint.as_ref().unwrap();
-    assert_eq!(hover.point.x, 300.0);
-    assert_eq!(hover.point.y, 260.0);
+    assert_eq!(hover.point.x, FIRST_START_X);
+    assert_eq!(hover.point.y, FIRST_START_Y);
     let preview = engine.state().overlay.preview.as_ref().unwrap();
-    assert_eq!(preview.end.x, 300.0);
-    assert_eq!(preview.end.y, 260.0);
+    assert_eq!(preview.end.x, FIRST_START_X);
+    assert_eq!(preview.end.y, FIRST_START_Y);
     engine.pointer_up(PointerEvent {
-        x: 304.0,
-        y: 263.0,
+        x: px(304.0),
+        y: px(263.0),
         button: Some(0),
         alt_key: false,
     });
@@ -2163,14 +2240,14 @@ fn dragged_bond_endpoint_reuses_focused_existing_endpoint() {
     );
 
     engine.pointer_move(PointerEvent {
-        x: 331.18,
-        y: 260.0,
+        x: FIRST_END_X,
+        y: px(260.0),
         button: None,
         alt_key: false,
     });
     engine.pointer_down(PointerEvent {
-        x: 331.18,
-        y: 260.0,
+        x: FIRST_END_X,
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
@@ -2188,14 +2265,14 @@ fn click_extension_reuses_endpoint_at_default_angle() {
     let mut engine = Engine::new();
     engine.set_tool_state(bond_tool());
     engine.pointer_down(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
     engine.pointer_up(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
@@ -2203,7 +2280,7 @@ fn click_extension_reuses_endpoint_at_default_angle() {
     engine.add_single_bond(
         chemcore_engine::BondAnchor {
             node_id: None,
-            point: chemcore_engine::Point::new(200.0, 200.0),
+            point: px_point(200.0, 200.0),
             label_anchor: None,
         },
         chemcore_engine::Point::new(FIRST_END_SINGLE_EXTEND_X, FIRST_END_SINGLE_EXTEND_Y),
@@ -2239,14 +2316,14 @@ fn select_delete_and_undo_redo_round_trip() {
     let mut engine = Engine::new();
     engine.set_tool_state(bond_tool());
     engine.pointer_down(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
     engine.pointer_up(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
@@ -2276,18 +2353,156 @@ fn select_delete_and_undo_redo_round_trip() {
 }
 
 #[test]
+fn delete_tool_click_degrades_double_before_removing_bond() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(double_bond_tool());
+    click(&mut engine, px(300.0), px(260.0));
+
+    let bond_id = engine
+        .state()
+        .document
+        .editable_fragment()
+        .unwrap()
+        .fragment
+        .bonds
+        .first()
+        .expect("bond should exist")
+        .id
+        .clone();
+    let center = bond_center_point(&engine, &bond_id);
+
+    engine.set_tool_state(delete_tool());
+    click(&mut engine, center.x, center.y);
+    assert_eq!(bond_order(&engine, &bond_id), Some(1));
+
+    click(&mut engine, center.x, center.y);
+    assert_eq!(fragment_counts(&engine), (0, 0));
+}
+
+#[test]
+fn delete_tool_click_degrades_triple_to_side_double() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(triple_bond_tool());
+    click(&mut engine, px(300.0), px(260.0));
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let bond = entry.fragment.bonds.first().expect("bond should exist");
+    let bond_id = bond.id.clone();
+    let center = bond_center_point(&engine, &bond_id);
+    drop(entry);
+
+    engine.set_tool_state(delete_tool());
+    click(&mut engine, center.x, center.y);
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let bond = entry
+        .fragment
+        .bonds
+        .iter()
+        .find(|bond| bond.id == bond_id)
+        .expect("bond should remain");
+    assert_eq!(bond.order, 2);
+    assert!(bond.double.is_some());
+    assert_ne!(
+        bond.double.as_ref().map(|double| double.placement),
+        Some(DoubleBondPlacement::Center)
+    );
+}
+
+#[test]
+fn delete_tool_click_on_endpoint_removes_all_connected_bonds() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, px(300.0), px(260.0));
+    click(&mut engine, FIRST_END_X, FIRST_END_Y);
+    assert_eq!(fragment_counts(&engine), (3, 2));
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let branch_node_id = node_degrees(&engine)
+        .into_iter()
+        .find_map(|(node_id, degree)| (degree == 2).then_some(node_id))
+        .expect("branch node should exist");
+    let branch_node = entry
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == branch_node_id)
+        .expect("branch node should exist");
+    let branch_point = (branch_node.position[0], branch_node.position[1]);
+    drop(entry);
+
+    engine.set_tool_state(delete_tool());
+    click(&mut engine, branch_point.0, branch_point.1);
+    assert_eq!(fragment_counts(&engine), (0, 0));
+}
+
+#[test]
+fn delete_tool_click_on_label_removes_only_label() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, px(300.0), px(260.0));
+    hover(&mut engine, px(300.0), px(260.0));
+    assert!(engine.replace_hovered_endpoint_label("Ph"));
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let node = entry.fragment.nodes.first().expect("node should exist");
+    let label_box = node
+        .label
+        .as_ref()
+        .and_then(|label| label.bbox())
+        .expect("label box");
+    drop(entry);
+
+    engine.set_tool_state(delete_tool());
+    click(
+        &mut engine,
+        (label_box[0] + label_box[2]) * 0.5,
+        (label_box[1] + label_box[3]) * 0.5,
+    );
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let node = entry.fragment.nodes.first().expect("node should remain");
+    assert!(node.label.is_none());
+    assert_eq!(entry.fragment.bonds.len(), 1);
+}
+
+#[test]
+fn delete_command_on_hovered_bond_center_removes_entire_bond() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(double_bond_tool());
+    click(&mut engine, px(300.0), px(260.0));
+    let bond_id = engine
+        .state()
+        .document
+        .editable_fragment()
+        .unwrap()
+        .fragment
+        .bonds
+        .first()
+        .expect("bond should exist")
+        .id
+        .clone();
+    let center = bond_center_point(&engine, &bond_id);
+
+    engine.set_tool_state(bond_tool());
+    hover(&mut engine, center.x, center.y);
+    assert!(engine.delete_selection());
+    assert_eq!(fragment_counts(&engine), (0, 0));
+}
+
+#[test]
 fn bond_tool_focuses_bond_center_and_cycles_double_styles() {
     let mut engine = Engine::new();
     engine.set_tool_state(bond_tool());
     engine.pointer_down(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
     engine.pointer_up(PointerEvent {
-        x: 300.0,
-        y: 260.0,
+        x: px(300.0),
+        y: px(260.0),
         button: Some(0),
         alt_key: false,
     });
@@ -2394,7 +2609,7 @@ fn double_tool_defaults_to_center_on_three_connected_node() {
     engine.add_single_bond(
         chemcore_engine::BondAnchor {
             node_id: None,
-            point: chemcore_engine::Point::new(300.0, 260.0),
+            point: px_point(300.0, 260.0),
             label_anchor: None,
         },
         chemcore_engine::Point::new(FIRST_END_X, FIRST_END_Y),
@@ -2422,7 +2637,7 @@ fn double_tool_defaults_to_center_on_three_connected_node() {
         },
         chemcore_engine::BondAnchor {
             node_id: None,
-            point: chemcore_engine::Point::new(331.18, 278.0),
+            point: px_point(331.18, 278.0),
             label_anchor: None,
         },
     );
@@ -2450,12 +2665,12 @@ fn double_tool_defaults_to_center_on_three_connected_node() {
 }
 
 #[test]
-fn adding_third_bond_to_unfrozen_center_double_moves_to_more_substituted_side() {
+fn double_tool_defaults_to_side_when_substituents_span_both_sides() {
     let mut engine = Engine::new();
     engine.add_single_bond(
         chemcore_engine::BondAnchor {
             node_id: None,
-            point: chemcore_engine::Point::new(300.0, 260.0),
+            point: px_point(300.0, 260.0),
             label_anchor: None,
         },
         chemcore_engine::Point::new(FIRST_END_X, FIRST_END_Y),
@@ -2463,12 +2678,12 @@ fn adding_third_bond_to_unfrozen_center_double_moves_to_more_substituted_side() 
     engine.add_single_bond_between(
         chemcore_engine::BondAnchor {
             node_id: Some("n_1".to_string()),
-            point: chemcore_engine::Point::new(300.0, 260.0),
+            point: px_point(300.0, 260.0),
             label_anchor: None,
         },
         chemcore_engine::BondAnchor {
             node_id: None,
-            point: chemcore_engine::Point::new(268.82, 242.0),
+            point: px_point(268.82, 242.0),
             label_anchor: None,
         },
     );
@@ -2483,6 +2698,71 @@ fn adding_third_bond_to_unfrozen_center_double_moves_to_more_substituted_side() 
             point: chemcore_engine::Point::new(
                 FIRST_END_SINGLE_EXTEND_X,
                 FIRST_END_SINGLE_EXTEND_Y,
+            ),
+            label_anchor: None,
+        },
+    );
+
+    engine.set_tool_state(double_bond_tool());
+    engine.pointer_down(PointerEvent {
+        x: FIRST_CENTER_X,
+        y: FIRST_CENTER_Y,
+        button: Some(0),
+        alt_key: false,
+    });
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let bond = entry
+        .fragment
+        .bonds
+        .iter()
+        .find(|bond| bond.begin == "n_1" && bond.end == "n_2")
+        .unwrap();
+    assert_eq!(bond.order, 2);
+    assert!(matches!(
+        bond.double.as_ref().map(|double| double.placement),
+        Some(DoubleBondPlacement::Left | DoubleBondPlacement::Right)
+    ));
+    assert_ne!(
+        bond.double.as_ref().map(|double| double.placement),
+        Some(DoubleBondPlacement::Center)
+    );
+}
+
+#[test]
+fn collinear_attachment_does_not_trigger_centered_double_default() {
+    let mut engine = Engine::new();
+    engine.add_single_bond(
+        chemcore_engine::BondAnchor {
+            node_id: None,
+            point: px_point(300.0, 260.0),
+            label_anchor: None,
+        },
+        chemcore_engine::Point::new(FIRST_END_X, FIRST_END_Y),
+    );
+    engine.add_single_bond_between(
+        chemcore_engine::BondAnchor {
+            node_id: Some("n_1".to_string()),
+            point: px_point(300.0, 260.0),
+            label_anchor: None,
+        },
+        chemcore_engine::BondAnchor {
+            node_id: None,
+            point: px_point(268.82, 242.0),
+            label_anchor: None,
+        },
+    );
+    engine.add_single_bond_between(
+        chemcore_engine::BondAnchor {
+            node_id: Some("n_2".to_string()),
+            point: chemcore_engine::Point::new(FIRST_END_X, FIRST_END_Y),
+            label_anchor: None,
+        },
+        chemcore_engine::BondAnchor {
+            node_id: None,
+            point: chemcore_engine::Point::new(
+                FIRST_END_TRIPLE_EXTEND_X,
+                FIRST_END_TRIPLE_EXTEND_Y,
             ),
             label_anchor: None,
         },
@@ -2499,7 +2779,11 @@ fn adding_third_bond_to_unfrozen_center_double_moves_to_more_substituted_side() 
     {
         let entry = engine.state().document.editable_fragment().unwrap();
         let bond = &entry.fragment.bonds[0];
-        assert_eq!(
+        assert!(matches!(
+            bond.double.as_ref().map(|double| double.placement),
+            Some(DoubleBondPlacement::Left | DoubleBondPlacement::Right)
+        ));
+        assert_ne!(
             bond.double.as_ref().map(|double| double.placement),
             Some(DoubleBondPlacement::Center)
         );
@@ -2508,30 +2792,6 @@ fn adding_third_bond_to_unfrozen_center_double_moves_to_more_substituted_side() 
             Some(false)
         );
     }
-
-    engine.add_single_bond_between(
-        chemcore_engine::BondAnchor {
-            node_id: Some("n_1".to_string()),
-            point: chemcore_engine::Point::new(300.0, 260.0),
-            label_anchor: None,
-        },
-        chemcore_engine::BondAnchor {
-            node_id: None,
-            point: chemcore_engine::Point::new(ROOT_SINGLE_BRANCH_X, ROOT_SINGLE_BRANCH_Y),
-            label_anchor: None,
-        },
-    );
-
-    let entry = engine.state().document.editable_fragment().unwrap();
-    let bond = &entry.fragment.bonds[0];
-    assert_eq!(
-        bond.double.as_ref().map(|double| double.placement),
-        Some(DoubleBondPlacement::Right)
-    );
-    assert_eq!(
-        bond.double.as_ref().map(|double| double.frozen),
-        Some(false)
-    );
 }
 
 #[test]
@@ -2540,7 +2800,7 @@ fn adding_fourth_bond_to_unfrozen_center_double_moves_to_last_drawn_side_on_tie(
     engine.add_single_bond(
         chemcore_engine::BondAnchor {
             node_id: None,
-            point: chemcore_engine::Point::new(300.0, 260.0),
+            point: px_point(300.0, 260.0),
             label_anchor: None,
         },
         chemcore_engine::Point::new(FIRST_END_X, FIRST_END_Y),
@@ -2548,12 +2808,12 @@ fn adding_fourth_bond_to_unfrozen_center_double_moves_to_last_drawn_side_on_tie(
     engine.add_single_bond_between(
         chemcore_engine::BondAnchor {
             node_id: Some("n_1".to_string()),
-            point: chemcore_engine::Point::new(300.0, 260.0),
+            point: px_point(300.0, 260.0),
             label_anchor: None,
         },
         chemcore_engine::BondAnchor {
             node_id: None,
-            point: chemcore_engine::Point::new(268.82, 242.0),
+            point: px_point(268.82, 242.0),
             label_anchor: None,
         },
     );
@@ -2584,7 +2844,7 @@ fn adding_fourth_bond_to_unfrozen_center_double_moves_to_last_drawn_side_on_tie(
     engine.add_single_bond_between(
         chemcore_engine::BondAnchor {
             node_id: Some("n_1".to_string()),
-            point: chemcore_engine::Point::new(300.0, 260.0),
+            point: px_point(300.0, 260.0),
             label_anchor: None,
         },
         chemcore_engine::BondAnchor {
@@ -2601,7 +2861,7 @@ fn adding_fourth_bond_to_unfrozen_center_double_moves_to_last_drawn_side_on_tie(
         },
         chemcore_engine::BondAnchor {
             node_id: None,
-            point: chemcore_engine::Point::new(331.18, 278.0),
+            point: px_point(331.18, 278.0),
             label_anchor: None,
         },
     );
@@ -2624,7 +2884,7 @@ fn adding_cis_substituent_to_unfrozen_monosubstituted_double_moves_to_inner_side
     engine.add_single_bond(
         chemcore_engine::BondAnchor {
             node_id: None,
-            point: chemcore_engine::Point::new(300.0, 260.0),
+            point: px_point(300.0, 260.0),
             label_anchor: None,
         },
         chemcore_engine::Point::new(FIRST_END_X, FIRST_END_Y),
@@ -2632,12 +2892,12 @@ fn adding_cis_substituent_to_unfrozen_monosubstituted_double_moves_to_inner_side
     engine.add_single_bond_between(
         chemcore_engine::BondAnchor {
             node_id: Some("n_1".to_string()),
-            point: chemcore_engine::Point::new(300.0, 260.0),
+            point: px_point(300.0, 260.0),
             label_anchor: None,
         },
         chemcore_engine::BondAnchor {
             node_id: None,
-            point: chemcore_engine::Point::new(268.82, 242.0),
+            point: px_point(268.82, 242.0),
             label_anchor: None,
         },
     );
@@ -2697,7 +2957,7 @@ fn frozen_double_bond_keeps_manual_style_after_new_attachment() {
     engine.add_single_bond(
         chemcore_engine::BondAnchor {
             node_id: None,
-            point: chemcore_engine::Point::new(300.0, 260.0),
+            point: px_point(300.0, 260.0),
             label_anchor: None,
         },
         chemcore_engine::Point::new(FIRST_END_X, FIRST_END_Y),
@@ -2705,12 +2965,12 @@ fn frozen_double_bond_keeps_manual_style_after_new_attachment() {
     engine.add_single_bond_between(
         chemcore_engine::BondAnchor {
             node_id: Some("n_1".to_string()),
-            point: chemcore_engine::Point::new(300.0, 260.0),
+            point: px_point(300.0, 260.0),
             label_anchor: None,
         },
         chemcore_engine::BondAnchor {
             node_id: None,
-            point: chemcore_engine::Point::new(268.82, 242.0),
+            point: px_point(268.82, 242.0),
             label_anchor: None,
         },
     );
@@ -2743,6 +3003,12 @@ fn frozen_double_bond_keeps_manual_style_after_new_attachment() {
         button: Some(0),
         alt_key: false,
     });
+    engine.pointer_down(PointerEvent {
+        x: FIRST_CENTER_X,
+        y: FIRST_CENTER_Y,
+        button: Some(0),
+        alt_key: false,
+    });
 
     let manual_placement = {
         let entry = engine.state().document.editable_fragment().unwrap();
@@ -2759,7 +3025,7 @@ fn frozen_double_bond_keeps_manual_style_after_new_attachment() {
     engine.add_single_bond_between(
         chemcore_engine::BondAnchor {
             node_id: Some("n_1".to_string()),
-            point: chemcore_engine::Point::new(300.0, 260.0),
+            point: px_point(300.0, 260.0),
             label_anchor: None,
         },
         chemcore_engine::BondAnchor {

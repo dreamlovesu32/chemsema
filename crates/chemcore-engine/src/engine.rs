@@ -3,21 +3,33 @@ use crate::{
     can_focus_bond_center, can_focus_endpoint, decide_label_layout,
     default_angle_for_anchor_for_variant, endpoint_from_angle_for_document, hit_test_bond_center,
     hit_test_endpoint, hit_test_endpoint_excluding, layout_label_text, render_document, round2,
-    select_at, snapped_angle_for_anchor, Bond, BondAnchor, BondLinePattern, BondLineStyles,
+    round6, select_at, snapped_angle_for_anchor, Bond, BondAnchor, BondLinePattern, BondLineStyles,
     BondLineWeight, BondLineWeights, BondPreview, BondStereo, BondVariant, ChemcoreDocument,
     DoubleBond, DoubleBondPlacement, DragState, EditorOptions, EndpointHit, HoverTextBox,
     LabelFlow, LabelRun, OverlayState, Point, PointerEvent, RenderPrimitive, RenderRole,
-    SelectionState, Tool, ToolState, BOND_CENTER_FOCUS_WIDTH, BOND_CENTER_HIT_RADIUS,
-    DEFAULT_BOND_LENGTH, DRAG_START_THRESHOLD, ENDPOINT_FOCUS_RADIUS, ENDPOINT_HIT_RADIUS,
+    SelectionState, Tool, ToolState, WorldCm, WorldPoint, BOND_CENTER_FOCUS_WIDTH,
+    BOND_CENTER_HIT_RADIUS, DEFAULT_BOND_LENGTH, DRAG_START_THRESHOLD, ENDPOINT_FOCUS_RADIUS,
+    ENDPOINT_HIT_RADIUS,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 
 const DEFAULT_TEXT_FONT_FAMILY: &str = "Arial";
-const DEFAULT_TEXT_FONT_SIZE: f64 = 12.0;
+const DEFAULT_TEXT_FONT_SIZE: f64 = crate::DEFAULT_TEXT_FONT_SIZE_CM;
 const DEFAULT_TEXT_FILL: &str = "#000000";
-const DEFAULT_TEXT_LINE_HEIGHT: f64 = 12.6;
+const DEFAULT_TEXT_LINE_HEIGHT: f64 = crate::DEFAULT_TEXT_LINE_HEIGHT_CM;
+const DEFAULT_TEXT_BLOCK_LINE_HEIGHT: f64 = crate::DEFAULT_TEXT_BLOCK_LINE_HEIGHT_CM;
+const DEFAULT_CENTERED_LABEL_FONT_SIZE: f64 = crate::DEFAULT_CENTERED_LABEL_FONT_SIZE_CM;
+const HOVER_STROKE_WIDTH: f64 = crate::px_to_cm(1.1);
+const HOVER_LABEL_STROKE_WIDTH: f64 = crate::px_to_cm(1.1);
+const HOVER_ENDPOINT_STROKE_WIDTH: f64 = crate::px_to_cm(1.4);
+const HOVER_BOND_CENTER_STROKE_WIDTH: f64 = crate::px_to_cm(1.2);
+const PREVIEW_END_RADIUS: f64 = crate::px_to_cm(5.0);
+const PREVIEW_END_STROKE_WIDTH: f64 = crate::px_to_cm(1.2);
+const SELECTION_STROKE_EXTRA: f64 = crate::px_to_cm(5.0);
+const SELECTION_NODE_STROKE_WIDTH: f64 = crate::px_to_cm(1.6);
+const TEXT_EDIT_BOX_WIDTH: f64 = crate::px_to_cm(8.0);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -74,6 +86,50 @@ pub struct TextEditSession {
     pub default_chemical: bool,
 }
 
+impl TextEditTarget {
+    pub const fn world_point(&self) -> WorldPoint {
+        match self {
+            Self::TextObject { x, y, .. } | Self::EndpointLabel { x, y, .. } => {
+                WorldPoint::new(WorldCm(*x), WorldCm(*y))
+            }
+        }
+    }
+}
+
+impl TextEditSession {
+    pub const fn font_size_world_cm(&self) -> Option<WorldCm> {
+        match self.font_size {
+            Some(value) => Some(WorldCm(value)),
+            None => None,
+        }
+    }
+
+    pub const fn line_height_world_cm(&self) -> Option<WorldCm> {
+        match self.line_height {
+            Some(value) => Some(WorldCm(value)),
+            None => None,
+        }
+    }
+
+    pub const fn target_world_point(&self) -> WorldPoint {
+        self.target.world_point()
+    }
+
+    pub const fn anchor_offset_world_cm(&self) -> Option<[WorldCm; 2]> {
+        match self.anchor_offset {
+            Some([x, y]) => Some([WorldCm(x), WorldCm(y)]),
+            None => None,
+        }
+    }
+
+    pub const fn measured_size_world_cm(&self) -> Option<[WorldCm; 2]> {
+        match self.measured_size {
+            Some([width, height]) => Some([WorldCm(width), WorldCm(height)]),
+            None => None,
+        }
+    }
+}
+
 pub struct Engine {
     state: EngineState,
     drag: Option<DragState>,
@@ -81,6 +137,12 @@ pub struct Engine {
     next_id: u64,
     undo_stack: Vec<ChemcoreDocument>,
     redo_stack: Vec<ChemcoreDocument>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum FocusedDeleteMode {
+    DeleteToolClick,
+    CommandKey,
 }
 
 impl Default for Engine {
@@ -147,7 +209,7 @@ impl Engine {
                 height: (hover.bounds[3] - hover.bounds[1]).max(0.0),
                 fill: Some("rgba(47,111,237,0.12)".to_string()),
                 stroke: Some("rgba(47,111,237,0.76)".to_string()),
-                stroke_width: 1.1,
+                stroke_width: HOVER_STROKE_WIDTH,
                 rx: None,
                 ry: None,
                 dash_array: Vec::new(),
@@ -165,7 +227,7 @@ impl Engine {
                     height: (label_anchor.glyph_box[3] - label_anchor.glyph_box[1]).max(0.0),
                     fill: Some("rgba(47,111,237,0.12)".to_string()),
                     stroke: Some("rgba(47,111,237,0.82)".to_string()),
-                    stroke_width: 1.1,
+                    stroke_width: HOVER_LABEL_STROKE_WIDTH,
                     rx: None,
                     ry: None,
                     dash_array: Vec::new(),
@@ -179,7 +241,7 @@ impl Engine {
                     radius: ENDPOINT_FOCUS_RADIUS,
                     fill: "rgba(47,111,237,0.24)".to_string(),
                     stroke: "rgba(47,111,237,0.78)".to_string(),
-                    stroke_width: 1.4,
+                    stroke_width: HOVER_ENDPOINT_STROKE_WIDTH,
                 });
             }
         }
@@ -198,7 +260,7 @@ impl Engine {
                     ),
                     fill: "rgba(47,111,237,0.11)".to_string(),
                     stroke: "rgba(47,111,237,0.72)".to_string(),
-                    stroke_width: 1.2,
+                    stroke_width: HOVER_BOND_CENTER_STROKE_WIDTH,
                 });
             }
         }
@@ -207,10 +269,10 @@ impl Engine {
                 role: RenderRole::PreviewEnd,
                 object_id: None,
                 center: preview.end,
-                radius: 5.0,
+                radius: PREVIEW_END_RADIUS,
                 fill: "#ffffff".to_string(),
                 stroke: "rgba(47,111,237,0.86)".to_string(),
-                stroke_width: 1.2,
+                stroke_width: PREVIEW_END_STROKE_WIDTH,
             });
         }
         out
@@ -257,7 +319,7 @@ impl Engine {
             fill: Some(DEFAULT_TEXT_FILL.to_string()),
             align: Some("left".to_string()),
             line_height: Some(DEFAULT_TEXT_LINE_HEIGHT),
-            box_value: Some([0.0, 0.0, 8.0, DEFAULT_TEXT_LINE_HEIGHT]),
+            box_value: Some([0.0, 0.0, TEXT_EDIT_BOX_WIDTH, DEFAULT_TEXT_LINE_HEIGHT]),
             anchor_offset: None,
             measured_size: None,
             preserve_lines: true,
@@ -286,7 +348,10 @@ impl Engine {
             .font_family
             .as_deref()
             .unwrap_or(DEFAULT_TEXT_FONT_FAMILY);
-        let fallback_font_size = session.font_size.unwrap_or(DEFAULT_TEXT_FONT_SIZE);
+        let fallback_font_size = session
+            .font_size_world_cm()
+            .unwrap_or(WorldCm(DEFAULT_TEXT_FONT_SIZE))
+            .value();
         let fallback_fill = session.fill.as_deref().unwrap_or(DEFAULT_TEXT_FILL);
         let source_runs = normalize_source_runs(session, &text);
         let display_runs = display_runs_from_source_runs(
@@ -302,6 +367,33 @@ impl Engine {
         let point = event.point();
         if self.state.tool.active_tool == Tool::Select {
             self.clear_interaction();
+            return;
+        }
+        if self.state.tool.active_tool == Tool::Delete {
+            self.drag = None;
+            self.state.overlay.hover_bond_center = None;
+            self.state.overlay.preview = None;
+            self.state.overlay.hover_text_box = None;
+            self.state.overlay.hover_endpoint = None;
+            if let Some((object_id, bounds)) = self.hit_test_text_object(point) {
+                self.state.overlay.hover_text_box = Some(HoverTextBox {
+                    bounds,
+                    object_id: Some(object_id),
+                    node_id: None,
+                });
+                return;
+            }
+            if let Some(endpoint) =
+                hit_test_endpoint(&self.state.document, point, ENDPOINT_HIT_RADIUS)
+            {
+                self.state.overlay.hover_endpoint = Some(endpoint);
+                return;
+            }
+            if let Some(center) =
+                hit_test_bond_center(&self.state.document, point, BOND_CENTER_HIT_RADIUS)
+            {
+                self.state.overlay.hover_bond_center = Some(center);
+            }
             return;
         }
         if self.state.tool.active_tool == Tool::Text {
@@ -360,7 +452,7 @@ impl Engine {
                         &self.state.document,
                         &drag.anchor,
                         angle,
-                        self.options.bond_length,
+                        self.options.bond_length_world_cm().value(),
                     )
                 };
                 drag.preview_end = Some(end);
@@ -397,6 +489,12 @@ impl Engine {
         if self.state.tool.active_tool == Tool::Select {
             self.state.selection = select_at(&self.state.document, event.point());
             self.clear_interaction();
+            return;
+        }
+        if self.state.tool.active_tool == Tool::Delete {
+            self.state.selection = SelectionState::default();
+            self.clear_interaction();
+            self.delete_focused_at_point(event.point(), FocusedDeleteMode::DeleteToolClick);
             return;
         }
         if self.state.tool.active_tool == Tool::Text {
@@ -479,7 +577,7 @@ impl Engine {
                         &self.state.document,
                         &drag.anchor,
                         angle,
-                        self.options.bond_length,
+                        self.options.bond_length_world_cm().value(),
                     )
                 });
                 BondAnchor {
@@ -498,7 +596,7 @@ impl Engine {
                 &self.state.document,
                 &drag.anchor,
                 angle,
-                self.options.bond_length,
+                self.options.bond_length_world_cm().value(),
             );
             self.endpoint_anchor_near(&drag.anchor, end)
                 .unwrap_or(BondAnchor {
@@ -570,7 +668,7 @@ impl Engine {
             order: order.max(1),
             double: pending_double,
             stereo: pending_stereo,
-            stroke_width: self.options.bond_stroke_width,
+            stroke_width: self.options.bond_stroke_world_cm().value(),
             line_styles: pending_line_styles,
             line_weights: pending_line_weights,
             meta: serde_json::Value::Null,
@@ -588,7 +686,7 @@ impl Engine {
         refresh_attached_node_label_geometry_for_all_nodes(
             entry.fragment,
             entry.object.transform.translate,
-            self.options.bond_stroke_width,
+            self.options.bond_stroke_world_cm().value(),
         );
         entry.update_bounds();
 
@@ -671,7 +769,7 @@ impl Engine {
             order: order.max(1),
             double: self.pending_double_state_for_new_bond(&begin_id, &end_id, order.max(1)),
             stereo: self.pending_bond_stereo(),
-            stroke_width: self.options.bond_stroke_width,
+            stroke_width: self.options.bond_stroke_world_cm().value(),
             line_styles: self.pending_line_styles(),
             line_weights: self.pending_line_weights(),
             meta: serde_json::Value::Null,
@@ -689,7 +787,7 @@ impl Engine {
         refresh_attached_node_label_geometry_for_all_nodes(
             entry.fragment,
             entry.object.transform.translate,
-            self.options.bond_stroke_width,
+            self.options.bond_stroke_world_cm().value(),
         );
         entry.update_bounds();
         Some(document)
@@ -751,7 +849,7 @@ impl Engine {
         refresh_attached_node_label_geometry_for_all_nodes(
             entry.fragment,
             entry.object.transform.translate,
-            self.options.bond_stroke_width,
+            self.options.bond_stroke_world_cm().value(),
         );
         entry.update_bounds();
         self.state.selection = SelectionState::default();
@@ -761,7 +859,7 @@ impl Engine {
 
     pub fn delete_selection(&mut self) -> bool {
         if self.state.selection.is_empty() {
-            return false;
+            return self.delete_focused(FocusedDeleteMode::CommandKey);
         }
         self.push_undo_snapshot();
         let selection = self.state.selection.clone();
@@ -790,7 +888,245 @@ impl Engine {
         refresh_attached_node_label_geometry_for_all_nodes(
             entry.fragment,
             entry.object.transform.translate,
-            self.options.bond_stroke_width,
+            self.options.bond_stroke_world_cm().value(),
+        );
+        entry.update_bounds();
+        self.state.selection = SelectionState::default();
+        self.clear_interaction();
+        true
+    }
+
+    fn delete_focused(&mut self, mode: FocusedDeleteMode) -> bool {
+        if let Some(hover) = self.state.overlay.hover_text_box.clone() {
+            if let Some(object_id) = hover.object_id {
+                return self.remove_text_object(Some(object_id.as_str()));
+            }
+        }
+        if let Some(hover) = self.state.overlay.hover_endpoint.clone() {
+            if hover.label_anchor.is_some() {
+                return self.remove_endpoint_label(&hover.node_id);
+            }
+            return self.remove_endpoint_connected_bonds(&hover.node_id);
+        }
+        if let Some(hover) = self.state.overlay.hover_bond_center.clone() {
+            return match mode {
+                FocusedDeleteMode::DeleteToolClick => {
+                    self.reduce_or_delete_bond_in_delete_mode(&hover.bond_id)
+                }
+                FocusedDeleteMode::CommandKey => self.remove_bond(&hover.bond_id),
+            };
+        }
+        false
+    }
+
+    fn delete_focused_at_point(&mut self, point: Point, mode: FocusedDeleteMode) -> bool {
+        if let Some((object_id, bounds)) = self.hit_test_text_object(point) {
+            self.state.overlay.hover_text_box = Some(HoverTextBox {
+                bounds,
+                object_id: Some(object_id.clone()),
+                node_id: None,
+            });
+            return self.remove_text_object(Some(object_id.as_str()));
+        }
+        if let Some(endpoint) = hit_test_endpoint(&self.state.document, point, ENDPOINT_HIT_RADIUS)
+        {
+            self.state.overlay.hover_endpoint = Some(endpoint.clone());
+            if endpoint.label_anchor.is_some() {
+                return self.remove_endpoint_label(&endpoint.node_id);
+            }
+            return self.remove_endpoint_connected_bonds(&endpoint.node_id);
+        }
+        if let Some(center) =
+            hit_test_bond_center(&self.state.document, point, BOND_CENTER_HIT_RADIUS)
+        {
+            self.state.overlay.hover_bond_center = Some(center.clone());
+            return match mode {
+                FocusedDeleteMode::DeleteToolClick => {
+                    self.reduce_or_delete_bond_in_delete_mode(&center.bond_id)
+                }
+                FocusedDeleteMode::CommandKey => self.remove_bond(&center.bond_id),
+            };
+        }
+        false
+    }
+
+    fn remove_endpoint_label(&mut self, node_id: &str) -> bool {
+        self.push_undo_snapshot();
+        let Some(mut entry) = self.state.document.editable_fragment_mut() else {
+            self.undo_stack.pop();
+            return false;
+        };
+        let object_translate = entry.object.transform.translate;
+        let Some(node_index) = entry
+            .fragment
+            .nodes
+            .iter()
+            .position(|node| node.id == node_id)
+        else {
+            self.undo_stack.pop();
+            return false;
+        };
+        let connection_angles = adjacent_angles_for_fragment_node(entry.fragment, node_id);
+        let node_position = entry.fragment.nodes[node_index].position;
+        let session = TextEditSession {
+            target: TextEditTarget::EndpointLabel {
+                node_id: node_id.to_string(),
+                x: object_translate[0] + node_position[0],
+                y: object_translate[1] + node_position[1],
+            },
+            text: "C".to_string(),
+            source_runs: Vec::new(),
+            font_family: Some(DEFAULT_TEXT_FONT_FAMILY.to_string()),
+            font_size: Some(DEFAULT_TEXT_FONT_SIZE),
+            fill: Some(DEFAULT_TEXT_FILL.to_string()),
+            align: Some("left".to_string()),
+            line_height: Some(DEFAULT_TEXT_LINE_HEIGHT),
+            box_value: None,
+            anchor_offset: None,
+            measured_size: None,
+            preserve_lines: true,
+            default_chemical: true,
+        };
+        let changed = {
+            let node = &mut entry.fragment.nodes[node_index];
+            apply_node_label_text_edit(node, "C", &session, &connection_angles, node_position)
+        };
+        if !changed {
+            self.undo_stack.pop();
+            return false;
+        }
+        refresh_attached_node_label_geometry_for_node(
+            entry.fragment,
+            object_translate,
+            node_id,
+            self.options.bond_stroke_world_cm().value(),
+        );
+        entry.update_bounds();
+        self.state.selection = SelectionState::default();
+        self.drag = None;
+        self.state.overlay.hover_text_box = None;
+        self.state.overlay.hover_bond_center = None;
+        self.state.overlay.preview = None;
+        self.state.overlay.hover_endpoint = Some(EndpointHit {
+            node_id: node_id.to_string(),
+            point: Point::new(
+                object_translate[0] + node_position[0],
+                object_translate[1] + node_position[1],
+            ),
+            distance: 0.0,
+            label_anchor: None,
+        });
+        true
+    }
+
+    fn remove_endpoint_connected_bonds(&mut self, node_id: &str) -> bool {
+        self.push_undo_snapshot();
+        let Some(mut entry) = self.state.document.editable_fragment_mut() else {
+            self.undo_stack.pop();
+            return false;
+        };
+        let object_translate = entry.object.transform.translate;
+        let removed_any = entry
+            .fragment
+            .bonds
+            .iter()
+            .any(|bond| bond.begin == node_id || bond.end == node_id);
+        if !removed_any {
+            self.undo_stack.pop();
+            return false;
+        }
+        entry
+            .fragment
+            .bonds
+            .retain(|bond| bond.begin != node_id && bond.end != node_id);
+        prune_unconnected_fragment_nodes(entry.fragment);
+        refresh_attached_node_label_geometry_for_all_nodes(
+            entry.fragment,
+            object_translate,
+            self.options.bond_stroke_world_cm().value(),
+        );
+        entry.update_bounds();
+        self.state.selection = SelectionState::default();
+        self.clear_interaction();
+        true
+    }
+
+    fn remove_bond(&mut self, bond_id: &str) -> bool {
+        self.push_undo_snapshot();
+        let Some(mut entry) = self.state.document.editable_fragment_mut() else {
+            self.undo_stack.pop();
+            return false;
+        };
+        let object_translate = entry.object.transform.translate;
+        let previous_len = entry.fragment.bonds.len();
+        entry.fragment.bonds.retain(|bond| bond.id != bond_id);
+        if entry.fragment.bonds.len() == previous_len {
+            self.undo_stack.pop();
+            return false;
+        }
+        prune_unconnected_fragment_nodes(entry.fragment);
+        refresh_attached_node_label_geometry_for_all_nodes(
+            entry.fragment,
+            object_translate,
+            self.options.bond_stroke_world_cm().value(),
+        );
+        entry.update_bounds();
+        self.state.selection = SelectionState::default();
+        self.clear_interaction();
+        true
+    }
+
+    fn reduce_or_delete_bond_in_delete_mode(&mut self, bond_id: &str) -> bool {
+        let (order, placement) = self
+            .state
+            .document
+            .editable_fragment()
+            .and_then(|entry| entry.fragment.bonds.iter().find(|bond| bond.id == bond_id))
+            .map(|bond| {
+                (
+                    bond.order.max(1),
+                    bond.double
+                        .as_ref()
+                        .map(|double| double.placement)
+                        .filter(|placement| *placement != DoubleBondPlacement::Center),
+                )
+            })
+            .unwrap_or((0, None));
+        if order <= 1 {
+            return self.remove_bond(bond_id);
+        }
+
+        let default_side = placement
+            .or_else(|| self.preferred_double_bond_side(bond_id))
+            .unwrap_or(DoubleBondPlacement::Right);
+        self.push_undo_snapshot();
+        let Some(mut entry) = self.state.document.editable_fragment_mut() else {
+            self.undo_stack.pop();
+            return false;
+        };
+        let object_translate = entry.object.transform.translate;
+        let Some(bond) = entry
+            .fragment
+            .bonds
+            .iter_mut()
+            .find(|bond| bond.id == bond_id)
+        else {
+            self.undo_stack.pop();
+            return false;
+        };
+        let changed = if bond.order == 2 {
+            downgrade_bond_to_single_for_delete(bond)
+        } else {
+            downgrade_bond_to_side_double_for_delete(bond, default_side)
+        };
+        if !changed {
+            self.undo_stack.pop();
+            return false;
+        }
+        refresh_attached_node_label_geometry_for_all_nodes(
+            entry.fragment,
+            object_translate,
+            self.options.bond_stroke_world_cm().value(),
         );
         entry.update_bounds();
         self.state.selection = SelectionState::default();
@@ -837,7 +1173,7 @@ impl Engine {
             entry.fragment,
             object_translate,
             &hovered_node_id,
-            self.options.bond_stroke_width,
+            self.options.bond_stroke_world_cm().value(),
         );
         entry.update_bounds();
         let hover_point = crate::Point::new(
@@ -893,21 +1229,22 @@ impl Engine {
         let label = node.label.as_ref();
         let box_value = label.and_then(|label| label.bbox()).map(|bbox| {
             [
-                round2(bbox[0] + entry.object.transform.translate[0]),
-                round2(bbox[1] + entry.object.transform.translate[1]),
-                round2(bbox[2] + entry.object.transform.translate[0]),
-                round2(bbox[3] + entry.object.transform.translate[1]),
+                round6(bbox[0] + entry.object.transform.translate[0]),
+                round6(bbox[1] + entry.object.transform.translate[1]),
+                round6(bbox[2] + entry.object.transform.translate[0]),
+                round6(bbox[3] + entry.object.transform.translate[1]),
             ]
         });
-        let anchor_point = endpoint_label_editor_anchor_world(node, entry.object.transform.translate)
-            .unwrap_or_else(|| {
-                attached_node_label_anchor_world(
-                    entry.fragment,
-                    node_id,
-                    entry.object.transform.translate,
-                    self.options.bond_stroke_width,
-                )
-            });
+        let anchor_point =
+            endpoint_label_editor_anchor_world(node, entry.object.transform.translate)
+                .unwrap_or_else(|| {
+                    attached_node_label_anchor_world(
+                        entry.fragment,
+                        node_id,
+                        entry.object.transform.translate,
+                        self.options.bond_stroke_world_cm().value(),
+                    )
+                });
         let source_runs = label
             .and_then(|label| label.meta.get("sourceRuns"))
             .cloned()
@@ -921,10 +1258,8 @@ impl Engine {
         let font_size = label
             .and_then(|label| label.font_size)
             .or(Some(DEFAULT_TEXT_FONT_SIZE));
-        let line_height = Some(
-            (font_size.unwrap_or(DEFAULT_TEXT_FONT_SIZE) * 1.05)
-                .max(font_size.unwrap_or(DEFAULT_TEXT_FONT_SIZE)),
-        );
+        let font_size_world_cm = WorldCm(font_size.unwrap_or(DEFAULT_TEXT_FONT_SIZE));
+        let line_height = Some((font_size_world_cm.value() * 1.05).max(font_size_world_cm.value()));
         Some(TextEditSession {
             target: TextEditTarget::EndpointLabel {
                 node_id: node_id.to_string(),
@@ -945,8 +1280,8 @@ impl Engine {
             box_value,
             anchor_offset: box_value.map(|bbox| {
                 [
-                    round2(anchor_point.x - bbox[0]),
-                    round2(anchor_point.y - bbox[1]),
+                    round6(anchor_point.x - bbox[0]),
+                    round6(anchor_point.y - bbox[1]),
                 ]
             }),
             measured_size: None,
@@ -992,7 +1327,7 @@ impl Engine {
                 .extra
                 .get("fontSize")
                 .and_then(Value::as_f64)
-                .or(Some(12.0)),
+                .or(Some(DEFAULT_TEXT_FONT_SIZE)),
             fill: payload
                 .extra
                 .get("fill")
@@ -1032,17 +1367,22 @@ impl Engine {
             return self.remove_text_object(object_id);
         }
         let source_runs = normalize_source_runs(session, &text);
+        let session_font_size = session
+            .font_size_world_cm()
+            .unwrap_or(WorldCm(DEFAULT_TEXT_FONT_SIZE))
+            .value();
+        let session_line_height = session
+            .line_height_world_cm()
+            .unwrap_or(WorldCm(DEFAULT_TEXT_BLOCK_LINE_HEIGHT))
+            .value();
         let display_runs = display_runs_from_source_runs(
             &source_runs,
             session.font_family.as_deref().unwrap_or("Arial"),
-            session.font_size.unwrap_or(12.0),
+            session_font_size,
             session.fill.as_deref().unwrap_or("#000000"),
         );
-        let (width, height) = estimate_text_block_size(
-            &display_runs,
-            session.font_size.unwrap_or(12.0),
-            session.line_height.unwrap_or(15.0),
-        );
+        let (width, height) =
+            estimate_text_block_size(&display_runs, session_font_size, session_line_height);
         let (x, y, existing_object_id) = match &session.target {
             TextEditTarget::TextObject { object_id, x, y } => (*x, *y, object_id.clone()),
             _ => return false,
@@ -1119,10 +1459,13 @@ impl Engine {
             return false;
         };
         let local_anchor_position = match &session.target {
-            TextEditTarget::EndpointLabel { x, y, .. } => [
-                round2(*x - object_translate[0]),
-                round2(*y - object_translate[1]),
-            ],
+            TextEditTarget::EndpointLabel { .. } => {
+                let anchor = Point::from_world(session.target_world_point());
+                [
+                    round2(anchor.x - object_translate[0]),
+                    round2(anchor.y - object_translate[1]),
+                ]
+            }
             _ => entry.fragment.nodes[node_index].position,
         };
         let connection_angles = adjacent_angles_for_fragment_node(entry.fragment, node_id);
@@ -1143,7 +1486,7 @@ impl Engine {
             entry.fragment,
             object_translate,
             node_id,
-            self.options.bond_stroke_width,
+            self.options.bond_stroke_world_cm().value(),
         );
         entry.update_bounds();
         let hover_point = crate::Point::new(
@@ -1364,70 +1707,12 @@ impl Engine {
             .bonds
             .iter()
             .find(|bond| bond.id == bond_id && (bond.order == 1 || bond.order == 2))?;
-        let begin = entry
-            .fragment
-            .nodes
-            .iter()
-            .find(|node| node.id == bond.begin)?;
-        let end = entry
-            .fragment
-            .nodes
-            .iter()
-            .find(|node| node.id == bond.end)?;
-        let begin_point = entry.world_point_for_node(begin);
-        let end_point = entry.world_point_for_node(end);
-        let dx = end_point.x - begin_point.x;
-        let dy = end_point.y - begin_point.y;
-        let length = dx.hypot(dy);
-        if length <= crate::EPSILON {
-            return Some(DoubleBondPlacement::Left);
-        }
-        let normal_x = -dy / length;
-        let normal_y = dx / length;
-        let mut score = 0.0;
-        for other in &entry.fragment.bonds {
-            if other.id == bond.id {
-                continue;
-            }
-            if other.begin == bond.begin || other.end == bond.begin {
-                let other_id = if other.begin == bond.begin {
-                    &other.end
-                } else {
-                    &other.begin
-                };
-                if let Some(neighbor) = entry
-                    .fragment
-                    .nodes
-                    .iter()
-                    .find(|node| &node.id == other_id)
-                {
-                    let point = entry.world_point_for_node(neighbor);
-                    score +=
-                        (point.x - begin_point.x) * normal_x + (point.y - begin_point.y) * normal_y;
-                }
-            } else if other.begin == bond.end || other.end == bond.end {
-                let other_id = if other.begin == bond.end {
-                    &other.end
-                } else {
-                    &other.begin
-                };
-                if let Some(neighbor) = entry
-                    .fragment
-                    .nodes
-                    .iter()
-                    .find(|node| &node.id == other_id)
-                {
-                    let point = entry.world_point_for_node(neighbor);
-                    score +=
-                        (point.x - end_point.x) * normal_x + (point.y - end_point.y) * normal_y;
-                }
-            }
-        }
-        if score <= 0.0 {
-            Some(DoubleBondPlacement::Left)
-        } else {
-            Some(DoubleBondPlacement::Right)
-        }
+        preferred_double_bond_side_for_segment(
+            entry.fragment,
+            &bond.begin,
+            &bond.end,
+            Some(&bond.id),
+        )
     }
 
     fn should_default_center_double_bond(&self, bond_id: &str) -> bool {
@@ -1442,23 +1727,12 @@ impl Engine {
         else {
             return false;
         };
-        let begin_connections = entry
-            .fragment
-            .bonds
-            .iter()
-            .filter(|other| {
-                other.id != bond.id && (other.begin == bond.begin || other.end == bond.begin)
-            })
-            .count();
-        let end_connections = entry
-            .fragment
-            .bonds
-            .iter()
-            .filter(|other| {
-                other.id != bond.id && (other.begin == bond.end || other.end == bond.end)
-            })
-            .count();
-        begin_connections + end_connections >= 2
+        should_default_center_double_bond_for_segment(
+            entry.fragment,
+            &bond.begin,
+            &bond.end,
+            Some(&bond.id),
+        )
     }
 
     fn pending_bond_order(&self) -> u8 {
@@ -1480,7 +1754,9 @@ impl Engine {
                 let placement = if self.should_default_center_for_new_bond(begin_id, end_id) {
                     DoubleBondPlacement::Center
                 } else {
-                    DoubleBondPlacement::Right
+                    let entry = self.state.document.editable_fragment()?;
+                    preferred_double_bond_side_for_segment(entry.fragment, begin_id, end_id, None)
+                        .unwrap_or(DoubleBondPlacement::Right)
                 };
                 Some(DoubleBond {
                     placement,
@@ -1496,19 +1772,7 @@ impl Engine {
         let Some(entry) = self.state.document.editable_fragment() else {
             return false;
         };
-        let begin_connections = entry
-            .fragment
-            .bonds
-            .iter()
-            .filter(|bond| bond.begin == begin_id || bond.end == begin_id)
-            .count();
-        let end_connections = entry
-            .fragment
-            .bonds
-            .iter()
-            .filter(|bond| bond.begin == end_id || bond.end == end_id)
-            .count();
-        begin_connections + end_connections >= 2
+        should_default_center_double_bond_for_segment(entry.fragment, begin_id, end_id, None)
     }
 
     fn pending_line_styles(&self) -> BondLineStyles {
@@ -1599,7 +1863,7 @@ impl Engine {
                 from: entry.world_point_for_node(begin),
                 to: entry.world_point_for_node(end),
                 stroke: "rgba(47,111,237,0.72)".to_string(),
-                stroke_width: self.options.bond_stroke_width + 5.0,
+                stroke_width: self.options.bond_stroke_world_cm().value() + SELECTION_STROKE_EXTRA,
                 dash_array: Vec::new(),
             });
         }
@@ -1615,7 +1879,7 @@ impl Engine {
                 radius: ENDPOINT_FOCUS_RADIUS,
                 fill: "rgba(47,111,237,0.16)".to_string(),
                 stroke: "rgba(47,111,237,0.86)".to_string(),
-                stroke_width: 1.6,
+                stroke_width: SELECTION_NODE_STROKE_WIDTH,
             });
         }
         out
@@ -1703,13 +1967,17 @@ fn apply_node_label_text_edit(
     }
 
     let source_runs = normalize_source_runs(session, text);
+    let session_font_size = session
+        .font_size_world_cm()
+        .unwrap_or(WorldCm(DEFAULT_TEXT_FONT_SIZE))
+        .value();
     let display_runs = display_runs_from_source_runs(
         &source_runs,
         session
             .font_family
             .as_deref()
             .unwrap_or(DEFAULT_TEXT_FONT_FAMILY),
-        session.font_size.unwrap_or(DEFAULT_TEXT_FONT_SIZE),
+        session_font_size,
         session.fill.as_deref().unwrap_or(DEFAULT_TEXT_FILL),
     );
     let next_label = make_centered_node_label_from_runs(
@@ -1721,7 +1989,7 @@ fn apply_node_label_text_edit(
             .font_family
             .as_deref()
             .unwrap_or(DEFAULT_TEXT_FONT_FAMILY),
-        session.font_size.unwrap_or(DEFAULT_TEXT_FONT_SIZE),
+        session_font_size,
         session.fill.as_deref().unwrap_or(DEFAULT_TEXT_FILL),
         connection_angles,
         session,
@@ -1756,7 +2024,7 @@ fn endpoint_label_editor_anchor_world(
     }
 
     let bbox = label.bbox()?;
-    let font_size = label.font_size.unwrap_or(DEFAULT_TEXT_FONT_SIZE);
+    let font_size = WorldCm(label.font_size.unwrap_or(DEFAULT_TEXT_FONT_SIZE)).value();
     let anchor_x = match label.anchor.as_deref() {
         Some("middle") => label
             .position
@@ -2041,7 +2309,7 @@ fn estimate_text_block_size(runs: &[LabelRun], font_size: f64, line_height: f64)
         }
     }
     max_width = max_width.max(line_width);
-    let width = round2((max_width + font_size * 0.24).max(8.0));
+    let width = round2((max_width + font_size * 0.24).max(crate::px_to_cm(8.0)));
     let height = round2((line_height * line_count as f64).max(line_height));
     (width, height)
 }
@@ -2134,7 +2402,12 @@ fn make_text_payload(
     );
     extra.insert(
         "fontSize".to_string(),
-        json!(round2(session.font_size.unwrap_or(12.0))),
+        json!(round6(
+            session
+                .font_size_world_cm()
+                .unwrap_or(WorldCm(DEFAULT_TEXT_FONT_SIZE))
+                .value()
+        )),
     );
     extra.insert(
         "fill".to_string(),
@@ -2147,7 +2420,11 @@ fn make_text_payload(
     );
     extra.insert(
         "lineHeight".to_string(),
-        json!(round2(session.line_height.unwrap_or(15.0))),
+        json!(round6(
+            session
+                .line_height
+                .unwrap_or(DEFAULT_TEXT_BLOCK_LINE_HEIGHT)
+        )),
     );
     extra.insert("box".to_string(), json!([0.0, 0.0, width, height]));
     extra.insert(
@@ -2178,10 +2455,10 @@ fn text_object_world_bounds(object: &crate::SceneObject) -> Option<[f64; 4]> {
 fn endpoint_label_world_bounds(node: &crate::Node, object_translate: [f64; 2]) -> Option<[f64; 4]> {
     let bbox = node.label.as_ref()?.bbox()?;
     Some([
-        round2(bbox[0] + object_translate[0]),
-        round2(bbox[1] + object_translate[1]),
-        round2(bbox[2] + object_translate[0]),
-        round2(bbox[3] + object_translate[1]),
+        round6(bbox[0] + object_translate[0]),
+        round6(bbox[1] + object_translate[1]),
+        round6(bbox[2] + object_translate[0]),
+        round6(bbox[3] + object_translate[1]),
     ])
 }
 
@@ -2254,7 +2531,7 @@ fn classify_node_label_replacement(label: &str) -> Option<NodeLabelReplacement<'
 }
 
 fn make_centered_node_label(text: &str, position: [f64; 2]) -> crate::NodeLabel {
-    let font_size = 15.0;
+    let font_size = DEFAULT_CENTERED_LABEL_FONT_SIZE;
     let (label_position, label_box) = estimated_centered_label_geometry(text, position, font_size);
     crate::NodeLabel {
         text: text.to_string(),
@@ -2319,31 +2596,52 @@ fn make_centered_node_label_from_runs(
     let anchor_center_x = anchor_prefix_width + anchor_char_width * 0.5;
     let can_use_measured_geometry =
         matches!(decision.flow, LabelFlow::Forward) && lines.len() == 1 && layout.anchor_line == 0;
-    let measured_anchor = session.anchor_offset.map(|value| (value[0], value[1]));
-    let measured_size = session.measured_size.map(|value| (value[0], value[1]));
-    let (width, height, mut x1, mut y1, mut baseline_y) = if can_use_measured_geometry {
-        if let (Some((anchor_offset_x, anchor_offset_y)), Some((measured_width, measured_height))) =
-            (measured_anchor, measured_size)
-        {
-            let x1 = round2(position[0] - anchor_offset_x);
-            let y1 = round2(position[1] - anchor_offset_y);
-            let width = round2(measured_width.max(estimated_width));
-            let height = round2(measured_height.max(estimated_height));
-            let baseline_y = round2(y1 + font_size * 0.82);
-            (width, height, x1, y1, baseline_y)
-        } else {
-            let x1 = round2(position[0] - anchor_center_x);
-            let y1 =
-                round2(position[1] - font_size * 0.42 - layout.anchor_line as f64 * line_height);
-            let baseline_y =
-                round2(y1 + layout.anchor_line as f64 * line_height + font_size * 0.82);
-            (estimated_width, estimated_height, x1, y1, baseline_y)
-        }
-    } else {
+    let measured_anchor = session
+        .anchor_offset_world_cm()
+        .map(|value| (value[0].value(), value[1].value()));
+    let measured_size = session
+        .measured_size_world_cm()
+        .map(|value| (value[0].value(), value[1].value()));
+    let fallback_geometry = || {
         let x1 = round2(position[0] - anchor_center_x);
         let y1 = round2(position[1] - font_size * 0.42 - layout.anchor_line as f64 * line_height);
         let baseline_y = round2(y1 + layout.anchor_line as f64 * line_height + font_size * 0.82);
         (estimated_width, estimated_height, x1, y1, baseline_y)
+    };
+    let (width, height, mut x1, mut y1, mut baseline_y) = if can_use_measured_geometry {
+        if let (Some((anchor_offset_x, anchor_offset_y)), Some((measured_width, measured_height))) =
+            (measured_anchor, measured_size)
+        {
+            const MAX_MEASURED_SIZE_RATIO: f64 = 8.0;
+            let max_width = estimated_width.max(font_size) * MAX_MEASURED_SIZE_RATIO;
+            let max_height = estimated_height.max(font_size) * MAX_MEASURED_SIZE_RATIO;
+            let valid_anchor_x = anchor_offset_x.is_finite()
+                && anchor_offset_x >= -estimated_width * 0.25
+                && anchor_offset_x <= max_width;
+            let valid_anchor_y = anchor_offset_y.is_finite()
+                && anchor_offset_y >= -estimated_height * 0.25
+                && anchor_offset_y <= max_height;
+            let valid_size = measured_width.is_finite()
+                && measured_height.is_finite()
+                && measured_width > 0.0
+                && measured_height > 0.0
+                && measured_width <= max_width
+                && measured_height <= max_height;
+            if valid_anchor_x && valid_anchor_y && valid_size {
+                let x1 = round2(position[0] - anchor_offset_x);
+                let y1 = round2(position[1] - anchor_offset_y);
+                let width = round2(measured_width.max(estimated_width));
+                let height = round2(measured_height.max(estimated_height));
+                let baseline_y = round2(y1 + font_size * 0.82);
+                (width, height, x1, y1, baseline_y)
+            } else {
+                fallback_geometry()
+            }
+        } else {
+            fallback_geometry()
+        }
+    } else {
+        fallback_geometry()
     };
     let mut x2 = round2(x1 + width);
     let mut y2 = round2(y1 + height);
@@ -2364,16 +2662,13 @@ fn make_centered_node_label_from_runs(
         font_size,
     );
     if lines.len() == 1 {
-        if let Some(current_anchor) = glyph_polygons
-            .get(layout.anchor_char)
-            .and_then(|polygon| {
-                let points: Vec<_> = polygon
-                    .iter()
-                    .map(|point| Point::new(point[0], point[1]))
-                    .collect();
-                polygon_anchor_point(&points)
-            })
-        {
+        if let Some(current_anchor) = glyph_polygons.get(layout.anchor_char).and_then(|polygon| {
+            let points: Vec<_> = polygon
+                .iter()
+                .map(|point| Point::new(point[0], point[1]))
+                .collect();
+            polygon_anchor_point(&points)
+        }) {
             let dx = round2(position[0] - current_anchor.x);
             let dy = round2(position[1] - current_anchor.y);
             if dx.abs() > crate::EPSILON || dy.abs() > crate::EPSILON {
@@ -2622,6 +2917,17 @@ fn same_node_label(current: Option<&crate::NodeLabel>, next: Option<&crate::Node
     }
 }
 
+fn prune_unconnected_fragment_nodes(fragment: &mut crate::MoleculeFragment) {
+    let connected_nodes: BTreeSet<String> = fragment
+        .bonds
+        .iter()
+        .flat_map(|bond| [bond.begin.clone(), bond.end.clone()])
+        .collect();
+    fragment
+        .nodes
+        .retain(|node| connected_nodes.contains(&node.id));
+}
+
 fn estimated_centered_label_geometry(
     text: &str,
     center: [f64; 2],
@@ -2631,8 +2937,10 @@ fn estimated_centered_label_geometry(
         .chars()
         .map(|ch| estimated_char_width(ch, font_size))
         .sum::<f64>()
-        .max(crate::glyph_kernel::shared_estimated_char_width('C', font_size));
-    let height = (font_size * 0.84).max(8.0);
+        .max(crate::glyph_kernel::shared_estimated_char_width(
+            'C', font_size,
+        ));
+    let height = (font_size * 0.84).max(crate::px_to_cm(8.0));
     let half_width = width * 0.5;
     let half_height = height * 0.5;
     let x1 = center[0] - half_width;
@@ -2696,7 +3004,8 @@ fn refreshed_attached_node_label(
 ) -> Option<crate::NodeLabel> {
     let node = fragment.nodes.iter().find(|node| node.id == node_id)?;
     let label = node.label.as_ref()?;
-    let world_anchor = attached_node_label_anchor_world(fragment, node_id, object_translate, stroke_width);
+    let world_anchor =
+        attached_node_label_anchor_world(fragment, node_id, object_translate, stroke_width);
     let local_anchor = [
         round2(world_anchor.x - object_translate[0]),
         round2(world_anchor.y - object_translate[1]),
@@ -2721,20 +3030,14 @@ fn refreshed_attached_node_label(
         .font_family
         .clone()
         .unwrap_or_else(|| DEFAULT_TEXT_FONT_FAMILY.to_string());
-    let font_size = label.font_size.unwrap_or(DEFAULT_TEXT_FONT_SIZE);
+    let font_size = WorldCm(label.font_size.unwrap_or(DEFAULT_TEXT_FONT_SIZE)).value();
     let fill = label
         .fill
         .clone()
         .unwrap_or_else(|| DEFAULT_TEXT_FILL.to_string());
-    let display_runs = display_runs_from_source_runs(
-        &source_runs,
-        &font_family,
-        font_size,
-        &fill,
-    );
+    let display_runs = display_runs_from_source_runs(&source_runs, &font_family, font_size, &fill);
     let connection_angles = adjacent_angles_for_fragment_node(fragment, node_id);
-    let (anchor_offset, measured_size) =
-        current_node_label_measurements(node, object_translate);
+    let (anchor_offset, measured_size) = current_node_label_measurements(node, object_translate);
     let session = TextEditSession {
         target: TextEditTarget::EndpointLabel {
             node_id: node_id.to_string(),
@@ -2807,15 +3110,11 @@ fn current_node_label_measurements(
         return (None, None);
     };
     let measured_size = Some([
-        round2((bounds[2] - bounds[0]).max(0.0)),
-        round2((bounds[3] - bounds[1]).max(0.0)),
+        round6((bounds[2] - bounds[0]).max(0.0)),
+        round6((bounds[3] - bounds[1]).max(0.0)),
     ]);
-    let anchor_offset = endpoint_label_editor_anchor_world(node, object_translate).map(|anchor| {
-        [
-            round2(anchor.x - bounds[0]),
-            round2(anchor.y - bounds[1]),
-        ]
-    });
+    let anchor_offset = endpoint_label_editor_anchor_world(node, object_translate)
+        .map(|anchor| [round6(anchor.x - bounds[0]), round6(anchor.y - bounds[1])]);
     (anchor_offset, measured_size)
 }
 
@@ -2877,19 +3176,47 @@ fn attached_node_label_anchor_world(
     let normal_x = -dy / length;
     let normal_y = dx / length;
     let offset =
-        0.5 * double_bond_offset_distance_for_points(begin_world, end_world, stroke_width) * side;
+        0.5 * side_double_center_distance_for_bond_points(
+            bond,
+            begin_world,
+            end_world,
+            stroke_width,
+            placement,
+        ) * side;
     Point::new(
         node_world.x + normal_x * offset,
         node_world.y + normal_y * offset,
     )
 }
 
-fn double_bond_offset_distance_for_points(start: Point, end: Point, stroke_width: f64) -> f64 {
-    const DOUBLE_BOND_OFFSET: f64 = 2.85;
-    const VIEWER_BOND_STROKE: f64 = 0.85;
-    DOUBLE_BOND_OFFSET
-        * (stroke_width / VIEWER_BOND_STROKE)
-        * ((start.distance(end) / DEFAULT_BOND_LENGTH.max(crate::EPSILON)).max(0.01))
+fn bold_weight_stroke_width_for_engine(stroke_width: f64) -> f64 {
+    (crate::BOLD_BOND_WIDTH_CM.value() * (stroke_width / crate::DEFAULT_BOND_STROKE_CM))
+        .max(stroke_width)
+}
+
+fn bond_line_weight_stroke_width_for_engine(stroke_width: f64, weight: BondLineWeight) -> f64 {
+    if weight == BondLineWeight::Bold {
+        bold_weight_stroke_width_for_engine(stroke_width)
+    } else {
+        stroke_width
+    }
+}
+
+fn side_double_center_distance_for_bond_points(
+    bond: &Bond,
+    start: Point,
+    end: Point,
+    stroke_width: f64,
+    placement: DoubleBondPlacement,
+) -> f64 {
+    let outer_weight = match placement {
+        DoubleBondPlacement::Left => bond.line_weights.right,
+        DoubleBondPlacement::Right => bond.line_weights.left,
+        DoubleBondPlacement::Center => BondLineWeight::Normal,
+    };
+    let main_width = bond_line_weight_stroke_width_for_engine(stroke_width, bond.line_weights.main);
+    let outer_width = bond_line_weight_stroke_width_for_engine(stroke_width, outer_weight);
+    start.distance(end) * 0.12 + 0.5 * (main_width + outer_width)
 }
 
 fn update_terminal_double_bond_placement_after_new_attachment(
@@ -2907,6 +3234,137 @@ fn update_terminal_double_bond_placement_after_new_attachment(
         if bond_id != new_bond_id {
             update_unfrozen_double_bond_auto_placement(fragment, &bond_id, new_bond_id);
         }
+    }
+}
+
+fn connected_attachment_side_counts_for_segment(
+    fragment: &crate::MoleculeFragment,
+    begin_id: &str,
+    end_id: &str,
+    ignored_bond_id: Option<&str>,
+) -> Option<(usize, usize)> {
+    let begin = fragment.nodes.iter().find(|node| node.id == begin_id)?;
+    let end = fragment.nodes.iter().find(|node| node.id == end_id)?;
+    let begin_point = begin.point();
+    let end_point = end.point();
+    let axis_x = end_point.x - begin_point.x;
+    let axis_y = end_point.y - begin_point.y;
+    let axis_length = axis_x.hypot(axis_y);
+    if axis_length <= crate::EPSILON {
+        return None;
+    }
+    let normal_x = -axis_y / axis_length;
+    let normal_y = axis_x / axis_length;
+
+    let mut left_count = 0usize;
+    let mut right_count = 0usize;
+    for other in &fragment.bonds {
+        if ignored_bond_id.is_some_and(|ignored| other.id == ignored) {
+            continue;
+        }
+        let shared_id = if other.begin == begin_id || other.end == begin_id {
+            Some(begin_id)
+        } else if other.begin == end_id || other.end == end_id {
+            Some(end_id)
+        } else {
+            None
+        };
+        let Some(shared_id) = shared_id else {
+            continue;
+        };
+        let other_id = if other.begin == shared_id {
+            other.end.as_str()
+        } else {
+            other.begin.as_str()
+        };
+        let Some(shared_node) = fragment.nodes.iter().find(|node| node.id == shared_id) else {
+            continue;
+        };
+        let Some(other_node) = fragment.nodes.iter().find(|node| node.id == other_id) else {
+            continue;
+        };
+        let side_score = (other_node.position[0] - shared_node.position[0]) * normal_x
+            + (other_node.position[1] - shared_node.position[1]) * normal_y;
+        if side_score < -crate::EPSILON {
+            left_count += 1;
+        } else if side_score > crate::EPSILON {
+            right_count += 1;
+        }
+    }
+
+    Some((left_count, right_count))
+}
+
+fn should_default_center_double_bond_for_segment(
+    fragment: &crate::MoleculeFragment,
+    begin_id: &str,
+    end_id: &str,
+    ignored_bond_id: Option<&str>,
+) -> bool {
+    let Some((left_count, right_count)) =
+        connected_attachment_side_counts_for_segment(fragment, begin_id, end_id, ignored_bond_id)
+    else {
+        return false;
+    };
+    (left_count >= 2 && right_count == 0) || (right_count >= 2 && left_count == 0)
+}
+
+fn preferred_double_bond_side_for_segment(
+    fragment: &crate::MoleculeFragment,
+    begin_id: &str,
+    end_id: &str,
+    ignored_bond_id: Option<&str>,
+) -> Option<DoubleBondPlacement> {
+    let begin = fragment.nodes.iter().find(|node| node.id == begin_id)?;
+    let end = fragment.nodes.iter().find(|node| node.id == end_id)?;
+    let begin_point = begin.point();
+    let end_point = end.point();
+    let dx = end_point.x - begin_point.x;
+    let dy = end_point.y - begin_point.y;
+    let length = dx.hypot(dy);
+    if length <= crate::EPSILON {
+        return Some(DoubleBondPlacement::Left);
+    }
+    let normal_x = -dy / length;
+    let normal_y = dx / length;
+    let mut score = 0.0;
+    let mut attachment_count = 0usize;
+    for other in &fragment.bonds {
+        if ignored_bond_id.is_some_and(|ignored| other.id == ignored) {
+            continue;
+        }
+        if other.begin == begin_id || other.end == begin_id {
+            let other_id = if other.begin == begin_id {
+                &other.end
+            } else {
+                &other.begin
+            };
+            if let Some(neighbor) = fragment.nodes.iter().find(|node| &node.id == other_id) {
+                let point = neighbor.point();
+                attachment_count += 1;
+                score +=
+                    (point.x - begin_point.x) * normal_x + (point.y - begin_point.y) * normal_y;
+            }
+        } else if other.begin == end_id || other.end == end_id {
+            let other_id = if other.begin == end_id {
+                &other.end
+            } else {
+                &other.begin
+            };
+            if let Some(neighbor) = fragment.nodes.iter().find(|node| &node.id == other_id) {
+                let point = neighbor.point();
+                attachment_count += 1;
+                score += (point.x - end_point.x) * normal_x + (point.y - end_point.y) * normal_y;
+            }
+        }
+    }
+    if attachment_count == 0 {
+        return None;
+    }
+    if score <= 0.0 {
+        Some(DoubleBondPlacement::Left)
+    } else {
+        Some(DoubleBondPlacement::Right)
     }
 }
 
@@ -3017,6 +3475,68 @@ fn opposite_double_bond_placement(placement: DoubleBondPlacement) -> DoubleBondP
         DoubleBondPlacement::Right => DoubleBondPlacement::Left,
         DoubleBondPlacement::Center => DoubleBondPlacement::Right,
     }
+}
+
+fn downgrade_bond_to_single_for_delete(bond: &mut Bond) -> bool {
+    let changed = bond.order != 1
+        || bond.double.is_some()
+        || bond.stereo.is_some()
+        || bond.line_styles.left != BondLinePattern::Solid
+        || bond.line_styles.right != BondLinePattern::Solid
+        || bond.line_weights.left != BondLineWeight::Normal
+        || bond.line_weights.right != BondLineWeight::Normal;
+    if !changed {
+        return false;
+    }
+    bond.order = 1;
+    bond.double = None;
+    bond.stereo = None;
+    bond.line_styles = BondLineStyles {
+        main: bond.line_styles.main,
+        ..BondLineStyles::default()
+    };
+    bond.line_weights = BondLineWeights {
+        main: bond.line_weights.main,
+        ..BondLineWeights::default()
+    };
+    true
+}
+
+fn downgrade_bond_to_side_double_for_delete(
+    bond: &mut Bond,
+    placement: DoubleBondPlacement,
+) -> bool {
+    let placement = if placement == DoubleBondPlacement::Center {
+        DoubleBondPlacement::Right
+    } else {
+        placement
+    };
+    let changed = bond.order != 2
+        || bond.double.as_ref().map(|double| double.placement) != Some(placement)
+        || bond.stereo.is_some()
+        || bond.line_styles.left != BondLinePattern::Solid
+        || bond.line_styles.right != BondLinePattern::Solid
+        || bond.line_weights.left != BondLineWeight::Normal
+        || bond.line_weights.right != BondLineWeight::Normal;
+    if !changed {
+        return false;
+    }
+    bond.order = 2;
+    bond.double = Some(DoubleBond {
+        placement,
+        center_exit_side: None,
+        frozen: true,
+    });
+    bond.stereo = None;
+    bond.line_styles = BondLineStyles {
+        main: bond.line_styles.main,
+        ..BondLineStyles::default()
+    };
+    bond.line_weights = BondLineWeights {
+        main: bond.line_weights.main,
+        ..BondLineWeights::default()
+    };
+    true
 }
 
 fn apply_single_tool_center_style(bond: &mut Bond, default_placement: DoubleBondPlacement) -> bool {
@@ -3584,11 +4104,15 @@ impl Engine {
         &self.options
     }
 
-    pub fn set_bond_length(&mut self, length: f64) {
-        self.options.bond_length = if length > 0.0 {
-            length
+    pub fn set_bond_length_world_cm(&mut self, length: WorldCm) {
+        self.options.bond_length = if length.value() > 0.0 {
+            length.value()
         } else {
             DEFAULT_BOND_LENGTH
         };
+    }
+
+    pub fn set_bond_length(&mut self, length: f64) {
+        self.set_bond_length_world_cm(WorldCm(length));
     }
 }

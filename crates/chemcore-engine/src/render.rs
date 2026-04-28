@@ -1,8 +1,8 @@
 use crate::{
     legacy_mol::{parse_molblock, LegacyAtom, LegacyBond as LegacyMolBond, LegacyMol},
-    Bond, BondLinePattern, BondLineWeight, ChemcoreDocument, DoubleBondPlacement, LabelRun, Node,
-    ObjectPayload, Point, ResourceData, SceneObject, Vector, DEFAULT_BOND_LENGTH,
-    DEFAULT_BOND_STROKE, EPSILON,
+    px_to_cm, Bond, BondLinePattern, BondLineWeight, ChemcoreDocument, DoubleBondPlacement,
+    LabelRun, Node, ObjectPayload, Point, ResourceData, SceneObject, Vector, DEFAULT_BOND_STROKE,
+    EPSILON,
 };
 use serde_json::Value as JsonValue;
 use std::collections::{BTreeMap, BTreeSet};
@@ -34,26 +34,27 @@ use primitives::{
 };
 pub use primitives::{RenderPrimitive, RenderRole};
 
-const VIEWER_BOND_STROKE: f64 = 0.85;
-const DOUBLE_BOND_OFFSET: f64 = 2.85;
-const TRIPLE_BOND_OFFSET: f64 = 2.9;
-const DOUBLE_BOND_SIDE_INSET: f64 = 1.4;
+const VIEWER_BOND_STROKE: f64 = crate::VIEWER_BOND_STROKE_CM.value();
+const MULTI_BOND_OFFSET_RATIO: f64 = 0.12;
+const DOUBLE_BOND_SIDE_INSET: f64 = crate::DOUBLE_BOND_SIDE_INSET_CM.value();
 const DOUBLE_BOND_SIDE_INSET_RATIO: f64 = 0.14;
-const HASH_WEDGE_SPACING: f64 = 3.2;
-const HASH_WEDGE_START_OFFSET: f64 = 1.95;
-const HASH_WEDGE_END_INSET: f64 = 0.18;
-const HASH_BLACK_SEGMENT_LENGTH: f64 = 0.5;
-const HASH_TARGET_GAP_LENGTH: f64 = 0.65;
-const HASH_WEDGE_EDGE_OVERDRAW: f64 = 0.28;
-const HASH_MULTI_BOND_RETREAT_GAP: f64 = 0.45;
-const SOLID_WEDGE_END_INSET: f64 = 0.55;
-const SOLID_WEDGE_HALF_WIDTH: f64 = 1.8;
+const HASH_WEDGE_SPACING: f64 = crate::HASH_WEDGE_SPACING_CM.value();
+const HASH_WEDGE_START_OFFSET: f64 = crate::HASH_WEDGE_START_OFFSET_CM.value();
+const HASH_WEDGE_END_INSET: f64 = crate::HASH_WEDGE_END_INSET_CM.value();
+const HASH_BLACK_SEGMENT_LENGTH: f64 = crate::HASH_BLACK_SEGMENT_LENGTH_CM.value();
+const HASH_TARGET_GAP_LENGTH: f64 = crate::HASH_TARGET_GAP_LENGTH_CM.value();
+const HASH_WEDGE_EDGE_OVERDRAW: f64 = crate::HASH_WEDGE_EDGE_OVERDRAW_CM.value();
+const HASH_MULTI_BOND_RETREAT_GAP: f64 = crate::HASH_MULTI_BOND_RETREAT_GAP_CM.value();
+const SOLID_WEDGE_END_INSET: f64 = crate::SOLID_WEDGE_END_INSET_CM.value();
+const SOLID_WEDGE_HALF_WIDTH: f64 = crate::SOLID_WEDGE_HALF_WIDTH_CM.value();
 const CENTER_DOUBLE_NO_EXTENSION_ANGLE_DEGREES: f64 = 162.0;
 const CHEMCORE_INK: &str = "#000000";
 const KNOCKOUT_FILL: &str = "#ffffff";
-const DASHED_BOND_PATTERN: [f64; 2] = [3.2, 2.4];
-const BOLD_BOND_WIDTH_FACTOR: f64 = 1.55;
-const BOLD_BOND_MIN_EXTRA_WIDTH: f64 = 1.0;
+const DASHED_BOND_PATTERN: [f64; 2] = [
+    crate::DASHED_BOND_PATTERN_CM[0].value(),
+    crate::DASHED_BOND_PATTERN_CM[1].value(),
+];
+const BOLD_BOND_WIDTH: f64 = crate::BOLD_BOND_WIDTH_CM.value();
 const MAIN_CONTACT_MITER_LIMIT: f64 = 4.0;
 
 #[derive(Debug, Clone, Copy)]
@@ -787,12 +788,17 @@ fn compute_hashed_wedge_segments(
             1.0
         };
         let half_width = if index == 0 {
-            0.42
+            crate::HASH_WEDGE_INITIAL_HALF_WIDTH_CM.value()
         } else {
-            0.16 + progress * 1.72
+            crate::HASH_WEDGE_PROGRESS_BASE_HALF_WIDTH_CM.value()
+                + progress * crate::HASH_WEDGE_PROGRESS_HALF_WIDTH_RANGE_CM.value()
         } * scale;
         let center = Point::new(start.x + unit.x * dist, start.y + unit.y * dist);
-        let segment_width = if index == 0 { 0.82 } else { 0.72 } * scale;
+        let segment_width = if index == 0 {
+            crate::HASH_WEDGE_INITIAL_SEGMENT_WIDTH_CM.value()
+        } else {
+            crate::HASH_WEDGE_SEGMENT_WIDTH_CM.value()
+        } * scale;
         if index == 0 {
             segments.push((
                 Point::new(center.x, center.y - half_width),
@@ -921,8 +927,10 @@ fn boundary_line_join_candidate(
         other.point,
         other.direction,
     )?;
-    let min_current = -(current.offset_distance * 4.0).max(0.85);
-    let min_other = -(other.offset_distance * 4.0).max(0.85);
+    let min_current =
+        -(current.offset_distance * 4.0).max(crate::BOUNDARY_JOIN_MIN_BACKTRACK_CM.value());
+    let min_other =
+        -(other.offset_distance * 4.0).max(crate::BOUNDARY_JOIN_MIN_BACKTRACK_CM.value());
     if t < min_current || u < min_other {
         return None;
     }
@@ -1361,7 +1369,13 @@ fn centered_double_outer_line_boundary_pair_for_direction(
         bond,
         shared_node_id,
         line_side,
-        double_bond_offset_distance(begin, end, stroke_width) * 0.5,
+        double_bond_center_distance_for_weights(
+            begin,
+            end,
+            stroke_width,
+            bond.line_weights.left,
+            bond.line_weights.right,
+        ) * 0.5,
         stroke_width,
         centered_double_line_weight_for_side(bond, line_side),
     )
@@ -1677,7 +1691,7 @@ fn payload_arrow_head(payload: &ObjectPayload, key: &str) -> Option<ArrowHeadGeo
         length: value
             .get("length")
             .and_then(JsonValue::as_f64)
-            .unwrap_or(8.0),
+            .unwrap_or(crate::DEFAULT_ARROW_HEAD_LENGTH_CM.value()),
         width: value
             .get("width")
             .and_then(JsonValue::as_f64)
@@ -1685,7 +1699,7 @@ fn payload_arrow_head(payload: &ObjectPayload, key: &str) -> Option<ArrowHeadGeo
                 value
                     .get("length")
                     .and_then(JsonValue::as_f64)
-                    .unwrap_or(8.0)
+                    .unwrap_or(crate::DEFAULT_ARROW_HEAD_LENGTH_CM.value())
                     * 0.55
             }),
         head_full: value
@@ -2172,8 +2186,12 @@ fn arrow_shaft_end(from: Point, to: Point, arrow_head: ArrowHeadGeometry) -> Poi
     let direction = Vector::new(to.x - from.x, to.y - from.y);
     let length = direction.length().max(1.0);
     let unit = direction.normalized();
-    let head_length = 5.4_f64.max(arrow_head.length * 0.6);
-    let notch_length = 3.2_f64.max(head_length * 0.66);
+    let head_length = crate::ARROW_SHAPE_MIN_HEAD_LENGTH_CM
+        .value()
+        .max(arrow_head.length * 0.6);
+    let notch_length = crate::ARROW_SHAPE_MIN_NOTCH_LENGTH_CM
+        .value()
+        .max(head_length * 0.66);
     let center_length = notch_length.min(length * 0.8).max(0.0);
     Point::new(to.x - unit.x * center_length, to.y - unit.y * center_length)
 }
@@ -2182,9 +2200,15 @@ fn arrow_head_points(from: Point, to: Point, arrow_head: ArrowHeadGeometry) -> V
     let direction = Vector::new(to.x - from.x, to.y - from.y);
     let unit = direction.normalized();
     let normal = Vector::new(-unit.y, unit.x);
-    let head_length = 5.4_f64.max(arrow_head.length * 0.6);
-    let head_width = 4.8_f64.max(arrow_head.width * 1.16);
-    let notch_length = 3.2_f64.max((head_length * 0.66).min(head_length - 0.8));
+    let head_length = crate::ARROW_SHAPE_MIN_HEAD_LENGTH_CM
+        .value()
+        .max(arrow_head.length * 0.6);
+    let head_width = crate::ARROW_SHAPE_MIN_HEAD_WIDTH_CM
+        .value()
+        .max(arrow_head.width * 1.16);
+    let notch_length = crate::ARROW_SHAPE_MIN_NOTCH_LENGTH_CM.value().max(
+        (head_length * 0.66).min(head_length - crate::ARROW_SHAPE_MIN_HEAD_TO_NOTCH_GAP_CM.value()),
+    );
     let tip = to;
     let left = Point::new(
         to.x - unit.x * head_length + normal.x * (head_width / 2.0),
@@ -2232,7 +2256,12 @@ fn split_preserved_text_lines(text: &str) -> Vec<String> {
 
 fn wrap_text_lines(text: &str, max_width: f64, font_size: f64) -> Vec<String> {
     let raw_lines: Vec<&str> = text.split('\n').collect();
-    let max_chars = (max_width / 6.0_f64.max(font_size * 0.6)).floor().max(8.0) as usize;
+    let max_chars = (max_width
+        / crate::TEXT_WRAP_ESTIMATED_CHAR_WIDTH_CM
+            .value()
+            .max(font_size * 0.6))
+    .floor()
+    .max(8.0) as usize;
     let mut out = Vec::new();
 
     for raw_line in raw_lines {
@@ -2295,30 +2324,50 @@ fn inset_bond_segment(
 
 fn line_weight_stroke_width(stroke_width: f64, line_weight: BondLineWeight) -> f64 {
     if line_weight == BondLineWeight::Bold {
-        (stroke_width * BOLD_BOND_WIDTH_FACTOR).max(stroke_width + BOLD_BOND_MIN_EXTRA_WIDTH)
+        (BOLD_BOND_WIDTH * (stroke_width / VIEWER_BOND_STROKE)).max(stroke_width)
     } else {
         stroke_width
     }
 }
 
-fn bond_length_scale(start: Point, end: Point) -> f64 {
-    (start.distance(end) / DEFAULT_BOND_LENGTH.max(EPSILON)).max(0.01)
+fn multi_bond_inner_gap(start: Point, end: Point) -> f64 {
+    start.distance(end) * MULTI_BOND_OFFSET_RATIO
+}
+
+fn double_bond_center_distance_for_weights(
+    start: Point,
+    end: Point,
+    stroke_width: f64,
+    first_weight: BondLineWeight,
+    second_weight: BondLineWeight,
+) -> f64 {
+    let first_width = line_weight_stroke_width(stroke_width, first_weight);
+    let second_width = line_weight_stroke_width(stroke_width, second_weight);
+    multi_bond_inner_gap(start, end) + 0.5 * (first_width + second_width)
 }
 
 fn double_bond_offset_distance(start: Point, end: Point, stroke_width: f64) -> f64 {
-    DOUBLE_BOND_OFFSET * (stroke_width / VIEWER_BOND_STROKE) * bond_length_scale(start, end)
+    double_bond_center_distance_for_weights(
+        start,
+        end,
+        stroke_width,
+        BondLineWeight::Normal,
+        BondLineWeight::Normal,
+    )
 }
 
-fn triple_bond_offset_distance(start: Point, end: Point, stroke_width: f64) -> f64 {
-    TRIPLE_BOND_OFFSET * (stroke_width / VIEWER_BOND_STROKE) * bond_length_scale(start, end)
+fn triple_bond_offset_distance(start: Point, end: Point, _stroke_width: f64) -> f64 {
+    start.distance(end) * MULTI_BOND_OFFSET_RATIO
 }
 
 fn solid_wedge_half_width(stroke_width: f64) -> f64 {
-    SOLID_WEDGE_HALF_WIDTH * (stroke_width / VIEWER_BOND_STROKE)
+    let _ = stroke_width;
+    SOLID_WEDGE_HALF_WIDTH
 }
 
 fn solid_wedge_tip_half_width(stroke_width: f64) -> f64 {
-    stroke_width * 0.5
+    let _ = stroke_width;
+    crate::SOLID_WEDGE_TIP_HALF_WIDTH_CM.value()
 }
 
 fn dash_gap_intervals(length: f64, dash_array: &[f64]) -> Vec<(f64, f64)> {
@@ -2413,7 +2462,8 @@ fn dashed_bond_knockout_polygons(
     }
     let unit = direction.normalized();
     let normal = Vector::new(-unit.y, unit.x);
-    let half_width = stroke_width * 0.5 + stroke_width.max(0.35) * 0.45;
+    let half_width =
+        stroke_width * 0.5 + stroke_width.max(crate::DASH_GAP_STROKE_EXTRA_CM.value()) * 0.45;
     dash_gap_intervals(length, dash_array)
         .into_iter()
         .map(|(gap_start, gap_end)| {
@@ -2490,8 +2540,8 @@ fn hashed_wedge_gap_intervals(length: f64, stroke_width: f64) -> Vec<(f64, f64)>
         return Vec::new();
     }
     let scale = stroke_width / VIEWER_BOND_STROKE;
-    let start_offset = (0.5 * scale).min(length * 0.06);
-    let end_inset = (0.18 * scale).min(length * 0.03);
+    let start_offset = (crate::HASH_WEDGE_GAP_START_OFFSET_CM.value() * scale).min(length * 0.06);
+    let end_inset = (crate::HASH_WEDGE_GAP_END_INSET_CM.value() * scale).min(length * 0.03);
     equal_black_segment_gap_intervals(
         length,
         start_offset,
@@ -2554,7 +2604,13 @@ fn fragment_outer_bond_offset_for_side(
     if (placement == DoubleBondPlacement::Left && side < 0.0)
         || (placement == DoubleBondPlacement::Right && side > 0.0)
     {
-        return Some(double_bond_offset_distance(start, end, stroke_width));
+        return Some(double_bond_center_distance_for_weights(
+            start,
+            end,
+            stroke_width,
+            bond.line_weights.main,
+            outer_line_weight(bond, side),
+        ));
     }
     None
 }
@@ -3353,8 +3409,8 @@ mod tests {
         assert!(gaps[0].0 > 0.0);
         assert!(gaps.last().unwrap().1 < 18.0);
 
-        let start_offset = 0.5 * 2.0;
-        let end_inset = 0.18 * 2.0;
+        let start_offset = crate::HASH_WEDGE_GAP_START_OFFSET_CM.value() * 2.0;
+        let end_inset = crate::HASH_WEDGE_GAP_END_INSET_CM.value() * 2.0;
         let black_lengths = black_segment_lengths(18.0, start_offset, end_inset, &gaps);
         for length in &black_lengths {
             approx_eq(*length, black_lengths[0]);
