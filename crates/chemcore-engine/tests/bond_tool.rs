@@ -14,8 +14,33 @@ fn px_point(x: f64, y: f64) -> chemcore_engine::Point {
     chemcore_engine::Point::new(px(x), px(y))
 }
 
+fn round_to_2(value: f64) -> f64 {
+    (value * 100.0).round() / 100.0
+}
+
+fn polygon_area(points: &[Point]) -> f64 {
+    let mut area = 0.0;
+    for index in 0..points.len() {
+        let next = (index + 1) % points.len();
+        area += points[index].x * points[next].y - points[next].x * points[index].y;
+    }
+    (area * 0.5).abs()
+}
+
 fn endpoint_from_anchor(anchor: Point, angle: f64) -> Point {
     anchor.translated(direction_from_angle(angle).scaled(DEFAULT_BOND_LENGTH))
+}
+
+fn rotate_point_around(point: Point, center: Point, degrees: f64) -> Point {
+    let radians = degrees.to_radians();
+    let cos = radians.cos();
+    let sin = radians.sin();
+    let dx = point.x - center.x;
+    let dy = point.y - center.y;
+    Point::new(
+        center.x + dx * cos - dy * sin,
+        center.y + dx * sin + dy * cos,
+    )
 }
 
 const FIRST_START_X: f64 = 7.94;
@@ -39,6 +64,7 @@ fn bond_tool() -> ToolState {
     ToolState {
         active_tool: Tool::Bond,
         bond_variant: BondVariant::Single,
+        ..ToolState::default()
     }
 }
 
@@ -46,6 +72,7 @@ fn triple_bond_tool() -> ToolState {
     ToolState {
         active_tool: Tool::Bond,
         bond_variant: BondVariant::Triple,
+        ..ToolState::default()
     }
 }
 
@@ -53,6 +80,7 @@ fn double_bond_tool() -> ToolState {
     ToolState {
         active_tool: Tool::Bond,
         bond_variant: BondVariant::Double,
+        ..ToolState::default()
     }
 }
 
@@ -60,6 +88,7 @@ fn delete_tool() -> ToolState {
     ToolState {
         active_tool: Tool::Delete,
         bond_variant: BondVariant::Single,
+        ..ToolState::default()
     }
 }
 
@@ -67,6 +96,7 @@ fn dashed_bond_tool() -> ToolState {
     ToolState {
         active_tool: Tool::Bond,
         bond_variant: BondVariant::Dashed,
+        ..ToolState::default()
     }
 }
 
@@ -74,6 +104,7 @@ fn dashed_double_bond_tool() -> ToolState {
     ToolState {
         active_tool: Tool::Bond,
         bond_variant: BondVariant::DashedDouble,
+        ..ToolState::default()
     }
 }
 
@@ -81,6 +112,7 @@ fn bold_bond_tool() -> ToolState {
     ToolState {
         active_tool: Tool::Bond,
         bond_variant: BondVariant::Bold,
+        ..ToolState::default()
     }
 }
 
@@ -88,6 +120,7 @@ fn bold_dashed_bond_tool() -> ToolState {
     ToolState {
         active_tool: Tool::Bond,
         bond_variant: BondVariant::BoldDashed,
+        ..ToolState::default()
     }
 }
 
@@ -95,6 +128,7 @@ fn wedge_bond_tool() -> ToolState {
     ToolState {
         active_tool: Tool::Bond,
         bond_variant: BondVariant::Wedge,
+        ..ToolState::default()
     }
 }
 
@@ -102,6 +136,7 @@ fn hashed_wedge_bond_tool() -> ToolState {
     ToolState {
         active_tool: Tool::Bond,
         bond_variant: BondVariant::HashedWedge,
+        ..ToolState::default()
     }
 }
 
@@ -109,12 +144,132 @@ fn select_tool() -> ToolState {
     ToolState {
         active_tool: Tool::Select,
         bond_variant: BondVariant::Single,
+        ..ToolState::default()
+    }
+}
+
+fn templates_tool(template: &str) -> ToolState {
+    ToolState {
+        active_tool: Tool::Templates,
+        bond_variant: BondVariant::Single,
+        template: template.to_string(),
     }
 }
 
 fn fragment_counts(engine: &Engine) -> (usize, usize) {
     let entry = engine.state().document.editable_fragment().unwrap();
     (entry.fragment.nodes.len(), entry.fragment.bonds.len())
+}
+
+fn node_world_point(engine: &Engine, node_id: &str) -> Point {
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let node = entry
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == node_id)
+        .expect("node should exist");
+    entry.world_point_for_node(node)
+}
+
+fn node_id_at(engine: &Engine, point: Point) -> Option<String> {
+    let entry = engine.state().document.editable_fragment().unwrap();
+    entry
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| entry.world_point_for_node(node).distance(point) < 0.02)
+        .map(|node| node.id.clone())
+}
+
+fn attached_node_points(engine: &Engine, node_id: &str) -> Vec<Point> {
+    let entry = engine.state().document.editable_fragment().unwrap();
+    entry
+        .fragment
+        .bonds
+        .iter()
+        .filter_map(|bond| {
+            if bond.begin == node_id {
+                Some(bond.end.as_str())
+            } else if bond.end == node_id {
+                Some(bond.begin.as_str())
+            } else {
+                None
+            }
+        })
+        .filter_map(|other_id| {
+            entry
+                .fragment
+                .nodes
+                .iter()
+                .find(|node| node.id == other_id)
+                .map(|node| entry.world_point_for_node(node))
+        })
+        .collect()
+}
+
+fn assert_no_duplicate_node_positions(engine: &Engine) {
+    let entry = engine.state().document.editable_fragment().unwrap();
+    for (index, left) in entry.fragment.nodes.iter().enumerate() {
+        let left_point = entry.world_point_for_node(left);
+        for right in entry.fragment.nodes.iter().skip(index + 1) {
+            let right_point = entry.world_point_for_node(right);
+            assert!(
+                left_point.distance(right_point) > 0.01,
+                "duplicate nodes {} and {} at {:?}",
+                left.id,
+                right.id,
+                left_point
+            );
+        }
+    }
+}
+
+fn fused_ring_points_for_bond(
+    begin: Point,
+    end: Point,
+    ring_size: usize,
+    side_sign: f64,
+) -> Vec<Point> {
+    let side = begin.distance(end).max(DEFAULT_BOND_LENGTH);
+    let apothem = side / (2.0 * (std::f64::consts::PI / ring_size as f64).tan());
+    let unit = chemcore_engine::Vector::new((end.x - begin.x) / side, (end.y - begin.y) / side);
+    let normal = chemcore_engine::Vector::new(-unit.y, unit.x).scaled(side_sign);
+    let center = Point::new(
+        (begin.x + end.x) * 0.5 + normal.x * apothem,
+        (begin.y + end.y) * 0.5 + normal.y * apothem,
+    );
+    let first_vector = chemcore_engine::Vector::new(begin.x - center.x, begin.y - center.y);
+    let positive = regular_points_from_vector(ring_size, center, first_vector, 1.0);
+    let negative = regular_points_from_vector(ring_size, center, first_vector, -1.0);
+    if positive
+        .get(1)
+        .is_some_and(|point| point.distance(end) <= 0.05)
+    {
+        positive
+    } else {
+        negative
+    }
+}
+
+fn regular_points_from_vector(
+    ring_size: usize,
+    center: Point,
+    first_vector: chemcore_engine::Vector,
+    direction: f64,
+) -> Vec<Point> {
+    let step = direction * 2.0 * std::f64::consts::PI / ring_size as f64;
+    (0..ring_size)
+        .map(|index| {
+            let angle = step * index as f64;
+            let cos = angle.cos();
+            let sin = angle.sin();
+            Point::new(
+                center.x + first_vector.x * cos - first_vector.y * sin,
+                center.y + first_vector.x * sin + first_vector.y * cos,
+            )
+        })
+        .collect()
 }
 
 fn node_degrees(engine: &Engine) -> BTreeMap<String, usize> {
@@ -319,6 +474,62 @@ fn load_text_object_document(engine: &mut Engine) {
         .expect("text document should load");
 }
 
+fn load_arrange_text_document(engine: &mut Engine) {
+    let document = json!({
+        "format": { "name": "chemcore", "version": "0.1" },
+        "document": {
+            "id": "doc_arrange",
+            "title": "arrange test",
+            "page": { "width": px(400.0), "height": px(320.0), "background": "#ffffff" }
+        },
+        "styles": {},
+        "objects": [{
+            "id": "obj_text_a",
+            "type": "text",
+            "visible": true,
+            "zIndex": 20,
+            "transform": { "translate": [0.0, 0.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+            "payload": { "text": "A", "bbox": [0.0, 0.0, 10.0, 10.0], "runs": [] }
+        }, {
+            "id": "obj_text_b",
+            "type": "text",
+            "visible": true,
+            "zIndex": 21,
+            "transform": { "translate": [30.0, 20.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+            "payload": { "text": "B", "bbox": [0.0, 0.0, 10.0, 10.0], "runs": [] }
+        }, {
+            "id": "obj_text_c",
+            "type": "text",
+            "visible": true,
+            "zIndex": 22,
+            "transform": { "translate": [100.0, 40.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+            "payload": { "text": "C", "bbox": [0.0, 0.0, 30.0, 10.0], "runs": [] }
+        }]
+    });
+    engine
+        .load_document_json(&document.to_string())
+        .expect("arrange document should load");
+}
+
+fn text_translate(engine: &Engine, object_id: &str) -> [f64; 2] {
+    engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .find(|object| object.id == object_id)
+        .expect("text object should exist")
+        .transform
+        .translate
+}
+
+fn select_all_arrange_text_objects(engine: &mut Engine) {
+    engine.set_tool_state(select_tool());
+    engine.select_at_point(Point::new(5.0, 5.0), false);
+    engine.select_at_point(Point::new(35.0, 25.0), true);
+    engine.select_at_point(Point::new(105.0, 45.0), true);
+}
+
 #[test]
 fn click_on_blank_canvas_creates_up_right_single_bond() {
     let mut engine = Engine::new();
@@ -346,6 +557,379 @@ fn click_on_blank_canvas_creates_up_right_single_bond() {
     );
     assert_eq!(entry.fragment.nodes[1].position, [FIRST_END_X, FIRST_END_Y]);
     assert_eq!(entry.fragment.bonds[0].stroke_width, DEFAULT_BOND_STROKE);
+}
+
+#[test]
+fn template_click_on_bond_uses_bond_as_ring_side() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, px(300.0), px(260.0));
+
+    engine.set_tool_state(templates_tool("ring-6"));
+    click(&mut engine, FIRST_CENTER_X, FIRST_CENTER_Y);
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    assert_eq!(entry.fragment.nodes.len(), 6);
+    assert_eq!(entry.fragment.bonds.len(), 6);
+    assert!(entry
+        .fragment
+        .bonds
+        .iter()
+        .any(|bond| (bond.begin == "n_1" && bond.end == "n_2")
+            || (bond.begin == "n_2" && bond.end == "n_1")));
+    assert_no_duplicate_node_positions(&engine);
+}
+
+#[test]
+fn template_click_on_bond_supports_ring_sizes_three_through_eight() {
+    for ring_size in 3..=8 {
+        let mut engine = Engine::new();
+        engine.set_tool_state(bond_tool());
+        click(&mut engine, px(300.0), px(260.0));
+
+        engine.set_tool_state(templates_tool(&format!("ring-{ring_size}")));
+        click(&mut engine, FIRST_CENTER_X, FIRST_CENTER_Y);
+
+        let entry = engine.state().document.editable_fragment().unwrap();
+        assert_eq!(entry.fragment.nodes.len(), ring_size);
+        assert_eq!(entry.fragment.bonds.len(), ring_size);
+        assert_no_duplicate_node_positions(&engine);
+    }
+}
+
+#[test]
+fn template_ring_bonds_inherit_existing_anchor_stroke_width() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, px(300.0), px(260.0));
+
+    let mut document: serde_json::Value =
+        serde_json::from_str(&engine.state_json().expect("state json")).expect("json");
+    document["document"]["resources"]["mol_editor"]["data"]["bonds"][0]["strokeWidth"] =
+        json!(0.07);
+    engine
+        .load_document_json(
+            &serde_json::to_string(&document["document"]).expect("document json should encode"),
+        )
+        .expect("document should reload");
+
+    engine.set_tool_state(templates_tool("ring-3"));
+    click(&mut engine, FIRST_END_X, FIRST_END_Y);
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    assert!(entry
+        .fragment
+        .bonds
+        .iter()
+        .all(|bond| (bond.stroke_width - 0.07).abs() < 0.001));
+}
+
+#[test]
+fn template_endpoint_ring_connects_adjacent_intersections_through_center() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, px(300.0), px(260.0));
+
+    let endpoint = node_world_point(&engine, "n_2");
+    engine.set_tool_state(templates_tool("ring-3"));
+    click(&mut engine, endpoint.x, endpoint.y);
+
+    let original_bond_points = engine
+        .render_list()
+        .into_iter()
+        .find_map(|primitive| match primitive {
+            RenderPrimitive::Polygon {
+                role: RenderRole::DocumentBond,
+                bond_id: Some(bond_id),
+                points,
+                ..
+            } if bond_id == "b_3" => Some(points),
+            _ => None,
+        })
+        .expect("original bond should render as polygon");
+    let center_index = original_bond_points
+        .iter()
+        .position(|point| point.distance(endpoint) < 0.001)
+        .expect("polygon should include the shared center point");
+    let previous = original_bond_points
+        [(center_index + original_bond_points.len() - 1) % original_bond_points.len()];
+    let next = original_bond_points[(center_index + 1) % original_bond_points.len()];
+
+    assert!(previous.distance(endpoint) < 0.08, "{previous:?}");
+    assert!(next.distance(endpoint) < 0.08, "{next:?}");
+
+    let center_patch = engine
+        .render_list()
+        .into_iter()
+        .find_map(|primitive| match primitive {
+            RenderPrimitive::Polygon {
+                role: RenderRole::DocumentBond,
+                bond_id: None,
+                points,
+                ..
+            } if points.len() == 3
+                && points.iter().all(|point| point.distance(endpoint) < 0.08) =>
+            {
+                Some(points)
+            }
+            _ => None,
+        })
+        .expect("endpoint ring junction should render a center patch");
+    assert!(center_patch
+        .iter()
+        .all(|point| point.distance(endpoint) > 0.005));
+
+    let incident_areas: Vec<f64> = engine
+        .render_list()
+        .into_iter()
+        .filter_map(|primitive| match primitive {
+            RenderPrimitive::Polygon {
+                role: RenderRole::DocumentBond,
+                bond_id: Some(_),
+                points,
+                ..
+            } if points
+                .iter()
+                .any(|point| point.distance(endpoint) < DEFAULT_BOND_STROKE) =>
+            {
+                Some(polygon_area(&points))
+            }
+            _ => None,
+        })
+        .collect();
+    assert!(
+        incident_areas.iter().all(|area| *area > 0.01),
+        "{incident_areas:?}"
+    );
+}
+
+#[test]
+fn template_click_on_endpoint_attaches_ring_on_symmetry_axis() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, px(300.0), px(260.0));
+    let existing_begin = node_world_point(&engine, "n_1");
+    let endpoint = node_world_point(&engine, "n_2");
+
+    engine.set_tool_state(templates_tool("ring-5"));
+    click(&mut engine, endpoint.x, endpoint.y);
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    assert_eq!(entry.fragment.nodes.len(), 6);
+    assert_eq!(entry.fragment.bonds.len(), 6);
+    assert_eq!(
+        entry
+            .fragment
+            .bonds
+            .iter()
+            .filter(|bond| bond.begin == "n_2" || bond.end == "n_2")
+            .count(),
+        3
+    );
+    let ring_points = entry
+        .fragment
+        .nodes
+        .iter()
+        .filter(|node| node.id != "n_1")
+        .map(|node| entry.world_point_for_node(node))
+        .collect::<Vec<_>>();
+    let center = Point::new(
+        ring_points.iter().map(|point| point.x).sum::<f64>() / ring_points.len() as f64,
+        ring_points.iter().map(|point| point.y).sum::<f64>() / ring_points.len() as f64,
+    );
+    let expected_axis = chemcore_engine::angle_between(existing_begin, endpoint);
+    let actual_axis = chemcore_engine::angle_between(endpoint, center);
+    assert!(
+        chemcore_engine::angular_distance(expected_axis, actual_axis) < 0.2,
+        "{expected_axis} {actual_axis}"
+    );
+    assert_no_duplicate_node_positions(&engine);
+}
+
+#[test]
+fn template_drag_on_endpoint_snaps_ring_axis_to_15_degrees() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, px(300.0), px(260.0));
+
+    let endpoint = node_world_point(&engine, "n_2");
+    let target = endpoint.translated(direction_from_angle(22.0).scaled(DEFAULT_BOND_LENGTH * 2.0));
+    engine.set_tool_state(templates_tool("ring-6"));
+    engine.pointer_down(PointerEvent {
+        x: endpoint.x,
+        y: endpoint.y,
+        button: Some(0),
+        alt_key: false,
+    });
+    engine.pointer_move(PointerEvent {
+        x: target.x,
+        y: target.y,
+        button: None,
+        alt_key: false,
+    });
+    engine.pointer_up(PointerEvent {
+        x: target.x,
+        y: target.y,
+        button: Some(0),
+        alt_key: false,
+    });
+
+    let ring_points = {
+        let entry = engine.state().document.editable_fragment().unwrap();
+        entry
+            .fragment
+            .nodes
+            .iter()
+            .filter(|node| node.id != "n_1")
+            .map(|node| entry.world_point_for_node(node))
+            .collect::<Vec<_>>()
+    };
+    let center = Point::new(
+        ring_points.iter().map(|point| point.x).sum::<f64>() / ring_points.len() as f64,
+        ring_points.iter().map(|point| point.y).sum::<f64>() / ring_points.len() as f64,
+    );
+    assert!((chemcore_engine::angle_between(endpoint, center) - 15.0).abs() < 0.2);
+    assert_eq!(attached_node_points(&engine, "n_2").len(), 3);
+    assert!(
+        attached_node_points(&engine, "n_2")
+            .iter()
+            .filter(|point| point.distance(node_world_point(&engine, "n_1")) > 0.03)
+            .count()
+            == 2
+    );
+    assert_no_duplicate_node_positions(&engine);
+}
+
+#[test]
+fn template_click_on_blank_canvas_creates_regular_ring() {
+    let mut engine = Engine::new();
+    let anchor = px_point(300.0, 260.0);
+
+    engine.set_tool_state(templates_tool("ring-6"));
+    click(&mut engine, anchor.x, anchor.y);
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    assert_eq!(entry.fragment.nodes.len(), 6);
+    assert_eq!(entry.fragment.bonds.len(), 6);
+    let ring_points = entry
+        .fragment
+        .nodes
+        .iter()
+        .map(|node| entry.world_point_for_node(node))
+        .collect::<Vec<_>>();
+    let center = Point::new(
+        ring_points.iter().map(|point| point.x).sum::<f64>() / ring_points.len() as f64,
+        ring_points.iter().map(|point| point.y).sum::<f64>() / ring_points.len() as f64,
+    );
+    assert!(center.distance(anchor) < 0.002, "{center:?} {anchor:?}");
+    assert!(ring_points.iter().all(|point| point.distance(anchor) > 0.01));
+    for bond in &entry.fragment.bonds {
+        let begin = entry
+            .fragment
+            .nodes
+            .iter()
+            .find(|node| node.id == bond.begin)
+            .map(|node| entry.world_point_for_node(node))
+            .unwrap();
+        let end = entry
+            .fragment
+            .nodes
+            .iter()
+            .find(|node| node.id == bond.end)
+            .map(|node| entry.world_point_for_node(node))
+            .unwrap();
+        assert!(
+            (begin.distance(end) - DEFAULT_BOND_LENGTH).abs() < 0.01,
+            "{begin:?} {end:?}"
+        );
+    }
+    assert_no_duplicate_node_positions(&engine);
+}
+
+#[test]
+fn template_drag_on_blank_canvas_snaps_ring_axis_to_15_degrees() {
+    let mut engine = Engine::new();
+    let anchor = px_point(300.0, 260.0);
+    let target = anchor.translated(direction_from_angle(22.0).scaled(DEFAULT_BOND_LENGTH * 2.0));
+
+    engine.set_tool_state(templates_tool("ring-6"));
+    engine.pointer_down(PointerEvent {
+        x: anchor.x,
+        y: anchor.y,
+        button: Some(0),
+        alt_key: false,
+    });
+    engine.pointer_move(PointerEvent {
+        x: target.x,
+        y: target.y,
+        button: None,
+        alt_key: false,
+    });
+    engine.pointer_up(PointerEvent {
+        x: target.x,
+        y: target.y,
+        button: Some(0),
+        alt_key: false,
+    });
+
+    let ring_points = {
+        let entry = engine.state().document.editable_fragment().unwrap();
+        assert_eq!(entry.fragment.nodes.len(), 6);
+        assert_eq!(entry.fragment.bonds.len(), 6);
+        entry
+            .fragment
+            .nodes
+            .iter()
+            .map(|node| entry.world_point_for_node(node))
+            .collect::<Vec<_>>()
+    };
+    let center = Point::new(
+        ring_points.iter().map(|point| point.x).sum::<f64>() / ring_points.len() as f64,
+        ring_points.iter().map(|point| point.y).sum::<f64>() / ring_points.len() as f64,
+    );
+    assert!(ring_points.iter().any(|point| point.distance(anchor) < 0.01));
+    assert!((chemcore_engine::angle_between(anchor, center) - 15.0).abs() < 0.2);
+    assert_no_duplicate_node_positions(&engine);
+}
+
+#[test]
+fn template_click_reuses_existing_endpoint_at_generated_ring_vertex() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, px(300.0), px(260.0));
+
+    let ring_points = fused_ring_points_for_bond(
+        node_world_point(&engine, "n_1"),
+        node_world_point(&engine, "n_2"),
+        6,
+        1.0,
+    );
+    let reusable_point = ring_points[2];
+    engine.add_single_bond_between(
+        chemcore_engine::BondAnchor {
+            node_id: None,
+            point: reusable_point,
+            label_anchor: None,
+        },
+        chemcore_engine::BondAnchor {
+            node_id: None,
+            point: reusable_point
+                .translated(direction_from_angle(37.0).scaled(DEFAULT_BOND_LENGTH * 1.7)),
+            label_anchor: None,
+        },
+    );
+    let reusable_id = node_id_at(&engine, reusable_point).expect("reusable node should exist");
+
+    engine.set_tool_state(templates_tool("ring-6"));
+    click(&mut engine, FIRST_CENTER_X, FIRST_CENTER_Y);
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    assert_eq!(entry.fragment.nodes.len(), 7);
+    assert!(entry.fragment.bonds.iter().any(|bond| {
+        (bond.begin == "n_2" && bond.end == reusable_id)
+            || (bond.begin == reusable_id && bond.end == "n_2")
+    }));
+    assert_no_duplicate_node_positions(&engine);
 }
 
 #[test]
@@ -2440,9 +3024,13 @@ fn dragged_bond_endpoint_reuses_focused_existing_endpoint() {
     let entry = engine.state().document.editable_fragment().unwrap();
     let closed_bond = entry.fragment.bonds.last().unwrap();
     assert_eq!(closed_bond.order, 2);
-    assert_eq!(
+    assert!(matches!(
         closed_bond.double.as_ref().map(|double| double.placement),
-        Some(DoubleBondPlacement::Center),
+        Some(DoubleBondPlacement::Left | DoubleBondPlacement::Right)
+    ));
+    assert_ne!(
+        closed_bond.double.as_ref().map(|double| double.placement),
+        Some(DoubleBondPlacement::Center)
     );
 }
 
@@ -2699,6 +3287,312 @@ fn select_tool_shift_click_adds_to_selection() {
     engine.select_at_point(Point::new(FIRST_START_X, FIRST_START_Y), true);
 
     assert_eq!(engine.state().selection.nodes.len(), 2);
+}
+
+#[test]
+fn select_tool_dragging_selected_bond_moves_its_endpoints() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, px(300.0), px(260.0));
+    engine.set_tool_state(select_tool());
+    let start = Point::new(FIRST_CENTER_X, FIRST_CENTER_Y);
+    let end = Point::new(FIRST_CENTER_X + px(24.0), FIRST_CENTER_Y + px(18.0));
+
+    engine.select_at_point(start, false);
+    assert!(engine.begin_selection_move_at_point(start, false, false));
+    assert!(engine.update_selection_move(end, false));
+    assert!(engine.finish_selection_move(end, false));
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let n1 = entry
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == "n_1")
+        .unwrap();
+    let n2 = entry
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == "n_2")
+        .unwrap();
+    let expected_n1_x = round_to_2(FIRST_START_X + px(24.0));
+    let expected_n1_y = round_to_2(FIRST_START_Y + px(18.0));
+    let expected_n2_x = round_to_2(FIRST_END_X + px(24.0));
+    let expected_n2_y = round_to_2(FIRST_END_Y + px(18.0));
+    assert!(
+        (n1.position[0] - expected_n1_x).abs() < 0.01,
+        "n1 x {:?} expected {expected_n1_x}",
+        n1.position
+    );
+    assert!(
+        (n1.position[1] - expected_n1_y).abs() < 0.01,
+        "n1 y {:?} expected {expected_n1_y}",
+        n1.position
+    );
+    assert!(
+        (n2.position[0] - expected_n2_x).abs() < 0.01,
+        "n2 x {:?} expected {expected_n2_x}",
+        n2.position
+    );
+    assert!(
+        (n2.position[1] - expected_n2_y).abs() < 0.01,
+        "n2 y {:?} expected {expected_n2_y}",
+        n2.position
+    );
+}
+
+#[test]
+fn select_tool_dragging_unselected_bond_focus_starts_move() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, px(300.0), px(260.0));
+    engine.set_tool_state(select_tool());
+    let start = Point::new(FIRST_CENTER_X, FIRST_CENTER_Y);
+    let end = Point::new(FIRST_CENTER_X + px(16.0), FIRST_CENTER_Y);
+
+    assert!(engine.state().selection.is_empty());
+    assert!(engine.begin_selection_move_at_point(start, false, false));
+    assert_eq!(engine.state().selection.bonds, vec!["b_3"]);
+    assert!(engine.update_selection_move(end, false));
+    assert!(engine.finish_selection_move(end, false));
+    assert!(engine.state().selection.is_empty());
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let n1 = entry
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == "n_1")
+        .unwrap();
+    assert!((n1.position[0] - round_to_2(FIRST_START_X + px(16.0))).abs() < 0.001);
+}
+
+#[test]
+fn select_tool_rotating_selected_bond_snaps_to_15_degrees() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, px(300.0), px(260.0));
+    engine.set_tool_state(select_tool());
+    let center = Point::new(FIRST_CENTER_X, FIRST_CENTER_Y);
+    let start = center.translated(direction_from_angle(0.0).scaled(1.0));
+    let target = center.translated(direction_from_angle(22.0).scaled(1.0));
+
+    engine.select_at_point(center, false);
+    assert!(engine.begin_selection_rotate(start));
+    assert!(engine.update_selection_rotate(target, false));
+    assert!(engine.render_list().iter().all(|primitive| !matches!(
+        primitive,
+        RenderPrimitive::Rect {
+            role: RenderRole::SelectionBox
+                | RenderRole::SelectionBond
+                | RenderRole::SelectionNode
+                | RenderRole::SelectionTextBox,
+            ..
+        } | RenderPrimitive::Circle {
+            role: RenderRole::SelectionBondDot,
+            ..
+        }
+    )));
+    assert!(engine.finish_selection_rotate(target, false));
+
+    let expected_n1 = rotate_point_around(Point::new(FIRST_START_X, FIRST_START_Y), center, 15.0);
+    let expected_n2 = rotate_point_around(Point::new(FIRST_END_X, FIRST_END_Y), center, 15.0);
+    let n1 = node_world_point(&engine, "n_1");
+    let n2 = node_world_point(&engine, "n_2");
+    assert!((n1.x - round_to_2(expected_n1.x)).abs() < 0.001, "{n1:?}");
+    assert!((n1.y - round_to_2(expected_n1.y)).abs() < 0.001, "{n1:?}");
+    assert!((n2.x - round_to_2(expected_n2.x)).abs() < 0.001, "{n2:?}");
+    assert!((n2.y - round_to_2(expected_n2.y)).abs() < 0.001, "{n2:?}");
+}
+
+#[test]
+fn select_tool_alt_rotating_selected_bond_uses_free_angle() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, px(300.0), px(260.0));
+    engine.set_tool_state(select_tool());
+    let center = Point::new(FIRST_CENTER_X, FIRST_CENTER_Y);
+    let start = center.translated(direction_from_angle(0.0).scaled(1.0));
+    let target = center.translated(direction_from_angle(22.0).scaled(1.0));
+
+    engine.select_at_point(center, false);
+    assert!(engine.begin_selection_rotate(start));
+    assert!(engine.update_selection_rotate(target, true));
+    assert!(engine.finish_selection_rotate(target, true));
+
+    let expected_n2 = rotate_point_around(Point::new(FIRST_END_X, FIRST_END_Y), center, 22.0);
+    let n2 = node_world_point(&engine, "n_2");
+    assert!((n2.x - round_to_2(expected_n2.x)).abs() < 0.001, "{n2:?}");
+    assert!((n2.y - round_to_2(expected_n2.y)).abs() < 0.001, "{n2:?}");
+}
+
+#[test]
+fn select_tool_dragging_single_terminal_endpoint_snaps_to_15_degrees() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, px(300.0), px(260.0));
+    engine.set_tool_state(select_tool());
+    let start = Point::new(FIRST_END_X, FIRST_END_Y);
+    let target = Point::new(FIRST_START_X, FIRST_START_Y)
+        .translated(direction_from_angle(22.0).scaled(DEFAULT_BOND_LENGTH * 1.4));
+
+    engine.select_at_point(start, false);
+    assert!(engine.begin_selection_move_at_point(start, false, false));
+    assert!(engine.state().overlay.hover_endpoint.is_none());
+    assert!(engine.update_selection_move(target, false));
+    assert!(engine.state().overlay.hover_endpoint.is_none());
+    assert!(engine.finish_selection_move(target, false));
+
+    let expected = Point::new(FIRST_START_X, FIRST_START_Y)
+        .translated(direction_from_angle(15.0).scaled(DEFAULT_BOND_LENGTH));
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let n2 = entry
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == "n_2")
+        .unwrap();
+    assert!((n2.position[0] - round_to_2(expected.x)).abs() < 0.001);
+    assert!((n2.position[1] - round_to_2(expected.y)).abs() < 0.001);
+    assert_eq!(engine.state().selection.nodes, vec!["n_2"]);
+}
+
+#[test]
+fn select_tool_dragging_unselected_single_terminal_endpoint_clears_temporary_selection() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, px(300.0), px(260.0));
+    engine.set_tool_state(select_tool());
+    let start = Point::new(FIRST_END_X, FIRST_END_Y);
+    let target = Point::new(FIRST_START_X, FIRST_START_Y)
+        .translated(direction_from_angle(22.0).scaled(DEFAULT_BOND_LENGTH * 1.4));
+
+    assert!(engine.state().selection.is_empty());
+    assert!(engine.begin_selection_move_at_point(start, false, false));
+    assert_eq!(engine.state().selection.nodes, vec!["n_2"]);
+    assert!(engine.update_selection_move(target, false));
+    assert!(engine.finish_selection_move(target, false));
+
+    let expected = Point::new(FIRST_START_X, FIRST_START_Y)
+        .translated(direction_from_angle(15.0).scaled(DEFAULT_BOND_LENGTH));
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let n2 = entry
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == "n_2")
+        .unwrap();
+    assert!((n2.position[0] - round_to_2(expected.x)).abs() < 0.001);
+    assert!((n2.position[1] - round_to_2(expected.y)).abs() < 0.001);
+    assert!(engine.state().selection.is_empty());
+}
+
+#[test]
+fn select_tool_alt_dragging_single_terminal_endpoint_uses_pointer_position() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, px(300.0), px(260.0));
+    engine.set_tool_state(select_tool());
+    let start = Point::new(FIRST_END_X, FIRST_END_Y);
+    let target = Point::new(FIRST_END_X + px(17.0), FIRST_END_Y + px(23.0));
+
+    engine.select_at_point(start, false);
+    assert!(engine.begin_selection_move_at_point(start, false, true));
+    assert!(engine.update_selection_move(target, true));
+    assert!(engine.finish_selection_move(target, true));
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let n2 = entry
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == "n_2")
+        .unwrap();
+    assert!((n2.position[0] - round_to_2(target.x)).abs() < 0.001);
+    assert!((n2.position[1] - round_to_2(target.y)).abs() < 0.001);
+    assert_eq!(engine.state().selection.nodes, vec!["n_2"]);
+}
+
+#[test]
+fn select_toolbar_align_left_uses_outer_left_edge() {
+    let mut engine = Engine::new();
+    load_arrange_text_document(&mut engine);
+    select_all_arrange_text_objects(&mut engine);
+
+    assert!(engine.apply_selection_arrange_command("align-left"));
+
+    assert_eq!(text_translate(&engine, "obj_text_a")[0], 0.0);
+    assert_eq!(text_translate(&engine, "obj_text_b")[0], 0.0);
+    assert_eq!(text_translate(&engine, "obj_text_c")[0], 0.0);
+}
+
+#[test]
+fn select_toolbar_vertical_center_aligns_box_centers_on_y_axis() {
+    let mut engine = Engine::new();
+    load_arrange_text_document(&mut engine);
+    select_all_arrange_text_objects(&mut engine);
+
+    assert!(engine.apply_selection_arrange_command("align-v-center"));
+
+    assert_eq!(text_translate(&engine, "obj_text_a")[1], 20.0);
+    assert_eq!(text_translate(&engine, "obj_text_b")[1], 20.0);
+    assert_eq!(text_translate(&engine, "obj_text_c")[1], 20.0);
+}
+
+#[test]
+fn select_toolbar_horizontal_distribution_equalizes_edge_gaps_not_centers() {
+    let mut engine = Engine::new();
+    load_arrange_text_document(&mut engine);
+    select_all_arrange_text_objects(&mut engine);
+
+    assert!(engine.apply_selection_arrange_command("distribute-h"));
+
+    assert_eq!(text_translate(&engine, "obj_text_a")[0], 0.0);
+    assert_eq!(text_translate(&engine, "obj_text_b")[0], 50.0);
+    assert_eq!(text_translate(&engine, "obj_text_c")[0], 100.0);
+}
+
+#[test]
+fn select_toolbar_flip_horizontal_keeps_selection_center_fixed() {
+    let mut engine = Engine::new();
+    load_arrange_text_document(&mut engine);
+    select_all_arrange_text_objects(&mut engine);
+
+    assert!(engine.apply_selection_arrange_command("flip-h"));
+
+    assert_eq!(text_translate(&engine, "obj_text_a")[0], 120.0);
+    assert_eq!(text_translate(&engine, "obj_text_b")[0], 90.0);
+    assert_eq!(text_translate(&engine, "obj_text_c")[0], 0.0);
+}
+
+#[test]
+fn select_toolbar_flip_horizontal_mirrors_selected_molecule_geometry_in_place() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, px(300.0), px(260.0));
+    engine.set_tool_state(select_tool());
+    engine.select_at_point(Point::new(FIRST_CENTER_X, FIRST_CENTER_Y), false);
+
+    assert!(engine.apply_selection_arrange_command("flip-h"));
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let n1 = entry
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == "n_1")
+        .unwrap();
+    let n2 = entry
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == "n_2")
+        .unwrap();
+    assert!((n1.position[0] - FIRST_END_X).abs() < 0.01);
+    assert!((n1.position[1] - FIRST_START_Y).abs() < 0.01);
+    assert!((n2.position[0] - FIRST_START_X).abs() < 0.01);
+    assert!((n2.position[1] - FIRST_END_Y).abs() < 0.01);
 }
 
 #[test]
@@ -3008,6 +3902,68 @@ fn double_tool_defaults_to_center_on_three_connected_node() {
         .unwrap();
     assert_eq!(bond.order, 2);
     assert_eq!(
+        bond.double.as_ref().map(|double| double.placement),
+        Some(DoubleBondPlacement::Center)
+    );
+}
+
+#[test]
+fn double_tool_does_not_default_to_center_when_each_endpoint_has_one_same_side_substituent() {
+    let mut engine = Engine::new();
+    engine.add_single_bond(
+        chemcore_engine::BondAnchor {
+            node_id: None,
+            point: px_point(300.0, 260.0),
+            label_anchor: None,
+        },
+        chemcore_engine::Point::new(FIRST_END_X, FIRST_END_Y),
+    );
+    engine.add_single_bond_between(
+        chemcore_engine::BondAnchor {
+            node_id: Some("n_1".to_string()),
+            point: px_point(300.0, 260.0),
+            label_anchor: None,
+        },
+        chemcore_engine::BondAnchor {
+            node_id: None,
+            point: px_point(268.82, 242.0),
+            label_anchor: None,
+        },
+    );
+    engine.add_single_bond_between(
+        chemcore_engine::BondAnchor {
+            node_id: Some("n_2".to_string()),
+            point: chemcore_engine::Point::new(FIRST_END_X, FIRST_END_Y),
+            label_anchor: None,
+        },
+        chemcore_engine::BondAnchor {
+            node_id: None,
+            point: px_point(300.0, 242.0),
+            label_anchor: None,
+        },
+    );
+
+    engine.set_tool_state(double_bond_tool());
+    engine.pointer_down(PointerEvent {
+        x: FIRST_CENTER_X,
+        y: FIRST_CENTER_Y,
+        button: Some(0),
+        alt_key: false,
+    });
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let bond = entry
+        .fragment
+        .bonds
+        .iter()
+        .find(|bond| bond.begin == "n_1" && bond.end == "n_2")
+        .unwrap();
+    assert_eq!(bond.order, 2);
+    assert!(matches!(
+        bond.double.as_ref().map(|double| double.placement),
+        Some(DoubleBondPlacement::Left | DoubleBondPlacement::Right)
+    ));
+    assert_ne!(
         bond.double.as_ref().map(|double| double.placement),
         Some(DoubleBondPlacement::Center)
     );

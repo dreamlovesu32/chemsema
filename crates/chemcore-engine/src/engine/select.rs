@@ -1,9 +1,13 @@
-use super::text_edit::{endpoint_label_world_bounds, text_object_world_bounds};
+use super::text_edit::{
+    endpoint_label_world_bounds, refresh_attached_node_label_geometry_for_all_nodes,
+    text_object_world_bounds,
+};
 use super::Engine;
 use crate::{
-    fragment_bond_visual_bounds, hit_test_bond_center, hit_test_endpoint, HoverTextBox, Point,
-    RenderPrimitive, RenderRole, SelectionState, BOND_CENTER_HIT_RADIUS, ENDPOINT_FOCUS_RADIUS,
-    ENDPOINT_HIT_RADIUS,
+    angle_between, direction_from_angle, fragment_bond_visual_bounds, hit_test_bond_center,
+    hit_test_endpoint, nearest_angle, round2, HoverTextBox, Point, RenderPrimitive, RenderRole,
+    SelectionState, BOND_CENTER_HIT_RADIUS, DEFAULT_BOND_LENGTH, ENDPOINT_FOCUS_RADIUS,
+    ENDPOINT_HIT_RADIUS, GLOBAL_SNAP_ANGLES,
 };
 use std::collections::{BTreeSet, VecDeque};
 
@@ -85,7 +89,188 @@ struct FragmentSelectionItem {
     center: Point,
 }
 
+#[derive(Clone)]
+struct SelectionArrangeItem {
+    original_bounds: AxisBounds,
+    bounds: AxisBounds,
+    node_ids: Vec<String>,
+    text_object_ids: Vec<String>,
+    mirror_x: Option<f64>,
+    mirror_y: Option<f64>,
+}
+
+#[derive(Clone)]
+struct NodeMoveOriginal {
+    node_id: String,
+    position: [f64; 2],
+}
+
+#[derive(Clone)]
+struct TextMoveOriginal {
+    object_id: String,
+    translate: [f64; 2],
+}
+
+#[derive(Clone)]
+enum SelectionMoveMode {
+    Translate,
+    TerminalNode {
+        node_id: String,
+        pivot: Point,
+        length: f64,
+    },
+}
+
+pub(super) struct SelectionMoveDrag {
+    start: Point,
+    node_originals: Vec<NodeMoveOriginal>,
+    text_originals: Vec<TextMoveOriginal>,
+    mode: SelectionMoveMode,
+    preserve_selection_after_drag: bool,
+    undo_pushed: bool,
+    changed: bool,
+}
+
+pub(super) struct SelectionRotateDrag {
+    center: Point,
+    start_angle: f64,
+    node_originals: Vec<NodeMoveOriginal>,
+    text_originals: Vec<TextMoveOriginal>,
+    undo_pushed: bool,
+    changed: bool,
+}
+
 impl Engine {
+    pub fn selection_contains_point(&self, point: Point) -> bool {
+        self.selection_hit_bounds()
+            .into_iter()
+            .any(|bounds| point_in_bounds(point, bounds))
+    }
+
+    pub fn begin_selection_move_at_point(
+        &mut self,
+        point: Point,
+        additive: bool,
+        _alt_key: bool,
+    ) -> bool {
+        let mut preserve_selection_after_drag = true;
+        if self.state.selection.is_empty() || !self.selection_contains_point(point) {
+            let Some(hit) = self.select_hit_at_point(point) else {
+                return false;
+            };
+            preserve_selection_after_drag = selection_contains_hit(&self.state.selection, &hit);
+            let mut selection = if additive {
+                self.state.selection.clone()
+            } else {
+                SelectionState::default()
+            };
+            if !additive {
+                selection.region = false;
+            }
+            add_hit_to_selection(&mut selection, hit);
+            self.state.selection = selection;
+        }
+        let Some(drag) = self.build_selection_move_drag(point, preserve_selection_after_drag) else {
+            return false;
+        };
+        self.drag = None;
+        clear_select_hover_overlay(self);
+        self.selection_drag = Some(drag);
+        true
+    }
+
+    pub fn begin_selection_rotate(&mut self, point: Point) -> bool {
+        let Some(drag) = self.build_selection_rotate_drag(point) else {
+            return false;
+        };
+        self.drag = None;
+        self.selection_drag = None;
+        clear_select_hover_overlay(self);
+        self.selection_rotate_drag = Some(drag);
+        true
+    }
+
+    pub fn update_selection_rotate(&mut self, point: Point, alt_key: bool) -> bool {
+        if self.selection_rotate_drag.is_none() {
+            return false;
+        }
+        clear_select_hover_overlay(self);
+        self.apply_selection_rotate_drag(point, alt_key);
+        true
+    }
+
+    pub fn finish_selection_rotate(&mut self, point: Point, alt_key: bool) -> bool {
+        if self.selection_rotate_drag.is_none() {
+            return false;
+        }
+        self.apply_selection_rotate_drag(point, alt_key);
+        let changed = self
+            .selection_rotate_drag
+            .as_ref()
+            .is_some_and(|drag| drag.changed);
+        self.selection_rotate_drag = None;
+        self.hover_select_target(point);
+        changed
+    }
+
+    pub fn update_selection_move(&mut self, point: Point, alt_key: bool) -> bool {
+        if self.selection_drag.is_none() {
+            return false;
+        }
+        clear_select_hover_overlay(self);
+        self.apply_selection_move_drag(point, alt_key);
+        true
+    }
+
+    pub fn finish_selection_move(&mut self, point: Point, alt_key: bool) -> bool {
+        if self.selection_drag.is_none() {
+            return false;
+        }
+        self.apply_selection_move_drag(point, alt_key);
+        let changed = self
+            .selection_drag
+            .as_ref()
+            .is_some_and(|drag| drag.changed);
+        let should_clear_selection = changed
+            && self
+                .selection_drag
+                .as_ref()
+                .is_some_and(|drag| !drag.preserve_selection_after_drag);
+        self.selection_drag = None;
+        if should_clear_selection {
+            self.state.selection = SelectionState::default();
+        }
+        self.hover_select_target(point);
+        changed
+    }
+
+    pub fn apply_selection_arrange_command(&mut self, command: &str) -> bool {
+        let mut items = self.selection_arrange_items();
+        if items.is_empty() {
+            return false;
+        }
+        let changed = match command {
+            "align-left" => align_items(&mut items, AlignAxis::XMin),
+            "align-right" => align_items(&mut items, AlignAxis::XMax),
+            "align-top" => align_items(&mut items, AlignAxis::YMin),
+            "align-bottom" => align_items(&mut items, AlignAxis::YMax),
+            "align-h-center" => align_items(&mut items, AlignAxis::XCenter),
+            "align-v-center" => align_items(&mut items, AlignAxis::YCenter),
+            "distribute-h" => distribute_items(&mut items, DistributeAxis::Horizontal),
+            "distribute-v" => distribute_items(&mut items, DistributeAxis::Vertical),
+            "flip-h" => flip_items(&mut items, FlipAxis::Horizontal),
+            "flip-v" => flip_items(&mut items, FlipAxis::Vertical),
+            _ => false,
+        };
+        if !changed {
+            return false;
+        }
+        self.push_undo_snapshot();
+        apply_arrange_items_to_document(self, &items);
+        self.clear_interaction();
+        true
+    }
+
     pub fn select_at_point(&mut self, point: Point, additive: bool) {
         let hit = self.select_hit_at_point(point);
         self.state.selection = if let Some(hit) = hit {
@@ -142,6 +327,9 @@ impl Engine {
 
     pub(super) fn hover_select_target(&mut self, point: Point) {
         self.drag = None;
+        if self.selection_drag.is_some() {
+            return;
+        }
         self.state.overlay.hover_bond_center = None;
         self.state.overlay.hover_text_box = None;
         self.state.overlay.hover_endpoint = None;
@@ -258,12 +446,843 @@ impl Engine {
         selection
     }
 
+    fn selection_hit_bounds(&self) -> Vec<AxisBounds> {
+        let mut bounds = Vec::new();
+        for object in &self.state.document.objects {
+            if !self
+                .state
+                .selection
+                .text_objects
+                .iter()
+                .any(|object_id| object_id == &object.id)
+            {
+                continue;
+            }
+            if let Some(text_bounds) = text_object_world_bounds(object) {
+                bounds.push(AxisBounds::from_array(text_bounds));
+            }
+        }
+
+        let Some(entry) = self.state.document.editable_fragment() else {
+            return bounds;
+        };
+        for component in selected_component_summaries(self) {
+            let items = component_selection_items(&self.state.document, &entry, &component);
+            if items.is_empty() {
+                continue;
+            }
+            if items.len() == 1 {
+                bounds.push(items[0].bounds);
+            } else {
+                bounds.push(items.iter().skip(1).fold(items[0].bounds, |mut acc, item| {
+                    acc.include_bounds(item.bounds);
+                    acc
+                }));
+            }
+        }
+        bounds
+    }
+
+    fn selection_arrange_items(&self) -> Vec<SelectionArrangeItem> {
+        let mut items = Vec::new();
+        for object in &self.state.document.objects {
+            if !self
+                .state
+                .selection
+                .text_objects
+                .iter()
+                .any(|object_id| object_id == &object.id)
+            {
+                continue;
+            }
+            let Some(bounds) = text_object_world_bounds(object) else {
+                continue;
+            };
+            items.push(SelectionArrangeItem {
+                original_bounds: AxisBounds::from_array(bounds),
+                bounds: AxisBounds::from_array(bounds),
+                node_ids: Vec::new(),
+                text_object_ids: vec![object.id.clone()],
+                mirror_x: None,
+                mirror_y: None,
+            });
+        }
+
+        let Some(entry) = self.state.document.editable_fragment() else {
+            return items;
+        };
+        for component in selected_component_summaries(self) {
+            let fragment_items =
+                component_selection_items(&self.state.document, &entry, &component);
+            if fragment_items.is_empty() {
+                continue;
+            }
+            let bounds =
+                fragment_items
+                    .iter()
+                    .skip(1)
+                    .fold(fragment_items[0].bounds, |mut acc, item| {
+                        acc.include_bounds(item.bounds);
+                        acc
+                    });
+            let node_ids = component_movable_node_ids(entry.fragment, &component);
+            if node_ids.is_empty() {
+                continue;
+            }
+            items.push(SelectionArrangeItem {
+                original_bounds: bounds,
+                bounds,
+                node_ids,
+                text_object_ids: Vec::new(),
+                mirror_x: None,
+                mirror_y: None,
+            });
+        }
+        items
+    }
+
+    fn build_selection_move_drag(
+        &self,
+        start: Point,
+        preserve_selection_after_drag: bool,
+    ) -> Option<SelectionMoveDrag> {
+        if self.state.selection.is_empty() {
+            return None;
+        }
+        let mut node_ids = selected_movable_node_ids(self);
+        let text_ids = selected_text_object_ids(self);
+        if node_ids.is_empty() && text_ids.is_empty() {
+            return None;
+        }
+
+        let mut node_originals = Vec::new();
+        let mut mode = SelectionMoveMode::Translate;
+        if let Some(entry) = self.state.document.editable_fragment() {
+            node_ids.sort();
+            for node_id in &node_ids {
+                if let Some(node) = entry.fragment.nodes.iter().find(|node| &node.id == node_id) {
+                    node_originals.push(NodeMoveOriginal {
+                        node_id: node.id.clone(),
+                        position: node.position,
+                    });
+                }
+            }
+            if node_ids.len() == 1 && text_ids.is_empty() && self.state.selection.bonds.is_empty() {
+                if let Some((pivot, length)) = terminal_node_drag_axis(entry, &node_ids[0]) {
+                    mode = SelectionMoveMode::TerminalNode {
+                        node_id: node_ids[0].clone(),
+                        pivot,
+                        length,
+                    };
+                }
+            }
+        }
+
+        let mut text_originals = Vec::new();
+        for object in &self.state.document.objects {
+            if text_ids.contains(&object.id) {
+                text_originals.push(TextMoveOriginal {
+                    object_id: object.id.clone(),
+                    translate: object.transform.translate,
+                });
+            }
+        }
+
+        if node_originals.is_empty() && text_originals.is_empty() {
+            return None;
+        }
+
+        Some(SelectionMoveDrag {
+            start,
+            node_originals,
+            text_originals,
+            mode,
+            preserve_selection_after_drag,
+            undo_pushed: false,
+            changed: false,
+        })
+    }
+
+    fn apply_selection_move_drag(&mut self, point: Point, alt_key: bool) {
+        let Some(mut drag) = self.selection_drag.take() else {
+            return;
+        };
+        let changed = selection_drag_changes_document(&drag, point, alt_key);
+        if changed && !drag.undo_pushed {
+            self.push_undo_snapshot();
+            drag.undo_pushed = true;
+        }
+        if changed {
+            apply_selection_drag_to_document(self, &drag, point, alt_key);
+            drag.changed = true;
+        }
+        self.selection_drag = Some(drag);
+    }
+
+    fn build_selection_rotate_drag(&self, start: Point) -> Option<SelectionRotateDrag> {
+        if self.state.selection.is_empty() {
+            return None;
+        }
+        let mut node_ids = selected_movable_node_ids(self);
+        let text_ids = selected_text_object_ids(self);
+        if node_ids.is_empty() && text_ids.is_empty() {
+            return None;
+        }
+
+        let center = self.selection_rotation_bounds().map(|bounds| {
+            Point::new(
+                (bounds.min_x + bounds.max_x) * 0.5,
+                (bounds.min_y + bounds.max_y) * 0.5,
+            )
+        })?;
+        let mut node_originals = Vec::new();
+        if let Some(entry) = self.state.document.editable_fragment() {
+            node_ids.sort();
+            for node_id in &node_ids {
+                if let Some(node) = entry.fragment.nodes.iter().find(|node| &node.id == node_id) {
+                    node_originals.push(NodeMoveOriginal {
+                        node_id: node.id.clone(),
+                        position: node.position,
+                    });
+                }
+            }
+        }
+
+        let mut text_originals = Vec::new();
+        for object in &self.state.document.objects {
+            if text_ids.contains(&object.id) {
+                text_originals.push(TextMoveOriginal {
+                    object_id: object.id.clone(),
+                    translate: object.transform.translate,
+                });
+            }
+        }
+
+        if node_originals.is_empty() && text_originals.is_empty() {
+            return None;
+        }
+
+        Some(SelectionRotateDrag {
+            center,
+            start_angle: angle_between(center, start),
+            node_originals,
+            text_originals,
+            undo_pushed: false,
+            changed: false,
+        })
+    }
+
+    fn apply_selection_rotate_drag(&mut self, point: Point, alt_key: bool) {
+        let Some(mut drag) = self.selection_rotate_drag.take() else {
+            return;
+        };
+        let angle = selection_rotate_delta_degrees(&drag, point, alt_key);
+        let changed = angle.abs() > crate::EPSILON;
+        if changed && !drag.undo_pushed {
+            self.push_undo_snapshot();
+            drag.undo_pushed = true;
+        }
+        if changed {
+            apply_selection_rotation_to_document(self, &drag, angle);
+            drag.changed = true;
+        }
+        self.selection_rotate_drag = Some(drag);
+    }
+
     pub(super) fn selection_render_list(&self) -> Vec<RenderPrimitive> {
+        if self.selection_rotate_drag.is_some() {
+            return Vec::new();
+        }
         let mut out = Vec::new();
         render_selected_text_boxes(self, &mut out);
         render_selected_fragment_content(self, &mut out);
         out
     }
+
+    fn selection_rotation_bounds(&self) -> Option<AxisBounds> {
+        let mut out = None;
+        for object in &self.state.document.objects {
+            if !self.state.selection.text_objects.contains(&object.id) {
+                continue;
+            }
+            let Some(bounds) = text_object_world_bounds(object) else {
+                continue;
+            };
+            include_optional_bounds(&mut out, AxisBounds::from_array(bounds));
+        }
+        let Some(entry) = self.state.document.editable_fragment() else {
+            return out;
+        };
+        for component in selected_component_summaries(self) {
+            for item in component_selection_items(&self.state.document, &entry, &component) {
+                include_optional_bounds(&mut out, item.bounds);
+            }
+        }
+        out
+    }
+}
+
+fn selected_text_object_ids(engine: &Engine) -> BTreeSet<String> {
+    engine
+        .state
+        .selection
+        .text_objects
+        .iter()
+        .cloned()
+        .collect()
+}
+
+fn selected_movable_node_ids(engine: &Engine) -> Vec<String> {
+    let mut node_ids: BTreeSet<String> = engine.state.selection.nodes.iter().cloned().collect();
+    node_ids.extend(engine.state.selection.label_nodes.iter().cloned());
+    let Some(entry) = engine.state.document.editable_fragment() else {
+        return node_ids.into_iter().collect();
+    };
+    for bond_id in &engine.state.selection.bonds {
+        let Some(bond) = entry.fragment.bonds.iter().find(|bond| &bond.id == bond_id) else {
+            continue;
+        };
+        node_ids.insert(bond.begin.clone());
+        node_ids.insert(bond.end.clone());
+    }
+    node_ids.into_iter().collect()
+}
+
+fn component_movable_node_ids(
+    fragment: &crate::MoleculeFragment,
+    component: &ComponentSelection,
+) -> Vec<String> {
+    let mut node_ids: BTreeSet<String> = component.node_ids.iter().cloned().collect();
+    node_ids.extend(component.label_node_ids.iter().cloned());
+    for bond_id in &component.bond_ids {
+        let Some(bond) = fragment.bonds.iter().find(|bond| &bond.id == bond_id) else {
+            continue;
+        };
+        node_ids.insert(bond.begin.clone());
+        node_ids.insert(bond.end.clone());
+    }
+    node_ids.into_iter().collect()
+}
+
+#[derive(Clone, Copy)]
+enum AlignAxis {
+    XMin,
+    XMax,
+    XCenter,
+    YMin,
+    YMax,
+    YCenter,
+}
+
+#[derive(Clone, Copy)]
+enum DistributeAxis {
+    Horizontal,
+    Vertical,
+}
+
+#[derive(Clone, Copy)]
+enum FlipAxis {
+    Horizontal,
+    Vertical,
+}
+
+fn align_items(items: &mut [SelectionArrangeItem], axis: AlignAxis) -> bool {
+    if items.len() < 2 {
+        return false;
+    }
+    let target = match axis {
+        AlignAxis::XMin => items
+            .iter()
+            .map(|item| item.bounds.min_x)
+            .fold(f64::INFINITY, f64::min),
+        AlignAxis::XMax => items
+            .iter()
+            .map(|item| item.bounds.max_x)
+            .fold(f64::NEG_INFINITY, f64::max),
+        AlignAxis::XCenter => {
+            let min_x = items
+                .iter()
+                .map(|item| item.bounds.min_x)
+                .fold(f64::INFINITY, f64::min);
+            let max_x = items
+                .iter()
+                .map(|item| item.bounds.max_x)
+                .fold(f64::NEG_INFINITY, f64::max);
+            (min_x + max_x) * 0.5
+        }
+        AlignAxis::YMin => items
+            .iter()
+            .map(|item| item.bounds.min_y)
+            .fold(f64::INFINITY, f64::min),
+        AlignAxis::YMax => items
+            .iter()
+            .map(|item| item.bounds.max_y)
+            .fold(f64::NEG_INFINITY, f64::max),
+        AlignAxis::YCenter => {
+            let min_y = items
+                .iter()
+                .map(|item| item.bounds.min_y)
+                .fold(f64::INFINITY, f64::min);
+            let max_y = items
+                .iter()
+                .map(|item| item.bounds.max_y)
+                .fold(f64::NEG_INFINITY, f64::max);
+            (min_y + max_y) * 0.5
+        }
+    };
+
+    let mut changed = false;
+    for item in items {
+        let (dx, dy) = match axis {
+            AlignAxis::XMin => (target - item.bounds.min_x, 0.0),
+            AlignAxis::XMax => (target - item.bounds.max_x, 0.0),
+            AlignAxis::XCenter => (target - item.bounds.center_x(), 0.0),
+            AlignAxis::YMin => (0.0, target - item.bounds.min_y),
+            AlignAxis::YMax => (0.0, target - item.bounds.max_y),
+            AlignAxis::YCenter => (0.0, target - item.bounds.center_y()),
+        };
+        changed |= item.translate(dx, dy);
+    }
+    changed
+}
+
+fn distribute_items(items: &mut [SelectionArrangeItem], axis: DistributeAxis) -> bool {
+    if items.len() < 3 {
+        return false;
+    }
+    match axis {
+        DistributeAxis::Horizontal => items.sort_by(|a, b| {
+            a.bounds
+                .min_x
+                .total_cmp(&b.bounds.min_x)
+                .then(a.bounds.max_x.total_cmp(&b.bounds.max_x))
+        }),
+        DistributeAxis::Vertical => items.sort_by(|a, b| {
+            a.bounds
+                .min_y
+                .total_cmp(&b.bounds.min_y)
+                .then(a.bounds.max_y.total_cmp(&b.bounds.max_y))
+        }),
+    }
+    let span_min = match axis {
+        DistributeAxis::Horizontal => items.first().unwrap().bounds.min_x,
+        DistributeAxis::Vertical => items.first().unwrap().bounds.min_y,
+    };
+    let span_max = match axis {
+        DistributeAxis::Horizontal => items.last().unwrap().bounds.max_x,
+        DistributeAxis::Vertical => items.last().unwrap().bounds.max_y,
+    };
+    let occupied: f64 = items
+        .iter()
+        .map(|item| match axis {
+            DistributeAxis::Horizontal => item.bounds.width(),
+            DistributeAxis::Vertical => item.bounds.height(),
+        })
+        .sum();
+    let gap = (span_max - span_min - occupied) / (items.len() - 1) as f64;
+    let mut cursor = span_min;
+    let mut changed = false;
+    for item in items {
+        let (dx, dy) = match axis {
+            DistributeAxis::Horizontal => {
+                let dx = cursor - item.bounds.min_x;
+                cursor += item.bounds.width() + gap;
+                (dx, 0.0)
+            }
+            DistributeAxis::Vertical => {
+                let dy = cursor - item.bounds.min_y;
+                cursor += item.bounds.height() + gap;
+                (0.0, dy)
+            }
+        };
+        changed |= item.translate(dx, dy);
+    }
+    changed
+}
+
+fn flip_items(items: &mut [SelectionArrangeItem], axis: FlipAxis) -> bool {
+    if items.is_empty() {
+        return false;
+    }
+    let mut bounds = items[0].bounds;
+    for item in items.iter().skip(1) {
+        bounds.include_bounds(item.bounds);
+    }
+    let pivot = match axis {
+        FlipAxis::Horizontal => bounds.center_x(),
+        FlipAxis::Vertical => bounds.center_y(),
+    };
+    let mut changed = false;
+    for item in items {
+        match axis {
+            FlipAxis::Horizontal => changed |= item.flip_horizontal(pivot),
+            FlipAxis::Vertical => changed |= item.flip_vertical(pivot),
+        }
+    }
+    changed
+}
+
+impl AxisBounds {
+    fn width(self) -> f64 {
+        (self.max_x - self.min_x).max(0.0)
+    }
+
+    fn height(self) -> f64 {
+        (self.max_y - self.min_y).max(0.0)
+    }
+
+    fn center_x(self) -> f64 {
+        (self.min_x + self.max_x) * 0.5
+    }
+
+    fn center_y(self) -> f64 {
+        (self.min_y + self.max_y) * 0.5
+    }
+}
+
+impl SelectionArrangeItem {
+    fn translate(&mut self, dx: f64, dy: f64) -> bool {
+        if dx.abs() <= crate::EPSILON && dy.abs() <= crate::EPSILON {
+            return false;
+        }
+        self.bounds.min_x += dx;
+        self.bounds.max_x += dx;
+        self.bounds.min_y += dy;
+        self.bounds.max_y += dy;
+        true
+    }
+
+    fn flip_horizontal(&mut self, pivot_x: f64) -> bool {
+        let min_x = 2.0 * pivot_x - self.bounds.max_x;
+        let max_x = 2.0 * pivot_x - self.bounds.min_x;
+        let changed = (self.bounds.min_x - min_x).abs() > crate::EPSILON
+            || (self.bounds.max_x - max_x).abs() > crate::EPSILON
+            || self.node_ids.len() > 1;
+        self.bounds.min_x = min_x;
+        self.bounds.max_x = max_x;
+        self.mirror_x = Some(pivot_x);
+        changed
+    }
+
+    fn flip_vertical(&mut self, pivot_y: f64) -> bool {
+        let min_y = 2.0 * pivot_y - self.bounds.max_y;
+        let max_y = 2.0 * pivot_y - self.bounds.min_y;
+        let changed = (self.bounds.min_y - min_y).abs() > crate::EPSILON
+            || (self.bounds.max_y - max_y).abs() > crate::EPSILON
+            || self.node_ids.len() > 1;
+        self.bounds.min_y = min_y;
+        self.bounds.max_y = max_y;
+        self.mirror_y = Some(pivot_y);
+        changed
+    }
+}
+
+fn apply_arrange_items_to_document(engine: &mut Engine, items: &[SelectionArrangeItem]) {
+    for item in items {
+        for object_id in &item.text_object_ids {
+            let Some(object) = engine
+                .state
+                .document
+                .objects
+                .iter_mut()
+                .find(|object| object.id == *object_id)
+            else {
+                continue;
+            };
+            let Some(current_bounds) = text_object_world_bounds(object) else {
+                continue;
+            };
+            object.transform.translate = [
+                round2(object.transform.translate[0] + item.bounds.min_x - current_bounds[0]),
+                round2(object.transform.translate[1] + item.bounds.min_y - current_bounds[1]),
+            ];
+        }
+    }
+
+    let stroke_width = engine.options.bond_stroke_world_cm().value();
+    let Some(mut entry) = engine.state.document.editable_fragment_mut() else {
+        return;
+    };
+    let object_translate = entry.object.transform.translate;
+    for item in items {
+        for node_id in &item.node_ids {
+            let Some(node) = entry
+                .fragment
+                .nodes
+                .iter_mut()
+                .find(|node| node.id == *node_id)
+            else {
+                continue;
+            };
+            let original_world = Point::new(
+                object_translate[0] + node.position[0],
+                object_translate[1] + node.position[1],
+            );
+            let scale_x = if item.original_bounds.width() <= crate::EPSILON {
+                0.0
+            } else {
+                (original_world.x - item.original_bounds.min_x) / item.original_bounds.width()
+            };
+            let scale_y = if item.original_bounds.height() <= crate::EPSILON {
+                0.0
+            } else {
+                (original_world.y - item.original_bounds.min_y) / item.original_bounds.height()
+            };
+            let mut next_world = Point::new(
+                item.bounds.min_x + item.bounds.width() * scale_x,
+                item.bounds.min_y + item.bounds.height() * scale_y,
+            );
+            if let Some(pivot_x) = item.mirror_x {
+                next_world.x = 2.0 * pivot_x - original_world.x;
+            }
+            if let Some(pivot_y) = item.mirror_y {
+                next_world.y = 2.0 * pivot_y - original_world.y;
+            }
+            node.position = [
+                round2(next_world.x - object_translate[0]),
+                round2(next_world.y - object_translate[1]),
+            ];
+        }
+    }
+    refresh_attached_node_label_geometry_for_all_nodes(
+        entry.fragment,
+        object_translate,
+        stroke_width,
+    );
+    entry.update_bounds();
+}
+
+fn terminal_node_drag_axis(
+    entry: crate::EditableFragment<'_>,
+    node_id: &str,
+) -> Option<(Point, f64)> {
+    let incident: Vec<_> = entry
+        .fragment
+        .bonds
+        .iter()
+        .filter(|bond| bond.begin == node_id || bond.end == node_id)
+        .collect();
+    if incident.len() != 1 {
+        return None;
+    }
+    let bond = incident[0];
+    let other_id = if bond.begin == node_id {
+        &bond.end
+    } else {
+        &bond.begin
+    };
+    let node = entry
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == node_id)?;
+    let other = entry
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == *other_id)?;
+    let node_point = entry.world_point_for_node(node);
+    let pivot = entry.world_point_for_node(other);
+    let length = if pivot.distance(node_point) <= crate::EPSILON {
+        DEFAULT_BOND_LENGTH
+    } else {
+        pivot.distance(node_point)
+    };
+    Some((pivot, length))
+}
+
+fn selection_drag_changes_document(drag: &SelectionMoveDrag, point: Point, alt_key: bool) -> bool {
+    match &drag.mode {
+        SelectionMoveMode::TerminalNode { pivot, length, .. } => {
+            if point.distance(drag.start) <= crate::EPSILON {
+                return false;
+            }
+            let target = terminal_drag_target(*pivot, *length, point, alt_key);
+            drag.node_originals.iter().any(|node| {
+                (node.position[0] - target.x).abs() > 1.0e-9
+                    || (node.position[1] - target.y).abs() > 1.0e-9
+            })
+        }
+        SelectionMoveMode::Translate => point.distance(drag.start) > crate::EPSILON,
+    }
+}
+
+fn apply_selection_drag_to_document(
+    engine: &mut Engine,
+    drag: &SelectionMoveDrag,
+    point: Point,
+    alt_key: bool,
+) {
+    let delta_x = point.x - drag.start.x;
+    let delta_y = point.y - drag.start.y;
+
+    for original in &drag.text_originals {
+        let Some(object) = engine
+            .state
+            .document
+            .objects
+            .iter_mut()
+            .find(|object| object.id == original.object_id)
+        else {
+            continue;
+        };
+        if matches!(drag.mode, SelectionMoveMode::Translate) {
+            object.transform.translate = [
+                round2(original.translate[0] + delta_x),
+                round2(original.translate[1] + delta_y),
+            ];
+        }
+    }
+
+    let stroke_width = engine.options.bond_stroke_world_cm().value();
+    let Some(mut entry) = engine.state.document.editable_fragment_mut() else {
+        return;
+    };
+    let object_translate = entry.object.transform.translate;
+    match &drag.mode {
+        SelectionMoveMode::Translate => {
+            for original in &drag.node_originals {
+                if let Some(node) = entry
+                    .fragment
+                    .nodes
+                    .iter_mut()
+                    .find(|node| node.id == original.node_id)
+                {
+                    node.position = [
+                        round2(original.position[0] + delta_x),
+                        round2(original.position[1] + delta_y),
+                    ];
+                }
+            }
+        }
+        SelectionMoveMode::TerminalNode {
+            node_id,
+            pivot,
+            length,
+        } => {
+            let target = terminal_drag_target(*pivot, *length, point, alt_key);
+            if let Some(node) = entry
+                .fragment
+                .nodes
+                .iter_mut()
+                .find(|node| node.id == *node_id)
+            {
+                node.position = [
+                    round2(target.x - object_translate[0]),
+                    round2(target.y - object_translate[1]),
+                ];
+            }
+        }
+    }
+    refresh_attached_node_label_geometry_for_all_nodes(
+        entry.fragment,
+        object_translate,
+        stroke_width,
+    );
+    entry.update_bounds();
+}
+
+fn selection_rotate_delta_degrees(
+    drag: &SelectionRotateDrag,
+    point: Point,
+    alt_key: bool,
+) -> f64 {
+    let raw = signed_angle_delta(drag.start_angle, angle_between(drag.center, point));
+    if alt_key {
+        return raw;
+    }
+    (raw / 15.0).round() * 15.0
+}
+
+fn signed_angle_delta(start: f64, end: f64) -> f64 {
+    let mut delta = (end - start) % 360.0;
+    if delta > 180.0 {
+        delta -= 360.0;
+    } else if delta <= -180.0 {
+        delta += 360.0;
+    }
+    delta
+}
+
+fn rotate_point_around(point: Point, center: Point, degrees: f64) -> Point {
+    let radians = degrees.to_radians();
+    let cos = radians.cos();
+    let sin = radians.sin();
+    let dx = point.x - center.x;
+    let dy = point.y - center.y;
+    Point::new(
+        center.x + dx * cos - dy * sin,
+        center.y + dx * sin + dy * cos,
+    )
+}
+
+fn apply_selection_rotation_to_document(
+    engine: &mut Engine,
+    drag: &SelectionRotateDrag,
+    angle: f64,
+) {
+    for original in &drag.text_originals {
+        let Some(object) = engine
+            .state
+            .document
+            .objects
+            .iter_mut()
+            .find(|object| object.id == original.object_id)
+        else {
+            continue;
+        };
+        let next = rotate_point_around(
+            Point::new(original.translate[0], original.translate[1]),
+            drag.center,
+            angle,
+        );
+        object.transform.translate = [round2(next.x), round2(next.y)];
+    }
+
+    let stroke_width = engine.options.bond_stroke_world_cm().value();
+    let Some(mut entry) = engine.state.document.editable_fragment_mut() else {
+        return;
+    };
+    let object_translate = entry.object.transform.translate;
+    for original in &drag.node_originals {
+        let original_world = Point::new(
+            object_translate[0] + original.position[0],
+            object_translate[1] + original.position[1],
+        );
+        let next = rotate_point_around(original_world, drag.center, angle);
+        if let Some(node) = entry
+            .fragment
+            .nodes
+            .iter_mut()
+            .find(|node| node.id == original.node_id)
+        {
+            node.position = [
+                round2(next.x - object_translate[0]),
+                round2(next.y - object_translate[1]),
+            ];
+        }
+    }
+    refresh_attached_node_label_geometry_for_all_nodes(
+        entry.fragment,
+        object_translate,
+        stroke_width,
+    );
+    entry.update_bounds();
+}
+
+fn terminal_drag_target(pivot: Point, length: f64, point: Point, alt_key: bool) -> Point {
+    if alt_key {
+        return point;
+    }
+    let angle = nearest_angle(angle_between(pivot, point), GLOBAL_SNAP_ANGLES);
+    pivot.translated(direction_from_angle(angle).scaled(length))
+}
+
+fn clear_select_hover_overlay(engine: &mut Engine) {
+    engine.state.overlay.hover_bond_center = None;
+    engine.state.overlay.hover_text_box = None;
+    engine.state.overlay.hover_endpoint = None;
+    engine.state.overlay.preview = None;
 }
 
 fn render_selected_text_boxes(engine: &Engine, out: &mut Vec<RenderPrimitive>) {
@@ -463,6 +1482,15 @@ fn add_hit_to_selection(selection: &mut SelectionState, hit: SelectHit) {
     }
 }
 
+fn selection_contains_hit(selection: &SelectionState, hit: &SelectHit) -> bool {
+    match hit {
+        SelectHit::TextObject { object_id } => selection.text_objects.contains(object_id),
+        SelectHit::Label { node_id } => selection.label_nodes.contains(node_id),
+        SelectHit::Node { node_id } => selection.nodes.contains(node_id),
+        SelectHit::Bond { bond_id } => selection.bonds.contains(bond_id),
+    }
+}
+
 fn merge_selection(
     current: SelectionState,
     next: SelectionState,
@@ -535,6 +1563,14 @@ fn push_selection_bond_dot(out: &mut Vec<RenderPrimitive>, center: Point) {
 
 fn midpoint(a: Point, b: Point) -> Point {
     Point::new((a.x + b.x) * 0.5, (a.y + b.y) * 0.5)
+}
+
+fn include_optional_bounds(target: &mut Option<AxisBounds>, bounds: AxisBounds) {
+    if let Some(existing) = target {
+        existing.include_bounds(bounds);
+    } else {
+        *target = Some(bounds);
+    }
 }
 
 fn point_in_bounds(point: Point, bounds: AxisBounds) -> bool {

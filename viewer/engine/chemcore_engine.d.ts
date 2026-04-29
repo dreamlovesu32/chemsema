@@ -4,13 +4,18 @@
 export class WasmEngine {
     free(): void;
     [Symbol.dispose](): void;
+    applySelectionArrangeCommand(command: string): boolean;
     applyTextEdit(session_json: string): boolean;
+    beginSelectionMove(x: number, y: number, additive: boolean, alt_key: boolean): boolean;
+    beginSelectionRotate(x: number, y: number): boolean;
     beginTextEdit(x: number, y: number): string;
     canRedo(): boolean;
     canUndo(): boolean;
     clearInteraction(): void;
     deleteSelection(): boolean;
     documentJson(): string;
+    finishSelectionMove(x: number, y: number, alt_key: boolean): boolean;
+    finishSelectionRotate(x: number, y: number, alt_key: boolean): boolean;
     loadDocumentJson(json: string): void;
     constructor();
     pointerDown(x: number, y: number, alt_key: boolean): void;
@@ -24,9 +29,13 @@ export class WasmEngine {
     selectAtPoint(x: number, y: number, additive: boolean): void;
     selectInPolygon(points_json: string, additive: boolean): void;
     selectInRect(x1: number, y1: number, x2: number, y2: number, additive: boolean): void;
+    selectionContainsPoint(x: number, y: number): boolean;
+    setTemplate(template: string): void;
     setTool(active_tool: string, bond_variant: string): void;
     stateJson(): string;
     undo(): boolean;
+    updateSelectionMove(x: number, y: number, alt_key: boolean): boolean;
+    updateSelectionRotate(x: number, y: number, alt_key: boolean): boolean;
 }
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
@@ -34,13 +43,18 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly __wbg_wasmengine_free: (a: number, b: number) => void;
+    readonly wasmengine_applySelectionArrangeCommand: (a: number, b: number, c: number) => number;
     readonly wasmengine_applyTextEdit: (a: number, b: number, c: number) => [number, number, number];
+    readonly wasmengine_beginSelectionMove: (a: number, b: number, c: number, d: number, e: number) => number;
+    readonly wasmengine_beginSelectionRotate: (a: number, b: number, c: number) => number;
     readonly wasmengine_beginTextEdit: (a: number, b: number, c: number) => [number, number, number, number];
     readonly wasmengine_canRedo: (a: number) => number;
     readonly wasmengine_canUndo: (a: number) => number;
     readonly wasmengine_clearInteraction: (a: number) => void;
     readonly wasmengine_deleteSelection: (a: number) => number;
     readonly wasmengine_documentJson: (a: number) => [number, number, number, number];
+    readonly wasmengine_finishSelectionMove: (a: number, b: number, c: number, d: number) => number;
+    readonly wasmengine_finishSelectionRotate: (a: number, b: number, c: number, d: number) => number;
     readonly wasmengine_loadDocumentJson: (a: number, b: number, c: number) => [number, number];
     readonly wasmengine_new: () => number;
     readonly wasmengine_pointerDown: (a: number, b: number, c: number, d: number) => void;
@@ -54,9 +68,13 @@ export interface InitOutput {
     readonly wasmengine_selectAtPoint: (a: number, b: number, c: number, d: number) => void;
     readonly wasmengine_selectInPolygon: (a: number, b: number, c: number, d: number) => [number, number];
     readonly wasmengine_selectInRect: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+    readonly wasmengine_selectionContainsPoint: (a: number, b: number, c: number) => number;
+    readonly wasmengine_setTemplate: (a: number, b: number, c: number) => void;
     readonly wasmengine_setTool: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly wasmengine_stateJson: (a: number) => [number, number, number, number];
     readonly wasmengine_undo: (a: number) => number;
+    readonly wasmengine_updateSelectionMove: (a: number, b: number, c: number, d: number) => number;
+    readonly wasmengine_updateSelectionRotate: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_externrefs: WebAssembly.Table;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;

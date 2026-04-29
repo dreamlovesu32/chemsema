@@ -1,5 +1,6 @@
 mod delete;
 mod select;
+mod templates;
 mod text_edit;
 
 use self::text_edit::refresh_attached_node_label_geometry_for_all_nodes;
@@ -49,6 +50,9 @@ pub struct TextEditLayoutRequest {
 pub struct Engine {
     state: EngineState,
     drag: Option<DragState>,
+    selection_drag: Option<select::SelectionMoveDrag>,
+    selection_rotate_drag: Option<select::SelectionRotateDrag>,
+    template_drag: Option<templates::TemplateDrag>,
     options: EditorOptions,
     next_id: u64,
     undo_stack: Vec<ChemcoreDocument>,
@@ -71,6 +75,9 @@ impl Engine {
                 overlay: OverlayState::default(),
             },
             drag: None,
+            selection_drag: None,
+            selection_rotate_drag: None,
+            template_drag: None,
             options: EditorOptions::default(),
             next_id: 1,
             undo_stack: Vec::new(),
@@ -199,6 +206,10 @@ impl Engine {
             self.hover_select_target(point);
             return;
         }
+        if self.state.tool.active_tool == Tool::Templates {
+            self.pointer_move_template(event);
+            return;
+        }
         if self.state.tool.active_tool == Tool::Delete {
             self.drag = None;
             self.state.overlay.hover_bond_center = None;
@@ -319,6 +330,10 @@ impl Engine {
         if self.state.tool.active_tool == Tool::Select {
             return;
         }
+        if self.state.tool.active_tool == Tool::Templates {
+            self.pointer_down_template(event);
+            return;
+        }
         if self.state.tool.active_tool == Tool::Delete {
             self.state.selection = SelectionState::default();
             self.clear_interaction();
@@ -385,6 +400,10 @@ impl Engine {
                 hit_test_endpoint(&self.state.document, event.point(), ENDPOINT_HIT_RADIUS);
             return;
         }
+        if self.state.tool.active_tool == Tool::Templates {
+            self.pointer_up_template(event);
+            return;
+        }
         let Some(drag) = self.drag.take() else {
             return;
         };
@@ -443,6 +462,9 @@ impl Engine {
 
     pub fn clear_interaction(&mut self) {
         self.drag = None;
+        self.selection_drag = None;
+        self.selection_rotate_drag = None;
+        self.template_drag = None;
         self.state.overlay = OverlayState::default();
     }
 
@@ -525,6 +547,9 @@ impl Engine {
     }
 
     fn preview_document(&self) -> Option<ChemcoreDocument> {
+        if let Some(preview_document) = self.template_preview_document() {
+            return Some(preview_document);
+        }
         let drag = self.drag.as_ref()?;
         if !drag.has_dragged {
             return None;
@@ -965,12 +990,20 @@ fn update_terminal_double_bond_placement_after_new_attachment(
     }
 }
 
+#[derive(Default)]
+struct SegmentEndpointSideCounts {
+    begin_left: usize,
+    begin_right: usize,
+    end_left: usize,
+    end_right: usize,
+}
+
 fn connected_attachment_side_counts_for_segment(
     fragment: &crate::MoleculeFragment,
     begin_id: &str,
     end_id: &str,
     ignored_bond_id: Option<&str>,
-) -> Option<(usize, usize)> {
+) -> Option<SegmentEndpointSideCounts> {
     let begin = fragment.nodes.iter().find(|node| node.id == begin_id)?;
     let end = fragment.nodes.iter().find(|node| node.id == end_id)?;
     let begin_point = begin.point();
@@ -984,18 +1017,17 @@ fn connected_attachment_side_counts_for_segment(
     let normal_x = -axis_y / axis_length;
     let normal_y = axis_x / axis_length;
 
-    let mut left_count = 0usize;
-    let mut right_count = 0usize;
+    let mut counts = SegmentEndpointSideCounts::default();
     for other in &fragment.bonds {
         if ignored_bond_id.is_some_and(|ignored| other.id == ignored) {
             continue;
         }
-        let shared_id = if other.begin == begin_id || other.end == begin_id {
-            Some(begin_id)
+        let (shared_id, shared_is_begin) = if other.begin == begin_id || other.end == begin_id {
+            (Some(begin_id), true)
         } else if other.begin == end_id || other.end == end_id {
-            Some(end_id)
+            (Some(end_id), false)
         } else {
-            None
+            (None, false)
         };
         let Some(shared_id) = shared_id else {
             continue;
@@ -1014,13 +1046,21 @@ fn connected_attachment_side_counts_for_segment(
         let side_score = (other_node.position[0] - shared_node.position[0]) * normal_x
             + (other_node.position[1] - shared_node.position[1]) * normal_y;
         if side_score < -crate::EPSILON {
-            left_count += 1;
+            if shared_is_begin {
+                counts.begin_left += 1;
+            } else {
+                counts.end_left += 1;
+            }
         } else if side_score > crate::EPSILON {
-            right_count += 1;
+            if shared_is_begin {
+                counts.begin_right += 1;
+            } else {
+                counts.end_right += 1;
+            }
         }
     }
 
-    Some((left_count, right_count))
+    Some(counts)
 }
 
 fn should_default_center_double_bond_for_segment(
@@ -1029,12 +1069,25 @@ fn should_default_center_double_bond_for_segment(
     end_id: &str,
     ignored_bond_id: Option<&str>,
 ) -> bool {
-    let Some((left_count, right_count)) =
+    let Some(counts) =
         connected_attachment_side_counts_for_segment(fragment, begin_id, end_id, ignored_bond_id)
     else {
         return false;
     };
-    (left_count >= 2 && right_count == 0) || (right_count >= 2 && left_count == 0)
+    endpoint_should_default_center(
+        counts.begin_left,
+        counts.begin_right,
+        counts.end_left + counts.end_right,
+    ) || endpoint_should_default_center(
+        counts.end_left,
+        counts.end_right,
+        counts.begin_left + counts.begin_right,
+    )
+}
+
+fn endpoint_should_default_center(left_count: usize, right_count: usize, other_total: usize) -> bool {
+    other_total == 0
+        && ((left_count >= 2 && right_count == 0) || (right_count >= 2 && left_count == 0))
 }
 
 fn preferred_double_bond_side_for_segment(

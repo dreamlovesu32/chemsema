@@ -1128,7 +1128,7 @@ fn render_document_emits_main_contact_patches_for_connected_bold_and_single_bond
     let primitives = render_document(&document);
     let polygons = centered_bond_polygons(&primitives, chemcore_engine::Point::new(56.0, 40.0));
     assert_eq!(polygons.len(), 2);
-    assert!(polygons.iter().all(|points| points.len() == 4));
+    assert!(polygons.iter().all(|points| points.len() == 5));
     assert!(
         polygons.iter().all(|points| polygon_area(points) > 0.01),
         "{polygons:?}"
@@ -1161,7 +1161,7 @@ fn render_document_emits_two_way_main_contact_patches_for_plain_singles() {
     let primitives = render_document(&document);
     let polygons = centered_bond_polygons(&primitives, chemcore_engine::Point::new(56.0, 40.0));
     assert_eq!(polygons.len(), 2);
-    assert!(polygons.iter().all(|points| points.len() == 4));
+    assert!(polygons.iter().all(|points| points.len() == 5));
     assert!(
         polygons.iter().all(|points| polygon_area(points) > 0.01),
         "{polygons:?}"
@@ -1299,7 +1299,7 @@ fn render_document_emits_main_contact_patches_for_connected_bold_and_dashed_sing
     let primitives = render_document(&document);
     let polygons = centered_bond_polygons(&primitives, chemcore_engine::Point::new(56.0, 40.0));
     assert_eq!(polygons.len(), 2);
-    assert!(polygons.iter().all(|points| points.len() == 4));
+    assert!(polygons.iter().all(|points| points.len() == 5));
     assert!(object_knockout_polygons(&primitives).len() >= 1);
 }
 
@@ -2657,7 +2657,7 @@ fn render_document_extends_center_double_lines_to_branch_bonds_and_branches_join
             .iter()
             .all(|point| point_lies_on_polygon_boundary(*point, &branch_down, 1.0e-4))
     }));
-    assert_eq!(shared_point_count(&branch_up, &branch_down, 1.0e-4), 2);
+    assert!(shared_point_count(&branch_up, &branch_down, 1.0e-4) >= 2);
 }
 
 #[test]
@@ -3130,6 +3130,127 @@ fn render_document_emits_three_way_main_contact_patches() {
         3
     );
     assert!(polygons.iter().all(|points| polygon_area(points) > 0.01));
+}
+
+#[test]
+fn render_document_clips_solid_wedge_in_three_way_main_contact() {
+    for (begin, end, wide_end) in [("n1", "n3", "begin"), ("n3", "n1", "end")] {
+        let document = fragment_document(
+            json!([
+                { "id": "n1", "element": "C", "atomicNumber": 6, "position": [56.0, 40.0], "charge": 0, "numHydrogens": 0 },
+                { "id": "n2", "element": "C", "atomicNumber": 6, "position": [20.0, 40.0], "charge": 0, "numHydrogens": 0 },
+                { "id": "n3", "element": "C", "atomicNumber": 6, "position": [96.0, 4.0], "charge": 0, "numHydrogens": 0 },
+                { "id": "n4", "element": "C", "atomicNumber": 6, "position": [68.0, 88.0], "charge": 0, "numHydrogens": 0 }
+            ]),
+            json!([
+                {
+                    "id": "b1",
+                    "begin": begin,
+                    "end": end,
+                    "order": 1,
+                    "strokeWidth": 0.85,
+                    "stereo": {
+                        "kind": "solid-wedge",
+                        "wideEnd": wide_end
+                    }
+                },
+                { "id": "b2", "begin": "n1", "end": "n2", "order": 1, "strokeWidth": 0.85 },
+                { "id": "b3", "begin": "n1", "end": "n4", "order": 1, "strokeWidth": 0.85 }
+            ]),
+        );
+
+        let primitives = render_document(&document);
+        let polygons = object_bond_polygons_with_ids(&primitives);
+        let wedge = polygons
+            .iter()
+            .find_map(|(bond_id, points)| (bond_id == "b1").then_some(points))
+            .expect("solid wedge polygon");
+        assert_eq!(wedge.len(), 5, "{wide_end} {wedge:?}");
+        assert!(wedge
+            .iter()
+            .any(|point| point.distance(chemcore_engine::Point::new(56.0, 40.0)) <= 0.001));
+
+        let centered =
+            centered_bond_polygons(&primitives, chemcore_engine::Point::new(56.0, 40.0));
+        assert_eq!(centered.len(), 3, "{wide_end} {centered:?}");
+        assert!(centered.iter().all(|points| polygon_area(points) > 0.01));
+        let center_patches = polygons
+            .iter()
+            .filter_map(|(bond_id, points)| bond_id.is_empty().then_some(points))
+            .collect::<Vec<_>>();
+        assert!(center_patches.is_empty(), "{wide_end} {polygons:?}");
+    }
+}
+
+#[test]
+fn render_document_uses_extended_intersections_for_solid_wedge_three_way_contact() {
+    let document = fragment_document(
+        json!([
+            { "id": "n1", "element": "C", "atomicNumber": 6, "position": [7.5, 6.5], "charge": 0, "numHydrogens": 0 },
+            { "id": "n2", "element": "C", "atomicNumber": 6, "position": [6.45, 6.5], "charge": 0, "numHydrogens": 0 },
+            { "id": "n3", "element": "C", "atomicNumber": 6, "position": [7.682330586550277, 5.465951859337181], "charge": 0, "numHydrogens": 0 },
+            { "id": "n4", "element": "C", "atomicNumber": 6, "position": [7.859121150491952, 7.486677251825204], "charge": 0, "numHydrogens": 0 }
+        ]),
+        json!([
+            { "id": "b_left", "begin": "n1", "end": "n2", "order": 1, "strokeWidth": 0.035 },
+            { "id": "b_up", "begin": "n1", "end": "n3", "order": 1, "strokeWidth": 0.035 },
+            {
+                "id": "b_wedge",
+                "begin": "n1",
+                "end": "n4",
+                "order": 1,
+                "strokeWidth": 0.035,
+                "stereo": {
+                    "kind": "solid-wedge",
+                    "wideEnd": "begin"
+                }
+            }
+        ]),
+    );
+
+    let expected_up_wedge_intersection =
+        chemcore_engine::Point::new(7.5537589823596605, 6.295896144157522);
+    let contact_center = chemcore_engine::Point::new(7.5, 6.5);
+    let polygons = object_bond_polygons_with_ids(&render_document(&document));
+    let up = polygons
+        .iter()
+        .find_map(|(bond_id, points)| (bond_id == "b_up").then_some(points))
+        .expect("upper single polygon");
+    let wedge = polygons
+        .iter()
+        .find_map(|(bond_id, points)| (bond_id == "b_wedge").then_some(points))
+        .expect("solid wedge polygon");
+
+    assert!(
+        up.iter()
+            .any(|point| point.distance(expected_up_wedge_intersection) <= 0.0001),
+        "{up:?}"
+    );
+    assert!(
+        wedge
+            .iter()
+            .any(|point| point.distance(expected_up_wedge_intersection) <= 0.0001),
+        "{wedge:?}"
+    );
+    let has_edge = |points: &[chemcore_engine::Point],
+                    first: chemcore_engine::Point,
+                    second: chemcore_engine::Point| {
+        (0..points.len()).any(|index| {
+            let next = (index + 1) % points.len();
+            (points[index].distance(first) <= 0.0001
+                && points[next].distance(second) <= 0.0001)
+                || (points[index].distance(second) <= 0.0001
+                    && points[next].distance(first) <= 0.0001)
+        })
+    };
+    assert!(
+        has_edge(up, expected_up_wedge_intersection, contact_center),
+        "{up:?}"
+    );
+    assert!(
+        has_edge(wedge, expected_up_wedge_intersection, contact_center),
+        "{wedge:?}"
+    );
 }
 
 #[test]

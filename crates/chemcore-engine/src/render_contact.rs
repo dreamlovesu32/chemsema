@@ -48,6 +48,20 @@ struct MainBondContactPatch {
     points: Vec<Point>,
 }
 
+const MIN_CONTACT_POLYGON_AREA: f64 = 1.0e-8;
+
+fn is_valid_contact_polygon(points: &[Point]) -> bool {
+    points.len() >= 3 && polygon_area_signed(points).abs() > MIN_CONTACT_POLYGON_AREA
+}
+
+fn is_valid_contact_profile(points: &[Point]) -> bool {
+    points.len() >= 2
+        && points
+            .first()
+            .zip(points.last())
+            .is_some_and(|(first, last)| first.distance(*last) > EPSILON)
+}
+
 #[derive(Debug, Clone, Copy)]
 struct MainContourJoin {
     first: Point,
@@ -175,6 +189,15 @@ pub(super) fn build_main_bond_contact_kernel<'a>(
             kernel
                 .active_endpoints
                 .insert(MainBondEndpointKey::new(&geometry.bond.id, &node.id));
+        }
+
+        if geometries.len() == 2
+            && geometries
+                .iter()
+                .all(|geometry| supports_two_bond_multi_contact_shape(geometry.bond))
+        {
+            append_multi_bond_main_contact(&mut kernel, &geometries, &node.id);
+            continue;
         }
 
         match geometries.len() {
@@ -486,6 +509,10 @@ fn supports_main_bond_polygon_endpoint_cap(bond: &Bond) -> bool {
     supports_main_bond_contact_shape(bond)
 }
 
+fn supports_two_bond_multi_contact_shape(bond: &Bond) -> bool {
+    bond.stereo.is_none() && bond.order == 1 && supports_main_bond_contact_shape(bond)
+}
+
 fn two_bond_main_contact(
     first: MainBondEndpointGeometry<'_>,
     second: MainBondEndpointGeometry<'_>,
@@ -511,7 +538,7 @@ fn two_bond_main_contact(
     );
 
     let bridge = compact_polygon_points(vec![inner.first, outer.first, outer.second, inner.second]);
-    let bridge = if bridge.len() >= 3 && polygon_area_signed(&bridge).abs() > 1.0e-4 {
+    let bridge = if is_valid_contact_polygon(&bridge) {
         Some(bridge)
     } else {
         None
@@ -555,7 +582,7 @@ fn push_two_bond_contact_triangles(
             geometry.base_for_side(-inner_side),
         ]),
     ] {
-        if points.len() >= 3 && polygon_area_signed(&points).abs() > 1.0e-4 {
+        if is_valid_contact_polygon(&points) {
             out.push(MainBondContactPatch { points });
         }
     }
@@ -566,55 +593,36 @@ fn append_multi_bond_main_contact(
     geometries: &[MainBondEndpointGeometry<'_>],
     node_id: &str,
 ) {
-    if geometries.len() < 3 {
+    if geometries.len() < 2 {
         return;
     }
     let mut ordered = geometries.to_vec();
     ordered.sort_by(|a, b| axis_angle(a.axis).total_cmp(&axis_angle(b.axis)));
+    if ordered.len() == 2 && vector_cross(ordered[0].axis, ordered[1].axis).abs() <= 1.0e-6 {
+        return;
+    }
 
     let mut ring_intersections = Vec::with_capacity(ordered.len());
     for index in 0..ordered.len() {
         let current = ordered[index];
         let next = ordered[(index + 1) % ordered.len()];
-        let Some(current_side) = main_contact_side(current.axis, next.axis) else {
-            return;
-        };
-        let Some(next_side) = main_contact_side(next.axis, current.axis) else {
-            return;
-        };
-        ring_intersections.push(
-            extended_main_contour_intersection(
-                current.contour_for_side(current_side),
-                next.contour_for_side(next_side),
-            )
-            .midpoint(),
-        );
+        let join = extended_main_contour_intersection(current.contour_plus, next.contour_minus);
+        ring_intersections.push(join.midpoint());
     }
 
     for (index, current) in ordered.iter().enumerate() {
-        let previous = ordered[(index + ordered.len() - 1) % ordered.len()];
-        let next = ordered[(index + 1) % ordered.len()];
-        let Some(previous_side) = main_contact_side(current.axis, previous.axis) else {
-            continue;
-        };
-        let Some(next_side) = main_contact_side(current.axis, next.axis) else {
-            continue;
-        };
         let previous_intersection = ring_intersections[(index + ordered.len() - 1) % ordered.len()];
         let next_intersection = ring_intersections[index];
 
         if supports_main_bond_polygon_endpoint_cap(current.bond) {
-            let mut profile = if previous_side > 0.0 && next_side < 0.0 {
-                vec![previous_intersection, current.center, next_intersection]
-            } else if next_side > 0.0 && previous_side < 0.0 {
-                vec![next_intersection, current.center, previous_intersection]
-            } else if previous_side >= next_side {
-                vec![previous_intersection, current.center, next_intersection]
-            } else {
-                vec![next_intersection, current.center, previous_intersection]
-            };
+            let mut profile = vec![next_intersection, current.center, previous_intersection];
             profile = compact_polygon_points(profile);
-            if profile.len() >= 3 && polygon_area_signed(&profile).abs() > 1.0e-4 {
+            let valid_profile = if ordered.len() == 2 {
+                is_valid_contact_profile(&profile)
+            } else {
+                is_valid_contact_polygon(&profile)
+            };
+            if valid_profile {
                 kernel
                     .endpoint_profiles
                     .insert(MainBondEndpointKey::new(&current.bond.id, node_id), profile);
@@ -627,7 +635,7 @@ fn append_multi_bond_main_contact(
             previous_intersection,
             next_intersection,
         ]);
-        if points.len() >= 3 && polygon_area_signed(&points).abs() > 1.0e-4 {
+        if is_valid_contact_polygon(&points) {
             kernel.patches.push(MainBondContactPatch { points });
         }
     }

@@ -58,6 +58,7 @@ const LABEL_DEBUG_MODE = VIEW_MODE === "label-debug";
 
 const state = {
   currentPath: LABEL_DEBUG_MODE ? SAMPLE_FILES[0] : null,
+  currentFileName: null,
   currentDocument: null,
   editorEngine: null,
   documentEngine: null,
@@ -119,8 +120,12 @@ const EDITOR_VIEW_BUFFER_RATIO = 0.6;
 const EDITOR_AUTO_EXPAND_TRIGGER_RATIO = 0.18;
 const EDITOR_FIT_PADDING_RATIO = 0.08;
 const ZOOM_MIN_PERCENT = 25;
-const ZOOM_MAX_PERCENT = 400;
-const ZOOM_STEP_LEVELS = [25, 33, 50, 67, 80, 100, 125, 150, 200, 250, 300, 400];
+const ZOOM_MAX_PERCENT = 800;
+const ZOOM_STEP_LEVELS = [25, 33, 50, 67, 80, 100, 125, 150, 200, 250, 300, 400, 500, 600, 800];
+const WHEEL_ZOOM_FACTOR = 1.12;
+const SELECTION_ROTATE_HANDLE_OFFSET_PX = 26;
+const SELECTION_ROTATE_HANDLE_RADIUS_PX = 6;
+const SELECTION_ROTATE_HANDLE_HIT_RADIUS_PX = 12;
 const DELETE_CURSOR_SVG = encodeURIComponent(
   `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
     <rect x="4" y="4" width="8" height="8" fill="#ffffff" stroke="#000000" stroke-width="1"/>
@@ -140,6 +145,11 @@ const viewerStats = document.getElementById("viewer-stats");
 const viewerSvg = document.getElementById("viewer-svg");
 const viewerContainer = document.getElementById("viewer-container");
 const secondaryToolbar = document.getElementById("secondary-toolbar");
+const openFileInput = document.createElement("input");
+openFileInput.type = "file";
+openFileInput.accept = ".json,application/json";
+openFileInput.className = "visually-hidden";
+document.body.appendChild(openFileInput);
 const textEditorLayer = document.createElement("div");
 textEditorLayer.className = "text-editor-layer";
 viewerContainer?.appendChild(textEditorLayer);
@@ -214,7 +224,7 @@ const editorState = {
   shapeStroke: "#000000",
   shapeFill: "none",
   shapeStyle: "rect",
-  template: "benzene",
+  template: "ring-6",
 };
 let activeTextEditor = null;
 let activeSelectionGesture = null;
@@ -238,6 +248,7 @@ function syncEngineToolState() {
     return;
   }
   state.editorEngine.setTool(editorState.activeTool, editorState.bondType);
+  state.editorEngine.setTemplate?.(editorState.template);
 }
 
 function parseEngineJson(json, fallback = null) {
@@ -685,6 +696,17 @@ function scrollViewerToWorldPoint(point, center = true) {
   viewerContainer.scrollTop = Math.max(0, (point.y - viewBox.y) * scale - offsetY);
 }
 
+function scrollViewerToWorldPointAtClient(point, clientX, clientY) {
+  if (!viewerContainer || !point) {
+    return;
+  }
+  const rect = viewerContainer.getBoundingClientRect();
+  const viewBox = activeViewBox();
+  const scale = viewportScale();
+  viewerContainer.scrollLeft = Math.max(0, (point.x - viewBox.x) * scale - (clientX - rect.left));
+  viewerContainer.scrollTop = Math.max(0, (point.y - viewBox.y) * scale - (clientY - rect.top));
+}
+
 function applyViewerViewport(options = {}) {
   if (!viewerSvg) {
     return;
@@ -746,7 +768,7 @@ function fitZoomPercentForViewBox(viewBox) {
   const width = Math.max(1, viewerContainer.clientWidth);
   const height = Math.max(1, viewerContainer.clientHeight);
   const scale = Math.min(width / Math.max(1, viewBox.width), height / Math.max(1, viewBox.height));
-  return Math.max(25, Math.min(400, Math.round((scale / CSS_PX_PER_CM) * 100)));
+  return clampZoomPercent((scale / CSS_PX_PER_CM) * 100);
 }
 
 function extendBounds(bounds, minX, minY, maxX, maxY) {
@@ -1136,6 +1158,7 @@ function resetEditorEngine() {
   state.editorEngine = new WasmEngine();
   state.runtimeViewBox = defaultEditorViewBox();
   state.lastEditFocusPoint = null;
+  state.currentFileName = null;
   syncEngineToolState();
   syncDocumentFromEngine();
 }
@@ -1180,21 +1203,72 @@ function runEditorCommand(command) {
   return true;
 }
 
-function setZoomPercent(nextZoom) {
-  const centerWorld = preferredZoomCenterWorld();
+function setZoomPercent(nextZoom, options = {}) {
+  const centerWorld = options.centerWorld || options.anchorWorld || preferredZoomCenterWorld();
+  const anchorWorld = options.anchorWorld || null;
   zoomPercent = clampZoomPercent(nextZoom);
   if (zoomInput) {
     zoomInput.value = `${zoomPercent}%`;
   }
   if (ensureEditorViewportCapacity(centerWorld)) {
+    if (anchorWorld) {
+      requestAnimationFrame(() => {
+        scrollViewerToWorldPointAtClient(anchorWorld, options.clientX, options.clientY);
+      });
+    }
     return;
   }
   applyViewerViewport({ centerWorld });
+  if (anchorWorld) {
+    requestAnimationFrame(() => {
+      scrollViewerToWorldPointAtClient(anchorWorld, options.clientX, options.clientY);
+    });
+  }
+}
+
+function handleViewerWheel(event) {
+  if (!event.ctrlKey && !event.metaKey) {
+    return;
+  }
+  event.preventDefault();
+  if (!state.currentDocument || !viewerSvg) {
+    return;
+  }
+  const anchorWorld = svgPointFromEvent(event);
+  const direction = event.deltaY < 0 ? 1 : -1;
+  const factor = direction > 0 ? WHEEL_ZOOM_FACTOR : 1 / WHEEL_ZOOM_FACTOR;
+  setZoomPercent(zoomPercent * factor, {
+    anchorWorld,
+    clientX: event.clientX,
+    clientY: event.clientY,
+  });
 }
 
 document.querySelectorAll("[data-command]").forEach((button) => {
-  button.addEventListener("click", () => {
+  button.addEventListener("click", async () => {
     const command = button.dataset.command;
+    if (command === "open") {
+      try {
+        await chooseAndOpenJsonDocument();
+      } catch (error) {
+        if (!isAbortError(error)) {
+          console.error("Failed to open chemcore JSON", error);
+          window.alert?.(`Open failed: ${error.message || error}`);
+        }
+      }
+      return;
+    }
+    if (command === "save") {
+      try {
+        await saveCurrentDocumentJson();
+      } catch (error) {
+        if (!isAbortError(error)) {
+          console.error("Failed to save chemcore JSON", error);
+          window.alert?.(`Save failed: ${error.message || error}`);
+        }
+      }
+      return;
+    }
     if (runEditorCommand(command)) {
       return;
     }
@@ -1211,6 +1285,17 @@ document.querySelectorAll("[data-command]").forEach((button) => {
       fitView();
     }
   });
+});
+
+openFileInput.addEventListener("change", async () => {
+  const [file] = Array.from(openFileInput.files || []);
+  openFileInput.value = "";
+  try {
+    await openJsonDocumentFile(file);
+  } catch (error) {
+    console.error("Failed to open chemcore JSON", error);
+    window.alert?.(`Open failed: ${error.message || error}`);
+  }
 });
 
 zoomInput?.addEventListener("change", () => {
@@ -1369,8 +1454,23 @@ function syncPrimaryBondToolButton() {
   bondButton.setAttribute("title", spec.title);
 }
 
+function syncPrimaryTemplateToolButton() {
+  const templateButton = document.querySelector('.tool-button[data-tool="templates"]');
+  if (!templateButton) {
+    return;
+  }
+  const spec = templateIconSpec();
+  templateButton.innerHTML = spec.svg;
+  templateButton.setAttribute("aria-label", spec.title);
+  templateButton.setAttribute("title", spec.title);
+}
+
 function syncCanvasCursor() {
   if (!viewerSvg) {
+    return;
+  }
+  if (activeSelectionGesture?.kind === "move" || activeSelectionGesture?.kind === "rotate") {
+    viewerSvg.style.cursor = "grabbing";
     return;
   }
   viewerSvg.style.cursor = editorState.activeTool === "text"
@@ -1380,6 +1480,27 @@ function syncCanvasCursor() {
     : editorState.activeTool === "select"
       ? "default"
       : "crosshair";
+}
+
+function syncSelectCursorForPoint(point) {
+  if (!viewerSvg || editorState.activeTool !== "select" || !isEditingRustDocument()) {
+    syncCanvasCursor();
+    return;
+  }
+  if (activeSelectionGesture?.kind === "move") {
+    viewerSvg.style.cursor = "grabbing";
+    return;
+  }
+  if (activeSelectionGesture?.kind === "rotate") {
+    viewerSvg.style.cursor = "grabbing";
+    return;
+  }
+  if (selectionRotateHandleHit(point)) {
+    viewerSvg.style.cursor = "grab";
+    return;
+  }
+  const overSelection = !!state.editorEngine.selectionContainsPoint?.(point.x, point.y);
+  viewerSvg.style.cursor = overSelection ? "grab" : "default";
 }
 
 function selectToolbarHtml() {
@@ -1392,11 +1513,11 @@ function selectToolbarHtml() {
     toolbarButton("align-right", "Align right", `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 5v14"/><path d="M6 7h9"/><path d="M9 12h6"/><path d="M4 17h11"/></svg>`),
     toolbarButton("align-top", "Align top", `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14"/><path d="M7 9v9"/><path d="M12 9v6"/><path d="M17 9v11"/></svg>`),
     toolbarButton("align-bottom", "Align bottom", `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 18h14"/><path d="M7 6v9"/><path d="M12 9v6"/><path d="M17 4v11"/></svg>`),
-    toolbarButton("align-center", "Center", `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16"/><path d="M4 12h16"/><rect x="8" y="8" width="8" height="8"/></svg>`),
     toolbarButton("align-h-center", "Horizontal center", `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16"/><path d="M6 7h12"/><path d="M8 12h8"/><path d="M5 17h14"/></svg>`),
+    toolbarButton("align-v-center", "Vertical center", `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h16"/><path d="M7 6v12"/><path d="M12 8v8"/><path d="M17 5v14"/></svg>`),
     secondaryDivider(),
-    toolbarButton("distribute", "Distribute spacing", `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="4" height="4"/><rect x="15" y="5" width="4" height="4"/><rect x="10" y="15" width="4" height="4"/><path d="M7 12h10"/></svg>`),
-    toolbarButton("distribute-h", "Horizontal distribute", `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="8" width="4" height="8"/><rect x="10" y="8" width="4" height="8"/><rect x="16" y="8" width="4" height="8"/><path d="M4 19h16"/></svg>`),
+    toolbarButton("distribute-v", "Vertical distribute", `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="4" width="10" height="3"/><rect x="7" y="10.5" width="10" height="3"/><rect x="7" y="17" width="10" height="3"/><path d="M5 7v3.5"/><path d="M5 13.5V17"/><path d="M19 7v3.5"/><path d="M19 13.5V17"/></svg>`),
+    toolbarButton("distribute-h", "Horizontal distribute", `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="7" width="3" height="10"/><rect x="10.5" y="7" width="3" height="10"/><rect x="17" y="7" width="3" height="10"/><path d="M7 5h3.5"/><path d="M13.5 5H17"/><path d="M7 19h3.5"/><path d="M13.5 19H17"/></svg>`),
     secondaryDivider(),
     toolbarButton("flip-h", "Flip horizontal", `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16"/><path class="filled" d="M5 7v10l5-5z"/><path d="M19 7v10l-5-5z"/></svg>`),
     toolbarButton("flip-v", "Flip vertical", `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h16"/><path class="filled" d="M7 5h10l-5 5z"/><path d="M7 19h10l-5-5z"/></svg>`),
@@ -1494,6 +1615,21 @@ function ringSvg(sides, aromatic = false) {
   return `<svg viewBox="0 0 24 24" aria-hidden="true"><polygon points="${pointsBySide[sides]}"/></svg>`;
 }
 
+function templateIconSpec(template = editorState.template) {
+  if (template === "benzene") {
+    return {
+      title: "Benzene ring",
+      svg: ringSvg(6, true),
+    };
+  }
+  const match = /^ring-(\d+)$/.exec(template || "");
+  const sides = Number(match?.[1] || 6);
+  return {
+    title: `${sides}-membered ring`,
+    svg: ringSvg(sides),
+  };
+}
+
 function templatesToolbarHtml() {
   return [
     toolbarButton("ring-3", "3-membered ring", ringSvg(3), editorState.template === "ring-3"),
@@ -1502,7 +1638,6 @@ function templatesToolbarHtml() {
     toolbarButton("ring-6", "6-membered ring", ringSvg(6), editorState.template === "ring-6"),
     toolbarButton("ring-7", "7-membered ring", ringSvg(7), editorState.template === "ring-7"),
     toolbarButton("ring-8", "8-membered ring", ringSvg(8), editorState.template === "ring-8"),
-    secondaryDivider(),
     toolbarButton("benzene", "Benzene ring", ringSvg(6, true), editorState.template === "benzene"),
   ].join("");
 }
@@ -1525,6 +1660,7 @@ function renderSecondaryToolbar() {
     secondaryToolbar.innerHTML = selectToolbarHtml();
   }
   syncPrimaryBondToolButton();
+  syncPrimaryTemplateToolButton();
 }
 
 const textEditorController = createTextEditorController({
@@ -2106,6 +2242,8 @@ secondaryToolbar?.addEventListener("click", (event) => {
     applyTextInlineStyle({ color: editorState.textColor });
   } else if (value === "select-free" || value === "select-box") {
     editorState.selectMode = value.replace("select-", "");
+  } else if (/^(align-|distribute-|flip-)/.test(value || "")) {
+    applySelectionArrangeCommand(value);
   } else if (value?.startsWith("bond-")) {
     editorState.bondType = value.replace("bond-", "");
   } else if (value?.startsWith("shape-")) {
@@ -2174,7 +2312,8 @@ function routeEditorPointerEvents() {
     && (editorState.activeTool === "bond"
       || editorState.activeTool === "delete"
       || editorState.activeTool === "select"
-      || editorState.activeTool === "text");
+      || editorState.activeTool === "text"
+      || editorState.activeTool === "templates");
 }
 
 function isDocumentPreviewPrimitive(primitive) {
@@ -2184,10 +2323,144 @@ function isDocumentPreviewPrimitive(primitive) {
     || primitive?.role === "document-text";
 }
 
+function screenPxToWorld(px) {
+  return px / Math.max(1, viewportScale());
+}
+
+function extendSelectionBounds(bounds, next) {
+  if (!next) {
+    return bounds;
+  }
+  if (!bounds) {
+    return { ...next };
+  }
+  return {
+    minX: Math.min(bounds.minX, next.minX),
+    minY: Math.min(bounds.minY, next.minY),
+    maxX: Math.max(bounds.maxX, next.maxX),
+    maxY: Math.max(bounds.maxY, next.maxY),
+  };
+}
+
+function selectionOverlayBoundsFromPrimitives(primitives = currentEditorRenderList()) {
+  const selectionRoles = new Set([
+    "selection-box",
+    "selection-bond",
+    "selection-node",
+    "selection-text-box",
+  ]);
+  let bounds = null;
+  for (const primitive of primitives || []) {
+    if (!selectionRoles.has(primitive.role)) {
+      continue;
+    }
+    if (primitive.kind === "rect") {
+      bounds = extendSelectionBounds(bounds, {
+        minX: Number(primitive.x || 0),
+        minY: Number(primitive.y || 0),
+        maxX: Number(primitive.x || 0) + Number(primitive.width || 0),
+        maxY: Number(primitive.y || 0) + Number(primitive.height || 0),
+      });
+    } else if ((primitive.kind === "polygon" || primitive.kind === "polyline") && Array.isArray(primitive.points)) {
+      const xs = primitive.points.map((candidate) => Number(candidate.x || 0));
+      const ys = primitive.points.map((candidate) => Number(candidate.y || 0));
+      if (xs.length && ys.length) {
+        bounds = extendSelectionBounds(bounds, {
+          minX: Math.min(...xs),
+          minY: Math.min(...ys),
+          maxX: Math.max(...xs),
+          maxY: Math.max(...ys),
+        });
+      }
+    }
+  }
+  return bounds;
+}
+
+function selectionRotateHandleFromBounds(bounds) {
+  if (!bounds) {
+    return null;
+  }
+  return {
+    x: (bounds.minX + bounds.maxX) * 0.5,
+    y: bounds.minY - screenPxToWorld(SELECTION_ROTATE_HANDLE_OFFSET_PX),
+    radius: screenPxToWorld(SELECTION_ROTATE_HANDLE_RADIUS_PX),
+    hitRadius: screenPxToWorld(SELECTION_ROTATE_HANDLE_HIT_RADIUS_PX),
+    bounds,
+  };
+}
+
+function currentSelectionRotateHandle() {
+  return selectionRotateHandleFromBounds(selectionOverlayBoundsFromPrimitives());
+}
+
+function selectionRotateHandleHit(point) {
+  const handle = currentSelectionRotateHandle();
+  return !!handle && pointDistance(point, handle) <= handle.hitRadius;
+}
+
+function signedAngleDelta(start, end) {
+  let delta = ((end - start) % 360 + 360) % 360;
+  if (delta > 180) {
+    delta -= 360;
+  }
+  return delta;
+}
+
+function angleBetweenPoints(from, to) {
+  const raw = Math.atan2(to.y - from.y, to.x - from.x) * 180 / Math.PI;
+  return ((raw % 360) + 360) % 360;
+}
+
+function selectionRotateAngleForGesture(gesture, point, altKey) {
+  if (!gesture?.center) {
+    return 0;
+  }
+  const raw = signedAngleDelta(gesture.startAngle, angleBetweenPoints(gesture.center, point));
+  return altKey ? raw : Math.round(raw / 15) * 15;
+}
+
+function formatRotationAngle(angle) {
+  const rounded = Math.abs(angle - Math.round(angle)) < 0.05
+    ? Math.round(angle)
+    : Math.round(angle * 10) / 10;
+  return `${rounded}${String.fromCharCode(176)}`;
+}
+
+function applySelectionArrangeCommand(command) {
+  if (!isEditingRustDocument() || editorState.activeTool !== "select") {
+    return false;
+  }
+  const changed = !!state.editorEngine.applySelectionArrangeCommand?.(command);
+  if (!changed) {
+    return false;
+  }
+  syncDocumentFromEngine();
+  renderDocument();
+  return true;
+}
+
 function handleEditorPointerMove(event) {
   const point = svgPointFromEvent(event);
   if (editorState.activeTool === "select" && activeSelectionGesture) {
     event.preventDefault();
+    if (activeSelectionGesture.kind === "rotate") {
+      activeSelectionGesture.current = point;
+      activeSelectionGesture.angle = selectionRotateAngleForGesture(activeSelectionGesture, point, event.altKey);
+      state.editorEngine.updateSelectionRotate(point.x, point.y, event.altKey);
+      syncDocumentFromEngine();
+      syncSelectCursorForPoint(point);
+      renderDocument();
+      return;
+    }
+    if (activeSelectionGesture.kind === "move") {
+      activeSelectionGesture.current = point;
+      state.editorEngine.updateSelectionMove(point.x, point.y, event.altKey);
+      syncDocumentFromEngine();
+      syncSelectCursorForPoint(point);
+      renderDocument();
+      return;
+    }
     if (pointDistance(activeSelectionGesture.start, point) >= cssPxToCm(3)) {
       activeSelectionGesture.dragged = true;
     }
@@ -2209,6 +2482,9 @@ function handleEditorPointerMove(event) {
     return;
   }
   state.editorEngine.pointerMove(point.x, point.y, event.altKey);
+  if (editorState.activeTool === "select") {
+    syncSelectCursorForPoint(point);
+  }
   const renderList = currentEditorRenderList();
   maybeAutoExpandEditorViewport(renderList);
   renderEditorOverlay(renderList);
@@ -2230,7 +2506,45 @@ function handleEditorPointerDown(event) {
     event.preventDefault();
     viewerSvg.setPointerCapture?.(event.pointerId);
     state.editorEngine.pointerMove(point.x, point.y, event.altKey);
+    const rotateHandle = currentSelectionRotateHandle();
+    if (rotateHandle && pointDistance(point, rotateHandle) <= rotateHandle.hitRadius) {
+      if (state.editorEngine.beginSelectionRotate?.(point.x, point.y)) {
+        activeSelectionGesture = {
+          kind: "rotate",
+          center: {
+            x: (rotateHandle.bounds.minX + rotateHandle.bounds.maxX) * 0.5,
+            y: (rotateHandle.bounds.minY + rotateHandle.bounds.maxY) * 0.5,
+          },
+          bounds: rotateHandle.bounds,
+          start: point,
+          current: point,
+          startAngle: angleBetweenPoints(
+            {
+              x: (rotateHandle.bounds.minX + rotateHandle.bounds.maxX) * 0.5,
+              y: (rotateHandle.bounds.minY + rotateHandle.bounds.maxY) * 0.5,
+            },
+            point,
+          ),
+          angle: 0,
+        };
+        syncSelectCursorForPoint(point);
+        renderDocument();
+        return;
+      }
+    }
+    if (state.editorEngine.beginSelectionMove?.(point.x, point.y, !!event.shiftKey, event.altKey)) {
+      activeSelectionGesture = {
+        kind: "move",
+        start: point,
+        current: point,
+        additive: !!event.shiftKey,
+      };
+      syncSelectCursorForPoint(point);
+      renderDocument();
+      return;
+    }
     activeSelectionGesture = {
+      kind: "select",
       start: point,
       current: point,
       points: [point],
@@ -2264,6 +2578,20 @@ function handleEditorPointerUp(event) {
     if (!gesture) {
       return;
     }
+    if (gesture.kind === "rotate") {
+      state.editorEngine.finishSelectionRotate(point.x, point.y, event.altKey);
+      syncDocumentFromEngine();
+      syncSelectCursorForPoint(point);
+      renderDocument();
+      return;
+    }
+    if (gesture.kind === "move") {
+      state.editorEngine.finishSelectionMove(point.x, point.y, event.altKey);
+      syncDocumentFromEngine();
+      syncSelectCursorForPoint(point);
+      renderDocument();
+      return;
+    }
     if (!gesture.dragged) {
       state.editorEngine.selectAtPoint(point.x, point.y, gesture.additive);
     } else if (editorState.selectMode === "box") {
@@ -2278,6 +2606,7 @@ function handleEditorPointerUp(event) {
       const polygonPoints = [...gesture.points, point].map((candidate) => [candidate.x, candidate.y]);
       state.editorEngine.selectInPolygon(JSON.stringify(polygonPoints), gesture.additive);
     }
+    syncSelectCursorForPoint(point);
     renderDocument();
     return;
   }
@@ -2393,6 +2722,45 @@ function renderEditorOverlay(renderList = null) {
       }));
     }
   }
+  if (editorState.activeTool === "select" && activeSelectionGesture?.kind === "rotate") {
+    const bounds = activeSelectionGesture.bounds;
+    const labelOffset = screenPxToWorld(8);
+    overlay.appendChild(makeSvgNode("text", {
+      x: bounds.maxX + labelOffset,
+      y: bounds.minY - labelOffset,
+      class: "editor-selection-rotate-angle",
+      "data-role": "selection-rotate-angle",
+    }));
+    overlay.lastChild.textContent = formatRotationAngle(activeSelectionGesture.angle || 0);
+  } else if (editorState.activeTool === "select" && !activeSelectionGesture) {
+    const handle = selectionRotateHandleFromBounds(selectionOverlayBoundsFromPrimitives(primitives));
+    if (handle) {
+      const topCenter = {
+        x: (handle.bounds.minX + handle.bounds.maxX) * 0.5,
+        y: handle.bounds.minY,
+      };
+      overlay.appendChild(makeSvgNode("line", {
+        x1: topCenter.x,
+        y1: topCenter.y,
+        x2: handle.x,
+        y2: handle.y + handle.radius,
+        class: "editor-selection-rotate-stem",
+        "data-role": "selection-rotate-stem",
+      }));
+      overlay.appendChild(makeSvgNode("circle", {
+        cx: handle.x,
+        cy: handle.y,
+        r: handle.radius,
+        class: "editor-selection-rotate-handle",
+        "data-role": "selection-rotate-handle",
+      }));
+      overlay.appendChild(makeSvgNode("path", {
+        d: `M ${handle.x - handle.radius * 0.55} ${handle.y} A ${handle.radius * 0.55} ${handle.radius * 0.55} 0 1 1 ${handle.x + handle.radius * 0.35} ${handle.y + handle.radius * 0.42}`,
+        class: "editor-selection-rotate-glyph",
+        "data-role": "selection-rotate-glyph",
+      }));
+    }
+  }
   if (editorState.activeTool === "select" && activeSelectionGesture?.dragged) {
     if (editorState.selectMode === "box") {
       const start = activeSelectionGesture.start;
@@ -2426,10 +2794,13 @@ viewerSvg?.addEventListener("pointermove", handleEditorPointerMove);
 viewerSvg?.addEventListener("pointerdown", handleEditorPointerDown);
 viewerSvg?.addEventListener("pointerup", handleEditorPointerUp);
 viewerSvg?.addEventListener("pointercancel", () => {
+  activeSelectionGesture = null;
   state.editorEngine?.clearInteraction?.();
+  syncCanvasCursor();
   renderEditorOverlay();
 });
 viewerSvg?.addEventListener("pointerleave", handleEditorPointerLeave);
+viewerContainer?.addEventListener("wheel", handleViewerWheel, { passive: false });
 viewerContainer?.addEventListener("scroll", () => {
   positionActiveTextEditor();
 });
@@ -2579,12 +2950,131 @@ async function loadDocument(path) {
   return response.json();
 }
 
+function documentTitleForFileName(documentData) {
+  const rawTitle = String(documentData?.document?.title || "chemcore-document").trim();
+  const safeTitle = rawTitle
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return `${safeTitle || "chemcore-document"}.chemcore.json`;
+}
+
+function validateChemcoreJsonDocument(documentData) {
+  if (!documentData || typeof documentData !== "object") {
+    throw new Error("JSON root must be an object.");
+  }
+  if (!documentData.document || typeof documentData.document !== "object") {
+    throw new Error("Missing document section.");
+  }
+  if (!Array.isArray(documentData.objects)) {
+    throw new Error("Missing objects array.");
+  }
+  if (!documentData.resources || typeof documentData.resources !== "object") {
+    throw new Error("Missing resources section.");
+  }
+}
+
+function loadJsonDocumentIntoEditor(documentData, fileName = null) {
+  validateChemcoreJsonDocument(documentData);
+  finishActiveTextEditor(false);
+  state.currentPath = null;
+  state.currentFileName = fileName;
+  state.editorEngine?.free?.();
+  state.editorEngine = new WasmEngine();
+  state.runtimeViewBox = documentData.document?.page
+    ? pageViewBox(documentData.document.page)
+    : defaultEditorViewBox();
+  state.lastEditFocusPoint = null;
+  syncEngineToolState();
+  state.editorEngine.loadDocumentJson(JSON.stringify(documentData));
+  syncDocumentFromEngine();
+  viewerTitle.textContent = state.currentDocument?.document?.title || fileName || "Untitled";
+  updateDocumentMeta();
+  renderDocument();
+  fitView();
+}
+
+function currentDocumentJsonForSave() {
+  finishActiveTextEditor(true);
+  if (state.editorEngine && !state.currentPath) {
+    syncDocumentFromEngine();
+  }
+  if (!state.currentDocument) {
+    throw new Error("No document to save.");
+  }
+  return `${JSON.stringify(state.currentDocument, null, 2)}\n`;
+}
+
+async function saveCurrentDocumentJson() {
+  const json = currentDocumentJsonForSave();
+  const suggestedName = state.currentFileName || documentTitleForFileName(state.currentDocument);
+  if (window.showSaveFilePicker) {
+    const handle = await window.showSaveFilePicker({
+      suggestedName,
+      types: [
+        {
+          description: "chemcore JSON",
+          accept: { "application/json": [".json"] },
+        },
+      ],
+    });
+    const writable = await handle.createWritable();
+    await writable.write(json);
+    await writable.close();
+    state.currentFileName = handle.name || suggestedName;
+    viewerTitle.textContent = state.currentDocument?.document?.title || state.currentFileName || "Untitled";
+    return;
+  }
+  const blob = new Blob([json], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = suggestedName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function openJsonDocumentFile(file) {
+  if (!file) {
+    return;
+  }
+  const text = await file.text();
+  const documentData = JSON.parse(text);
+  loadJsonDocumentIntoEditor(documentData, file.name || null);
+}
+
+function isAbortError(error) {
+  return error?.name === "AbortError";
+}
+
+async function chooseAndOpenJsonDocument() {
+  if (window.showOpenFilePicker) {
+    const [handle] = await window.showOpenFilePicker({
+      multiple: false,
+      types: [
+        {
+          description: "chemcore JSON",
+          accept: { "application/json": [".json"] },
+        },
+      ],
+    });
+    if (!handle) {
+      return;
+    }
+    await openJsonDocumentFile(await handle.getFile());
+    return;
+  }
+  openFileInput.click();
+}
+
 function currentDocumentMetaPayload() {
   if (!state.currentDocument) {
     return null;
   }
   return {
-    sample: state.currentPath || "blank",
+    sample: state.currentPath || state.currentFileName || "blank",
     page: state.currentDocument.document.page,
     meta: state.currentDocument.document.meta,
     display: state.displayMetrics,
@@ -2604,6 +3094,7 @@ async function loadAndRender() {
   viewerTitle.textContent = "Loading...";
   try {
     if (state.currentPath) {
+      state.currentFileName = null;
       const documentData = await loadDocument(state.currentPath);
       state.currentDocument = documentData;
       state.runtimeViewBox = pageViewBox(documentData.document.page);

@@ -20,7 +20,15 @@ impl WasmEngine {
         self.inner.set_tool_state(ToolState {
             active_tool: parse_tool(active_tool),
             bond_variant: parse_bond_variant(bond_variant),
+            template: self.inner.state().tool.template.clone(),
         });
+    }
+
+    #[wasm_bindgen(js_name = setTemplate)]
+    pub fn set_template(&mut self, template: &str) {
+        let mut tool = self.inner.state().tool.clone();
+        tool.template = template.to_string();
+        self.inner.set_tool_state(tool);
     }
 
     #[wasm_bindgen(js_name = pointerMove)]
@@ -77,6 +85,64 @@ impl WasmEngine {
             .collect();
         self.inner.select_in_polygon(points, additive);
         Ok(())
+    }
+
+    #[wasm_bindgen(js_name = selectionContainsPoint)]
+    pub fn selection_contains_point(&self, x: f64, y: f64) -> bool {
+        self.inner
+            .selection_contains_point(Point::from_world(WorldPoint::new(WorldCm(x), WorldCm(y))))
+    }
+
+    #[wasm_bindgen(js_name = beginSelectionMove)]
+    pub fn begin_selection_move(&mut self, x: f64, y: f64, additive: bool, alt_key: bool) -> bool {
+        self.inner.begin_selection_move_at_point(
+            Point::from_world(WorldPoint::new(WorldCm(x), WorldCm(y))),
+            additive,
+            alt_key,
+        )
+    }
+
+    #[wasm_bindgen(js_name = updateSelectionMove)]
+    pub fn update_selection_move(&mut self, x: f64, y: f64, alt_key: bool) -> bool {
+        self.inner.update_selection_move(
+            Point::from_world(WorldPoint::new(WorldCm(x), WorldCm(y))),
+            alt_key,
+        )
+    }
+
+    #[wasm_bindgen(js_name = finishSelectionMove)]
+    pub fn finish_selection_move(&mut self, x: f64, y: f64, alt_key: bool) -> bool {
+        self.inner.finish_selection_move(
+            Point::from_world(WorldPoint::new(WorldCm(x), WorldCm(y))),
+            alt_key,
+        )
+    }
+
+    #[wasm_bindgen(js_name = beginSelectionRotate)]
+    pub fn begin_selection_rotate(&mut self, x: f64, y: f64) -> bool {
+        self.inner
+            .begin_selection_rotate(Point::from_world(WorldPoint::new(WorldCm(x), WorldCm(y))))
+    }
+
+    #[wasm_bindgen(js_name = updateSelectionRotate)]
+    pub fn update_selection_rotate(&mut self, x: f64, y: f64, alt_key: bool) -> bool {
+        self.inner.update_selection_rotate(
+            Point::from_world(WorldPoint::new(WorldCm(x), WorldCm(y))),
+            alt_key,
+        )
+    }
+
+    #[wasm_bindgen(js_name = finishSelectionRotate)]
+    pub fn finish_selection_rotate(&mut self, x: f64, y: f64, alt_key: bool) -> bool {
+        self.inner.finish_selection_rotate(
+            Point::from_world(WorldPoint::new(WorldCm(x), WorldCm(y))),
+            alt_key,
+        )
+    }
+
+    #[wasm_bindgen(js_name = applySelectionArrangeCommand)]
+    pub fn apply_selection_arrange_command(&mut self, command: &str) -> bool {
+        self.inner.apply_selection_arrange_command(command)
     }
 
     #[wasm_bindgen(js_name = clearInteraction)]

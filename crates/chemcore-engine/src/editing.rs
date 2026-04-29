@@ -83,6 +83,8 @@ impl EditorOptions {
 pub struct ToolState {
     pub active_tool: Tool,
     pub bond_variant: BondVariant,
+    #[serde(default = "default_template")]
+    pub template: String,
 }
 
 impl Default for ToolState {
@@ -90,8 +92,13 @@ impl Default for ToolState {
         Self {
             active_tool: Tool::Bond,
             bond_variant: BondVariant::Single,
+            template: default_template(),
         }
     }
+}
+
+fn default_template() -> String {
+    "ring-6".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

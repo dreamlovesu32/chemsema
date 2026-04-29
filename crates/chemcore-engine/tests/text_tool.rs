@@ -30,6 +30,7 @@ fn tool_state(bond_variant: BondVariant) -> ToolState {
     ToolState {
         active_tool: Tool::Bond,
         bond_variant,
+        ..ToolState::default()
     }
 }
 
@@ -37,6 +38,7 @@ fn delete_tool_state() -> ToolState {
     ToolState {
         active_tool: Tool::Delete,
         bond_variant: BondVariant::Single,
+        ..ToolState::default()
     }
 }
 
@@ -885,6 +887,7 @@ fn text_mode_hover_prefers_label_box_over_endpoint_focus() {
     engine.set_tool_state(ToolState {
         active_tool: Tool::Text,
         bond_variant: BondVariant::Single,
+        ..ToolState::default()
     });
     engine.pointer_move(PointerEvent {
         x: (label_box[0] + label_box[2]) * 0.5,
@@ -922,6 +925,7 @@ fn text_mode_hover_focuses_plain_text_box_bounds() {
     engine.set_tool_state(ToolState {
         active_tool: Tool::Text,
         bond_variant: BondVariant::Single,
+        ..ToolState::default()
     });
     engine.pointer_move(PointerEvent {
         x: translate[0] + bounds[2] * 0.5,
