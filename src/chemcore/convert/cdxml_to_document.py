@@ -940,12 +940,18 @@ def convert_cdxml_to_document(cdxml_base: str) -> dict[str, Any]:
                 },
             }
         )
+    def _arrow_endpoint_enabled(value: Any) -> bool:
+        normalized = str(value or "").strip().lower()
+        return bool(normalized) and normalized not in {"none", "0", "false"}
+
     for idx, line in enumerate(sorted(line_graphics, key=lambda item: (item.get("z") or 0, item.get("id") or "")), start=1):
         tail = line.get("tail")
         head = line.get("head")
         if not tail or not head:
             continue
         is_arrow = bool(line.get("isArrow"))
+        head_enabled = _arrow_endpoint_enabled(line.get("arrowheadHead"))
+        tail_enabled = _arrow_endpoint_enabled(line.get("arrowheadTail"))
         objects.append(
             {
                 "id": f"obj_line_{idx:03d}",
@@ -975,12 +981,12 @@ def convert_cdxml_to_document(cdxml_base: str) -> dict[str, Any]:
                         [round(float(tail[0]), 2), round(float(tail[1]), 2)],
                         [round(float(head[0]), 2), round(float(head[1]), 2)],
                     ],
-                    "head": "end" if is_arrow else "none",
-                    "tail": "none",
+                    "head": "end" if is_arrow and head_enabled else "none",
+                    "tail": "start" if is_arrow and tail_enabled else "none",
                     "arrowHead": {
                         "kind": (line.get("arrowheadType") or "Solid").lower(),
-                        "head": (line.get("arrowheadHead") or "Full").lower(),
-                        "tail": (line.get("arrowheadTail") or "None").lower(),
+                        "head": (line.get("arrowheadHead") if head_enabled else "None").lower(),
+                        "tail": (line.get("arrowheadTail") if tail_enabled else "None").lower(),
                         "length": round(float(line.get("headSize") or 0), 2),
                         "centerLength": round(float(line.get("arrowheadCenterSize") or 0), 2),
                         "width": round(float(line.get("arrowheadWidth") or 0), 2),

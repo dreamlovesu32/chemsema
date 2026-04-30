@@ -1,10 +1,11 @@
 use super::text_edit::refresh_attached_node_label_geometry_for_all_nodes;
-use super::Engine;
+use super::{EditorCommand, Engine};
 use crate::{
     adjacent_directions, angle_between, direction_from_angle, hit_test_bond, hit_test_bond_center,
     hit_test_endpoint, nearest_angle, normalize_angle, Bond, BondAnchor, BondPreview,
-    ChemcoreDocument, Node, Point, PointerEvent, BOND_CENTER_HIT_RADIUS, BOND_HIT_RADIUS,
-    DEFAULT_BOND_LENGTH, DRAG_START_THRESHOLD, ENDPOINT_HIT_RADIUS, GLOBAL_SNAP_ANGLES,
+    ChemcoreDocument, DoubleBond, DoubleBondPlacement, Node, Point, PointerEvent,
+    BOND_CENTER_HIT_RADIUS, BOND_HIT_RADIUS, DEFAULT_BOND_LENGTH, DRAG_START_THRESHOLD,
+    ENDPOINT_HIT_RADIUS, GLOBAL_SNAP_ANGLES,
 };
 
 const RING_REUSE_RADIUS: f64 = crate::px_to_cm(5.0);
@@ -32,7 +33,7 @@ pub(super) struct TemplateDrag {
 #[derive(Clone)]
 struct RingPlan {
     vertices: Vec<RingVertex>,
-    edges: Vec<(usize, usize)>,
+    edges: Vec<RingEdge>,
     attach_edges: Vec<(String, usize)>,
 }
 
@@ -40,6 +41,14 @@ struct RingPlan {
 struct RingVertex {
     point: Point,
     node_id: Option<String>,
+}
+
+#[derive(Clone)]
+struct RingEdge {
+    begin: usize,
+    end: usize,
+    order: u8,
+    double_placement: Option<DoubleBondPlacement>,
 }
 
 impl Engine {
@@ -126,9 +135,23 @@ impl Engine {
         let Some(plan) = self.template_ring_plan(&drag, event.point()) else {
             return;
         };
-        self.push_undo_snapshot();
-        if !self.insert_ring_plan(plan, false) {
-            self.undo_stack.pop();
+        let point = event.point();
+        let inserted = self.with_command(
+            EditorCommand::InsertTemplate {
+                template: self.state.tool.template.clone(),
+                x: point.x,
+                y: point.y,
+            },
+            |engine| {
+                engine.push_undo_snapshot();
+                if !engine.insert_ring_plan(plan, false) {
+                    engine.undo_stack.pop();
+                    return false;
+                }
+                true
+            },
+        );
+        if !inserted {
             return;
         }
         self.clear_interaction();
@@ -153,6 +176,7 @@ impl Engine {
 
     fn template_ring_plan(&self, drag: &TemplateDrag, point: Point) -> Option<RingPlan> {
         let ring_size = selected_ring_size(&self.state.tool.template)?;
+        let aromatic = self.state.tool.template == "benzene";
         match &drag.anchor {
             TemplateAnchor::Endpoint(anchor) => {
                 let angle = if drag.has_dragged {
@@ -160,7 +184,7 @@ impl Engine {
                 } else {
                     endpoint_click_ring_axis_angle(&self.state.document, anchor)
                 };
-                Some(endpoint_ring_plan(ring_size, anchor, angle))
+                Some(endpoint_ring_plan(ring_size, anchor, angle, aromatic))
             }
             TemplateAnchor::Center(center) => {
                 if drag.has_dragged {
@@ -173,9 +197,10 @@ impl Engine {
                             label_anchor: None,
                         },
                         angle,
+                        aromatic,
                     ))
                 } else {
-                    Some(centered_ring_plan(ring_size, *center, 270.0))
+                    Some(centered_ring_plan(ring_size, *center, 270.0, aromatic))
                 }
             }
             TemplateAnchor::Bond {
@@ -192,6 +217,7 @@ impl Engine {
                 };
                 Some(fused_bond_ring_plan(
                     ring_size,
+                    aromatic,
                     begin_id.clone(),
                     end_id.clone(),
                     *begin,
@@ -237,6 +263,7 @@ impl Engine {
         let ring_size = selected_ring_size(&self.state.tool.template).unwrap_or(6);
         let left_score = self.ring_reuse_score(&fused_bond_ring_plan(
             ring_size,
+            false,
             String::new(),
             String::new(),
             begin,
@@ -245,6 +272,7 @@ impl Engine {
         ));
         let right_score = self.ring_reuse_score(&fused_bond_ring_plan(
             ring_size,
+            false,
             String::new(),
             String::new(),
             begin,
@@ -356,7 +384,12 @@ fn endpoint_click_ring_axis_angle(document: &ChemcoreDocument, anchor: &BondAnch
     }
 }
 
-fn endpoint_ring_plan(ring_size: usize, anchor: &BondAnchor, angle: f64) -> RingPlan {
+fn endpoint_ring_plan(
+    ring_size: usize,
+    anchor: &BondAnchor,
+    angle: f64,
+    aromatic: bool,
+) -> RingPlan {
     let direction = direction_from_angle(angle);
     let side = DEFAULT_BOND_LENGTH;
     let radius = side / (2.0 * (std::f64::consts::PI / ring_size as f64).sin());
@@ -374,14 +407,15 @@ fn endpoint_ring_plan(ring_size: usize, anchor: &BondAnchor, angle: f64) -> Ring
             },
         })
         .collect::<Vec<_>>();
+    let edges = ring_edges_for_vertices(&vertices, aromatic, 0);
     RingPlan {
         vertices,
-        edges: ring_edges(ring_size),
+        edges,
         attach_edges: Vec::new(),
     }
 }
 
-fn centered_ring_plan(ring_size: usize, center: Point, angle: f64) -> RingPlan {
+fn centered_ring_plan(ring_size: usize, center: Point, angle: f64, aromatic: bool) -> RingPlan {
     let side = DEFAULT_BOND_LENGTH;
     let radius = side / (2.0 * (std::f64::consts::PI / ring_size as f64).sin());
     let direction = direction_from_angle(angle);
@@ -393,15 +427,17 @@ fn centered_ring_plan(ring_size: usize, center: Point, angle: f64) -> RingPlan {
             node_id: None,
         })
         .collect::<Vec<_>>();
+    let edges = ring_edges_for_vertices(&vertices, aromatic, 0);
     RingPlan {
         vertices,
-        edges: ring_edges(ring_size),
+        edges,
         attach_edges: Vec::new(),
     }
 }
 
 fn fused_bond_ring_plan(
     ring_size: usize,
+    aromatic: bool,
     begin_id: String,
     end_id: String,
     begin: Point,
@@ -438,10 +474,11 @@ fn fused_bond_ring_plan(
                 _ => None,
             },
         })
-        .collect();
+        .collect::<Vec<_>>();
+    let edges = ring_edges_for_vertices(&vertices, aromatic, 1);
     RingPlan {
         vertices,
-        edges: ring_edges(ring_size),
+        edges,
         attach_edges: Vec::new(),
     }
 }
@@ -466,10 +503,41 @@ fn regular_vertices_from_vector(
         .collect()
 }
 
-fn ring_edges(ring_size: usize) -> Vec<(usize, usize)> {
-    (0..ring_size)
-        .map(|index| (index, (index + 1) % ring_size))
+fn ring_edges_for_vertices(
+    vertices: &[RingVertex],
+    aromatic: bool,
+    first_double_edge_index: usize,
+) -> Vec<RingEdge> {
+    let center = ring_vertices_center(vertices);
+    (0..vertices.len())
+        .map(|index| {
+            let next = (index + 1) % vertices.len();
+            let aromatic_double = aromatic && index % 2 == first_double_edge_index % 2;
+            RingEdge {
+                begin: index,
+                end: next,
+                order: if aromatic_double { 2 } else { 1 },
+                double_placement: aromatic_double.then(|| {
+                    inward_double_placement(vertices[index].point, vertices[next].point, center)
+                }),
+            }
+        })
         .collect()
+}
+
+fn ring_vertices_center(vertices: &[RingVertex]) -> Point {
+    let count = vertices.len().max(1) as f64;
+    Point::new(
+        vertices.iter().map(|vertex| vertex.point.x).sum::<f64>() / count,
+        vertices.iter().map(|vertex| vertex.point.y).sum::<f64>() / count,
+    )
+}
+
+fn inward_double_placement(begin: Point, end: Point, center: Point) -> DoubleBondPlacement {
+    match side_for_point(begin, end, center).unwrap_or(1.0) {
+        side if side > 0.0 => DoubleBondPlacement::Right,
+        _ => DoubleBondPlacement::Left,
+    }
 }
 
 fn side_for_point(begin: Point, end: Point, point: Point) -> Option<f64> {
@@ -529,11 +597,13 @@ fn insert_ring_plan_into_document(
     let object_translate = entry.object.transform.translate;
     entry.fragment.nodes.extend(nodes_to_insert);
 
-    for (a, b) in plan.edges {
+    for edge in plan.edges {
         changed |= insert_ring_bond(
             &mut entry,
-            &node_ids[a],
-            &node_ids[b],
+            &node_ids[edge.begin],
+            &node_ids[edge.end],
+            edge.order,
+            edge.double_placement,
             preview,
             preview_counter,
             engine,
@@ -547,6 +617,8 @@ fn insert_ring_plan_into_document(
             &mut entry,
             &existing_id,
             &node_ids[vertex_index],
+            1,
+            None,
             preview,
             preview_counter,
             engine,
@@ -616,6 +688,8 @@ fn insert_ring_bond(
     entry: &mut crate::EditableFragmentMut<'_>,
     begin_id: &str,
     end_id: &str,
+    order: u8,
+    double_placement: Option<DoubleBondPlacement>,
     preview: bool,
     preview_counter: &mut usize,
     engine: &Engine,
@@ -644,8 +718,12 @@ fn insert_ring_bond(
         id: bond_id,
         begin: begin_id.to_string(),
         end: end_id.to_string(),
-        order: 1,
-        double: None,
+        order: order.max(1),
+        double: double_placement.map(|placement| DoubleBond {
+            placement,
+            center_exit_side: None,
+            frozen: false,
+        }),
         stereo: None,
         stroke_width,
         line_styles,

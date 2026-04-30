@@ -1,6 +1,7 @@
 use chemcore_engine::{
-    direction_from_angle, BondLinePattern, BondLineWeight, BondVariant, DoubleBondPlacement,
-    Engine, Point, PointerEvent, RenderPrimitive, RenderRole, Tool, ToolState, DEFAULT_BOND_LENGTH,
+    angle_between, direction_from_angle, ArrowCurve, ArrowEndpointStyle, ArrowHeadSize, ArrowNoGo,
+    ArrowVariant, BondLinePattern, BondLineWeight, BondVariant, DoubleBondPlacement, Engine, Point,
+    PointerEvent, RenderPrimitive, RenderRole, Tool, ToolState, DEFAULT_BOND_LENGTH,
     DEFAULT_BOND_STROKE, ENDPOINT_FOCUS_RADIUS,
 };
 use serde_json::json;
@@ -27,6 +28,13 @@ fn polygon_area(points: &[Point]) -> f64 {
     (area * 0.5).abs()
 }
 
+fn assert_point_close(left: Point, right: Point) {
+    assert!(
+        left.distance(right) < 1e-9,
+        "expected {left:?} to be close to {right:?}"
+    );
+}
+
 fn endpoint_from_anchor(anchor: Point, angle: f64) -> Point {
     anchor.translated(direction_from_angle(angle).scaled(DEFAULT_BOND_LENGTH))
 }
@@ -43,22 +51,22 @@ fn rotate_point_around(point: Point, center: Point, degrees: f64) -> Point {
     )
 }
 
-const FIRST_START_X: f64 = 7.94;
-const FIRST_START_Y: f64 = 6.88;
-const FIRST_END_X: f64 = 8.85;
-const FIRST_END_Y: f64 = 6.35;
+const FIRST_START_X: f64 = px(300.0);
+const FIRST_START_Y: f64 = px(260.0);
+const FIRST_END_X: f64 = 250.98;
+const FIRST_END_Y: f64 = 180.0;
 const FIRST_END_HOVER_X: f64 = FIRST_END_X + px(1.0);
 const FIRST_END_HOVER_Y: f64 = FIRST_END_Y + px(2.0);
 const FIRST_CENTER_X: f64 = (FIRST_START_X + FIRST_END_X) * 0.5;
 const FIRST_CENTER_Y: f64 = (FIRST_START_Y + FIRST_END_Y) * 0.5;
-const FIRST_END_SINGLE_EXTEND_X: f64 = 9.77;
-const FIRST_END_SINGLE_EXTEND_Y: f64 = 6.88;
-const FIRST_END_TRIPLE_EXTEND_X: f64 = 9.76;
-const FIRST_END_TRIPLE_EXTEND_Y: f64 = 5.82;
+const FIRST_END_SINGLE_EXTEND_X: f64 = 276.96;
+const FIRST_END_SINGLE_EXTEND_Y: f64 = 195.0;
+const FIRST_END_TRIPLE_EXTEND_X: f64 = 276.96;
+const FIRST_END_TRIPLE_EXTEND_Y: f64 = 165.0;
 const ROOT_SINGLE_BRANCH_X: f64 = px(300.0);
-const ROOT_SINGLE_BRANCH_Y: f64 = 7.94;
-const ROOT_OPPOSITE_BRANCH_X: f64 = 8.85;
-const ROOT_OPPOSITE_BRANCH_Y: f64 = 7.41;
+const ROOT_SINGLE_BRANCH_Y: f64 = 225.0;
+const ROOT_OPPOSITE_BRANCH_X: f64 = 250.98;
+const ROOT_OPPOSITE_BRANCH_Y: f64 = 210.0;
 
 fn bond_tool() -> ToolState {
     ToolState {
@@ -153,6 +161,7 @@ fn templates_tool(template: &str) -> ToolState {
         active_tool: Tool::Templates,
         bond_variant: BondVariant::Single,
         template: template.to_string(),
+        ..ToolState::default()
     }
 }
 
@@ -368,6 +377,27 @@ fn hover(engine: &mut Engine, x: f64, y: f64) {
     });
 }
 
+fn drag(engine: &mut Engine, from: Point, to: Point) {
+    engine.pointer_down(PointerEvent {
+        x: from.x,
+        y: from.y,
+        button: Some(0),
+        alt_key: false,
+    });
+    engine.pointer_move(PointerEvent {
+        x: to.x,
+        y: to.y,
+        button: None,
+        alt_key: false,
+    });
+    engine.pointer_up(PointerEvent {
+        x: to.x,
+        y: to.y,
+        button: Some(0),
+        alt_key: false,
+    });
+}
+
 fn rect_polygon(x1: f64, y1: f64, x2: f64, y2: f64) -> serde_json::Value {
     json!([
         [px(x1), px(y1)],
@@ -375,6 +405,393 @@ fn rect_polygon(x1: f64, y1: f64, x2: f64, y2: f64) -> serde_json::Value {
         [px(x2), px(y2)],
         [px(x1), px(y2)]
     ])
+}
+
+#[test]
+fn arrow_tool_defaults_to_small_head_without_selecting_created_arrow() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(ToolState {
+        active_tool: Tool::Arrow,
+        ..ToolState::default()
+    });
+
+    assert_eq!(engine.state().tool.arrow_head_size, ArrowHeadSize::Small);
+    drag(&mut engine, Point::new(10.0, 20.0), Point::new(90.0, 20.0));
+
+    assert!(engine.state().selection.arrow_objects.is_empty());
+    let object = engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "line")
+        .expect("created arrow object should exist");
+    let object_id = object.id.clone();
+    let object = engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .find(|object| object.id == object_id)
+        .expect("created arrow object should exist");
+    let arrow_head = object.payload.extra.get("arrowHead").unwrap();
+    assert_eq!(
+        arrow_head.get("kind").and_then(|value| value.as_str()),
+        Some("solid")
+    );
+    assert_eq!(
+        arrow_head.get("length").and_then(|value| value.as_f64()),
+        Some(10.0)
+    );
+
+    let render_list = engine.render_list();
+    assert!(!render_list.iter().any(|primitive| matches!(
+        primitive,
+        RenderPrimitive::Rect {
+            role: RenderRole::SelectionBox,
+            ..
+        }
+    )));
+    assert!(!render_list.iter().any(|primitive| matches!(
+        primitive,
+        RenderPrimitive::Circle {
+            role: RenderRole::HoverArrowHandle,
+            ..
+        }
+    )));
+
+    hover(&mut engine, 50.0, 20.0);
+    assert!(engine.render_list().iter().any(|primitive| matches!(
+        primitive,
+        RenderPrimitive::Circle {
+            role: RenderRole::HoverArrowHandle,
+            radius,
+            ..
+        } if (*radius - px(1.5)).abs() < 1.0e-9
+    )));
+
+    engine.set_tool_state(ToolState {
+        active_tool: Tool::Select,
+        ..ToolState::default()
+    });
+    engine.select_at_point(Point::new(50.0, 20.0), false);
+    assert_eq!(engine.state().selection.arrow_objects, vec![object_id]);
+    let render_list = engine.render_list();
+    assert!(render_list.iter().any(|primitive| matches!(
+        primitive,
+        RenderPrimitive::Rect {
+            role: RenderRole::SelectionBox,
+            ..
+        }
+    )));
+    assert!(!render_list.iter().any(|primitive| matches!(
+        primitive,
+        RenderPrimitive::Circle {
+            role: RenderRole::HoverArrowHandle,
+            ..
+        }
+    )));
+
+    engine.set_tool_state(ToolState {
+        active_tool: Tool::Select,
+        ..ToolState::default()
+    });
+    engine.select_at_point(Point::new(10000.0, 10000.0), false);
+    engine.set_tool_state(ToolState {
+        active_tool: Tool::Arrow,
+        ..ToolState::default()
+    });
+    hover(&mut engine, 50.0, 20.0);
+    assert!(engine.render_list().iter().any(|primitive| matches!(
+        primitive,
+        RenderPrimitive::Circle {
+            role: RenderRole::HoverArrowHandle,
+            radius,
+            ..
+        } if (*radius - px(1.5)).abs() < 1.0e-9
+    )));
+}
+
+#[test]
+fn arrow_hover_endpoint_drag_updates_head_with_angle_snap() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(ToolState {
+        active_tool: Tool::Arrow,
+        ..ToolState::default()
+    });
+    drag(&mut engine, Point::new(0.0, 0.0), Point::new(100.0, 0.0));
+
+    assert_eq!(
+        engine.begin_hover_arrow_edit(Point::new(100.0, 0.0)),
+        "head"
+    );
+    assert!(engine.update_hover_arrow_edit(Point::new(100.0, 36.4), false));
+    assert!(engine.finish_hover_arrow_edit(Point::new(100.0, 36.4), false));
+
+    let object = engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "line")
+        .expect("arrow object should exist");
+    let points = object
+        .payload
+        .extra
+        .get("points")
+        .and_then(|value| value.as_array())
+        .expect("arrow should store points");
+    let end = points[1].as_array().unwrap();
+    let angle = angle_between(
+        Point::new(0.0, 0.0),
+        Point::new(end[0].as_f64().unwrap(), end[1].as_f64().unwrap()),
+    );
+    assert_eq!(angle.round(), 15.0);
+}
+
+#[test]
+fn arrow_hover_curve_drag_updates_curve_with_snap_and_selected_arrows_do_not_hover() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(ToolState {
+        active_tool: Tool::Arrow,
+        ..ToolState::default()
+    });
+    drag(&mut engine, Point::new(0.0, 0.0), Point::new(100.0, 0.0));
+
+    assert_eq!(
+        engine.begin_hover_arrow_edit(Point::new(50.0, 0.0)),
+        "curve"
+    );
+    assert!(engine.update_hover_arrow_edit(Point::new(50.0, -30.0), false));
+    assert_eq!(engine.active_arrow_edit_degrees(), 120.0);
+    assert!(engine.finish_hover_arrow_edit(Point::new(50.0, -30.0), false));
+
+    let object = engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "line")
+        .expect("arrow object should exist");
+    let arrow_head = object.payload.extra.get("arrowHead").unwrap();
+    assert_eq!(
+        arrow_head.get("curve").and_then(|value| value.as_f64()),
+        Some(-120.0)
+    );
+    assert_eq!(
+        arrow_head.get("kind").and_then(|value| value.as_str()),
+        Some("curved")
+    );
+
+    engine.set_tool_state(select_tool());
+    engine.select_at_point(Point::new(50.0, -28.0), false);
+    assert_eq!(engine.state().selection.arrow_objects.len(), 1);
+    hover(&mut engine, 50.0, -28.0);
+    assert!(engine.state().overlay.hover_arrow.is_none());
+}
+
+#[test]
+fn selected_arrow_style_updates_from_arrow_toolbar_options() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(ToolState {
+        active_tool: Tool::Arrow,
+        ..ToolState::default()
+    });
+    drag(&mut engine, Point::new(10.0, 20.0), Point::new(90.0, 20.0));
+    engine.set_tool_state(ToolState {
+        active_tool: Tool::Select,
+        ..ToolState::default()
+    });
+    engine.select_at_point(Point::new(50.0, 20.0), false);
+
+    assert!(engine.apply_arrow_options_to_selection(
+        ArrowVariant::Hollow,
+        ArrowHeadSize::Small,
+        ArrowCurve::Arc270,
+        ArrowEndpointStyle::None,
+        ArrowEndpointStyle::Full,
+        false,
+        true,
+        true,
+        ArrowNoGo::None,
+    ));
+    let object_id = &engine.state().selection.arrow_objects[0];
+    let object = engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .find(|object| &object.id == object_id)
+        .expect("selected arrow object should exist");
+
+    assert_eq!(
+        object
+            .payload
+            .extra
+            .get("head")
+            .and_then(|value| value.as_str()),
+        Some("none")
+    );
+    assert_eq!(
+        object
+            .payload
+            .extra
+            .get("tail")
+            .and_then(|value| value.as_str()),
+        Some("start")
+    );
+    let arrow_head = object.payload.extra.get("arrowHead").unwrap();
+    assert_eq!(
+        arrow_head.get("kind").and_then(|value| value.as_str()),
+        Some("hollow")
+    );
+    assert_eq!(
+        arrow_head.get("tail").and_then(|value| value.as_str()),
+        Some("full")
+    );
+    assert_eq!(
+        arrow_head.get("bold").and_then(|value| value.as_bool()),
+        Some(true)
+    );
+}
+
+#[test]
+fn curved_arrow_tool_stores_curve_and_renders_arc_segments() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(ToolState {
+        active_tool: Tool::Arrow,
+        arrow_variant: ArrowVariant::CurvedMirror,
+        arrow_curve: ArrowCurve::Arc120,
+        ..ToolState::default()
+    });
+
+    drag(&mut engine, Point::new(10.0, 20.0), Point::new(90.0, 20.0));
+
+    let object = engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "line")
+        .expect("created curved arrow object should exist");
+    let arrow_head = object.payload.extra.get("arrowHead").unwrap();
+    assert_eq!(
+        arrow_head.get("kind").and_then(|value| value.as_str()),
+        Some("curved-mirror")
+    );
+    assert_eq!(
+        arrow_head.get("curve").and_then(|value| value.as_f64()),
+        Some(120.0)
+    );
+    let arc_points = engine
+        .render_list()
+        .into_iter()
+        .find_map(|primitive| match primitive {
+            RenderPrimitive::Path {
+                role: RenderRole::DocumentGraphic,
+                points,
+                ..
+            } if points.len() > 2 => Some(points),
+            _ => None,
+        })
+        .expect("curved arrow should render as a smooth path with sampled bounds points");
+    assert!(arc_points[arc_points.len() / 2].y > arc_points[0].y);
+}
+
+#[test]
+fn curved_arrow_path_uses_circular_arc_control_points() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(ToolState {
+        active_tool: Tool::Arrow,
+        arrow_variant: ArrowVariant::Curved,
+        arrow_curve: ArrowCurve::Arc270,
+        ..ToolState::default()
+    });
+
+    drag(&mut engine, Point::new(10.0, 20.0), Point::new(110.0, 20.0));
+
+    let path_d = engine
+        .render_list()
+        .into_iter()
+        .find_map(|primitive| match primitive {
+            RenderPrimitive::Path {
+                role: RenderRole::DocumentGraphic,
+                d,
+                ..
+            } => Some(d),
+            _ => None,
+        })
+        .expect("curved arrow should render as a path");
+    let numbers: Vec<f64> = path_d
+        .split(|ch: char| ch.is_ascii_whitespace() || ch == ',' || ch == 'M' || ch == 'C')
+        .filter_map(|part| part.parse::<f64>().ok())
+        .collect();
+    let start = Point::new(numbers[0], numbers[1]);
+    let first_control = Point::new(numbers[2], numbers[3]);
+    assert!(
+        start.distance(first_control) < 50.0,
+        "arc control point should stay near the circular tangent, got path {path_d}"
+    );
+}
+
+#[test]
+fn half_arrow_heads_keep_visual_left_and_right_sides_on_curves() {
+    fn rendered_half_head(
+        variant: ArrowVariant,
+        style: ArrowEndpointStyle,
+    ) -> (Vec<Point>, Vec<Point>) {
+        let mut engine = Engine::new();
+        engine.set_tool_state(ToolState {
+            active_tool: Tool::Arrow,
+            arrow_variant: variant,
+            arrow_curve: ArrowCurve::Arc120,
+            arrow_head_style: style,
+            ..ToolState::default()
+        });
+        drag(&mut engine, Point::new(10.0, 20.0), Point::new(90.0, 20.0));
+
+        let mut arc = Vec::new();
+        let mut head = Vec::new();
+        for primitive in engine.render_list() {
+            match primitive {
+                RenderPrimitive::Path { points, .. } | RenderPrimitive::Polyline { points, .. } => {
+                    arc = points
+                }
+                RenderPrimitive::Line { from, to, .. } => arc = vec![from, to],
+                RenderPrimitive::Polygon { points, .. } if points.len() == 4 => head = points,
+                _ => {}
+            }
+        }
+        (arc, head)
+    }
+
+    let (straight_arc, straight_left) =
+        rendered_half_head(ArrowVariant::Solid, ArrowEndpointStyle::Left);
+    assert_eq!(straight_arc.len(), 2);
+    assert!(straight_arc[1].x < 90.0);
+    assert_point_close(straight_left[0], Point::new(90.0, 20.0));
+    assert!(straight_left[2].y < straight_left[1].y);
+    assert!(straight_left[3].y < straight_left[2].y);
+    let (_, straight_right) = rendered_half_head(ArrowVariant::Solid, ArrowEndpointStyle::Right);
+    assert!(straight_right[1].y > straight_right[2].y);
+    assert!(straight_right[2].y > straight_right[3].y);
+
+    let (curved_arc, curved_left) =
+        rendered_half_head(ArrowVariant::Curved, ArrowEndpointStyle::Left);
+    assert!(curved_arc[curved_arc.len() / 2].y < curved_arc[0].y);
+    assert!((*curved_arc.last().unwrap()).distance(Point::new(90.0, 20.0)) > 1.0);
+    assert!(curved_left[3].distance(curved_left[0]) > curved_left[1].distance(curved_left[0]));
+    let (_, curved_right) = rendered_half_head(ArrowVariant::Curved, ArrowEndpointStyle::Right);
+    assert!(curved_right[1].distance(curved_right[0]) > curved_right[3].distance(curved_right[0]));
+
+    let (mirror_arc, mirror_left) =
+        rendered_half_head(ArrowVariant::CurvedMirror, ArrowEndpointStyle::Left);
+    assert!(mirror_arc[mirror_arc.len() / 2].y > mirror_arc[0].y);
+    assert!((*mirror_arc.last().unwrap()).distance(Point::new(90.0, 20.0)) > 1.0);
+    assert!(mirror_left[3].distance(mirror_left[0]) > mirror_left[1].distance(mirror_left[0]));
+    let (_, mirror_right) =
+        rendered_half_head(ArrowVariant::CurvedMirror, ArrowEndpointStyle::Right);
+    assert!(mirror_right[1].distance(mirror_right[0]) > mirror_right[3].distance(mirror_right[0]));
 }
 
 fn load_label_document(
@@ -655,29 +1072,31 @@ fn template_endpoint_ring_connects_adjacent_intersections_through_center() {
         [(center_index + original_bond_points.len() - 1) % original_bond_points.len()];
     let next = original_bond_points[(center_index + 1) % original_bond_points.len()];
 
-    assert!(previous.distance(endpoint) < 0.08, "{previous:?}");
-    assert!(next.distance(endpoint) < 0.08, "{next:?}");
+    assert!(
+        previous.distance(endpoint) < 0.08 * chemcore_engine::PT_PER_CM,
+        "{previous:?}"
+    );
+    assert!(
+        next.distance(endpoint) < 0.08 * chemcore_engine::PT_PER_CM,
+        "{next:?}"
+    );
 
-    let center_patch = engine
-        .render_list()
-        .into_iter()
-        .find_map(|primitive| match primitive {
-            RenderPrimitive::Polygon {
-                role: RenderRole::DocumentBond,
-                bond_id: None,
-                points,
-                ..
-            } if points.len() == 3
-                && points.iter().all(|point| point.distance(endpoint) < 0.08) =>
-            {
-                Some(points)
-            }
-            _ => None,
-        })
-        .expect("endpoint ring junction should render a center patch");
-    assert!(center_patch
-        .iter()
-        .all(|point| point.distance(endpoint) > 0.005));
+    assert!(
+        engine.render_list().into_iter().all(|primitive| {
+            !matches!(
+                primitive,
+                RenderPrimitive::Polygon {
+                    role: RenderRole::DocumentBond,
+                    bond_id: None,
+                    points,
+                    ..
+                } if points
+                    .iter()
+                    .any(|point| point.distance(endpoint) < 0.08 * chemcore_engine::PT_PER_CM)
+            )
+        }),
+        "endpoint ring junction should be covered by bond polygons, not an extra center patch"
+    );
 
     let incident_areas: Vec<f64> = engine
         .render_list()
@@ -822,7 +1241,9 @@ fn template_click_on_blank_canvas_creates_regular_ring() {
         ring_points.iter().map(|point| point.y).sum::<f64>() / ring_points.len() as f64,
     );
     assert!(center.distance(anchor) < 0.002, "{center:?} {anchor:?}");
-    assert!(ring_points.iter().all(|point| point.distance(anchor) > 0.01));
+    assert!(ring_points
+        .iter()
+        .all(|point| point.distance(anchor) > 0.01));
     for bond in &entry.fragment.bonds {
         let begin = entry
             .fragment
@@ -843,6 +1264,69 @@ fn template_click_on_blank_canvas_creates_regular_ring() {
             "{begin:?} {end:?}"
         );
     }
+    assert_no_duplicate_node_positions(&engine);
+}
+
+#[test]
+fn template_benzene_click_creates_alternating_double_bonds() {
+    let mut engine = Engine::new();
+    let anchor = px_point(300.0, 260.0);
+
+    engine.set_tool_state(templates_tool("benzene"));
+    click(&mut engine, anchor.x, anchor.y);
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    assert_eq!(entry.fragment.nodes.len(), 6);
+    assert_eq!(entry.fragment.bonds.len(), 6);
+    assert_eq!(
+        entry
+            .fragment
+            .bonds
+            .iter()
+            .filter(|bond| bond.order == 2 && bond.double.is_some())
+            .count(),
+        3
+    );
+    assert_eq!(
+        entry
+            .fragment
+            .bonds
+            .iter()
+            .filter(|bond| bond.order == 1 && bond.double.is_none())
+            .count(),
+        3
+    );
+    assert_no_duplicate_node_positions(&engine);
+}
+
+#[test]
+fn template_benzene_click_on_bond_keeps_fused_side_and_adds_three_double_bonds() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, px(300.0), px(260.0));
+
+    engine.set_tool_state(templates_tool("benzene"));
+    click(&mut engine, FIRST_CENTER_X, FIRST_CENTER_Y);
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    assert_eq!(entry.fragment.nodes.len(), 6);
+    assert_eq!(entry.fragment.bonds.len(), 6);
+    let original_bond = entry
+        .fragment
+        .bonds
+        .iter()
+        .find(|bond| bond.id == "b_3")
+        .expect("clicked bond should be reused");
+    assert_eq!(original_bond.order, 1);
+    assert_eq!(
+        entry
+            .fragment
+            .bonds
+            .iter()
+            .filter(|bond| bond.order == 2 && bond.double.is_some())
+            .count(),
+        3
+    );
     assert_no_duplicate_node_positions(&engine);
 }
 
@@ -887,7 +1371,9 @@ fn template_drag_on_blank_canvas_snaps_ring_axis_to_15_degrees() {
         ring_points.iter().map(|point| point.x).sum::<f64>() / ring_points.len() as f64,
         ring_points.iter().map(|point| point.y).sum::<f64>() / ring_points.len() as f64,
     );
-    assert!(ring_points.iter().any(|point| point.distance(anchor) < 0.01));
+    assert!(ring_points
+        .iter()
+        .any(|point| point.distance(anchor) < 0.01));
     assert!((chemcore_engine::angle_between(anchor, center) - 15.0).abs() < 0.2);
     assert_no_duplicate_node_positions(&engine);
 }
@@ -1202,7 +1688,7 @@ fn drag_from_label_glyph_uses_focused_glyph_for_vertical_bond() {
     let entry = engine.state().document.editable_fragment().unwrap();
     let last = entry.fragment.nodes.last().unwrap();
     assert!(
-        (last.position[0] - 8.07).abs() < 0.01,
+        (last.position[0] - px(305.0)).abs() < 0.01,
         "{:?}",
         last.position
     );
@@ -1257,7 +1743,7 @@ fn drag_from_connected_label_uses_rightmost_group_uppercase_anchor() {
     let entry = engine.state().document.editable_fragment().unwrap();
     let last = entry.fragment.nodes.last().unwrap();
     assert!(
-        (last.position[0] - 9.34).abs() < 0.01,
+        (last.position[0] - px(353.0)).abs() < 0.01,
         "{:?}",
         last.position
     );
@@ -1649,12 +2135,12 @@ fn alt_drag_from_endpoint_uses_mouse_distance_without_snap() {
     let entry = engine.state().document.editable_fragment().unwrap();
     let last = entry.fragment.nodes.last().unwrap();
     assert!(
-        (last.position[0] - 10.29).abs() < 0.001,
+        (last.position[0] - px(389.0)).abs() < 0.001,
         "{:?}",
         last.position
     );
     assert!(
-        (last.position[1] - 7.96).abs() < 0.001,
+        (last.position[1] - px(301.0)).abs() < 0.001,
         "{:?}",
         last.position
     );
@@ -3119,6 +3605,75 @@ fn select_delete_and_undo_redo_round_trip() {
 }
 
 #[test]
+fn select_delete_atom_removes_attached_bonds_but_keeps_neighbor_atoms() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, px(300.0), px(260.0));
+    click(&mut engine, FIRST_END_X, FIRST_END_Y);
+    assert_eq!(fragment_counts(&engine), (3, 2));
+
+    engine.set_tool_state(select_tool());
+    engine.select_at_point(Point::new(FIRST_END_X, FIRST_END_Y), false);
+    assert_eq!(engine.state().selection.nodes, vec!["n_2"]);
+    assert!(engine.delete_selection());
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    assert_eq!(entry.fragment.bonds.len(), 0);
+    assert_eq!(entry.fragment.nodes.len(), 2);
+    assert!(entry.fragment.nodes.iter().all(|node| node.id != "n_2"));
+}
+
+#[test]
+fn select_copy_and_paste_selected_bond_duplicates_atoms_and_bond() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, px(300.0), px(260.0));
+    engine.set_tool_state(select_tool());
+    engine.select_at_point(Point::new(FIRST_CENTER_X, FIRST_CENTER_Y), false);
+
+    assert!(engine.copy_selection());
+    assert!(engine.paste_clipboard());
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    assert_eq!(entry.fragment.nodes.len(), 4);
+    assert_eq!(entry.fragment.bonds.len(), 2);
+    assert_eq!(engine.state().selection.nodes.len(), 2);
+    assert_eq!(engine.state().selection.bonds.len(), 1);
+}
+
+#[test]
+fn select_cut_stores_bond_then_deletes_and_allows_paste() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, px(300.0), px(260.0));
+    engine.set_tool_state(select_tool());
+    engine.select_at_point(Point::new(FIRST_CENTER_X, FIRST_CENTER_Y), false);
+
+    assert!(engine.cut_selection());
+    assert_eq!(fragment_counts(&engine), (0, 0));
+    assert!(engine.paste_clipboard());
+    assert_eq!(fragment_counts(&engine), (2, 1));
+}
+
+#[test]
+fn select_cut_undo_redo_is_one_command() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, px(300.0), px(260.0));
+    engine.set_tool_state(select_tool());
+    engine.select_at_point(Point::new(FIRST_CENTER_X, FIRST_CENTER_Y), false);
+
+    assert!(engine.cut_selection());
+    assert_eq!(fragment_counts(&engine), (0, 0));
+
+    assert!(engine.undo());
+    assert_eq!(fragment_counts(&engine), (2, 1));
+
+    assert!(engine.redo());
+    assert_eq!(fragment_counts(&engine), (0, 0));
+}
+
+#[test]
 fn select_tool_click_on_text_object_selects_text_box() {
     let mut engine = Engine::new();
     load_text_object_document(&mut engine);
@@ -3340,6 +3895,32 @@ fn select_tool_dragging_selected_bond_moves_its_endpoints() {
         "n2 y {:?} expected {expected_n2_y}",
         n2.position
     );
+}
+
+#[test]
+fn select_tool_move_undo_redo_returns_to_final_drag_position() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, px(300.0), px(260.0));
+    engine.set_tool_state(select_tool());
+    let start = Point::new(FIRST_CENTER_X, FIRST_CENTER_Y);
+    let mid = Point::new(FIRST_CENTER_X + px(10.0), FIRST_CENTER_Y);
+    let end = Point::new(FIRST_CENTER_X + px(24.0), FIRST_CENTER_Y + px(18.0));
+
+    engine.select_at_point(start, false);
+    assert!(engine.begin_selection_move_at_point(start, false, false));
+    assert!(engine.update_selection_move(mid, false));
+    assert!(engine.update_selection_move(end, false));
+    assert!(engine.finish_selection_move(end, false));
+
+    let final_n1 = node_world_point(&engine, "n_1");
+    assert!(engine.undo());
+    assert_eq!(
+        node_world_point(&engine, "n_1"),
+        Point::new(FIRST_START_X, FIRST_START_Y)
+    );
+    assert!(engine.redo());
+    assert_eq!(node_world_point(&engine, "n_1"), final_n1);
 }
 
 #[test]

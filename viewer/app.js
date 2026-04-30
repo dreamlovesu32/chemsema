@@ -65,6 +65,10 @@ const state = {
   coreRenderList: null,
   runtimeViewBox: null,
   lastEditFocusPoint: null,
+  zoomHandoffs: [],
+  programmaticScrollTimer: null,
+  isProgrammaticScroll: false,
+  expectedProgrammaticScroll: null,
   displayMetrics: displayMetrics(),
 };
 let sharedGlyphProfiles = null;
@@ -110,19 +114,18 @@ if (typeof window !== "undefined") {
   };
 }
 
-const DEFAULT_TEXT_FONT_SIZE = 0.2645833;
-const BOND_STROKE = 0.035;
+const DEFAULT_TEXT_FONT_SIZE = 7.5;
+const BOND_STROKE = 1.0;
 const CHEMDRAW_PAGE_BACKGROUND = "#ffffff";
 const CHEMDRAW_INK = "#000000";
-const DEFAULT_WORKSPACE_WIDTH = 31.75;
-const DEFAULT_WORKSPACE_HEIGHT = 21.1666666667;
+const DEFAULT_WORKSPACE_WIDTH = 900;
+const DEFAULT_WORKSPACE_HEIGHT = 600;
 const EDITOR_VIEW_BUFFER_RATIO = 0.6;
 const EDITOR_AUTO_EXPAND_TRIGGER_RATIO = 0.18;
 const EDITOR_FIT_PADDING_RATIO = 0.08;
-const ZOOM_MIN_PERCENT = 25;
-const ZOOM_MAX_PERCENT = 800;
-const ZOOM_STEP_LEVELS = [25, 33, 50, 67, 80, 100, 125, 150, 200, 250, 300, 400, 500, 600, 800];
-const WHEEL_ZOOM_FACTOR = 1.12;
+const ZOOM_STEP_LEVELS = [12, 25, 50, 75, 100, 150, 200, 400, 600, 800];
+const ZOOM_MIN_PERCENT = ZOOM_STEP_LEVELS[0];
+const ZOOM_MAX_PERCENT = ZOOM_STEP_LEVELS[ZOOM_STEP_LEVELS.length - 1];
 const SELECTION_ROTATE_HANDLE_OFFSET_PX = 26;
 const SELECTION_ROTATE_HANDLE_RADIUS_PX = 6;
 const SELECTION_ROTATE_HANDLE_HIT_RADIUS_PX = 12;
@@ -221,6 +224,15 @@ const editorState = {
   textItalic: false,
   textUnderline: false,
   textScript: "normal",
+  arrowType: "solid",
+  arrowHeadSize: "small",
+  arrowCurve: "270",
+  arrowHeadStyle: "full",
+  arrowTailStyle: "none",
+  arrowHead: true,
+  arrowTail: false,
+  arrowBold: false,
+  arrowNoGo: "none",
   shapeStroke: "#000000",
   shapeFill: "none",
   shapeStyle: "rect",
@@ -249,6 +261,25 @@ function syncEngineToolState() {
   }
   state.editorEngine.setTool(editorState.activeTool, editorState.bondType);
   state.editorEngine.setTemplate?.(editorState.template);
+  if (state.editorEngine.setArrowEndpointOptions) {
+    state.editorEngine.setArrowEndpointOptions(
+      editorState.arrowType,
+      editorState.arrowHeadSize,
+      editorState.arrowCurve,
+      editorState.arrowHeadStyle,
+      editorState.arrowTailStyle,
+      editorState.arrowNoGo,
+      editorState.arrowBold,
+    );
+    return;
+  }
+  state.editorEngine.setArrowOptions?.(
+    editorState.arrowType,
+    editorState.arrowHeadSize,
+    editorState.arrowHead,
+    editorState.arrowTail,
+    editorState.arrowBold,
+  );
 }
 
 function parseEngineJson(json, fallback = null) {
@@ -273,10 +304,12 @@ function mapTextSessionLengths(session, convert) {
   if (!session || typeof session !== "object") {
     return session;
   }
+  const rawBox = session.box ?? session.boxValue;
   return {
     ...session,
     fontSize: session.fontSize == null ? session.fontSize : convert(Number(session.fontSize)),
     lineHeight: session.lineHeight == null ? session.lineHeight : convert(Number(session.lineHeight)),
+    box: mapLengthArray(rawBox, convert),
     boxValue: mapLengthArray(session.boxValue, convert),
     anchorOffset: mapLengthArray(session.anchorOffset, convert),
     sourceRuns: mapRunsFontSize(session.sourceRuns, convert),
@@ -403,6 +436,40 @@ function visibleWorldSize(scale = viewportScale()) {
   return {
     width: Math.max(1, viewerContainer.clientWidth / scale),
     height: Math.max(1, viewerContainer.clientHeight / scale),
+  };
+}
+
+function viewportScaleForZoom(percent) {
+  return CSS_PX_PER_CM * (closestZoomStep(percent) / 100);
+}
+
+function visibleWorldRect(scale = viewportScale()) {
+  const viewBox = activeViewBox();
+  if (!viewerContainer || scale <= 0) {
+    return {
+      minX: viewBox.x,
+      minY: viewBox.y,
+      maxX: viewBox.x + viewBox.width,
+      maxY: viewBox.y + viewBox.height,
+    };
+  }
+  const minX = viewBox.x + viewerContainer.scrollLeft / scale;
+  const minY = viewBox.y + viewerContainer.scrollTop / scale;
+  return {
+    minX,
+    minY,
+    maxX: minX + viewerContainer.clientWidth / scale,
+    maxY: minY + viewerContainer.clientHeight / scale,
+  };
+}
+
+function visibleWorldRectForCenter(center, scale) {
+  const visible = visibleWorldSize(scale);
+  return {
+    minX: center.x - visible.width / 2,
+    minY: center.y - visible.height / 2,
+    maxX: center.x + visible.width / 2,
+    maxY: center.y + visible.height / 2,
   };
 }
 
@@ -657,19 +724,166 @@ function selectionZoomCenterWorld() {
   };
 }
 
-function preferredZoomCenterWorld() {
-  const selectionCenter = selectionZoomCenterWorld();
-  if (selectionCenter) {
-    return selectionCenter;
+function boundsCenter(bounds) {
+  return {
+    x: (bounds.minX + bounds.maxX) / 2,
+    y: (bounds.minY + bounds.maxY) / 2,
+  };
+}
+
+function boundsSize(bounds) {
+  return {
+    width: Math.max(0, bounds.maxX - bounds.minX),
+    height: Math.max(0, bounds.maxY - bounds.minY),
+  };
+}
+
+function boundsToKey(bounds) {
+  if (!bounds) {
+    return "none";
   }
-  if (isEditingRustDocument() && state.lastEditFocusPoint) {
-    return { x: state.lastEditFocusPoint.x, y: state.lastEditFocusPoint.y };
+  return [
+    bounds.minX,
+    bounds.minY,
+    bounds.maxX,
+    bounds.maxY,
+  ].map((value) => Number(value || 0).toFixed(3)).join(",");
+}
+
+function rectContainsBounds(rect, bounds, epsilon = 0.001) {
+  if (!rect || !bounds) {
+    return false;
   }
-  return currentViewportCenterWorld();
+  return bounds.minX >= rect.minX - epsilon
+    && bounds.maxX <= rect.maxX + epsilon
+    && bounds.minY >= rect.minY - epsilon
+    && bounds.maxY <= rect.maxY + epsilon;
+}
+
+function rectIntersectsBounds(rect, bounds, epsilon = 0.001) {
+  if (!rect || !bounds) {
+    return false;
+  }
+  return bounds.maxX >= rect.minX - epsilon
+    && bounds.minX <= rect.maxX + epsilon
+    && bounds.maxY >= rect.minY - epsilon
+    && bounds.minY <= rect.maxY + epsilon;
+}
+
+function intersectBounds(a, b) {
+  if (!rectIntersectsBounds(a, b)) {
+    return null;
+  }
+  return {
+    minX: Math.max(a.minX, b.minX),
+    minY: Math.max(a.minY, b.minY),
+    maxX: Math.min(a.maxX, b.maxX),
+    maxY: Math.min(a.maxY, b.maxY),
+  };
+}
+
+function documentContentBoundsForZoom() {
+  const primitives = state.coreRenderList || (isEditingRustDocument() ? currentEditorRenderList() : []);
+  const documentPrimitives = (primitives || []).filter((primitive) => {
+    const role = String(primitive.role || "");
+    return role && !role.startsWith("selection-") && !role.startsWith("hover-") && !role.startsWith("preview-");
+  });
+  return boundsFromPrimitives(documentPrimitives);
+}
+
+function zoomFocusBounds() {
+  const selectionBounds = isEditingRustDocument()
+    ? selectionOverlayBoundsFromPrimitives(currentEditorRenderList())
+    : null;
+  const bounds = selectionBounds || documentContentBoundsForZoom();
+  if (!bounds) {
+    return null;
+  }
+  return {
+    bounds,
+    center: boundsCenter(bounds),
+    kind: selectionBounds ? "selection" : "content",
+    key: `${selectionBounds ? "selection" : "content"}:${boundsToKey(bounds)}`,
+  };
+}
+
+function clearZoomHandoffs() {
+  state.zoomHandoffs = [];
+  state.expectedProgrammaticScroll = null;
+}
+
+function markProgrammaticScroll() {
+  state.isProgrammaticScroll = true;
+  window.clearTimeout(state.programmaticScrollTimer);
+  state.programmaticScrollTimer = window.setTimeout(() => {
+    state.isProgrammaticScroll = false;
+  }, 250);
+}
+
+function rememberProgrammaticScrollPosition() {
+  if (!viewerContainer) {
+    return;
+  }
+  state.expectedProgrammaticScroll = {
+    left: viewerContainer.scrollLeft,
+    top: viewerContainer.scrollTop,
+  };
+}
+
+function isExpectedProgrammaticScroll() {
+  if (!viewerContainer || !state.expectedProgrammaticScroll) {
+    return false;
+  }
+  return Math.abs(viewerContainer.scrollLeft - state.expectedProgrammaticScroll.left) <= 1
+    && Math.abs(viewerContainer.scrollTop - state.expectedProgrammaticScroll.top) <= 1;
+}
+
+function constrainZoomCenterForBounds(center, bounds, scale) {
+  if (!bounds || !viewerContainer || scale <= 0) {
+    return center;
+  }
+  const visible = visibleWorldSize(scale);
+  const next = { ...center };
+  const size = boundsSize(bounds);
+  if (size.width <= visible.width) {
+    const minCenterX = bounds.maxX - visible.width / 2;
+    const maxCenterX = bounds.minX + visible.width / 2;
+    next.x = Math.min(Math.max(next.x, minCenterX), maxCenterX);
+  }
+  if (size.height <= visible.height) {
+    const minCenterY = bounds.maxY - visible.height / 2;
+    const maxCenterY = bounds.minY + visible.height / 2;
+    next.y = Math.min(Math.max(next.y, minCenterY), maxCenterY);
+  }
+  return next;
 }
 
 function clampZoomPercent(value) {
   return Math.max(ZOOM_MIN_PERCENT, Math.min(ZOOM_MAX_PERCENT, Math.round(value)));
+}
+
+function closestZoomStep(value) {
+  const clamped = clampZoomPercent(value);
+  return ZOOM_STEP_LEVELS.reduce((best, candidate) => (
+    Math.abs(candidate - clamped) < Math.abs(best - clamped) ? candidate : best
+  ), ZOOM_STEP_LEVELS[0]);
+}
+
+function zoomStepAtOrBelow(value) {
+  const clamped = clampZoomPercent(value);
+  let best = ZOOM_STEP_LEVELS[0];
+  for (const level of ZOOM_STEP_LEVELS) {
+    if (level <= clamped + 0.5) {
+      best = level;
+    }
+  }
+  return best;
+}
+
+function syncZoomControl() {
+  if (zoomInput) {
+    zoomInput.value = String(zoomPercent);
+  }
 }
 
 function nextZoomStep(direction) {
@@ -692,8 +906,10 @@ function scrollViewerToWorldPoint(point, center = true) {
   const scale = viewportScale();
   const offsetX = center ? viewerContainer.clientWidth / 2 : 0;
   const offsetY = center ? viewerContainer.clientHeight / 2 : 0;
+  markProgrammaticScroll();
   viewerContainer.scrollLeft = Math.max(0, (point.x - viewBox.x) * scale - offsetX);
   viewerContainer.scrollTop = Math.max(0, (point.y - viewBox.y) * scale - offsetY);
+  rememberProgrammaticScrollPosition();
 }
 
 function scrollViewerToWorldPointAtClient(point, clientX, clientY) {
@@ -703,8 +919,10 @@ function scrollViewerToWorldPointAtClient(point, clientX, clientY) {
   const rect = viewerContainer.getBoundingClientRect();
   const viewBox = activeViewBox();
   const scale = viewportScale();
+  markProgrammaticScroll();
   viewerContainer.scrollLeft = Math.max(0, (point.x - viewBox.x) * scale - (clientX - rect.left));
   viewerContainer.scrollTop = Math.max(0, (point.y - viewBox.y) * scale - (clientY - rect.top));
+  rememberProgrammaticScrollPosition();
 }
 
 function applyViewerViewport(options = {}) {
@@ -744,8 +962,10 @@ function applyViewerViewport(options = {}) {
       return;
     }
     if (scrollDelta) {
+      markProgrammaticScroll();
       viewerContainer.scrollLeft += scrollDelta.x * viewportScale();
       viewerContainer.scrollTop += scrollDelta.y * viewportScale();
+      rememberProgrammaticScrollPosition();
     }
     positionActiveTextEditor();
   });
@@ -768,7 +988,7 @@ function fitZoomPercentForViewBox(viewBox) {
   const width = Math.max(1, viewerContainer.clientWidth);
   const height = Math.max(1, viewerContainer.clientHeight);
   const scale = Math.min(width / Math.max(1, viewBox.width), height / Math.max(1, viewBox.height));
-  return clampZoomPercent((scale / CSS_PX_PER_CM) * 100);
+  return zoomStepAtOrBelow((scale / CSS_PX_PER_CM) * 100);
 }
 
 function extendBounds(bounds, minX, minY, maxX, maxY) {
@@ -797,7 +1017,7 @@ function boundsFromPrimitive(primitive) {
       maxY: Math.max(primitive.from.y, primitive.to.y) + halfStroke,
     };
   }
-  if ((primitive.kind === "polygon" || primitive.kind === "polyline") && Array.isArray(primitive.points) && primitive.points.length) {
+  if ((primitive.kind === "polygon" || primitive.kind === "polyline" || primitive.kind === "path") && Array.isArray(primitive.points) && primitive.points.length) {
     const xs = primitive.points.map((point) => point.x);
     const ys = primitive.points.map((point) => point.y);
     return {
@@ -1027,6 +1247,24 @@ function renderCorePrimitive(svgRoot, primitive) {
     svgRoot.appendChild(makeSvgNode("polyline", attrs));
     return;
   }
+  if (primitive.kind === "path" && primitive.d) {
+    const strokeWidth = primitiveStrokeWidthValue(primitive, BOND_STROKE);
+    const attrs = {
+      d: primitive.d,
+      fill: "none",
+      stroke: primitive.stroke || CHEMDRAW_INK,
+      "stroke-width": strokeWidth,
+      "stroke-dasharray": (primitive.dashArray || primitive.dash_array)?.join(" ") || undefined,
+      "stroke-linecap": primitive.lineCap || primitive.line_cap || undefined,
+      "stroke-linejoin": primitive.lineJoin || primitive.line_join || undefined,
+      "data-bond-id": primitive.bondId || undefined,
+    };
+    if (primitive.role === "document-bond") {
+      attrs.class = "mol-bond-stroked";
+    }
+    svgRoot.appendChild(makeSvgNode("path", attrs));
+    return;
+  }
   if (primitive.kind === "polygon" && Array.isArray(primitive.points)) {
     const strokeWidth = primitiveStrokeWidthValue(primitive, BOND_STROKE);
     const attrs = {
@@ -1158,6 +1396,7 @@ function resetEditorEngine() {
   state.editorEngine = new WasmEngine();
   state.runtimeViewBox = defaultEditorViewBox();
   state.lastEditFocusPoint = null;
+  clearZoomHandoffs();
   state.currentFileName = null;
   syncEngineToolState();
   syncDocumentFromEngine();
@@ -1188,6 +1427,12 @@ function runEditorCommand(command) {
     changed = state.editorEngine.undo();
   } else if (command === "redo") {
     changed = state.editorEngine.redo();
+  } else if (command === "copy") {
+    changed = !!state.editorEngine.copySelection?.();
+  } else if (command === "cut") {
+    changed = !!state.editorEngine.cutSelection?.();
+  } else if (command === "paste") {
+    changed = !!state.editorEngine.pasteClipboard?.();
   } else if (command === "delete") {
     changed = state.editorEngine.deleteSelection();
   } else {
@@ -1203,27 +1448,80 @@ function runEditorCommand(command) {
   return true;
 }
 
+function planZoomCenter(targetZoom) {
+  if (state.zoomHandoffs.length && !isExpectedProgrammaticScroll()) {
+    clearZoomHandoffs();
+  }
+  const previousZoom = zoomPercent;
+  const currentCenter = currentViewportCenterWorld();
+  const focus = zoomFocusBounds();
+  const targetScale = viewportScaleForZoom(targetZoom);
+  const direction = targetZoom > previousZoom ? 1 : targetZoom < previousZoom ? -1 : 0;
+  if (!direction || !focus) {
+    return { centerWorld: currentCenter, handoff: null };
+  }
+
+  if (direction > 0) {
+    const currentVisible = visibleWorldRect(viewportScaleForZoom(previousZoom));
+    const visibleFocus = intersectBounds(focus.bounds, currentVisible);
+    const nextVisibleAtCurrentCenter = visibleWorldRectForCenter(currentCenter, targetScale);
+    if (visibleFocus && !rectContainsBounds(nextVisibleAtCurrentCenter, visibleFocus)) {
+      return {
+        centerWorld: focus.center,
+        handoff: {
+          fromZoom: previousZoom,
+          toZoom: targetZoom,
+          restoreCenter: currentCenter,
+          handoffCenter: focus.center,
+          focusKey: focus.key,
+        },
+      };
+    }
+    return { centerWorld: currentCenter, handoff: null };
+  }
+
+  const handoff = state.zoomHandoffs[state.zoomHandoffs.length - 1];
+  if (
+    handoff
+    && handoff.focusKey === focus.key
+    && previousZoom <= handoff.toZoom + 0.5
+    && targetZoom <= handoff.fromZoom + 0.5
+  ) {
+    state.zoomHandoffs.pop();
+    return { centerWorld: handoff.restoreCenter, handoff: null };
+  }
+
+  const focusSize = boundsSize(focus.bounds);
+  const visibleSize = visibleWorldSize(targetScale);
+  if (focusSize.width <= visibleSize.width && focusSize.height <= visibleSize.height) {
+    return { centerWorld: currentCenter, handoff: null };
+  }
+  return {
+    centerWorld: constrainZoomCenterForBounds(currentCenter, focus.bounds, targetScale),
+    handoff: null,
+  };
+}
+
 function setZoomPercent(nextZoom, options = {}) {
-  const centerWorld = options.centerWorld || options.anchorWorld || preferredZoomCenterWorld();
-  const anchorWorld = options.anchorWorld || null;
-  zoomPercent = clampZoomPercent(nextZoom);
-  if (zoomInput) {
-    zoomInput.value = `${zoomPercent}%`;
+  const previousZoom = zoomPercent;
+  const targetZoom = closestZoomStep(nextZoom);
+  const { centerWorld, handoff } = options.centerWorld
+    ? { centerWorld: options.centerWorld, handoff: null }
+    : planZoomCenter(targetZoom);
+  zoomPercent = targetZoom;
+  syncZoomControl();
+  if (handoff) {
+    state.zoomHandoffs.push(handoff);
+  } else if (targetZoom > previousZoom) {
+    const last = state.zoomHandoffs[state.zoomHandoffs.length - 1];
+    if (last && last.toZoom < targetZoom) {
+      last.toZoom = targetZoom;
+    }
   }
   if (ensureEditorViewportCapacity(centerWorld)) {
-    if (anchorWorld) {
-      requestAnimationFrame(() => {
-        scrollViewerToWorldPointAtClient(anchorWorld, options.clientX, options.clientY);
-      });
-    }
     return;
   }
   applyViewerViewport({ centerWorld });
-  if (anchorWorld) {
-    requestAnimationFrame(() => {
-      scrollViewerToWorldPointAtClient(anchorWorld, options.clientX, options.clientY);
-    });
-  }
 }
 
 function handleViewerWheel(event) {
@@ -1234,14 +1532,8 @@ function handleViewerWheel(event) {
   if (!state.currentDocument || !viewerSvg) {
     return;
   }
-  const anchorWorld = svgPointFromEvent(event);
   const direction = event.deltaY < 0 ? 1 : -1;
-  const factor = direction > 0 ? WHEEL_ZOOM_FACTOR : 1 / WHEEL_ZOOM_FACTOR;
-  setZoomPercent(zoomPercent * factor, {
-    anchorWorld,
-    clientX: event.clientX,
-    clientY: event.clientY,
-  });
+  setZoomPercent(nextZoomStep(direction));
 }
 
 document.querySelectorAll("[data-command]").forEach((button) => {
@@ -1299,7 +1591,7 @@ openFileInput.addEventListener("change", async () => {
 });
 
 zoomInput?.addEventListener("change", () => {
-  const parsed = Number.parseInt(String(zoomInput.value || "").replace(/[^\d]/g, ""), 10);
+  const parsed = Number.parseInt(String(zoomInput.value || ""), 10);
   setZoomPercent(Number.isFinite(parsed) ? parsed : zoomPercent);
 });
 
@@ -1366,6 +1658,12 @@ document.addEventListener("keydown", (event) => {
     command = "undo";
   } else if ((commandKey && event.key.toLowerCase() === "y") || (commandKey && event.shiftKey && event.key.toLowerCase() === "z")) {
     command = "redo";
+  } else if (commandKey && event.key.toLowerCase() === "c") {
+    command = "copy";
+  } else if (commandKey && event.key.toLowerCase() === "x") {
+    command = "cut";
+  } else if (commandKey && event.key.toLowerCase() === "v") {
+    command = "paste";
   } else if (event.key === "Delete" || event.key === "Backspace") {
     command = "delete";
   }
@@ -1479,11 +1777,21 @@ function syncCanvasCursor() {
       ? DELETE_CURSOR
     : editorState.activeTool === "select"
       ? "default"
+    : editorState.activeTool === "arrow"
+      ? "crosshair"
       : "crosshair";
 }
 
 function syncSelectCursorForPoint(point) {
   if (!viewerSvg || editorState.activeTool !== "select" || !isEditingRustDocument()) {
+    syncCanvasCursor();
+    return;
+  }
+  syncArrowAwareCursorForPoint(point);
+}
+
+function syncArrowAwareCursorForPoint(point) {
+  if (!viewerSvg || !isEditingRustDocument()) {
     syncCanvasCursor();
     return;
   }
@@ -1495,8 +1803,29 @@ function syncSelectCursorForPoint(point) {
     viewerSvg.style.cursor = "grabbing";
     return;
   }
+  if (activeSelectionGesture?.kind === "arrow-endpoint") {
+    viewerSvg.style.cursor = "move";
+    return;
+  }
+  if (activeSelectionGesture?.kind === "arrow-curve") {
+    viewerSvg.style.cursor = "nesw-resize";
+    return;
+  }
   if (selectionRotateHandleHit(point)) {
     viewerSvg.style.cursor = "grab";
+    return;
+  }
+  const arrowAction = state.editorEngine.hoverArrowAction?.(point.x, point.y) || "";
+  if (arrowAction === "head" || arrowAction === "tail") {
+    viewerSvg.style.cursor = "move";
+    return;
+  }
+  if (arrowAction === "curve") {
+    viewerSvg.style.cursor = "nesw-resize";
+    return;
+  }
+  if (editorState.activeTool === "arrow") {
+    viewerSvg.style.cursor = "crosshair";
     return;
   }
   const overSelection = !!state.editorEngine.selectionContainsPoint?.(point.x, point.y);
@@ -1537,6 +1866,127 @@ function bondToolbarHtml() {
     toolbarButton("bond-wedge", bondToolIconSpec("wedge").title, bondToolIconSpec("wedge").svg, type === "wedge"),
     toolbarButton("bond-hashed-wedge", bondToolIconSpec("hashed-wedge").title, bondToolIconSpec("hashed-wedge").svg, type === "hashed-wedge"),
   ].join("");
+}
+
+function arrowIconSvg(type = "solid") {
+  if (type === "curved" || type === "curved-mirror") {
+    const transform = type === "curved-mirror" ? ` transform="translate(0 24) scale(1 -1)"` : "";
+    return `<svg viewBox="0 0 24 24" aria-hidden="true"><g${transform}><path d="M18.8 7.2C12.8 4.8 6 8.9 5.9 15.4"/><path class="filled" d="M20.5 9.6 17.2 6l4.9-.7z"/></g></svg>`;
+  }
+  if (type === "hollow") {
+    return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14h10v3l6-5-6-5v3H4z"/></svg>`;
+  }
+  if (type === "open") {
+    return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h12"/><path d="M4 15h12"/><path d="m15 6 5 6-5 6"/></svg>`;
+  }
+  return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h12"/><path class="filled" d="M15 7 21 12l-6 5z"/></svg>`;
+}
+
+function isCurvedArrowType(type = editorState.arrowType) {
+  return type === "curved" || type === "curved-mirror";
+}
+
+function arrowTypeSupportsHeadSize(type = editorState.arrowType) {
+  return type === "solid" || isCurvedArrowType(type);
+}
+
+function arrowCurveSvg(curve, mirrored = false) {
+  const paths = {
+    "270": "M18.8 6.2C11.9 3.6 4.5 8.3 4.5 15.4c0 4 3.4 6.4 7.3 5.3",
+    "180": "M18.8 7.1C13.1 4.3 6.2 8.6 6.2 14.6c0 3.4 2.9 5.3 6.1 4.5",
+    "120": "M18.8 8.4C14.5 5.9 8.4 8.2 7.2 13.2",
+    "90": "M18.8 9.6C15.2 7.5 10.8 8.9 8.4 12.1",
+  };
+  const transform = mirrored ? ` transform="translate(0 24) scale(1 -1)"` : "";
+  return `<svg viewBox="0 0 24 24" aria-hidden="true"><g${transform}><path d="${paths[curve] || paths["270"]}"/><path class="filled" d="M20.4 8.8 17.1 5.8l4.7-1z"/></g></svg>`;
+}
+
+function arrowSizeSvg(size) {
+  const scale = size === "large" ? 1 : size === "small" ? 0.62 : 0.78;
+  const tip = 20;
+  const base = tip - 7 * scale;
+  const half = 4.8 * scale;
+  return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h${Math.max(8, base - 4)}"/><path class="filled" d="M${base} ${12 - half} ${tip} 12 ${base} ${12 + half}z"/></svg>`;
+}
+
+function arrowEndpointSvg(label, side) {
+  const head = side === "head"
+    ? `<path class="filled" d="M15 7 21 12l-6 5z"/>`
+    : `<path class="filled" d="M9 7 3 12l6 5z"/>`;
+  return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/>${head}<text x="12" y="22" text-anchor="middle" fill="currentColor" font-size="5.5" font-family="Arial, Helvetica, sans-serif">${label}</text></svg>`;
+}
+
+function arrowHalfEndpointSvg(side, half) {
+  const isHead = side === "head";
+  const tipX = isHead ? 21 : 3;
+  const baseX = isHead ? 15 : 9;
+  const shaftStart = isHead ? 5 : 9;
+  const shaftEnd = isHead ? 15 : 19;
+  const topLabel = half === "left" ? "left" : "right";
+  const bottomLabel = isHead ? "head" : "tail";
+  const head = half === "left"
+    ? `<path class="filled" d="M${tipX} 12 ${baseX} 12 ${baseX} 7z"/>`
+    : `<path class="filled" d="M${tipX} 12 ${baseX} 17 ${baseX} 12z"/>`;
+  return `<svg viewBox="0 0 24 24" aria-hidden="true"><text x="12" y="5" text-anchor="middle" fill="currentColor" font-size="4.8" font-family="Arial, Helvetica, sans-serif">${topLabel}</text><path d="M${shaftStart} 12h${shaftEnd - shaftStart}"/>${head}<text x="12" y="22" text-anchor="middle" fill="currentColor" font-size="4.8" font-family="Arial, Helvetica, sans-serif">${bottomLabel}</text></svg>`;
+}
+
+function arrowNoGoSvg(kind) {
+  const mark = kind === "hash"
+    ? `<path class="filled" d="M10 7.5 12 8.2 8 17.5 6 16.8z"/><path class="filled" d="M16 7.5 18 8.2 14 17.5 12 16.8z"/>`
+    : `<path class="filled" d="M7.1 6.2 17.8 16.9 16.4 18.3 5.7 7.6z"/><path class="filled" d="M16.4 5.7 17.8 7.1 7.1 17.8 5.7 16.4z"/>`;
+  return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h12"/><path class="filled" d="M15 7 21 12l-6 5z"/>${mark}</svg>`;
+}
+
+function arrowToolbarHtml() {
+  const type = editorState.arrowType;
+  const lineSelected = editorState.arrowHeadStyle === "none" && editorState.arrowTailStyle === "none";
+  const controls = [
+    toolbarButton("arrow-type-solid", "Solid arrow", arrowIconSvg("solid"), type === "solid"),
+    toolbarButton("arrow-type-curved", "Curved arrow", arrowIconSvg("curved"), type === "curved"),
+    toolbarButton("arrow-type-curved-mirror", "Mirrored curved arrow", arrowIconSvg("curved-mirror"), type === "curved-mirror"),
+    toolbarButton("arrow-type-hollow", "Hollow arrow", arrowIconSvg("hollow"), type === "hollow"),
+    toolbarButton("arrow-type-open", "Open hollow arrow", arrowIconSvg("open"), type === "open"),
+    secondaryDivider(),
+  ];
+  if (isCurvedArrowType(type)) {
+    const mirrored = type === "curved-mirror";
+    controls.push(
+      toolbarButton("arrow-curve-270", "Curve 270 degrees", arrowCurveSvg("270", mirrored), editorState.arrowCurve === "270"),
+      toolbarButton("arrow-curve-180", "Curve 180 degrees", arrowCurveSvg("180", mirrored), editorState.arrowCurve === "180"),
+      toolbarButton("arrow-curve-120", "Curve 120 degrees", arrowCurveSvg("120", mirrored), editorState.arrowCurve === "120"),
+      toolbarButton("arrow-curve-90", "Curve 90 degrees", arrowCurveSvg("90", mirrored), editorState.arrowCurve === "90"),
+    );
+    controls.push(secondaryDivider());
+  }
+  if (arrowTypeSupportsHeadSize(type)) {
+    controls.push(
+      toolbarButton("arrow-size-large", "Large arrow head", arrowSizeSvg("large"), editorState.arrowHeadSize === "large"),
+      toolbarButton("arrow-size-medium", "Medium arrow head", arrowSizeSvg("medium"), editorState.arrowHeadSize === "medium"),
+      toolbarButton("arrow-size-small", "Small arrow head", arrowSizeSvg("small"), editorState.arrowHeadSize === "small"),
+    );
+    controls.push(secondaryDivider());
+  }
+  controls.push(
+    toolbarButton("arrow-line", "Line", `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h16"/></svg>`, lineSelected),
+    toolbarButton("arrow-head", "Head arrow", arrowEndpointSvg("head", "head"), editorState.arrowHeadStyle === "full"),
+    toolbarButton("arrow-tail", "Tail arrow", arrowEndpointSvg("tail", "tail"), editorState.arrowTailStyle === "full"),
+  );
+  if (arrowTypeSupportsHeadSize(type)) {
+    controls.push(
+      toolbarButton("arrow-head-left", "Head left half arrow", arrowHalfEndpointSvg("head", "left"), editorState.arrowHeadStyle === "left"),
+      toolbarButton("arrow-head-right", "Head right half arrow", arrowHalfEndpointSvg("head", "right"), editorState.arrowHeadStyle === "right"),
+      toolbarButton("arrow-tail-left", "Tail left half arrow", arrowHalfEndpointSvg("tail", "left"), editorState.arrowTailStyle === "left"),
+      toolbarButton("arrow-tail-right", "Tail right half arrow", arrowHalfEndpointSvg("tail", "right"), editorState.arrowTailStyle === "right"),
+    );
+    controls.push(secondaryDivider());
+    controls.push(
+      toolbarButton("arrow-nogo-cross", "Cross arrow", arrowNoGoSvg("cross"), editorState.arrowNoGo === "cross"),
+      toolbarButton("arrow-nogo-hash", "Double slash arrow", arrowNoGoSvg("hash"), editorState.arrowNoGo === "hash"),
+    );
+  }
+  controls.push(secondaryDivider());
+  controls.push(toolbarButton("arrow-bold", "Bold arrow", `<svg viewBox="0 0 24 24" aria-hidden="true"><text x="12" y="17" text-anchor="middle" fill="currentColor" font-size="16" font-family="Arial, Helvetica, sans-serif" font-weight="700">B</text></svg>`, editorState.arrowBold));
+  return controls.join("");
 }
 
 function textToolbarHtml() {
@@ -1602,7 +2052,7 @@ function shapeToolbarHtml() {
 
 function ringSvg(sides, aromatic = false) {
   if (aromatic) {
-    return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 4 7 4v8l-7 4-7-4V8z"/><path d="M8.5 9.5v5"/><path d="M15.5 9.5v5"/></svg>`;
+    return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 4 7 4v8l-7 4-7-4V8z"/><circle cx="12" cy="12" r="4.6"/></svg>`;
   }
   const pointsBySide = {
     3: "12,4 20,18 4,18",
@@ -1652,6 +2102,8 @@ function renderSecondaryToolbar() {
     secondaryToolbar.innerHTML = "";
   } else if (editorState.activeTool === "text") {
     secondaryToolbar.innerHTML = textToolbarHtml();
+  } else if (editorState.activeTool === "arrow") {
+    secondaryToolbar.innerHTML = arrowToolbarHtml();
   } else if (editorState.activeTool === "shape") {
     secondaryToolbar.innerHTML = shapeToolbarHtml();
   } else if (editorState.activeTool === "templates") {
@@ -2215,6 +2667,7 @@ secondaryToolbar?.addEventListener("click", (event) => {
     return;
   }
   const value = button.dataset.secondaryValue;
+  let arrowOptionChanged = false;
   if (value?.startsWith("text-align-")) {
     editorState.textAlign = value.replace("text-align-", "");
     applyTextAlignment(editorState.textAlign);
@@ -2246,6 +2699,57 @@ secondaryToolbar?.addEventListener("click", (event) => {
     applySelectionArrangeCommand(value);
   } else if (value?.startsWith("bond-")) {
     editorState.bondType = value.replace("bond-", "");
+  } else if (value?.startsWith("arrow-type-")) {
+    editorState.arrowType = value.replace("arrow-type-", "");
+    if (!arrowTypeSupportsHeadSize(editorState.arrowType)) {
+      if (editorState.arrowHeadStyle === "left" || editorState.arrowHeadStyle === "right") {
+        editorState.arrowHeadStyle = "full";
+      }
+      if (editorState.arrowTailStyle === "left" || editorState.arrowTailStyle === "right") {
+        editorState.arrowTailStyle = "full";
+      }
+      editorState.arrowHead = editorState.arrowHeadStyle !== "none";
+      editorState.arrowTail = editorState.arrowTailStyle !== "none";
+      editorState.arrowNoGo = "none";
+    }
+    arrowOptionChanged = true;
+  } else if (value?.startsWith("arrow-size-")) {
+    editorState.arrowHeadSize = value.replace("arrow-size-", "");
+    arrowOptionChanged = true;
+  } else if (value?.startsWith("arrow-curve-")) {
+    editorState.arrowCurve = value.replace("arrow-curve-", "");
+    arrowOptionChanged = true;
+  } else if (value === "arrow-line") {
+    editorState.arrowHeadStyle = "none";
+    editorState.arrowTailStyle = "none";
+    editorState.arrowHead = false;
+    editorState.arrowTail = false;
+    arrowOptionChanged = true;
+  } else if (value === "arrow-head") {
+    editorState.arrowHeadStyle = editorState.arrowHeadStyle === "full" ? "none" : "full";
+    editorState.arrowHead = editorState.arrowHeadStyle !== "none";
+    arrowOptionChanged = true;
+  } else if (value === "arrow-tail") {
+    editorState.arrowTailStyle = editorState.arrowTailStyle === "full" ? "none" : "full";
+    editorState.arrowTail = editorState.arrowTailStyle !== "none";
+    arrowOptionChanged = true;
+  } else if (value === "arrow-head-left" || value === "arrow-head-right") {
+    const next = value === "arrow-head-left" ? "left" : "right";
+    editorState.arrowHeadStyle = editorState.arrowHeadStyle === next ? "none" : next;
+    editorState.arrowHead = editorState.arrowHeadStyle !== "none";
+    arrowOptionChanged = true;
+  } else if (value === "arrow-tail-left" || value === "arrow-tail-right") {
+    const next = value === "arrow-tail-left" ? "left" : "right";
+    editorState.arrowTailStyle = editorState.arrowTailStyle === next ? "none" : next;
+    editorState.arrowTail = editorState.arrowTailStyle !== "none";
+    arrowOptionChanged = true;
+  } else if (value === "arrow-nogo-cross" || value === "arrow-nogo-hash") {
+    const next = value === "arrow-nogo-cross" ? "cross" : "hash";
+    editorState.arrowNoGo = editorState.arrowNoGo === next ? "none" : next;
+    arrowOptionChanged = true;
+  } else if (value === "arrow-bold") {
+    editorState.arrowBold = !editorState.arrowBold;
+    arrowOptionChanged = true;
   } else if (value?.startsWith("shape-")) {
     editorState.shapeStyle = value.replace("shape-", "");
   } else if (value?.startsWith("ring-") || value === "benzene") {
@@ -2258,6 +2762,9 @@ secondaryToolbar?.addEventListener("click", (event) => {
     editorState.shapeFill = fills[value] || editorState.shapeFill;
   }
   syncEngineToolState();
+  if (arrowOptionChanged) {
+    applyArrowOptionsToSelection();
+  }
   renderSecondaryToolbar();
   focusActiveTextEditor();
 });
@@ -2311,6 +2818,7 @@ function routeEditorPointerEvents() {
   return isEditingRustDocument()
     && (editorState.activeTool === "bond"
       || editorState.activeTool === "delete"
+      || editorState.activeTool === "arrow"
       || editorState.activeTool === "select"
       || editorState.activeTool === "text"
       || editorState.activeTool === "templates");
@@ -2361,7 +2869,7 @@ function selectionOverlayBoundsFromPrimitives(primitives = currentEditorRenderLi
         maxX: Number(primitive.x || 0) + Number(primitive.width || 0),
         maxY: Number(primitive.y || 0) + Number(primitive.height || 0),
       });
-    } else if ((primitive.kind === "polygon" || primitive.kind === "polyline") && Array.isArray(primitive.points)) {
+    } else if ((primitive.kind === "polygon" || primitive.kind === "polyline" || primitive.kind === "path") && Array.isArray(primitive.points)) {
       const xs = primitive.points.map((candidate) => Number(candidate.x || 0));
       const ys = primitive.points.map((candidate) => Number(candidate.y || 0));
       if (xs.length && ys.length) {
@@ -2421,9 +2929,7 @@ function selectionRotateAngleForGesture(gesture, point, altKey) {
 }
 
 function formatRotationAngle(angle) {
-  const rounded = Math.abs(angle - Math.round(angle)) < 0.05
-    ? Math.round(angle)
-    : Math.round(angle * 10) / 10;
+  const rounded = Math.round(angle);
   return `${rounded}${String.fromCharCode(176)}`;
 }
 
@@ -2440,10 +2946,52 @@ function applySelectionArrangeCommand(command) {
   return true;
 }
 
+function applyArrowOptionsToSelection() {
+  if (!isEditingRustDocument()) {
+    return false;
+  }
+  const changed = state.editorEngine.applyArrowEndpointOptionsToSelection
+    ? !!state.editorEngine.applyArrowEndpointOptionsToSelection(
+      editorState.arrowType,
+      editorState.arrowHeadSize,
+      editorState.arrowCurve,
+      editorState.arrowHeadStyle,
+      editorState.arrowTailStyle,
+      editorState.arrowNoGo,
+      editorState.arrowBold,
+    )
+    : !!state.editorEngine.applyArrowOptionsToSelection?.(
+      editorState.arrowType,
+      editorState.arrowHeadSize,
+      editorState.arrowHead,
+      editorState.arrowTail,
+      editorState.arrowBold,
+    );
+  if (changed) {
+    syncDocumentFromEngine();
+    renderDocument();
+  }
+  return changed;
+}
+
 function handleEditorPointerMove(event) {
   const point = svgPointFromEvent(event);
-  if (editorState.activeTool === "select" && activeSelectionGesture) {
+  if ((editorState.activeTool === "select" || editorState.activeTool === "arrow") && activeSelectionGesture) {
     event.preventDefault();
+    if (activeSelectionGesture.kind === "arrow-endpoint" || activeSelectionGesture.kind === "arrow-curve") {
+      if (pointDistance(activeSelectionGesture.start, point) >= cssPxToCm(3)) {
+        activeSelectionGesture.dragged = true;
+      }
+      activeSelectionGesture.current = point;
+      state.editorEngine.updateHoverArrowEdit?.(point.x, point.y, event.altKey);
+      if (activeSelectionGesture.kind === "arrow-curve") {
+        activeSelectionGesture.angle = state.editorEngine.activeArrowEditDegrees?.() || 0;
+      }
+      syncDocumentFromEngine();
+      syncArrowAwareCursorForPoint(point);
+      renderDocument();
+      return;
+    }
     if (activeSelectionGesture.kind === "rotate") {
       activeSelectionGesture.current = point;
       activeSelectionGesture.angle = selectionRotateAngleForGesture(activeSelectionGesture, point, event.altKey);
@@ -2484,6 +3032,8 @@ function handleEditorPointerMove(event) {
   state.editorEngine.pointerMove(point.x, point.y, event.altKey);
   if (editorState.activeTool === "select") {
     syncSelectCursorForPoint(point);
+  } else if (editorState.activeTool === "arrow") {
+    syncArrowAwareCursorForPoint(point);
   }
   const renderList = currentEditorRenderList();
   maybeAutoExpandEditorViewport(renderList);
@@ -2506,6 +3056,21 @@ function handleEditorPointerDown(event) {
     event.preventDefault();
     viewerSvg.setPointerCapture?.(event.pointerId);
     state.editorEngine.pointerMove(point.x, point.y, event.altKey);
+    const arrowEditAction = state.editorEngine.beginHoverArrowEdit?.(point.x, point.y) || "";
+    if (arrowEditAction) {
+      activeSelectionGesture = {
+        kind: arrowEditAction === "curve" ? "arrow-curve" : "arrow-endpoint",
+        action: arrowEditAction,
+        start: point,
+        current: point,
+        dragged: false,
+        additive: !!event.shiftKey,
+        angle: 0,
+      };
+      syncArrowAwareCursorForPoint(point);
+      renderEditorOverlay(currentEditorRenderList());
+      return;
+    }
     const rotateHandle = currentSelectionRotateHandle();
     if (rotateHandle && pointDistance(point, rotateHandle) <= rotateHandle.hitRadius) {
       if (state.editorEngine.beginSelectionRotate?.(point.x, point.y)) {
@@ -2556,6 +3121,22 @@ function handleEditorPointerDown(event) {
   }
   event.preventDefault();
   viewerSvg.setPointerCapture?.(event.pointerId);
+  if (editorState.activeTool === "arrow") {
+    const arrowEditAction = state.editorEngine.beginHoverArrowEdit?.(point.x, point.y) || "";
+    if (arrowEditAction) {
+      activeSelectionGesture = {
+        kind: arrowEditAction === "curve" ? "arrow-curve" : "arrow-endpoint",
+        action: arrowEditAction,
+        start: point,
+        current: point,
+        dragged: false,
+        angle: 0,
+      };
+      syncArrowAwareCursorForPoint(point);
+      renderEditorOverlay(currentEditorRenderList());
+      return;
+    }
+  }
   state.editorEngine.pointerDown(point.x, point.y, event.altKey);
   syncDocumentFromEngine();
   renderEditorOverlay(currentEditorRenderList());
@@ -2572,6 +3153,19 @@ function handleEditorPointerUp(event) {
   state.lastEditFocusPoint = point;
   event.preventDefault();
   viewerSvg.releasePointerCapture?.(event.pointerId);
+  if ((editorState.activeTool === "select" || editorState.activeTool === "arrow")
+    && (activeSelectionGesture?.kind === "arrow-endpoint" || activeSelectionGesture?.kind === "arrow-curve")) {
+    const gesture = activeSelectionGesture;
+    activeSelectionGesture = null;
+    state.editorEngine.finishHoverArrowEdit?.(point.x, point.y, event.altKey);
+    syncDocumentFromEngine();
+    if (!gesture.dragged && editorState.activeTool === "select") {
+      state.editorEngine.selectAtPoint(point.x, point.y, gesture.additive);
+    }
+    syncArrowAwareCursorForPoint(point);
+    renderDocument();
+    return;
+  }
   if (editorState.activeTool === "select") {
     const gesture = activeSelectionGesture;
     activeSelectionGesture = null;
@@ -2586,8 +3180,12 @@ function handleEditorPointerUp(event) {
       return;
     }
     if (gesture.kind === "move") {
-      state.editorEngine.finishSelectionMove(point.x, point.y, event.altKey);
-      syncDocumentFromEngine();
+      if (gesture.dragged) {
+        state.editorEngine.finishSelectionMove(point.x, point.y, event.altKey);
+        syncDocumentFromEngine();
+      } else {
+        state.editorEngine.selectAtPoint(point.x, point.y, gesture.additive);
+      }
       syncSelectCursorForPoint(point);
       renderDocument();
       return;
@@ -2685,6 +3283,7 @@ function renderEditorOverlay(renderList = null) {
       const classByRole = {
         "hover-text-box": "editor-text-box-focus",
         "hover-label-glyph": "editor-label-glyph-focus",
+        "hover-arrow-handle": "editor-arrow-focus-handle",
         "selection-box": "editor-selection-box",
         "selection-bond": "editor-selection-bond-box",
         "selection-node": "editor-selection-node-box",
@@ -2706,6 +3305,8 @@ function renderEditorOverlay(renderList = null) {
       const classByRole = {
         "hover-endpoint": "editor-endpoint-halo",
         "hover-bond-center": "editor-bond-center-halo",
+        "hover-arrow-center": "editor-arrow-center-halo",
+        "hover-arrow-handle": "editor-arrow-focus-handle",
         "preview-end": "editor-preview-end",
         "selection-bond-dot": "editor-selection-bond-dot",
       };
@@ -2730,6 +3331,17 @@ function renderEditorOverlay(renderList = null) {
       y: bounds.minY - labelOffset,
       class: "editor-selection-rotate-angle",
       "data-role": "selection-rotate-angle",
+    }));
+    overlay.lastChild.textContent = formatRotationAngle(activeSelectionGesture.angle || 0);
+  } else if ((editorState.activeTool === "select" || editorState.activeTool === "arrow")
+    && activeSelectionGesture?.kind === "arrow-curve") {
+    const labelOffset = screenPxToWorld(8);
+    const point = activeSelectionGesture.current || activeSelectionGesture.start;
+    overlay.appendChild(makeSvgNode("text", {
+      x: point.x + labelOffset,
+      y: point.y - labelOffset,
+      class: "editor-selection-rotate-angle",
+      "data-role": "arrow-curve-angle",
     }));
     overlay.lastChild.textContent = formatRotationAngle(activeSelectionGesture.angle || 0);
   } else if (editorState.activeTool === "select" && !activeSelectionGesture) {
@@ -2912,6 +3524,7 @@ function fitView() {
   if (!state.currentDocument) {
     return;
   }
+  clearZoomHandoffs();
   let nextViewBox;
   let fitTargetBox = null;
   if (isEditingRustDocument()) {
@@ -2920,9 +3533,7 @@ function fitView() {
       nextViewBox = defaultEditorViewBox();
       state.runtimeViewBox = nextViewBox;
       zoomPercent = 100;
-      if (zoomInput) {
-        zoomInput.value = `${zoomPercent}%`;
-      }
+      syncZoomControl();
       applyViewerViewport({ centerWorld: { x: 0, y: 0 } });
       return;
     }
@@ -2935,9 +3546,7 @@ function fitView() {
     zoomPercent = fitZoomPercentForViewBox(nextViewBox);
   }
   state.runtimeViewBox = nextViewBox;
-  if (zoomInput) {
-    zoomInput.value = `${zoomPercent}%`;
-  }
+  syncZoomControl();
   const target = fitTargetBox || nextViewBox;
   applyViewerViewport({ centerWorld: { x: target.x + target.width / 2, y: target.y + target.height / 2 } });
 }
@@ -2981,13 +3590,14 @@ function loadJsonDocumentIntoEditor(documentData, fileName = null) {
   state.currentFileName = fileName;
   state.editorEngine?.free?.();
   state.editorEngine = new WasmEngine();
-  state.runtimeViewBox = documentData.document?.page
-    ? pageViewBox(documentData.document.page)
-    : defaultEditorViewBox();
   state.lastEditFocusPoint = null;
+  clearZoomHandoffs();
   syncEngineToolState();
   state.editorEngine.loadDocumentJson(JSON.stringify(documentData));
   syncDocumentFromEngine();
+  state.runtimeViewBox = state.currentDocument?.document?.page
+    ? pageViewBox(state.currentDocument.document.page)
+    : defaultEditorViewBox();
   viewerTitle.textContent = state.currentDocument?.document?.title || fileName || "Untitled";
   updateDocumentMeta();
   renderDocument();
@@ -3091,6 +3701,7 @@ function updateDocumentMeta() {
 
 async function loadAndRender() {
   finishActiveTextEditor(false);
+  clearZoomHandoffs();
   viewerTitle.textContent = "Loading...";
   try {
     if (state.currentPath) {

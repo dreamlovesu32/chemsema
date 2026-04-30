@@ -1,9 +1,9 @@
 use super::text_edit::{
-    apply_node_label_text_edit, prune_unconnected_fragment_nodes,
-    refresh_attached_node_label_geometry_for_all_nodes,
+    apply_node_label_text_edit, refresh_attached_node_label_geometry_for_all_nodes,
     refresh_attached_node_label_geometry_for_node, TextEditSession, TextEditTarget,
 };
-use super::Engine;
+use super::{EditorCommand, Engine};
+use std::collections::BTreeSet;
 
 const DEFAULT_TEXT_FONT_FAMILY: &str = "Arial";
 const DEFAULT_TEXT_FONT_SIZE: f64 = crate::DEFAULT_TEXT_FONT_SIZE_CM;
@@ -18,6 +18,12 @@ pub(super) enum FocusedDeleteMode {
 
 impl Engine {
     pub fn delete_selection(&mut self) -> bool {
+        self.with_command(EditorCommand::DeleteSelection, |engine| {
+            engine.delete_selection_untracked()
+        })
+    }
+
+    fn delete_selection_untracked(&mut self) -> bool {
         if self.state.selection.is_empty() {
             return self.delete_focused(FocusedDeleteMode::CommandKey);
         }
@@ -26,10 +32,28 @@ impl Engine {
         for object_id in &selection.text_objects {
             changed |= self.remove_text_object(Some(object_id.as_str()));
         }
+        if !selection.arrow_objects.is_empty() {
+            self.push_undo_snapshot();
+            let selected_arrows: BTreeSet<&str> =
+                selection.arrow_objects.iter().map(String::as_str).collect();
+            let original_len = self.state.document.objects.len();
+            self.state.document.objects.retain(|object| {
+                object.object_type != "line" || !selected_arrows.contains(object.id.as_str())
+            });
+            let arrow_changed = self.state.document.objects.len() != original_len;
+            changed |= arrow_changed;
+            if !arrow_changed {
+                self.undo_stack.pop();
+            }
+        }
         for node_id in &selection.label_nodes {
             changed |= self.remove_endpoint_label(node_id);
         }
         if selection.nodes.is_empty() && selection.bonds.is_empty() {
+            if changed {
+                self.state.selection = crate::SelectionState::default();
+                self.clear_interaction();
+            }
             return changed;
         }
         self.push_undo_snapshot();
@@ -38,25 +62,11 @@ impl Engine {
             return changed;
         };
 
-        let selected_nodes: std::collections::BTreeSet<String> =
-            selection.nodes.into_iter().collect();
-        let selected_bonds: std::collections::BTreeSet<String> =
-            selection.bonds.into_iter().collect();
-        entry.fragment.bonds.retain(|bond| {
-            !selected_bonds.contains(&bond.id)
-                && !selected_nodes.contains(&bond.begin)
-                && !selected_nodes.contains(&bond.end)
-        });
-
-        let connected_nodes: std::collections::BTreeSet<String> = entry
-            .fragment
-            .bonds
-            .iter()
-            .flat_map(|bond| [bond.begin.clone(), bond.end.clone()])
-            .collect();
-        entry.fragment.nodes.retain(|node| {
-            !selected_nodes.contains(&node.id) && connected_nodes.contains(&node.id)
-        });
+        delete_fragment_selection(
+            entry.fragment,
+            selection.nodes.into_iter().collect(),
+            selection.bonds.into_iter().collect(),
+        );
         refresh_attached_node_label_geometry_for_all_nodes(
             entry.fragment,
             entry.object.transform.translate,
@@ -78,7 +88,14 @@ impl Engine {
             if hover.label_anchor.is_some() {
                 return self.remove_endpoint_label(&hover.node_id);
             }
-            return self.remove_endpoint_connected_bonds(&hover.node_id);
+            return match mode {
+                FocusedDeleteMode::DeleteToolClick => {
+                    self.remove_endpoint_connected_bonds(&hover.node_id)
+                }
+                FocusedDeleteMode::CommandKey => {
+                    self.remove_endpoint_and_connected_bonds_for_delete_key(&hover.node_id)
+                }
+            };
         }
         if let Some(hover) = self.state.overlay.hover_bond_center.clone() {
             return match mode {
@@ -111,7 +128,14 @@ impl Engine {
             if endpoint.label_anchor.is_some() {
                 return self.remove_endpoint_label(&endpoint.node_id);
             }
-            return self.remove_endpoint_connected_bonds(&endpoint.node_id);
+            return match mode {
+                FocusedDeleteMode::DeleteToolClick => {
+                    self.remove_endpoint_connected_bonds(&endpoint.node_id)
+                }
+                FocusedDeleteMode::CommandKey => {
+                    self.remove_endpoint_and_connected_bonds_for_delete_key(&endpoint.node_id)
+                }
+            };
         }
         if let Some(center) =
             crate::hit_test_bond_center(&self.state.document, point, crate::BOND_CENTER_HIT_RADIUS)
@@ -227,6 +251,34 @@ impl Engine {
         true
     }
 
+    fn remove_endpoint_and_connected_bonds_for_delete_key(&mut self, node_id: &str) -> bool {
+        self.push_undo_snapshot();
+        let Some(mut entry) = self.state.document.editable_fragment_mut() else {
+            self.undo_stack.pop();
+            return false;
+        };
+        let object_translate = entry.object.transform.translate;
+        let node_exists = entry.fragment.nodes.iter().any(|node| node.id == node_id);
+        if !node_exists {
+            self.undo_stack.pop();
+            return false;
+        }
+        entry
+            .fragment
+            .bonds
+            .retain(|bond| bond.begin != node_id && bond.end != node_id);
+        entry.fragment.nodes.retain(|node| node.id != node_id);
+        refresh_attached_node_label_geometry_for_all_nodes(
+            entry.fragment,
+            object_translate,
+            self.options.bond_stroke_world_cm().value(),
+        );
+        entry.update_bounds();
+        self.state.selection = crate::SelectionState::default();
+        self.clear_interaction();
+        true
+    }
+
     fn remove_bond(&mut self, bond_id: &str) -> bool {
         self.push_undo_snapshot();
         let Some(mut entry) = self.state.document.editable_fragment_mut() else {
@@ -234,13 +286,15 @@ impl Engine {
             return false;
         };
         let object_translate = entry.object.transform.translate;
-        let previous_len = entry.fragment.bonds.len();
-        entry.fragment.bonds.retain(|bond| bond.id != bond_id);
-        if entry.fragment.bonds.len() == previous_len {
+        let removed = delete_fragment_selection(
+            entry.fragment,
+            BTreeSet::new(),
+            [bond_id.to_string()].into_iter().collect(),
+        );
+        if !removed {
             self.undo_stack.pop();
             return false;
         }
-        prune_unconnected_fragment_nodes(entry.fragment);
         refresh_attached_node_label_geometry_for_all_nodes(
             entry.fragment,
             object_translate,
@@ -309,6 +363,64 @@ impl Engine {
         self.clear_interaction();
         true
     }
+}
+
+fn delete_fragment_selection(
+    fragment: &mut crate::MoleculeFragment,
+    selected_nodes: BTreeSet<String>,
+    selected_bonds: BTreeSet<String>,
+) -> bool {
+    if selected_nodes.is_empty() && selected_bonds.is_empty() {
+        return false;
+    }
+
+    let mut original_degree: std::collections::BTreeMap<String, usize> =
+        std::collections::BTreeMap::new();
+    let mut selected_bond_degree: std::collections::BTreeMap<String, usize> =
+        std::collections::BTreeMap::new();
+    for bond in &fragment.bonds {
+        *original_degree.entry(bond.begin.clone()).or_default() += 1;
+        *original_degree.entry(bond.end.clone()).or_default() += 1;
+        if selected_bonds.contains(&bond.id) {
+            *selected_bond_degree.entry(bond.begin.clone()).or_default() += 1;
+            *selected_bond_degree.entry(bond.end.clone()).or_default() += 1;
+        }
+    }
+
+    let mut bonds_to_remove = selected_bonds.clone();
+    for bond in &fragment.bonds {
+        if selected_nodes.contains(&bond.begin) || selected_nodes.contains(&bond.end) {
+            bonds_to_remove.insert(bond.id.clone());
+        }
+    }
+
+    let mut nodes_to_remove = selected_nodes;
+    for (node_id, selected_degree) in selected_bond_degree {
+        if original_degree.get(&node_id).copied().unwrap_or_default() == selected_degree {
+            nodes_to_remove.insert(node_id);
+        }
+    }
+
+    let previous_bonds = fragment.bonds.len();
+    let previous_nodes = fragment.nodes.len();
+    fragment
+        .bonds
+        .retain(|bond| !bonds_to_remove.contains(&bond.id));
+    fragment
+        .nodes
+        .retain(|node| !nodes_to_remove.contains(&node.id));
+    fragment.bonds.len() != previous_bonds || fragment.nodes.len() != previous_nodes
+}
+
+fn prune_unconnected_fragment_nodes(fragment: &mut crate::MoleculeFragment) {
+    let connected_nodes: BTreeSet<String> = fragment
+        .bonds
+        .iter()
+        .flat_map(|bond| [bond.begin.clone(), bond.end.clone()])
+        .collect();
+    fragment
+        .nodes
+        .retain(|node| connected_nodes.contains(&node.id));
 }
 
 fn adjacent_angles_for_fragment_node(

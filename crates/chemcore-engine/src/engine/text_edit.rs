@@ -1,4 +1,4 @@
-use super::{Engine, TextEditLayoutRequest};
+use super::{EditorCommand, Engine, TextEditCommandTarget, TextEditLayoutRequest};
 use crate::{
     build_label_glyph_polygons, decide_label_layout, layout_label_text, round2, round6, Bond,
     BondLineWeight, DoubleBondPlacement, EndpointHit, LabelFlow, LabelRun, Point, WorldCm,
@@ -6,7 +6,6 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::BTreeSet;
 
 const DEFAULT_TEXT_FONT_FAMILY: &str = "Arial";
 const DEFAULT_TEXT_FONT_SIZE: f64 = crate::DEFAULT_TEXT_FONT_SIZE_CM;
@@ -225,6 +224,20 @@ impl Engine {
     }
 
     pub fn apply_text_edit(&mut self, session: TextEditSession) -> bool {
+        let target = match &session.target {
+            TextEditTarget::TextObject { object_id, .. } => TextEditCommandTarget::TextObject {
+                object_id: object_id.clone(),
+            },
+            TextEditTarget::EndpointLabel { node_id, .. } => TextEditCommandTarget::EndpointLabel {
+                node_id: node_id.clone(),
+            },
+        };
+        self.with_command(EditorCommand::ApplyTextEdit { target }, |engine| {
+            engine.apply_text_edit_untracked(session)
+        })
+    }
+
+    fn apply_text_edit_untracked(&mut self, session: TextEditSession) -> bool {
         match &session.target {
             TextEditTarget::TextObject { object_id, .. } => {
                 self.apply_text_object_edit(object_id.as_deref(), &session)
@@ -320,6 +333,15 @@ impl Engine {
     }
 
     pub fn replace_hovered_endpoint_label(&mut self, label: &str) -> bool {
+        self.with_command(
+            EditorCommand::ReplaceHoveredEndpointLabel {
+                label: label.to_string(),
+            },
+            |engine| engine.replace_hovered_endpoint_label_untracked(label),
+        )
+    }
+
+    fn replace_hovered_endpoint_label_untracked(&mut self, label: &str) -> bool {
         let Some(hovered_node_id) = self
             .state
             .overlay
@@ -394,16 +416,20 @@ impl Engine {
                 round6(bbox[3] + entry.object.transform.translate[1]),
             ]
         });
-        let anchor_point =
-            endpoint_label_editor_anchor_world(node, entry.object.transform.translate)
-                .unwrap_or_else(|| {
-                    attached_node_label_anchor_world(
-                        entry.fragment,
-                        node_id,
-                        entry.object.transform.translate,
-                        self.options.bond_stroke_world_cm().value(),
-                    )
-                });
+        let connection_angles = adjacent_angles_for_fragment_node(entry.fragment, node_id);
+        let anchor_point = endpoint_label_editor_anchor_world(
+            node,
+            entry.object.transform.translate,
+            &connection_angles,
+        )
+        .unwrap_or_else(|| {
+            attached_node_label_anchor_world(
+                entry.fragment,
+                node_id,
+                entry.object.transform.translate,
+                self.options.bond_stroke_world_cm().value(),
+            )
+        });
         let source_runs = label
             .and_then(|label| label.meta.get("sourceRuns"))
             .cloned()
@@ -920,8 +946,39 @@ pub(super) fn apply_node_label_text_edit(
 fn endpoint_label_editor_anchor_world(
     node: &crate::Node,
     object_translate: [f64; 2],
+    connection_angles: &[f64],
 ) -> Option<Point> {
     let label = node.label.as_ref()?;
+    let glyph_polygons = label.glyph_polygons();
+    if !glyph_polygons.is_empty() {
+        let source_runs = source_runs_from_node_label(label);
+        let source_text = if !source_runs.is_empty() {
+            runs_text(&source_runs)
+        } else {
+            label
+                .source_text
+                .clone()
+                .unwrap_or_else(|| label.text.clone())
+        };
+        let decision = decide_label_layout(connection_angles, false, false);
+        let layout = layout_label_text(&source_text, &decision);
+        let anchor_index = layout
+            .lines
+            .iter()
+            .take(layout.anchor_line)
+            .map(|line| line.chars().count())
+            .sum::<usize>()
+            + layout.anchor_char;
+        if let Some(anchor) = glyph_polygons
+            .get(anchor_index)
+            .and_then(|polygon| polygon_anchor_point(polygon))
+        {
+            return Some(Point::new(
+                anchor.x + object_translate[0],
+                anchor.y + object_translate[1],
+            ));
+        }
+    }
     let bbox = label.bbox()?;
     Some(Point::new(
         bbox[0] + object_translate[0],
@@ -2179,17 +2236,6 @@ fn same_node_label(current: Option<&crate::NodeLabel>, next: Option<&crate::Node
     }
 }
 
-pub(super) fn prune_unconnected_fragment_nodes(fragment: &mut crate::MoleculeFragment) {
-    let connected_nodes: BTreeSet<String> = fragment
-        .bonds
-        .iter()
-        .flat_map(|bond| [bond.begin.clone(), bond.end.clone()])
-        .collect();
-    fragment
-        .nodes
-        .retain(|node| connected_nodes.contains(&node.id));
-}
-
 fn estimated_centered_label_geometry(
     text: &str,
     center: [f64; 2],
@@ -2299,7 +2345,8 @@ fn refreshed_attached_node_label(
         .unwrap_or_else(|| DEFAULT_TEXT_FILL.to_string());
     let display_runs = display_runs_from_source_runs(&source_runs, &font_family, font_size, &fill);
     let connection_angles = adjacent_angles_for_fragment_node(fragment, node_id);
-    let (anchor_offset, box_value) = current_node_label_editor_geometry(node, object_translate);
+    let (anchor_offset, box_value) =
+        current_node_label_editor_geometry(node, object_translate, &connection_angles);
     let session = TextEditSession {
         target: TextEditTarget::EndpointLabel {
             node_id: node_id.to_string(),
@@ -2366,12 +2413,14 @@ fn source_runs_from_node_label(label: &crate::NodeLabel) -> Vec<LabelRun> {
 fn current_node_label_editor_geometry(
     node: &crate::Node,
     object_translate: [f64; 2],
+    connection_angles: &[f64],
 ) -> (Option<[f64; 2]>, Option<[f64; 4]>) {
     let Some(bounds) = endpoint_label_world_bounds(node, object_translate) else {
         return (None, None);
     };
-    let anchor_offset = endpoint_label_editor_anchor_world(node, object_translate)
-        .map(|anchor| [round6(anchor.x - bounds[0]), round6(anchor.y - bounds[1])]);
+    let anchor_offset =
+        endpoint_label_editor_anchor_world(node, object_translate, connection_angles)
+            .map(|anchor| [round6(anchor.x - bounds[0]), round6(anchor.y - bounds[1])]);
     (anchor_offset, Some(bounds))
 }
 

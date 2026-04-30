@@ -1,4 +1,7 @@
-use crate::{BondVariant, Engine, Point, PointerEvent, Tool, ToolState, WorldCm, WorldPoint};
+use crate::{
+    ArrowCurve, ArrowEndpointStyle, ArrowHeadSize, ArrowNoGo, ArrowVariant, BondVariant, Engine,
+    Point, PointerEvent, Tool, ToolState, WorldCm, WorldPoint,
+};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -17,10 +20,20 @@ impl WasmEngine {
 
     #[wasm_bindgen(js_name = setTool)]
     pub fn set_tool(&mut self, active_tool: &str, bond_variant: &str) {
+        let current = self.inner.state().tool.clone();
         self.inner.set_tool_state(ToolState {
             active_tool: parse_tool(active_tool),
             bond_variant: parse_bond_variant(bond_variant),
-            template: self.inner.state().tool.template.clone(),
+            arrow_variant: current.arrow_variant,
+            arrow_head_size: current.arrow_head_size,
+            arrow_curve: current.arrow_curve,
+            arrow_head_style: current.arrow_head_style,
+            arrow_tail_style: current.arrow_tail_style,
+            arrow_head: current.arrow_head,
+            arrow_tail: current.arrow_tail,
+            arrow_bold: current.arrow_bold,
+            arrow_no_go: current.arrow_no_go,
+            template: current.template,
         });
     }
 
@@ -29,6 +42,116 @@ impl WasmEngine {
         let mut tool = self.inner.state().tool.clone();
         tool.template = template.to_string();
         self.inner.set_tool_state(tool);
+    }
+
+    #[wasm_bindgen(js_name = setArrowOptions)]
+    pub fn set_arrow_options(
+        &mut self,
+        variant: &str,
+        head_size: &str,
+        head: bool,
+        tail: bool,
+        bold: bool,
+    ) {
+        let mut tool = self.inner.state().tool.clone();
+        tool.arrow_variant = parse_arrow_variant(variant);
+        tool.arrow_head_size = parse_arrow_head_size(head_size);
+        tool.arrow_curve = ArrowCurve::Arc270;
+        tool.arrow_head_style = if head {
+            ArrowEndpointStyle::Full
+        } else {
+            ArrowEndpointStyle::None
+        };
+        tool.arrow_tail_style = if tail {
+            ArrowEndpointStyle::Full
+        } else {
+            ArrowEndpointStyle::None
+        };
+        tool.arrow_head = head;
+        tool.arrow_tail = tail;
+        tool.arrow_bold = bold;
+        tool.arrow_no_go = ArrowNoGo::None;
+        self.inner.set_tool_state(tool);
+    }
+
+    #[wasm_bindgen(js_name = applyArrowOptionsToSelection)]
+    pub fn apply_arrow_options_to_selection(
+        &mut self,
+        variant: &str,
+        head_size: &str,
+        head: bool,
+        tail: bool,
+        bold: bool,
+    ) -> bool {
+        self.inner.apply_arrow_options_to_selection(
+            parse_arrow_variant(variant),
+            parse_arrow_head_size(head_size),
+            ArrowCurve::Arc270,
+            if head {
+                ArrowEndpointStyle::Full
+            } else {
+                ArrowEndpointStyle::None
+            },
+            if tail {
+                ArrowEndpointStyle::Full
+            } else {
+                ArrowEndpointStyle::None
+            },
+            head,
+            tail,
+            bold,
+            ArrowNoGo::None,
+        )
+    }
+
+    #[wasm_bindgen(js_name = setArrowEndpointOptions)]
+    pub fn set_arrow_endpoint_options(
+        &mut self,
+        variant: &str,
+        head_size: &str,
+        curve: &str,
+        head_style: &str,
+        tail_style: &str,
+        no_go: &str,
+        bold: bool,
+    ) {
+        let mut tool = self.inner.state().tool.clone();
+        tool.arrow_variant = parse_arrow_variant(variant);
+        tool.arrow_head_size = parse_arrow_head_size(head_size);
+        tool.arrow_curve = parse_arrow_curve(curve);
+        tool.arrow_head_style = parse_arrow_endpoint_style(head_style);
+        tool.arrow_tail_style = parse_arrow_endpoint_style(tail_style);
+        tool.arrow_head = tool.arrow_head_style != ArrowEndpointStyle::None;
+        tool.arrow_tail = tool.arrow_tail_style != ArrowEndpointStyle::None;
+        tool.arrow_no_go = parse_arrow_no_go(no_go);
+        tool.arrow_bold = bold;
+        self.inner.set_tool_state(tool);
+    }
+
+    #[wasm_bindgen(js_name = applyArrowEndpointOptionsToSelection)]
+    pub fn apply_arrow_endpoint_options_to_selection(
+        &mut self,
+        variant: &str,
+        head_size: &str,
+        curve: &str,
+        head_style: &str,
+        tail_style: &str,
+        no_go: &str,
+        bold: bool,
+    ) -> bool {
+        let head_style = parse_arrow_endpoint_style(head_style);
+        let tail_style = parse_arrow_endpoint_style(tail_style);
+        self.inner.apply_arrow_options_to_selection(
+            parse_arrow_variant(variant),
+            parse_arrow_head_size(head_size),
+            parse_arrow_curve(curve),
+            head_style,
+            tail_style,
+            head_style != ArrowEndpointStyle::None,
+            tail_style != ArrowEndpointStyle::None,
+            bold,
+            parse_arrow_no_go(no_go),
+        )
     }
 
     #[wasm_bindgen(js_name = pointerMove)]
@@ -91,6 +214,41 @@ impl WasmEngine {
     pub fn selection_contains_point(&self, x: f64, y: f64) -> bool {
         self.inner
             .selection_contains_point(Point::from_world(WorldPoint::new(WorldCm(x), WorldCm(y))))
+    }
+
+    #[wasm_bindgen(js_name = hoverArrowAction)]
+    pub fn hover_arrow_action(&self, x: f64, y: f64) -> String {
+        self.inner
+            .hover_arrow_action_at_point(Point::from_world(WorldPoint::new(WorldCm(x), WorldCm(y))))
+            .to_string()
+    }
+
+    #[wasm_bindgen(js_name = beginHoverArrowEdit)]
+    pub fn begin_hover_arrow_edit(&mut self, x: f64, y: f64) -> String {
+        self.inner
+            .begin_hover_arrow_edit(Point::from_world(WorldPoint::new(WorldCm(x), WorldCm(y))))
+            .to_string()
+    }
+
+    #[wasm_bindgen(js_name = updateHoverArrowEdit)]
+    pub fn update_hover_arrow_edit(&mut self, x: f64, y: f64, alt_key: bool) -> bool {
+        self.inner.update_hover_arrow_edit(
+            Point::from_world(WorldPoint::new(WorldCm(x), WorldCm(y))),
+            alt_key,
+        )
+    }
+
+    #[wasm_bindgen(js_name = finishHoverArrowEdit)]
+    pub fn finish_hover_arrow_edit(&mut self, x: f64, y: f64, alt_key: bool) -> bool {
+        self.inner.finish_hover_arrow_edit(
+            Point::from_world(WorldPoint::new(WorldCm(x), WorldCm(y))),
+            alt_key,
+        )
+    }
+
+    #[wasm_bindgen(js_name = activeArrowEditDegrees)]
+    pub fn active_arrow_edit_degrees(&self) -> f64 {
+        self.inner.active_arrow_edit_degrees()
     }
 
     #[wasm_bindgen(js_name = beginSelectionMove)]
@@ -168,6 +326,21 @@ impl WasmEngine {
     #[wasm_bindgen(js_name = deleteSelection)]
     pub fn delete_selection(&mut self) -> bool {
         self.inner.delete_selection()
+    }
+
+    #[wasm_bindgen(js_name = copySelection)]
+    pub fn copy_selection(&mut self) -> bool {
+        self.inner.copy_selection()
+    }
+
+    #[wasm_bindgen(js_name = cutSelection)]
+    pub fn cut_selection(&mut self) -> bool {
+        self.inner.cut_selection()
+    }
+
+    #[wasm_bindgen(js_name = pasteClipboard)]
+    pub fn paste_clipboard(&mut self) -> bool {
+        self.inner.paste_clipboard()
     }
 
     #[wasm_bindgen(js_name = replaceHoveredEndpointLabel)]
@@ -251,11 +424,57 @@ impl Default for WasmEngine {
 fn parse_tool(value: &str) -> Tool {
     match value {
         "bond" => Tool::Bond,
+        "arrow" => Tool::Arrow,
         "delete" => Tool::Delete,
         "text" => Tool::Text,
         "shape" => Tool::Shape,
         "templates" => Tool::Templates,
         _ => Tool::Select,
+    }
+}
+
+fn parse_arrow_variant(value: &str) -> ArrowVariant {
+    match value {
+        "curved" => ArrowVariant::Curved,
+        "curved-mirror" => ArrowVariant::CurvedMirror,
+        "hollow" => ArrowVariant::Hollow,
+        "open" => ArrowVariant::Open,
+        _ => ArrowVariant::Solid,
+    }
+}
+
+fn parse_arrow_curve(value: &str) -> ArrowCurve {
+    match value {
+        "180" | "arc-180" | "arc180" => ArrowCurve::Arc180,
+        "120" | "arc-120" | "arc120" => ArrowCurve::Arc120,
+        "90" | "arc-90" | "arc90" => ArrowCurve::Arc90,
+        _ => ArrowCurve::Arc270,
+    }
+}
+
+fn parse_arrow_head_size(value: &str) -> ArrowHeadSize {
+    match value {
+        "large" => ArrowHeadSize::Large,
+        "medium" => ArrowHeadSize::Medium,
+        "small" => ArrowHeadSize::Small,
+        _ => ArrowHeadSize::Small,
+    }
+}
+
+fn parse_arrow_endpoint_style(value: &str) -> ArrowEndpointStyle {
+    match value {
+        "full" => ArrowEndpointStyle::Full,
+        "left" | "top" | "half-left" => ArrowEndpointStyle::Left,
+        "right" | "bottom" | "half-right" => ArrowEndpointStyle::Right,
+        _ => ArrowEndpointStyle::None,
+    }
+}
+
+fn parse_arrow_no_go(value: &str) -> ArrowNoGo {
+    match value {
+        "cross" => ArrowNoGo::Cross,
+        "hash" => ArrowNoGo::Hash,
+        _ => ArrowNoGo::None,
     }
 }
 

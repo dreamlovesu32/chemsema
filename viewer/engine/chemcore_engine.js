@@ -12,6 +12,55 @@ export class WasmEngine {
         wasm.__wbg_wasmengine_free(ptr, 0);
     }
     /**
+     * @returns {number}
+     */
+    activeArrowEditDegrees() {
+        const ret = wasm.wasmengine_activeArrowEditDegrees(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @param {string} variant
+     * @param {string} head_size
+     * @param {string} curve
+     * @param {string} head_style
+     * @param {string} tail_style
+     * @param {string} no_go
+     * @param {boolean} bold
+     * @returns {boolean}
+     */
+    applyArrowEndpointOptionsToSelection(variant, head_size, curve, head_style, tail_style, no_go, bold) {
+        const ptr0 = passStringToWasm0(variant, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(head_size, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passStringToWasm0(curve, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len2 = WASM_VECTOR_LEN;
+        const ptr3 = passStringToWasm0(head_style, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len3 = WASM_VECTOR_LEN;
+        const ptr4 = passStringToWasm0(tail_style, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len4 = WASM_VECTOR_LEN;
+        const ptr5 = passStringToWasm0(no_go, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len5 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmengine_applyArrowEndpointOptionsToSelection(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, ptr5, len5, bold);
+        return ret !== 0;
+    }
+    /**
+     * @param {string} variant
+     * @param {string} head_size
+     * @param {boolean} head
+     * @param {boolean} tail
+     * @param {boolean} bold
+     * @returns {boolean}
+     */
+    applyArrowOptionsToSelection(variant, head_size, head, tail, bold) {
+        const ptr0 = passStringToWasm0(variant, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(head_size, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmengine_applyArrowOptionsToSelection(this.__wbg_ptr, ptr0, len0, ptr1, len1, head, tail, bold);
+        return ret !== 0;
+    }
+    /**
      * @param {string} command
      * @returns {boolean}
      */
@@ -33,6 +82,23 @@ export class WasmEngine {
             throw takeFromExternrefTable0(ret[1]);
         }
         return ret[0] !== 0;
+    }
+    /**
+     * @param {number} x
+     * @param {number} y
+     * @returns {string}
+     */
+    beginHoverArrowEdit(x, y) {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmengine_beginHoverArrowEdit(this.__wbg_ptr, x, y);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
     }
     /**
      * @param {number} x
@@ -97,6 +163,20 @@ export class WasmEngine {
     /**
      * @returns {boolean}
      */
+    copySelection() {
+        const ret = wasm.wasmengine_copySelection(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
+     * @returns {boolean}
+     */
+    cutSelection() {
+        const ret = wasm.wasmengine_cutSelection(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
+     * @returns {boolean}
+     */
     deleteSelection() {
         const ret = wasm.wasmengine_deleteSelection(this.__wbg_ptr);
         return ret !== 0;
@@ -128,6 +208,16 @@ export class WasmEngine {
      * @param {boolean} alt_key
      * @returns {boolean}
      */
+    finishHoverArrowEdit(x, y, alt_key) {
+        const ret = wasm.wasmengine_finishHoverArrowEdit(this.__wbg_ptr, x, y, alt_key);
+        return ret !== 0;
+    }
+    /**
+     * @param {number} x
+     * @param {number} y
+     * @param {boolean} alt_key
+     * @returns {boolean}
+     */
     finishSelectionMove(x, y, alt_key) {
         const ret = wasm.wasmengine_finishSelectionMove(this.__wbg_ptr, x, y, alt_key);
         return ret !== 0;
@@ -141,6 +231,23 @@ export class WasmEngine {
     finishSelectionRotate(x, y, alt_key) {
         const ret = wasm.wasmengine_finishSelectionRotate(this.__wbg_ptr, x, y, alt_key);
         return ret !== 0;
+    }
+    /**
+     * @param {number} x
+     * @param {number} y
+     * @returns {string}
+     */
+    hoverArrowAction(x, y) {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmengine_hoverArrowAction(this.__wbg_ptr, x, y);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
     }
     /**
      * @param {string} json
@@ -158,6 +265,13 @@ export class WasmEngine {
         this.__wbg_ptr = ret >>> 0;
         WasmEngineFinalization.register(this, this.__wbg_ptr, this);
         return this;
+    }
+    /**
+     * @returns {boolean}
+     */
+    pasteClipboard() {
+        const ret = wasm.wasmengine_pasteClipboard(this.__wbg_ptr);
+        return ret !== 0;
     }
     /**
      * @param {number} x
@@ -309,6 +423,44 @@ export class WasmEngine {
         return ret !== 0;
     }
     /**
+     * @param {string} variant
+     * @param {string} head_size
+     * @param {string} curve
+     * @param {string} head_style
+     * @param {string} tail_style
+     * @param {string} no_go
+     * @param {boolean} bold
+     */
+    setArrowEndpointOptions(variant, head_size, curve, head_style, tail_style, no_go, bold) {
+        const ptr0 = passStringToWasm0(variant, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(head_size, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passStringToWasm0(curve, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len2 = WASM_VECTOR_LEN;
+        const ptr3 = passStringToWasm0(head_style, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len3 = WASM_VECTOR_LEN;
+        const ptr4 = passStringToWasm0(tail_style, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len4 = WASM_VECTOR_LEN;
+        const ptr5 = passStringToWasm0(no_go, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len5 = WASM_VECTOR_LEN;
+        wasm.wasmengine_setArrowEndpointOptions(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, ptr5, len5, bold);
+    }
+    /**
+     * @param {string} variant
+     * @param {string} head_size
+     * @param {boolean} head
+     * @param {boolean} tail
+     * @param {boolean} bold
+     */
+    setArrowOptions(variant, head_size, head, tail, bold) {
+        const ptr0 = passStringToWasm0(variant, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(head_size, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        wasm.wasmengine_setArrowOptions(this.__wbg_ptr, ptr0, len0, ptr1, len1, head, tail, bold);
+    }
+    /**
      * @param {string} template
      */
     setTemplate(template) {
@@ -353,6 +505,16 @@ export class WasmEngine {
      */
     undo() {
         const ret = wasm.wasmengine_undo(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
+     * @param {number} x
+     * @param {number} y
+     * @param {boolean} alt_key
+     * @returns {boolean}
+     */
+    updateHoverArrowEdit(x, y, alt_key) {
+        const ret = wasm.wasmengine_updateHoverArrowEdit(this.__wbg_ptr, x, y, alt_key);
         return ret !== 0;
     }
     /**

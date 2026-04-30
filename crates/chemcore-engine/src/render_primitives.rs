@@ -14,6 +14,8 @@ pub enum RenderRole {
     HoverEndpoint,
     HoverLabelGlyph,
     HoverBondCenter,
+    HoverArrowCenter,
+    HoverArrowHandle,
     HoverTextBox,
     PreviewBond,
     PreviewEnd,
@@ -97,6 +99,25 @@ pub enum RenderPrimitive {
         object_id: Option<String>,
         #[serde(rename = "bondId", default, skip_serializing_if = "Option::is_none")]
         bond_id: Option<String>,
+        points: Vec<Point>,
+        stroke: String,
+        #[serde(rename = "strokeWidth")]
+        stroke_width: f64,
+        #[serde(rename = "dashArray", default, skip_serializing_if = "Vec::is_empty")]
+        dash_array: Vec<f64>,
+        #[serde(rename = "lineCap", default, skip_serializing_if = "Option::is_none")]
+        line_cap: Option<String>,
+        #[serde(rename = "lineJoin", default, skip_serializing_if = "Option::is_none")]
+        line_join: Option<String>,
+    },
+    Path {
+        role: RenderRole,
+        #[serde(rename = "objectId", default, skip_serializing_if = "Option::is_none")]
+        object_id: Option<String>,
+        #[serde(rename = "bondId", default, skip_serializing_if = "Option::is_none")]
+        bond_id: Option<String>,
+        d: String,
+        #[serde(default)]
         points: Vec<Point>,
         stroke: String,
         #[serde(rename = "strokeWidth")]
@@ -266,6 +287,33 @@ pub(super) fn push_polyline(
         role,
         object_id,
         bond_id: None,
+        points,
+        stroke: stroke.to_string(),
+        stroke_width,
+        dash_array,
+        line_cap,
+        line_join,
+    });
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn push_path(
+    out: &mut Vec<RenderPrimitive>,
+    d: String,
+    points: Vec<Point>,
+    stroke: &str,
+    stroke_width: f64,
+    dash_array: Vec<f64>,
+    line_cap: Option<String>,
+    line_join: Option<String>,
+    role: RenderRole,
+    object_id: Option<String>,
+) {
+    out.push(RenderPrimitive::Path {
+        role,
+        object_id,
+        bond_id: None,
+        d,
         points,
         stroke: stroke.to_string(),
         stroke_width,

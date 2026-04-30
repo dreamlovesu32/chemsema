@@ -2,13 +2,15 @@ use super::text_edit::{
     endpoint_label_world_bounds, refresh_attached_node_label_geometry_for_all_nodes,
     text_object_world_bounds,
 };
-use super::Engine;
+use super::{ArrowEditDragState, ArrowEditMode, EditorCommand, Engine};
 use crate::{
-    angle_between, direction_from_angle, fragment_bond_visual_bounds, hit_test_bond_center,
-    hit_test_endpoint, nearest_angle, round2, HoverTextBox, Point, RenderPrimitive, RenderRole,
-    SelectionState, BOND_CENTER_HIT_RADIUS, DEFAULT_BOND_LENGTH, ENDPOINT_FOCUS_RADIUS,
+    angle_between, arrow_object_handle_points, direction_from_angle, fragment_bond_visual_bounds,
+    hit_test_arrow_center, hit_test_bond_center, hit_test_endpoint, line_object_points,
+    nearest_angle, round2, HoverTextBox, Point, RenderPrimitive, RenderRole, SelectionState,
+    BOND_CENTER_HIT_RADIUS, DEFAULT_BOND_LENGTH, DRAG_START_THRESHOLD, ENDPOINT_FOCUS_RADIUS,
     ENDPOINT_HIT_RADIUS, GLOBAL_SNAP_ANGLES,
 };
+use serde_json::{json, Value as JsonValue};
 use std::collections::{BTreeSet, VecDeque};
 
 const SELECTION_NODE_BOX_SIZE: f64 = ENDPOINT_FOCUS_RADIUS * 2.0;
@@ -18,6 +20,7 @@ const SELECTION_BOND_DOT_RADIUS: f64 = crate::px_to_cm(3.0);
 #[derive(Clone)]
 enum SelectHit {
     TextObject { object_id: String },
+    ArrowObject { object_id: String },
     Label { node_id: String },
     Node { node_id: String },
     Bond { bond_id: String },
@@ -66,6 +69,15 @@ impl AxisBounds {
         self.min_y = self.min_y.min(bounds.min_y);
         self.max_x = self.max_x.max(bounds.max_x);
         self.max_y = self.max_y.max(bounds.max_y);
+    }
+
+    fn expanded(self, amount: f64) -> Self {
+        Self {
+            min_x: self.min_x - amount,
+            min_y: self.min_y - amount,
+            max_x: self.max_x + amount,
+            max_y: self.max_y + amount,
+        }
     }
 }
 
@@ -147,6 +159,175 @@ impl Engine {
             .any(|bounds| point_in_bounds(point, bounds))
     }
 
+    pub fn hover_arrow_action_at_point(&self, point: Point) -> &'static str {
+        match self.hover_arrow_edit_mode_at_point(point) {
+            Some(ArrowEditMode::Head) => "head",
+            Some(ArrowEditMode::Tail) => "tail",
+            Some(ArrowEditMode::Curve) => "curve",
+            None => "",
+        }
+    }
+
+    pub fn begin_hover_arrow_edit(&mut self, point: Point) -> &'static str {
+        let Some((object_id, mode, points, curve)) = self.hover_arrow_edit_target_at_point(point)
+        else {
+            return "";
+        };
+        self.arrow_edit_drag = Some(ArrowEditDragState {
+            object_id,
+            mode,
+            original_points: points,
+            start_pointer: point,
+            has_dragged: false,
+            current_degrees: curve.abs().round(),
+            undo_pushed: false,
+        });
+        clear_select_hover_overlay(self);
+        self.state.overlay.preview = None;
+        self.drag = None;
+        self.arrow_drag = None;
+        self.selection_drag = None;
+        self.selection_rotate_drag = None;
+        match mode {
+            ArrowEditMode::Head => "head",
+            ArrowEditMode::Tail => "tail",
+            ArrowEditMode::Curve => "curve",
+        }
+    }
+
+    pub fn update_hover_arrow_edit(&mut self, point: Point, alt_key: bool) -> bool {
+        self.with_command(
+            EditorCommand::LegacyMutation {
+                label: "edit-arrow".to_string(),
+            },
+            |engine| engine.update_hover_arrow_edit_untracked(point, alt_key),
+        )
+    }
+
+    fn update_hover_arrow_edit_untracked(&mut self, point: Point, alt_key: bool) -> bool {
+        let Some(mut drag) = self.arrow_edit_drag.take() else {
+            return false;
+        };
+        if drag.start_pointer.distance(point) >= DRAG_START_THRESHOLD {
+            drag.has_dragged = true;
+        }
+        if drag.has_dragged {
+            self.apply_arrow_edit_drag(&mut drag, point, alt_key);
+        }
+        self.arrow_edit_drag = Some(drag);
+        true
+    }
+
+    pub fn finish_hover_arrow_edit(&mut self, point: Point, alt_key: bool) -> bool {
+        self.with_command(
+            EditorCommand::LegacyMutation {
+                label: "edit-arrow".to_string(),
+            },
+            |engine| engine.finish_hover_arrow_edit_untracked(point, alt_key),
+        )
+    }
+
+    fn finish_hover_arrow_edit_untracked(&mut self, point: Point, alt_key: bool) -> bool {
+        let Some(mut drag) = self.arrow_edit_drag.take() else {
+            return false;
+        };
+        if drag.start_pointer.distance(point) >= DRAG_START_THRESHOLD {
+            drag.has_dragged = true;
+        }
+        if !drag.has_dragged {
+            self.hover_select_target(point);
+            return false;
+        }
+        self.apply_arrow_edit_drag(&mut drag, point, alt_key);
+        self.hover_select_target(point);
+        true
+    }
+
+    pub fn active_arrow_edit_degrees(&self) -> f64 {
+        self.arrow_edit_drag
+            .as_ref()
+            .map(|drag| drag.current_degrees)
+            .unwrap_or(0.0)
+    }
+
+    fn hover_arrow_edit_mode_at_point(&self, point: Point) -> Option<ArrowEditMode> {
+        self.hover_arrow_edit_target_at_point(point)
+            .map(|(_, mode, _, _)| mode)
+    }
+
+    fn hover_arrow_edit_target_at_point(
+        &self,
+        point: Point,
+    ) -> Option<(String, ArrowEditMode, Vec<Point>, f64)> {
+        let hover = hit_test_arrow_center(&self.state.document, point, BOND_CENTER_HIT_RADIUS)?;
+        if self
+            .state
+            .selection
+            .arrow_objects
+            .contains(&hover.object_id)
+        {
+            return None;
+        }
+        let mut candidates = Vec::new();
+        if let Some(tail) = hover.handles.first() {
+            candidates.push((tail.distance(point), ArrowEditMode::Tail));
+        }
+        if let Some(head) = hover.handles.get(2) {
+            candidates.push((head.distance(point), ArrowEditMode::Head));
+        }
+        if let Some(center) = hover.handles.get(1) {
+            candidates.push((center.distance(point), ArrowEditMode::Curve));
+        }
+        let (_, mode) = candidates
+            .into_iter()
+            .filter(|(distance, _)| *distance <= ENDPOINT_HIT_RADIUS)
+            .min_by(|left, right| left.0.total_cmp(&right.0))?;
+        let object = self
+            .state
+            .document
+            .objects
+            .iter()
+            .find(|object| object.id == hover.object_id)?;
+        Some((
+            hover.object_id,
+            mode,
+            line_object_points(object),
+            object_arrow_curve(object),
+        ))
+    }
+
+    fn apply_arrow_edit_drag(
+        &mut self,
+        drag: &mut ArrowEditDragState,
+        point: Point,
+        alt_key: bool,
+    ) -> bool {
+        if drag.original_points.len() < 2 {
+            return false;
+        }
+        if !drag.undo_pushed {
+            self.push_undo_snapshot();
+            drag.undo_pushed = true;
+        }
+        let start = drag.original_points[0];
+        let end = *drag.original_points.last().unwrap_or(&start);
+        match drag.mode {
+            ArrowEditMode::Head => {
+                let next_end = snapped_arrow_endpoint(start, point, alt_key);
+                update_arrow_object_points(self, &drag.object_id, start, next_end)
+            }
+            ArrowEditMode::Tail => {
+                let next_start = snapped_arrow_endpoint(end, point, alt_key);
+                update_arrow_object_points(self, &drag.object_id, next_start, end)
+            }
+            ArrowEditMode::Curve => {
+                let curve = snapped_arrow_curve_from_point(start, end, point, alt_key);
+                drag.current_degrees = curve.abs().round();
+                update_arrow_object_curve(self, &drag.object_id, curve)
+            }
+        }
+    }
+
     pub fn begin_selection_move_at_point(
         &mut self,
         point: Point,
@@ -170,7 +351,8 @@ impl Engine {
             add_hit_to_selection(&mut selection, hit);
             self.state.selection = selection;
         }
-        let Some(drag) = self.build_selection_move_drag(point, preserve_selection_after_drag) else {
+        let Some(drag) = self.build_selection_move_drag(point, preserve_selection_after_drag)
+        else {
             return false;
         };
         self.drag = None;
@@ -191,6 +373,12 @@ impl Engine {
     }
 
     pub fn update_selection_rotate(&mut self, point: Point, alt_key: bool) -> bool {
+        self.with_command(EditorCommand::RotateSelection, |engine| {
+            engine.update_selection_rotate_untracked(point, alt_key)
+        })
+    }
+
+    fn update_selection_rotate_untracked(&mut self, point: Point, alt_key: bool) -> bool {
         if self.selection_rotate_drag.is_none() {
             return false;
         }
@@ -200,6 +388,12 @@ impl Engine {
     }
 
     pub fn finish_selection_rotate(&mut self, point: Point, alt_key: bool) -> bool {
+        self.with_command(EditorCommand::RotateSelection, |engine| {
+            engine.finish_selection_rotate_untracked(point, alt_key)
+        })
+    }
+
+    fn finish_selection_rotate_untracked(&mut self, point: Point, alt_key: bool) -> bool {
         if self.selection_rotate_drag.is_none() {
             return false;
         }
@@ -214,6 +408,12 @@ impl Engine {
     }
 
     pub fn update_selection_move(&mut self, point: Point, alt_key: bool) -> bool {
+        self.with_command(EditorCommand::MoveSelection, |engine| {
+            engine.update_selection_move_untracked(point, alt_key)
+        })
+    }
+
+    fn update_selection_move_untracked(&mut self, point: Point, alt_key: bool) -> bool {
         if self.selection_drag.is_none() {
             return false;
         }
@@ -223,6 +423,12 @@ impl Engine {
     }
 
     pub fn finish_selection_move(&mut self, point: Point, alt_key: bool) -> bool {
+        self.with_command(EditorCommand::MoveSelection, |engine| {
+            engine.finish_selection_move_untracked(point, alt_key)
+        })
+    }
+
+    fn finish_selection_move_untracked(&mut self, point: Point, alt_key: bool) -> bool {
         if self.selection_drag.is_none() {
             return false;
         }
@@ -245,6 +451,15 @@ impl Engine {
     }
 
     pub fn apply_selection_arrange_command(&mut self, command: &str) -> bool {
+        self.with_command(
+            EditorCommand::ApplySelectionArrange {
+                command: command.to_string(),
+            },
+            |engine| engine.apply_selection_arrange_command_untracked(command),
+        )
+    }
+
+    fn apply_selection_arrange_command_untracked(&mut self, command: &str) -> bool {
         let mut items = self.selection_arrange_items();
         if items.is_empty() {
             return false;
@@ -331,6 +546,7 @@ impl Engine {
             return;
         }
         self.state.overlay.hover_bond_center = None;
+        self.state.overlay.hover_arrow = None;
         self.state.overlay.hover_text_box = None;
         self.state.overlay.hover_endpoint = None;
         self.state.overlay.preview = None;
@@ -359,6 +575,19 @@ impl Engine {
             hit_test_bond_center(&self.state.document, point, BOND_CENTER_HIT_RADIUS)
         {
             self.state.overlay.hover_bond_center = Some(center);
+            return;
+        }
+        if let Some(arrow) =
+            hit_test_arrow_center(&self.state.document, point, BOND_CENTER_HIT_RADIUS)
+        {
+            if !self
+                .state
+                .selection
+                .arrow_objects
+                .contains(&arrow.object_id)
+            {
+                self.state.overlay.hover_arrow = Some(arrow);
+            }
         }
     }
 
@@ -375,9 +604,16 @@ impl Engine {
                 node_id: endpoint.node_id,
             });
         }
-        hit_test_bond_center(&self.state.document, point, BOND_CENTER_HIT_RADIUS).map(|center| {
-            SelectHit::Bond {
+        if let Some(center) =
+            hit_test_bond_center(&self.state.document, point, BOND_CENTER_HIT_RADIUS)
+        {
+            return Some(SelectHit::Bond {
                 bond_id: center.bond_id,
+            });
+        }
+        hit_test_arrow_center(&self.state.document, point, BOND_CENTER_HIT_RADIUS).map(|arrow| {
+            SelectHit::ArrowObject {
+                object_id: arrow.object_id,
             }
         })
     }
@@ -404,6 +640,20 @@ impl Engine {
             };
             if bounds_selected(AxisBounds::from_array(bounds)) {
                 selection.text_objects.push(object.id.clone());
+            }
+        }
+        for object in &self.state.document.objects {
+            if object.object_type != "line" || !object.visible {
+                continue;
+            }
+            let points = line_object_points(object);
+            if points.len() < 2 {
+                continue;
+            }
+            let start = points[0];
+            let end = *points.last().unwrap_or(&start);
+            if segment_selected(start, end) {
+                selection.arrow_objects.push(object.id.clone());
             }
         }
 
@@ -460,6 +710,14 @@ impl Engine {
             }
             if let Some(text_bounds) = text_object_world_bounds(object) {
                 bounds.push(AxisBounds::from_array(text_bounds));
+            }
+        }
+        for object in &self.state.document.objects {
+            if !self.state.selection.arrow_objects.contains(&object.id) {
+                continue;
+            }
+            if let Some(arrow_bounds) = arrow_object_selection_bounds(object) {
+                bounds.push(arrow_bounds);
             }
         }
 
@@ -695,6 +953,7 @@ impl Engine {
         }
         let mut out = Vec::new();
         render_selected_text_boxes(self, &mut out);
+        render_selected_arrow_handles(self, &mut out);
         render_selected_fragment_content(self, &mut out);
         out
     }
@@ -709,6 +968,14 @@ impl Engine {
                 continue;
             };
             include_optional_bounds(&mut out, AxisBounds::from_array(bounds));
+        }
+        for object in &self.state.document.objects {
+            if !self.state.selection.arrow_objects.contains(&object.id) {
+                continue;
+            }
+            if let Some(bounds) = arrow_object_selection_bounds(object) {
+                include_optional_bounds(&mut out, bounds);
+            }
         }
         let Some(entry) = self.state.document.editable_fragment() else {
             return out;
@@ -746,6 +1013,127 @@ fn selected_movable_node_ids(engine: &Engine) -> Vec<String> {
         node_ids.insert(bond.end.clone());
     }
     node_ids.into_iter().collect()
+}
+
+fn object_arrow_curve(object: &crate::SceneObject) -> f64 {
+    object
+        .payload
+        .extra
+        .get("arrowHead")
+        .and_then(|value| value.get("curve"))
+        .and_then(JsonValue::as_f64)
+        .unwrap_or(0.0)
+}
+
+fn snapped_arrow_endpoint(pivot: Point, point: Point, alt_key: bool) -> Point {
+    let length = pivot.distance(point);
+    if length <= crate::EPSILON {
+        return pivot;
+    }
+    let angle = if alt_key {
+        angle_between(pivot, point)
+    } else {
+        nearest_angle(angle_between(pivot, point), GLOBAL_SNAP_ANGLES)
+    };
+    pivot.translated(direction_from_angle(angle).scaled(length))
+}
+
+fn snapped_arrow_curve_from_point(start: Point, end: Point, point: Point, alt_key: bool) -> f64 {
+    let chord = Point::new(end.x - start.x, end.y - start.y);
+    let chord_length = start.distance(end);
+    if chord_length <= crate::EPSILON {
+        return 0.0;
+    }
+    let mid = Point::new((start.x + end.x) * 0.5, (start.y + end.y) * 0.5);
+    let ux = chord.x / chord_length;
+    let uy = chord.y / chord_length;
+    let normal_x = -uy;
+    let normal_y = ux;
+    let sagitta = (point.x - mid.x) * normal_x + (point.y - mid.y) * normal_y;
+    let mut degrees = (4.0 * (2.0 * sagitta / chord_length).atan()).to_degrees();
+    degrees = degrees.clamp(-270.0, 270.0);
+    if !alt_key {
+        degrees = (degrees / 15.0).round() * 15.0;
+    }
+    if degrees.abs() < 0.5 {
+        0.0
+    } else {
+        degrees
+    }
+}
+
+fn update_arrow_object_points(
+    engine: &mut Engine,
+    object_id: &str,
+    start: Point,
+    end: Point,
+) -> bool {
+    let Some(object) = engine
+        .state
+        .document
+        .objects
+        .iter_mut()
+        .find(|object| object.id == object_id && object.object_type == "line")
+    else {
+        return false;
+    };
+    let tx = object.transform.translate[0];
+    let ty = object.transform.translate[1];
+    let next_points = json!([[start.x - tx, start.y - ty], [end.x - tx, end.y - ty]]);
+    if object.payload.extra.get("points") == Some(&next_points) {
+        return false;
+    }
+    object
+        .payload
+        .extra
+        .insert("points".to_string(), next_points);
+    true
+}
+
+fn update_arrow_object_curve(engine: &mut Engine, object_id: &str, curve: f64) -> bool {
+    let Some(object) = engine
+        .state
+        .document
+        .objects
+        .iter_mut()
+        .find(|object| object.id == object_id && object.object_type == "line")
+    else {
+        return false;
+    };
+    let mut arrow_head = object
+        .payload
+        .extra
+        .get("arrowHead")
+        .cloned()
+        .unwrap_or_else(|| json!({}));
+    let Some(arrow_head_object) = arrow_head.as_object_mut() else {
+        return false;
+    };
+    let rounded_curve = (curve * 1000.0).round() / 1000.0;
+    arrow_head_object.insert("curve".to_string(), json!(rounded_curve));
+    let kind = arrow_head_object
+        .get("kind")
+        .and_then(JsonValue::as_str)
+        .unwrap_or("solid")
+        .to_ascii_lowercase();
+    if kind != "hollow" && kind != "open" {
+        let next_kind = if rounded_curve < -crate::EPSILON {
+            "curved"
+        } else if rounded_curve > crate::EPSILON {
+            "curved-mirror"
+        } else {
+            "solid"
+        };
+        arrow_head_object.insert("kind".to_string(), json!(next_kind));
+    }
+    if object.payload.extra.get("arrowHead") == Some(&arrow_head) {
+        return false;
+    }
+    object
+        .payload
+        .extra
+        .insert("arrowHead".to_string(), arrow_head);
+    true
 }
 
 fn component_movable_node_ids(
@@ -1182,11 +1570,7 @@ fn apply_selection_drag_to_document(
     entry.update_bounds();
 }
 
-fn selection_rotate_delta_degrees(
-    drag: &SelectionRotateDrag,
-    point: Point,
-    alt_key: bool,
-) -> f64 {
+fn selection_rotate_delta_degrees(drag: &SelectionRotateDrag, point: Point, alt_key: bool) -> f64 {
     let raw = signed_angle_delta(drag.start_angle, angle_between(drag.center, point));
     if alt_key {
         return raw;
@@ -1280,6 +1664,7 @@ fn terminal_drag_target(pivot: Point, length: f64, point: Point, alt_key: bool) 
 
 fn clear_select_hover_overlay(engine: &mut Engine) {
     engine.state.overlay.hover_bond_center = None;
+    engine.state.overlay.hover_arrow = None;
     engine.state.overlay.hover_text_box = None;
     engine.state.overlay.hover_endpoint = None;
     engine.state.overlay.preview = None;
@@ -1306,6 +1691,31 @@ fn render_selected_text_boxes(engine: &Engine, out: &mut Vec<RenderPrimitive>) {
             RenderRole::SelectionTextBox,
         );
     }
+}
+
+fn render_selected_arrow_handles(engine: &Engine, out: &mut Vec<RenderPrimitive>) {
+    for object in &engine.state.document.objects {
+        if !engine.state.selection.arrow_objects.contains(&object.id) {
+            continue;
+        }
+        if let Some(bounds) = arrow_object_selection_bounds(object) {
+            push_selection_box(out, bounds, RenderRole::SelectionBox);
+        }
+    }
+}
+
+fn arrow_object_selection_bounds(object: &crate::SceneObject) -> Option<AxisBounds> {
+    let points = line_object_points(object);
+    if points.len() < 2 {
+        return None;
+    }
+    let mut handles = arrow_object_handle_points(object, &points).into_iter();
+    let first = handles.next()?;
+    let mut bounds = AxisBounds::around_point(first, 0.0);
+    for handle in handles {
+        bounds.include_point(handle);
+    }
+    Some(bounds.expanded(crate::px_to_cm(4.0)))
 }
 
 fn render_selected_fragment_content(engine: &Engine, out: &mut Vec<RenderPrimitive>) {
@@ -1476,6 +1886,9 @@ fn component_selection_items(
 fn add_hit_to_selection(selection: &mut SelectionState, hit: SelectHit) {
     match hit {
         SelectHit::TextObject { object_id } => push_unique(&mut selection.text_objects, object_id),
+        SelectHit::ArrowObject { object_id } => {
+            push_unique(&mut selection.arrow_objects, object_id)
+        }
         SelectHit::Label { node_id } => push_unique(&mut selection.label_nodes, node_id),
         SelectHit::Node { node_id } => push_unique(&mut selection.nodes, node_id),
         SelectHit::Bond { bond_id } => push_unique(&mut selection.bonds, bond_id),
@@ -1485,6 +1898,7 @@ fn add_hit_to_selection(selection: &mut SelectionState, hit: SelectHit) {
 fn selection_contains_hit(selection: &SelectionState, hit: &SelectHit) -> bool {
     match hit {
         SelectHit::TextObject { object_id } => selection.text_objects.contains(object_id),
+        SelectHit::ArrowObject { object_id } => selection.arrow_objects.contains(object_id),
         SelectHit::Label { node_id } => selection.label_nodes.contains(node_id),
         SelectHit::Node { node_id } => selection.nodes.contains(node_id),
         SelectHit::Bond { bond_id } => selection.bonds.contains(bond_id),
@@ -1503,6 +1917,9 @@ fn merge_selection(
     merged.region = merged.region || next.region;
     for object_id in next.text_objects {
         push_unique(&mut merged.text_objects, object_id);
+    }
+    for object_id in next.arrow_objects {
+        push_unique(&mut merged.arrow_objects, object_id);
     }
     for node_id in next.label_nodes {
         push_unique(&mut merged.label_nodes, node_id);

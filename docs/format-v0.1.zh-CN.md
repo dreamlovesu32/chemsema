@@ -36,7 +36,8 @@
 {
   "format": {
     "name": "chemcore",
-    "version": "0.1"
+    "version": "0.1",
+    "unit": "pt"
   },
   "document": {},
   "styles": {},
@@ -52,7 +53,7 @@
 - 原点：左上角
 - x 轴向右增长
 - y 轴向下增长
-- 单位：抽象文档单位
+- 单位：印刷点数（`pt`，1/72 inch），在 `format.unit` 中保存为 `"pt"`
 
 文件里不应该出现任何 backend 专属的像素假设。
 

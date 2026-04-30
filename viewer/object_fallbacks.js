@@ -11,7 +11,7 @@ import {
 } from "./render_support.js";
 import { cssPxToCm } from "./units.js";
 
-const DEFAULT_TEXT_FONT_SIZE = 0.2645833;
+const DEFAULT_TEXT_FONT_SIZE = 7.5;
 const DEFAULT_TEXT_LINE_HEIGHT = cssPxToCm(10.5);
 const DEFAULT_LINE_STROKE_WIDTH = cssPxToCm(1.6);
 const DEFAULT_TEXT_WRAP_WIDTH = cssPxToCm(160);

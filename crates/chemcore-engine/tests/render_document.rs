@@ -3,6 +3,10 @@ use chemcore_engine::{
 };
 use serde_json::json;
 
+const fn cm(value: f64) -> f64 {
+    value * chemcore_engine::PT_PER_CM
+}
+
 fn fragment_document(nodes: serde_json::Value, bonds: serde_json::Value) -> ChemcoreDocument {
     serde_json::from_value(json!({
         "format": { "name": "chemcore", "version": "0.1" },
@@ -71,7 +75,7 @@ fn centered_bond_polygons(
                 ..
             } if *role == RenderRole::DocumentBond
                 && object_id.as_deref() == Some("obj_molecule_001")
-                && points.iter().any(|point| point.distance(center) <= 2.2) =>
+                && points.iter().any(|point| point.distance(center) <= 4.0) =>
             {
                 Some(points.clone())
             }
@@ -494,10 +498,12 @@ fn render_document_emits_arrow_line_primitives() {
             "payload": {
                 "points": [[10.0, 20.0], [110.0, 20.0]],
                 "head": "end",
+                "tail": "none",
                 "arrowHead": {
                     "length": 22.5,
                     "width": 5.63,
-                    "head": "full"
+                    "head": "full",
+                    "tail": "full"
                 }
             }
         }],
@@ -525,17 +531,89 @@ fn render_document_emits_arrow_line_primitives() {
     assert_eq!(shaft.len(), 2);
     assert!(shaft[1].x < 110.0);
 
-    assert!(primitives.iter().any(|primitive| matches!(
-        primitive,
-        RenderPrimitive::Polygon {
-            role,
-            object_id,
-            points,
-            ..
-        } if *role == RenderRole::DocumentGraphic
-            && object_id.as_deref() == Some("obj_line_001")
-            && points.len() == 4
-    )));
+    let arrow_head_polygon_count = primitives
+        .iter()
+        .filter(|primitive| {
+            matches!(
+                primitive,
+                RenderPrimitive::Polygon {
+                    role,
+                    object_id,
+                    points,
+                    ..
+                } if *role == RenderRole::DocumentGraphic
+                    && object_id.as_deref() == Some("obj_line_001")
+                    && points.len() == 4
+            )
+        })
+        .count();
+    assert_eq!(arrow_head_polygon_count, 2);
+}
+
+#[test]
+fn render_document_emits_arrow_no_go_marks_at_current_head_size() {
+    let document: ChemcoreDocument = serde_json::from_value(json!({
+        "format": { "name": "chemcore", "version": "0.1" },
+        "document": {
+            "id": "doc_test",
+            "title": "test",
+            "page": { "width": 400.0, "height": 200.0, "background": "#ffffff" }
+        },
+        "styles": {
+            "style_arrow_default": {
+                "kind": "stroke",
+                "stroke": "#222222",
+                "strokeWidth": 0.72,
+                "lineCap": "butt",
+                "lineJoin": "miter"
+            }
+        },
+        "objects": [{
+            "id": "obj_line_001",
+            "type": "line",
+            "visible": true,
+            "zIndex": 10,
+            "transform": { "translate": [0.0, 0.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+            "styleRef": "style_arrow_default",
+            "payload": {
+                "points": [[10.0, 20.0], [110.0, 20.0]],
+                "head": "end",
+                "tail": "none",
+                "arrowHead": {
+                    "length": 10.0,
+                    "centerLength": 8.75,
+                    "width": 2.5,
+                    "head": "full",
+                    "tail": "none",
+                    "noGo": "hash"
+                }
+            }
+        }],
+        "resources": {}
+    }))
+    .expect("document should deserialize");
+
+    let primitives = render_document(&document);
+    let center_mark_count = primitives
+        .iter()
+        .filter(|primitive| match primitive {
+            RenderPrimitive::Polygon {
+                role,
+                object_id,
+                points,
+                ..
+            } if *role == RenderRole::DocumentGraphic
+                && object_id.as_deref() == Some("obj_line_001")
+                && points.len() == 4 =>
+            {
+                let center_x =
+                    points.iter().map(|point| point.x).sum::<f64>() / points.len() as f64;
+                center_x > 40.0 && center_x < 80.0
+            }
+            _ => false,
+        })
+        .count();
+    assert_eq!(center_mark_count, 2);
 }
 
 #[test]
@@ -1191,7 +1269,7 @@ fn render_document_emits_equal_length_cross_segments_for_bold_dashed_bond() {
     let document = fragment_document(
         json!([
             { "id": "n1", "element": "C", "atomicNumber": 6, "position": [20.0, 40.0], "charge": 0, "numHydrogens": 0 },
-            { "id": "n2", "element": "C", "atomicNumber": 6, "position": [56.0, 40.0], "charge": 0, "numHydrogens": 0 }
+            { "id": "n2", "element": "C", "atomicNumber": 6, "position": [50.0, 40.0], "charge": 0, "numHydrogens": 0 }
         ]),
         json!([
             {
@@ -1199,7 +1277,7 @@ fn render_document_emits_equal_length_cross_segments_for_bold_dashed_bond() {
                 "begin": "n1",
                 "end": "n2",
                 "order": 1,
-                "strokeWidth": 0.85,
+                "strokeWidth": 1.0,
                 "lineStyles": {
                     "main": "dashed",
                     "left": "solid",
@@ -1221,7 +1299,7 @@ fn render_document_emits_equal_length_cross_segments_for_bold_dashed_bond() {
     assert_eq!(polygons.len(), 1);
     assert_eq!(polygons[0].len(), 4);
     assert!(polygon_area(&polygons[0]) > 40.0, "{polygons:?}");
-    assert!(knockouts.len() >= 2, "{knockouts:?}");
+    assert_eq!(knockouts.len(), 10, "{knockouts:?}");
     assert!(knockouts
         .iter()
         .all(|points| points.iter().any(|point| point.y > 40.0)
@@ -1245,7 +1323,7 @@ fn render_document_emits_equal_length_cross_segments_for_bold_dashed_bond() {
     if bond_end > cursor + 1.0e-6 {
         black_segments.push(bond_end - cursor);
     }
-    assert!(black_segments.len() >= 2, "{black_segments:?}");
+    assert_eq!(black_segments.len(), 11, "{black_segments:?}");
     let first_black = black_segments[0];
     assert!(
         black_segments
@@ -1253,6 +1331,7 @@ fn render_document_emits_equal_length_cross_segments_for_bold_dashed_bond() {
             .all(|length| (length - first_black).abs() < 0.02),
         "{black_segments:?}"
     );
+    assert!((first_black - 1.0).abs() < 0.02, "{black_segments:?}");
     assert!(!primitives.iter().any(|primitive| matches!(
         primitive,
         RenderPrimitive::Line { role, object_id, .. }
@@ -1424,7 +1503,7 @@ fn render_document_emits_main_contact_patches_for_connected_single_and_solid_wed
     assert_eq!(
         wedge_polygon
             .iter()
-            .filter(|point| point.distance(chemcore_engine::Point::new(56.0, 40.0)) <= 2.2)
+            .filter(|point| point.distance(chemcore_engine::Point::new(56.0, 40.0)) <= 4.0)
             .count(),
         2
     );
@@ -3103,7 +3182,7 @@ fn render_document_uses_explicit_solid_wedge_wide_and_tip_widths() {
         (tip_width - chemcore_engine::DEFAULT_BOND_STROKE_CM).abs() < 0.01,
         "{tip_width}"
     );
-    assert!((wide_width - 0.2115).abs() < 0.01, "{wide_width}");
+    assert!((wide_width - 6.0).abs() < 0.01, "{wide_width}");
 }
 
 #[test]
@@ -3170,8 +3249,7 @@ fn render_document_clips_solid_wedge_in_three_way_main_contact() {
             .iter()
             .any(|point| point.distance(chemcore_engine::Point::new(56.0, 40.0)) <= 0.001));
 
-        let centered =
-            centered_bond_polygons(&primitives, chemcore_engine::Point::new(56.0, 40.0));
+        let centered = centered_bond_polygons(&primitives, chemcore_engine::Point::new(56.0, 40.0));
         assert_eq!(centered.len(), 3, "{wide_end} {centered:?}");
         assert!(centered.iter().all(|points| polygon_area(points) > 0.01));
         let center_patches = polygons
@@ -3186,20 +3264,20 @@ fn render_document_clips_solid_wedge_in_three_way_main_contact() {
 fn render_document_uses_extended_intersections_for_solid_wedge_three_way_contact() {
     let document = fragment_document(
         json!([
-            { "id": "n1", "element": "C", "atomicNumber": 6, "position": [7.5, 6.5], "charge": 0, "numHydrogens": 0 },
-            { "id": "n2", "element": "C", "atomicNumber": 6, "position": [6.45, 6.5], "charge": 0, "numHydrogens": 0 },
-            { "id": "n3", "element": "C", "atomicNumber": 6, "position": [7.682330586550277, 5.465951859337181], "charge": 0, "numHydrogens": 0 },
-            { "id": "n4", "element": "C", "atomicNumber": 6, "position": [7.859121150491952, 7.486677251825204], "charge": 0, "numHydrogens": 0 }
+            { "id": "n1", "element": "C", "atomicNumber": 6, "position": [cm(7.5), cm(6.5)], "charge": 0, "numHydrogens": 0 },
+            { "id": "n2", "element": "C", "atomicNumber": 6, "position": [cm(6.45), cm(6.5)], "charge": 0, "numHydrogens": 0 },
+            { "id": "n3", "element": "C", "atomicNumber": 6, "position": [cm(7.682330586550277), cm(5.465951859337181)], "charge": 0, "numHydrogens": 0 },
+            { "id": "n4", "element": "C", "atomicNumber": 6, "position": [cm(7.859121150491952), cm(7.486677251825204)], "charge": 0, "numHydrogens": 0 }
         ]),
         json!([
-            { "id": "b_left", "begin": "n1", "end": "n2", "order": 1, "strokeWidth": 0.035 },
-            { "id": "b_up", "begin": "n1", "end": "n3", "order": 1, "strokeWidth": 0.035 },
+            { "id": "b_left", "begin": "n1", "end": "n2", "order": 1, "strokeWidth": cm(0.035) },
+            { "id": "b_up", "begin": "n1", "end": "n3", "order": 1, "strokeWidth": cm(0.035) },
             {
                 "id": "b_wedge",
                 "begin": "n1",
                 "end": "n4",
                 "order": 1,
-                "strokeWidth": 0.035,
+                "strokeWidth": cm(0.035),
                 "stereo": {
                     "kind": "solid-wedge",
                     "wideEnd": "begin"
@@ -3209,8 +3287,8 @@ fn render_document_uses_extended_intersections_for_solid_wedge_three_way_contact
     );
 
     let expected_up_wedge_intersection =
-        chemcore_engine::Point::new(7.5537589823596605, 6.295896144157522);
-    let contact_center = chemcore_engine::Point::new(7.5, 6.5);
+        chemcore_engine::Point::new(cm(7.5537589823596605), cm(6.295896144157522));
+    let contact_center = chemcore_engine::Point::new(cm(7.5), cm(6.5));
     let polygons = object_bond_polygons_with_ids(&render_document(&document));
     let up = polygons
         .iter()
@@ -3223,13 +3301,13 @@ fn render_document_uses_extended_intersections_for_solid_wedge_three_way_contact
 
     assert!(
         up.iter()
-            .any(|point| point.distance(expected_up_wedge_intersection) <= 0.0001),
+            .any(|point| point.distance(expected_up_wedge_intersection) <= cm(0.001)),
         "{up:?}"
     );
     assert!(
         wedge
             .iter()
-            .any(|point| point.distance(expected_up_wedge_intersection) <= 0.0001),
+            .any(|point| point.distance(expected_up_wedge_intersection) <= cm(0.001)),
         "{wedge:?}"
     );
     let has_edge = |points: &[chemcore_engine::Point],
@@ -3237,10 +3315,10 @@ fn render_document_uses_extended_intersections_for_solid_wedge_three_way_contact
                     second: chemcore_engine::Point| {
         (0..points.len()).any(|index| {
             let next = (index + 1) % points.len();
-            (points[index].distance(first) <= 0.0001
-                && points[next].distance(second) <= 0.0001)
-                || (points[index].distance(second) <= 0.0001
-                    && points[next].distance(first) <= 0.0001)
+            (points[index].distance(first) <= cm(0.001)
+                && points[next].distance(second) <= cm(0.001))
+                || (points[index].distance(second) <= cm(0.001)
+                    && points[next].distance(first) <= cm(0.001))
         })
     };
     assert!(

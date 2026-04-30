@@ -1,16 +1,16 @@
 use crate::{
     angle_between, angle_in_clockwise_arc, angular_distance, css_px, direction_from_angle,
     largest_angular_gap, normalize_angle, split_label_groups, world_cm, ChemcoreDocument,
-    EditableFragment, Node, Point, WorldCm, WorldPoint, DEFAULT_BOND_LENGTH,
+    EditableFragment, Node, Point, Vector, WorldCm, WorldPoint, DEFAULT_BOND_LENGTH, PT_PER_CM,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{HashSet, VecDeque};
 
-pub const ENDPOINT_FOCUS_RADIUS_CM: WorldCm = world_cm(0.1);
+pub const ENDPOINT_FOCUS_RADIUS_CM: WorldCm = world_cm(0.1 * PT_PER_CM);
 pub const ENDPOINT_HIT_RADIUS_CM: WorldCm = css_px(9.0).to_world_cm();
 pub const BOND_HIT_RADIUS_CM: WorldCm = css_px(6.0).to_world_cm();
-pub const BOND_CENTER_FOCUS_LENGTH_CM: WorldCm = world_cm(0.8);
-pub const BOND_CENTER_FOCUS_WIDTH_CM: WorldCm = world_cm(0.2);
+pub const BOND_CENTER_FOCUS_LENGTH_CM: WorldCm = world_cm(0.8 * PT_PER_CM);
+pub const BOND_CENTER_FOCUS_WIDTH_CM: WorldCm = world_cm(0.2 * PT_PER_CM);
 pub const BOND_CENTER_HIT_RADIUS_CM: WorldCm = BOND_CENTER_FOCUS_LENGTH_CM;
 pub const DRAG_START_THRESHOLD_CM: WorldCm = css_px(4.0).to_world_cm();
 pub const ENDPOINT_FOCUS_RADIUS: f64 = ENDPOINT_FOCUS_RADIUS_CM.value();
@@ -34,6 +34,7 @@ pub const RELATIVE_BOND_ANGLES: &[f64] = &[
 pub enum Tool {
     Select,
     Bond,
+    Arrow,
     Delete,
     Text,
     Shape,
@@ -52,6 +53,80 @@ pub enum BondVariant {
     BoldDashed,
     Wedge,
     HashedWedge,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ArrowVariant {
+    Solid,
+    Curved,
+    CurvedMirror,
+    Hollow,
+    Open,
+}
+
+impl Default for ArrowVariant {
+    fn default() -> Self {
+        Self::Solid
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ArrowHeadSize {
+    Large,
+    Medium,
+    Small,
+}
+
+impl Default for ArrowHeadSize {
+    fn default() -> Self {
+        Self::Small
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ArrowEndpointStyle {
+    None,
+    Full,
+    Left,
+    Right,
+}
+
+impl Default for ArrowEndpointStyle {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ArrowNoGo {
+    None,
+    Cross,
+    Hash,
+}
+
+impl Default for ArrowNoGo {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ArrowCurve {
+    Arc270,
+    Arc180,
+    Arc120,
+    Arc90,
+}
+
+impl Default for ArrowCurve {
+    fn default() -> Self {
+        Self::Arc270
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -83,6 +158,24 @@ impl EditorOptions {
 pub struct ToolState {
     pub active_tool: Tool,
     pub bond_variant: BondVariant,
+    #[serde(default)]
+    pub arrow_variant: ArrowVariant,
+    #[serde(default)]
+    pub arrow_head_size: ArrowHeadSize,
+    #[serde(default)]
+    pub arrow_curve: ArrowCurve,
+    #[serde(default = "default_arrow_head_style")]
+    pub arrow_head_style: ArrowEndpointStyle,
+    #[serde(default)]
+    pub arrow_tail_style: ArrowEndpointStyle,
+    #[serde(default = "default_arrow_head")]
+    pub arrow_head: bool,
+    #[serde(default)]
+    pub arrow_tail: bool,
+    #[serde(default)]
+    pub arrow_bold: bool,
+    #[serde(default)]
+    pub arrow_no_go: ArrowNoGo,
     #[serde(default = "default_template")]
     pub template: String,
 }
@@ -92,9 +185,26 @@ impl Default for ToolState {
         Self {
             active_tool: Tool::Bond,
             bond_variant: BondVariant::Single,
+            arrow_variant: ArrowVariant::Solid,
+            arrow_head_size: ArrowHeadSize::Small,
+            arrow_curve: ArrowCurve::Arc270,
+            arrow_head_style: ArrowEndpointStyle::Full,
+            arrow_tail_style: ArrowEndpointStyle::None,
+            arrow_head: true,
+            arrow_tail: false,
+            arrow_bold: false,
+            arrow_no_go: ArrowNoGo::None,
             template: default_template(),
         }
     }
+}
+
+fn default_arrow_head() -> bool {
+    true
+}
+
+fn default_arrow_head_style() -> ArrowEndpointStyle {
+    ArrowEndpointStyle::Full
 }
 
 fn default_template() -> String {
@@ -166,6 +276,8 @@ pub struct SelectionState {
     #[serde(default)]
     pub text_objects: Vec<String>,
     #[serde(default)]
+    pub arrow_objects: Vec<String>,
+    #[serde(default)]
     pub label_nodes: Vec<String>,
     #[serde(default)]
     pub region: bool,
@@ -176,6 +288,7 @@ pub struct SelectionState {
 impl SelectionState {
     pub fn is_empty(&self) -> bool {
         self.text_objects.is_empty()
+            && self.arrow_objects.is_empty()
             && self.label_nodes.is_empty()
             && self.nodes.is_empty()
             && self.bonds.is_empty()
@@ -215,6 +328,15 @@ pub struct HoverTextBox {
     pub node_id: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HoverArrow {
+    pub object_id: String,
+    pub center: Point,
+    #[serde(default)]
+    pub handles: Vec<Point>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DragState {
@@ -232,6 +354,7 @@ pub struct OverlayState {
     pub hover_endpoint: Option<EndpointHit>,
     pub hover_bond_center: Option<BondCenterHit>,
     pub hover_text_box: Option<HoverTextBox>,
+    pub hover_arrow: Option<HoverArrow>,
     pub preview: Option<BondPreview>,
 }
 
@@ -384,10 +507,56 @@ pub fn hit_test_bond_center(
     best
 }
 
+pub fn hit_test_arrow_center(
+    document: &ChemcoreDocument,
+    point: Point,
+    radius: f64,
+) -> Option<HoverArrow> {
+    let mut best: Option<(f64, HoverArrow)> = None;
+    for object in &document.objects {
+        if object.object_type != "line" || !object.visible {
+            continue;
+        }
+        let points = line_object_points(object);
+        if points.len() < 2 {
+            continue;
+        }
+        let focus_points = arrow_object_focus_points(object, &points);
+        if focus_points.len() < 2 {
+            continue;
+        }
+        let center =
+            point_at_distance_from_start(&focus_points, polyline_length(&focus_points) * 0.5)
+                .unwrap_or_else(|| {
+                    let start = focus_points[0];
+                    let end = *focus_points.last().unwrap_or(&focus_points[0]);
+                    Point::new((start.x + end.x) * 0.5, (start.y + end.y) * 0.5)
+                });
+        let distance = point_to_polyline_distance(point, &focus_points);
+        if distance > radius
+            || best
+                .as_ref()
+                .is_some_and(|(current, _)| distance >= *current)
+        {
+            continue;
+        }
+        best = Some((
+            distance,
+            HoverArrow {
+                object_id: object.id.clone(),
+                center,
+                handles: arrow_object_handle_points(object, &points),
+            },
+        ));
+    }
+    best.map(|(_, hit)| hit)
+}
+
 pub fn select_at(document: &ChemcoreDocument, point: Point) -> SelectionState {
     if let Some(endpoint) = hit_test_endpoint(document, point, ENDPOINT_HIT_RADIUS) {
         return SelectionState {
             text_objects: Vec::new(),
+            arrow_objects: Vec::new(),
             label_nodes: Vec::new(),
             region: false,
             nodes: vec![endpoint.node_id],
@@ -397,6 +566,7 @@ pub fn select_at(document: &ChemcoreDocument, point: Point) -> SelectionState {
     if let Some(bond) = hit_test_bond(document, point, BOND_HIT_RADIUS) {
         return SelectionState {
             text_objects: Vec::new(),
+            arrow_objects: Vec::new(),
             label_nodes: Vec::new(),
             region: false,
             nodes: Vec::new(),
@@ -404,6 +574,244 @@ pub fn select_at(document: &ChemcoreDocument, point: Point) -> SelectionState {
         };
     }
     SelectionState::default()
+}
+
+pub fn line_object_points(object: &crate::SceneObject) -> Vec<Point> {
+    let tx = object.transform.translate[0];
+    let ty = object.transform.translate[1];
+    object
+        .payload
+        .extra
+        .get("points")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|value| {
+            let coords = value.as_array()?;
+            Some(Point::new(
+                tx + coords.first()?.as_f64()?,
+                ty + coords.get(1)?.as_f64()?,
+            ))
+        })
+        .collect()
+}
+
+fn line_object_endpoint_style(
+    object: &crate::SceneObject,
+    key: &str,
+    expected: &str,
+) -> ArrowEndpointStyle {
+    if let Some(value) = object
+        .payload
+        .extra
+        .get("arrowHead")
+        .and_then(|value| value.get(key))
+        .and_then(serde_json::Value::as_str)
+    {
+        return match value.to_ascii_lowercase().as_str() {
+            "full" => ArrowEndpointStyle::Full,
+            "half-left" | "halfleft" | "left" | "top" => ArrowEndpointStyle::Left,
+            "half-right" | "halfright" | "right" | "bottom" => ArrowEndpointStyle::Right,
+            _ => ArrowEndpointStyle::None,
+        };
+    }
+    object
+        .payload
+        .extra
+        .get(key)
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| value.eq_ignore_ascii_case(expected) || value.eq_ignore_ascii_case("both"))
+        .map(|_| ArrowEndpointStyle::Full)
+        .unwrap_or(ArrowEndpointStyle::None)
+}
+
+fn line_object_arrow_dimension(object: &crate::SceneObject, key: &str, fallback: f64) -> f64 {
+    object
+        .payload
+        .extra
+        .get("arrowHead")
+        .and_then(|value| value.get(key))
+        .and_then(serde_json::Value::as_f64)
+        .unwrap_or(fallback)
+}
+
+fn line_object_arrow_curve(object: &crate::SceneObject) -> f64 {
+    object
+        .payload
+        .extra
+        .get("arrowHead")
+        .and_then(|value| value.get("curve"))
+        .and_then(serde_json::Value::as_f64)
+        .unwrap_or(0.0)
+}
+
+pub fn arrow_object_handle_points(object: &crate::SceneObject, points: &[Point]) -> Vec<Point> {
+    if points.len() < 2 {
+        return Vec::new();
+    }
+    let focus_points = arrow_object_focus_points(object, points);
+    let start = focus_points[0];
+    let end = *focus_points.last().unwrap_or(&focus_points[0]);
+    let center = point_at_distance_from_start(&focus_points, polyline_length(&focus_points) * 0.5)
+        .unwrap_or_else(|| Point::new((start.x + end.x) * 0.5, (start.y + end.y) * 0.5));
+    let mut handles = vec![start, center, end];
+    let head_length = line_object_arrow_dimension(object, "length", 15.0);
+    let head_width = line_object_arrow_dimension(object, "width", 3.75);
+    push_arrow_endpoint_handles(
+        &mut handles,
+        &focus_points,
+        false,
+        line_object_endpoint_style(object, "head", "end"),
+        head_length,
+        head_width,
+    );
+    push_arrow_endpoint_handles(
+        &mut handles,
+        &focus_points,
+        true,
+        line_object_endpoint_style(object, "tail", "start"),
+        head_length,
+        head_width,
+    );
+    handles
+}
+
+fn push_arrow_endpoint_handles(
+    handles: &mut Vec<Point>,
+    points: &[Point],
+    tail: bool,
+    style: ArrowEndpointStyle,
+    length: f64,
+    half_width: f64,
+) {
+    if style == ArrowEndpointStyle::None || points.len() < 2 {
+        return;
+    }
+    let tangent_from = if tail {
+        point_at_distance_from_start(points, length).unwrap_or(points[1])
+    } else {
+        point_at_distance_from_end(points, length)
+            .unwrap_or_else(|| points[points.len().saturating_sub(2)])
+    };
+    let tip = if tail {
+        points[0]
+    } else {
+        *points.last().unwrap_or(&points[0])
+    };
+    let side_points = arrow_tip_side_points(tangent_from, tip, length, half_width);
+    match style {
+        ArrowEndpointStyle::Full => handles.extend(side_points),
+        ArrowEndpointStyle::Left => handles.push(side_points[1]),
+        ArrowEndpointStyle::Right => handles.push(side_points[0]),
+        ArrowEndpointStyle::None => {}
+    }
+}
+
+fn arrow_object_focus_points(object: &crate::SceneObject, points: &[Point]) -> Vec<Point> {
+    if points.len() < 2 {
+        return Vec::new();
+    }
+    let start = points[0];
+    let end = *points.last().unwrap_or(&points[0]);
+    curved_arrow_points(start, end, line_object_arrow_curve(object))
+}
+
+fn curved_arrow_points(start: Point, end: Point, sweep_degrees: f64) -> Vec<Point> {
+    let chord = Vector::new(end.x - start.x, end.y - start.y);
+    let chord_length = chord.length();
+    if chord_length <= crate::EPSILON || sweep_degrees.abs() <= crate::EPSILON {
+        return vec![start, end];
+    }
+    let sweep = -sweep_degrees.to_radians();
+    let half = sweep.abs() * 0.5;
+    let sin_half = half.sin().abs();
+    if sin_half <= crate::EPSILON {
+        return vec![start, end];
+    }
+    let unit = chord.normalized();
+    let normal = Vector::new(-unit.y, unit.x);
+    let radius = chord_length / (2.0 * sin_half);
+    let offset = radius * half.cos() * sweep.signum();
+    let center = Point::new(
+        (start.x + end.x) * 0.5 + normal.x * offset,
+        (start.y + end.y) * 0.5 + normal.y * offset,
+    );
+    let start_angle = (start.y - center.y).atan2(start.x - center.x);
+    let steps = ((sweep_degrees.abs() / 12.0).ceil() as usize).clamp(8, 32);
+    (0..=steps)
+        .map(|index| {
+            let t = index as f64 / steps as f64;
+            let angle = start_angle + sweep * t;
+            Point::new(
+                center.x + angle.cos() * radius,
+                center.y + angle.sin() * radius,
+            )
+        })
+        .collect()
+}
+
+fn polyline_length(points: &[Point]) -> f64 {
+    points
+        .windows(2)
+        .map(|pair| pair[0].distance(pair[1]))
+        .sum()
+}
+
+fn point_at_distance_from_start(points: &[Point], distance: f64) -> Option<Point> {
+    if points.len() < 2 {
+        return None;
+    }
+    if distance <= 0.0 {
+        return points.first().copied();
+    }
+    let mut remaining = distance;
+    for pair in points.windows(2) {
+        let segment = pair[0].distance(pair[1]);
+        if remaining <= segment {
+            let t = if segment <= crate::EPSILON {
+                0.0
+            } else {
+                remaining / segment
+            };
+            return Some(Point::new(
+                pair[0].x + (pair[1].x - pair[0].x) * t,
+                pair[0].y + (pair[1].y - pair[0].y) * t,
+            ));
+        }
+        remaining -= segment;
+    }
+    points.last().copied()
+}
+
+fn point_at_distance_from_end(points: &[Point], distance: f64) -> Option<Point> {
+    if points.len() < 2 {
+        return None;
+    }
+    let total = polyline_length(points);
+    point_at_distance_from_start(points, (total - distance).max(0.0))
+}
+
+fn arrow_tip_side_points(from: Point, to: Point, length: f64, half_width: f64) -> [Point; 2] {
+    let dx = to.x - from.x;
+    let dy = to.y - from.y;
+    let distance = (dx * dx + dy * dy).sqrt();
+    if distance <= 1.0e-9 {
+        return [to, to];
+    }
+    let ux = dx / distance;
+    let uy = dy / distance;
+    let nx = -uy;
+    let ny = ux;
+    [
+        Point::new(
+            to.x - ux * length + nx * half_width,
+            to.y - uy * length + ny * half_width,
+        ),
+        Point::new(
+            to.x - ux * length - nx * half_width,
+            to.y - uy * length - ny * half_width,
+        ),
+    ]
 }
 
 pub fn anchor_from_point(document: &ChemcoreDocument, point: Point) -> Option<BondAnchor> {
@@ -751,6 +1159,14 @@ fn point_to_segment_distance(point: Point, start: Point, end: Point) -> f64 {
     point.distance(Point::new(start.x + dx * t, start.y + dy * t))
 }
 
+fn point_to_polyline_distance(point: Point, points: &[Point]) -> f64 {
+    points
+        .windows(2)
+        .map(|pair| point_to_segment_distance(point, pair[0], pair[1]))
+        .min_by(f64::total_cmp)
+        .unwrap_or(f64::INFINITY)
+}
+
 fn point_in_box(point: Point, bounds: [f64; 4]) -> bool {
     point.x >= bounds[0] && point.x <= bounds[2] && point.y >= bounds[1] && point.y <= bounds[3]
 }
@@ -957,10 +1373,115 @@ mod tests {
     #[test]
     fn editor_options_accessors_expose_world_cm() {
         let options = EditorOptions {
-            bond_length: 1.058,
-            bond_stroke_width: 0.035,
+            bond_length: 30.0,
+            bond_stroke_width: 1.0,
         };
-        assert_eq!(options.bond_length_world_cm(), WorldCm(1.058));
-        assert_eq!(options.bond_stroke_world_cm(), WorldCm(0.035));
+        assert_eq!(options.bond_length_world_cm(), WorldCm(30.0));
+        assert_eq!(options.bond_stroke_world_cm(), WorldCm(1.0));
+    }
+
+    #[test]
+    fn arrow_center_hover_shows_only_endpoints_and_center_without_heads() {
+        let document = arrow_hover_test_document("none", "none", "none", "none");
+        let hover = hit_test_arrow_center(&document, Point::new(50.0, 0.0), 5.0)
+            .expect("arrow center should focus");
+        assert_eq!(
+            hover.handles,
+            vec![
+                Point::new(0.0, 0.0),
+                Point::new(50.0, 0.0),
+                Point::new(100.0, 0.0),
+            ]
+        );
+    }
+
+    #[test]
+    fn arrow_center_hover_uses_both_head_side_points_for_double_arrow() {
+        let document = arrow_hover_test_document("none", "none", "full", "full");
+        let hover = hit_test_arrow_center(&document, Point::new(50.0, 0.0), 5.0)
+            .expect("arrow center should focus");
+        assert_eq!(hover.handles.len(), 7);
+        assert!(hover.handles.contains(&Point::new(85.0, 3.75)));
+        assert!(hover.handles.contains(&Point::new(85.0, -3.75)));
+        assert!(hover.handles.contains(&Point::new(15.0, -3.75)));
+        assert!(hover.handles.contains(&Point::new(15.0, 3.75)));
+    }
+
+    #[test]
+    fn curved_arrow_center_hover_uses_arc_midpoint_and_half_endpoint_side() {
+        let document =
+            arrow_hover_test_document_with_curve("none", "none", "half-left", "none", -120.0);
+        assert!(
+            hit_test_arrow_center(&document, Point::new(50.0, 0.0), 5.0).is_none(),
+            "curved arrow hover should not use the chord center"
+        );
+        let hover = hit_test_arrow_center(&document, Point::new(50.0, -28.0), 5.0)
+            .expect("curved arrow center should focus near the arc");
+        assert_eq!(hover.handles.len(), 4);
+        assert!(hover.handles[0].distance(Point::new(0.0, 0.0)) < 1e-9);
+        assert!(hover.handles[2].distance(Point::new(100.0, 0.0)) < 1e-9);
+        assert!(hover.center.y < -25.0);
+        assert!(hover.handles[3].distance(hover.handles[2]) > 1.0);
+    }
+
+    #[test]
+    fn curved_double_arrow_hover_respects_each_endpoint_style() {
+        let document =
+            arrow_hover_test_document_with_curve("none", "none", "half-left", "full", -120.0);
+        let hover = hit_test_arrow_center(&document, Point::new(50.0, -28.0), 5.0)
+            .expect("curved arrow center should focus near the arc");
+        assert_eq!(
+            hover.handles.len(),
+            6,
+            "base handles plus one half-head handle and two full-tail handles"
+        );
+    }
+
+    fn arrow_hover_test_document(
+        head: &str,
+        tail: &str,
+        arrow_head: &str,
+        arrow_tail: &str,
+    ) -> ChemcoreDocument {
+        arrow_hover_test_document_with_curve(head, tail, arrow_head, arrow_tail, 0.0)
+    }
+
+    fn arrow_hover_test_document_with_curve(
+        head: &str,
+        tail: &str,
+        arrow_head: &str,
+        arrow_tail: &str,
+        curve: f64,
+    ) -> ChemcoreDocument {
+        serde_json::from_value(serde_json::json!({
+            "format": { "name": "chemcore", "version": "0.1" },
+            "document": {
+                "id": "doc_test",
+                "title": "test",
+                "page": { "width": 200.0, "height": 100.0, "background": "#ffffff" }
+            },
+            "styles": {},
+            "objects": [{
+                "id": "obj_line_001",
+                "type": "line",
+                "visible": true,
+                "zIndex": 10,
+                "transform": { "translate": [0.0, 0.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+                "payload": {
+                    "points": [[0.0, 0.0], [100.0, 0.0]],
+                    "head": head,
+                    "tail": tail,
+                    "arrowHead": {
+                        "length": 15.0,
+                        "width": 3.75,
+                        "head": arrow_head,
+                        "tail": arrow_tail,
+                        "curve": curve
+                    }
+                }
+            }],
+            "resources": {}
+        }))
+        .expect("document should deserialize")
     }
 }

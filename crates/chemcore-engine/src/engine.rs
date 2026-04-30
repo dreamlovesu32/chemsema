@@ -1,8 +1,13 @@
+mod clipboard;
+mod command;
 mod delete;
 mod select;
 mod templates;
 mod text_edit;
 
+pub use self::command::{
+    CommandAnchor, EditorCommand, FocusedDeleteSource, HistoryEntry, TextEditCommandTarget,
+};
 use self::text_edit::refresh_attached_node_label_geometry_for_all_nodes;
 pub use self::text_edit::{
     TextEditLayout, TextEditLayoutCaret, TextEditLayoutCaretOffset, TextEditLayoutLine,
@@ -13,15 +18,17 @@ use self::delete::FocusedDeleteMode;
 use crate::{
     anchor_from_point, bond_center_focus_length, can_draw_bond, can_focus_bond_center,
     can_focus_endpoint, default_angle_for_anchor_for_variant, endpoint_from_angle_for_document,
-    hit_test_bond_center, hit_test_endpoint, hit_test_endpoint_excluding, render_document,
-    snapped_angle_for_anchor, Bond, BondAnchor, BondLinePattern, BondLineStyles, BondLineWeight,
-    BondLineWeights, BondPreview, BondStereo, BondVariant, ChemcoreDocument, DoubleBond,
-    DoubleBondPlacement, DragState, EditorOptions, EndpointHit, HoverTextBox, OverlayState, Point,
-    PointerEvent, RenderPrimitive, RenderRole, SelectionState, Tool, ToolState, WorldCm,
-    BOND_CENTER_FOCUS_WIDTH, BOND_CENTER_HIT_RADIUS, DEFAULT_BOND_LENGTH, DRAG_START_THRESHOLD,
-    ENDPOINT_FOCUS_RADIUS, ENDPOINT_HIT_RADIUS,
+    hit_test_arrow_center, hit_test_bond_center, hit_test_endpoint, hit_test_endpoint_excluding,
+    nearest_angle, render_document, snapped_angle_for_anchor, ArrowCurve, ArrowEndpointStyle,
+    ArrowHeadSize, ArrowNoGo, ArrowVariant, Bond, BondAnchor, BondLinePattern, BondLineStyles,
+    BondLineWeight, BondLineWeights, BondPreview, BondStereo, BondVariant, ChemcoreDocument,
+    DoubleBond, DoubleBondPlacement, DragState, EditorOptions, EndpointHit, HoverTextBox,
+    OverlayState, Point, PointerEvent, RenderPrimitive, RenderRole, SceneObject, SelectionState,
+    Tool, ToolState, WorldCm, BOND_CENTER_FOCUS_WIDTH, BOND_CENTER_HIT_RADIUS, DEFAULT_BOND_LENGTH,
+    DRAG_START_THRESHOLD, ENDPOINT_FOCUS_RADIUS, ENDPOINT_HIT_RADIUS, GLOBAL_SNAP_ANGLES,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value as JsonValue};
 
 const HOVER_STROKE_WIDTH: f64 = crate::px_to_cm(1.1);
 const HOVER_LABEL_STROKE_WIDTH: f64 = crate::px_to_cm(1.1);
@@ -50,13 +57,43 @@ pub struct TextEditLayoutRequest {
 pub struct Engine {
     state: EngineState,
     drag: Option<DragState>,
+    arrow_drag: Option<ArrowDragState>,
+    arrow_edit_drag: Option<ArrowEditDragState>,
     selection_drag: Option<select::SelectionMoveDrag>,
     selection_rotate_drag: Option<select::SelectionRotateDrag>,
     template_drag: Option<templates::TemplateDrag>,
+    clipboard: Option<clipboard::ClipboardContent>,
     options: EditorOptions,
     next_id: u64,
-    undo_stack: Vec<ChemcoreDocument>,
-    redo_stack: Vec<ChemcoreDocument>,
+    undo_stack: Vec<HistoryEntry>,
+    redo_stack: Vec<HistoryEntry>,
+    command_context: Vec<EditorCommand>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ArrowDragState {
+    start: Point,
+    end: Option<Point>,
+    has_dragged: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ArrowEditMode {
+    Head,
+    Tail,
+    Curve,
+}
+
+#[derive(Debug, Clone)]
+struct ArrowEditDragState {
+    object_id: String,
+    mode: ArrowEditMode,
+    original_points: Vec<Point>,
+    start_pointer: Point,
+    has_dragged: bool,
+    current_degrees: f64,
+    undo_pushed: bool,
 }
 
 impl Default for Engine {
@@ -75,13 +112,17 @@ impl Engine {
                 overlay: OverlayState::default(),
             },
             drag: None,
+            arrow_drag: None,
+            arrow_edit_drag: None,
             selection_drag: None,
             selection_rotate_drag: None,
             template_drag: None,
+            clipboard: None,
             options: EditorOptions::default(),
             next_id: 1,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
+            command_context: Vec::new(),
         }
     }
 
@@ -98,13 +139,13 @@ impl Engine {
     }
 
     pub fn load_document_json(&mut self, json: &str) -> Result<(), String> {
-        let document: ChemcoreDocument =
-            serde_json::from_str(json).map_err(|error| error.to_string())?;
+        let document = crate::parse_document_json(json)?;
         self.state.document = document;
         self.state.selection = SelectionState::default();
         self.clear_interaction();
         self.undo_stack.clear();
         self.redo_stack.clear();
+        self.command_context.clear();
         self.next_id = self.infer_next_id();
         Ok(())
     }
@@ -132,6 +173,26 @@ impl Engine {
                 dash_array: Vec::new(),
                 fill_gradient: None,
             });
+        }
+        if let Some(hover) = &self.state.overlay.hover_arrow {
+            if !self
+                .state
+                .selection
+                .arrow_objects
+                .contains(&hover.object_id)
+            {
+                for handle in &hover.handles {
+                    out.push(RenderPrimitive::Circle {
+                        role: RenderRole::HoverArrowHandle,
+                        object_id: Some(hover.object_id.clone()),
+                        center: *handle,
+                        radius: crate::px_to_cm(1.5),
+                        fill: "#ffffff".to_string(),
+                        stroke: "rgba(47,111,237,0.82)".to_string(),
+                        stroke_width: HOVER_STROKE_WIDTH,
+                    });
+                }
+            }
         }
         if let Some(hover) = &self.state.overlay.hover_endpoint {
             if let Some(label_anchor) = &hover.label_anchor {
@@ -206,6 +267,10 @@ impl Engine {
             self.hover_select_target(point);
             return;
         }
+        if self.state.tool.active_tool == Tool::Arrow {
+            self.pointer_move_arrow(event);
+            return;
+        }
         if self.state.tool.active_tool == Tool::Templates {
             self.pointer_move_template(event);
             return;
@@ -213,6 +278,7 @@ impl Engine {
         if self.state.tool.active_tool == Tool::Delete {
             self.drag = None;
             self.state.overlay.hover_bond_center = None;
+            self.state.overlay.hover_arrow = None;
             self.state.overlay.preview = None;
             self.state.overlay.hover_text_box = None;
             self.state.overlay.hover_endpoint = None;
@@ -240,6 +306,7 @@ impl Engine {
         if self.state.tool.active_tool == Tool::Text {
             self.drag = None;
             self.state.overlay.hover_bond_center = None;
+            self.state.overlay.hover_arrow = None;
             self.state.overlay.preview = None;
             self.state.overlay.hover_text_box = None;
             self.state.overlay.hover_endpoint = None;
@@ -308,6 +375,7 @@ impl Engine {
 
         self.state.overlay.hover_endpoint = None;
         self.state.overlay.hover_bond_center = None;
+        self.state.overlay.hover_arrow = None;
         self.state.overlay.hover_text_box = None;
         if let Some(endpoint) = hit_test_endpoint(&self.state.document, point, ENDPOINT_HIT_RADIUS)
         {
@@ -330,6 +398,10 @@ impl Engine {
         if self.state.tool.active_tool == Tool::Select {
             return;
         }
+        if self.state.tool.active_tool == Tool::Arrow {
+            self.pointer_down_arrow(event);
+            return;
+        }
         if self.state.tool.active_tool == Tool::Templates {
             self.pointer_down_template(event);
             return;
@@ -337,7 +409,15 @@ impl Engine {
         if self.state.tool.active_tool == Tool::Delete {
             self.state.selection = SelectionState::default();
             self.clear_interaction();
-            self.delete_focused_at_point(event.point(), FocusedDeleteMode::DeleteToolClick);
+            let point = event.point();
+            self.with_command(
+                EditorCommand::DeleteFocusedAtPoint {
+                    x: point.x,
+                    y: point.y,
+                    source: FocusedDeleteSource::DeleteTool,
+                },
+                |engine| engine.delete_focused_at_point(point, FocusedDeleteMode::DeleteToolClick),
+            );
             return;
         }
         if self.state.tool.active_tool == Tool::Text {
@@ -395,6 +475,10 @@ impl Engine {
     }
 
     pub fn pointer_up(&mut self, event: PointerEvent) {
+        if self.state.tool.active_tool == Tool::Arrow {
+            self.pointer_up_arrow(event);
+            return;
+        }
         if self.state.tool.active_tool == Tool::Text {
             self.state.overlay.hover_endpoint =
                 hit_test_endpoint(&self.state.document, event.point(), ENDPOINT_HIT_RADIUS);
@@ -460,8 +544,269 @@ impl Engine {
         }
     }
 
+    fn pointer_move_arrow(&mut self, event: PointerEvent) {
+        let point = event.point();
+        self.state.overlay.hover_endpoint = None;
+        self.state.overlay.hover_bond_center = None;
+        self.state.overlay.hover_text_box = None;
+        self.state.overlay.hover_arrow = None;
+        if let Some(mut drag) = self.arrow_drag.take() {
+            if drag.start.distance(point) >= DRAG_START_THRESHOLD {
+                drag.has_dragged = true;
+            }
+            if drag.has_dragged {
+                let end = arrow_drag_end(drag.start, point, event.alt_key);
+                drag.end = Some(end);
+                self.state.overlay.preview = Some(BondPreview {
+                    start: drag.start,
+                    end,
+                });
+            }
+            self.arrow_drag = Some(drag);
+            return;
+        }
+        self.state.overlay.preview = None;
+        self.state.overlay.hover_arrow =
+            hit_test_arrow_center(&self.state.document, point, BOND_CENTER_HIT_RADIUS);
+    }
+
+    fn pointer_down_arrow(&mut self, event: PointerEvent) {
+        self.state.selection = SelectionState::default();
+        self.clear_interaction();
+        self.arrow_drag = Some(ArrowDragState {
+            start: event.point(),
+            end: None,
+            has_dragged: false,
+        });
+    }
+
+    fn pointer_up_arrow(&mut self, event: PointerEvent) {
+        let Some(drag) = self.arrow_drag.take() else {
+            return;
+        };
+        self.state.overlay.preview = None;
+        let end = if drag.has_dragged {
+            drag.end
+                .unwrap_or_else(|| arrow_drag_end(drag.start, event.point(), event.alt_key))
+        } else {
+            return;
+        };
+        if drag.start.distance(end) <= crate::EPSILON {
+            return;
+        }
+        if self.add_arrow_between(drag.start, end).is_some() {
+            self.state.overlay.hover_arrow = None;
+        }
+    }
+
+    fn add_arrow_between(&mut self, start: Point, end: Point) -> Option<String> {
+        let command = EditorCommand::AddArrow {
+            begin: CommandAnchor::from(start),
+            end: CommandAnchor::from(end),
+            variant: self.state.tool.arrow_variant,
+            head_size: self.state.tool.arrow_head_size,
+            curve: self.state.tool.arrow_curve,
+            head_style: self.state.tool.arrow_head_style,
+            tail_style: self.state.tool.arrow_tail_style,
+            head: arrow_endpoint_enabled(self.state.tool.arrow_head_style),
+            tail: arrow_endpoint_enabled(self.state.tool.arrow_tail_style),
+            bold: self.state.tool.arrow_bold,
+            no_go: self.state.tool.arrow_no_go,
+        };
+        let mut object_id = None;
+        let changed = self.with_command(command, |engine| {
+            object_id = engine.add_arrow_between_untracked(start, end);
+            object_id.is_some()
+        });
+        changed.then_some(object_id).flatten()
+    }
+
+    fn add_arrow_between_untracked(&mut self, start: Point, end: Point) -> Option<String> {
+        self.push_undo_snapshot();
+        self.state.selection = SelectionState::default();
+        ensure_arrow_style(&mut self.state.document);
+        let object_id = self.next_id("obj_line");
+        let object = self.arrow_scene_object(start, end, object_id.clone());
+        self.state.document.objects.push(object);
+        Some(object_id)
+    }
+
+    fn arrow_scene_object(&self, start: Point, end: Point, object_id: String) -> SceneObject {
+        let (length, center_length, width) = arrow_payload_dimensions(
+            self.state.tool.arrow_variant,
+            self.state.tool.arrow_head_size,
+            self.state.tool.arrow_bold,
+        );
+        let head_style = self.state.tool.arrow_head_style;
+        let tail_style = self.state.tool.arrow_tail_style;
+        let head_enabled = arrow_endpoint_enabled(head_style);
+        let tail_enabled = arrow_endpoint_enabled(tail_style);
+        let mut extra = std::collections::BTreeMap::new();
+        extra.insert("kind".to_string(), json!("line"));
+        extra.insert(
+            "points".to_string(),
+            json!([
+                [round_point(start).x, round_point(start).y],
+                [round_point(end).x, round_point(end).y]
+            ]),
+        );
+        extra.insert(
+            "head".to_string(),
+            JsonValue::String(if head_enabled { "end" } else { "none" }.to_string()),
+        );
+        extra.insert(
+            "tail".to_string(),
+            JsonValue::String(if tail_enabled { "start" } else { "none" }.to_string()),
+        );
+        extra.insert(
+            "arrowHead".to_string(),
+            json!({
+                "kind": arrow_variant_name(self.state.tool.arrow_variant),
+                "curve": arrow_curve_sweep_degrees(self.state.tool.arrow_variant, self.state.tool.arrow_curve),
+                "head": arrow_endpoint_payload_name(head_style),
+                "tail": arrow_endpoint_payload_name(tail_style),
+                "length": length,
+                "centerLength": center_length,
+                "width": width,
+                "bold": self.state.tool.arrow_bold,
+                "noGo": arrow_no_go_payload_name(self.state.tool.arrow_no_go),
+            }),
+        );
+        SceneObject {
+            id: object_id,
+            object_type: "line".to_string(),
+            name: "arrow".to_string(),
+            visible: true,
+            locked: false,
+            z_index: 20,
+            transform: crate::Transform::identity(),
+            style_ref: Some("style_arrow_default".to_string()),
+            meta: json!({"source": "chemcore-editor"}),
+            payload: crate::ObjectPayload {
+                resource_ref: None,
+                bbox: None,
+                extra,
+            },
+        }
+    }
+
+    pub fn apply_arrow_options_to_selection(
+        &mut self,
+        variant: ArrowVariant,
+        head_size: ArrowHeadSize,
+        curve: ArrowCurve,
+        head_style: ArrowEndpointStyle,
+        tail_style: ArrowEndpointStyle,
+        head: bool,
+        tail: bool,
+        bold: bool,
+        no_go: ArrowNoGo,
+    ) -> bool {
+        let object_ids = self.state.selection.arrow_objects.clone();
+        if object_ids.is_empty() {
+            return false;
+        }
+        let command = EditorCommand::ApplyArrowStyle {
+            object_ids,
+            variant,
+            head_size,
+            curve,
+            head_style,
+            tail_style,
+            head,
+            tail,
+            bold,
+            no_go,
+        };
+        self.with_command(command, |engine| {
+            engine.apply_arrow_options_to_selection_untracked(
+                variant, head_size, curve, head_style, tail_style, bold, no_go,
+            )
+        })
+    }
+
+    fn apply_arrow_options_to_selection_untracked(
+        &mut self,
+        variant: ArrowVariant,
+        head_size: ArrowHeadSize,
+        curve: ArrowCurve,
+        head_style: ArrowEndpointStyle,
+        tail_style: ArrowEndpointStyle,
+        bold: bool,
+        no_go: ArrowNoGo,
+    ) -> bool {
+        let selected: std::collections::BTreeSet<String> =
+            self.state.selection.arrow_objects.iter().cloned().collect();
+        if selected.is_empty() {
+            return false;
+        }
+        let (length, center_length, width) = arrow_payload_dimensions(variant, head_size, bold);
+        let mut updates = Vec::new();
+        for (index, object) in self.state.document.objects.iter().enumerate() {
+            if object.object_type != "line" || !selected.contains(&object.id) {
+                continue;
+            }
+            let mut next_extra = object.payload.extra.clone();
+            next_extra.insert(
+                "head".to_string(),
+                JsonValue::String(
+                    if arrow_endpoint_enabled(head_style) {
+                        "end"
+                    } else {
+                        "none"
+                    }
+                    .to_string(),
+                ),
+            );
+            next_extra.insert(
+                "tail".to_string(),
+                JsonValue::String(
+                    if arrow_endpoint_enabled(tail_style) {
+                        "start"
+                    } else {
+                        "none"
+                    }
+                    .to_string(),
+                ),
+            );
+            next_extra.insert(
+                "arrowHead".to_string(),
+                json!({
+                    "kind": arrow_variant_name(variant),
+                    "curve": arrow_curve_sweep_degrees(variant, curve),
+                    "head": arrow_endpoint_payload_name(head_style),
+                    "tail": arrow_endpoint_payload_name(tail_style),
+                    "length": length,
+                    "centerLength": center_length,
+                    "width": width,
+                    "bold": bold,
+                    "noGo": arrow_no_go_payload_name(no_go),
+                }),
+            );
+            if object.payload.extra != next_extra
+                || object.style_ref.as_deref() != Some("style_arrow_default")
+            {
+                updates.push((index, next_extra));
+            }
+        }
+        if updates.is_empty() {
+            return false;
+        }
+        self.push_undo_snapshot();
+        for (index, next_extra) in updates {
+            if let Some(object) = self.state.document.objects.get_mut(index) {
+                object.payload.extra = next_extra;
+                object.style_ref = Some("style_arrow_default".to_string());
+            }
+        }
+        self.state.overlay.hover_arrow = None;
+        true
+    }
+
     pub fn clear_interaction(&mut self) {
         self.drag = None;
+        self.arrow_drag = None;
+        self.arrow_edit_drag = None;
         self.selection_drag = None;
         self.selection_rotate_drag = None;
         self.template_drag = None;
@@ -485,6 +830,23 @@ impl Engine {
     }
 
     pub fn add_bond_between(&mut self, anchor: BondAnchor, end: BondAnchor, order: u8) -> bool {
+        let command = EditorCommand::AddBond {
+            begin: CommandAnchor::from(&anchor),
+            end: CommandAnchor::from(&end),
+            order,
+            variant: self.state.tool.bond_variant,
+        };
+        self.with_command(command, |engine| {
+            engine.add_bond_between_untracked(anchor, end, order)
+        })
+    }
+
+    fn add_bond_between_untracked(
+        &mut self,
+        anchor: BondAnchor,
+        end: BondAnchor,
+        order: u8,
+    ) -> bool {
         if let (Some(begin_id), Some(end_id)) = (&anchor.node_id, &end.node_id) {
             if begin_id == end_id || self.bond_exists(begin_id, end_id) {
                 return false;
@@ -549,6 +911,17 @@ impl Engine {
     fn preview_document(&self) -> Option<ChemcoreDocument> {
         if let Some(preview_document) = self.template_preview_document() {
             return Some(preview_document);
+        }
+        if let Some(drag) = self.arrow_drag.as_ref().filter(|drag| drag.has_dragged) {
+            let end = drag.end?;
+            let mut document = self.state.document.clone();
+            ensure_arrow_style(&mut document);
+            document.objects.push(self.arrow_scene_object(
+                drag.start,
+                end,
+                "__preview_arrow".to_string(),
+            ));
+            return Some(document);
         }
         let drag = self.drag.as_ref()?;
         if !drag.has_dragged {
@@ -638,6 +1011,16 @@ impl Engine {
     }
 
     pub fn cycle_bond_center_style(&mut self, bond_id: &str) -> bool {
+        self.with_command(
+            EditorCommand::CycleBondStyle {
+                bond_id: bond_id.to_string(),
+                variant: self.state.tool.bond_variant,
+            },
+            |engine| engine.cycle_bond_center_style_untracked(bond_id),
+        )
+    }
+
+    fn cycle_bond_center_style_untracked(&mut self, bond_id: &str) -> bool {
         let (current_order, was_double_before) = self
             .state
             .document
@@ -702,20 +1085,28 @@ impl Engine {
     }
 
     pub fn undo(&mut self) -> bool {
-        let Some(previous) = self.undo_stack.pop() else {
+        let Some(mut entry) = self.undo_stack.pop() else {
             return false;
         };
-        self.redo_stack.push(self.state.document.clone());
-        self.restore_document(previous);
+        let after = entry
+            .after
+            .clone()
+            .unwrap_or_else(|| self.state.document.clone());
+        self.restore_document(entry.before.clone());
+        entry.after = Some(after);
+        self.redo_stack.push(entry);
         true
     }
 
     pub fn redo(&mut self) -> bool {
-        let Some(next) = self.redo_stack.pop() else {
+        let Some(entry) = self.redo_stack.pop() else {
             return false;
         };
-        self.undo_stack.push(self.state.document.clone());
-        self.restore_document(next);
+        let Some(after) = entry.after.clone() else {
+            return false;
+        };
+        self.restore_document(after);
+        self.undo_stack.push(entry);
         true
     }
 
@@ -748,6 +1139,7 @@ impl Engine {
     fn refresh_bond_mode_hover(&mut self, point: Point) {
         self.state.overlay.hover_text_box = None;
         self.state.overlay.hover_bond_center = None;
+        self.state.overlay.hover_arrow = None;
         self.state.overlay.hover_endpoint =
             hit_test_endpoint(&self.state.document, point, ENDPOINT_HIT_RADIUS);
         if self.state.overlay.hover_endpoint.is_none() && can_focus_bond_center(&self.state.tool) {
@@ -805,8 +1197,55 @@ impl Engine {
         format!("{prefix}_{value}")
     }
 
+    fn with_command<F>(&mut self, command: EditorCommand, apply: F) -> bool
+    where
+        F: FnOnce(&mut Self) -> bool,
+    {
+        if !self.command_context.is_empty() {
+            return apply(self);
+        }
+        let undo_len = self.undo_stack.len();
+        self.command_context.push(command.clone());
+        let changed = apply(self);
+        self.command_context.pop();
+        if changed {
+            self.finalize_command_history(undo_len, command);
+        }
+        changed
+    }
+
+    fn finalize_command_history(&mut self, undo_len: usize, command: EditorCommand) {
+        if self.undo_stack.len() <= undo_len {
+            if let Some(entry) = self.undo_stack.last_mut() {
+                if entry.command == command {
+                    entry.after = Some(self.state.document.clone());
+                }
+            }
+            return;
+        }
+        let before = self.undo_stack[undo_len].before.clone();
+        self.undo_stack.truncate(undo_len);
+        self.undo_stack.push(HistoryEntry {
+            command,
+            before,
+            after: Some(self.state.document.clone()),
+        });
+    }
+
+    fn current_history_command(&self) -> EditorCommand {
+        self.command_context
+            .last()
+            .cloned()
+            .unwrap_or_else(|| EditorCommand::LegacyMutation {
+                label: "unclassified-mutation".to_string(),
+            })
+    }
+
     fn push_undo_snapshot(&mut self) {
-        self.undo_stack.push(self.state.document.clone());
+        self.undo_stack.push(HistoryEntry::new(
+            self.current_history_command(),
+            self.state.document.clone(),
+        ));
         self.redo_stack.clear();
     }
 
@@ -1085,7 +1524,11 @@ fn should_default_center_double_bond_for_segment(
     )
 }
 
-fn endpoint_should_default_center(left_count: usize, right_count: usize, other_total: usize) -> bool {
+fn endpoint_should_default_center(
+    left_count: usize,
+    right_count: usize,
+    other_total: usize,
+) -> bool {
     other_total == 0
         && ((left_count >= 2 && right_count == 0) || (right_count >= 2 && left_count == 0))
 }
@@ -1727,6 +2170,113 @@ fn is_bold_family_bond(bond: &Bond) -> bool {
 
 fn has_stereo_style(bond: &Bond) -> bool {
     bond.stereo.is_some()
+}
+
+fn arrow_drag_end(start: Point, point: Point, alt_key: bool) -> Point {
+    if alt_key {
+        return point;
+    }
+    let dx = point.x - start.x;
+    let dy = point.y - start.y;
+    let length = (dx * dx + dy * dy).sqrt();
+    if length <= crate::EPSILON {
+        return point;
+    }
+    let angle = nearest_angle(crate::angle_between(start, point), GLOBAL_SNAP_ANGLES);
+    let direction = crate::direction_from_angle(angle);
+    start.translated(direction.scaled(length))
+}
+
+fn arrow_head_dimensions(size: ArrowHeadSize, bold: bool) -> (f64, f64, f64) {
+    let (length, center_length, width) = match size {
+        ArrowHeadSize::Large => (22.5, 19.69, 5.63),
+        ArrowHeadSize::Medium => (15.0, 13.13, 3.75),
+        ArrowHeadSize::Small => (10.0, 8.75, 2.5),
+    };
+    if bold {
+        (length * 2.0, center_length * 2.0, width * 2.0)
+    } else {
+        (length, center_length, width)
+    }
+}
+
+fn arrow_payload_dimensions(
+    variant: ArrowVariant,
+    size: ArrowHeadSize,
+    bold: bool,
+) -> (f64, f64, f64) {
+    match variant {
+        ArrowVariant::Solid => arrow_head_dimensions(size, bold),
+        ArrowVariant::Curved | ArrowVariant::CurvedMirror => arrow_head_dimensions(size, bold),
+        ArrowVariant::Hollow | ArrowVariant::Open => (12.0, 12.0, 3.0),
+    }
+}
+
+fn arrow_curve_degrees(curve: ArrowCurve) -> f64 {
+    match curve {
+        ArrowCurve::Arc270 => 270.0,
+        ArrowCurve::Arc180 => 180.0,
+        ArrowCurve::Arc120 => 120.0,
+        ArrowCurve::Arc90 => 90.0,
+    }
+}
+
+fn arrow_curve_sweep_degrees(variant: ArrowVariant, curve: ArrowCurve) -> f64 {
+    match variant {
+        ArrowVariant::Curved => -arrow_curve_degrees(curve),
+        ArrowVariant::CurvedMirror => arrow_curve_degrees(curve),
+        ArrowVariant::Solid | ArrowVariant::Hollow | ArrowVariant::Open => 0.0,
+    }
+}
+
+fn arrow_endpoint_enabled(style: ArrowEndpointStyle) -> bool {
+    !matches!(style, ArrowEndpointStyle::None)
+}
+
+fn arrow_endpoint_payload_name(style: ArrowEndpointStyle) -> &'static str {
+    match style {
+        ArrowEndpointStyle::None => "none",
+        ArrowEndpointStyle::Full => "full",
+        ArrowEndpointStyle::Left => "half-left",
+        ArrowEndpointStyle::Right => "half-right",
+    }
+}
+
+fn arrow_no_go_payload_name(no_go: ArrowNoGo) -> &'static str {
+    match no_go {
+        ArrowNoGo::None => "none",
+        ArrowNoGo::Cross => "cross",
+        ArrowNoGo::Hash => "hash",
+    }
+}
+
+fn arrow_variant_name(variant: ArrowVariant) -> &'static str {
+    match variant {
+        ArrowVariant::Solid => "solid",
+        ArrowVariant::Curved => "curved",
+        ArrowVariant::CurvedMirror => "curved-mirror",
+        ArrowVariant::Hollow => "hollow",
+        ArrowVariant::Open => "open",
+    }
+}
+
+fn round_point(point: Point) -> Point {
+    Point::new(crate::round2(point.x), crate::round2(point.y))
+}
+
+fn ensure_arrow_style(document: &mut ChemcoreDocument) {
+    document
+        .styles
+        .entry("style_arrow_default".to_string())
+        .or_insert_with(|| {
+            json!({
+                "kind": "stroke",
+                "stroke": "#000000",
+                "strokeWidth": crate::DEFAULT_BOND_STROKE,
+                "lineCap": "butt",
+                "lineJoin": "miter"
+            })
+        });
 }
 
 fn all_line_patterns_solid(bond: &Bond) -> bool {

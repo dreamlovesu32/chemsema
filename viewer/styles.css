@@ -193,14 +193,13 @@ button {
 }
 
 .zoom-input {
-  width: 58px;
+  width: 74px;
   height: 36px;
   border: 1px solid var(--line-strong);
   border-radius: 6px;
   padding: 0 7px;
   background: var(--surface);
   color: var(--ink);
-  text-align: right;
   outline: none;
 }
 
@@ -484,6 +483,21 @@ button {
   stroke-width: 1.4px;
   vector-effect: non-scaling-stroke;
   filter: drop-shadow(0 0 4px rgba(47, 111, 237, 0.45));
+}
+
+.editor-arrow-center-halo {
+  fill: rgba(47, 111, 237, 0.18);
+  stroke: rgba(47, 111, 237, 0.76);
+  stroke-width: 1.2px;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 4px rgba(47, 111, 237, 0.35));
+}
+
+.editor-arrow-focus-handle {
+  fill: #ffffff;
+  stroke: rgba(47, 111, 237, 0.86);
+  stroke-width: 1.1px;
+  vector-effect: non-scaling-stroke;
 }
 
 .editor-bond-center-rect {

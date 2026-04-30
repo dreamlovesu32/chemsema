@@ -29,7 +29,7 @@ use object_render::{
     render_line_object, render_molecule_object, render_shape_object, render_text_object,
 };
 use primitives::{
-    push_bond_line, push_bond_polygon, push_knockout_polygon, push_line, push_polygon,
+    push_bond_line, push_bond_polygon, push_knockout_polygon, push_line, push_path, push_polygon,
     push_polyline, push_text,
 };
 pub use primitives::{RenderPrimitive, RenderRole};
@@ -92,8 +92,29 @@ struct LineGeometry {
 #[derive(Debug, Clone, Copy, Default)]
 struct ArrowHeadGeometry {
     length: f64,
+    center_length: f64,
     width: f64,
+    kind: ArrowHeadKind,
+    curve: f64,
     head_full: bool,
+    bold: bool,
+    no_go: ArrowNoGoGeometry,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum ArrowHeadKind {
+    #[default]
+    Solid,
+    Hollow,
+    Open,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum ArrowNoGoGeometry {
+    #[default]
+    None,
+    Cross,
+    Hash,
 }
 
 pub fn render_document(document: &ChemcoreDocument) -> Vec<RenderPrimitive> {
@@ -180,6 +201,10 @@ fn primitive_matches_bond(primitive: &RenderPrimitive, bond_id: &str) -> bool {
         | RenderPrimitive::Polyline {
             bond_id: Some(current),
             ..
+        }
+        | RenderPrimitive::Path {
+            bond_id: Some(current),
+            ..
         } => current == bond_id,
         _ => false,
     }
@@ -207,6 +232,11 @@ fn render_primitive_bounds(primitive: &RenderPrimitive) -> Option<[f64; 4]> {
             ..
         }
         | RenderPrimitive::Polyline {
+            points,
+            stroke_width,
+            ..
+        }
+        | RenderPrimitive::Path {
             points,
             stroke_width,
             ..
@@ -1827,26 +1857,61 @@ fn payload_runs(payload: &ObjectPayload, key: &str) -> Vec<LabelRun> {
 
 fn payload_arrow_head(payload: &ObjectPayload, key: &str) -> Option<ArrowHeadGeometry> {
     let value = payload.extra.get(key)?;
+    let length = value
+        .get("length")
+        .and_then(JsonValue::as_f64)
+        .unwrap_or(crate::DEFAULT_ARROW_HEAD_LENGTH_CM.value());
     Some(ArrowHeadGeometry {
-        length: value
-            .get("length")
+        length,
+        center_length: value
+            .get("centerLength")
+            .or_else(|| value.get("center_length"))
             .and_then(JsonValue::as_f64)
-            .unwrap_or(crate::DEFAULT_ARROW_HEAD_LENGTH_CM.value()),
+            .unwrap_or(length * 0.875),
         width: value
             .get("width")
             .and_then(JsonValue::as_f64)
-            .unwrap_or_else(|| {
-                value
-                    .get("length")
-                    .and_then(JsonValue::as_f64)
-                    .unwrap_or(crate::DEFAULT_ARROW_HEAD_LENGTH_CM.value())
-                    * 0.55
-            }),
+            .unwrap_or(length * 0.25),
+        kind: value
+            .get("kind")
+            .and_then(JsonValue::as_str)
+            .map(arrow_head_kind)
+            .unwrap_or_default(),
+        curve: value
+            .get("curve")
+            .and_then(JsonValue::as_f64)
+            .unwrap_or(0.0),
         head_full: value
             .get("head")
             .and_then(JsonValue::as_str)
             .is_some_and(|head| head.eq_ignore_ascii_case("full")),
+        bold: value
+            .get("bold")
+            .and_then(JsonValue::as_bool)
+            .unwrap_or(false),
+        no_go: value
+            .get("noGo")
+            .or_else(|| value.get("no_go"))
+            .and_then(JsonValue::as_str)
+            .map(arrow_no_go_geometry)
+            .unwrap_or_default(),
     })
+}
+
+fn arrow_head_kind(value: &str) -> ArrowHeadKind {
+    match value.to_ascii_lowercase().as_str() {
+        "hollow" => ArrowHeadKind::Hollow,
+        "angle" | "open" | "retrosynthetic" => ArrowHeadKind::Open,
+        _ => ArrowHeadKind::Solid,
+    }
+}
+
+fn arrow_no_go_geometry(value: &str) -> ArrowNoGoGeometry {
+    match value.to_ascii_lowercase().as_str() {
+        "cross" => ArrowNoGoGeometry::Cross,
+        "hash" => ArrowNoGoGeometry::Hash,
+        _ => ArrowNoGoGeometry::None,
+    }
 }
 
 fn world_point(object: &SceneObject, node: &Node) -> Point {
@@ -2221,6 +2286,7 @@ fn render_fragment_line_with_profiles(
                     clipped_start,
                     clipped_end,
                     line_weight_stroke_width(stroke_width, line_weight),
+                    stroke_width,
                 )
             } else {
                 dashed_bond_knockout_polygons(
@@ -2322,41 +2388,27 @@ fn render_fragment_line_with_profiles(
     );
 }
 
-fn arrow_shaft_end(from: Point, to: Point, arrow_head: ArrowHeadGeometry) -> Point {
-    let direction = Vector::new(to.x - from.x, to.y - from.y);
-    let length = direction.length().max(1.0);
-    let unit = direction.normalized();
-    let head_length = crate::ARROW_SHAPE_MIN_HEAD_LENGTH_CM
-        .value()
-        .max(arrow_head.length * 0.6);
-    let notch_length = crate::ARROW_SHAPE_MIN_NOTCH_LENGTH_CM
-        .value()
-        .max(head_length * 0.66);
-    let center_length = notch_length.min(length * 0.8).max(0.0);
-    Point::new(to.x - unit.x * center_length, to.y - unit.y * center_length)
-}
-
 fn arrow_head_points(from: Point, to: Point, arrow_head: ArrowHeadGeometry) -> Vec<Point> {
     let direction = Vector::new(to.x - from.x, to.y - from.y);
     let unit = direction.normalized();
     let normal = Vector::new(-unit.y, unit.x);
-    let head_length = crate::ARROW_SHAPE_MIN_HEAD_LENGTH_CM
-        .value()
-        .max(arrow_head.length * 0.6);
-    let head_width = crate::ARROW_SHAPE_MIN_HEAD_WIDTH_CM
-        .value()
-        .max(arrow_head.width * 1.16);
-    let notch_length = crate::ARROW_SHAPE_MIN_NOTCH_LENGTH_CM.value().max(
-        (head_length * 0.66).min(head_length - crate::ARROW_SHAPE_MIN_HEAD_TO_NOTCH_GAP_CM.value()),
-    );
+    let head_length = arrow_head
+        .length
+        .max(crate::ARROW_SHAPE_MIN_HEAD_LENGTH_CM.value());
+    let head_half_width =
+        (arrow_head.width + 0.05).max(crate::ARROW_SHAPE_MIN_HEAD_WIDTH_CM.value() * 0.5);
+    let notch_length = arrow_head
+        .center_length
+        .max(crate::ARROW_SHAPE_MIN_NOTCH_LENGTH_CM.value())
+        .min(head_length - crate::ARROW_SHAPE_MIN_HEAD_TO_NOTCH_GAP_CM.value());
     let tip = to;
     let left = Point::new(
-        to.x - unit.x * head_length + normal.x * (head_width / 2.0),
-        to.y - unit.y * head_length + normal.y * (head_width / 2.0),
+        to.x - unit.x * head_length + normal.x * head_half_width,
+        to.y - unit.y * head_length + normal.y * head_half_width,
     );
     let right = Point::new(
-        to.x - unit.x * head_length - normal.x * (head_width / 2.0),
-        to.y - unit.y * head_length - normal.y * (head_width / 2.0),
+        to.x - unit.x * head_length - normal.x * head_half_width,
+        to.y - unit.y * head_length - normal.y * head_half_width,
     );
     if arrow_head.head_full && notch_length < head_length - 0.2 {
         let notch = Point::new(to.x - unit.x * notch_length, to.y - unit.y * notch_length);
@@ -2364,6 +2416,87 @@ fn arrow_head_points(from: Point, to: Point, arrow_head: ArrowHeadGeometry) -> V
     } else {
         vec![tip, left, right]
     }
+}
+
+fn arrow_axis(from: Point, to: Point) -> Option<(Vector, Vector, f64)> {
+    let direction = Vector::new(to.x - from.x, to.y - from.y);
+    let length = direction.length();
+    if length <= EPSILON {
+        return None;
+    }
+    let unit = direction.normalized();
+    let normal = Vector::new(-unit.y, unit.x);
+    Some((unit, normal, length))
+}
+
+fn hollow_arrow_outline_points(
+    start: Point,
+    end: Point,
+    arrow_head: ArrowHeadGeometry,
+    has_head: bool,
+    has_tail: bool,
+) -> Option<Vec<Point>> {
+    let (unit, normal, length) = arrow_axis(start, end)?;
+    let shaft_half_width = if arrow_head.bold {
+        arrow_head.center_length.max(arrow_head.length) * 0.575
+    } else {
+        arrow_head.center_length.max(arrow_head.length) * 0.5
+    };
+    let head_length = arrow_head.length.min(length * 0.45);
+    let head_half_width = if arrow_head.bold {
+        arrow_head.center_length.max(arrow_head.length) * 1.15
+    } else {
+        arrow_head.center_length.max(arrow_head.length)
+    };
+    let neck_offset = (head_length * 0.5).min(length * 0.3);
+    let start_neck = if has_tail {
+        start.translated(unit.scaled(neck_offset))
+    } else {
+        start
+    };
+    let end_neck = if has_head {
+        end.translated(unit.scaled(-neck_offset))
+    } else {
+        end
+    };
+
+    if !has_head && !has_tail {
+        return Some(vec![
+            start.translated(normal.scaled(shaft_half_width)),
+            end.translated(normal.scaled(shaft_half_width)),
+            end.translated(normal.scaled(-shaft_half_width)),
+            start.translated(normal.scaled(-shaft_half_width)),
+        ]);
+    }
+
+    let mut points = Vec::new();
+    if has_tail {
+        let tail_outer = start.translated(unit.scaled(head_length));
+        points.push(start);
+        points.push(tail_outer.translated(normal.scaled(-head_half_width)));
+    } else {
+        points.push(start.translated(normal.scaled(-shaft_half_width)));
+    }
+    points.push(start_neck.translated(normal.scaled(-shaft_half_width)));
+    points.push(end_neck.translated(normal.scaled(-shaft_half_width)));
+    if has_head {
+        let head_outer = end.translated(unit.scaled(-head_length));
+        points.push(head_outer.translated(normal.scaled(-head_half_width)));
+        points.push(end);
+        points.push(head_outer.translated(normal.scaled(head_half_width)));
+    } else {
+        points.push(end.translated(normal.scaled(-shaft_half_width)));
+        points.push(end.translated(normal.scaled(shaft_half_width)));
+    }
+    points.push(end_neck.translated(normal.scaled(shaft_half_width)));
+    points.push(start_neck.translated(normal.scaled(shaft_half_width)));
+    if has_tail {
+        let tail_outer = start.translated(unit.scaled(head_length));
+        points.push(tail_outer.translated(normal.scaled(head_half_width)));
+    } else {
+        points.push(start.translated(normal.scaled(shaft_half_width)));
+    }
+    Some(compact_polygon_points(points))
 }
 
 fn split_runs_by_line(runs: &[LabelRun]) -> Vec<Vec<LabelRun>> {
@@ -2632,7 +2765,12 @@ fn dashed_bond_knockout_polygons(
         .collect()
 }
 
-fn hash_bond_knockout_polygons(start: Point, end: Point, stroke_width: f64) -> Vec<Vec<Point>> {
+fn hash_bond_knockout_polygons(
+    start: Point,
+    end: Point,
+    visual_width: f64,
+    pattern_width: f64,
+) -> Vec<Vec<Point>> {
     let direction = Vector::new(end.x - start.x, end.y - start.y);
     let length = direction.length();
     if length <= EPSILON {
@@ -2640,8 +2778,8 @@ fn hash_bond_knockout_polygons(start: Point, end: Point, stroke_width: f64) -> V
     }
     let unit = direction.normalized();
     let normal = Vector::new(-unit.y, unit.x);
-    let half_width = stroke_width * 0.5 + stroke_width * 0.12;
-    let scale = stroke_width / VIEWER_BOND_STROKE;
+    let half_width = visual_width * 0.5 + visual_width * 0.12;
+    let scale = pattern_width / VIEWER_BOND_STROKE;
     equal_black_segment_gap_intervals(
         length,
         0.0,

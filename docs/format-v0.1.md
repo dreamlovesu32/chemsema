@@ -37,7 +37,8 @@ At a high level:
 {
   "format": {
     "name": "chemcore",
-    "version": "0.1"
+    "version": "0.1",
+    "unit": "pt"
   },
   "document": {},
   "styles": {},
@@ -53,7 +54,7 @@ Version `0.1` uses a single world coordinate system:
 - origin: top-left
 - x increases to the right
 - y increases downward
-- units: abstract document units
+- units: typographic points (`pt`, 1/72 inch), stored as `format.unit = "pt"`
 
 No backend-specific pixel assumptions belong in the file.
 

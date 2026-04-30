@@ -12,7 +12,7 @@ impl CssPx {
     }
 
     pub const fn to_world_cm(self) -> WorldCm {
-        WorldCm(self.0 * CSS_PX_TO_CM)
+        WorldCm(self.0 * CSS_PX_TO_PT)
     }
 }
 
@@ -30,7 +30,7 @@ impl WorldCm {
     }
 
     pub const fn to_css_px(self) -> CssPx {
-        CssPx(self.0 * CM_TO_CSS_PX)
+        CssPx(self.0 * PT_TO_CSS_PX)
     }
 }
 
@@ -92,10 +92,16 @@ impl From<WorldCm> for CssPx {
 // Browser layout APIs use CSS pixels, not physical device pixels. A 150%
 // scaled display is typically 144 device px/in, but still 96 CSS px/in.
 pub const CSS_PX_PER_INCH: f64 = 96.0;
+pub const PT_PER_INCH: f64 = 72.0;
 pub const CM_PER_INCH: f64 = 2.54;
+pub const PT_PER_CM: f64 = PT_PER_INCH / CM_PER_INCH;
+pub const CM_PER_PT: f64 = CM_PER_INCH / PT_PER_INCH;
 
-pub const CM_TO_CSS_PX: f64 = CSS_PX_PER_INCH / CM_PER_INCH;
-pub const CSS_PX_TO_CM: f64 = CM_PER_INCH / CSS_PX_PER_INCH;
+pub const PT_TO_CSS_PX: f64 = CSS_PX_PER_INCH / PT_PER_INCH;
+pub const CSS_PX_TO_PT: f64 = PT_PER_INCH / CSS_PX_PER_INCH;
+
+pub const CM_TO_CSS_PX: f64 = PT_TO_CSS_PX;
+pub const CSS_PX_TO_CM: f64 = CSS_PX_TO_PT;
 
 pub const fn cm_to_css_px(cm: f64) -> f64 {
     world_cm(cm).to_css_px().value()
@@ -113,15 +119,15 @@ pub const fn px_to_cm(px: f64) -> f64 {
     css_px_to_cm(px)
 }
 
-pub const DEFAULT_PAGE_WIDTH_CM: f64 = 31.75;
-pub const DEFAULT_PAGE_HEIGHT_CM: f64 = 21.1666666667;
-pub const DEFAULT_BOND_LENGTH_CM: f64 = 1.058;
-pub const DEFAULT_BOND_STROKE_CM: f64 = 0.035;
-pub const DEFAULT_TEXT_FONT_SIZE_CM: f64 = 0.2645833;
-pub const DEFAULT_MOLECULE_LABEL_FONT_SIZE_CM: f64 = 0.2645833;
+pub const DEFAULT_PAGE_WIDTH_CM: f64 = 900.0;
+pub const DEFAULT_PAGE_HEIGHT_CM: f64 = 600.0;
+pub const DEFAULT_BOND_LENGTH_CM: f64 = 30.0;
+pub const DEFAULT_BOND_STROKE_CM: f64 = 1.0;
+pub const DEFAULT_TEXT_FONT_SIZE_CM: f64 = 7.5;
+pub const DEFAULT_MOLECULE_LABEL_FONT_SIZE_CM: f64 = 7.5;
 pub const DEFAULT_TEXT_LINE_HEIGHT_CM: f64 = px_to_cm(10.5);
 pub const DEFAULT_CENTERED_LABEL_FONT_SIZE_CM: f64 = DEFAULT_MOLECULE_LABEL_FONT_SIZE_CM;
-pub const DEFAULT_TEXT_BLOCK_LINE_HEIGHT_CM: f64 = 0.396875;
+pub const DEFAULT_TEXT_BLOCK_LINE_HEIGHT_CM: f64 = 11.25;
 pub const DEFAULT_TEXT_BLOCK_PADDING_CM: f64 = px_to_cm(8.0);
 
 #[cfg(test)]
@@ -139,7 +145,7 @@ mod tests {
     #[test]
     fn css_px_point_converts_per_axis() {
         let point = CssPxPoint::new(css_px(96.0), css_px(48.0)).to_world_point();
-        assert!((point.x.value() - 2.54).abs() < 1.0e-9);
-        assert!((point.y.value() - 1.27).abs() < 1.0e-9);
+        assert!((point.x.value() - 72.0).abs() < 1.0e-9);
+        assert!((point.y.value() - 36.0).abs() < 1.0e-9);
     }
 }

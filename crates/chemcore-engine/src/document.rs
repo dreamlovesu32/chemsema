@@ -1,7 +1,7 @@
 use crate::{
     round2, Point, DEFAULT_BOND_LENGTH_CM, DEFAULT_BOND_STROKE_CM,
     DEFAULT_MOLECULE_LABEL_FONT_SIZE_CM, DEFAULT_PAGE_HEIGHT_CM, DEFAULT_PAGE_WIDTH_CM,
-    DEFAULT_TEXT_BLOCK_PADDING_CM,
+    DEFAULT_TEXT_BLOCK_PADDING_CM, PT_PER_CM,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -42,6 +42,16 @@ impl ChemcoreDocument {
                 "fontSize": DEFAULT_MOLECULE_LABEL_FONT_SIZE_CM
             }),
         );
+        styles.insert(
+            "style_arrow_default".to_string(),
+            json!({
+                "kind": "stroke",
+                "stroke": "#000000",
+                "strokeWidth": DEFAULT_BOND_STROKE,
+                "lineCap": "butt",
+                "lineJoin": "miter"
+            }),
+        );
 
         let mut resources = BTreeMap::new();
         resources.insert(
@@ -58,6 +68,7 @@ impl ChemcoreDocument {
             format: FormatInfo {
                 name: "chemcore".to_string(),
                 version: "0.1".to_string(),
+                unit: "pt".to_string(),
             },
             document: DocumentInfo {
                 id: "doc_editor_untitled".to_string(),
@@ -116,10 +127,144 @@ impl ChemcoreDocument {
     }
 }
 
+pub fn parse_document_json(json: &str) -> Result<ChemcoreDocument, String> {
+    let mut value: Value = serde_json::from_str(json).map_err(|error| error.to_string())?;
+    if document_json_uses_legacy_cm(&value) {
+        scale_document_json_value(&mut value, PT_PER_CM);
+    }
+    ensure_document_json_unit(&mut value);
+    serde_json::from_value(value).map_err(|error| error.to_string())
+}
+
+fn document_json_uses_legacy_cm(value: &Value) -> bool {
+    let unit = value
+        .get("format")
+        .and_then(|format| format.get("unit"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    if unit.eq_ignore_ascii_case("cm") {
+        return true;
+    }
+    if !unit.is_empty() {
+        return false;
+    }
+
+    let width = value
+        .get("document")
+        .and_then(|document| document.get("page"))
+        .and_then(|page| page.get("width"))
+        .and_then(Value::as_f64);
+    let height = value
+        .get("document")
+        .and_then(|document| document.get("page"))
+        .and_then(|page| page.get("height"))
+        .and_then(Value::as_f64);
+    matches!((width, height), (Some(width), Some(height)) if width <= 100.0 && height <= 100.0)
+}
+
+fn ensure_document_json_unit(value: &mut Value) {
+    if !value.is_object() {
+        return;
+    }
+    let Some(format) = value.get_mut("format").and_then(Value::as_object_mut) else {
+        return;
+    };
+    format.insert("unit".to_string(), Value::String("pt".to_string()));
+}
+
+fn scale_document_json_value(value: &mut Value, factor: f64) {
+    scale_json_value_by_key("", value, factor);
+}
+
+fn scale_json_value_by_key(key: &str, value: &mut Value, factor: f64) {
+    if scale_key_as_length_scalar(key) {
+        scale_all_numbers(value, factor);
+        return;
+    }
+    match value {
+        Value::Array(items) if scale_key_as_length_array(key) => {
+            for item in items {
+                scale_all_numbers(item, factor);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                scale_json_value_by_key("", item, factor);
+            }
+        }
+        Value::Object(object) => {
+            for (child_key, child_value) in object {
+                scale_json_value_by_key(child_key, child_value, factor);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn scale_all_numbers(value: &mut Value, factor: f64) {
+    match value {
+        Value::Number(number) => {
+            if let Some(scaled) = number
+                .as_f64()
+                .and_then(|value| serde_json::Number::from_f64(value * factor))
+            {
+                *number = scaled;
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                scale_all_numbers(item, factor);
+            }
+        }
+        Value::Object(object) => {
+            for child_value in object.values_mut() {
+                scale_all_numbers(child_value, factor);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn scale_key_as_length_scalar(key: &str) -> bool {
+    matches!(
+        key,
+        "width"
+            | "height"
+            | "x"
+            | "y"
+            | "strokeWidth"
+            | "fontSize"
+            | "lineHeight"
+            | "wrapWidth"
+            | "pad"
+            | "padding"
+    )
+}
+
+fn scale_key_as_length_array(key: &str) -> bool {
+    matches!(
+        key,
+        "bbox"
+            | "box"
+            | "boxField"
+            | "position"
+            | "translate"
+            | "points"
+            | "anchorOffset"
+            | "glyphPolygons"
+    )
+}
+
+fn default_format_unit() -> String {
+    "pt".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FormatInfo {
     pub name: String,
     pub version: String,
+    #[serde(default = "default_format_unit")]
+    pub unit: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

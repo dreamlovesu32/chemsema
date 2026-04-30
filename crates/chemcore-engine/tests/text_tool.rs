@@ -65,6 +65,40 @@ fn approx_eq(left: f64, right: f64, tolerance: f64) {
     );
 }
 
+fn first_glyph_anchor(label: &chemcore_engine::NodeLabel) -> Point {
+    let polygon = label
+        .glyph_polygons
+        .first()
+        .expect("label should have glyph polygons");
+    let bounds = polygon.iter().fold(
+        [
+            f64::INFINITY,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            f64::NEG_INFINITY,
+        ],
+        |bounds, point| {
+            [
+                bounds[0].min(point[0]),
+                bounds[1].min(point[1]),
+                bounds[2].max(point[0]),
+                bounds[3].max(point[1]),
+            ]
+        },
+    );
+    Point::new((bounds[0] + bounds[2]) * 0.5, (bounds[1] + bounds[3]) * 0.5)
+}
+
+fn assert_endpoint_target_near(session: &chemcore_engine::TextEditSession, expected: Point) {
+    match session.target {
+        TextEditTarget::EndpointLabel { x, y, .. } => {
+            assert!((x - expected.x).abs() < 0.01, "{x} vs {}", expected.x);
+            assert!((y - expected.y).abs() < 0.01, "{y} vs {}", expected.y);
+        }
+        ref other => panic!("unexpected target: {other:?}"),
+    }
+}
+
 #[test]
 fn begin_and_apply_text_object_edit_creates_text_scene_object() {
     let mut engine = Engine::new();
@@ -425,13 +459,15 @@ fn reopening_endpoint_label_session_preserves_bbox_and_anchor_precision() {
         .expect("endpoint session should reopen");
     let box_value = reopened.box_value.expect("session box");
     let anchor_offset = reopened.anchor_offset.expect("session anchor offset");
+    let expected_anchor = first_glyph_anchor(node.label.as_ref().expect("label should exist"));
 
     assert!((box_value[0] - label_box[0]).abs() < 1.0e-6);
     assert!((box_value[1] - label_box[1]).abs() < 1.0e-6);
     assert!((box_value[2] - label_box[2]).abs() < 1.0e-6);
     assert!((box_value[3] - label_box[3]).abs() < 1.0e-6);
-    assert!(anchor_offset[0].abs() < 1.0e-6);
-    assert!(anchor_offset[1].abs() < 1.0e-6);
+    assert!((anchor_offset[0] - (expected_anchor.x - label_box[0])).abs() < 0.01);
+    assert!((anchor_offset[1] - (expected_anchor.y - label_box[1])).abs() < 0.01);
+    assert_endpoint_target_near(&reopened, expected_anchor);
 }
 
 #[test]
@@ -580,6 +616,7 @@ fn reopening_existing_endpoint_label_uses_stable_label_anchor() {
         .expect("node should exist");
     let label = node.label.as_ref().expect("label should exist");
     let box_value = label.bbox().expect("label should have bbox");
+    let expected_anchor = first_glyph_anchor(label);
 
     let reopened = engine
         .begin_text_edit(Point::new(
@@ -587,14 +624,10 @@ fn reopening_existing_endpoint_label_uses_stable_label_anchor() {
             node.position[1] + px(7.0),
         ))
         .expect("existing label session should be created");
-    match reopened.target {
-        TextEditTarget::EndpointLabel { x, y, .. } => {
-            assert!((x - box_value[0]).abs() < 0.001, "{x}");
-            assert!((y - box_value[1]).abs() < 0.001, "{y}");
-        }
-        other => panic!("unexpected target: {other:?}"),
-    }
-    assert_eq!(reopened.anchor_offset, Some([0.0, 0.0]));
+    assert_endpoint_target_near(&reopened, expected_anchor);
+    let anchor_offset = reopened.anchor_offset.expect("session anchor offset");
+    assert!((anchor_offset[0] - (expected_anchor.x - box_value[0])).abs() < 0.01);
+    assert!((anchor_offset[1] - (expected_anchor.y - box_value[1])).abs() < 0.01);
 }
 
 #[test]
@@ -677,21 +710,13 @@ fn endpoint_label_anchor_tracks_terminal_double_status() {
         .as_ref()
         .and_then(|label| label.bbox())
         .expect("reopened label box");
-    match reopened_terminal.target {
-        TextEditTarget::EndpointLabel { x, y, .. } => {
-            assert!(
-                (x - reopened_label_box[0]).abs() < 0.01,
-                "{x} vs {}",
-                reopened_label_box[0]
-            );
-            assert!(
-                (y - reopened_label_box[1]).abs() < 0.01,
-                "{y} vs {}",
-                reopened_label_box[1]
-            );
-        }
-        other => panic!("unexpected target: {other:?}"),
-    }
+    let reopened_anchor = first_glyph_anchor(reopened_node.label.as_ref().expect("reopened label"));
+    assert_endpoint_target_near(&reopened_terminal, reopened_anchor);
+    let reopened_offset = reopened_terminal
+        .anchor_offset
+        .expect("reopened anchor offset");
+    assert!((reopened_offset[0] - (reopened_anchor.x - reopened_label_box[0])).abs() < 0.01);
+    assert!((reopened_offset[1] - (reopened_anchor.y - reopened_label_box[1])).abs() < 0.01);
 
     engine.set_tool_state(tool_state(BondVariant::Single));
     assert!(engine.add_single_bond_between(
@@ -734,13 +759,13 @@ fn endpoint_label_anchor_tracks_terminal_double_status() {
         .as_ref()
         .and_then(|label| label.bbox())
         .expect("attached label box");
-    match attached_session.target {
-        TextEditTarget::EndpointLabel { x, y, .. } => {
-            assert!((x - attached_label_box[0]).abs() < 0.01, "{x}");
-            assert!((y - attached_label_box[1]).abs() < 0.01, "{y}");
-        }
-        other => panic!("unexpected target: {other:?}"),
-    }
+    let attached_anchor = first_glyph_anchor(attached_node.label.as_ref().expect("attached label"));
+    assert_endpoint_target_near(&attached_session, attached_anchor);
+    let attached_offset = attached_session
+        .anchor_offset
+        .expect("attached anchor offset");
+    assert!((attached_offset[0] - (attached_anchor.x - attached_label_box[0])).abs() < 0.01);
+    assert!((attached_offset[1] - (attached_anchor.y - attached_label_box[1])).abs() < 0.01);
 }
 
 #[test]
@@ -847,13 +872,13 @@ fn endpoint_label_reanchors_when_double_bond_style_changes() {
         .as_ref()
         .and_then(|label| label.bbox())
         .expect("centered label box");
-    match centered_session.target {
-        TextEditTarget::EndpointLabel { x, y, .. } => {
-            assert!((x - centered_label_box[0]).abs() < 0.01, "{x}");
-            assert!((y - centered_label_box[1]).abs() < 0.01, "{y}");
-        }
-        other => panic!("unexpected target: {other:?}"),
-    }
+    let centered_anchor = first_glyph_anchor(centered_node.label.as_ref().expect("centered label"));
+    assert_endpoint_target_near(&centered_session, centered_anchor);
+    let centered_offset = centered_session
+        .anchor_offset
+        .expect("centered anchor offset");
+    assert!((centered_offset[0] - (centered_anchor.x - centered_label_box[0])).abs() < 0.01);
+    assert!((centered_offset[1] - (centered_anchor.y - centered_label_box[1])).abs() < 0.01);
 }
 
 #[test]

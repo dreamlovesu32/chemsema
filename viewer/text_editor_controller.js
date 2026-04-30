@@ -112,6 +112,9 @@ export function createTextEditorController(deps) {
       fill: deps.cssColorToHex(editor.root.style.color || deps.editorState.textColor),
       align: editor.root.style.textAlign || deps.editorState.textAlign,
       lineHeight: Number(editor.root.dataset.baseLineHeight || deps.defaultTextEditorLineHeight(deps.editorState.textFontSize)),
+      box: editor.session?.box ?? editor.session?.boxValue,
+      anchorOffset: editor.session?.anchorOffset,
+      preserveLines: editor.session?.preserveLines,
       defaultChemical: editor.root.dataset.defaultChemical === "true",
     }, requestedSelection);
     editor.sourceRuns = nextLayout?.sourceRuns || editor.sourceRuns;
