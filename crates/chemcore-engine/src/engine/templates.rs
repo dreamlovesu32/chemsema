@@ -3,7 +3,7 @@ use super::{EditorCommand, Engine};
 use crate::{
     adjacent_directions, angle_between, direction_from_angle, hit_test_bond, hit_test_bond_center,
     hit_test_endpoint, nearest_angle, normalize_angle, Bond, BondAnchor, BondPreview,
-    ChemcoreDocument, DoubleBond, DoubleBondPlacement, Node, Point, PointerEvent,
+    ChemcoreDocument, DoubleBond, DoubleBondPlacement, EndpointHit, Node, Point, PointerEvent,
     BOND_CENTER_HIT_RADIUS, BOND_HIT_RADIUS, DEFAULT_BOND_LENGTH, DRAG_START_THRESHOLD,
     ENDPOINT_HIT_RADIUS, GLOBAL_SNAP_ANGLES,
 };
@@ -62,10 +62,15 @@ impl Engine {
             self.state.overlay.hover_endpoint = None;
             self.state.overlay.hover_bond_center = None;
             self.state.overlay.hover_text_box = None;
-            self.state.overlay.preview = drag.has_dragged.then_some(BondPreview {
-                start: drag.start,
-                end: point,
-            });
+            self.state.overlay.preview = None;
+            if drag.has_dragged {
+                let focus = template_drag_focus_point(&drag.anchor);
+                self.state.overlay.preview = Some(BondPreview {
+                    start: focus,
+                    end: focus,
+                });
+                self.refresh_template_drag_anchor_overlay(&drag.anchor);
+            }
             self.template_drag = Some(drag);
             return;
         }
@@ -239,6 +244,36 @@ impl Engine {
             self.next_id = self.infer_next_id();
         }
         changed
+    }
+
+    fn refresh_template_drag_anchor_overlay(&mut self, anchor: &TemplateAnchor) {
+        match anchor {
+            TemplateAnchor::Endpoint(anchor) => {
+                let node_id = anchor
+                    .node_id
+                    .clone()
+                    .unwrap_or_else(|| "__template_anchor".to_string());
+                self.state.overlay.hover_endpoint = Some(EndpointHit {
+                    node_id,
+                    point: anchor.point,
+                    distance: 0.0,
+                    label_anchor: anchor.label_anchor.clone(),
+                });
+            }
+            TemplateAnchor::Center(point) => {
+                self.state.overlay.hover_endpoint = Some(EndpointHit {
+                    node_id: "__template_anchor".to_string(),
+                    point: *point,
+                    distance: 0.0,
+                    label_anchor: None,
+                });
+            }
+            TemplateAnchor::Bond { begin, end, .. } => {
+                let center = Point::new((begin.x + end.x) * 0.5, (begin.y + end.y) * 0.5);
+                self.state.overlay.hover_bond_center =
+                    hit_test_bond_center(&self.state.document, center, BOND_CENTER_HIT_RADIUS);
+            }
+        }
     }
 
     fn bond_node_ids(&self, bond_id: &str) -> Option<(String, String)> {
@@ -531,6 +566,16 @@ fn ring_vertices_center(vertices: &[RingVertex]) -> Point {
         vertices.iter().map(|vertex| vertex.point.x).sum::<f64>() / count,
         vertices.iter().map(|vertex| vertex.point.y).sum::<f64>() / count,
     )
+}
+
+fn template_drag_focus_point(anchor: &TemplateAnchor) -> Point {
+    match anchor {
+        TemplateAnchor::Endpoint(anchor) => anchor.point,
+        TemplateAnchor::Center(point) => *point,
+        TemplateAnchor::Bond { begin, end, .. } => {
+            Point::new((begin.x + end.x) * 0.5, (begin.y + end.y) * 0.5)
+        }
+    }
 }
 
 fn inward_double_placement(begin: Point, end: Point, center: Point) -> DoubleBondPlacement {

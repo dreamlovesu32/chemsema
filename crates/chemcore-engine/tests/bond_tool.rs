@@ -1,8 +1,8 @@
 use chemcore_engine::{
     angle_between, direction_from_angle, ArrowCurve, ArrowEndpointStyle, ArrowHeadSize, ArrowNoGo,
     ArrowVariant, BondLinePattern, BondLineWeight, BondVariant, DoubleBondPlacement, Engine, Point,
-    PointerEvent, RenderPrimitive, RenderRole, Tool, ToolState, DEFAULT_BOND_LENGTH,
-    DEFAULT_BOND_STROKE, ENDPOINT_FOCUS_RADIUS,
+    PointerEvent, RenderPrimitive, RenderRole, ShapeKind, ShapeStyle, Tool, ToolState,
+    DEFAULT_BOND_LENGTH, DEFAULT_BOND_STROKE, ENDPOINT_FOCUS_RADIUS,
 };
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -161,6 +161,16 @@ fn templates_tool(template: &str) -> ToolState {
         active_tool: Tool::Templates,
         bond_variant: BondVariant::Single,
         template: template.to_string(),
+        ..ToolState::default()
+    }
+}
+
+fn shape_tool(shape_kind: ShapeKind, shape_style: ShapeStyle) -> ToolState {
+    ToolState {
+        active_tool: Tool::Shape,
+        shape_kind,
+        shape_style,
+        shape_color: "#000000".to_string(),
         ..ToolState::default()
     }
 }
@@ -1220,6 +1230,49 @@ fn template_drag_on_endpoint_snaps_ring_axis_to_15_degrees() {
 }
 
 #[test]
+fn template_drag_on_endpoint_keeps_live_focus_on_connection_anchor() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, px(300.0), px(260.0));
+
+    let endpoint = node_world_point(&engine, "n_2");
+    let target = endpoint.translated(direction_from_angle(22.0).scaled(DEFAULT_BOND_LENGTH * 2.0));
+    engine.set_tool_state(templates_tool("ring-6"));
+    engine.pointer_down(PointerEvent {
+        x: endpoint.x,
+        y: endpoint.y,
+        button: Some(0),
+        alt_key: false,
+    });
+    engine.pointer_move(PointerEvent {
+        x: target.x,
+        y: target.y,
+        button: None,
+        alt_key: false,
+    });
+
+    let hover = engine
+        .state()
+        .overlay
+        .hover_endpoint
+        .as_ref()
+        .expect("template drag should keep live focus on the connection endpoint");
+    assert_eq!(hover.node_id, "n_2");
+    assert!((hover.point.x - endpoint.x).abs() < 0.001, "{hover:?}");
+    assert!((hover.point.y - endpoint.y).abs() < 0.001, "{hover:?}");
+    assert!(hover.point.distance(target) > DEFAULT_BOND_LENGTH);
+    let preview = engine
+        .state()
+        .overlay
+        .preview
+        .as_ref()
+        .expect("template drag should keep the ring preview active");
+    assert!((preview.end.x - endpoint.x).abs() < 0.001, "{preview:?}");
+    assert!((preview.end.y - endpoint.y).abs() < 0.001, "{preview:?}");
+    assert!(preview.end.distance(target) > DEFAULT_BOND_LENGTH);
+}
+
+#[test]
 fn template_click_on_blank_canvas_creates_regular_ring() {
     let mut engine = Engine::new();
     let anchor = px_point(300.0, 260.0);
@@ -1376,6 +1429,46 @@ fn template_drag_on_blank_canvas_snaps_ring_axis_to_15_degrees() {
         .any(|point| point.distance(anchor) < 0.01));
     assert!((chemcore_engine::angle_between(anchor, center) - 15.0).abs() < 0.2);
     assert_no_duplicate_node_positions(&engine);
+}
+
+#[test]
+fn template_drag_on_blank_canvas_keeps_live_focus_on_initial_connection() {
+    let mut engine = Engine::new();
+    let anchor = px_point(300.0, 260.0);
+    let target = anchor.translated(direction_from_angle(22.0).scaled(DEFAULT_BOND_LENGTH * 2.0));
+
+    engine.set_tool_state(templates_tool("ring-6"));
+    engine.pointer_down(PointerEvent {
+        x: anchor.x,
+        y: anchor.y,
+        button: Some(0),
+        alt_key: false,
+    });
+    engine.pointer_move(PointerEvent {
+        x: target.x,
+        y: target.y,
+        button: None,
+        alt_key: false,
+    });
+
+    let hover = engine
+        .state()
+        .overlay
+        .hover_endpoint
+        .as_ref()
+        .expect("template drag should keep live focus on the initial generated connection");
+    assert!((hover.point.x - anchor.x).abs() < 0.001, "{hover:?}");
+    assert!((hover.point.y - anchor.y).abs() < 0.001, "{hover:?}");
+    assert!(hover.point.distance(target) > DEFAULT_BOND_LENGTH);
+    let preview = engine
+        .state()
+        .overlay
+        .preview
+        .as_ref()
+        .expect("template drag should keep the ring preview active");
+    assert!((preview.end.x - anchor.x).abs() < 0.001, "{preview:?}");
+    assert!((preview.end.y - anchor.y).abs() < 0.001, "{preview:?}");
+    assert!(preview.end.distance(target) > DEFAULT_BOND_LENGTH);
 }
 
 #[test]
@@ -3762,6 +3855,357 @@ fn select_tool_click_on_bond_does_not_render_outer_region_box() {
             role: RenderRole::SelectionBox,
             ..
         }
+    )));
+}
+
+fn shape_payload_point(engine: &Engine, key: &str) -> Point {
+    let object = engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "shape")
+        .expect("shape object should exist");
+    let coords = object
+        .payload
+        .extra
+        .get(key)
+        .and_then(serde_json::Value::as_array)
+        .expect("shape point should exist");
+    Point::new(
+        coords[0].as_f64().expect("x should be numeric"),
+        coords[1].as_f64().expect("y should be numeric"),
+    )
+}
+
+#[test]
+fn shape_tool_circle_uses_click_as_center_and_cursor_as_radius() {
+    let mut engine = Engine::new();
+    let center = px_point(300.0, 260.0);
+    let cursor = px_point(360.0, 290.0);
+
+    engine.set_tool_state(shape_tool(ShapeKind::Circle, ShapeStyle::Solid));
+    engine.pointer_down(PointerEvent {
+        x: center.x,
+        y: center.y,
+        button: Some(0),
+        alt_key: false,
+    });
+    engine.pointer_move(PointerEvent {
+        x: cursor.x,
+        y: cursor.y,
+        button: None,
+        alt_key: false,
+    });
+
+    let preview = engine.render_list();
+    assert!(preview.iter().any(|primitive| matches!(
+        primitive,
+        RenderPrimitive::Path {
+            role: RenderRole::DocumentGraphic,
+            object_id: Some(id),
+            stroke_width,
+            ..
+        } if id == "__preview_shape" && (*stroke_width - 1.0).abs() < 0.001
+    )));
+
+    engine.pointer_up(PointerEvent {
+        x: cursor.x,
+        y: cursor.y,
+        button: Some(0),
+        alt_key: false,
+    });
+
+    assert_point_close(shape_payload_point(&engine, "center"), center);
+    assert_point_close(shape_payload_point(&engine, "majorAxisEnd"), cursor);
+    let minor = shape_payload_point(&engine, "minorAxisEnd");
+    let radius = center.distance(cursor);
+    assert!((center.distance(minor) - radius).abs() < 0.001);
+}
+
+#[test]
+fn shape_tool_ellipse_uses_center_and_snaps_major_axis_to_15_degrees() {
+    let mut engine = Engine::new();
+    let center = px_point(300.0, 260.0);
+    let cursor = center.translated(direction_from_angle(29.0).scaled(DEFAULT_BOND_LENGTH * 2.0));
+
+    engine.set_tool_state(shape_tool(ShapeKind::Ellipse, ShapeStyle::Dashed));
+    engine.pointer_down(PointerEvent {
+        x: center.x,
+        y: center.y,
+        button: Some(0),
+        alt_key: false,
+    });
+    engine.pointer_move(PointerEvent {
+        x: cursor.x,
+        y: cursor.y,
+        button: None,
+        alt_key: false,
+    });
+    engine.pointer_up(PointerEvent {
+        x: cursor.x,
+        y: cursor.y,
+        button: Some(0),
+        alt_key: false,
+    });
+
+    assert_point_close(shape_payload_point(&engine, "center"), center);
+    let major = shape_payload_point(&engine, "majorAxisEnd");
+    let minor = shape_payload_point(&engine, "minorAxisEnd");
+    assert!((angle_between(center, major) - 30.0).abs() < 0.001);
+    assert!((center.distance(minor) / center.distance(major) - 0.4).abs() < 0.001);
+}
+
+#[test]
+fn shape_tool_rectangles_use_drag_corners() {
+    let mut engine = Engine::new();
+    let top_left = px_point(300.0, 260.0);
+    let bottom_right = px_point(380.0, 330.0);
+
+    engine.set_tool_state(shape_tool(ShapeKind::RoundRect, ShapeStyle::Shadowed));
+    engine.pointer_down(PointerEvent {
+        x: top_left.x,
+        y: top_left.y,
+        button: Some(0),
+        alt_key: false,
+    });
+    engine.pointer_move(PointerEvent {
+        x: bottom_right.x,
+        y: bottom_right.y,
+        button: None,
+        alt_key: false,
+    });
+    engine.pointer_up(PointerEvent {
+        x: bottom_right.x,
+        y: bottom_right.y,
+        button: Some(0),
+        alt_key: false,
+    });
+
+    let object = engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "shape")
+        .expect("shape object should exist");
+    assert_eq!(object.transform.translate, [top_left.x, top_left.y]);
+    assert_eq!(
+        object.payload.bbox,
+        Some([
+            0.0,
+            0.0,
+            bottom_right.x - top_left.x,
+            bottom_right.y - top_left.y
+        ])
+    );
+    assert_eq!(
+        object
+            .payload
+            .extra
+            .get("kind")
+            .and_then(serde_json::Value::as_str),
+        Some("roundRect")
+    );
+    assert!(engine.render_list().iter().any(|primitive| matches!(
+        primitive,
+        RenderPrimitive::Path {
+            role: RenderRole::DocumentGraphic,
+            stroke_width,
+            dash_array,
+            d,
+            ..
+        } if (*stroke_width - 1.0).abs() < 0.001 && dash_array.is_empty() && d.starts_with("M ")
+    )));
+}
+
+#[test]
+fn shape_tool_dashed_round_rect_uses_chemdraw_path_dash_spacing() {
+    let mut engine = Engine::new();
+    let top_left = px_point(300.0, 260.0);
+    let bottom_right = px_point(380.0, 330.0);
+
+    engine.set_tool_state(shape_tool(ShapeKind::RoundRect, ShapeStyle::Dashed));
+    engine.pointer_down(PointerEvent {
+        x: top_left.x,
+        y: top_left.y,
+        button: Some(0),
+        alt_key: false,
+    });
+    engine.pointer_move(PointerEvent {
+        x: bottom_right.x,
+        y: bottom_right.y,
+        button: None,
+        alt_key: false,
+    });
+    engine.pointer_up(PointerEvent {
+        x: bottom_right.x,
+        y: bottom_right.y,
+        button: Some(0),
+        alt_key: false,
+    });
+
+    assert!(engine.render_list().iter().any(|primitive| matches!(
+        primitive,
+        RenderPrimitive::Path {
+            role: RenderRole::DocumentGraphic,
+            stroke_width,
+            dash_array,
+            d,
+            ..
+        } if (*stroke_width - 1.0).abs() < 0.001
+            && dash_array == &vec![2.7]
+            && d.starts_with(&format!("M {},{}", top_left.x, bottom_right.y - 6.0))
+    )));
+}
+
+#[test]
+fn shape_tool_shaded_style_renders_chemdraw_gray_layers() {
+    let mut engine = Engine::new();
+    let top_left = px_point(300.0, 260.0);
+    let bottom_right = px_point(380.0, 330.0);
+
+    engine.set_tool_state(shape_tool(ShapeKind::Rect, ShapeStyle::Shaded));
+    engine.pointer_down(PointerEvent {
+        x: top_left.x,
+        y: top_left.y,
+        button: Some(0),
+        alt_key: false,
+    });
+    engine.pointer_move(PointerEvent {
+        x: bottom_right.x,
+        y: bottom_right.y,
+        button: None,
+        alt_key: false,
+    });
+    engine.pointer_up(PointerEvent {
+        x: bottom_right.x,
+        y: bottom_right.y,
+        button: Some(0),
+        alt_key: false,
+    });
+
+    let render_list = engine.render_list();
+    let shaded_fills = render_list
+        .iter()
+        .filter(|primitive| {
+            matches!(
+                primitive,
+                RenderPrimitive::FilledPath {
+                    role: RenderRole::DocumentGraphic,
+                    fill_rule: None,
+                    ..
+                }
+            )
+        })
+        .count();
+    assert!(
+        shaded_fills >= 32,
+        "expected ChemDraw-style shaded fill stack"
+    );
+    assert!(render_list.iter().any(|primitive| matches!(
+        primitive,
+        RenderPrimitive::Path {
+            role: RenderRole::DocumentGraphic,
+            stroke_width,
+            dash_array,
+            ..
+        } if (*stroke_width - 1.0).abs() < 0.001 && dash_array.is_empty()
+    )));
+}
+
+#[test]
+fn shape_tool_shadowed_style_masks_shadow_inside_original_shape() {
+    let mut engine = Engine::new();
+    let top_left = px_point(300.0, 260.0);
+    let bottom_right = px_point(380.0, 330.0);
+
+    engine.set_tool_state(shape_tool(ShapeKind::RoundRect, ShapeStyle::Shadowed));
+    engine.pointer_down(PointerEvent {
+        x: top_left.x,
+        y: top_left.y,
+        button: Some(0),
+        alt_key: false,
+    });
+    engine.pointer_move(PointerEvent {
+        x: bottom_right.x,
+        y: bottom_right.y,
+        button: None,
+        alt_key: false,
+    });
+    engine.pointer_up(PointerEvent {
+        x: bottom_right.x,
+        y: bottom_right.y,
+        button: Some(0),
+        alt_key: false,
+    });
+
+    let render_list = engine.render_list();
+    assert!(render_list.iter().any(|primitive| matches!(
+        primitive,
+        RenderPrimitive::FilledPath {
+            role: RenderRole::DocumentGraphic,
+            clip_rule: Some(rule),
+            clip_path_d: Some(_),
+            fill,
+            ..
+        } if rule == "evenodd" && fill == "rgba(0,0,0,0.247059)"
+    )));
+    assert!(!render_list.iter().any(|primitive| matches!(
+        primitive,
+        RenderPrimitive::Rect {
+            role: RenderRole::DocumentGraphic,
+            stroke: None,
+            stroke_width,
+            ..
+        } if *stroke_width == 0.0
+    )));
+}
+
+#[test]
+fn shape_tool_shadowed_ellipse_matches_reference_clipped_shadow() {
+    let mut engine = Engine::new();
+    let center = px_point(300.0, 260.0);
+    let cursor = center.translated(direction_from_angle(30.0).scaled(DEFAULT_BOND_LENGTH * 2.0));
+
+    engine.set_tool_state(shape_tool(ShapeKind::Ellipse, ShapeStyle::Shadowed));
+    engine.pointer_down(PointerEvent {
+        x: center.x,
+        y: center.y,
+        button: Some(0),
+        alt_key: false,
+    });
+    engine.pointer_move(PointerEvent {
+        x: cursor.x,
+        y: cursor.y,
+        button: None,
+        alt_key: false,
+    });
+    engine.pointer_up(PointerEvent {
+        x: cursor.x,
+        y: cursor.y,
+        button: Some(0),
+        alt_key: false,
+    });
+
+    let render_list = engine.render_list();
+    assert!(render_list.iter().any(|primitive| matches!(
+        primitive,
+        RenderPrimitive::FilledPath {
+            role: RenderRole::DocumentGraphic,
+            clip_rule: Some(rule),
+            clip_path_d: Some(_),
+            fill,
+            ..
+        } if rule == "evenodd" && fill == "rgba(0,0,0,0.247059)"
+    )));
+    assert!(!render_list.iter().any(|primitive| matches!(
+        primitive,
+        RenderPrimitive::FilledPath {
+            role: RenderRole::DocumentGraphic,
+            fill_rule: Some(rule),
+            ..
+        } if rule == "evenodd"
     )));
 }
 

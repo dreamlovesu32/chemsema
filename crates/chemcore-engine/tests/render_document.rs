@@ -2,6 +2,7 @@ use chemcore_engine::{
     angular_distance, render_document, ChemcoreDocument, RenderPrimitive, RenderRole,
 };
 use serde_json::json;
+use serde_json::Map;
 
 const fn cm(value: f64) -> f64 {
     value * chemcore_engine::PT_PER_CM
@@ -792,6 +793,161 @@ fn render_document_emits_shape_rect_with_style() {
             .map(|stops| stops.len())),
         Some(2)
     );
+}
+
+#[test]
+fn render_document_emits_cdxml_oval_shape_with_zero_bbox_height() {
+    let document: ChemcoreDocument = serde_json::from_value(json!({
+        "format": { "name": "chemcore", "version": "0.1" },
+        "document": {
+            "id": "doc_test",
+            "title": "test",
+            "page": { "width": 400.0, "height": 200.0, "background": "#ffffff" }
+        },
+        "styles": {
+            "style_shape_001": {
+                "kind": "shape",
+                "fill": null,
+                "stroke": "#000000",
+                "strokeWidth": 1.0,
+                "dashArray": [2.7]
+            }
+        },
+        "objects": [{
+            "id": "obj_shape_001",
+            "type": "shape",
+            "visible": true,
+            "zIndex": 5,
+            "transform": { "translate": [0.0, 0.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+            "styleRef": "style_shape_001",
+            "payload": {
+                "kind": "ellipse",
+                "bbox": [158.16, 247.50, 36.12, 0.0],
+                "center": [158.16, 247.50],
+                "majorAxisEnd": [194.28, 247.50],
+                "minorAxisEnd": [158.16, 261.95]
+            }
+        }],
+        "resources": {}
+    }))
+    .expect("document should deserialize");
+
+    let primitives = render_document(&document);
+    assert!(primitives.iter().any(|primitive| matches!(
+        primitive,
+        RenderPrimitive::Path {
+            role: RenderRole::DocumentGraphic,
+            object_id,
+            stroke_width,
+            dash_array,
+            d,
+            ..
+        } if object_id.as_deref() == Some("obj_shape_001")
+            && (*stroke_width - 1.0).abs() < 0.001
+            && dash_array == &vec![2.7]
+            && d.starts_with("M ")
+            && d.contains(" C ")
+    )));
+}
+
+#[test]
+fn render_document_emits_all_shape_geometry_style_combinations() {
+    let mut styles = Map::new();
+    styles.insert(
+        "solid".to_string(),
+        json!({"kind": "shape", "fill": null, "stroke": "#000000", "strokeWidth": 1.0}),
+    );
+    styles.insert(
+        "dashed".to_string(),
+        json!({"kind": "shape", "fill": null, "stroke": "#000000", "strokeWidth": 1.0, "dashArray": [2.7]}),
+    );
+    styles.insert(
+        "filled".to_string(),
+        json!({"kind": "shape", "fill": "#000000", "stroke": null, "strokeWidth": 1.0}),
+    );
+    styles.insert(
+        "shaded".to_string(),
+        json!({"kind": "shape", "fill": null, "stroke": "#000000", "strokeWidth": 1.0, "shaded": true}),
+    );
+    styles.insert(
+        "shadowed".to_string(),
+        json!({"kind": "shape", "fill": null, "stroke": "#000000", "strokeWidth": 1.0, "shadow": true}),
+    );
+
+    let mut objects = Vec::new();
+    let shapes = ["circle", "ellipse", "roundRect", "rect"];
+    let style_ids = ["solid", "dashed", "filled", "shaded", "shadowed"];
+    for (shape_index, shape) in shapes.iter().enumerate() {
+        for (style_index, style_id) in style_ids.iter().enumerate() {
+            let id = format!("obj_{shape}_{style_id}");
+            let x = 20.0 + style_index as f64 * 40.0;
+            let y = 20.0 + shape_index as f64 * 40.0;
+            let payload = match *shape {
+                "circle" => json!({
+                    "kind": "circle",
+                    "bbox": [x - 10.0, y, 20.0, 0.0],
+                    "center": [x, y],
+                    "majorAxisEnd": [x + 10.0, y],
+                    "minorAxisEnd": [x, y + 10.0]
+                }),
+                "ellipse" => json!({
+                    "kind": "ellipse",
+                    "bbox": [x - 14.0, y, 28.0, 0.0],
+                    "center": [x, y],
+                    "majorAxisEnd": [x + 14.0, y],
+                    "minorAxisEnd": [x, y + 6.0]
+                }),
+                "roundRect" => json!({
+                    "kind": "roundRect",
+                    "bbox": [0.0, 0.0, 28.0, 18.0],
+                    "cornerRadius": 6.0
+                }),
+                _ => json!({
+                    "kind": "rect",
+                    "bbox": [0.0, 0.0, 28.0, 18.0]
+                }),
+            };
+            objects.push(json!({
+                "id": id,
+                "type": "shape",
+                "visible": true,
+                "zIndex": shape_index * style_ids.len() + style_index,
+                "transform": { "translate": [x, y], "rotate": 0.0, "scale": [1.0, 1.0] },
+                "styleRef": style_id,
+                "payload": payload
+            }));
+        }
+    }
+
+    let document: ChemcoreDocument = serde_json::from_value(json!({
+        "format": { "name": "chemcore", "version": "0.1" },
+        "document": {
+            "id": "doc_test",
+            "title": "test",
+            "page": { "width": 240.0, "height": 200.0, "background": "#ffffff" }
+        },
+        "styles": styles,
+        "objects": objects,
+        "resources": {}
+    }))
+    .expect("document should deserialize");
+
+    let primitives = render_document(&document);
+    for shape in shapes {
+        for style_id in style_ids {
+            let id = format!("obj_{shape}_{style_id}");
+            assert!(
+                primitives.iter().any(|primitive| match primitive {
+                    RenderPrimitive::Rect { object_id, .. }
+                    | RenderPrimitive::Path { object_id, .. }
+                    | RenderPrimitive::FilledPath { object_id, .. } =>
+                        object_id.as_deref() == Some(id.as_str()),
+                    _ => false,
+                }),
+                "missing rendered primitive for {id}"
+            );
+        }
+    }
 }
 
 #[test]

@@ -129,6 +129,37 @@ impl Default for ArrowCurve {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ShapeKind {
+    Circle,
+    Ellipse,
+    RoundRect,
+    Rect,
+}
+
+impl Default for ShapeKind {
+    fn default() -> Self {
+        Self::Circle
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ShapeStyle {
+    Solid,
+    Dashed,
+    Shaded,
+    Filled,
+    Shadowed,
+}
+
+impl Default for ShapeStyle {
+    fn default() -> Self {
+        Self::Solid
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EditorOptions {
     pub bond_length: f64,
@@ -176,6 +207,12 @@ pub struct ToolState {
     pub arrow_bold: bool,
     #[serde(default)]
     pub arrow_no_go: ArrowNoGo,
+    #[serde(default)]
+    pub shape_kind: ShapeKind,
+    #[serde(default)]
+    pub shape_style: ShapeStyle,
+    #[serde(default = "default_shape_color")]
+    pub shape_color: String,
     #[serde(default = "default_template")]
     pub template: String,
 }
@@ -194,6 +231,9 @@ impl Default for ToolState {
             arrow_tail: false,
             arrow_bold: false,
             arrow_no_go: ArrowNoGo::None,
+            shape_kind: ShapeKind::Circle,
+            shape_style: ShapeStyle::Solid,
+            shape_color: default_shape_color(),
             template: default_template(),
         }
     }
@@ -209,6 +249,10 @@ fn default_arrow_head_style() -> ArrowEndpointStyle {
 
 fn default_template() -> String {
     "ring-6".to_string()
+}
+
+fn default_shape_color() -> String {
+    "#000000".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -66,6 +66,7 @@ The current design baseline lives in:
 
 - [docs/architecture.md](./docs/architecture.md)
 - [docs/format-v0.1.md](./docs/format-v0.1.md)
+- [docs/project-rules.zh-CN.md](./docs/project-rules.zh-CN.md)
 - [docs/viewer-rendering-report.zh-CN.md](./docs/viewer-rendering-report.zh-CN.md)
 - [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)
 - [README.zh-CN.md](./README.zh-CN.md)

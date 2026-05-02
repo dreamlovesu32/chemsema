@@ -39,6 +39,7 @@ export const wasmengine_selectInRect: (a: number, b: number, c: number, d: numbe
 export const wasmengine_selectionContainsPoint: (a: number, b: number, c: number) => number;
 export const wasmengine_setArrowEndpointOptions: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number) => void;
 export const wasmengine_setArrowOptions: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
+export const wasmengine_setShapeOptions: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
 export const wasmengine_setTemplate: (a: number, b: number, c: number) => void;
 export const wasmengine_setTool: (a: number, b: number, c: number, d: number, e: number) => void;
 export const wasmengine_stateJson: (a: number) => [number, number, number, number];

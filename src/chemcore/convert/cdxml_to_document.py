@@ -258,6 +258,18 @@ def _parse_bbox(bb: str | None) -> tuple[float, float, float, float] | None:
         return None
 
 
+def _parse_point3(value: str | None) -> list[float] | None:
+    if not value:
+        return None
+    parts = value.strip().split()
+    if len(parts) < 2:
+        return None
+    try:
+        return [float(parts[0]), float(parts[1])]
+    except Exception:
+        return None
+
+
 def _extract_shape_graphics(cdxml_base: str, color_table: dict[str, str]) -> list[dict[str, Any]]:
     root = ET.parse(f"{cdxml_base}.cdxml").getroot()
     shapes: list[dict[str, Any]] = []
@@ -266,34 +278,59 @@ def _extract_shape_graphics(cdxml_base: str, color_table: dict[str, str]) -> lis
             continue
         if "SupersededBy" in el.attrib:
             continue
-        if el.attrib.get("GraphicType") != "Rectangle":
+        graphic_type = el.attrib.get("GraphicType")
+        if graphic_type not in {"Rectangle", "Oval"}:
             continue
         bbox = _parse_bbox(el.attrib.get("BoundingBox"))
         if bbox is None:
             continue
-        rect_type = el.attrib.get("RectangleType", "")
+        type_value = el.attrib.get("RectangleType" if graphic_type == "Rectangle" else "OvalType", "")
         stroke = color_table.get(el.attrib.get("color", "0"), "#000000")
         fill = None
         dash = None
         stroke_width = 1.0
         shaded = False
-        if "Shaded" in rect_type:
+        shadowed = "Shadow" in type_value
+        if "Shaded" in type_value:
+            fill = stroke
+            shaded = True
+        if "Filled" in type_value:
             fill = stroke
             stroke = None
-            shaded = True
-        if "Dashed" in rect_type:
-            stroke_width = 0.7
-            dash = [3.2, 2.8]
+            stroke_width = 0.0
+        if "Dashed" in type_value:
+            dash = [2.7]
+        if graphic_type == "Oval":
+            center = _parse_point3(el.attrib.get("Center3D"))
+            major = _parse_point3(el.attrib.get("MajorAxisEnd3D"))
+            minor = _parse_point3(el.attrib.get("MinorAxisEnd3D"))
+            if center is None or major is None or minor is None:
+                continue
+            shape_kind = "circle" if "Circle" in type_value else "ellipse"
+        else:
+            center = major = minor = None
+            shape_kind = "roundRect" if "RoundEdge" in type_value else "rect"
+        if shaded:
+            fill = fill or stroke
+        if shadowed:
+            shadow_size = float(el.attrib.get("ShadowSize", "400") or 400) / 100.0
+        else:
+            shadow_size = 0.0
         shapes.append(
             {
                 "id": el.attrib.get("id"),
                 "bbox": bbox,
-                "shapeKind": "roundRect" if "RoundEdge" in rect_type else "rect",
+                "shapeKind": shape_kind,
                 "cornerRadius": float(el.attrib.get("CornerRadius", "0") or 0) / 100.0,
+                "center": center,
+                "majorAxisEnd": major,
+                "minorAxisEnd": minor,
                 "fill": fill,
                 "stroke": stroke,
                 "strokeWidth": stroke_width,
                 "shaded": shaded,
+                "shadow": shadowed,
+                "shadowSize": shadow_size,
                 "dash": dash,
                 "z": int(el.attrib.get("Z", "0") or 0),
             }
@@ -1003,9 +1040,35 @@ def convert_cdxml_to_document(cdxml_base: str) -> dict[str, Any]:
             "fill": shape["fill"],
             "stroke": shape["stroke"],
             "strokeWidth": shape.get("strokeWidth", 1.0),
-            "fillGradient": _build_shaded_gradient(shape["fill"]) if shape.get("shaded") else None,
+            "fillGradient": None,
+            "shaded": shape.get("shaded") or None,
             "dashArray": shape["dash"],
+            "shadow": shape.get("shadow") or None,
         }
+        if shape["shapeKind"] in {"circle", "ellipse"}:
+            transform = {
+                "translate": [0, 0],
+                "rotate": 0,
+                "scale": [1, 1],
+            }
+            payload = {
+                "kind": shape["shapeKind"],
+                "bbox": [round(x1, 2), round(y1, 2), round(x2 - x1, 2), round(y2 - y1, 2)],
+                "center": [round(shape["center"][0], 2), round(shape["center"][1], 2)],
+                "majorAxisEnd": [round(shape["majorAxisEnd"][0], 2), round(shape["majorAxisEnd"][1], 2)],
+                "minorAxisEnd": [round(shape["minorAxisEnd"][0], 2), round(shape["minorAxisEnd"][1], 2)],
+            }
+        else:
+            transform = {
+                "translate": [round(x1, 2), round(y1, 2)],
+                "rotate": 0,
+                "scale": [1, 1],
+            }
+            payload = {
+                "kind": shape["shapeKind"],
+                "bbox": [0, 0, round(x2 - x1, 2), round(y2 - y1, 2)],
+                "cornerRadius": round(shape["cornerRadius"], 2),
+            }
         objects.append(
             {
                 "id": f"obj_shape_{idx:03d}",
@@ -1014,21 +1077,13 @@ def convert_cdxml_to_document(cdxml_base: str) -> dict[str, Any]:
                 "visible": True,
                 "locked": False,
                 "zIndex": _zindex_from_source(shape.get("z"), 15),
-                "transform": {
-                    "translate": [round(x1, 2), round(y1, 2)],
-                    "rotate": 0,
-                    "scale": [1, 1],
-                },
+                "transform": transform,
                 "styleRef": style_id,
                 "meta": {
                     "source": "cdxml",
                     "graphicId": shape["id"],
                 },
-                "payload": {
-                    "kind": shape["shapeKind"],
-                    "bbox": [0, 0, round(x2 - x1, 2), round(y2 - y1, 2)],
-                    "cornerRadius": round(shape["cornerRadius"], 2),
-                },
+                "payload": payload,
             }
         )
 

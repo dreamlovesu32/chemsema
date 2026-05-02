@@ -1,6 +1,6 @@
 use crate::{
     ArrowCurve, ArrowEndpointStyle, ArrowHeadSize, ArrowNoGo, ArrowVariant, BondAnchor,
-    BondVariant, ChemcoreDocument, Point,
+    BondVariant, ChemcoreDocument, Point, ShapeKind, ShapeStyle,
 };
 use serde::{Deserialize, Serialize};
 
@@ -54,6 +54,13 @@ pub enum EditorCommand {
         tail: bool,
         bold: bool,
         no_go: ArrowNoGo,
+    },
+    AddShape {
+        kind: ShapeKind,
+        style: ShapeStyle,
+        color: String,
+        begin: CommandAnchor,
+        end: CommandAnchor,
     },
     ApplyArrowStyle {
         object_ids: Vec<String>,

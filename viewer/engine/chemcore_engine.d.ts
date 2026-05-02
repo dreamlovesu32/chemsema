@@ -41,6 +41,7 @@ export class WasmEngine {
     selectionContainsPoint(x: number, y: number): boolean;
     setArrowEndpointOptions(variant: string, head_size: string, curve: string, head_style: string, tail_style: string, no_go: string, bold: boolean): void;
     setArrowOptions(variant: string, head_size: string, head: boolean, tail: boolean, bold: boolean): void;
+    setShapeOptions(kind: string, style: string, color: string): void;
     setTemplate(template: string): void;
     setTool(active_tool: string, bond_variant: string): void;
     stateJson(): string;
@@ -92,6 +93,7 @@ export interface InitOutput {
     readonly wasmengine_selectionContainsPoint: (a: number, b: number, c: number) => number;
     readonly wasmengine_setArrowEndpointOptions: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number) => void;
     readonly wasmengine_setArrowOptions: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
+    readonly wasmengine_setShapeOptions: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
     readonly wasmengine_setTemplate: (a: number, b: number, c: number) => void;
     readonly wasmengine_setTool: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly wasmengine_stateJson: (a: number) => [number, number, number, number];

@@ -11,6 +11,8 @@
   "scripts": {
     "build:engine-wasm": "bash scripts/build-engine-wasm.sh",
     "build:glyph-wasm": "bash scripts/build-glyph-wasm.sh",
+    "dev:engine": "bash scripts/dev-engine-wasm.sh",
+    "verify": "bash scripts/verify.sh",
     "screenshot": "node scripts/viewer-screenshot.mjs",
     "test": "cargo test && node --check viewer/app.js"
   },

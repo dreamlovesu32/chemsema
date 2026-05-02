@@ -93,6 +93,30 @@ pub enum RenderPrimitive {
         )]
         fill_gradient: Option<JsonValue>,
     },
+    Ellipse {
+        role: RenderRole,
+        #[serde(rename = "objectId", default, skip_serializing_if = "Option::is_none")]
+        object_id: Option<String>,
+        center: Point,
+        rx: f64,
+        ry: f64,
+        #[serde(default, skip_serializing_if = "is_zero")]
+        rotate: f64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        fill: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        stroke: Option<String>,
+        #[serde(rename = "strokeWidth")]
+        stroke_width: f64,
+        #[serde(rename = "dashArray", default, skip_serializing_if = "Vec::is_empty")]
+        dash_array: Vec<f64>,
+        #[serde(
+            rename = "fillGradient",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        fill_gradient: Option<JsonValue>,
+    },
     Polyline {
         role: RenderRole,
         #[serde(rename = "objectId", default, skip_serializing_if = "Option::is_none")]
@@ -128,6 +152,21 @@ pub enum RenderPrimitive {
         line_cap: Option<String>,
         #[serde(rename = "lineJoin", default, skip_serializing_if = "Option::is_none")]
         line_join: Option<String>,
+    },
+    FilledPath {
+        role: RenderRole,
+        #[serde(rename = "objectId", default, skip_serializing_if = "Option::is_none")]
+        object_id: Option<String>,
+        d: String,
+        #[serde(default)]
+        points: Vec<Point>,
+        fill: String,
+        #[serde(rename = "fillRule", default, skip_serializing_if = "Option::is_none")]
+        fill_rule: Option<String>,
+        #[serde(rename = "clipPathD", default, skip_serializing_if = "Option::is_none")]
+        clip_path_d: Option<String>,
+        #[serde(rename = "clipRule", default, skip_serializing_if = "Option::is_none")]
+        clip_rule: Option<String>,
     },
     Text {
         role: RenderRole,
@@ -165,6 +204,10 @@ pub enum RenderPrimitive {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         runs: Vec<crate::LabelRun>,
     },
+}
+
+fn is_zero(value: &f64) -> bool {
+    value.abs() <= crate::EPSILON
 }
 
 pub(super) fn push_line(

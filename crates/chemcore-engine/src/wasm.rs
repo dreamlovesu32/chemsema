@@ -1,6 +1,6 @@
 use crate::{
     ArrowCurve, ArrowEndpointStyle, ArrowHeadSize, ArrowNoGo, ArrowVariant, BondVariant, Engine,
-    Point, PointerEvent, Tool, ToolState, WorldCm, WorldPoint,
+    Point, PointerEvent, ShapeKind, ShapeStyle, Tool, ToolState, WorldCm, WorldPoint,
 };
 use wasm_bindgen::prelude::*;
 
@@ -33,8 +33,20 @@ impl WasmEngine {
             arrow_tail: current.arrow_tail,
             arrow_bold: current.arrow_bold,
             arrow_no_go: current.arrow_no_go,
+            shape_kind: current.shape_kind,
+            shape_style: current.shape_style,
+            shape_color: current.shape_color,
             template: current.template,
         });
+    }
+
+    #[wasm_bindgen(js_name = setShapeOptions)]
+    pub fn set_shape_options(&mut self, kind: &str, style: &str, color: &str) {
+        let mut tool = self.inner.state().tool.clone();
+        tool.shape_kind = parse_shape_kind(kind);
+        tool.shape_style = parse_shape_style(style);
+        tool.shape_color = color.to_string();
+        self.inner.set_tool_state(tool);
     }
 
     #[wasm_bindgen(js_name = setTemplate)]
@@ -440,6 +452,25 @@ fn parse_arrow_variant(value: &str) -> ArrowVariant {
         "hollow" => ArrowVariant::Hollow,
         "open" => ArrowVariant::Open,
         _ => ArrowVariant::Solid,
+    }
+}
+
+fn parse_shape_kind(value: &str) -> ShapeKind {
+    match value {
+        "ellipse" => ShapeKind::Ellipse,
+        "round-rect" | "roundRect" => ShapeKind::RoundRect,
+        "rect" => ShapeKind::Rect,
+        _ => ShapeKind::Circle,
+    }
+}
+
+fn parse_shape_style(value: &str) -> ShapeStyle {
+    match value {
+        "dashed" => ShapeStyle::Dashed,
+        "shaded" => ShapeStyle::Shaded,
+        "filled" => ShapeStyle::Filled,
+        "shadowed" | "shadow" => ShapeStyle::Shadowed,
+        _ => ShapeStyle::Solid,
     }
 }
 

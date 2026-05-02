@@ -1052,49 +1052,825 @@ pub(super) fn render_shape_object(
     document: &ChemcoreDocument,
     object: &SceneObject,
 ) {
-    let [tx, ty] = object.transform.translate;
-    let Some([_, _, width, height]) = object.payload.bbox else {
-        return;
-    };
-    if width <= 0.0 || height <= 0.0 {
-        return;
-    }
-
     let style = object
         .style_ref
         .as_ref()
         .and_then(|style_ref| document.styles.get(style_ref));
-    let fill = style.and_then(|value| style_nullable_string(value, "fill"));
-    let stroke = style.and_then(|value| style_nullable_string(value, "stroke"));
-    let stroke_width = style
-        .and_then(|value| {
-            style_number(value, "strokeWidth").or_else(|| style_number(value, "stroke_width"))
-        })
-        .unwrap_or(px_to_cm(1.0));
-    let dash_array = style
-        .and_then(|value| style_number_array(value, "dashArray"))
-        .unwrap_or_default();
-    let fill_gradient = style
-        .and_then(|value| value.get("fillGradient").cloned())
-        .filter(|value| !value.is_null());
-    let corner_radius =
-        payload_number(&object.payload, "cornerRadius").filter(|value| *value > 0.0);
+    let style = ShapeStyleSpec::from_style(style);
+    let Some(geometry) = ShapeGeometry::from_object(object) else {
+        return;
+    };
+    render_shape_geometry(out, &object.id, &geometry, style);
+}
 
-    out.push(RenderPrimitive::Rect {
+struct ShapeStyleSpec {
+    fill: Option<String>,
+    stroke: Option<String>,
+    stroke_width: f64,
+    dash_array: Vec<f64>,
+    fill_gradient: Option<JsonValue>,
+    render_style: ShapeRenderStyle,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ShapeRenderStyle {
+    Solid,
+    Dashed,
+    Filled,
+    Shaded,
+    Shadowed,
+    Custom,
+}
+
+impl ShapeStyleSpec {
+    fn from_style(style: Option<&JsonValue>) -> Self {
+        let fill = style.and_then(|value| style_nullable_string(value, "fill"));
+        let stroke = style.and_then(|value| style_nullable_string(value, "stroke"));
+        let stroke_width = style
+            .and_then(|value| {
+                style_number(value, "strokeWidth").or_else(|| style_number(value, "stroke_width"))
+            })
+            .unwrap_or(px_to_cm(1.0));
+        let dash_array = style
+            .and_then(|value| style_number_array(value, "dashArray"))
+            .unwrap_or_default();
+        let fill_gradient = style
+            .and_then(|value| value.get("fillGradient").cloned())
+            .filter(|value| !value.is_null());
+        let shaded = style
+            .and_then(|value| value.get("shaded"))
+            .and_then(JsonValue::as_bool)
+            .unwrap_or(false);
+        let shadowed = style
+            .and_then(|value| value.get("shadow"))
+            .and_then(JsonValue::as_bool)
+            .unwrap_or(false);
+        let render_style = if shaded {
+            ShapeRenderStyle::Shaded
+        } else if shadowed {
+            ShapeRenderStyle::Shadowed
+        } else if fill.is_some() && stroke.is_none() && fill_gradient.is_none() {
+            ShapeRenderStyle::Filled
+        } else if fill.is_none() && stroke.is_some() && !dash_array.is_empty() {
+            ShapeRenderStyle::Dashed
+        } else if fill.is_none() && stroke.is_some() && dash_array.is_empty() {
+            ShapeRenderStyle::Solid
+        } else {
+            ShapeRenderStyle::Custom
+        };
+        Self {
+            fill,
+            stroke,
+            stroke_width,
+            dash_array,
+            fill_gradient,
+            render_style,
+        }
+    }
+
+    fn base_color(&self) -> &str {
+        self.stroke
+            .as_deref()
+            .or(self.fill.as_deref())
+            .unwrap_or("#000000")
+    }
+}
+
+enum ShapeGeometry {
+    Oval {
+        center: Point,
+        rx: f64,
+        ry: f64,
+        rotate: f64,
+        ellipse: bool,
+    },
+    Rect {
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
+        corner_radius: Option<f64>,
+        rounded: bool,
+    },
+}
+
+impl ShapeGeometry {
+    fn from_object(object: &SceneObject) -> Option<Self> {
+        let [tx, ty] = object.transform.translate;
+        let kind = payload_string(&object.payload, "kind").unwrap_or_else(|| "rect".to_string());
+        if matches!(kind.as_str(), "circle" | "ellipse") {
+            let center = payload_point(&object.payload, "center")?;
+            let major_axis_end = payload_point(&object.payload, "majorAxisEnd")?;
+            let minor_axis_end = payload_point(&object.payload, "minorAxisEnd")?;
+            let rx = center.distance(major_axis_end);
+            let ry = center.distance(minor_axis_end);
+            if rx <= crate::EPSILON || ry <= crate::EPSILON {
+                return None;
+            }
+            return Some(Self::Oval {
+                center,
+                rx,
+                ry,
+                rotate: crate::angle_between(center, major_axis_end),
+                ellipse: kind == "ellipse",
+            });
+        }
+
+        let [_, _, width, height] = object.payload.bbox?;
+        if width <= 0.0 || height <= 0.0 {
+            return None;
+        }
+        let corner_radius =
+            payload_number(&object.payload, "cornerRadius").filter(|value| *value > 0.0);
+        Some(Self::Rect {
+            x: tx,
+            y: ty,
+            width,
+            height,
+            corner_radius,
+            rounded: kind == "roundRect",
+        })
+    }
+
+    fn fill_path_d(&self) -> String {
+        match *self {
+            Self::Oval {
+                center,
+                rx,
+                ry,
+                rotate,
+                ellipse,
+            } => oval_path_d(center, rx, ry, rotate, ellipse),
+            Self::Rect {
+                x,
+                y,
+                width,
+                height,
+                corner_radius,
+                rounded,
+            } => {
+                if rounded {
+                    rounded_rect_path_d(x, y, width, height, corner_radius.unwrap_or(0.0))
+                } else {
+                    rect_path_d(x, y, width, height)
+                }
+            }
+        }
+    }
+
+    fn outline_path_d(&self, dash_array: &[f64]) -> String {
+        match *self {
+            Self::Oval {
+                center,
+                rx,
+                ry,
+                rotate,
+                ellipse,
+            } => oval_path_d(center, rx, ry, rotate, ellipse || !dash_array.is_empty()),
+            _ => self.fill_path_d(),
+        }
+    }
+
+    fn shifted_fill_path_d(&self, dx: f64, dy: f64) -> String {
+        match *self {
+            Self::Oval {
+                center,
+                rx,
+                ry,
+                rotate,
+                ellipse,
+            } => oval_path_d(
+                center.translated(crate::Vector::new(dx, dy)),
+                rx,
+                ry,
+                rotate,
+                ellipse,
+            ),
+            Self::Rect {
+                x,
+                y,
+                width,
+                height,
+                corner_radius,
+                rounded,
+            } => {
+                if rounded {
+                    rounded_rect_path_d(x + dx, y + dy, width, height, corner_radius.unwrap_or(0.0))
+                } else {
+                    rect_path_d(x + dx, y + dy, width, height)
+                }
+            }
+        }
+    }
+
+    fn bounds_points(&self) -> Vec<Point> {
+        match *self {
+            Self::Oval { center, rx, ry, .. } => ellipse_bounds_points(center, rx, ry),
+            Self::Rect {
+                x,
+                y,
+                width,
+                height,
+                ..
+            } => vec![
+                Point::new(x, y),
+                Point::new(x + width, y),
+                Point::new(x + width, y + height),
+                Point::new(x, y + height),
+            ],
+        }
+    }
+
+    fn shadow_bounds_points(&self, offset: f64) -> Vec<Point> {
+        match *self {
+            Self::Oval { center, rx, ry, .. } => vec![
+                Point::new(center.x - rx, center.y - ry),
+                Point::new(center.x + rx + offset, center.y + ry + offset),
+            ],
+            Self::Rect {
+                x,
+                y,
+                width,
+                height,
+                ..
+            } => vec![
+                Point::new(x, y),
+                Point::new(x + width + offset, y + height + offset),
+            ],
+        }
+    }
+}
+
+fn render_shape_geometry(
+    out: &mut Vec<RenderPrimitive>,
+    object_id: &str,
+    geometry: &ShapeGeometry,
+    style: ShapeStyleSpec,
+) {
+    match style.render_style {
+        ShapeRenderStyle::Solid | ShapeRenderStyle::Dashed => {
+            if let Some(stroke) = style.stroke {
+                push_shape_outline(
+                    out,
+                    object_id,
+                    geometry,
+                    stroke,
+                    style.stroke_width,
+                    style.dash_array,
+                );
+            }
+        }
+        ShapeRenderStyle::Filled => {
+            push_shape_fill(
+                out,
+                object_id,
+                geometry,
+                style.fill.unwrap_or_else(|| "#000000".to_string()),
+            );
+            if matches!(
+                geometry,
+                ShapeGeometry::Rect { .. } | ShapeGeometry::Oval { ellipse: true, .. }
+            ) {
+                push_shape_outline(
+                    out,
+                    object_id,
+                    geometry,
+                    "#000000".to_string(),
+                    0.05,
+                    Vec::new(),
+                );
+            }
+        }
+        ShapeRenderStyle::Shaded => {
+            push_shape_shaded_layers(out, object_id, geometry, style.base_color());
+            if let Some(stroke) = style.stroke {
+                if matches!(geometry, ShapeGeometry::Rect { .. }) {
+                    push_shape_outline(out, object_id, geometry, stroke.clone(), 0.05, Vec::new());
+                }
+                let stroke_width = match geometry {
+                    ShapeGeometry::Oval { ellipse: true, .. } => 0.05,
+                    _ => style.stroke_width,
+                };
+                push_shape_outline(
+                    out,
+                    object_id,
+                    geometry,
+                    stroke,
+                    stroke_width,
+                    style.dash_array,
+                );
+            }
+        }
+        ShapeRenderStyle::Shadowed => {
+            push_shape_shadow_path(
+                out,
+                object_id,
+                geometry.shifted_fill_path_d(4.0, 4.0),
+                geometry.fill_path_d(),
+                shape_shadow_fill(style.stroke.as_deref(), style.fill.as_deref()),
+                geometry.shadow_bounds_points(4.0),
+            );
+            if let Some(fill) = style.fill {
+                push_shape_fill(out, object_id, geometry, fill);
+            }
+            if let Some(stroke) = style.stroke {
+                push_shape_outline(
+                    out,
+                    object_id,
+                    geometry,
+                    stroke,
+                    style.stroke_width,
+                    style.dash_array,
+                );
+            }
+        }
+        ShapeRenderStyle::Custom => push_shape_custom(out, object_id, geometry, style),
+    }
+}
+
+fn push_shape_fill(
+    out: &mut Vec<RenderPrimitive>,
+    object_id: &str,
+    geometry: &ShapeGeometry,
+    fill: String,
+) {
+    out.push(RenderPrimitive::FilledPath {
         role: RenderRole::DocumentGraphic,
-        object_id: Some(object.id.clone()),
-        x: tx,
-        y: ty,
-        width,
-        height,
+        object_id: Some(object_id.to_string()),
+        d: geometry.fill_path_d(),
+        points: geometry.bounds_points(),
         fill,
+        fill_rule: None,
+        clip_path_d: None,
+        clip_rule: None,
+    });
+}
+
+fn push_shape_outline(
+    out: &mut Vec<RenderPrimitive>,
+    object_id: &str,
+    geometry: &ShapeGeometry,
+    stroke: String,
+    stroke_width: f64,
+    dash_array: Vec<f64>,
+) {
+    out.push(RenderPrimitive::Path {
+        role: RenderRole::DocumentGraphic,
+        object_id: Some(object_id.to_string()),
+        bond_id: None,
+        d: geometry.outline_path_d(&dash_array),
+        points: geometry.bounds_points(),
         stroke,
         stroke_width,
-        rx: corner_radius,
-        ry: corner_radius,
         dash_array,
-        fill_gradient,
+        line_cap: match geometry {
+            ShapeGeometry::Rect { .. } => Some("butt".to_string()),
+            ShapeGeometry::Oval { .. } => None,
+        },
+        line_join: match geometry {
+            ShapeGeometry::Rect { .. } => Some("miter".to_string()),
+            ShapeGeometry::Oval { .. } => None,
+        },
     });
+}
+
+fn push_shape_shaded_layers(
+    out: &mut Vec<RenderPrimitive>,
+    object_id: &str,
+    geometry: &ShapeGeometry,
+    base_color: &str,
+) {
+    match *geometry {
+        ShapeGeometry::Oval {
+            center,
+            rx,
+            ry,
+            rotate,
+            ellipse,
+        } => {
+            push_shaded_ellipse_layers(out, object_id, ellipse, center, rx, ry, rotate, base_color)
+        }
+        ShapeGeometry::Rect {
+            x,
+            y,
+            width,
+            height,
+            corner_radius,
+            rounded,
+        } => push_shaded_rect_layers(
+            out,
+            object_id,
+            x,
+            y,
+            width,
+            height,
+            corner_radius,
+            rounded,
+            base_color,
+        ),
+    }
+}
+
+fn push_shape_custom(
+    out: &mut Vec<RenderPrimitive>,
+    object_id: &str,
+    geometry: &ShapeGeometry,
+    style: ShapeStyleSpec,
+) {
+    match geometry {
+        ShapeGeometry::Rect {
+            x,
+            y,
+            width,
+            height,
+            corner_radius,
+            ..
+        } => out.push(RenderPrimitive::Rect {
+            role: RenderRole::DocumentGraphic,
+            object_id: Some(object_id.to_string()),
+            x: *x,
+            y: *y,
+            width: *width,
+            height: *height,
+            fill: style.fill,
+            stroke: style.stroke,
+            stroke_width: style.stroke_width,
+            rx: *corner_radius,
+            ry: *corner_radius,
+            dash_array: style.dash_array,
+            fill_gradient: style.fill_gradient,
+        }),
+        ShapeGeometry::Oval { .. } => {
+            if let Some(fill) = style.fill {
+                push_shape_fill(out, object_id, geometry, fill);
+            }
+            if let Some(stroke) = style.stroke {
+                push_shape_outline(
+                    out,
+                    object_id,
+                    geometry,
+                    stroke,
+                    style.stroke_width,
+                    style.dash_array,
+                );
+            }
+        }
+    }
+}
+
+fn push_shape_shadow_path(
+    out: &mut Vec<RenderPrimitive>,
+    object_id: &str,
+    shifted_shape_path: String,
+    original_shape_path: String,
+    fill: String,
+    points: Vec<Point>,
+) {
+    let clip_path = shape_shadow_clip_path(&points, &original_shape_path);
+    out.push(RenderPrimitive::FilledPath {
+        role: RenderRole::DocumentGraphic,
+        object_id: Some(object_id.to_string()),
+        d: shifted_shape_path,
+        points,
+        fill,
+        fill_rule: None,
+        clip_path_d: Some(clip_path),
+        clip_rule: Some("evenodd".to_string()),
+    });
+}
+
+fn push_shape_ellipse_fill(
+    out: &mut Vec<RenderPrimitive>,
+    object_id: &str,
+    center: Point,
+    rx: f64,
+    ry: f64,
+    rotate: f64,
+    use_cubic: bool,
+    fill: String,
+) {
+    out.push(RenderPrimitive::FilledPath {
+        role: RenderRole::DocumentGraphic,
+        object_id: Some(object_id.to_string()),
+        d: oval_path_d(center, rx, ry, rotate, use_cubic),
+        points: ellipse_bounds_points(center, rx, ry),
+        fill,
+        fill_rule: None,
+        clip_path_d: None,
+        clip_rule: None,
+    });
+}
+
+fn ellipse_bounds_points(center: Point, rx: f64, ry: f64) -> Vec<Point> {
+    vec![
+        Point::new(center.x - rx, center.y - ry),
+        Point::new(center.x + rx, center.y + ry),
+    ]
+}
+
+fn shape_shadow_clip_path(points: &[Point], original_shape_path: &str) -> String {
+    let min_x = points
+        .iter()
+        .map(|point| point.x)
+        .fold(f64::INFINITY, f64::min);
+    let min_y = points
+        .iter()
+        .map(|point| point.y)
+        .fold(f64::INFINITY, f64::min);
+    let max_x = points
+        .iter()
+        .map(|point| point.x)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let max_y = points
+        .iter()
+        .map(|point| point.y)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let padding = 5.0;
+    let left = min_x - padding;
+    let top = min_y - padding;
+    let right = max_x + padding;
+    let bottom = max_y + padding;
+    format!(
+        "M {left},{top} L {right},{top} L {right},{bottom} L {left},{bottom} L {left},{top} {original_shape_path}"
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn push_shape_rect_fill(
+    out: &mut Vec<RenderPrimitive>,
+    object_id: &str,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    corner_radius: Option<f64>,
+    fill: String,
+) {
+    let d = if corner_radius.is_some_and(|radius| radius > crate::EPSILON) {
+        rounded_rect_path_d(x, y, width, height, corner_radius.unwrap_or(0.0))
+    } else {
+        rect_path_d(x, y, width, height)
+    };
+    out.push(RenderPrimitive::FilledPath {
+        role: RenderRole::DocumentGraphic,
+        object_id: Some(object_id.to_string()),
+        d,
+        points: vec![Point::new(x, y), Point::new(x + width, y + height)],
+        fill,
+        fill_rule: None,
+        clip_path_d: None,
+        clip_rule: None,
+    });
+}
+
+const SHADED_LEVELS: &[&str] = &[
+    "#000000", "#0f0f0f", "#1e1e1e", "#2d2d2d", "#3b3b3b", "#494949", "#565656", "#636363",
+    "#6f6f6f", "#7b7b7b", "#868686", "#919191", "#9b9b9b", "#a5a5a5", "#aeaeae", "#b7b7b7",
+    "#bfbfbf", "#c7c7c7", "#cecece", "#d5d5d5", "#dbdbdb", "#e1e1e1", "#e6e6e6", "#ebebeb",
+    "#efefef", "#f3f3f3", "#f6f6f6", "#f9f9f9", "#fbfbfb", "#fdfdfd", "#fefefe", "#ffffff",
+];
+
+const CIRCLE_SHADED_LEVELS: &[&str] = &[
+    "#000000", "#0f0f0f", "#1e1e1e", "#2d2d2d", "#3b3b3b", "#494949", "#565656", "#636363",
+    "#6f6f6f", "#7b7b7b", "#868686", "#919191", "#9b9b9b", "#a5a5a5", "#aeaeae", "#b7b7b7",
+    "#bfbfbf", "#c6c6c6", "#cecece", "#d4d4d4", "#dbdbdb", "#e0e0e0", "#e6e6e6", "#eaeaea",
+    "#efefef", "#f2f2f2", "#f6f6f6", "#f8f8f8", "#fbfbfb", "#fcfcfc", "#fefefe", "#fefefe",
+];
+
+const CIRCLE_SHADED_REMAIN_RATIO: f64 = 0.152_470_445_589_572_57;
+const CIRCLE_SHADED_CENTER_SHIFT_RATIO: f64 = 0.484_377_144_287_654_77;
+const ELLIPSE_SHADED_REMAIN_RATIO: f64 = 0.111_974_358_974_358_58;
+const ELLIPSE_SHADED_CENTER_SHIFT_RATIO: f64 = 0.484_730_769_230_768_24;
+const RECT_SHADED_INSET_RATIO: f64 = 0.058_648_052_902_278_19;
+const ROUND_RECT_SHADED_INSET_RATIO: f64 = 0.127_129_977_460_556;
+const RECT_SHADED_REMAIN_RATIO: f64 = 0.111_976_487_876_561_09;
+
+#[allow(clippy::too_many_arguments)]
+fn push_shaded_ellipse_layers(
+    out: &mut Vec<RenderPrimitive>,
+    object_id: &str,
+    use_cubic: bool,
+    center: Point,
+    rx: f64,
+    ry: f64,
+    rotate: f64,
+    base_color: &str,
+) {
+    let is_circle = (rx - ry).abs() <= crate::EPSILON;
+    let levels = if is_circle {
+        CIRCLE_SHADED_LEVELS
+    } else {
+        SHADED_LEVELS
+    };
+    let remain_ratio = if is_circle {
+        CIRCLE_SHADED_REMAIN_RATIO
+    } else {
+        ELLIPSE_SHADED_REMAIN_RATIO
+    };
+    let shift_ratio = if is_circle {
+        CIRCLE_SHADED_CENTER_SHIFT_RATIO
+    } else {
+        ELLIPSE_SHADED_CENTER_SHIFT_RATIO
+    };
+    let max_index = (levels.len() - 1) as f64;
+    for (index, level) in levels.iter().enumerate() {
+        let t = index as f64 / max_index;
+        let layer_rx = rx * (1.0 - (1.0 - remain_ratio) * t);
+        let layer_ry = ry * (1.0 - (1.0 - remain_ratio) * t);
+        let layer_center = center.translated(crate::Vector::new(
+            -shift_ratio * rx * t,
+            -shift_ratio * ry * t,
+        ));
+        push_shape_ellipse_fill(
+            out,
+            object_id,
+            layer_center,
+            layer_rx,
+            layer_ry,
+            rotate,
+            use_cubic,
+            shaded_level_color(base_color, level, t),
+        );
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn push_shaded_rect_layers(
+    out: &mut Vec<RenderPrimitive>,
+    object_id: &str,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    corner_radius: Option<f64>,
+    rounded: bool,
+    base_color: &str,
+) {
+    let inset_ratio = if rounded {
+        ROUND_RECT_SHADED_INSET_RATIO
+    } else {
+        RECT_SHADED_INSET_RATIO
+    };
+    let max_index = (SHADED_LEVELS.len() - 1) as f64;
+    for (index, level) in SHADED_LEVELS.iter().enumerate() {
+        let t = index as f64 / max_index;
+        let layer_x = x + width * inset_ratio * t;
+        let layer_y = y + height * inset_ratio * t;
+        let layer_width = width * (1.0 - (1.0 - RECT_SHADED_REMAIN_RATIO) * t);
+        let layer_height = height * (1.0 - (1.0 - RECT_SHADED_REMAIN_RATIO) * t);
+        let layer_radius = corner_radius.map(|radius| {
+            radius
+                .min(layer_width * 0.5)
+                .min(layer_height * 0.5)
+                .max(0.0)
+        });
+        push_shape_rect_fill(
+            out,
+            object_id,
+            layer_x,
+            layer_y,
+            layer_width,
+            layer_height,
+            layer_radius,
+            shaded_level_color(base_color, level, t),
+        );
+    }
+}
+
+fn shaded_level_color(base_color: &str, gray: &str, t: f64) -> String {
+    let Some((r, g, b)) = parse_hex_color(base_color) else {
+        return gray.to_string();
+    };
+    if r == 0 && g == 0 && b == 0 {
+        return gray.to_string();
+    }
+    let mix = |channel: u8| -> u8 { (channel as f64 + (255.0 - channel as f64) * t).round() as u8 };
+    format!("#{:02x}{:02x}{:02x}", mix(r), mix(g), mix(b))
+}
+
+fn parse_hex_color(value: &str) -> Option<(u8, u8, u8)> {
+    let hex = value.strip_prefix('#')?;
+    if hex.len() != 6 {
+        return None;
+    }
+    Some((
+        u8::from_str_radix(&hex[0..2], 16).ok()?,
+        u8::from_str_radix(&hex[2..4], 16).ok()?,
+        u8::from_str_radix(&hex[4..6], 16).ok()?,
+    ))
+}
+
+fn rounded_rect_path_d(x: f64, y: f64, width: f64, height: f64, radius: f64) -> String {
+    let r = radius.min(width * 0.5).min(height * 0.5).max(0.0);
+    if r <= crate::EPSILON {
+        return rect_path_d(x, y, width, height);
+    }
+    let right = x + width;
+    let bottom = y + height;
+    let k = r * 0.552_284_749_830_793_6;
+    format!(
+        "M {x},{bottom_start} C {x},{bottom_start} {x},{top_left_c1} {x},{top_left_start} C {x},{top_left_c2} {top_left_c3},{y} {top_left_end},{y} C {top_left_end},{y} {top_right_start},{y} {top_right_start},{y} C {top_right_c1},{y} {right},{top_left_c2} {right},{top_left_start} C {right},{top_left_start} {right},{bottom_start} {right},{bottom_start} C {right},{bottom_c1} {top_right_c1},{bottom} {top_right_start},{bottom} C {top_right_start},{bottom} {top_left_end},{bottom} {top_left_end},{bottom} C {top_left_c3},{bottom} {x},{bottom_c1} {x},{bottom_start}",
+        top_left_start = y + r,
+        top_left_c1 = y + r,
+        top_left_c2 = y + r - k,
+        top_left_c3 = x + r - k,
+        top_left_end = x + r,
+        top_right_start = right - r,
+        top_right_c1 = right - r + k,
+        bottom_start = bottom - r,
+        bottom_c1 = bottom - r + k,
+    )
+}
+
+fn rect_path_d(x: f64, y: f64, width: f64, height: f64) -> String {
+    let right = x + width;
+    let bottom = y + height;
+    format!(
+        "M {right},{bottom} C {right},{bottom} {right},{y} {right},{y} C {right},{y} {x},{y} {x},{y} C {x},{y} {x},{bottom} {x},{bottom} C {x},{bottom} {right},{bottom} {right},{bottom}"
+    )
+}
+
+fn oval_path_d(center: Point, rx: f64, ry: f64, rotate: f64, use_cubic: bool) -> String {
+    if use_cubic {
+        return ellipse_cubic_path_d(center, rx, ry, rotate);
+    }
+    ellipse_path_d(center, rx, ry, rotate)
+}
+
+fn ellipse_cubic_path_d(center: Point, rx: f64, ry: f64, rotate: f64) -> String {
+    let k = 0.552_284_749_830_793_6;
+    let major = crate::direction_from_angle(rotate);
+    let minor = crate::direction_from_angle(rotate + 90.0);
+    let left = center.translated(major.scaled(-rx));
+    let right = center.translated(major.scaled(rx));
+    let bottom = center.translated(minor.scaled(ry));
+    let top = center.translated(minor.scaled(-ry));
+    let c1 = left.translated(minor.scaled(k * ry));
+    let c2 = bottom.translated(major.scaled(-k * rx));
+    let c3 = bottom.translated(major.scaled(k * rx));
+    let c4 = right.translated(minor.scaled(k * ry));
+    let c5 = right.translated(minor.scaled(-k * ry));
+    let c6 = top.translated(major.scaled(k * rx));
+    let c7 = top.translated(major.scaled(-k * rx));
+    let c8 = left.translated(minor.scaled(-k * ry));
+    format!(
+        "M {},{} C {},{} {},{} {},{} C {},{} {},{} {},{} C {},{} {},{} {},{} C {},{} {},{} {},{}",
+        left.x,
+        left.y,
+        c1.x,
+        c1.y,
+        c2.x,
+        c2.y,
+        bottom.x,
+        bottom.y,
+        c3.x,
+        c3.y,
+        c4.x,
+        c4.y,
+        right.x,
+        right.y,
+        c5.x,
+        c5.y,
+        c6.x,
+        c6.y,
+        top.x,
+        top.y,
+        c7.x,
+        c7.y,
+        c8.x,
+        c8.y,
+        left.x,
+        left.y
+    )
+}
+
+fn ellipse_path_d(center: Point, rx: f64, ry: f64, rotate: f64) -> String {
+    let unit = crate::direction_from_angle(rotate);
+    let start = center.translated(unit.scaled(-rx));
+    let end = center.translated(unit.scaled(rx));
+    format!(
+        "M {},{} A {rx},{ry} {rotate} 1 0 {},{} A {rx},{ry} {rotate} 1 0 {},{} Z",
+        start.x, start.y, end.x, end.y, start.x, start.y
+    )
+}
+
+fn payload_point(payload: &ObjectPayload, key: &str) -> Option<Point> {
+    let coords = payload.extra.get(key)?.as_array()?;
+    Some(Point::new(
+        coords.first()?.as_f64()?,
+        coords.get(1)?.as_f64()?,
+    ))
+}
+
+fn shape_shadow_fill(stroke: Option<&str>, fill: Option<&str>) -> String {
+    let color = fill.or(stroke).unwrap_or("#000000");
+    if color.eq_ignore_ascii_case("#000000") {
+        return "rgba(0,0,0,0.247059)".to_string();
+    }
+    let Some((r, g, b)) = parse_hex_color(color) else {
+        return color.to_string();
+    };
+    format!("rgba({r},{g},{b},0.247059)")
 }
 
 pub(super) fn render_fragment_label(

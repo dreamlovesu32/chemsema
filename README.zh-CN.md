@@ -37,6 +37,7 @@
 - [README.md](./README.md)
 - [docs/architecture.md](./docs/architecture.md)
 - [docs/format-v0.1.md](./docs/format-v0.1.md)
+- [docs/project-rules.zh-CN.md](./docs/project-rules.zh-CN.md)
 - [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)
 - [docs/architecture.zh-CN.md](./docs/architecture.zh-CN.md)
 - [docs/format-v0.1.zh-CN.md](./docs/format-v0.1.zh-CN.md)

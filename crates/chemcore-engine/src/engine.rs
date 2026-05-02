@@ -16,19 +16,21 @@ pub use self::text_edit::{
 
 use self::delete::FocusedDeleteMode;
 use crate::{
-    anchor_from_point, bond_center_focus_length, can_draw_bond, can_focus_bond_center,
-    can_focus_endpoint, default_angle_for_anchor_for_variant, endpoint_from_angle_for_document,
-    hit_test_arrow_center, hit_test_bond_center, hit_test_endpoint, hit_test_endpoint_excluding,
-    nearest_angle, render_document, snapped_angle_for_anchor, ArrowCurve, ArrowEndpointStyle,
-    ArrowHeadSize, ArrowNoGo, ArrowVariant, Bond, BondAnchor, BondLinePattern, BondLineStyles,
-    BondLineWeight, BondLineWeights, BondPreview, BondStereo, BondVariant, ChemcoreDocument,
-    DoubleBond, DoubleBondPlacement, DragState, EditorOptions, EndpointHit, HoverTextBox,
-    OverlayState, Point, PointerEvent, RenderPrimitive, RenderRole, SceneObject, SelectionState,
+    anchor_from_point, angle_between, bond_center_focus_length, can_draw_bond,
+    can_focus_bond_center, can_focus_endpoint, default_angle_for_anchor_for_variant,
+    direction_from_angle, endpoint_from_angle_for_document, hit_test_arrow_center,
+    hit_test_bond_center, hit_test_endpoint, hit_test_endpoint_excluding, nearest_angle,
+    render_document, snapped_angle_for_anchor, ArrowCurve, ArrowEndpointStyle, ArrowHeadSize,
+    ArrowNoGo, ArrowVariant, Bond, BondAnchor, BondLinePattern, BondLineStyles, BondLineWeight,
+    BondLineWeights, BondPreview, BondStereo, BondVariant, ChemcoreDocument, DoubleBond,
+    DoubleBondPlacement, DragState, EditorOptions, EndpointHit, HoverTextBox, OverlayState, Point,
+    PointerEvent, RenderPrimitive, RenderRole, SceneObject, SelectionState, ShapeKind, ShapeStyle,
     Tool, ToolState, WorldCm, BOND_CENTER_FOCUS_WIDTH, BOND_CENTER_HIT_RADIUS, DEFAULT_BOND_LENGTH,
     DRAG_START_THRESHOLD, ENDPOINT_FOCUS_RADIUS, ENDPOINT_HIT_RADIUS, GLOBAL_SNAP_ANGLES,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value as JsonValue};
+use std::collections::BTreeMap;
 
 const HOVER_STROKE_WIDTH: f64 = crate::px_to_cm(1.1);
 const HOVER_LABEL_STROKE_WIDTH: f64 = crate::px_to_cm(1.1);
@@ -36,6 +38,10 @@ const HOVER_ENDPOINT_STROKE_WIDTH: f64 = crate::px_to_cm(1.4);
 const HOVER_BOND_CENTER_STROKE_WIDTH: f64 = crate::px_to_cm(1.2);
 const PREVIEW_END_RADIUS: f64 = crate::px_to_cm(5.0);
 const PREVIEW_END_STROKE_WIDTH: f64 = crate::px_to_cm(1.2);
+const SHAPE_STROKE_WIDTH: f64 = 1.0;
+const SHAPE_DASH_LENGTH: f64 = 2.7;
+const ELLIPSE_MINOR_AXIS_RATIO: f64 = 0.4;
+const ROUND_RECT_CORNER_RADIUS: f64 = 6.0;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -62,6 +68,7 @@ pub struct Engine {
     selection_drag: Option<select::SelectionMoveDrag>,
     selection_rotate_drag: Option<select::SelectionRotateDrag>,
     template_drag: Option<templates::TemplateDrag>,
+    shape_drag: Option<ShapeDragState>,
     clipboard: Option<clipboard::ClipboardContent>,
     options: EditorOptions,
     next_id: u64,
@@ -96,6 +103,14 @@ struct ArrowEditDragState {
     undo_pushed: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ShapeDragState {
+    start: Point,
+    current: Point,
+    has_dragged: bool,
+}
+
 impl Default for Engine {
     fn default() -> Self {
         Self::new()
@@ -117,6 +132,7 @@ impl Engine {
             selection_drag: None,
             selection_rotate_drag: None,
             template_drag: None,
+            shape_drag: None,
             clipboard: None,
             options: EditorOptions::default(),
             next_id: 1,
@@ -275,6 +291,10 @@ impl Engine {
             self.pointer_move_template(event);
             return;
         }
+        if self.state.tool.active_tool == Tool::Shape {
+            self.pointer_move_shape(event);
+            return;
+        }
         if self.state.tool.active_tool == Tool::Delete {
             self.drag = None;
             self.state.overlay.hover_bond_center = None;
@@ -406,6 +426,10 @@ impl Engine {
             self.pointer_down_template(event);
             return;
         }
+        if self.state.tool.active_tool == Tool::Shape {
+            self.pointer_down_shape(event);
+            return;
+        }
         if self.state.tool.active_tool == Tool::Delete {
             self.state.selection = SelectionState::default();
             self.clear_interaction();
@@ -486,6 +510,10 @@ impl Engine {
         }
         if self.state.tool.active_tool == Tool::Templates {
             self.pointer_up_template(event);
+            return;
+        }
+        if self.state.tool.active_tool == Tool::Shape {
+            self.pointer_up_shape(event);
             return;
         }
         let Some(drag) = self.drag.take() else {
@@ -810,6 +838,7 @@ impl Engine {
         self.selection_drag = None;
         self.selection_rotate_drag = None;
         self.template_drag = None;
+        self.shape_drag = None;
         self.state.overlay = OverlayState::default();
     }
 
@@ -912,6 +941,9 @@ impl Engine {
         if let Some(preview_document) = self.template_preview_document() {
             return Some(preview_document);
         }
+        if let Some(preview_document) = self.shape_preview_document() {
+            return Some(preview_document);
+        }
         if let Some(drag) = self.arrow_drag.as_ref().filter(|drag| drag.has_dragged) {
             let end = drag.end?;
             let mut document = self.state.document.clone();
@@ -937,6 +969,297 @@ impl Engine {
             }
         };
         self.document_with_preview_bond(&drag.anchor, &end_anchor, self.pending_bond_order())
+    }
+
+    fn pointer_down_shape(&mut self, event: PointerEvent) {
+        let point = event.point();
+        self.clear_interaction();
+        self.state.selection = SelectionState::default();
+        self.shape_drag = Some(ShapeDragState {
+            start: point,
+            current: point,
+            has_dragged: false,
+        });
+    }
+
+    fn pointer_move_shape(&mut self, event: PointerEvent) {
+        let point = event.point();
+        self.state.overlay = OverlayState::default();
+        if let Some(mut drag) = self.shape_drag.take() {
+            drag.current = point;
+            if drag.start.distance(point) >= DRAG_START_THRESHOLD {
+                drag.has_dragged = true;
+            }
+            if drag.has_dragged {
+                self.state.overlay.preview = Some(BondPreview {
+                    start: point,
+                    end: point,
+                });
+            }
+            self.shape_drag = Some(drag);
+        }
+    }
+
+    fn pointer_up_shape(&mut self, event: PointerEvent) {
+        let Some(mut drag) = self.shape_drag.take() else {
+            return;
+        };
+        drag.current = event.point();
+        if drag.start.distance(drag.current) < DRAG_START_THRESHOLD {
+            self.state.overlay = OverlayState::default();
+            return;
+        }
+        drag.has_dragged = true;
+        let command = EditorCommand::AddShape {
+            kind: self.state.tool.shape_kind,
+            style: self.state.tool.shape_style,
+            color: self.state.tool.shape_color.clone(),
+            begin: CommandAnchor::from(drag.start),
+            end: CommandAnchor::from(drag.current),
+        };
+        self.with_command(command, |engine| engine.insert_shape_from_drag(&drag));
+        self.state.overlay = OverlayState::default();
+    }
+
+    fn shape_preview_document(&self) -> Option<ChemcoreDocument> {
+        let drag = self.shape_drag.as_ref()?;
+        if !drag.has_dragged {
+            return None;
+        }
+        let mut document = self.state.document.clone();
+        let style_id = "__preview_shape_style".to_string();
+        document
+            .styles
+            .insert(style_id.clone(), self.pending_shape_style());
+        document.objects.push(self.shape_scene_object(
+            drag.start,
+            drag.current,
+            "__preview_shape".to_string(),
+            style_id,
+        )?);
+        Some(document)
+    }
+
+    fn insert_shape_from_drag(&mut self, drag: &ShapeDragState) -> bool {
+        let object_id = self.next_id("obj_shape");
+        let style_id = format!("style_{object_id}");
+        let Some(object) = self.shape_scene_object(
+            drag.start,
+            drag.current,
+            object_id.clone(),
+            style_id.clone(),
+        ) else {
+            return false;
+        };
+        self.push_undo_snapshot();
+        self.state
+            .document
+            .styles
+            .insert(style_id, self.pending_shape_style());
+        self.state.document.objects.push(object);
+        true
+    }
+
+    fn shape_scene_object(
+        &self,
+        start: Point,
+        current: Point,
+        object_id: String,
+        style_id: String,
+    ) -> Option<SceneObject> {
+        let (transform, bbox, extra) = match self.state.tool.shape_kind {
+            ShapeKind::Circle => {
+                let radius = start.distance(current);
+                if radius <= crate::EPSILON {
+                    return None;
+                }
+                let angle = angle_between(start, current);
+                let major = current;
+                let minor = start.translated(direction_from_angle(angle + 90.0).scaled(radius));
+                let mut extra = BTreeMap::new();
+                extra.insert("kind".to_string(), json!("circle"));
+                extra.insert("center".to_string(), json!([start.x, start.y]));
+                extra.insert("majorAxisEnd".to_string(), json!([major.x, major.y]));
+                extra.insert("minorAxisEnd".to_string(), json!([minor.x, minor.y]));
+                (
+                    crate::Transform::identity(),
+                    [
+                        start.x - radius,
+                        start.y - radius,
+                        radius * 2.0,
+                        radius * 2.0,
+                    ],
+                    extra,
+                )
+            }
+            ShapeKind::Ellipse => {
+                let major_radius = start.distance(current);
+                if major_radius <= crate::EPSILON {
+                    return None;
+                }
+                let angle = nearest_angle(angle_between(start, current), GLOBAL_SNAP_ANGLES);
+                let major = start.translated(direction_from_angle(angle).scaled(major_radius));
+                let minor_radius = major_radius * ELLIPSE_MINOR_AXIS_RATIO;
+                let minor =
+                    start.translated(direction_from_angle(angle + 90.0).scaled(minor_radius));
+                let mut extra = BTreeMap::new();
+                extra.insert("kind".to_string(), json!("ellipse"));
+                extra.insert("center".to_string(), json!([start.x, start.y]));
+                extra.insert("majorAxisEnd".to_string(), json!([major.x, major.y]));
+                extra.insert("minorAxisEnd".to_string(), json!([minor.x, minor.y]));
+                (
+                    crate::Transform::identity(),
+                    [
+                        start.x - major_radius,
+                        start.y - major_radius,
+                        major_radius * 2.0,
+                        major_radius * 2.0,
+                    ],
+                    extra,
+                )
+            }
+            ShapeKind::RoundRect | ShapeKind::Rect => {
+                let x1 = start.x.min(current.x);
+                let y1 = start.y.min(current.y);
+                let width = (current.x - start.x).abs();
+                let height = (current.y - start.y).abs();
+                if width <= crate::EPSILON || height <= crate::EPSILON {
+                    return None;
+                }
+                let mut extra = BTreeMap::new();
+                extra.insert(
+                    "kind".to_string(),
+                    json!(if self.state.tool.shape_kind == ShapeKind::RoundRect {
+                        "roundRect"
+                    } else {
+                        "rect"
+                    }),
+                );
+                if self.state.tool.shape_kind == ShapeKind::RoundRect {
+                    extra.insert(
+                        "cornerRadius".to_string(),
+                        json!(ROUND_RECT_CORNER_RADIUS.min(width * 0.5).min(height * 0.5)),
+                    );
+                }
+                (
+                    crate::Transform {
+                        translate: [x1, y1],
+                        rotate: 0.0,
+                        scale: [1.0, 1.0],
+                    },
+                    [0.0, 0.0, width, height],
+                    extra,
+                )
+            }
+        };
+        Some(SceneObject {
+            id: object_id,
+            object_type: "shape".to_string(),
+            name: "shape".to_string(),
+            visible: true,
+            locked: false,
+            z_index: self.next_shape_z_index(),
+            transform,
+            style_ref: Some(style_id),
+            meta: json!({
+                "source": "editor",
+                "cdxml": self.pending_shape_cdxml_meta(),
+            }),
+            payload: crate::ObjectPayload {
+                resource_ref: None,
+                bbox: Some(bbox),
+                extra,
+            },
+        })
+    }
+
+    fn pending_shape_style(&self) -> JsonValue {
+        let color = self.state.tool.shape_color.clone();
+        match self.state.tool.shape_style {
+            ShapeStyle::Solid => json!({
+                "kind": "shape",
+                "fill": null,
+                "stroke": color,
+                "strokeWidth": SHAPE_STROKE_WIDTH,
+                "dashArray": [],
+            }),
+            ShapeStyle::Dashed => json!({
+                "kind": "shape",
+                "fill": null,
+                "stroke": color,
+                "strokeWidth": SHAPE_STROKE_WIDTH,
+                "dashArray": [SHAPE_DASH_LENGTH],
+            }),
+            ShapeStyle::Shaded => json!({
+                "kind": "shape",
+                "fill": color,
+                "stroke": color,
+                "strokeWidth": SHAPE_STROKE_WIDTH,
+                "dashArray": [],
+                "shaded": true,
+            }),
+            ShapeStyle::Filled => json!({
+                "kind": "shape",
+                "fill": color,
+                "stroke": null,
+                "strokeWidth": 0.0,
+                "dashArray": [],
+            }),
+            ShapeStyle::Shadowed => json!({
+                "kind": "shape",
+                "fill": null,
+                "stroke": color,
+                "strokeWidth": SHAPE_STROKE_WIDTH,
+                "dashArray": [],
+                "shadow": true,
+            }),
+        }
+    }
+
+    fn pending_shape_cdxml_meta(&self) -> JsonValue {
+        json!({
+            "graphicType": match self.state.tool.shape_kind {
+                ShapeKind::Circle | ShapeKind::Ellipse => "Oval",
+                ShapeKind::RoundRect | ShapeKind::Rect => "Rectangle",
+            },
+            "ovalType": match (self.state.tool.shape_kind, self.state.tool.shape_style) {
+                (ShapeKind::Circle, ShapeStyle::Solid) => "Circle",
+                (ShapeKind::Circle, ShapeStyle::Dashed) => "Circle Dashed",
+                (ShapeKind::Circle, ShapeStyle::Shaded) => "Circle Shaded",
+                (ShapeKind::Circle, ShapeStyle::Filled) => "Circle Filled",
+                (ShapeKind::Circle, ShapeStyle::Shadowed) => "Circle Shadowed",
+                (ShapeKind::Ellipse, ShapeStyle::Solid) => "",
+                (ShapeKind::Ellipse, ShapeStyle::Dashed) => "Dashed",
+                (ShapeKind::Ellipse, ShapeStyle::Shaded) => "Shaded",
+                (ShapeKind::Ellipse, ShapeStyle::Filled) => "Filled",
+                (ShapeKind::Ellipse, ShapeStyle::Shadowed) => "Shadowed",
+                _ => "",
+            },
+            "rectangleType": match (self.state.tool.shape_kind, self.state.tool.shape_style) {
+                (ShapeKind::RoundRect, ShapeStyle::Solid) => "RoundEdge",
+                (ShapeKind::RoundRect, ShapeStyle::Dashed) => "RoundEdge Dashed",
+                (ShapeKind::RoundRect, ShapeStyle::Shaded) => "RoundEdge Shaded",
+                (ShapeKind::RoundRect, ShapeStyle::Filled) => "RoundEdge Filled",
+                (ShapeKind::RoundRect, ShapeStyle::Shadowed) => "RoundEdge Shadow",
+                (ShapeKind::Rect, ShapeStyle::Solid) => "Plain",
+                (ShapeKind::Rect, ShapeStyle::Dashed) => "Dashed",
+                (ShapeKind::Rect, ShapeStyle::Shaded) => "Shaded",
+                (ShapeKind::Rect, ShapeStyle::Filled) => "Filled",
+                (ShapeKind::Rect, ShapeStyle::Shadowed) => "Shadow",
+                _ => "",
+            },
+        })
+    }
+
+    fn next_shape_z_index(&self) -> i32 {
+        self.state
+            .document
+            .objects
+            .iter()
+            .map(|object| object.z_index)
+            .max()
+            .unwrap_or(10)
+            + 1
     }
 
     fn document_with_preview_bond(

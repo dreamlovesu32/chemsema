@@ -196,6 +196,33 @@ export function renderShapeObject(svgRoot, object, styles) {
   const style = styles?.[object.styleRef] || {};
   const [, , width, height] = object.payload.bbox || [0, 0, 0, 0];
   const gradient = style.fillGradient;
+  const kind = object.payload.kind || "rect";
+  if (kind === "circle" || kind === "ellipse") {
+    const center = object.payload.center;
+    const major = object.payload.majorAxisEnd;
+    const minor = object.payload.minorAxisEnd;
+    if (!center || !major || !minor) {
+      return;
+    }
+    const rx = Math.hypot(major[0] - center[0], major[1] - center[1]);
+    const ry = Math.hypot(minor[0] - center[0], minor[1] - center[1]);
+    const rotate = Math.atan2(major[1] - center[1], major[0] - center[0]) * 180 / Math.PI;
+    const attrs = {
+      cx: center[0],
+      cy: center[1],
+      rx,
+      ry,
+      fill: style.fill || "none",
+      stroke: style.stroke || "none",
+      "stroke-width": style.strokeWidth || DEFAULT_SHAPE_STROKE_WIDTH,
+      transform: Math.abs(rotate) > 0.0001 ? `rotate(${rotate} ${center[0]} ${center[1]})` : undefined,
+    };
+    if (style.dashArray?.length) {
+      attrs["stroke-dasharray"] = style.dashArray.join(" ");
+    }
+    svgRoot.appendChild(makeSvgNode("ellipse", attrs));
+    return;
+  }
   const attrs = {
     x: tx,
     y: ty,

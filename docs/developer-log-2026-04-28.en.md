@@ -4,11 +4,13 @@ Author: Jiajun Zhang
 
 Time range: 2026-04-28 00:00 to 2026-04-28 23:59, Asia/Shanghai
 
+Maintenance note: this log originally described the transition away from pixel-driven geometry using `cm` as the intermediate wording. The current project rule, established on 2026-04-30, is `format.unit = "pt"`. Unit wording below has been updated to the current point-based interpretation.
+
 ## Summary
 
 Today was not a single bug-fix pass. It was a broad cleanup of the editor’s unit system, geometry boundaries, edit-mode behavior, selection logic, delete logic, and rendering ownership. The real work followed five main tracks:
 
-- internal geometry continued to converge on `cm`, while a set of legacy `px` constants, render offsets, and defaults were moved toward shared constant sources and typed-unit boundaries;
+- internal geometry continued to move away from bare `px`, while a set of legacy pixel constants, render offsets, and defaults were moved toward shared point-scale constants and typed-unit boundaries;
 - default styles and interaction geometry were reset toward ChemDraw-style values, including bond length, line width, text size, label size, focus boxes, focus circles, bold/hashed bond width, and wedge width;
 - text editing moved further away from browser DOM geometry and back into engine-owned layout, fixing font scaling, frame drift, click-position mismatch, black-box mismatch, and edit-mode stretch/shift problems;
 - the oversized text-edit, delete, and select logic inside `engine.rs` started to split into separate modules, while the viewer continued to shrink back toward “input events + world-coordinate conversion + primitive rendering”;
@@ -16,30 +18,30 @@ Today was not a single bug-fix pass. It was a broad cleanup of the editor’s un
 
 The most important outcome is not that one visual issue now “looks right.” It is that geometry truth kept moving out of browser measurements and frontend compensation and back into shared engine and render logic.
 
-## Unit System Continued to Converge on cm
+## Unit System Continued to Converge on pt
 
-The clearest decision at the start of the day was to keep pushing internal geometry toward `cm` and away from a hybrid model where the engine thinks in cm and the frontend keeps guessing in px.
+The clearest decision at the start of the day was to keep pushing internal geometry away from browser pixels. Under the current maintained rule, document and engine world coordinates are interpreted as `pt`, avoiding a hybrid model where the engine and frontend keep guessing across different units.
 
-### Why cm Remains the Core Unit
+### Why pt Remains the Core Unit
 
 The reasoning is concrete:
 
-- ChemDraw users already think in terms of physical-looking sizes;
+- ChemDraw/CDXML coordinates are closer to page point coordinates;
 - future multi-platform synchronization becomes much harder if browser and desktop editing do not share one internal geometry model;
-- bond length, line width, font size, double-bond spacing, and focus geometry are fundamentally closer to physical dimensions than to screen pixels.
+- bond length, line width, font size, double-bond spacing, and focus geometry are fundamentally closer to document points than to screen pixels.
 
 The goal is not to delete every px reference immediately. The goal is to keep px at the viewer boundary and in the few places where CSS-device-pixel interaction is genuinely the correct layer.
 
 ### Typed Units and Explicit Boundary Conversion
 
-Today also pushed further toward a safer model where `CssPx` and `WorldCm` are treated as meaningfully different quantities.
+Today also pushed further toward a safer model where `CssPx` and engine world coordinates are treated as meaningfully different quantities.
 
-The long-term goal is not to rely on engineers remembering that a specific `f64` “should already be cm.” The goal is to make unit conversion explicit at boundary functions so px leaks into kernel geometry are exposed earlier.
+The long-term goal is not to rely on engineers remembering that a specific `f64` “should already be a document unit.” The goal is to make unit conversion explicit at boundary functions so px leaks into kernel geometry are exposed earlier.
 
 That direction is already visible in the code:
 
-- `render_constants.rs` contains a growing set of `WorldCm` typed constants;
-- some old high-frequency `px_to_cm(...)` calls in rendering now pull from typed constant sources instead;
+- `render_constants.rs` contains a growing set of typed constants;
+- some old high-frequency pixel-conversion calls in rendering now pull from typed constant sources instead;
 - viewer/engine boundaries are moving toward explicit conversion points rather than passing bare floating-point values everywhere.
 
 ## Default Styles and Geometry Parameters Were Reset
@@ -50,10 +52,10 @@ This round also continued the ChemDraw-style parameter reset that the user expli
 
 The currently accepted baseline values are:
 
-- default bond length: `1.058 cm`
-- default bond stroke width: `0.035 cm`
-- default text font size: `0.2645833 cm`, equivalent to `10 pt`
-- default atom-label font size: `0.2645833 cm`, equivalent to `10 pt`
+- default bond length: `30 pt`
+- default bond stroke width: `1 pt`
+- default text font size: `7.5 pt`
+- default atom-label font size: `7.5 pt`
 - default font family: `Arial`
 
 These are not just toolbar display values. They are being pushed toward document defaults, text-edit session defaults, and generated-label defaults together.
@@ -67,9 +69,9 @@ Several multi-bond rules were tightened today:
 - so the true center-to-center distance must include the widths of the two lines;
 - when the main line becomes bold, the spacing must be recomputed accordingly instead of remaining unchanged;
 - triple bonds continue to use the same spacing baseline;
-- bold and hashed bonds now share the same default width of `0.141 cm`;
+- bold and hashed bonds now share the same default width of `4 pt`;
 - the wide end of a wedge bond is `1.5x` the bold-bond width;
-- the narrow end of a wedge returns to the ordinary bond stroke width of `0.035 cm`.
+- the narrow end of a wedge returns to the ordinary bond stroke width of `1 pt`.
 
 The underlying goal is consistent: multi-line and wide-line bonds should scale from one coherent set of geometry rules instead of carrying unrelated ratios.
 
@@ -77,11 +79,11 @@ The underlying goal is consistent: multi-line and wide-line bonds should scale f
 
 The interaction geometry was also explicitly reset:
 
-- focus-box width: `0.2 cm`
-- focus-box length: `0.8 cm`
-- endpoint focus-circle radius: `0.1 cm`
+- focus-box width: about `5.67 pt`
+- focus-box length: about `22.68 pt`
+- endpoint focus-circle radius: about `2.83 pt`
 
-This was not only a numeric tweak. It was another step away from “close enough px sizes” and back toward the same cm-driven geometry system used elsewhere.
+This was not only a numeric tweak. It was another step away from “close enough px sizes” and back toward the same point-driven geometry system used elsewhere.
 
 ## DPI, Browser Zoom, and Viewer Boundary Logic
 
@@ -91,9 +93,9 @@ The user also raised a necessary concern: DPI must not be hard-coded. The browse
 
 The response was not to hard-code `144 dpi` as a new fixed value. The boundary was clarified instead:
 
-- engine geometry still remains entirely in `cm`;
+- engine geometry still remains entirely in document points;
 - the viewer is responsible for reading the real browser/device scaling context;
-- `cm -> CSS px` conversion should depend on the current environment instead of assuming a fixed `96 dpi`.
+- `pt -> CSS px` conversion should depend on the current environment instead of assuming a fixed `96 dpi`.
 
 That separation matters because:
 
@@ -109,7 +111,7 @@ The user made a strong and correct suggestion: constants should be centralized, 
 
 Today this translated into two directions:
 
-- more high-frequency render-side `px_to_cm(...)` constants are being pushed toward `render_constants.rs` and typed constant sources;
+- more high-frequency legacy pixel-conversion constants are being pushed toward `render_constants.rs` and typed constant sources;
 - remaining high-risk constants in `render.rs` and `render_bonds.rs` were explicitly identified for continued cleanup, especially wedge dimensions, hashed-bond spacing, arrows, label clip margins, and bond offsets.
 
 It was not realistic to eliminate every old constant in one pass, but the direction is now clear: geometry constants need one source of truth rather than two or three “almost identical” values spread across the engine and viewer.
@@ -161,7 +163,7 @@ That pushed edit-mode anchoring further toward this model:
 
 Another structural change was the continued removal of `measuredSize`-style DOM geometry from the engine boundary.
 
-The viewer should not be allowed to send a browser-measured text block back to the engine as geometry truth. As long as that feedback path exists, the cm-based geometry model remains contaminated by browser-private layout behavior.
+The viewer should not be allowed to send a browser-measured text block back to the engine as geometry truth. As long as that feedback path exists, the point-based geometry model remains contaminated by browser-private layout behavior.
 
 ## Text Toolbar and Default Font Behavior
 
@@ -334,10 +336,10 @@ High-scale replay coverage was also kept in place to simulate user environments 
 
 Even after this round, several follow-ups remain worth doing:
 
-- continue moving the remaining high-frequency `px_to_cm(...)` constants into typed constant sources, especially for wedges, hashed bonds, arrows, and label clip margins;
+- continue moving the remaining high-frequency legacy pixel-conversion constants into typed constant sources, especially for wedges, hashed bonds, arrows, and label clip margins;
 - text editing is already much less dependent on DOM geometry, but caret, selection, and IME boundaries can still move further toward engine-driven results;
 - selection boxes now use rendered bounds, and the same “rendering is truth” rule should be reused for more complex future selectable objects;
-- unit boundaries between viewer and engine can still become more explicit so that `CssPx -> WorldCm` conversion happens only at a small number of known entry points.
+- unit boundaries between viewer and engine can still become more explicit so that `CssPx -> document points` conversion happens only at a small number of known entry points.
 
 The simplest summary of today is this:  
 instead of adding more frontend coordinate patches, the work kept pulling units, geometry, text editing, and selection/deletion behavior back into a more stable shared engine-and-render model.

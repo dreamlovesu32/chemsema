@@ -54,4 +54,16 @@ Web engine WASM：
 npm run build:engine-wasm
 ```
 
-viewer 使用 `viewer/engine/chemcore_engine.js` 和 `viewer/engine/chemcore_engine_bg.wasm`。这些文件是当前 Web 壳的运行时产物，需要和 Rust core 改动一起更新。
+高频开发时可以开自动重建：
+
+```bash
+npm run dev:engine
+```
+
+提交或交付前跑完整校验：
+
+```bash
+npm run verify
+```
+
+viewer 使用 `viewer/engine/chemcore_engine.js`、`viewer/engine/chemcore_engine.d.ts` 和 `viewer/engine/chemcore_engine_bg.wasm`。这些文件是当前 Web 壳的运行时产物；日常开发允许短暂不同步，但用 viewer 验证或提交前必须和 Rust core 改动同步。

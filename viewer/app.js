@@ -72,6 +72,7 @@ const state = {
   displayMetrics: displayMetrics(),
 };
 let sharedGlyphProfiles = null;
+let renderClipPathId = 0;
 const sharedGlyphProfilesReady = loadSharedGlyphProfiles();
 
 if (typeof window !== "undefined") {
@@ -233,9 +234,9 @@ const editorState = {
   arrowTail: false,
   arrowBold: false,
   arrowNoGo: "none",
-  shapeStroke: "#000000",
-  shapeFill: "none",
-  shapeStyle: "rect",
+  shapeKind: "circle",
+  shapeStyle: "solid",
+  shapeColor: "#000000",
   template: "ring-6",
 };
 let activeTextEditor = null;
@@ -261,6 +262,11 @@ function syncEngineToolState() {
   }
   state.editorEngine.setTool(editorState.activeTool, editorState.bondType);
   state.editorEngine.setTemplate?.(editorState.template);
+  state.editorEngine.setShapeOptions?.(
+    editorState.shapeKind,
+    editorState.shapeStyle,
+    editorState.shapeColor,
+  );
   if (state.editorEngine.setArrowEndpointOptions) {
     state.editorEngine.setArrowEndpointOptions(
       editorState.arrowType,
@@ -1017,7 +1023,7 @@ function boundsFromPrimitive(primitive) {
       maxY: Math.max(primitive.from.y, primitive.to.y) + halfStroke,
     };
   }
-  if ((primitive.kind === "polygon" || primitive.kind === "polyline" || primitive.kind === "path") && Array.isArray(primitive.points) && primitive.points.length) {
+  if ((primitive.kind === "polygon" || primitive.kind === "polyline" || primitive.kind === "path" || primitive.kind === "filled-path") && Array.isArray(primitive.points) && primitive.points.length) {
     const xs = primitive.points.map((point) => point.x);
     const ys = primitive.points.map((point) => point.y);
     return {
@@ -1265,6 +1271,28 @@ function renderCorePrimitive(svgRoot, primitive) {
     svgRoot.appendChild(makeSvgNode("path", attrs));
     return;
   }
+  if (primitive.kind === "filled-path" && primitive.d) {
+    const attrs = {
+      d: primitive.d,
+      fill: primitive.fill || CHEMDRAW_INK,
+      "fill-rule": primitive.fillRule || primitive.fill_rule || undefined,
+      stroke: "none",
+    };
+    const clipPathD = primitive.clipPathD || primitive.clip_path_d;
+    if (clipPathD) {
+      const defs = ensureSvgDefs(svgRoot);
+      const clipId = `clip-core-${primitive.objectId || "shape"}-${renderClipPathId++}`;
+      const clipPath = makeSvgNode("clipPath", { id: clipId });
+      clipPath.appendChild(makeSvgNode("path", {
+        d: clipPathD,
+        "clip-rule": primitive.clipRule || primitive.clip_rule || "nonzero",
+      }));
+      defs.appendChild(clipPath);
+      attrs["clip-path"] = `url(#${clipId})`;
+    }
+    svgRoot.appendChild(makeSvgNode("path", attrs));
+    return;
+  }
   if (primitive.kind === "polygon" && Array.isArray(primitive.points)) {
     const strokeWidth = primitiveStrokeWidthValue(primitive, BOND_STROKE);
     const attrs = {
@@ -1322,6 +1350,46 @@ function renderCorePrimitive(svgRoot, primitive) {
       attrs["stroke-dasharray"] = (primitive.dashArray || primitive.dash_array).join(" ");
     }
     svgRoot.appendChild(makeSvgNode("rect", attrs));
+    return;
+  }
+  if (primitive.kind === "ellipse") {
+    const attrs = {
+      cx: primitive.center?.x,
+      cy: primitive.center?.y,
+      rx: primitive.rx,
+      ry: primitive.ry,
+      fill: primitive.fill || "none",
+      stroke: primitive.stroke || "none",
+      "stroke-width": primitiveStrokeWidthValue(primitive, 1),
+    };
+    const rotate = Number(primitive.rotate || 0);
+    if (Math.abs(rotate) > 0.0001) {
+      attrs.transform = `rotate(${rotate} ${primitive.center.x} ${primitive.center.y})`;
+    }
+    const gradient = primitive.fillGradient || primitive.fill_gradient;
+    if (gradient?.stops?.length) {
+      const defs = ensureSvgDefs(svgRoot);
+      const gradientId = `grad-core-${primitive.objectId || Math.random().toString(36).slice(2)}`;
+      const linearGradient = makeSvgNode("linearGradient", {
+        id: gradientId,
+        x1: gradient.x1 || "0%",
+        y1: gradient.y1 || "0%",
+        x2: gradient.x2 || "100%",
+        y2: gradient.y2 || "100%",
+      });
+      for (const stop of gradient.stops) {
+        linearGradient.appendChild(makeSvgNode("stop", {
+          offset: stop.offset,
+          "stop-color": stop.color,
+        }));
+      }
+      defs.appendChild(linearGradient);
+      attrs.fill = `url(#${gradientId})`;
+    }
+    if ((primitive.dashArray || primitive.dash_array)?.length) {
+      attrs["stroke-dasharray"] = (primitive.dashArray || primitive.dash_array).join(" ");
+    }
+    svgRoot.appendChild(makeSvgNode("ellipse", attrs));
     return;
   }
   if (primitive.kind === "text") {
@@ -2034,19 +2102,21 @@ function textToolbarHtml() {
 
 function shapeToolbarHtml() {
   return `
-    ${colorButton("stroke-black", "Black border", "#000000", editorState.shapeStroke === "#000000")}
-    ${colorButton("stroke-red", "Red border", "#ff0000", editorState.shapeStroke === "#ff0000")}
-    ${colorButton("stroke-blue", "Blue border", "#0000ff", editorState.shapeStroke === "#0000ff")}
+    ${toolbarButton("shape-kind-circle", "Circle", `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6.8"/></svg>`, editorState.shapeKind === "circle")}
+    ${toolbarButton("shape-kind-ellipse", "Ellipse", `<svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="12" rx="7" ry="4.2"/></svg>`, editorState.shapeKind === "ellipse")}
+    ${toolbarButton("shape-kind-round-rect", "Rounded rectangle", `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="6" width="14" height="12" rx="3"/></svg>`, editorState.shapeKind === "round-rect")}
+    ${toolbarButton("shape-kind-rect", "Rectangle", `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="6" width="14" height="12"/></svg>`, editorState.shapeKind === "rect")}
     ${secondaryDivider()}
-    ${colorButton("fill-none", "No fill", "none", editorState.shapeFill === "none")}
-    ${colorButton("fill-white", "White fill", "#ffffff", editorState.shapeFill === "#ffffff")}
-    ${colorButton("fill-black", "Black fill", "#000000", editorState.shapeFill === "#000000")}
-    ${colorButton("fill-gray", "Gray fill", "#808892", editorState.shapeFill === "#808892")}
+    ${toolbarButton("shape-style-solid", "Solid outline", `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="6" width="14" height="12"/></svg>`, editorState.shapeStyle === "solid")}
+    ${toolbarButton("shape-style-dashed", "Dashed outline", `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="6" width="14" height="12" stroke-dasharray="2 2"/></svg>`, editorState.shapeStyle === "dashed")}
+    ${toolbarButton("shape-style-shaded", "Shaded", `<svg viewBox="0 0 24 24" aria-hidden="true"><rect class="filled" x="5" y="6" width="14" height="12"/><rect class="soft-fill" x="6.5" y="7.2" width="9.2" height="7.8"/><rect x="5" y="6" width="14" height="12"/></svg>`, editorState.shapeStyle === "shaded")}
+    ${toolbarButton("shape-style-filled", "Filled", `<svg viewBox="0 0 24 24" aria-hidden="true"><rect class="filled" x="5" y="6" width="14" height="12"/></svg>`, editorState.shapeStyle === "filled")}
+    ${toolbarButton("shape-style-shadowed", "Shadowed", `<svg viewBox="0 0 24 24" aria-hidden="true"><rect class="soft-fill" x="7" y="8" width="12" height="10"/><rect x="5" y="6" width="12" height="10"/></svg>`, editorState.shapeStyle === "shadowed")}
     ${secondaryDivider()}
-    ${toolbarButton("shape-rect", "Rectangle", `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14"/></svg>`, editorState.shapeStyle === "rect")}
-    ${toolbarButton("shape-dashed", "Dashed outline", `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" stroke-dasharray="2 2"/></svg>`, editorState.shapeStyle === "dashed")}
-    ${toolbarButton("shape-filled", "Filled rectangle", `<svg viewBox="0 0 24 24" aria-hidden="true"><rect class="filled" x="5" y="5" width="14" height="14"/></svg>`, editorState.shapeStyle === "filled")}
-    ${toolbarButton("shape-ellipse", "Ellipse", `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7"/></svg>`, editorState.shapeStyle === "ellipse")}
+    ${colorButton("shape-color-black", "Black", "#000000", editorState.shapeColor === "#000000")}
+    ${colorButton("shape-color-red", "Red", "#ff0000", editorState.shapeColor === "#ff0000")}
+    ${colorButton("shape-color-blue", "Blue", "#0000ff", editorState.shapeColor === "#0000ff")}
+    ${colorButton("shape-color-green", "Green", "#008000", editorState.shapeColor === "#008000")}
   `;
 }
 
@@ -2750,16 +2820,20 @@ secondaryToolbar?.addEventListener("click", (event) => {
   } else if (value === "arrow-bold") {
     editorState.arrowBold = !editorState.arrowBold;
     arrowOptionChanged = true;
-  } else if (value?.startsWith("shape-")) {
-    editorState.shapeStyle = value.replace("shape-", "");
+  } else if (value?.startsWith("shape-kind-")) {
+    editorState.shapeKind = value.replace("shape-kind-", "");
+  } else if (value?.startsWith("shape-style-")) {
+    editorState.shapeStyle = value.replace("shape-style-", "");
   } else if (value?.startsWith("ring-") || value === "benzene") {
     editorState.template = value;
-  } else if (value?.startsWith("stroke-")) {
-    const colors = { "stroke-black": "#000000", "stroke-red": "#ff0000", "stroke-blue": "#0000ff" };
-    editorState.shapeStroke = colors[value] || editorState.shapeStroke;
-  } else if (value?.startsWith("fill-")) {
-    const fills = { "fill-none": "none", "fill-white": "#ffffff", "fill-black": "#000000", "fill-gray": "#808892" };
-    editorState.shapeFill = fills[value] || editorState.shapeFill;
+  } else if (value?.startsWith("shape-color-")) {
+    const colors = {
+      "shape-color-black": "#000000",
+      "shape-color-red": "#ff0000",
+      "shape-color-blue": "#0000ff",
+      "shape-color-green": "#008000",
+    };
+    editorState.shapeColor = colors[value] || editorState.shapeColor;
   }
   syncEngineToolState();
   if (arrowOptionChanged) {
@@ -2821,6 +2895,7 @@ function routeEditorPointerEvents() {
       || editorState.activeTool === "arrow"
       || editorState.activeTool === "select"
       || editorState.activeTool === "text"
+      || editorState.activeTool === "shape"
       || editorState.activeTool === "templates");
 }
 

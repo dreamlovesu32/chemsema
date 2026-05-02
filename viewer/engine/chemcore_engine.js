@@ -461,6 +461,20 @@ export class WasmEngine {
         wasm.wasmengine_setArrowOptions(this.__wbg_ptr, ptr0, len0, ptr1, len1, head, tail, bold);
     }
     /**
+     * @param {string} kind
+     * @param {string} style
+     * @param {string} color
+     */
+    setShapeOptions(kind, style, color) {
+        const ptr0 = passStringToWasm0(kind, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(style, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passStringToWasm0(color, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len2 = WASM_VECTOR_LEN;
+        wasm.wasmengine_setShapeOptions(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2);
+    }
+    /**
      * @param {string} template
      */
     setTemplate(template) {

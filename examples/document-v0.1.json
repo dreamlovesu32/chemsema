@@ -1,7 +1,8 @@
 {
   "format": {
     "name": "chemcore",
-    "version": "0.1"
+    "version": "0.1",
+    "unit": "pt"
   },
   "document": {
     "id": "doc_001",
@@ -176,9 +177,19 @@
   ],
   "resources": {
     "mol_a": {
-      "type": "molecule2d",
-      "encoding": "molblock2d",
-      "data": ""
+      "type": "molecule_fragment2d",
+      "encoding": "chemcore.molecule.fragment2d",
+      "data": {
+        "schema": "chemcore.molecule.fragment2d",
+        "bbox": [
+          0,
+          0,
+          88,
+          42
+        ],
+        "nodes": [],
+        "bonds": []
+      }
     }
   }
 }

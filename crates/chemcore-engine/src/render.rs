@@ -241,6 +241,7 @@ fn render_primitive_bounds(primitive: &RenderPrimitive) -> Option<[f64; 4]> {
             stroke_width,
             ..
         } => point_list_bounds(points, *stroke_width * 0.5),
+        RenderPrimitive::FilledPath { points, .. } => point_list_bounds(points, 0.0),
         RenderPrimitive::Rect {
             x,
             y,
@@ -255,6 +256,21 @@ fn render_primitive_bounds(primitive: &RenderPrimitive) -> Option<[f64; 4]> {
                 *y - half_width,
                 *x + *width + half_width,
                 *y + *height + half_width,
+            ])
+        }
+        RenderPrimitive::Ellipse {
+            center,
+            rx,
+            ry,
+            stroke_width,
+            ..
+        } => {
+            let half_width = stroke_width * 0.5;
+            Some([
+                center.x - rx - half_width,
+                center.y - ry - half_width,
+                center.x + rx + half_width,
+                center.y + ry + half_width,
             ])
         }
         RenderPrimitive::Circle { center, radius, .. } => Some([
