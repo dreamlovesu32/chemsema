@@ -184,6 +184,21 @@ export class WasmEngine {
     /**
      * @returns {string}
      */
+    documentCdxml() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmengine_documentCdxml(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {string}
+     */
     documentJson() {
         let deferred2_0;
         let deferred2_1;
@@ -200,6 +215,21 @@ export class WasmEngine {
             return getStringFromWasm0(ptr1, len1);
         } finally {
             wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+        }
+    }
+    /**
+     * @returns {string}
+     */
+    documentStylePreset() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmengine_documentStylePreset(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
         }
     }
     /**
@@ -247,6 +277,17 @@ export class WasmEngine {
             return getStringFromWasm0(ret[0], ret[1]);
         } finally {
             wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @param {string} cdxml
+     */
+    loadDocumentCdxml(cdxml) {
+        const ptr0 = passStringToWasm0(cdxml, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmengine_loadDocumentCdxml(this.__wbg_ptr, ptr0, len0);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
         }
     }
     /**
@@ -459,6 +500,14 @@ export class WasmEngine {
         const ptr1 = passStringToWasm0(head_size, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len1 = WASM_VECTOR_LEN;
         wasm.wasmengine_setArrowOptions(this.__wbg_ptr, ptr0, len0, ptr1, len1, head, tail, bold);
+    }
+    /**
+     * @param {string} preset
+     */
+    setDocumentStylePreset(preset) {
+        const ptr0 = passStringToWasm0(preset, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.wasmengine_setDocumentStylePreset(this.__wbg_ptr, ptr0, len0);
     }
     /**
      * @param {string} kind

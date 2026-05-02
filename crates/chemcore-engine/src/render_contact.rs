@@ -429,7 +429,8 @@ pub(super) fn main_bond_endpoint_geometry<'a>(
         return None;
     }
 
-    let half_width = line_weight_stroke_width(stroke_width, bond.line_weights.main) * 0.5;
+    let half_width =
+        line_weight_stroke_width_for_bond(bond, stroke_width, bond.line_weights.main) * 0.5;
     let base_plus = Point::new(
         center.x + normal.x * half_width,
         center.y + normal.y * half_width,

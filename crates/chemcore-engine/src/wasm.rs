@@ -56,6 +56,16 @@ impl WasmEngine {
         self.inner.set_tool_state(tool);
     }
 
+    #[wasm_bindgen(js_name = setDocumentStylePreset)]
+    pub fn set_document_style_preset(&mut self, preset: &str) {
+        self.inner.set_document_style_preset(preset);
+    }
+
+    #[wasm_bindgen(js_name = documentStylePreset)]
+    pub fn document_style_preset(&self) -> String {
+        self.inner.document_style_preset().to_string()
+    }
+
     #[wasm_bindgen(js_name = setArrowOptions)]
     pub fn set_arrow_options(
         &mut self,
@@ -327,6 +337,13 @@ impl WasmEngine {
             .map_err(|error| JsValue::from_str(&error))
     }
 
+    #[wasm_bindgen(js_name = loadDocumentCdxml)]
+    pub fn load_document_cdxml(&mut self, cdxml: &str) -> Result<(), JsValue> {
+        self.inner
+            .load_cdxml_document(cdxml)
+            .map_err(|error| JsValue::from_str(&error))
+    }
+
     pub fn undo(&mut self) -> bool {
         self.inner.undo()
     }
@@ -418,6 +435,11 @@ impl WasmEngine {
         self.inner
             .document_json()
             .map_err(|error| JsValue::from_str(&error.to_string()))
+    }
+
+    #[wasm_bindgen(js_name = documentCdxml)]
+    pub fn document_cdxml(&self) -> String {
+        self.inner.document_cdxml()
     }
 
     #[wasm_bindgen(js_name = renderListJson)]

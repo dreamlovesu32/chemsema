@@ -166,7 +166,8 @@ fn render_double_bond(
             } else {
                 1.0
             };
-            let double_offset = double_bond_center_distance_for_weights(
+            let double_offset = double_bond_center_distance_for_bond_weights(
+                bond,
                 actual_start,
                 actual_end,
                 stroke_width,
@@ -214,7 +215,8 @@ fn render_double_bond(
             );
         }
         _ => {
-            let double_offset = double_bond_center_distance_for_weights(
+            let double_offset = double_bond_center_distance_for_bond_weights(
+                bond,
                 actual_start,
                 actual_end,
                 stroke_width,
@@ -583,7 +585,9 @@ fn render_stereo_bond(
                 0.0,
                 object_id.clone(),
             );
-            for knockout in compute_fragment_hashed_wedge_knockout_polygons(&points, stroke_width) {
+            for knockout in
+                compute_fragment_hashed_wedge_knockout_polygons(&points, stroke_width, bond)
+            {
                 push_knockout_polygon(out, knockout, object_id.clone());
             }
         }
@@ -614,7 +618,9 @@ fn render_stereo_bond(
                 0.0,
                 object_id.clone(),
             );
-            for knockout in compute_fragment_hashed_wedge_knockout_polygons(&points, stroke_width) {
+            for knockout in
+                compute_fragment_hashed_wedge_knockout_polygons(&points, stroke_width, bond)
+            {
                 push_knockout_polygon(out, knockout, object_id.clone());
             }
         }
@@ -842,6 +848,7 @@ fn compute_fragment_solid_wedge_points(
 fn compute_fragment_hashed_wedge_knockout_polygons(
     polygon: &[Point],
     stroke_width: f64,
+    bond: &Bond,
 ) -> Vec<Vec<Point>> {
     if polygon.len() != 4 {
         return Vec::new();
@@ -859,7 +866,7 @@ fn compute_fragment_hashed_wedge_knockout_polygons(
     }
 
     let mut knockouts = Vec::new();
-    for (gap_start, gap_end) in hashed_wedge_gap_intervals(length, stroke_width) {
+    for (gap_start, gap_end) in hashed_wedge_gap_intervals(length, stroke_width, bond) {
         let t0 = (gap_start / length).clamp(0.0, 1.0);
         let t1 = (gap_end / length).clamp(0.0, 1.0);
         let mut top_start = lerp_point(tip_plus, cap_plus, t0);

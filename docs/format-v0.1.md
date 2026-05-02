@@ -278,7 +278,7 @@ Example:
   },
   "styleRef": "style_molecule_default",
   "meta": {
-    "source": "cdxml",
+    "source": "editor",
     "collapsed": false
   },
   "payload": {
@@ -371,10 +371,11 @@ Recommended inline model:
 ]
 ```
 
-`script` is one of `normal | subscript | superscript`. Import-specific flags
-such as CDXML `face`, `font`, or `color` should be decoded into these explicit
-fields. Raw source values may be kept in `meta.import.cdxml` for debugging and
-round-trip work.
+`script` is one of `normal | subscript | superscript`. The core format does not
+store source-format bit masks such as CDXML `face`; CDXML `face`, `font`, and
+`color` should be decoded into these explicit fields during import. Raw source
+values may be kept only in `meta.import.cdxml` for debugging and round-trip
+work.
 
 ## Molecule Fragment2D
 
@@ -413,6 +414,71 @@ Example node label:
   }
 }
 ```
+
+Abbreviation labels keep the original drawing data and add machine-readable
+semantics under `meta.labelRecognition`. Readers that only need visual
+round-trip can ignore `meta`; readers that need functional group semantics can
+consume `expansion`:
+
+```json
+{
+  "id": "n3",
+  "element": "C",
+  "atomicNumber": 6,
+  "position": [82.0, 48.0],
+  "charge": 0,
+  "numHydrogens": 0,
+  "isPlaceholder": true,
+  "label": {
+    "text": "CO2Et",
+    "sourceText": "CO2Et",
+    "position": [82.0, 48.0],
+    "box": [82.0, 39.6, 112.0, 50.4],
+    "runs": []
+  },
+  "meta": {
+    "labelRecognition": {
+      "kind": "functional-group",
+      "status": "recognized",
+      "label": "CO2Et",
+      "canonicalLabel": "CO2Et",
+      "groupKind": "composite-fragment",
+      "formula": "-C(=O)OCH2CH3",
+      "anchorAtom": "C",
+      "components": [
+        { "label": "CO2", "kind": "linker" },
+        { "label": "Et", "kind": "terminal" }
+      ],
+      "expansion": {
+        "schema": "chemcore.functionalGroupExpansion.v1",
+        "connectionKind": "terminal",
+        "complete": true,
+        "atoms": [
+          { "id": "c1", "element": "C", "numHydrogens": 0 },
+          { "id": "o1", "element": "O", "numHydrogens": 0 },
+          { "id": "o2", "element": "O", "numHydrogens": 0 },
+          { "id": "c2", "element": "C", "numHydrogens": 2 },
+          { "id": "c3", "element": "C", "numHydrogens": 3 }
+        ],
+        "bonds": [
+          { "begin": "c1", "end": "o1", "order": 2 },
+          { "begin": "c1", "end": "o2", "order": 1 },
+          { "begin": "o2", "end": "c2", "order": 1 },
+          { "begin": "c2", "end": "c3", "order": 1 }
+        ],
+        "attachments": [
+          { "role": "external", "atomId": "c1" }
+        ]
+      }
+    }
+  }
+}
+```
+
+`expansion` is an additional semantic layer, not a replacement for the main
+molecule graph. Its atom ids are local to the expansion. Bridge labels use
+`left` and `right` attachment roles. `complete: false` means the label was
+recognized, but the current expansion contains a partial or opaque component.
 
 Example bonds:
 
@@ -688,8 +754,7 @@ Example:
     "background": "#ffffff"
   },
   "meta": {
-    "createdBy": "chemcore",
-    "sourceFormat": "cdxml"
+    "createdBy": "chemcore"
   }
 }
 ```

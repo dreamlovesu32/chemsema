@@ -164,6 +164,9 @@ impl Default for ShapeStyle {
 pub struct EditorOptions {
     pub bond_length: f64,
     pub bond_stroke_width: f64,
+    pub bold_bond_width: f64,
+    pub hash_spacing: f64,
+    pub graphic_stroke_width: f64,
 }
 
 impl Default for EditorOptions {
@@ -171,6 +174,9 @@ impl Default for EditorOptions {
         Self {
             bond_length: DEFAULT_BOND_LENGTH,
             bond_stroke_width: crate::DEFAULT_BOND_STROKE,
+            bold_bond_width: crate::BOLD_BOND_WIDTH_CM.value(),
+            hash_spacing: crate::DEFAULT_HASH_SPACING_CM.value(),
+            graphic_stroke_width: crate::DEFAULT_BOND_STROKE,
         }
     }
 }
@@ -182,6 +188,18 @@ impl EditorOptions {
 
     pub const fn bond_stroke_world_cm(&self) -> WorldCm {
         WorldCm(self.bond_stroke_width)
+    }
+
+    pub const fn bold_bond_width_world_cm(&self) -> WorldCm {
+        WorldCm(self.bold_bond_width)
+    }
+
+    pub const fn hash_spacing_world_cm(&self) -> WorldCm {
+        WorldCm(self.hash_spacing)
+    }
+
+    pub const fn graphic_stroke_world_cm(&self) -> WorldCm {
+        WorldCm(self.graphic_stroke_width)
     }
 }
 
@@ -438,7 +456,7 @@ pub fn hit_test_endpoint_excluding(
     excluded_node_id: Option<&str>,
 ) -> Option<EndpointHit> {
     let entry = document.editable_fragment()?;
-    let mut best: Option<EndpointHit> = None;
+    let mut best: Option<(EndpointHit, bool)> = None;
     for node in &entry.fragment.nodes {
         if excluded_node_id == Some(node.id.as_str()) {
             continue;
@@ -447,31 +465,67 @@ pub fn hit_test_endpoint_excluding(
         if !label_anchors.is_empty() {
             for label_anchor in label_anchors {
                 let distance = point.distance(label_anchor.glyph_point);
-                if (point_in_box(point, label_anchor.glyph_box) || distance <= radius)
-                    && best.as_ref().map_or(true, |hit| distance < hit.distance)
-                {
-                    best = Some(EndpointHit {
-                        node_id: node.id.clone(),
-                        point: label_anchor.glyph_point,
-                        distance,
-                        label_anchor: Some(label_anchor),
-                    });
+                let inside_box = point_in_box(point, label_anchor.glyph_box);
+                if !inside_box && distance > radius {
+                    continue;
+                }
+                let mut anchor = label_anchor;
+                if label_has_implicit_hydrogens(node) {
+                    let node_point = entry.world_point_for_node(node);
+                    anchor.glyph_point = node_point;
+                    anchor.first_glyph_point = node_point;
+                    anchor.left_point = node_point;
+                    anchor.right_point = node_point;
+                    anchor.right_group_point = Some(node_point);
+                }
+                let candidate = EndpointHit {
+                    node_id: node.id.clone(),
+                    point: anchor.glyph_point,
+                    distance,
+                    label_anchor: Some(anchor),
+                };
+                if endpoint_candidate_is_better(&best, inside_box, distance) {
+                    best = Some((candidate, inside_box));
                 }
             }
             continue;
         }
         let node_point = entry.world_point_for_node(node);
         let distance = point.distance(node_point);
-        if distance <= radius && best.as_ref().map_or(true, |hit| distance < hit.distance) {
-            best = Some(EndpointHit {
-                node_id: node.id.clone(),
-                point: node_point,
-                distance,
-                label_anchor: None,
-            });
+        if distance <= radius && endpoint_candidate_is_better(&best, false, distance) {
+            best = Some((
+                EndpointHit {
+                    node_id: node.id.clone(),
+                    point: node_point,
+                    distance,
+                    label_anchor: None,
+                },
+                false,
+            ));
         }
     }
-    best
+    best.map(|(hit, _)| hit)
+}
+
+fn label_has_implicit_hydrogens(node: &Node) -> bool {
+    node.num_hydrogens > 0
+        && node.atomic_number != 1
+        && !node.element.is_empty()
+        && node.label.is_some()
+}
+
+fn endpoint_candidate_is_better(
+    best: &Option<(EndpointHit, bool)>,
+    inside_box: bool,
+    distance: f64,
+) -> bool {
+    let Some((current, current_inside_box)) = best.as_ref() else {
+        return true;
+    };
+    if inside_box != *current_inside_box {
+        return inside_box;
+    }
+    distance < current.distance
 }
 
 pub fn hit_test_bond(document: &ChemcoreDocument, point: Point, radius: f64) -> Option<BondHit> {
@@ -1323,6 +1377,9 @@ fn rightmost_group_anchor_index(
     node_label: &crate::NodeLabel,
     glyph_count: usize,
 ) -> Option<usize> {
+    if label_uses_rightmost_whole_group_anchor(node_label) {
+        return glyph_count.checked_sub(1);
+    }
     let chars = label_visible_chars(node_label);
     if chars.len() != glyph_count {
         return None;
@@ -1332,6 +1389,18 @@ fn rightmost_group_anchor_index(
     let rightmost_group = groups.last()?;
     let anchor_char = chars.len().checked_sub(rightmost_group.chars().count())?;
     Some(anchor_char)
+}
+
+fn label_uses_rightmost_whole_group_anchor(node_label: &crate::NodeLabel) -> bool {
+    let recognition = node_label.meta.get("labelRecognition");
+    recognition
+        .and_then(|meta| meta.get("canonicalLabel"))
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(crate::canonical_abbreviation_uses_whole_label_layout)
+        || recognition
+            .and_then(|meta| meta.get("status"))
+            .and_then(serde_json::Value::as_str)
+            == Some("invalid")
 }
 
 fn angle_uses_vertical_label_anchor(angle: f64) -> bool {
@@ -1419,9 +1488,15 @@ mod tests {
         let options = EditorOptions {
             bond_length: 30.0,
             bond_stroke_width: 1.0,
+            bold_bond_width: 4.0,
+            hash_spacing: 2.9,
+            graphic_stroke_width: 1.0,
         };
         assert_eq!(options.bond_length_world_cm(), WorldCm(30.0));
         assert_eq!(options.bond_stroke_world_cm(), WorldCm(1.0));
+        assert_eq!(options.bold_bond_width_world_cm(), WorldCm(4.0));
+        assert_eq!(options.hash_spacing_world_cm(), WorldCm(2.9));
+        assert_eq!(options.graphic_stroke_world_cm(), WorldCm(1.0));
     }
 
     #[test]

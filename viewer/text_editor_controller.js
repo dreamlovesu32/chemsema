@@ -118,7 +118,7 @@ export function createTextEditorController(deps) {
       defaultChemical: editor.root.dataset.defaultChemical === "true",
     }, requestedSelection);
     editor.sourceRuns = nextLayout?.sourceRuns || editor.sourceRuns;
-    editor.plainText = nextLayout?.text || deps.runsPlainText(editor.sourceRuns);
+    editor.plainText = nextLayout?.text ?? deps.runsPlainText(editor.sourceRuns);
     editor.layout = nextLayout;
     editor.layoutCache = nextLayout;
     const nextSelection = nextLayout?.selection || deps.normalizeSelection(editor.plainText, requestedSelection);
@@ -145,6 +145,7 @@ export function createTextEditorController(deps) {
     const nextRuns = deps.normalizeRuns([...before, ...insertedRuns, ...after], baseStyle);
     const insertedLength = deps.textLength(deps.runsPlainText(insertedRuns));
     editor.sourceRuns = nextRuns;
+    editor.plainText = deps.runsPlainText(nextRuns);
     editor.hasUserEdited = true;
     const caret = selectionOffsets.start + insertedLength;
     const nextSelection = options.keepInsertedSelected
@@ -456,12 +457,25 @@ export function createTextEditorController(deps) {
     if (event.key === "End") {
       event.preventDefault();
       moveEditorSelectionToBoundary("end", event.shiftKey);
+      return;
+    }
+    if (event.key === "Backspace") {
+      event.preventDefault();
+      deleteEditorRange(currentEditorSelectionOffsets(), "backward");
+      return;
+    }
+    if (event.key === "Delete") {
+      event.preventDefault();
+      deleteEditorRange(currentEditorSelectionOffsets(), "forward");
     }
   }
 
   function handleTextEditorPointerDown(event) {
     const editor = getEditor();
     if (!editor?.root || event.button !== 0 || event.currentTarget !== editor.root) {
+      return;
+    }
+    if (deps.openHoveredTextEditTargetFromPointerEvent?.(event)) {
       return;
     }
     event.preventDefault();
@@ -478,6 +492,7 @@ export function createTextEditorController(deps) {
   function handleTextEditorPointerMove(event) {
     const editor = getEditor();
     if (!editor?.dragSelecting) {
+      deps.updateTextToolHoverFromPointerEvent?.(event);
       return;
     }
     event.preventDefault();

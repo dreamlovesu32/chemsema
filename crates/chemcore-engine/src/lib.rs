@@ -1,3 +1,5 @@
+mod abbreviation;
+mod cdxml;
 mod document;
 mod editing;
 mod engine;
@@ -9,6 +11,8 @@ mod render;
 mod render_constants;
 mod units;
 
+pub use abbreviation::*;
+pub use cdxml::*;
 pub use document::*;
 pub use editing::*;
 pub use engine::*;

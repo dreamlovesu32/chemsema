@@ -18,6 +18,7 @@ pub enum LabelAnchorPolicy {
     FirstGlyph,
     OriginalFirstGroup,
     FirstGroupLeadGlyph,
+    WholeLabel,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -38,10 +39,20 @@ pub struct LabelLayout {
     pub anchor_char: usize,
 }
 
+pub fn compact_label_text(text: &str) -> String {
+    text.chars()
+        .filter(|character| !character.is_whitespace())
+        .collect()
+}
+
 pub fn split_label_groups(text: &str) -> Vec<String> {
+    let compact = compact_label_text(text);
+    if compact.is_empty() {
+        return Vec::new();
+    }
     let mut groups = Vec::new();
     let mut current = String::new();
-    for character in text.chars().filter(|character| !character.is_whitespace()) {
+    for character in compact.chars() {
         if character.is_ascii_uppercase() && !current.is_empty() {
             groups.push(std::mem::take(&mut current));
         }
@@ -144,7 +155,16 @@ pub fn decide_label_layout(
 }
 
 pub fn layout_label_text(text: &str, decision: &LabelLayoutDecision) -> LabelLayout {
-    let groups = split_label_groups(text);
+    let groups = if decision.anchor == LabelAnchorPolicy::WholeLabel {
+        let compact = compact_label_text(text);
+        if compact.is_empty() {
+            Vec::new()
+        } else {
+            vec![compact]
+        }
+    } else {
+        split_label_groups(text)
+    };
     if groups.is_empty() {
         return LabelLayout {
             flow: decision.flow.clone(),
@@ -172,6 +192,7 @@ pub fn layout_label_text(text: &str, decision: &LabelLayoutDecision) -> LabelLay
             let rendered_groups = groups.iter().rev().cloned().collect::<Vec<_>>();
             let rendered_text = rendered_groups.concat();
             let anchor_char = match decision.anchor {
+                LabelAnchorPolicy::WholeLabel => rendered_text.chars().count().saturating_sub(1),
                 LabelAnchorPolicy::OriginalFirstGroup => rendered_groups
                     .iter()
                     .take(rendered_groups.len().saturating_sub(1))
@@ -243,6 +264,17 @@ mod tests {
     fn reverses_formula_by_letter_groups() {
         assert_eq!(reverse_label_groups("CuF3"), "F3Cu");
         assert_eq!(reverse_label_groups("CuF3Ph2"), "Ph2F3Cu");
+    }
+
+    #[test]
+    fn whole_label_reverse_keeps_text_and_anchors_rightmost_glyph() {
+        let decision = LabelLayoutDecision {
+            flow: LabelFlow::Reverse,
+            anchor: LabelAnchorPolicy::WholeLabel,
+        };
+        let layout = layout_label_text("t-Bu", &decision);
+        assert_eq!(layout.lines, vec!["t-Bu"]);
+        assert_eq!(layout.anchor_char, 3);
     }
 
     #[test]

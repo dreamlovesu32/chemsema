@@ -68,7 +68,6 @@ fn fragment_label_runs_for_line(
         font_style: None,
         underline: None,
         script: None,
-        face: None,
     }]
 }
 
@@ -160,6 +159,9 @@ pub(super) fn render_line_object(
     let line_join = style
         .and_then(|value| style_string(value, "lineJoin"))
         .unwrap_or_else(|| "round".to_string());
+    let dash_array = style
+        .and_then(|value| style_number_array(value, "dashArray"))
+        .unwrap_or_default();
     let object_id = Some(object.id.clone());
     let arrow_head = payload_arrow_head(&object.payload, "arrowHead");
     if let Some(arrow_head) = arrow_head.filter(|arrow_head| arrow_head.length > 0.0) {
@@ -185,7 +187,7 @@ pub(super) fn render_line_object(
         points,
         &stroke,
         stroke_width,
-        Vec::new(),
+        dash_array,
         Some(line_cap),
         Some(line_join),
         RenderRole::DocumentGraphic,
@@ -1488,6 +1490,7 @@ fn push_shape_custom(
         } => out.push(RenderPrimitive::Rect {
             role: RenderRole::DocumentGraphic,
             object_id: Some(object_id.to_string()),
+            node_id: None,
             x: *x,
             y: *y,
             width: *width,
@@ -1909,6 +1912,7 @@ pub(super) fn render_fragment_label(
             out.push(RenderPrimitive::Rect {
                 role: RenderRole::DocumentKnockout,
                 object_id: object_id.clone(),
+                node_id: Some(node.id.clone()),
                 x: box_value.x1,
                 y: box_value.y1,
                 width: (box_value.x2 - box_value.x1).max(0.0),
@@ -1927,6 +1931,26 @@ pub(super) fn render_fragment_label(
             push_knockout_polygon(out, polygon, object_id.clone());
         }
     }
+    if fragment_label_is_invalid(label) {
+        if let Some(box_value) = label_box_world(node, object) {
+            out.push(RenderPrimitive::Rect {
+                role: RenderRole::DocumentGraphic,
+                object_id: object_id.clone(),
+                node_id: Some(node.id.clone()),
+                x: box_value.x1,
+                y: box_value.y1,
+                width: (box_value.x2 - box_value.x1).max(0.0),
+                height: (box_value.y2 - box_value.y1).max(0.0),
+                fill: Some("none".to_string()),
+                stroke: Some("#d32f2f".to_string()),
+                stroke_width: 1.0,
+                rx: None,
+                ry: None,
+                dash_array: Vec::new(),
+                fill_gradient: None,
+            });
+        }
+    }
 
     let lines = fragment_label_lines(label);
     if lines.is_empty() {
@@ -1934,7 +1958,7 @@ pub(super) fn render_fragment_label(
     }
     let world_position = fragment_label_position_world(label, object);
     if lines.len() == 1 {
-        push_text(
+        push_text_for_node(
             out,
             world_position.x,
             world_position.y,
@@ -1945,6 +1969,7 @@ pub(super) fn render_fragment_label(
             Some(text_anchor),
             fragment_label_runs_for_line(label, 0, &lines[0]),
             object_id,
+            Some(node.id.clone()),
         );
         return;
     }
@@ -1958,7 +1983,7 @@ pub(super) fn render_fragment_label(
         .unwrap_or(world_position.y - line_height * 0.82);
     for (index, line) in lines.iter().enumerate() {
         let baseline_y = box_top + line_height * index as f64 + line_height * 0.82;
-        push_text(
+        push_text_for_node(
             out,
             world_position.x,
             baseline_y,
@@ -1969,6 +1994,16 @@ pub(super) fn render_fragment_label(
             Some(text_anchor.clone()),
             fragment_label_runs_for_line(label, index, line),
             object_id.clone(),
+            Some(node.id.clone()),
         );
     }
+}
+
+fn fragment_label_is_invalid(label: &crate::NodeLabel) -> bool {
+    label
+        .meta
+        .get("labelRecognition")
+        .and_then(|value| value.get("status"))
+        .and_then(serde_json::Value::as_str)
+        == Some("invalid")
 }

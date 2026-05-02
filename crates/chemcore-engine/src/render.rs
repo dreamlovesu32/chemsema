@@ -30,12 +30,12 @@ use object_render::{
 };
 use primitives::{
     push_bond_line, push_bond_polygon, push_knockout_polygon, push_line, push_path, push_polygon,
-    push_polyline, push_text,
+    push_polyline, push_text, push_text_for_node,
 };
 pub use primitives::{RenderPrimitive, RenderRole};
 
 const VIEWER_BOND_STROKE: f64 = crate::VIEWER_BOND_STROKE_CM.value();
-const MULTI_BOND_OFFSET_RATIO: f64 = 0.12;
+const DEFAULT_MULTI_BOND_CENTER_SPACING_RATIO: f64 = crate::DEFAULT_BOND_SPACING_PERCENT / 100.0;
 const DOUBLE_BOND_SIDE_INSET: f64 = crate::DOUBLE_BOND_SIDE_INSET_CM.value();
 const DOUBLE_BOND_SIDE_INSET_RATIO: f64 = 0.14;
 const HASH_WEDGE_SPACING: f64 = crate::HASH_WEDGE_SPACING_CM.value();
@@ -418,7 +418,8 @@ fn compute_bold_bond_points(
     let length = direction.length().max(1.0);
     let unit = direction.normalized();
     let normal = Vector::new(-unit.y, unit.x);
-    let half_width = line_weight_stroke_width(stroke_width, BondLineWeight::Bold) / 2.0;
+    let half_width =
+        line_weight_stroke_width_for_bond(bond, stroke_width, BondLineWeight::Bold) / 2.0;
     let start_profile = if let Some(profile) = start_endpoint_profile {
         endpoint_profile_global(Some(profile), false, Vec::new())
     } else if allow_start_contacts {
@@ -1387,7 +1388,8 @@ fn bold_main_line_join_polygon(
     forward: Vector,
     stroke_width: f64,
 ) -> Option<Vec<Point>> {
-    let half_width = line_weight_stroke_width(stroke_width, BondLineWeight::Bold) * 0.5;
+    let half_width =
+        line_weight_stroke_width_for_bond(bond, stroke_width, BondLineWeight::Bold) * 0.5;
     let current = boundary_lines_from_endpoint(endpoint, forward, half_width)?;
     let base_plus = current[0].point;
     let base_minus = current[1].point;
@@ -1701,7 +1703,8 @@ fn wide_boundary_lines_for_endpoint(
         && bond.line_styles.main == BondLinePattern::Solid
         && bond.stereo.is_none()
     {
-        let half_width = line_weight_stroke_width(stroke_width, BondLineWeight::Bold) * 0.5;
+        let half_width =
+            line_weight_stroke_width_for_bond(bond, stroke_width, BondLineWeight::Bold) * 0.5;
         let (shared, direction) = if shared_node_id == bond.begin {
             (begin, unit)
         } else if shared_node_id == bond.end {
@@ -2176,7 +2179,8 @@ fn render_fragment_line_with_profiles(
         );
         if direction.length() > EPSILON {
             let unit = direction.normalized();
-            let half_width = line_weight_stroke_width(stroke_width, line_weight) * 0.5;
+            let half_width =
+                line_weight_stroke_width_for_bond(bond, stroke_width, line_weight) * 0.5;
             start_retreat = start_retreat.max(
                 endpoint_retreat_against_center_double_outer_line(
                     object,
@@ -2276,7 +2280,7 @@ fn render_fragment_line_with_profiles(
                 bond,
                 clipped_start,
                 clipped_end,
-                line_weight_stroke_width(stroke_width, line_weight),
+                line_weight_stroke_width_for_bond(bond, stroke_width, line_weight),
                 is_joinable_main_line_render(bond, allow_bold_contacts, line_weight)
                     && allow_start_join
                     && !use_start_contact_kernel,
@@ -2301,14 +2305,14 @@ fn render_fragment_line_with_profiles(
                 hash_bond_knockout_polygons(
                     clipped_start,
                     clipped_end,
-                    line_weight_stroke_width(stroke_width, line_weight),
+                    line_weight_stroke_width_for_bond(bond, stroke_width, line_weight),
                     stroke_width,
                 )
             } else {
                 dashed_bond_knockout_polygons(
                     clipped_start,
                     clipped_end,
-                    line_weight_stroke_width(stroke_width, line_weight),
+                    line_weight_stroke_width_for_bond(bond, stroke_width, line_weight),
                     &dash_array,
                 )
             };
@@ -2398,7 +2402,7 @@ fn render_fragment_line_with_profiles(
         clipped_start,
         clipped_end,
         stroke,
-        line_weight_stroke_width(stroke_width, line_weight),
+        line_weight_stroke_width_for_bond(bond, stroke_width, line_weight),
         dash_array,
         object_id,
     );
@@ -2619,8 +2623,34 @@ fn line_weight_stroke_width(stroke_width: f64, line_weight: BondLineWeight) -> f
     }
 }
 
-fn multi_bond_inner_gap(start: Point, end: Point) -> f64 {
-    start.distance(end) * MULTI_BOND_OFFSET_RATIO
+fn line_weight_stroke_width_for_bond(
+    bond: &Bond,
+    stroke_width: f64,
+    line_weight: BondLineWeight,
+) -> f64 {
+    if line_weight == BondLineWeight::Bold {
+        bond.bold_width
+            .unwrap_or_else(|| line_weight_stroke_width(stroke_width, line_weight))
+            .max(stroke_width)
+    } else {
+        stroke_width
+    }
+}
+
+fn hash_target_gap_length_for_bond(bond: &Bond, stroke_width: f64) -> f64 {
+    let scale = stroke_width / VIEWER_BOND_STROKE;
+    let stripe_length = HASH_BLACK_SEGMENT_LENGTH * scale;
+    bond.hash_spacing
+        .map(|spacing| (spacing - stripe_length).max(stripe_length * 0.25))
+        .unwrap_or(HASH_TARGET_GAP_LENGTH * scale)
+}
+
+fn multi_bond_inner_gap(bond: Option<&Bond>, start: Point, end: Point, stroke_width: f64) -> f64 {
+    let spacing_ratio = bond
+        .and_then(|bond| bond.bond_spacing)
+        .map(|spacing| spacing / 100.0)
+        .unwrap_or(DEFAULT_MULTI_BOND_CENTER_SPACING_RATIO);
+    (start.distance(end) * spacing_ratio - stroke_width).max(stroke_width * 0.5)
 }
 
 fn double_bond_center_distance_for_weights(
@@ -2632,7 +2662,20 @@ fn double_bond_center_distance_for_weights(
 ) -> f64 {
     let first_width = line_weight_stroke_width(stroke_width, first_weight);
     let second_width = line_weight_stroke_width(stroke_width, second_weight);
-    multi_bond_inner_gap(start, end) + 0.5 * (first_width + second_width)
+    multi_bond_inner_gap(None, start, end, stroke_width) + 0.5 * (first_width + second_width)
+}
+
+fn double_bond_center_distance_for_bond_weights(
+    bond: &Bond,
+    start: Point,
+    end: Point,
+    stroke_width: f64,
+    first_weight: BondLineWeight,
+    second_weight: BondLineWeight,
+) -> f64 {
+    let first_width = line_weight_stroke_width_for_bond(bond, stroke_width, first_weight);
+    let second_width = line_weight_stroke_width_for_bond(bond, stroke_width, second_weight);
+    multi_bond_inner_gap(Some(bond), start, end, stroke_width) + 0.5 * (first_width + second_width)
 }
 
 fn double_bond_offset_distance(start: Point, end: Point, stroke_width: f64) -> f64 {
@@ -2645,8 +2688,8 @@ fn double_bond_offset_distance(start: Point, end: Point, stroke_width: f64) -> f
     )
 }
 
-fn triple_bond_offset_distance(start: Point, end: Point, _stroke_width: f64) -> f64 {
-    start.distance(end) * MULTI_BOND_OFFSET_RATIO
+fn triple_bond_offset_distance(start: Point, end: Point, stroke_width: f64) -> f64 {
+    multi_bond_inner_gap(None, start, end, stroke_width) + stroke_width
 }
 
 fn solid_wedge_half_width(stroke_width: f64) -> f64 {
@@ -2829,7 +2872,7 @@ fn hash_bond_knockout_polygons(
     .collect()
 }
 
-fn hashed_wedge_gap_intervals(length: f64, stroke_width: f64) -> Vec<(f64, f64)> {
+fn hashed_wedge_gap_intervals(length: f64, stroke_width: f64, bond: &Bond) -> Vec<(f64, f64)> {
     if length <= EPSILON {
         return Vec::new();
     }
@@ -2841,7 +2884,7 @@ fn hashed_wedge_gap_intervals(length: f64, stroke_width: f64) -> Vec<(f64, f64)>
         start_offset,
         end_inset,
         (HASH_BLACK_SEGMENT_LENGTH * scale).max(length * 0.014),
-        (HASH_TARGET_GAP_LENGTH * scale).max(length * 0.018),
+        hash_target_gap_length_for_bond(bond, stroke_width).max(length * 0.018),
     )
 }
 
@@ -2921,7 +2964,7 @@ fn outer_bond_candidate_sides(bond: &Bond) -> Vec<f64> {
 }
 
 fn outer_bond_half_width_for_side(bond: &Bond, side: f64, stroke_width: f64) -> f64 {
-    line_weight_stroke_width(stroke_width, outer_line_weight(bond, side)) * 0.5
+    line_weight_stroke_width_for_bond(bond, stroke_width, outer_line_weight(bond, side)) * 0.5
 }
 
 fn outer_bond_offset_line_for_endpoint(
@@ -3017,7 +3060,7 @@ fn centered_double_line_boundary_pair_for_endpoint(
         length,
         offset_distance,
     };
-    let half_width = line_weight_stroke_width(stroke_width, line_weight) * 0.5;
+    let half_width = line_weight_stroke_width_for_bond(bond, stroke_width, line_weight) * 0.5;
     let boundaries = boundary_lines_from_endpoint(center.point, center.direction, half_width)?;
     Some((boundaries, center))
 }
@@ -3161,7 +3204,7 @@ fn main_bond_boundary_line_for_endpoint(
     let offset_distance = if side == 0.0 {
         stroke_width * 0.5
     } else {
-        line_weight_stroke_width(stroke_width, BondLineWeight::Bold) * 0.5
+        line_weight_stroke_width_for_bond(bond, stroke_width, BondLineWeight::Bold) * 0.5
     };
     let point = if side == 0.0 {
         far_side_contact_line_point(
@@ -3658,6 +3701,24 @@ mod tests {
         }
     }
 
+    fn test_bond() -> Bond {
+        Bond {
+            id: "b1".to_string(),
+            begin: "n1".to_string(),
+            end: "n2".to_string(),
+            order: 1,
+            double: None,
+            stereo: None,
+            stroke_width: VIEWER_BOND_STROKE,
+            bold_width: None,
+            hash_spacing: None,
+            bond_spacing: None,
+            line_styles: crate::BondLineStyles::default(),
+            line_weights: crate::BondLineWeights::default(),
+            meta: serde_json::Value::Null,
+        }
+    }
+
     fn black_segment_lengths(
         length: f64,
         start_offset: f64,
@@ -3698,7 +3759,7 @@ mod tests {
 
     #[test]
     fn hashed_wedge_gap_intervals_respect_start_offset_and_end_inset() {
-        let gaps = hashed_wedge_gap_intervals(18.0, VIEWER_BOND_STROKE * 2.0);
+        let gaps = hashed_wedge_gap_intervals(18.0, VIEWER_BOND_STROKE * 2.0, &test_bond());
         assert!(!gaps.is_empty());
         assert!(gaps[0].0 > 0.0);
         assert!(gaps.last().unwrap().1 < 18.0);

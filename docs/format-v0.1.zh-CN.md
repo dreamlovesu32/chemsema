@@ -266,7 +266,7 @@ molecule 对象表示页面上一个已定位、带化学语义的结构。
   },
   "styleRef": "style_molecule_default",
   "meta": {
-    "source": "cdxml",
+    "source": "editor",
     "collapsed": false
   },
   "payload": {
@@ -358,9 +358,10 @@ text 对象表示带定位信息的富文本内容。
 ]
 ```
 
-`script` 可取 `normal | subscript | superscript`。CDXML 的 `face`、`font`、
-`color` 这类源格式字段应在导入阶段解码成这些显式字段；原始值可以保留在
-`meta.import.cdxml` 中，用于调试或未来 round-trip。
+`script` 可取 `normal | subscript | superscript`。核心格式不保存 CDXML
+`face` 这类位掩码字段；CDXML 的 `face`、`font`、`color` 应在导入阶段解码成
+这些显式字段。原始值如需保留，只能放在 `meta.import.cdxml` 中，用于调试或
+未来 round-trip。
 
 ## Molecule Fragment2D
 
@@ -398,6 +399,69 @@ text 对象表示带定位信息的富文本内容。
   }
 }
 ```
+
+带缩写识别的节点仍保留原始绘制信息；机器可读的解释附加在
+`meta.labelRecognition` 上。读取方如果只想还原画面，可以忽略 `meta`；
+如果要理解 functional group，可以读取 `expansion`：
+
+```json
+{
+  "id": "n3",
+  "element": "C",
+  "atomicNumber": 6,
+  "position": [82.0, 48.0],
+  "charge": 0,
+  "numHydrogens": 0,
+  "isPlaceholder": true,
+  "label": {
+    "text": "CO2Et",
+    "sourceText": "CO2Et",
+    "position": [82.0, 48.0],
+    "box": [82.0, 39.6, 112.0, 50.4],
+    "runs": []
+  },
+  "meta": {
+    "labelRecognition": {
+      "kind": "functional-group",
+      "status": "recognized",
+      "label": "CO2Et",
+      "canonicalLabel": "CO2Et",
+      "groupKind": "composite-fragment",
+      "formula": "-C(=O)OCH2CH3",
+      "anchorAtom": "C",
+      "components": [
+        { "label": "CO2", "kind": "linker" },
+        { "label": "Et", "kind": "terminal" }
+      ],
+      "expansion": {
+        "schema": "chemcore.functionalGroupExpansion.v1",
+        "connectionKind": "terminal",
+        "complete": true,
+        "atoms": [
+          { "id": "c1", "element": "C", "numHydrogens": 0 },
+          { "id": "o1", "element": "O", "numHydrogens": 0 },
+          { "id": "o2", "element": "O", "numHydrogens": 0 },
+          { "id": "c2", "element": "C", "numHydrogens": 2 },
+          { "id": "c3", "element": "C", "numHydrogens": 3 }
+        ],
+        "bonds": [
+          { "begin": "c1", "end": "o1", "order": 2 },
+          { "begin": "c1", "end": "o2", "order": 1 },
+          { "begin": "o2", "end": "c2", "order": 1 },
+          { "begin": "c2", "end": "c3", "order": 1 }
+        ],
+        "attachments": [
+          { "role": "external", "atomId": "c1" }
+        ]
+      }
+    }
+  }
+}
+```
+
+`expansion` 是附加语义层，不替换主分子图。`atoms[].id` 是局部 id，只在
+该 expansion 内有效；两键桥接标签使用 `attachments` 的 `left` 和 `right`
+角色。`complete: false` 表示该标签合法识别，但当前只保存了局部或占位拓扑。
 
 键示例：
 
@@ -669,8 +733,7 @@ children 会继承 group 的变换。
     "background": "#ffffff"
   },
   "meta": {
-    "createdBy": "chemcore",
-    "sourceFormat": "cdxml"
+    "createdBy": "chemcore"
   }
 }
 ```

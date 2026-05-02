@@ -149,9 +149,19 @@ const viewerStats = document.getElementById("viewer-stats");
 const viewerSvg = document.getElementById("viewer-svg");
 const viewerContainer = document.getElementById("viewer-container");
 const secondaryToolbar = document.getElementById("secondary-toolbar");
+const documentStylePresetInput = document.getElementById("document-style-preset");
 const openFileInput = document.createElement("input");
 openFileInput.type = "file";
-openFileInput.accept = ".json,application/json";
+openFileInput.accept = [
+  ".json",
+  ".cdxml",
+  "application/json",
+  "text/xml",
+  "application/xml",
+  "application/x-cdxml",
+  "chemical/x-cdxml",
+  "application/vnd.cambridgesoft.cdxml",
+].join(",");
 openFileInput.className = "visually-hidden";
 document.body.appendChild(openFileInput);
 const textEditorLayer = document.createElement("div");
@@ -215,6 +225,7 @@ function formatToolbarFontSize(value) {
 
 const editorState = {
   activeTool: "bond",
+  documentStylePreset: "default",
   selectMode: "free",
   bondType: "single",
   textFontFamily: "Arial",
@@ -260,6 +271,7 @@ function syncEngineToolState() {
   if (!state.editorEngine) {
     return;
   }
+  state.editorEngine.setDocumentStylePreset?.(editorState.documentStylePreset);
   state.editorEngine.setTool(editorState.activeTool, editorState.bondType);
   state.editorEngine.setTemplate?.(editorState.template);
   state.editorEngine.setShapeOptions?.(
@@ -286,6 +298,17 @@ function syncEngineToolState() {
     editorState.arrowTail,
     editorState.arrowBold,
   );
+}
+
+function syncDocumentStylePresetFromEngine() {
+  if (!state.editorEngine?.documentStylePreset) {
+    return;
+  }
+  const preset = state.editorEngine.documentStylePreset() || "default";
+  editorState.documentStylePreset = preset;
+  if (documentStylePresetInput) {
+    documentStylePresetInput.value = preset;
+  }
 }
 
 function parseEngineJson(json, fallback = null) {
@@ -1214,7 +1237,36 @@ function corePrimitivesForObject(objectId) {
   return (state.coreRenderList || []).filter((primitive) => primitive.objectId === objectId);
 }
 
+function activeEndpointEditorNodeId() {
+  return activeTextEditor?.session?.target?.kind === "endpoint-label"
+    ? activeTextEditor.session.target.nodeId || activeTextEditor.session.target.node_id
+    : null;
+}
+
+function shouldHidePrimitiveForActiveEndpointEditor(primitive) {
+  const nodeId = activeEndpointEditorNodeId();
+  const role = primitive?.role;
+  const primitiveNodeId = primitive?.nodeId || primitive?.node_id;
+  if (nodeId && role === "selection-text-box") {
+    return true;
+  }
+  if (nodeId && role === "hover-endpoint") {
+    return primitiveNodeId === nodeId;
+  }
+  if (!nodeId || primitiveNodeId !== nodeId) {
+    return false;
+  }
+  return role === "document-text"
+    || role === "document-knockout"
+    || role === "document-graphic"
+    || role === "hover-label-glyph"
+    || role === "hover-text-box";
+}
+
 function renderCorePrimitive(svgRoot, primitive) {
+  if (shouldHidePrimitiveForActiveEndpointEditor(primitive)) {
+    return;
+  }
   if (primitive.kind === "line" && primitive.from && primitive.to) {
     const strokeWidth = primitiveStrokeWidthValue(primitive, BOND_STROKE);
     const attrs = {
@@ -1609,10 +1661,10 @@ document.querySelectorAll("[data-command]").forEach((button) => {
     const command = button.dataset.command;
     if (command === "open") {
       try {
-        await chooseAndOpenJsonDocument();
+        await chooseAndOpenDocument();
       } catch (error) {
         if (!isAbortError(error)) {
-          console.error("Failed to open chemcore JSON", error);
+          console.error("Failed to open document", error);
           window.alert?.(`Open failed: ${error.message || error}`);
         }
       }
@@ -1625,6 +1677,17 @@ document.querySelectorAll("[data-command]").forEach((button) => {
         if (!isAbortError(error)) {
           console.error("Failed to save chemcore JSON", error);
           window.alert?.(`Save failed: ${error.message || error}`);
+        }
+      }
+      return;
+    }
+    if (command === "save-cdxml") {
+      try {
+        await saveCurrentDocumentCdxml();
+      } catch (error) {
+        if (!isAbortError(error)) {
+          console.error("Failed to save CDXML", error);
+          window.alert?.(`Save CDXML failed: ${error.message || error}`);
         }
       }
       return;
@@ -1651,9 +1714,9 @@ openFileInput.addEventListener("change", async () => {
   const [file] = Array.from(openFileInput.files || []);
   openFileInput.value = "";
   try {
-    await openJsonDocumentFile(file);
+    await openDocumentFile(file);
   } catch (error) {
-    console.error("Failed to open chemcore JSON", error);
+    console.error("Failed to open document", error);
     window.alert?.(`Open failed: ${error.message || error}`);
   }
 });
@@ -1682,7 +1745,7 @@ const HOVER_ENDPOINT_SHORTCUT_LABELS = {
 };
 
 function hoverEndpointShortcutLabelForEvent(event) {
-  if (!isEditingRustDocument() || editorState.activeTool !== "bond") {
+  if (!isEditingRustDocument()) {
     return null;
   }
   if (event.ctrlKey || event.metaKey || event.altKey) {
@@ -2221,6 +2284,8 @@ const textEditorController = createTextEditorController({
   updateCustomEditorChrome,
   defaultTextEditorLineHeight,
   editorOffsetFromPointerEvent,
+  updateTextToolHoverFromPointerEvent,
+  openHoveredTextEditTargetFromPointerEvent,
   buildEditorCaretLayout,
   editorLineIndexForOffset,
   measureEditorCaretRect,
@@ -2244,6 +2309,68 @@ function openTextEditorAt(point) {
 
 function openTextEditorSession(session) {
   textEditorController.openTextEditorSession(engineSessionToEditorSession(session));
+  renderDocument();
+}
+
+function textEditPrimitiveNodeId(primitive) {
+  return primitive?.nodeId || primitive?.node_id || null;
+}
+
+function textEditPrimitiveObjectId(primitive) {
+  return primitive?.objectId || primitive?.object_id || null;
+}
+
+function textEditHoverPrimitiveFromRenderList(renderList) {
+  const hoverRoles = new Set(["hover-text-box", "hover-label-glyph", "hover-endpoint"]);
+  return (renderList || []).find((primitive) => hoverRoles.has(primitive?.role)) || null;
+}
+
+function activeTextEditorTargetMatchesHoverPrimitive(primitive) {
+  const target = activeTextEditor?.session?.target;
+  if (!target || !primitive) {
+    return false;
+  }
+  const role = primitive.role;
+  if (role === "hover-text-box" || role === "hover-label-glyph") {
+    const objectId = textEditPrimitiveObjectId(primitive);
+    if (target.kind === "text-object" && objectId) {
+      return objectId === (target.objectId || target.object_id || null);
+    }
+    const nodeId = textEditPrimitiveNodeId(primitive);
+    if (target.kind === "endpoint-label" && nodeId) {
+      return nodeId === (target.nodeId || target.node_id || null);
+    }
+    return false;
+  }
+  if (role === "hover-endpoint" && target.kind === "endpoint-label" && primitive.center) {
+    const dx = Number(primitive.center.x) - Number(target.x);
+    const dy = Number(primitive.center.y) - Number(target.y);
+    return Math.hypot(dx, dy) <= 0.001;
+  }
+  return false;
+}
+
+function updateTextToolHoverFromPointerEvent(event) {
+  if (!routeEditorPointerEvents() || editorState.activeTool !== "text" || !state.editorEngine?.pointerMove) {
+    return null;
+  }
+  const point = svgPointFromEvent(event);
+  state.editorEngine.pointerMove(point.x, point.y, event.altKey);
+  const renderList = currentEditorRenderList();
+  renderEditorOverlay(renderList);
+  positionActiveTextEditor();
+  return textEditHoverPrimitiveFromRenderList(renderList);
+}
+
+function openHoveredTextEditTargetFromPointerEvent(event) {
+  const hoverPrimitive = updateTextToolHoverFromPointerEvent(event);
+  if (!hoverPrimitive || activeTextEditorTargetMatchesHoverPrimitive(hoverPrimitive)) {
+    return false;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  openTextEditorAt(svgPointFromEvent(event));
+  return true;
 }
 
 function editorSourceRunsFromSession(session, root) {
@@ -2729,6 +2856,16 @@ document.querySelectorAll("[data-tool]").forEach((button) => {
   button.addEventListener("click", () => {
     setActiveTool(button);
   });
+});
+
+documentStylePresetInput?.addEventListener("change", (event) => {
+  finishActiveTextEditor(true);
+  editorState.documentStylePreset = event.target.value || "default";
+  syncEngineToolState();
+  if (isEditingRustDocument()) {
+    syncDocumentFromEngine();
+    renderDocument();
+  }
 });
 
 secondaryToolbar?.addEventListener("click", (event) => {
@@ -3325,6 +3462,9 @@ function renderEditorOverlay(renderList = null) {
     }));
   }
   for (const primitive of primitives) {
+    if (shouldHidePrimitiveForActiveEndpointEditor(primitive)) {
+      continue;
+    }
     if (isDocumentPreviewPrimitive(primitive)) {
       if (previewActive) {
         renderCorePrimitive(overlay, primitive);
@@ -3667,8 +3807,9 @@ function loadJsonDocumentIntoEditor(documentData, fileName = null) {
   state.editorEngine = new WasmEngine();
   state.lastEditFocusPoint = null;
   clearZoomHandoffs();
-  syncEngineToolState();
   state.editorEngine.loadDocumentJson(JSON.stringify(documentData));
+  syncDocumentStylePresetFromEngine();
+  syncEngineToolState();
   syncDocumentFromEngine();
   state.runtimeViewBox = state.currentDocument?.document?.page
     ? pageViewBox(state.currentDocument.document.page)
@@ -3688,6 +3829,11 @@ function currentDocumentJsonForSave() {
     throw new Error("No document to save.");
   }
   return `${JSON.stringify(state.currentDocument, null, 2)}\n`;
+}
+
+function cdxmlFileNameForSave() {
+  const baseName = state.currentFileName || documentTitleForFileName(state.currentDocument);
+  return baseName.replace(/\.[^.]+$/, "") + ".cdxml";
 }
 
 async function saveCurrentDocumentJson() {
@@ -3721,11 +3867,80 @@ async function saveCurrentDocumentJson() {
   URL.revokeObjectURL(url);
 }
 
-async function openJsonDocumentFile(file) {
+function currentDocumentCdxmlForSave() {
+  finishActiveTextEditor(true);
+  if (!state.editorEngine) {
+    throw new Error("CDXML export is unavailable.");
+  }
+  return state.editorEngine.documentCdxml();
+}
+
+async function saveCurrentDocumentCdxml() {
+  const cdxml = currentDocumentCdxmlForSave();
+  const suggestedName = cdxmlFileNameForSave();
+  if (window.showSaveFilePicker) {
+    const handle = await window.showSaveFilePicker({
+      suggestedName,
+      types: [
+        {
+          description: "ChemDraw CDXML",
+          accept: { "chemical/x-cdxml": [".cdxml"], "text/xml": [".cdxml"] },
+        },
+      ],
+    });
+    const writable = await handle.createWritable();
+    await writable.write(cdxml);
+    await writable.close();
+    state.currentFileName = handle.name || suggestedName;
+    viewerTitle.textContent = state.currentDocument?.document?.title || state.currentFileName || "Untitled";
+    return;
+  }
+  const blob = new Blob([cdxml], { type: "chemical/x-cdxml" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = suggestedName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function looksLikeCdxmlFile(file, text) {
+  const name = (file?.name || "").toLowerCase();
+  const type = (file?.type || "").toLowerCase();
+  if (name.endsWith(".cdxml") || type.includes("cdxml")) {
+    return true;
+  }
+  return /^\s*(?:<\?xml[^>]*>\s*)?<CDXML\b/i.test(text);
+}
+
+async function openDocumentFile(file) {
   if (!file) {
     return;
   }
   const text = await file.text();
+  if (looksLikeCdxmlFile(file, text)) {
+    finishActiveTextEditor(false);
+    state.currentPath = null;
+    state.currentFileName = file.name || null;
+    state.editorEngine?.free?.();
+    state.editorEngine = new WasmEngine();
+    state.lastEditFocusPoint = null;
+    clearZoomHandoffs();
+    state.editorEngine.loadDocumentCdxml(text);
+    syncDocumentStylePresetFromEngine();
+    syncEngineToolState();
+    syncDocumentFromEngine();
+    state.runtimeViewBox = state.currentDocument?.document?.page
+      ? pageViewBox(state.currentDocument.document.page)
+      : defaultEditorViewBox();
+    viewerTitle.textContent = state.currentDocument?.document?.title || file.name || "Imported CDXML";
+    updateDocumentMeta();
+    renderDocument();
+    fitView();
+    return;
+  }
   const documentData = JSON.parse(text);
   loadJsonDocumentIntoEditor(documentData, file.name || null);
 }
@@ -3734,21 +3949,29 @@ function isAbortError(error) {
   return error?.name === "AbortError";
 }
 
-async function chooseAndOpenJsonDocument() {
+async function chooseAndOpenDocument() {
   if (window.showOpenFilePicker) {
     const [handle] = await window.showOpenFilePicker({
       multiple: false,
       types: [
         {
-          description: "chemcore JSON",
-          accept: { "application/json": [".json"] },
+          description: "chemcore JSON or CDXML",
+          accept: {
+            "application/json": [".json"],
+            "text/xml": [".cdxml"],
+            "application/xml": [".cdxml"],
+            "application/x-cdxml": [".cdxml"],
+            "chemical/x-cdxml": [".cdxml"],
+            "application/vnd.cambridgesoft.cdxml": [".cdxml"],
+          },
         },
       ],
+      excludeAcceptAllOption: false,
     });
     if (!handle) {
       return;
     }
-    await openJsonDocumentFile(await handle.getFile());
+    await openDocumentFile(await handle.getFile());
     return;
   }
   openFileInput.click();

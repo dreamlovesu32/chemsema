@@ -14,6 +14,7 @@ const DEFAULT_TEXT_LINE_HEIGHT: f64 = crate::DEFAULT_TEXT_LINE_HEIGHT_CM;
 const DEFAULT_TEXT_BLOCK_LINE_HEIGHT: f64 = crate::DEFAULT_TEXT_BLOCK_LINE_HEIGHT_CM;
 const DEFAULT_CENTERED_LABEL_FONT_SIZE: f64 = crate::DEFAULT_CENTERED_LABEL_FONT_SIZE_CM;
 const TEXT_EDIT_BOX_WIDTH: f64 = crate::px_to_cm(8.0);
+const IMPLICIT_HYDROGEN_LABEL_META_KEY: &str = "implicitHydrogenLabel";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
@@ -374,6 +375,7 @@ impl Engine {
             self.undo_stack.pop();
             return false;
         }
+        mark_shortcut_implicit_hydrogen_label(node, label);
 
         let node_position = node.position;
         refresh_attached_node_label_geometry_for_node(
@@ -571,6 +573,18 @@ impl Engine {
             ]
         };
         let connection_angles = adjacent_angles_for_fragment_node(entry.fragment, node_id);
+        let (preview_connection_angles, editing_session) = if connection_angles.is_empty() {
+            (connection_angles.as_slice(), session.clone())
+        } else {
+            (
+                &[][..],
+                TextEditSession {
+                    box_value: None,
+                    anchor_offset: None,
+                    ..session.clone()
+                },
+            )
+        };
         let label = make_centered_node_label_from_runs(
             &text,
             local_anchor,
@@ -579,8 +593,8 @@ impl Engine {
             fallback_font_family,
             fallback_font_size,
             fallback_fill,
-            &connection_angles,
-            session,
+            preview_connection_angles,
+            &editing_session,
         );
         build_endpoint_label_edit_layout_from_label(
             text,
@@ -830,7 +844,9 @@ pub(super) fn apply_node_label_replacement(
     label: &str,
     connection_angles: &[f64],
 ) -> bool {
-    if classify_node_label_replacement(label).is_none() {
+    if classify_node_label_replacement_for_connection_count(label, connection_angles.len())
+        .is_none()
+    {
         return false;
     }
     let session = TextEditSession {
@@ -865,23 +881,40 @@ pub(super) fn apply_node_label_text_edit(
     let previous_atomic_number = node.atomic_number;
     let previous_is_placeholder = node.is_placeholder;
     let previous_label = node.label.clone();
+    let previous_meta = node.meta.clone();
+    let previous_implicit_hydrogen_label_meta = previous_label
+        .as_ref()
+        .and_then(implicit_hydrogen_label_meta)
+        .cloned();
+    let previous_source_text = previous_label
+        .as_ref()
+        .map(label_source_text)
+        .unwrap_or_default();
     let trimmed = text.trim();
     if trimmed.is_empty() || trimmed == "C" {
         let changed = previous_element != "C"
             || previous_atomic_number != 6
             || previous_is_placeholder
-            || previous_label.is_some();
+            || previous_label.is_some()
+            || label_recognition_meta_from_node(node).is_some();
         if !changed {
             return false;
         }
         node.element = "C".to_string();
         node.atomic_number = 6;
+        node.num_hydrogens = 0;
         node.is_placeholder = false;
         node.label = None;
+        set_node_label_recognition_meta(node, None);
+        set_node_implicit_hydrogen_label_meta(node, None);
         return true;
     }
 
-    if let Some(replacement) = classify_node_label_replacement(trimmed) {
+    let mut label_recognition_meta = None;
+    let connection_count = connection_angles.len();
+    if let Some(replacement) =
+        classify_node_label_replacement_for_connection_count(trimmed, connection_count)
+    {
         match replacement {
             NodeLabelReplacement::Carbon => {}
             NodeLabelReplacement::Element {
@@ -890,19 +923,28 @@ pub(super) fn apply_node_label_text_edit(
             } => {
                 node.element = element.to_string();
                 node.atomic_number = atomic_number;
+                node.num_hydrogens = 0;
                 node.is_placeholder = false;
             }
             NodeLabelReplacement::Abbreviation => {
                 node.element = "C".to_string();
                 node.atomic_number = 6;
+                node.num_hydrogens = 0;
                 node.is_placeholder = true;
+                label_recognition_meta = crate::recognized_abbreviation_meta_for_connection_count(
+                    trimmed,
+                    connection_count,
+                );
             }
         }
     } else {
         node.element = "C".to_string();
         node.atomic_number = 6;
+        node.num_hydrogens = 0;
         node.is_placeholder = true;
+        label_recognition_meta = Some(crate::invalid_abbreviation_meta(trimmed));
     }
+    set_node_label_recognition_meta(node, label_recognition_meta.clone());
 
     let source_runs = normalize_source_runs(session, text);
     let session_font_size = session
@@ -918,7 +960,7 @@ pub(super) fn apply_node_label_text_edit(
         session_font_size,
         session.fill.as_deref().unwrap_or(DEFAULT_TEXT_FILL),
     );
-    let next_label = make_centered_node_label_from_runs(
+    let mut next_label = make_centered_node_label_from_runs(
         text,
         anchor_position,
         source_runs,
@@ -932,9 +974,21 @@ pub(super) fn apply_node_label_text_edit(
         connection_angles,
         session,
     );
+    set_label_recognition_meta(&mut next_label, label_recognition_meta);
+    let implicit_hydrogen_label_meta = previous_implicit_hydrogen_label_meta.map(|meta| {
+        let user_edited =
+            implicit_hydrogen_label_user_edited(&meta) || previous_source_text != text;
+        implicit_hydrogen_label_meta_value(
+            implicit_hydrogen_label_source(&meta).unwrap_or("shortcut"),
+            user_edited,
+        )
+    });
+    set_label_implicit_hydrogen_label_meta(&mut next_label, implicit_hydrogen_label_meta.clone());
+    set_node_implicit_hydrogen_label_meta(node, implicit_hydrogen_label_meta);
     let changed = previous_element != node.element
         || previous_atomic_number != node.atomic_number
         || previous_is_placeholder != node.is_placeholder
+        || previous_meta != node.meta
         || !same_node_label(previous_label.as_ref(), Some(&next_label));
     if !changed {
         return false;
@@ -960,7 +1014,7 @@ fn endpoint_label_editor_anchor_world(
                 .clone()
                 .unwrap_or_else(|| label.text.clone())
         };
-        let decision = decide_label_layout(connection_angles, false, false);
+        let decision = label_layout_decision_for_text(&source_text, connection_angles);
         let layout = layout_label_text(&source_text, &decision);
         let anchor_index = layout
             .lines
@@ -1049,7 +1103,6 @@ fn payload_runs_or_text(payload: &crate::ObjectPayload) -> Vec<LabelRun> {
             font_style: Some("normal".to_string()),
             underline: Some(false),
             script: Some("normal".to_string()),
-            face: None,
         }]
     }
 }
@@ -1077,7 +1130,6 @@ fn normalize_source_runs(session: &TextEditSession, text: &str) -> Vec<LabelRun>
             } else {
                 "normal".to_string()
             }),
-            face: None,
         }]
     };
     source_runs
@@ -1146,7 +1198,6 @@ fn display_runs_from_source_runs(
             ),
             underline: Some(run.underline.unwrap_or(false)),
             script: Some("normal".to_string()),
-            face: None,
         };
         match run.script.as_deref().unwrap_or("normal") {
             "chemical" => out.extend(expand_chemical_run(&base, &run.text)),
@@ -1779,66 +1830,77 @@ enum NodeLabelReplacement<'a> {
     Abbreviation,
 }
 
-fn classify_node_label_replacement(label: &str) -> Option<NodeLabelReplacement<'_>> {
-    match label {
-        "C" => Some(NodeLabelReplacement::Carbon),
-        "H" => Some(NodeLabelReplacement::Element {
-            element: "H",
-            atomic_number: 1,
-        }),
-        "N" => Some(NodeLabelReplacement::Element {
-            element: "N",
-            atomic_number: 7,
-        }),
-        "O" => Some(NodeLabelReplacement::Element {
-            element: "O",
-            atomic_number: 8,
-        }),
-        "S" => Some(NodeLabelReplacement::Element {
-            element: "S",
-            atomic_number: 16,
-        }),
-        "P" => Some(NodeLabelReplacement::Element {
-            element: "P",
-            atomic_number: 15,
-        }),
-        "F" => Some(NodeLabelReplacement::Element {
-            element: "F",
-            atomic_number: 9,
-        }),
-        "Cl" => Some(NodeLabelReplacement::Element {
-            element: "Cl",
-            atomic_number: 17,
-        }),
-        "Br" => Some(NodeLabelReplacement::Element {
-            element: "Br",
-            atomic_number: 35,
-        }),
-        "I" => Some(NodeLabelReplacement::Element {
-            element: "I",
-            atomic_number: 53,
-        }),
-        "Si" => Some(NodeLabelReplacement::Element {
-            element: "Si",
-            atomic_number: 14,
-        }),
-        "Na" => Some(NodeLabelReplacement::Element {
-            element: "Na",
-            atomic_number: 11,
-        }),
-        "B" => Some(NodeLabelReplacement::Element {
-            element: "B",
-            atomic_number: 5,
-        }),
-        "D" => Some(NodeLabelReplacement::Element {
-            element: "D",
-            atomic_number: 1,
-        }),
-        "Me" => Some(NodeLabelReplacement::Abbreviation),
-        "Ph" => Some(NodeLabelReplacement::Abbreviation),
-        _ => None,
-    }
+fn classify_node_label_replacement_for_connection_count(
+    label: &str,
+    connection_count: usize,
+) -> Option<NodeLabelReplacement<'_>> {
+    parse_element_hydrogen_label(label)
+        .and_then(|parsed| element_label_replacement(parsed.element))
+        .or_else(|| element_label_replacement(label))
+        .or_else(|| {
+            crate::recognize_abbreviation_label_for_connection_count(label, connection_count)
+                .map(|_| NodeLabelReplacement::Abbreviation)
+        })
 }
+
+#[derive(Clone, Copy)]
+struct ParsedElementHydrogenLabel<'a> {
+    element: &'a str,
+}
+
+fn parse_element_hydrogen_label(label: &str) -> Option<ParsedElementHydrogenLabel<'_>> {
+    let element = ELEMENT_REPLACEMENTS
+        .iter()
+        .map(|(element, _)| *element)
+        .filter(|element| *element != "C" && *element != "H" && label.starts_with(element))
+        .max_by_key(|element| element.len())?;
+    let rest = &label[element.len()..];
+    if rest.is_empty() {
+        return Some(ParsedElementHydrogenLabel { element });
+    }
+    let hydrogen_suffix = rest.strip_prefix('H')?;
+    if hydrogen_suffix.is_empty()
+        || hydrogen_suffix
+            .chars()
+            .all(|character| character.is_ascii_digit())
+    {
+        return Some(ParsedElementHydrogenLabel { element });
+    }
+    None
+}
+
+fn element_label_replacement(label: &str) -> Option<NodeLabelReplacement<'_>> {
+    ELEMENT_REPLACEMENTS
+        .iter()
+        .find(|(element, _)| *element == label)
+        .map(|(element, atomic_number)| {
+            if *element == "C" {
+                NodeLabelReplacement::Carbon
+            } else {
+                NodeLabelReplacement::Element {
+                    element: *element,
+                    atomic_number: *atomic_number,
+                }
+            }
+        })
+}
+
+const ELEMENT_REPLACEMENTS: &[(&str, u8)] = &[
+    ("C", 6),
+    ("H", 1),
+    ("N", 7),
+    ("O", 8),
+    ("S", 16),
+    ("P", 15),
+    ("F", 9),
+    ("Cl", 17),
+    ("Br", 35),
+    ("I", 53),
+    ("Si", 14),
+    ("Na", 11),
+    ("B", 5),
+    ("D", 1),
+];
 
 fn make_centered_node_label(text: &str, position: [f64; 2]) -> crate::NodeLabel {
     let font_size = DEFAULT_CENTERED_LABEL_FONT_SIZE;
@@ -1857,7 +1919,6 @@ fn make_centered_node_label(text: &str, position: [f64; 2]) -> crate::NodeLabel 
             font_style: Some("normal".to_string()),
             underline: Some(false),
             script: Some("normal".to_string()),
-            face: None,
         }],
         line_runs: Vec::new(),
         lines: Vec::new(),
@@ -1896,7 +1957,7 @@ fn make_centered_node_label_from_runs(
     connection_angles: &[f64],
     session: &TextEditSession,
 ) -> crate::NodeLabel {
-    let decision = decide_label_layout(connection_angles, false, false);
+    let decision = label_layout_decision_for_text(text, connection_angles);
     let layout = layout_label_text(text, &decision);
     let (lines, line_runs) = layout_display_runs(&display_runs, &decision);
     let line_height = (font_size * 1.05).max(font_size);
@@ -2041,6 +2102,35 @@ fn make_centered_node_label_from_runs(
     }
 }
 
+fn label_layout_decision_for_text(
+    text: &str,
+    connection_angles: &[f64],
+) -> crate::LabelLayoutDecision {
+    let mut decision = decide_label_layout(connection_angles, false, false);
+    if label_should_render_as_whole_group(text, connection_angles.len()) {
+        decision.anchor = crate::LabelAnchorPolicy::WholeLabel;
+    } else if matches!(decision.flow, LabelFlow::Reverse) {
+        if parse_element_hydrogen_label(text).is_some()
+            || crate::recognize_abbreviation_label_for_connection_count(
+                text.trim(),
+                connection_angles.len(),
+            )
+            .is_some()
+        {
+            decision.anchor = crate::LabelAnchorPolicy::OriginalFirstGroup;
+        }
+    }
+    decision
+}
+
+fn label_should_render_as_whole_group(text: &str, connection_count: usize) -> bool {
+    if crate::recognized_abbreviation_uses_whole_label_layout(text.trim(), connection_count) {
+        return true;
+    }
+    label_recognition_meta_for_text(text, connection_count)
+        .is_some_and(|meta| meta.get("status").and_then(Value::as_str) == Some("invalid"))
+}
+
 #[derive(Clone)]
 struct StyledGlyph {
     ch: char,
@@ -2051,7 +2141,10 @@ fn layout_display_runs(
     display_runs: &[LabelRun],
     decision: &crate::LabelLayoutDecision,
 ) -> (Vec<String>, Vec<Vec<LabelRun>>) {
-    let groups = split_styled_groups(display_runs);
+    let groups = split_styled_groups(
+        display_runs,
+        decision.anchor == crate::LabelAnchorPolicy::WholeLabel,
+    );
     if groups.is_empty() {
         return (Vec::new(), Vec::new());
     }
@@ -2084,12 +2177,19 @@ fn layout_display_runs(
     (line_texts, line_runs)
 }
 
-fn split_styled_groups(display_runs: &[LabelRun]) -> Vec<Vec<StyledGlyph>> {
+fn split_styled_groups(display_runs: &[LabelRun], whole_label: bool) -> Vec<Vec<StyledGlyph>> {
     let mut groups = Vec::new();
     let mut current = Vec::new();
     for run in display_runs {
         for ch in run.text.chars() {
             if ch.is_whitespace() {
+                continue;
+            }
+            if whole_label {
+                current.push(StyledGlyph {
+                    ch,
+                    run: run.clone(),
+                });
                 continue;
             }
             if ch.is_ascii_uppercase() && !current.is_empty() {
@@ -2106,7 +2206,6 @@ fn split_styled_groups(display_runs: &[LabelRun]) -> Vec<Vec<StyledGlyph>> {
                     font_style: run.font_style.clone(),
                     underline: run.underline,
                     script: run.script.clone(),
-                    face: run.face,
                 },
             });
         }
@@ -2231,8 +2330,167 @@ fn same_node_label(current: Option<&crate::NodeLabel>, next: Option<&crate::Node
                 && current.font_family == next.font_family
                 && current.font_size == next.font_size
                 && current.fill == next.fill
+                && current.meta == next.meta
         }
         _ => false,
+    }
+}
+
+fn label_recognition_meta_from_node(node: &crate::Node) -> Option<Value> {
+    node.meta.get("labelRecognition").cloned()
+}
+
+fn label_source_text(label: &crate::NodeLabel) -> String {
+    let source_runs = source_runs_from_node_label(label);
+    if !source_runs.is_empty() {
+        runs_text(&source_runs)
+    } else {
+        label
+            .source_text
+            .clone()
+            .unwrap_or_else(|| label.text.clone())
+    }
+}
+
+fn label_recognition_meta_for_text(text: &str, connection_count: usize) -> Option<Value> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() || trimmed == "C" {
+        return None;
+    }
+    if parse_element_hydrogen_label(trimmed)
+        .and_then(|parsed| element_label_replacement(parsed.element))
+        .or_else(|| element_label_replacement(trimmed))
+        .is_some()
+    {
+        return None;
+    }
+    crate::recognized_abbreviation_meta_for_connection_count(trimmed, connection_count)
+        .or_else(|| Some(crate::invalid_abbreviation_meta(trimmed)))
+}
+
+fn label_recognition_meta_for_node_text(
+    fragment: &crate::MoleculeFragment,
+    node_id: &str,
+    text: &str,
+) -> Option<Value> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() || trimmed == "C" {
+        return None;
+    }
+    let connection_count = fragment
+        .bonds
+        .iter()
+        .filter(|bond| bond.begin == node_id || bond.end == node_id)
+        .count();
+    let Some(node) = fragment.nodes.iter().find(|node| node.id == node_id) else {
+        return label_recognition_meta_for_text(trimmed, connection_count);
+    };
+    if parse_element_hydrogen_label(trimmed)
+        .and_then(|parsed| element_label_replacement(parsed.element).map(|_| parsed))
+        .is_some()
+        || element_label_replacement(trimmed).is_some()
+    {
+        return if element_hydrogen_label_is_valid_for_node(trimmed, node) {
+            None
+        } else {
+            Some(crate::invalid_abbreviation_meta(trimmed))
+        };
+    }
+    crate::recognized_abbreviation_meta_for_connection_count(trimmed, connection_count)
+        .or_else(|| Some(crate::invalid_abbreviation_meta(trimmed)))
+}
+
+fn element_hydrogen_label_is_valid_for_node(text: &str, node: &crate::Node) -> bool {
+    if node.is_placeholder {
+        return false;
+    }
+    let trimmed = text.trim();
+    if trimmed == "C" {
+        return node.element == "C" && node.atomic_number == 6;
+    }
+    if !parse_element_hydrogen_label(trimmed).is_some_and(|parsed| parsed.element == node.element)
+        && trimmed != node.element
+    {
+        return false;
+    }
+    trimmed == implicit_hydrogen_label_text(node, node.element.as_str())
+}
+
+fn set_node_label_recognition_meta(node: &mut crate::Node, meta: Option<Value>) {
+    set_meta_object_field(&mut node.meta, "labelRecognition", meta);
+}
+
+fn set_label_recognition_meta(label: &mut crate::NodeLabel, meta: Option<Value>) {
+    set_meta_object_field(&mut label.meta, "labelRecognition", meta);
+}
+
+fn implicit_hydrogen_label_meta(label: &crate::NodeLabel) -> Option<&Value> {
+    label.meta.get(IMPLICIT_HYDROGEN_LABEL_META_KEY)
+}
+
+fn implicit_hydrogen_label_meta_value(source: &str, user_edited: bool) -> Value {
+    json!({
+        "source": source,
+        "userEdited": user_edited,
+    })
+}
+
+fn implicit_hydrogen_label_source(meta: &Value) -> Option<&str> {
+    meta.get("source").and_then(Value::as_str)
+}
+
+fn implicit_hydrogen_label_user_edited(meta: &Value) -> bool {
+    meta.get("userEdited")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+}
+
+fn implicit_hydrogen_label_is_user_edited(label: &crate::NodeLabel) -> bool {
+    implicit_hydrogen_label_meta(label).is_some_and(implicit_hydrogen_label_user_edited)
+}
+
+fn set_node_implicit_hydrogen_label_meta(node: &mut crate::Node, meta: Option<Value>) {
+    set_meta_object_field(&mut node.meta, IMPLICIT_HYDROGEN_LABEL_META_KEY, meta);
+}
+
+fn set_label_implicit_hydrogen_label_meta(label: &mut crate::NodeLabel, meta: Option<Value>) {
+    set_meta_object_field(&mut label.meta, IMPLICIT_HYDROGEN_LABEL_META_KEY, meta);
+}
+
+fn mark_shortcut_implicit_hydrogen_label(node: &mut crate::Node, label: &str) {
+    if element_label_replacement(label)
+        .is_some_and(|replacement| matches!(replacement, NodeLabelReplacement::Element { .. }))
+    {
+        let meta = implicit_hydrogen_label_meta_value("shortcut", false);
+        set_node_implicit_hydrogen_label_meta(node, Some(meta.clone()));
+        if let Some(label) = node.label.as_mut() {
+            set_label_implicit_hydrogen_label_meta(label, Some(meta));
+        }
+    } else {
+        set_node_implicit_hydrogen_label_meta(node, None);
+        if let Some(label) = node.label.as_mut() {
+            set_label_implicit_hydrogen_label_meta(label, None);
+        }
+    }
+}
+
+fn set_meta_object_field(meta_value: &mut Value, key: &str, value: Option<Value>) {
+    if !meta_value.is_object() {
+        *meta_value = Value::Object(serde_json::Map::new());
+    }
+    let Some(object) = meta_value.as_object_mut() else {
+        return;
+    };
+    match value {
+        Some(value) => {
+            object.insert(key.to_string(), value);
+        }
+        None => {
+            object.remove(key);
+        }
+    }
+    if object.is_empty() {
+        *meta_value = Value::Null;
     }
 }
 
@@ -2258,14 +2516,15 @@ fn estimated_centered_label_geometry(
     ([center[0], y2], [x1, y1, x2, y2])
 }
 
-pub(super) fn refresh_attached_node_label_geometry_for_all_nodes(
+pub(crate) fn refresh_attached_node_label_geometry_for_all_nodes(
     fragment: &mut crate::MoleculeFragment,
     object_translate: [f64; 2],
     stroke_width: f64,
 ) {
+    refresh_implicit_hydrogens(fragment);
     let node_ids: Vec<_> = fragment.nodes.iter().map(|node| node.id.clone()).collect();
     for node_id in node_ids {
-        refresh_attached_node_label_geometry_for_node(
+        refresh_attached_node_label_geometry_for_node_inner(
             fragment,
             object_translate,
             &node_id,
@@ -2280,15 +2539,50 @@ pub(super) fn refresh_attached_node_label_geometry_for_node(
     node_id: &str,
     stroke_width: f64,
 ) {
+    refresh_implicit_hydrogens(fragment);
+    refresh_attached_node_label_geometry_for_node_inner(
+        fragment,
+        object_translate,
+        node_id,
+        stroke_width,
+    );
+}
+
+fn refresh_attached_node_label_geometry_for_node_inner(
+    fragment: &mut crate::MoleculeFragment,
+    object_translate: [f64; 2],
+    node_id: &str,
+    stroke_width: f64,
+) {
     let Some(node_index) = fragment.nodes.iter().position(|node| node.id == node_id) else {
         return;
     };
+    refresh_label_recognition_for_node(fragment, node_id);
     let Some(next_label) =
         refreshed_attached_node_label(fragment, node_id, object_translate, stroke_width)
     else {
         return;
     };
     fragment.nodes[node_index].label = Some(next_label);
+    refresh_label_recognition_for_node(fragment, node_id);
+}
+
+fn refresh_label_recognition_for_node(fragment: &mut crate::MoleculeFragment, node_id: &str) {
+    let Some(node_index) = fragment.nodes.iter().position(|node| node.id == node_id) else {
+        return;
+    };
+    let Some(label) = fragment.nodes[node_index].label.as_ref() else {
+        set_node_label_recognition_meta(&mut fragment.nodes[node_index], None);
+        set_node_implicit_hydrogen_label_meta(&mut fragment.nodes[node_index], None);
+        return;
+    };
+    let text = label_source_text(label);
+    let recognition_meta = label_recognition_meta_for_node_text(fragment, node_id, &text);
+    let node = &mut fragment.nodes[node_index];
+    set_node_label_recognition_meta(node, recognition_meta.clone());
+    if let Some(label) = node.label.as_mut() {
+        set_label_recognition_meta(label, recognition_meta);
+    }
 }
 
 fn is_generated_centered_label(label: &crate::NodeLabel) -> bool {
@@ -2326,13 +2620,11 @@ fn refreshed_attached_node_label(
     }
 
     let source_runs = source_runs_from_node_label(label);
-    let text = if !source_runs.is_empty() {
-        runs_text(&source_runs)
+    let source_text = label_source_text(label);
+    let text = if implicit_hydrogen_label_is_user_edited(label) {
+        source_text.clone()
     } else {
-        label
-            .source_text
-            .clone()
-            .unwrap_or_else(|| label.text.clone())
+        implicit_hydrogen_label_text(node, &source_text)
     };
     let font_family = label
         .font_family
@@ -2343,6 +2635,7 @@ fn refreshed_attached_node_label(
         .fill
         .clone()
         .unwrap_or_else(|| DEFAULT_TEXT_FILL.to_string());
+    let source_runs = source_runs_for_attached_label(node, source_runs, &text, label);
     let display_runs = display_runs_from_source_runs(&source_runs, &font_family, font_size, &fill);
     let connection_angles = adjacent_angles_for_fragment_node(fragment, node_id);
     let (anchor_offset, box_value) =
@@ -2367,7 +2660,7 @@ fn refreshed_attached_node_label(
             .iter()
             .any(|run| run.script.as_deref() == Some("chemical")),
     };
-    Some(make_centered_node_label_from_runs(
+    let mut next_label = make_centered_node_label_from_runs(
         &text,
         local_anchor,
         source_runs,
@@ -2377,7 +2670,167 @@ fn refreshed_attached_node_label(
         &fill,
         &connection_angles,
         &session,
-    ))
+    );
+    let recognition_meta = label
+        .meta
+        .get("labelRecognition")
+        .cloned()
+        .or_else(|| label_recognition_meta_from_node(node));
+    set_label_recognition_meta(&mut next_label, recognition_meta);
+    set_label_implicit_hydrogen_label_meta(
+        &mut next_label,
+        implicit_hydrogen_label_meta(label).cloned(),
+    );
+    Some(next_label)
+}
+
+fn refresh_implicit_hydrogens(fragment: &mut crate::MoleculeFragment) {
+    let next_counts: Vec<(String, u8)> = fragment
+        .nodes
+        .iter()
+        .map(|node| {
+            (
+                node.id.clone(),
+                implicit_hydrogen_count(fragment, node.id.as_str()),
+            )
+        })
+        .collect();
+    for (node_id, num_hydrogens) in next_counts {
+        if let Some(node) = fragment.nodes.iter_mut().find(|node| node.id == node_id) {
+            node.num_hydrogens = num_hydrogens;
+        }
+    }
+}
+
+fn implicit_hydrogen_count(fragment: &crate::MoleculeFragment, node_id: &str) -> u8 {
+    let Some(node) = fragment.nodes.iter().find(|node| node.id == node_id) else {
+        return 0;
+    };
+    if node.is_placeholder || node.atomic_number == 1 || node.atomic_number == 6 {
+        return 0;
+    }
+    let connection_count: i32 = fragment
+        .bonds
+        .iter()
+        .filter(|bond| bond.begin == node_id || bond.end == node_id)
+        .map(|bond| i32::from(bond.order.max(1)))
+        .sum();
+    let radical_count = 0;
+    let charge = node.charge;
+    let abs_charge = charge.abs();
+    let Some(valence) = typical_valence_for_implicit_hydrogen(
+        node.atomic_number,
+        charge,
+        connection_count,
+        radical_count,
+        abs_charge,
+    ) else {
+        return 0;
+    };
+    (valence - radical_count - connection_count - abs_charge).clamp(0, 9) as u8
+}
+
+fn typical_valence_for_implicit_hydrogen(
+    atomic_number: u8,
+    charge: i32,
+    connection_count: i32,
+    radical_count: i32,
+    abs_charge: i32,
+) -> Option<i32> {
+    match atomic_number {
+        5 => Some(if charge == -1 { 4 } else { 3 }),
+        7 | 15 => {
+            if charge == 1 {
+                Some(4)
+            } else if charge == 2 || radical_count + connection_count + abs_charge <= 3 {
+                Some(3)
+            } else {
+                Some(5)
+            }
+        }
+        8 => Some(if charge >= 1 { 3 } else { 2 }),
+        9 => Some(1),
+        17 | 35 | 53 => {
+            let hydrogens = match connection_count {
+                0 | 2 | 4 | 6 => 1,
+                _ => 0,
+            };
+            Some(connection_count + radical_count + abs_charge + hydrogens)
+        }
+        14 => Some(4),
+        16 => {
+            if charge == 1 {
+                Some(if connection_count <= 3 { 3 } else { 5 })
+            } else if connection_count + radical_count + abs_charge <= 2 {
+                Some(2)
+            } else if connection_count + radical_count + abs_charge <= 4 {
+                Some(4)
+            } else {
+                Some(6)
+            }
+        }
+        _ => None,
+    }
+}
+
+fn implicit_hydrogen_label_text(node: &crate::Node, current_text: &str) -> String {
+    if node.is_placeholder || node.atomic_number == 1 {
+        return current_text.to_string();
+    }
+    if !label_text_matches_node_element(current_text, node) {
+        return current_text.to_string();
+    }
+    if node.num_hydrogens == 0 {
+        return node.element.clone();
+    }
+    if node.num_hydrogens == 1 {
+        format!("{}H", node.element)
+    } else {
+        format!("{}H{}", node.element, node.num_hydrogens)
+    }
+}
+
+fn label_text_matches_node_element(text: &str, node: &crate::Node) -> bool {
+    let trimmed = text.trim();
+    if trimmed == node.element {
+        return true;
+    }
+    parse_element_hydrogen_label(trimmed).is_some_and(|parsed| parsed.element == node.element)
+}
+
+fn source_runs_for_attached_label(
+    node: &crate::Node,
+    source_runs: Vec<LabelRun>,
+    text: &str,
+    label: &crate::NodeLabel,
+) -> Vec<LabelRun> {
+    if node.is_placeholder || !label_text_matches_node_element(text, node) {
+        return source_runs;
+    }
+    let template = source_runs
+        .first()
+        .cloned()
+        .or_else(|| label.runs.first().cloned())
+        .unwrap_or(LabelRun {
+            text: String::new(),
+            font_family: label.font_family.clone(),
+            font_size: label.font_size,
+            fill: label.fill.clone(),
+            font_weight: Some(400),
+            font_style: Some("normal".to_string()),
+            underline: Some(false),
+            script: Some("chemical".to_string()),
+        });
+    vec![LabelRun {
+        text: text.to_string(),
+        font_family: template.font_family.or_else(|| label.font_family.clone()),
+        font_size: template.font_size.or(label.font_size),
+        fill: template.fill.or_else(|| label.fill.clone()),
+        font_weight: template.font_weight.or(Some(400)),
+        font_style: template.font_style.or_else(|| Some("normal".to_string())),
+        underline: template.underline.or(Some(false)),
+        script: Some("chemical".to_string()),
+    }]
 }
 
 fn source_runs_from_node_label(label: &crate::NodeLabel) -> Vec<LabelRun> {
@@ -2404,7 +2857,6 @@ fn source_runs_from_node_label(label: &crate::NodeLabel) -> Vec<LabelRun> {
                     font_style: Some("normal".to_string()),
                     underline: Some(false),
                     script: Some("normal".to_string()),
-                    face: None,
                 }]
             }
         })
@@ -2495,14 +2947,17 @@ fn attached_node_label_anchor_world(
     )
 }
 
-fn bold_weight_stroke_width_for_engine(stroke_width: f64) -> f64 {
-    (crate::BOLD_BOND_WIDTH_CM.value() * (stroke_width / crate::DEFAULT_BOND_STROKE_CM))
-        .max(stroke_width)
-}
-
-fn bond_line_weight_stroke_width_for_engine(stroke_width: f64, weight: BondLineWeight) -> f64 {
+fn bond_line_weight_stroke_width_for_engine(
+    bond: &Bond,
+    stroke_width: f64,
+    weight: BondLineWeight,
+) -> f64 {
     if weight == BondLineWeight::Bold {
-        bold_weight_stroke_width_for_engine(stroke_width)
+        bond.bold_width
+            .unwrap_or_else(|| {
+                crate::BOLD_BOND_WIDTH_CM.value() * (stroke_width / crate::DEFAULT_BOND_STROKE_CM)
+            })
+            .max(stroke_width)
     } else {
         stroke_width
     }
@@ -2520,7 +2975,8 @@ fn side_double_center_distance_for_bond_points(
         DoubleBondPlacement::Right => bond.line_weights.left,
         DoubleBondPlacement::Center => BondLineWeight::Normal,
     };
-    let main_width = bond_line_weight_stroke_width_for_engine(stroke_width, bond.line_weights.main);
-    let outer_width = bond_line_weight_stroke_width_for_engine(stroke_width, outer_weight);
+    let main_width =
+        bond_line_weight_stroke_width_for_engine(bond, stroke_width, bond.line_weights.main);
+    let outer_width = bond_line_weight_stroke_width_for_engine(bond, stroke_width, outer_weight);
     start.distance(end) * 0.12 + 0.5 * (main_width + outer_width)
 }

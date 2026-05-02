@@ -8,7 +8,8 @@ mod text_edit;
 pub use self::command::{
     CommandAnchor, EditorCommand, FocusedDeleteSource, HistoryEntry, TextEditCommandTarget,
 };
-use self::text_edit::refresh_attached_node_label_geometry_for_all_nodes;
+use self::text_edit::endpoint_label_world_bounds;
+pub(crate) use self::text_edit::refresh_attached_node_label_geometry_for_all_nodes;
 pub use self::text_edit::{
     TextEditLayout, TextEditLayoutCaret, TextEditLayoutCaretOffset, TextEditLayoutLine,
     TextEditLayoutRect, TextEditSelection, TextEditSelectionState, TextEditSession, TextEditTarget,
@@ -38,10 +39,11 @@ const HOVER_ENDPOINT_STROKE_WIDTH: f64 = crate::px_to_cm(1.4);
 const HOVER_BOND_CENTER_STROKE_WIDTH: f64 = crate::px_to_cm(1.2);
 const PREVIEW_END_RADIUS: f64 = crate::px_to_cm(5.0);
 const PREVIEW_END_STROKE_WIDTH: f64 = crate::px_to_cm(1.2);
-const SHAPE_STROKE_WIDTH: f64 = 1.0;
 const SHAPE_DASH_LENGTH: f64 = 2.7;
 const ELLIPSE_MINOR_AXIS_RATIO: f64 = 0.4;
 const ROUND_RECT_CORNER_RADIUS: f64 = 6.0;
+const DEFAULT_DOCUMENT_STYLE_PRESET: &str = "default";
+const ACS_DOCUMENT_1996_PRESET: &str = "acs-document-1996";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -71,6 +73,7 @@ pub struct Engine {
     shape_drag: Option<ShapeDragState>,
     clipboard: Option<clipboard::ClipboardContent>,
     options: EditorOptions,
+    document_style_preset: String,
     next_id: u64,
     undo_stack: Vec<HistoryEntry>,
     redo_stack: Vec<HistoryEntry>,
@@ -135,6 +138,7 @@ impl Engine {
             shape_drag: None,
             clipboard: None,
             options: EditorOptions::default(),
+            document_style_preset: DEFAULT_DOCUMENT_STYLE_PRESET.to_string(),
             next_id: 1,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
@@ -154,9 +158,32 @@ impl Engine {
         serde_json::to_string(&self.state.document)
     }
 
+    pub fn document_cdxml(&self) -> String {
+        crate::document_to_cdxml(&self.state.document)
+    }
+
     pub fn load_document_json(&mut self, json: &str) -> Result<(), String> {
         let document = crate::parse_document_json(json)?;
         self.state.document = document;
+        self.options = EditorOptions::default();
+        self.document_style_preset = DEFAULT_DOCUMENT_STYLE_PRESET.to_string();
+        self.state.selection = SelectionState::default();
+        self.clear_interaction();
+        self.undo_stack.clear();
+        self.redo_stack.clear();
+        self.command_context.clear();
+        self.next_id = self.infer_next_id();
+        Ok(())
+    }
+
+    pub fn load_cdxml_document(&mut self, cdxml: &str) -> Result<(), String> {
+        let mut document = crate::parse_cdxml_document(cdxml, None)?;
+        crate::cdxml::normalize_cdxml_document_for_editing(&mut document);
+        let options = editor_options_from_cdxml_document(&document);
+        let preset = document_style_preset_for_options(&options).to_string();
+        self.state.document = document;
+        self.options = options;
+        self.document_style_preset = preset;
         self.state.selection = SelectionState::default();
         self.clear_interaction();
         self.undo_stack.clear();
@@ -177,6 +204,7 @@ impl Engine {
             out.push(RenderPrimitive::Rect {
                 role: RenderRole::HoverTextBox,
                 object_id: hover.object_id.clone(),
+                node_id: hover.node_id.clone(),
                 x: hover.bounds[0],
                 y: hover.bounds[1],
                 width: (hover.bounds[2] - hover.bounds[0]).max(0.0),
@@ -201,6 +229,7 @@ impl Engine {
                     out.push(RenderPrimitive::Circle {
                         role: RenderRole::HoverArrowHandle,
                         object_id: Some(hover.object_id.clone()),
+                        node_id: None,
                         center: *handle,
                         radius: crate::px_to_cm(1.5),
                         fill: "#ffffff".to_string(),
@@ -215,6 +244,7 @@ impl Engine {
                 out.push(RenderPrimitive::Rect {
                     role: RenderRole::HoverLabelGlyph,
                     object_id: None,
+                    node_id: Some(hover.node_id.clone()),
                     x: label_anchor.glyph_box[0],
                     y: label_anchor.glyph_box[1],
                     width: (label_anchor.glyph_box[2] - label_anchor.glyph_box[0]).max(0.0),
@@ -231,6 +261,7 @@ impl Engine {
                 out.push(RenderPrimitive::Circle {
                     role: RenderRole::HoverEndpoint,
                     object_id: None,
+                    node_id: Some(hover.node_id.clone()),
                     center: hover.point,
                     radius: ENDPOINT_FOCUS_RADIUS,
                     fill: "rgba(47,111,237,0.24)".to_string(),
@@ -245,6 +276,7 @@ impl Engine {
                 out.push(RenderPrimitive::Polygon {
                     role: RenderRole::HoverBondCenter,
                     object_id: None,
+                    node_id: None,
                     bond_id: None,
                     points: centered_oriented_rect_points(
                         hover.begin,
@@ -262,6 +294,7 @@ impl Engine {
             out.push(RenderPrimitive::Circle {
                 role: RenderRole::PreviewEnd,
                 object_id: None,
+                node_id: None,
                 center: preview.end,
                 radius: PREVIEW_END_RADIUS,
                 fill: "#ffffff".to_string(),
@@ -346,8 +379,32 @@ impl Engine {
                 });
                 return;
             }
-            self.state.overlay.hover_endpoint =
-                hit_test_endpoint(&self.state.document, point, ENDPOINT_HIT_RADIUS);
+            if let Some(endpoint) =
+                hit_test_endpoint(&self.state.document, point, ENDPOINT_HIT_RADIUS)
+            {
+                if endpoint.label_anchor.is_some() {
+                    if let Some(entry) = self.state.document.editable_fragment() {
+                        if let Some(node) = entry
+                            .fragment
+                            .nodes
+                            .iter()
+                            .find(|node| node.id == endpoint.node_id)
+                        {
+                            if let Some(bounds) =
+                                endpoint_label_world_bounds(node, entry.object.transform.translate)
+                            {
+                                self.state.overlay.hover_text_box = Some(HoverTextBox {
+                                    bounds,
+                                    object_id: None,
+                                    node_id: Some(endpoint.node_id),
+                                });
+                                return;
+                            }
+                        }
+                    }
+                }
+                self.state.overlay.hover_endpoint = Some(endpoint);
+            }
             return;
         }
         if !can_focus_endpoint(&self.state.tool) {
@@ -652,14 +709,25 @@ impl Engine {
     fn add_arrow_between_untracked(&mut self, start: Point, end: Point) -> Option<String> {
         self.push_undo_snapshot();
         self.state.selection = SelectionState::default();
-        ensure_arrow_style(&mut self.state.document);
+        let style_id = self.arrow_style_id();
+        ensure_arrow_style(
+            &mut self.state.document,
+            &style_id,
+            self.options.graphic_stroke_width,
+        );
         let object_id = self.next_id("obj_line");
-        let object = self.arrow_scene_object(start, end, object_id.clone());
+        let object = self.arrow_scene_object(start, end, object_id.clone(), style_id);
         self.state.document.objects.push(object);
         Some(object_id)
     }
 
-    fn arrow_scene_object(&self, start: Point, end: Point, object_id: String) -> SceneObject {
+    fn arrow_scene_object(
+        &self,
+        start: Point,
+        end: Point,
+        object_id: String,
+        style_id: String,
+    ) -> SceneObject {
         let (length, center_length, width) = arrow_payload_dimensions(
             self.state.tool.arrow_variant,
             self.state.tool.arrow_head_size,
@@ -708,13 +776,22 @@ impl Engine {
             locked: false,
             z_index: 20,
             transform: crate::Transform::identity(),
-            style_ref: Some("style_arrow_default".to_string()),
+            style_ref: Some(style_id),
             meta: json!({"source": "chemcore-editor"}),
             payload: crate::ObjectPayload {
                 resource_ref: None,
                 bbox: None,
                 extra,
             },
+        }
+    }
+
+    fn arrow_style_id(&self) -> String {
+        if (self.options.graphic_stroke_width - crate::DEFAULT_BOND_STROKE).abs() <= crate::EPSILON
+        {
+            "style_arrow_default".to_string()
+        } else {
+            format!("style_arrow_{:.2}", self.options.graphic_stroke_width).replace('.', "_")
         }
     }
 
@@ -914,6 +991,9 @@ impl Engine {
             double: pending_double,
             stereo: pending_stereo,
             stroke_width: self.options.bond_stroke_world_cm().value(),
+            bold_width: Some(self.options.bold_bond_width_world_cm().value()),
+            hash_spacing: Some(self.options.hash_spacing_world_cm().value()),
+            bond_spacing: None,
             line_styles: pending_line_styles,
             line_weights: pending_line_weights,
             meta: serde_json::Value::Null,
@@ -947,11 +1027,13 @@ impl Engine {
         if let Some(drag) = self.arrow_drag.as_ref().filter(|drag| drag.has_dragged) {
             let end = drag.end?;
             let mut document = self.state.document.clone();
-            ensure_arrow_style(&mut document);
+            let style_id = self.arrow_style_id();
+            ensure_arrow_style(&mut document, &style_id, self.options.graphic_stroke_width);
             document.objects.push(self.arrow_scene_object(
                 drag.start,
                 end,
                 "__preview_arrow".to_string(),
+                style_id,
             ));
             return Some(document);
         }
@@ -1163,7 +1245,6 @@ impl Engine {
             style_ref: Some(style_id),
             meta: json!({
                 "source": "editor",
-                "cdxml": self.pending_shape_cdxml_meta(),
             }),
             payload: crate::ObjectPayload {
                 resource_ref: None,
@@ -1175,26 +1256,27 @@ impl Engine {
 
     fn pending_shape_style(&self) -> JsonValue {
         let color = self.state.tool.shape_color.clone();
+        let stroke_width = self.options.graphic_stroke_world_cm().value();
         match self.state.tool.shape_style {
             ShapeStyle::Solid => json!({
                 "kind": "shape",
                 "fill": null,
                 "stroke": color,
-                "strokeWidth": SHAPE_STROKE_WIDTH,
+                "strokeWidth": stroke_width,
                 "dashArray": [],
             }),
             ShapeStyle::Dashed => json!({
                 "kind": "shape",
                 "fill": null,
                 "stroke": color,
-                "strokeWidth": SHAPE_STROKE_WIDTH,
+                "strokeWidth": stroke_width,
                 "dashArray": [SHAPE_DASH_LENGTH],
             }),
             ShapeStyle::Shaded => json!({
                 "kind": "shape",
                 "fill": color,
                 "stroke": color,
-                "strokeWidth": SHAPE_STROKE_WIDTH,
+                "strokeWidth": stroke_width,
                 "dashArray": [],
                 "shaded": true,
             }),
@@ -1209,46 +1291,11 @@ impl Engine {
                 "kind": "shape",
                 "fill": null,
                 "stroke": color,
-                "strokeWidth": SHAPE_STROKE_WIDTH,
+                "strokeWidth": stroke_width,
                 "dashArray": [],
                 "shadow": true,
             }),
         }
-    }
-
-    fn pending_shape_cdxml_meta(&self) -> JsonValue {
-        json!({
-            "graphicType": match self.state.tool.shape_kind {
-                ShapeKind::Circle | ShapeKind::Ellipse => "Oval",
-                ShapeKind::RoundRect | ShapeKind::Rect => "Rectangle",
-            },
-            "ovalType": match (self.state.tool.shape_kind, self.state.tool.shape_style) {
-                (ShapeKind::Circle, ShapeStyle::Solid) => "Circle",
-                (ShapeKind::Circle, ShapeStyle::Dashed) => "Circle Dashed",
-                (ShapeKind::Circle, ShapeStyle::Shaded) => "Circle Shaded",
-                (ShapeKind::Circle, ShapeStyle::Filled) => "Circle Filled",
-                (ShapeKind::Circle, ShapeStyle::Shadowed) => "Circle Shadowed",
-                (ShapeKind::Ellipse, ShapeStyle::Solid) => "",
-                (ShapeKind::Ellipse, ShapeStyle::Dashed) => "Dashed",
-                (ShapeKind::Ellipse, ShapeStyle::Shaded) => "Shaded",
-                (ShapeKind::Ellipse, ShapeStyle::Filled) => "Filled",
-                (ShapeKind::Ellipse, ShapeStyle::Shadowed) => "Shadowed",
-                _ => "",
-            },
-            "rectangleType": match (self.state.tool.shape_kind, self.state.tool.shape_style) {
-                (ShapeKind::RoundRect, ShapeStyle::Solid) => "RoundEdge",
-                (ShapeKind::RoundRect, ShapeStyle::Dashed) => "RoundEdge Dashed",
-                (ShapeKind::RoundRect, ShapeStyle::Shaded) => "RoundEdge Shaded",
-                (ShapeKind::RoundRect, ShapeStyle::Filled) => "RoundEdge Filled",
-                (ShapeKind::RoundRect, ShapeStyle::Shadowed) => "RoundEdge Shadow",
-                (ShapeKind::Rect, ShapeStyle::Solid) => "Plain",
-                (ShapeKind::Rect, ShapeStyle::Dashed) => "Dashed",
-                (ShapeKind::Rect, ShapeStyle::Shaded) => "Shaded",
-                (ShapeKind::Rect, ShapeStyle::Filled) => "Filled",
-                (ShapeKind::Rect, ShapeStyle::Shadowed) => "Shadow",
-                _ => "",
-            },
-        })
     }
 
     fn next_shape_z_index(&self) -> i32 {
@@ -1310,6 +1357,9 @@ impl Engine {
             double: self.pending_double_state_for_new_bond(&begin_id, &end_id, order.max(1)),
             stereo: self.pending_bond_stereo(),
             stroke_width: self.options.bond_stroke_world_cm().value(),
+            bold_width: Some(self.options.bold_bond_width_world_cm().value()),
+            hash_spacing: Some(self.options.hash_spacing_world_cm().value()),
+            bond_spacing: None,
             line_styles: self.pending_line_styles(),
             line_weights: self.pending_line_weights(),
             meta: serde_json::Value::Null,
@@ -2587,15 +2637,15 @@ fn round_point(point: Point) -> Point {
     Point::new(crate::round2(point.x), crate::round2(point.y))
 }
 
-fn ensure_arrow_style(document: &mut ChemcoreDocument) {
+fn ensure_arrow_style(document: &mut ChemcoreDocument, style_id: &str, stroke_width: f64) {
     document
         .styles
-        .entry("style_arrow_default".to_string())
+        .entry(style_id.to_string())
         .or_insert_with(|| {
             json!({
                 "kind": "stroke",
                 "stroke": "#000000",
-                "strokeWidth": crate::DEFAULT_BOND_STROKE,
+                "strokeWidth": stroke_width,
                 "lineCap": "butt",
                 "lineJoin": "miter"
             })
@@ -2696,6 +2746,10 @@ impl Engine {
         &self.options
     }
 
+    pub fn document_style_preset(&self) -> &str {
+        &self.document_style_preset
+    }
+
     pub fn set_bond_length_world_cm(&mut self, length: WorldCm) {
         self.options.bond_length = if length.value() > 0.0 {
             length.value()
@@ -2707,4 +2761,406 @@ impl Engine {
     pub fn set_bond_length(&mut self, length: f64) {
         self.set_bond_length_world_cm(WorldCm(length));
     }
+
+    pub fn set_document_style_preset(&mut self, preset: &str) {
+        let preset = normalize_document_style_preset(preset);
+        if self.document_style_preset == preset {
+            return;
+        }
+        let next_options = document_style_preset_options(preset);
+        let scale = if self.options.bond_length > crate::EPSILON {
+            next_options.bond_length / self.options.bond_length
+        } else {
+            1.0
+        };
+        if (scale - 1.0).abs() > crate::EPSILON {
+            if let Some(anchor) = document_content_center(&self.state.document) {
+                scale_document_for_style_preset(&mut self.state.document, scale, anchor);
+            }
+        }
+        apply_existing_document_style_preset(&mut self.state.document, &next_options);
+        self.options = next_options;
+        self.document_style_preset = preset.to_string();
+        self.clear_interaction();
+    }
+}
+
+fn normalize_document_style_preset(preset: &str) -> &'static str {
+    match preset {
+        ACS_DOCUMENT_1996_PRESET => ACS_DOCUMENT_1996_PRESET,
+        _ => DEFAULT_DOCUMENT_STYLE_PRESET,
+    }
+}
+
+fn document_style_preset_options(preset: &str) -> EditorOptions {
+    match normalize_document_style_preset(preset) {
+        ACS_DOCUMENT_1996_PRESET => EditorOptions {
+            bond_length: 14.4,
+            bond_stroke_width: 0.6,
+            bold_bond_width: 2.0,
+            hash_spacing: 2.5,
+            graphic_stroke_width: 0.6,
+        },
+        _ => EditorOptions::default(),
+    }
+}
+
+fn document_style_preset_for_options(options: &EditorOptions) -> &'static str {
+    let acs = document_style_preset_options(ACS_DOCUMENT_1996_PRESET);
+    if editor_options_approx_eq(options, &acs) {
+        ACS_DOCUMENT_1996_PRESET
+    } else {
+        DEFAULT_DOCUMENT_STYLE_PRESET
+    }
+}
+
+fn editor_options_approx_eq(left: &EditorOptions, right: &EditorOptions) -> bool {
+    (left.bond_length - right.bond_length).abs() <= 0.05
+        && (left.bond_stroke_width - right.bond_stroke_width).abs() <= 0.01
+        && (left.bold_bond_width - right.bold_bond_width).abs() <= 0.05
+        && (left.hash_spacing - right.hash_spacing).abs() <= 0.05
+        && (left.graphic_stroke_width - right.graphic_stroke_width).abs() <= 0.01
+}
+
+fn editor_options_from_cdxml_document(document: &ChemcoreDocument) -> EditorOptions {
+    let mut options = EditorOptions::default();
+    let mut has_bond_length = false;
+    let mut has_line_width = false;
+    let mut has_bold_width = false;
+    let mut has_hash_spacing = false;
+    if let Some(defaults) = document
+        .document
+        .meta
+        .get("import")
+        .and_then(|value| value.get("cdxml"))
+        .and_then(|value| value.get("defaults"))
+    {
+        if let Some(value) = defaults.get("bondLength").and_then(JsonValue::as_f64) {
+            options.bond_length = value;
+            has_bond_length = true;
+        }
+        if let Some(value) = defaults.get("lineWidth").and_then(JsonValue::as_f64) {
+            options.bond_stroke_width = value;
+            options.graphic_stroke_width = value;
+            has_line_width = true;
+        }
+        if let Some(value) = defaults.get("boldWidth").and_then(JsonValue::as_f64) {
+            options.bold_bond_width = value;
+            has_bold_width = true;
+        }
+        if let Some(value) = defaults.get("hashSpacing").and_then(JsonValue::as_f64) {
+            options.hash_spacing = value;
+            has_hash_spacing = true;
+        }
+    }
+    if let Some(metrics) = infer_cdxml_document_bond_metrics(document) {
+        if !has_bond_length {
+            options.bond_length = metrics.bond_length.unwrap_or(options.bond_length);
+        }
+        if !has_line_width {
+            options.bond_stroke_width = metrics.line_width.unwrap_or(options.bond_stroke_width);
+            options.graphic_stroke_width =
+                metrics.line_width.unwrap_or(options.graphic_stroke_width);
+        }
+        if !has_bold_width {
+            options.bold_bond_width = metrics.bold_width.unwrap_or(options.bold_bond_width);
+        }
+        if !has_hash_spacing {
+            options.hash_spacing = metrics.hash_spacing.unwrap_or(options.hash_spacing);
+        }
+    }
+    options
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct InferredBondMetrics {
+    bond_length: Option<f64>,
+    line_width: Option<f64>,
+    bold_width: Option<f64>,
+    hash_spacing: Option<f64>,
+}
+
+fn infer_cdxml_document_bond_metrics(document: &ChemcoreDocument) -> Option<InferredBondMetrics> {
+    let entry = document.editable_fragment()?;
+    let mut lengths = Vec::new();
+    let mut line_widths = Vec::new();
+    let mut bold_widths = Vec::new();
+    let mut hash_spacings = Vec::new();
+    for bond in &entry.fragment.bonds {
+        let Some(begin) = entry
+            .fragment
+            .nodes
+            .iter()
+            .find(|node| node.id == bond.begin)
+        else {
+            continue;
+        };
+        let Some(end) = entry.fragment.nodes.iter().find(|node| node.id == bond.end) else {
+            continue;
+        };
+        let length = entry
+            .world_point_for_node(begin)
+            .distance(entry.world_point_for_node(end));
+        if length > crate::EPSILON {
+            lengths.push(length);
+        }
+        if bond.stroke_width > crate::EPSILON {
+            line_widths.push(bond.stroke_width);
+        }
+        if let Some(value) = bond.bold_width.filter(|value| *value > crate::EPSILON) {
+            bold_widths.push(value);
+        }
+        if let Some(value) = bond.hash_spacing.filter(|value| *value > crate::EPSILON) {
+            hash_spacings.push(value);
+        }
+    }
+    Some(InferredBondMetrics {
+        bond_length: median_near_default(&mut lengths),
+        line_width: median_near_default(&mut line_widths),
+        bold_width: median_near_default(&mut bold_widths),
+        hash_spacing: median_near_default(&mut hash_spacings),
+    })
+}
+
+fn median_near_default(values: &mut [f64]) -> Option<f64> {
+    if values.is_empty() {
+        return None;
+    }
+    values.sort_by(|a, b| a.total_cmp(b));
+    Some(crate::round2(values[values.len() / 2]))
+}
+
+fn document_content_center(document: &ChemcoreDocument) -> Option<Point> {
+    let mut bounds: Option<[f64; 4]> = None;
+    for primitive in render_document(document) {
+        extend_bounds_for_render_primitive(&mut bounds, &primitive);
+    }
+    bounds.map(|[min_x, min_y, max_x, max_y]| {
+        Point::new((min_x + max_x) * 0.5, (min_y + max_y) * 0.5)
+    })
+}
+
+fn extend_bounds_for_render_primitive(bounds: &mut Option<[f64; 4]>, primitive: &RenderPrimitive) {
+    match primitive {
+        RenderPrimitive::Line { from, to, .. } => {
+            extend_bounds_for_point(bounds, *from);
+            extend_bounds_for_point(bounds, *to);
+        }
+        RenderPrimitive::Circle { center, radius, .. } => {
+            extend_bounds_for_point(bounds, Point::new(center.x - radius, center.y - radius));
+            extend_bounds_for_point(bounds, Point::new(center.x + radius, center.y + radius));
+        }
+        RenderPrimitive::Polygon { points, .. }
+        | RenderPrimitive::Polyline { points, .. }
+        | RenderPrimitive::Path { points, .. }
+        | RenderPrimitive::FilledPath { points, .. } => {
+            for point in points {
+                extend_bounds_for_point(bounds, *point);
+            }
+        }
+        RenderPrimitive::Rect {
+            x,
+            y,
+            width,
+            height,
+            ..
+        } => {
+            extend_bounds_for_point(bounds, Point::new(*x, *y));
+            extend_bounds_for_point(bounds, Point::new(x + width, y + height));
+        }
+        RenderPrimitive::Ellipse { center, rx, ry, .. } => {
+            extend_bounds_for_point(bounds, Point::new(center.x - rx, center.y - ry));
+            extend_bounds_for_point(bounds, Point::new(center.x + rx, center.y + ry));
+        }
+        RenderPrimitive::Text {
+            x,
+            y,
+            font_size,
+            box_width,
+            ..
+        } => {
+            extend_bounds_for_point(bounds, Point::new(*x, y - font_size));
+            extend_bounds_for_point(
+                bounds,
+                Point::new(x + box_width.unwrap_or(0.0), y + font_size),
+            );
+        }
+    }
+}
+
+fn extend_bounds_for_point(bounds: &mut Option<[f64; 4]>, point: Point) {
+    match bounds {
+        Some([min_x, min_y, max_x, max_y]) => {
+            *min_x = min_x.min(point.x);
+            *min_y = min_y.min(point.y);
+            *max_x = max_x.max(point.x);
+            *max_y = max_y.max(point.y);
+        }
+        None => *bounds = Some([point.x, point.y, point.x, point.y]),
+    }
+}
+
+fn scale_document_for_style_preset(document: &mut ChemcoreDocument, factor: f64, anchor: Point) {
+    let page_width = document.document.page.width;
+    let page_height = document.document.page.height;
+    let Ok(mut value) = serde_json::to_value(&*document) else {
+        return;
+    };
+    scale_document_json_for_style_preset(&mut value, factor, anchor);
+    if let Ok(mut next_document) = serde_json::from_value::<ChemcoreDocument>(value) {
+        next_document.document.page.width = page_width;
+        next_document.document.page.height = page_height;
+        *document = next_document;
+    }
+}
+
+fn scale_document_json_for_style_preset(value: &mut JsonValue, factor: f64, anchor: Point) {
+    scale_json_value_for_style_preset("", value, factor, anchor);
+}
+
+fn scale_json_value_for_style_preset(key: &str, value: &mut JsonValue, factor: f64, anchor: Point) {
+    if key == "translate" {
+        scale_point_array_around_anchor(value, factor, anchor);
+        return;
+    }
+    if style_scale_key_as_length_scalar(key) {
+        scale_all_json_numbers(value, factor);
+        return;
+    }
+    match value {
+        JsonValue::Array(items) if style_scale_key_as_local_length_array(key) => {
+            for item in items {
+                scale_all_json_numbers(item, factor);
+            }
+        }
+        JsonValue::Array(items) => {
+            for item in items {
+                scale_json_value_for_style_preset("", item, factor, anchor);
+            }
+        }
+        JsonValue::Object(object) => {
+            for (child_key, child_value) in object {
+                scale_json_value_for_style_preset(child_key, child_value, factor, anchor);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn scale_point_array_around_anchor(value: &mut JsonValue, factor: f64, anchor: Point) {
+    let Some(items) = value.as_array_mut() else {
+        return;
+    };
+    if items.len() < 2 {
+        return;
+    }
+    if let Some(x) = items.first().and_then(JsonValue::as_f64) {
+        items[0] = json_number(anchor.x + (x - anchor.x) * factor);
+    }
+    if let Some(y) = items.get(1).and_then(JsonValue::as_f64) {
+        items[1] = json_number(anchor.y + (y - anchor.y) * factor);
+    }
+}
+
+fn scale_all_json_numbers(value: &mut JsonValue, factor: f64) {
+    match value {
+        JsonValue::Number(number) => {
+            if let Some(scaled) = number
+                .as_f64()
+                .and_then(|value| serde_json::Number::from_f64(value * factor))
+            {
+                *number = scaled;
+            }
+        }
+        JsonValue::Array(items) => {
+            for item in items {
+                scale_all_json_numbers(item, factor);
+            }
+        }
+        JsonValue::Object(object) => {
+            for child_value in object.values_mut() {
+                scale_all_json_numbers(child_value, factor);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn style_scale_key_as_length_scalar(key: &str) -> bool {
+    matches!(
+        key,
+        "width"
+            | "height"
+            | "x"
+            | "y"
+            | "strokeWidth"
+            | "boldWidth"
+            | "hashSpacing"
+            | "fontSize"
+            | "lineHeight"
+            | "wrapWidth"
+            | "pad"
+            | "padding"
+            | "length"
+            | "centerLength"
+            | "cornerRadius"
+    )
+}
+
+fn style_scale_key_as_local_length_array(key: &str) -> bool {
+    matches!(
+        key,
+        "bbox"
+            | "box"
+            | "boxField"
+            | "position"
+            | "points"
+            | "anchorOffset"
+            | "glyphPolygons"
+            | "center"
+            | "majorAxisEnd"
+            | "minorAxisEnd"
+            | "dashArray"
+    )
+}
+
+fn json_number(value: f64) -> JsonValue {
+    serde_json::Number::from_f64(value)
+        .map(JsonValue::Number)
+        .unwrap_or(JsonValue::Null)
+}
+
+fn apply_existing_document_style_preset(document: &mut ChemcoreDocument, options: &EditorOptions) {
+    for resource in document.resources.values_mut() {
+        let Some(fragment) = resource.data.as_fragment_mut() else {
+            continue;
+        };
+        for bond in &mut fragment.bonds {
+            bond.stroke_width = options.bond_stroke_world_cm().value();
+            bond.bold_width = Some(options.bold_bond_width_world_cm().value());
+            bond.hash_spacing = Some(options.hash_spacing_world_cm().value());
+        }
+    }
+    for style in document.styles.values_mut() {
+        let Some(object) = style.as_object_mut() else {
+            continue;
+        };
+        let kind = object.get("kind").and_then(JsonValue::as_str).unwrap_or("");
+        let target_width = match kind {
+            "molecule" => Some(options.bond_stroke_world_cm().value()),
+            "stroke" | "shape" => existing_style_has_stroke_width(object)
+                .then_some(options.graphic_stroke_world_cm().value()),
+            _ => None,
+        };
+        if let Some(width) = target_width {
+            object.insert("strokeWidth".to_string(), json_number(width));
+        }
+    }
+}
+
+fn existing_style_has_stroke_width(object: &serde_json::Map<String, JsonValue>) -> bool {
+    object
+        .get("strokeWidth")
+        .and_then(JsonValue::as_f64)
+        .is_some_and(|value| value > crate::EPSILON)
 }

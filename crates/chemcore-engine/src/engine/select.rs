@@ -1943,6 +1943,7 @@ fn push_selection_box(out: &mut Vec<RenderPrimitive>, bounds: AxisBounds, role: 
     out.push(RenderPrimitive::Rect {
         role,
         object_id: None,
+        node_id: None,
         x: bounds.min_x,
         y: bounds.min_y,
         width: (bounds.max_x - bounds.min_x).max(0.0),
@@ -1970,6 +1971,7 @@ fn push_selection_bond_dot(out: &mut Vec<RenderPrimitive>, center: Point) {
     out.push(RenderPrimitive::Circle {
         role: RenderRole::SelectionBondDot,
         object_id: None,
+        node_id: None,
         center,
         radius: SELECTION_BOND_DOT_RADIUS,
         fill: "rgba(47,111,237,0.9)".to_string(),

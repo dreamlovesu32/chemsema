@@ -51,6 +51,12 @@ npm run verify
 - 键接触、label clipping、dash/hash knockout、预览态和落地态几何应由 Rust render 路径统一定义。
 - Viewer 不应靠 SVG `linecap`、额外中心 patch 或前台补丁重新定义化学键几何。
 
+## 化学标签
+
+- 隐式氢行为以 `docs/implicit-hydrogen-rules.zh-CN.md` 为当前行为基线。
+- 缩写识别与 functional group 展开计划以 `docs/abbreviation-recognition-rules.zh-CN.md` 为当前设计基线。
+- 标签识别、隐式氢数量、生成标签文本和画键锚点都属于 Rust engine 行为，不应在 viewer 里另写一套。
+
 ## 命令历史
 
 - 只有已提交的文档变化进入 history。

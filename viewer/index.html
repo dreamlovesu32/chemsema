@@ -20,6 +20,9 @@
             <button class="icon-button" type="button" data-command="save" aria-label="Save" title="Save">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h12l2 2v14H5z"/><path d="M8 4v6h8V4"/><path d="M8 16h8v4H8z"/></svg>
             </button>
+            <button class="icon-button" type="button" data-command="save-cdxml" aria-label="Save CDXML" title="Save CDXML">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h8.5L19 8v12.5H6z"/><path d="M14.5 3.5V8H19"/><path d="M8.5 12.5h7"/><path d="M8.5 16h5"/><path d="M9 7.5 11 10l2-2.5"/></svg>
+            </button>
           </div>
 
           <div class="toolbar-divider" aria-hidden="true"></div>
@@ -69,6 +72,15 @@
             <button id="fit-button" class="icon-button" type="button" data-command="fit" aria-label="Fit all" title="Fit all">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5"/><path d="M20 9V4h-5"/><path d="M4 15v5h5"/><path d="M20 15v5h-5"/><path d="M8 8h8v8H8z"/></svg>
             </button>
+          </div>
+
+          <div class="toolbar-divider" aria-hidden="true"></div>
+
+          <div class="toolbar-group document-style-group">
+            <select id="document-style-preset" class="document-style-select" aria-label="Document style">
+              <option value="default" selected>Default</option>
+              <option value="acs-document-1996">ACS Document 1996</option>
+            </select>
           </div>
         </div>
         <div id="secondary-toolbar" class="toolbar-row toolbar-row-secondary" aria-label="Secondary toolbar"></div>

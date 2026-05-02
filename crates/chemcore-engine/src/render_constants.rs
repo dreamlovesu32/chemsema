@@ -2,12 +2,15 @@ use crate::{css_px, world_cm, WorldCm, DEFAULT_BOND_STROKE_CM};
 
 pub const VIEWER_BOND_STROKE_CM: WorldCm = world_cm(DEFAULT_BOND_STROKE_CM);
 
+pub const DEFAULT_BOND_SPACING_PERCENT: f64 = 18.0;
 pub const DOUBLE_BOND_SIDE_INSET_CM: WorldCm = world_cm(1.05);
 pub const HASH_WEDGE_SPACING_CM: WorldCm = world_cm(2.7);
 pub const HASH_WEDGE_START_OFFSET_CM: WorldCm = world_cm(1.0);
 pub const HASH_WEDGE_END_INSET_CM: WorldCm = world_cm(0.0);
 pub const HASH_BLACK_SEGMENT_LENGTH_CM: WorldCm = world_cm(1.0);
 pub const HASH_TARGET_GAP_LENGTH_CM: WorldCm = world_cm(1.9);
+pub const DEFAULT_HASH_SPACING_CM: WorldCm =
+    world_cm(HASH_BLACK_SEGMENT_LENGTH_CM.value() + HASH_TARGET_GAP_LENGTH_CM.value());
 pub const HASH_WEDGE_EDGE_OVERDRAW_CM: WorldCm = world_cm(0.21);
 pub const HASH_MULTI_BOND_RETREAT_GAP_CM: WorldCm = world_cm(0.34);
 pub const SOLID_WEDGE_END_INSET_CM: WorldCm = world_cm(0.0);

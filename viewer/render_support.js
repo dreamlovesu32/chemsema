@@ -28,40 +28,28 @@ export function displayLabelFontFamily(fontFamily) {
   return `${value}, "TeX Gyre Heros", Arial, Helvetica, sans-serif`;
 }
 
-export function isSubscriptFace(face) {
-  const value = Number(face) || 0;
-  return (value & 32) !== 0 && (value & 64) === 0;
-}
-
-export function isSuperscriptFace(face) {
-  const value = Number(face) || 0;
-  return (value & 64) !== 0 && (value & 32) === 0;
-}
-
 export function isSubscriptRun(run) {
   const script = String(run?.script || "").toLowerCase();
-  return script === "subscript" || (!script && isSubscriptFace(run?.face));
+  return script === "subscript";
 }
 
 export function isSuperscriptRun(run) {
   const script = String(run?.script || "").toLowerCase();
-  return script === "superscript" || (!script && isSuperscriptFace(run?.face));
+  return script === "superscript";
 }
 
-export function fontWeightForRun(run, fallbackFace = 0) {
+export function fontWeightForRun(run) {
   if (run?.fontWeight !== undefined && run?.fontWeight !== null) {
     return Number(run.fontWeight);
   }
-  const face = Number(run?.face ?? fallbackFace ?? 0);
-  return (face & 1) ? 700 : undefined;
+  return undefined;
 }
 
-export function fontStyleForRun(run, fallbackFace = 0) {
+export function fontStyleForRun(run) {
   if (run?.fontStyle) {
     return run.fontStyle;
   }
-  const face = Number(run?.face ?? fallbackFace ?? 0);
-  return (face & 2) ? "italic" : undefined;
+  return undefined;
 }
 
 export function makeSvgNode(name, attributes = {}) {

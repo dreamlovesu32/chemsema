@@ -1,8 +1,8 @@
 use chemcore_engine::{
-    angle_between, direction_from_angle, ArrowCurve, ArrowEndpointStyle, ArrowHeadSize, ArrowNoGo,
-    ArrowVariant, BondLinePattern, BondLineWeight, BondVariant, DoubleBondPlacement, Engine, Point,
-    PointerEvent, RenderPrimitive, RenderRole, ShapeKind, ShapeStyle, Tool, ToolState,
-    DEFAULT_BOND_LENGTH, DEFAULT_BOND_STROKE, ENDPOINT_FOCUS_RADIUS,
+    angle_between, direction_from_angle, line_object_points, ArrowCurve, ArrowEndpointStyle,
+    ArrowHeadSize, ArrowNoGo, ArrowVariant, BondLinePattern, BondLineWeight, BondVariant,
+    DoubleBondPlacement, Engine, Point, PointerEvent, RenderPrimitive, RenderRole, ShapeKind,
+    ShapeStyle, Tool, ToolState, DEFAULT_BOND_LENGTH, DEFAULT_BOND_STROKE, ENDPOINT_FOCUS_RADIUS,
 };
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -987,6 +987,245 @@ fn click_on_blank_canvas_creates_up_right_single_bond() {
 }
 
 #[test]
+fn acs_document_1996_preset_sets_new_bond_metrics() {
+    let mut engine = Engine::new();
+    engine.set_document_style_preset("acs-document-1996");
+    engine.set_tool_state(bond_tool());
+
+    click(&mut engine, px(300.0), px(260.0));
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let begin = entry.world_point_for_node(&entry.fragment.nodes[0]);
+    let end = entry.world_point_for_node(&entry.fragment.nodes[1]);
+    let bond = &entry.fragment.bonds[0];
+    assert!((begin.distance(end) - 14.4).abs() < 0.001);
+    assert!((bond.stroke_width - 0.6).abs() < 0.001);
+    assert_eq!(bond.bold_width, Some(2.0));
+    assert_eq!(bond.hash_spacing, Some(2.5));
+}
+
+#[test]
+fn acs_document_1996_preset_sets_bold_render_width() {
+    let mut engine = Engine::new();
+    engine.set_document_style_preset("acs-document-1996");
+    engine.set_tool_state(bold_bond_tool());
+
+    click(&mut engine, px(300.0), px(260.0));
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let bond = &entry.fragment.bonds[0];
+    assert_eq!(bond.line_weights.main, BondLineWeight::Bold);
+    assert_eq!(bond.bold_width, Some(2.0));
+    let bold_area = engine
+        .render_list()
+        .into_iter()
+        .find_map(|primitive| match primitive {
+            RenderPrimitive::Polygon {
+                role: RenderRole::DocumentBond,
+                points,
+                ..
+            } => Some(polygon_area(&points)),
+            _ => None,
+        })
+        .expect("bold bond should render as a filled polygon");
+    assert!((bold_area - 28.8).abs() < 0.01, "{bold_area}");
+}
+
+#[test]
+fn acs_document_1996_preset_sets_new_graphic_strokes() {
+    let mut engine = Engine::new();
+    engine.set_document_style_preset("acs-document-1996");
+    engine.set_tool_state(ToolState {
+        active_tool: Tool::Arrow,
+        ..ToolState::default()
+    });
+    drag(&mut engine, Point::new(10.0, 20.0), Point::new(90.0, 20.0));
+
+    let arrow = engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "line")
+        .expect("arrow object should exist");
+    let arrow_style = arrow.style_ref.as_ref().expect("arrow should have style");
+    assert_eq!(arrow_style, "style_arrow_0_60");
+    assert_eq!(
+        engine.state().document.styles[arrow_style]
+            .get("strokeWidth")
+            .and_then(|value| value.as_f64()),
+        Some(0.6)
+    );
+
+    engine.set_tool_state(shape_tool(ShapeKind::Rect, ShapeStyle::Solid));
+    drag(&mut engine, Point::new(20.0, 30.0), Point::new(60.0, 80.0));
+
+    let shape = engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "shape")
+        .expect("shape object should exist");
+    let shape_style = shape.style_ref.as_ref().expect("shape should have style");
+    assert_eq!(
+        engine.state().document.styles[shape_style]
+            .get("strokeWidth")
+            .and_then(|value| value.as_f64()),
+        Some(0.6)
+    );
+}
+
+#[test]
+fn acs_document_1996_preset_scales_existing_document_as_one_group() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, px(300.0), px(260.0));
+
+    engine.set_tool_state(ToolState {
+        active_tool: Tool::Arrow,
+        ..ToolState::default()
+    });
+    drag(
+        &mut engine,
+        Point::new(600.0, 100.0),
+        Point::new(660.0, 100.0),
+    );
+
+    engine.set_tool_state(shape_tool(ShapeKind::Rect, ShapeStyle::Solid));
+    drag(
+        &mut engine,
+        Point::new(700.0, 200.0),
+        Point::new(760.0, 260.0),
+    );
+
+    let before_page = engine.state().document.document.page.clone();
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let before_bond_start = entry.world_point_for_node(&entry.fragment.nodes[0]);
+    let before_arrow_start = engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "line")
+        .and_then(|object| line_object_points(object).first().copied())
+        .expect("arrow start should exist");
+    let before_shape_translate = engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "shape")
+        .expect("shape should exist")
+        .transform
+        .translate;
+
+    engine.set_document_style_preset("acs-document-1996");
+
+    assert_eq!(
+        engine.state().document.document.page.width,
+        before_page.width
+    );
+    assert_eq!(
+        engine.state().document.document.page.height,
+        before_page.height
+    );
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let after_bond_start = entry.world_point_for_node(&entry.fragment.nodes[0]);
+    let after_bond_end = entry.world_point_for_node(&entry.fragment.nodes[1]);
+    let after_arrow_start = engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "line")
+        .and_then(|object| line_object_points(object).first().copied())
+        .expect("arrow start should exist");
+    let after_shape_translate = engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "shape")
+        .expect("shape should exist")
+        .transform
+        .translate;
+
+    let scale = 14.4 / DEFAULT_BOND_LENGTH;
+    assert!((after_bond_start.distance(after_bond_end) - 14.4).abs() < 0.001);
+    assert!(
+        ((after_arrow_start.x - after_bond_start.x)
+            - (before_arrow_start.x - before_bond_start.x) * scale)
+            .abs()
+            < 0.001
+    );
+    assert!(
+        ((after_arrow_start.y - after_bond_start.y)
+            - (before_arrow_start.y - before_bond_start.y) * scale)
+            .abs()
+            < 0.001
+    );
+    assert!(
+        ((after_shape_translate[0] - after_bond_start.x)
+            - (before_shape_translate[0] - before_bond_start.x) * scale)
+            .abs()
+            < 0.001
+    );
+    assert!(
+        ((after_shape_translate[1] - after_bond_start.y)
+            - (before_shape_translate[1] - before_bond_start.y) * scale)
+            .abs()
+            < 0.001
+    );
+
+    let after_once = after_arrow_start;
+    engine.set_document_style_preset("acs-document-1996");
+    let after_twice = engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "line")
+        .and_then(|object| line_object_points(object).first().copied())
+        .expect("arrow start should exist");
+    assert_point_close(after_once, after_twice);
+
+    let bond = &engine
+        .state()
+        .document
+        .editable_fragment()
+        .unwrap()
+        .fragment
+        .bonds[0];
+    assert!((bond.stroke_width - 0.6).abs() < 0.001);
+    assert_eq!(bond.bold_width, Some(2.0));
+    assert_eq!(bond.hash_spacing, Some(2.5));
+
+    engine.set_document_style_preset("default");
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let default_bond = &entry.fragment.bonds[0];
+    let default_begin = entry.world_point_for_node(
+        entry
+            .fragment
+            .nodes
+            .iter()
+            .find(|node| node.id == default_bond.begin)
+            .unwrap(),
+    );
+    let default_end = entry.world_point_for_node(
+        entry
+            .fragment
+            .nodes
+            .iter()
+            .find(|node| node.id == default_bond.end)
+            .unwrap(),
+    );
+    assert_eq!(engine.document_style_preset(), "default");
+    assert!((default_begin.distance(default_end) - DEFAULT_BOND_LENGTH).abs() < 0.001);
+    assert!((default_bond.stroke_width - DEFAULT_BOND_STROKE).abs() < 0.001);
+}
+
+#[test]
 fn template_click_on_bond_uses_bond_as_ring_side() {
     let mut engine = Engine::new();
     engine.set_tool_state(bond_tool());
@@ -1558,10 +1797,11 @@ fn hovered_endpoint_can_be_replaced_with_element_label() {
         .unwrap();
     assert_eq!(node.element, "N");
     assert_eq!(node.atomic_number, 7);
+    assert_eq!(node.num_hydrogens, 2);
     assert!(!node.is_placeholder);
     assert_eq!(
         node.label.as_ref().map(|label| label.text.as_str()),
-        Some("N")
+        Some("NH2")
     );
     assert_eq!(
         node.label.as_ref().and_then(|label| label.font_size),
@@ -1570,6 +1810,115 @@ fn hovered_endpoint_can_be_replaced_with_element_label() {
     assert_eq!(
         node.label.as_ref().and_then(|label| label.align.as_deref()),
         Some("left")
+    );
+}
+
+#[test]
+fn shortcut_generated_hydrogen_label_preserves_manual_endpoint_text_edit() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+
+    click(&mut engine, px(300.0), px(260.0));
+    hover(&mut engine, FIRST_END_HOVER_X, FIRST_END_HOVER_Y);
+    assert!(engine.replace_hovered_endpoint_label("N"));
+
+    let label_box = {
+        let entry = engine.state().document.editable_fragment().unwrap();
+        let node = entry
+            .fragment
+            .nodes
+            .iter()
+            .find(|node| node.position == [FIRST_END_X, FIRST_END_Y])
+            .unwrap();
+        assert_eq!(
+            node.label
+                .as_ref()
+                .and_then(|label| label.source_text.as_deref()),
+            Some("NH2")
+        );
+        assert!(
+            node.meta.get("labelRecognition").is_none(),
+            "generated one-connection NH2 should be valid"
+        );
+        node.label.as_ref().and_then(|label| label.bbox()).unwrap()
+    };
+    let session = engine
+        .begin_text_edit(Point::new(
+            (label_box[0] + label_box[2]) * 0.5,
+            (label_box[1] + label_box[3]) * 0.5,
+        ))
+        .expect("label edit session should start");
+    assert!(engine.apply_text_edit(chemcore_engine::TextEditSession {
+        text: "NH".to_string(),
+        source_runs: Vec::new(),
+        ..session
+    }));
+
+    let label_box = {
+        let entry = engine.state().document.editable_fragment().unwrap();
+        let node = entry
+            .fragment
+            .nodes
+            .iter()
+            .find(|node| node.position == [FIRST_END_X, FIRST_END_Y])
+            .unwrap();
+        assert_eq!(node.element, "N");
+        assert_eq!(node.num_hydrogens, 2);
+        assert_eq!(
+            node.label
+                .as_ref()
+                .and_then(|label| label.source_text.as_deref()),
+            Some("NH")
+        );
+        assert_eq!(
+            node.meta
+                .get("implicitHydrogenLabel")
+                .and_then(|value| value.get("userEdited"))
+                .and_then(serde_json::Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            node.label
+                .as_ref()
+                .and_then(|label| label.meta.get("implicitHydrogenLabel"))
+                .and_then(|value| value.get("userEdited"))
+                .and_then(serde_json::Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            node.meta
+                .get("labelRecognition")
+                .and_then(|value| value.get("status"))
+                .and_then(serde_json::Value::as_str),
+            Some("invalid")
+        );
+        node.label.as_ref().and_then(|label| label.bbox()).unwrap()
+    };
+
+    let session = engine
+        .begin_text_edit(Point::new(
+            (label_box[0] + label_box[2]) * 0.5,
+            (label_box[1] + label_box[3]) * 0.5,
+        ))
+        .expect("label edit session should restart");
+    assert!(engine.apply_text_edit(chemcore_engine::TextEditSession {
+        text: "NX".to_string(),
+        source_runs: Vec::new(),
+        ..session
+    }));
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let node = entry
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| node.position == [FIRST_END_X, FIRST_END_Y])
+        .unwrap();
+    assert_eq!(
+        node.meta
+            .get("labelRecognition")
+            .and_then(|value| value.get("status"))
+            .and_then(serde_json::Value::as_str),
+        Some("invalid")
     );
 }
 

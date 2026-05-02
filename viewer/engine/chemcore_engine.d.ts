@@ -19,11 +19,14 @@ export class WasmEngine {
     copySelection(): boolean;
     cutSelection(): boolean;
     deleteSelection(): boolean;
+    documentCdxml(): string;
     documentJson(): string;
+    documentStylePreset(): string;
     finishHoverArrowEdit(x: number, y: number, alt_key: boolean): boolean;
     finishSelectionMove(x: number, y: number, alt_key: boolean): boolean;
     finishSelectionRotate(x: number, y: number, alt_key: boolean): boolean;
     hoverArrowAction(x: number, y: number): string;
+    loadDocumentCdxml(cdxml: string): void;
     loadDocumentJson(json: string): void;
     constructor();
     pasteClipboard(): boolean;
@@ -41,6 +44,7 @@ export class WasmEngine {
     selectionContainsPoint(x: number, y: number): boolean;
     setArrowEndpointOptions(variant: string, head_size: string, curve: string, head_style: string, tail_style: string, no_go: string, bold: boolean): void;
     setArrowOptions(variant: string, head_size: string, head: boolean, tail: boolean, bold: boolean): void;
+    setDocumentStylePreset(preset: string): void;
     setShapeOptions(kind: string, style: string, color: string): void;
     setTemplate(template: string): void;
     setTool(active_tool: string, bond_variant: string): void;
@@ -71,11 +75,14 @@ export interface InitOutput {
     readonly wasmengine_copySelection: (a: number) => number;
     readonly wasmengine_cutSelection: (a: number) => number;
     readonly wasmengine_deleteSelection: (a: number) => number;
+    readonly wasmengine_documentCdxml: (a: number) => [number, number];
     readonly wasmengine_documentJson: (a: number) => [number, number, number, number];
+    readonly wasmengine_documentStylePreset: (a: number) => [number, number];
     readonly wasmengine_finishHoverArrowEdit: (a: number, b: number, c: number, d: number) => number;
     readonly wasmengine_finishSelectionMove: (a: number, b: number, c: number, d: number) => number;
     readonly wasmengine_finishSelectionRotate: (a: number, b: number, c: number, d: number) => number;
     readonly wasmengine_hoverArrowAction: (a: number, b: number, c: number) => [number, number];
+    readonly wasmengine_loadDocumentCdxml: (a: number, b: number, c: number) => [number, number];
     readonly wasmengine_loadDocumentJson: (a: number, b: number, c: number) => [number, number];
     readonly wasmengine_new: () => number;
     readonly wasmengine_pasteClipboard: (a: number) => number;
@@ -93,6 +100,7 @@ export interface InitOutput {
     readonly wasmengine_selectionContainsPoint: (a: number, b: number, c: number) => number;
     readonly wasmengine_setArrowEndpointOptions: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number) => void;
     readonly wasmengine_setArrowOptions: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
+    readonly wasmengine_setDocumentStylePreset: (a: number, b: number, c: number) => void;
     readonly wasmengine_setShapeOptions: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
     readonly wasmengine_setTemplate: (a: number, b: number, c: number) => void;
     readonly wasmengine_setTool: (a: number, b: number, c: number, d: number, e: number) => void;

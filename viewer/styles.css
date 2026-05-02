@@ -192,7 +192,8 @@ button {
   gap: 4px;
 }
 
-.zoom-input {
+.zoom-input,
+.document-style-select {
   width: 74px;
   height: 36px;
   border: 1px solid var(--line-strong);
@@ -203,7 +204,12 @@ button {
   outline: none;
 }
 
-.zoom-input:focus {
+.document-style-select {
+  width: 230px;
+}
+
+.zoom-input:focus,
+.document-style-select:focus {
   border-color: var(--active);
   box-shadow: 0 0 0 2px var(--active-soft);
 }

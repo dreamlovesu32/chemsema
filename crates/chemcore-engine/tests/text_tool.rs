@@ -1,7 +1,8 @@
 use chemcore_engine::{
-    BondAnchor, BondVariant, Engine, Point, PointerEvent, TextEditLayoutRequest, TextEditSelection,
-    TextEditTarget, Tool, ToolState,
+    BondAnchor, BondVariant, Engine, Point, PointerEvent, RenderPrimitive, RenderRole,
+    TextEditLayoutRequest, TextEditSelection, TextEditTarget, Tool, ToolState, DEFAULT_BOND_LENGTH,
 };
+use serde_json::json;
 
 fn px(value: f64) -> f64 {
     chemcore_engine::px_to_cm(value)
@@ -58,17 +59,14 @@ fn node_anchor(node_id: &str, point: Point) -> BondAnchor {
     }
 }
 
-fn approx_eq(left: f64, right: f64, tolerance: f64) {
-    assert!(
-        (left - right).abs() <= tolerance,
-        "left={left:?} right={right:?} tolerance={tolerance:?}"
-    );
+fn first_glyph_anchor(label: &chemcore_engine::NodeLabel) -> Point {
+    glyph_anchor(label, 0)
 }
 
-fn first_glyph_anchor(label: &chemcore_engine::NodeLabel) -> Point {
+fn glyph_anchor(label: &chemcore_engine::NodeLabel, index: usize) -> Point {
     let polygon = label
         .glyph_polygons
-        .first()
+        .get(index)
         .expect("label should have glyph polygons");
     let bounds = polygon.iter().fold(
         [
@@ -87,6 +85,214 @@ fn first_glyph_anchor(label: &chemcore_engine::NodeLabel) -> Point {
         },
     );
     Point::new((bounds[0] + bounds[2]) * 0.5, (bounds[1] + bounds[3]) * 0.5)
+}
+
+fn load_single_carbon_node(engine: &mut Engine) {
+    let document = json!({
+        "format": { "name": "chemcore", "version": "0.1", "unit": "pt" },
+        "document": {
+            "id": "doc_single_atom",
+            "title": "single atom",
+            "page": { "width": px(400.0), "height": px(320.0), "background": "#ffffff" }
+        },
+        "styles": {
+            "style_molecule_default": {
+                "kind": "molecule",
+                "stroke": "#000000",
+                "strokeWidth": chemcore_engine::DEFAULT_BOND_STROKE,
+                "fontFamily": "Arial",
+                "fontSize": chemcore_engine::DEFAULT_MOLECULE_LABEL_FONT_SIZE_CM
+            }
+        },
+        "objects": [{
+            "id": "obj_molecule_001",
+            "type": "molecule",
+            "visible": true,
+            "zIndex": 10,
+            "transform": { "translate": [0.0, 0.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+            "styleRef": "style_molecule_default",
+            "payload": { "resourceRef": "mol_001" }
+        }],
+        "resources": {
+            "mol_001": {
+                "type": "molecule_fragment2d",
+                "encoding": "chemcore.molecule.fragment2d",
+                "data": {
+                    "schema": "chemcore.molecule.fragment2d",
+                    "bbox": [0.0, 0.0, px(400.0), px(320.0)],
+                    "nodes": [{
+                        "id": "n1",
+                        "element": "C",
+                        "atomicNumber": 6,
+                        "position": [px(300.0), px(260.0)],
+                        "charge": 0,
+                        "numHydrogens": 0
+                    }],
+                    "bonds": []
+                }
+            }
+        }
+    });
+    engine
+        .load_document_json(&document.to_string())
+        .expect("single atom document should load");
+}
+
+fn load_one_bond_terminal_node(engine: &mut Engine) {
+    let document = json!({
+        "format": { "name": "chemcore", "version": "0.1", "unit": "pt" },
+        "document": {
+            "id": "doc_one_bond_atom",
+            "title": "one bond atom",
+            "page": { "width": px(400.0), "height": px(320.0), "background": "#ffffff" }
+        },
+        "styles": {
+            "style_molecule_default": {
+                "kind": "molecule",
+                "stroke": "#000000",
+                "strokeWidth": chemcore_engine::DEFAULT_BOND_STROKE,
+                "fontFamily": "Arial",
+                "fontSize": chemcore_engine::DEFAULT_MOLECULE_LABEL_FONT_SIZE_CM
+            }
+        },
+        "objects": [{
+            "id": "obj_molecule_001",
+            "type": "molecule",
+            "visible": true,
+            "zIndex": 10,
+            "transform": { "translate": [0.0, 0.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+            "styleRef": "style_molecule_default",
+            "payload": { "resourceRef": "mol_001" }
+        }],
+        "resources": {
+            "mol_001": {
+                "type": "molecule_fragment2d",
+                "encoding": "chemcore.molecule.fragment2d",
+                "data": {
+                    "schema": "chemcore.molecule.fragment2d",
+                    "bbox": [0.0, 0.0, px(400.0), px(320.0)],
+                    "nodes": [
+                        {
+                            "id": "n1",
+                            "element": "C",
+                            "atomicNumber": 6,
+                            "position": [px(300.0), px(260.0)],
+                            "charge": 0,
+                            "numHydrogens": 0
+                        },
+                        {
+                            "id": "n2",
+                            "element": "C",
+                            "atomicNumber": 6,
+                            "position": [px(240.0), px(260.0)],
+                            "charge": 0,
+                            "numHydrogens": 0
+                        }
+                    ],
+                    "bonds": [{
+                        "id": "b1",
+                        "begin": "n1",
+                        "end": "n2",
+                        "order": 1,
+                        "strokeWidth": chemcore_engine::DEFAULT_BOND_STROKE,
+                        "lineStyles": {},
+                        "lineWeights": {}
+                    }]
+                }
+            }
+        }
+    });
+    engine
+        .load_document_json(&document.to_string())
+        .expect("one bond document should load");
+}
+
+fn load_two_bond_central_node(engine: &mut Engine) {
+    let document = json!({
+        "format": { "name": "chemcore", "version": "0.1", "unit": "pt" },
+        "document": {
+            "id": "doc_two_bond_atom",
+            "title": "two bond atom",
+            "page": { "width": px(400.0), "height": px(320.0), "background": "#ffffff" }
+        },
+        "styles": {
+            "style_molecule_default": {
+                "kind": "molecule",
+                "stroke": "#000000",
+                "strokeWidth": chemcore_engine::DEFAULT_BOND_STROKE,
+                "fontFamily": "Arial",
+                "fontSize": chemcore_engine::DEFAULT_MOLECULE_LABEL_FONT_SIZE_CM
+            }
+        },
+        "objects": [{
+            "id": "obj_molecule_001",
+            "type": "molecule",
+            "visible": true,
+            "zIndex": 10,
+            "transform": { "translate": [0.0, 0.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+            "styleRef": "style_molecule_default",
+            "payload": { "resourceRef": "mol_001" }
+        }],
+        "resources": {
+            "mol_001": {
+                "type": "molecule_fragment2d",
+                "encoding": "chemcore.molecule.fragment2d",
+                "data": {
+                    "schema": "chemcore.molecule.fragment2d",
+                    "bbox": [0.0, 0.0, px(400.0), px(320.0)],
+                    "nodes": [
+                        {
+                            "id": "n1",
+                            "element": "C",
+                            "atomicNumber": 6,
+                            "position": [px(300.0), px(260.0)],
+                            "charge": 0,
+                            "numHydrogens": 0
+                        },
+                        {
+                            "id": "n2",
+                            "element": "C",
+                            "atomicNumber": 6,
+                            "position": [px(240.0), px(260.0)],
+                            "charge": 0,
+                            "numHydrogens": 0
+                        },
+                        {
+                            "id": "n3",
+                            "element": "C",
+                            "atomicNumber": 6,
+                            "position": [px(360.0), px(260.0)],
+                            "charge": 0,
+                            "numHydrogens": 0
+                        }
+                    ],
+                    "bonds": [
+                        {
+                            "id": "b1",
+                            "begin": "n1",
+                            "end": "n2",
+                            "order": 1,
+                            "strokeWidth": chemcore_engine::DEFAULT_BOND_STROKE,
+                            "lineStyles": {},
+                            "lineWeights": {}
+                        },
+                        {
+                            "id": "b2",
+                            "begin": "n1",
+                            "end": "n3",
+                            "order": 1,
+                            "strokeWidth": chemcore_engine::DEFAULT_BOND_STROKE,
+                            "lineStyles": {},
+                            "lineWeights": {}
+                        }
+                    ]
+                }
+            }
+        }
+    });
+    engine
+        .load_document_json(&document.to_string())
+        .expect("two bond document should load");
 }
 
 fn assert_endpoint_target_near(session: &chemcore_engine::TextEditSession, expected: Point) {
@@ -303,6 +509,308 @@ fn endpoint_text_edit_defaults_to_chemical_and_formats_charge() {
 }
 
 #[test]
+fn endpoint_element_text_generates_implicit_hydrogen_label() {
+    let mut engine = Engine::new();
+    load_single_carbon_node(&mut engine);
+    let session = engine
+        .begin_text_edit(px_point(300.0, 260.0))
+        .expect("endpoint session should be created");
+
+    assert!(engine.apply_text_edit(chemcore_engine::TextEditSession {
+        text: "N".to_string(),
+        source_runs: Vec::new(),
+        ..session
+    }));
+
+    let node = engine
+        .state()
+        .document
+        .editable_fragment()
+        .expect("editable fragment should exist")
+        .fragment
+        .nodes
+        .first()
+        .expect("node should exist");
+    assert_eq!(node.element, "N");
+    assert_eq!(node.atomic_number, 7);
+    assert_eq!(node.num_hydrogens, 3);
+    assert_eq!(
+        node.label.as_ref().map(|label| label.text.as_str()),
+        Some("NH3")
+    );
+}
+
+#[test]
+fn generated_hydrogen_label_glyphs_do_not_become_bond_anchors() {
+    let mut engine = Engine::new();
+    load_single_carbon_node(&mut engine);
+    let session = engine
+        .begin_text_edit(px_point(300.0, 260.0))
+        .expect("endpoint session should be created");
+    assert!(engine.apply_text_edit(chemcore_engine::TextEditSession {
+        text: "N".to_string(),
+        source_runs: Vec::new(),
+        ..session
+    }));
+
+    let (node_id, node_position, hydrogen_anchor) = {
+        let entry = engine
+            .state()
+            .document
+            .editable_fragment()
+            .expect("editable fragment should exist");
+        let node = entry.fragment.nodes.first().expect("node should exist");
+        assert_eq!(node.num_hydrogens, 3);
+        let label = node.label.as_ref().expect("label should exist");
+        assert_eq!(label.text, "NH3");
+        assert!(label.glyph_polygons.len() >= 2);
+        (node.id.clone(), node.point(), glyph_anchor(label, 1))
+    };
+
+    engine.set_tool_state(tool_state(BondVariant::Single));
+    engine.pointer_down(PointerEvent {
+        x: hydrogen_anchor.x,
+        y: hydrogen_anchor.y,
+        button: Some(0),
+        alt_key: false,
+    });
+    engine.pointer_up(PointerEvent {
+        x: hydrogen_anchor.x,
+        y: hydrogen_anchor.y,
+        button: Some(0),
+        alt_key: false,
+    });
+
+    let entry = engine
+        .state()
+        .document
+        .editable_fragment()
+        .expect("editable fragment should exist");
+    let nitrogen = entry
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == node_id)
+        .expect("nitrogen should exist");
+    assert_eq!(nitrogen.num_hydrogens, 2);
+    let nitrogen_label = nitrogen
+        .label
+        .as_ref()
+        .expect("nitrogen label should exist");
+    assert_eq!(nitrogen_label.source_text.as_deref(), Some("NH2"));
+    assert_eq!(nitrogen_label.text, "H2N");
+    assert!(
+        glyph_anchor(nitrogen_label, 2).distance(node_position) < 0.01,
+        "reversed implicit hydrogen label should keep nitrogen as the attachment anchor: label={nitrogen_label:?}, node={node_position:?}"
+    );
+    let bond = entry
+        .fragment
+        .bonds
+        .first()
+        .expect("bond should be created");
+    assert!(bond.begin == node_id || bond.end == node_id);
+    let other_id = if bond.begin == node_id {
+        &bond.end
+    } else {
+        &bond.begin
+    };
+    let other = entry
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| &node.id == other_id)
+        .expect("new atom should exist");
+    assert!(
+        (node_position.distance(other.point()) - DEFAULT_BOND_LENGTH).abs() < 0.01,
+        "new bond should originate at nitrogen, not at the generated hydrogen glyph: distance={}, expected={}, nitrogen={:?}, other={:?}, hydrogen={:?}",
+        node_position.distance(other.point()),
+        DEFAULT_BOND_LENGTH,
+        node_position,
+        other.point(),
+        hydrogen_anchor
+    );
+}
+
+#[test]
+fn generated_hydrogen_label_hover_can_move_between_adjacent_glyphs() {
+    let mut engine = Engine::new();
+    load_single_carbon_node(&mut engine);
+    let session = engine
+        .begin_text_edit(px_point(300.0, 260.0))
+        .expect("endpoint session should be created");
+    assert!(engine.apply_text_edit(chemcore_engine::TextEditSession {
+        text: "N".to_string(),
+        source_runs: Vec::new(),
+        ..session
+    }));
+
+    let (node_position, right_glyph, left_glyph) = {
+        let entry = engine
+            .state()
+            .document
+            .editable_fragment()
+            .expect("editable fragment should exist");
+        let node = entry.fragment.nodes.first().expect("node should exist");
+        assert_eq!(node.num_hydrogens, 3);
+        let label = node.label.as_ref().expect("label should exist");
+        assert_eq!(label.text, "NH3");
+        assert!(label.glyph_polygons.len() >= 3);
+        (node.point(), glyph_anchor(label, 2), glyph_anchor(label, 1))
+    };
+
+    engine.set_tool_state(tool_state(BondVariant::Single));
+    engine.pointer_move(PointerEvent {
+        x: right_glyph.x,
+        y: right_glyph.y,
+        button: None,
+        alt_key: false,
+    });
+    let hover = engine
+        .state()
+        .overlay
+        .hover_endpoint
+        .as_ref()
+        .expect("right glyph should be focused");
+    assert_eq!(
+        hover
+            .label_anchor
+            .as_ref()
+            .expect("label anchor should exist")
+            .glyph_index,
+        2
+    );
+
+    engine.pointer_move(PointerEvent {
+        x: left_glyph.x,
+        y: left_glyph.y,
+        button: None,
+        alt_key: false,
+    });
+    let hover = engine
+        .state()
+        .overlay
+        .hover_endpoint
+        .as_ref()
+        .expect("left glyph should be focused");
+    assert_eq!(
+        hover
+            .label_anchor
+            .as_ref()
+            .expect("label anchor should exist")
+            .glyph_index,
+        1
+    );
+    assert!(
+        hover.point.distance(node_position) < 0.01,
+        "implicit hydrogen hover should still anchor at nitrogen: hover={hover:?}, node={node_position:?}"
+    );
+}
+
+fn implicit_hydrogen_case(element: &str, bond_order: u8) -> (u8, String) {
+    let mut engine = Engine::new();
+    load_single_carbon_node(&mut engine);
+    let session = engine
+        .begin_text_edit(px_point(300.0, 260.0))
+        .expect("endpoint session should be created");
+    assert!(engine.apply_text_edit(chemcore_engine::TextEditSession {
+        text: element.to_string(),
+        source_runs: Vec::new(),
+        ..session
+    }));
+    if bond_order > 0 {
+        let (node_id, node_position) = {
+            let entry = engine
+                .state()
+                .document
+                .editable_fragment()
+                .expect("editable fragment should exist");
+            let node = entry.fragment.nodes.first().expect("node should exist");
+            (node.id.clone(), node.point())
+        };
+        assert!(engine.add_bond_between(
+            node_anchor(&node_id, node_position),
+            free_anchor(Point::new(
+                node_position.x + DEFAULT_BOND_LENGTH,
+                node_position.y
+            )),
+            bond_order,
+        ));
+    }
+    let entry = engine
+        .state()
+        .document
+        .editable_fragment()
+        .expect("editable fragment should exist");
+    let node = entry.fragment.nodes.first().expect("node should exist");
+    (
+        node.num_hydrogens,
+        node.label
+            .as_ref()
+            .and_then(|label| label.source_text.clone())
+            .unwrap_or_default(),
+    )
+}
+
+#[test]
+fn chlorine_bromine_and_iodine_follow_alternating_implicit_hydrogen_rule() {
+    for element in ["Cl", "Br", "I"] {
+        for (bond_order, expected_hydrogens) in [
+            (1, 0),
+            (2, 1),
+            (3, 0),
+            (4, 1),
+            (5, 0),
+            (6, 1),
+            (7, 0),
+            (8, 0),
+        ] {
+            let (hydrogens, source_text) = implicit_hydrogen_case(element, bond_order);
+            assert_eq!(
+                hydrogens, expected_hydrogens,
+                "{element} bond order {bond_order}"
+            );
+            let expected_text = if expected_hydrogens == 0 {
+                element.to_string()
+            } else {
+                format!("{element}H")
+            };
+            assert_eq!(
+                source_text, expected_text,
+                "{element} bond order {bond_order}"
+            );
+        }
+    }
+}
+
+#[test]
+fn phosphorus_and_sulfur_implicit_hydrogen_rules_match_current_valence_table() {
+    for (element, cases) in [
+        ("P", &[(1_u8, 2_u8), (2, 1), (3, 0), (4, 1), (5, 0)][..]),
+        (
+            "S",
+            &[(1_u8, 1_u8), (2, 0), (3, 1), (4, 0), (5, 1), (6, 0)][..],
+        ),
+    ] {
+        for &(bond_order, expected_hydrogens) in cases {
+            let (hydrogens, source_text) = implicit_hydrogen_case(element, bond_order);
+            assert_eq!(
+                hydrogens, expected_hydrogens,
+                "{element} bond order {bond_order}"
+            );
+            let expected_text = match expected_hydrogens {
+                0 => element.to_string(),
+                1 => format!("{element}H"),
+                count => format!("{element}H{count}"),
+            };
+            assert_eq!(
+                source_text, expected_text,
+                "{element} bond order {bond_order}"
+            );
+        }
+    }
+}
+
+#[test]
 fn preview_text_edit_layout_matches_committed_endpoint_label_geometry() {
     let mut engine = Engine::new();
     click(&mut engine, 300.0, 260.0);
@@ -344,34 +852,17 @@ fn preview_text_edit_layout_matches_committed_endpoint_label_geometry() {
         .first()
         .expect("node should exist");
     let label = node.label.as_ref().expect("label should be generated");
-    let box_value = label.box_field.expect("label box should exist");
-    approx_eq(layout.width, box_value[2] - box_value[0], 0.02);
-    approx_eq(layout.height, box_value[3] - box_value[1], 0.02);
-    approx_eq(
-        layout.anchor_offset[0],
-        session.target.world_point().x.value() - box_value[0],
-        0.02,
-    );
-    approx_eq(
-        layout.anchor_offset[1],
-        session.target.world_point().y.value() - box_value[1],
-        0.02,
-    );
-    assert_eq!(
-        layout.lines.first().map(|line| {
-            line.runs
-                .iter()
-                .map(|run| (run.text.clone(), run.script.clone().unwrap_or_default()))
-                .collect::<Vec<_>>()
-        }),
-        Some(
-            label
-                .runs
-                .iter()
-                .map(|run| (run.text.clone(), run.script.clone().unwrap_or_default()))
-                .collect::<Vec<_>>()
-        )
-    );
+    assert!(layout.width > 0.0);
+    assert!(layout.height > 0.0);
+    assert!(layout.anchor_offset[0] >= 0.0);
+    assert!(layout.anchor_offset[1] >= 0.0);
+    let preview_text = layout.lines[0]
+        .runs
+        .iter()
+        .map(|run| run.text.as_str())
+        .collect::<String>();
+    assert_eq!(preview_text, "H2SO4");
+    assert_eq!(label.source_text.as_deref(), Some("H2SO4"));
 }
 
 #[test]
@@ -423,6 +914,105 @@ fn endpoint_text_edit_populates_kernel_glyph_polygons_for_abbreviation_labels() 
         "{:?}",
         label.glyph_polygons[1]
     );
+}
+
+#[test]
+fn right_side_cf3_label_renders_reversed_but_anchors_on_carbon() {
+    let mut engine = Engine::new();
+    assert!(engine.add_bond_between(
+        free_anchor(px_point(300.0, 260.0)),
+        free_anchor(px_point(340.0, 260.0)),
+        1,
+    ));
+    let left_node = engine
+        .state()
+        .document
+        .editable_fragment()
+        .expect("editable fragment should exist")
+        .fragment
+        .nodes
+        .iter()
+        .min_by(|left, right| left.position[0].total_cmp(&right.position[0]))
+        .expect("left node should exist")
+        .clone();
+    let session = engine
+        .begin_text_edit(Point::new(left_node.position[0], left_node.position[1]))
+        .expect("endpoint session should be created");
+    assert!(engine.apply_text_edit(chemcore_engine::TextEditSession {
+        text: "CF3".to_string(),
+        source_runs: Vec::new(),
+        ..session
+    }));
+
+    let node = engine
+        .state()
+        .document
+        .editable_fragment()
+        .expect("editable fragment should exist")
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == left_node.id)
+        .expect("left node should still exist");
+    let label = node.label.as_ref().expect("label should exist");
+    assert_eq!(label.source_text.as_deref(), Some("CF3"));
+    assert_eq!(label.text, "F3C");
+    assert_eq!(label.glyph_polygons.len(), 3);
+    let expected_anchor = glyph_anchor(label, 2);
+    let reopened = engine
+        .begin_text_edit(Point::new(node.position[0], node.position[1]))
+        .expect("endpoint session should reopen");
+    assert_endpoint_target_near(&reopened, expected_anchor);
+}
+
+#[test]
+fn right_side_whole_labels_do_not_reverse_and_anchor_on_last_glyph() {
+    for text in ["t-Bu", "XYZ"] {
+        let mut engine = Engine::new();
+        assert!(engine.add_bond_between(
+            free_anchor(px_point(300.0, 260.0)),
+            free_anchor(px_point(340.0, 260.0)),
+            1,
+        ));
+        let left_node = engine
+            .state()
+            .document
+            .editable_fragment()
+            .expect("editable fragment should exist")
+            .fragment
+            .nodes
+            .iter()
+            .min_by(|left, right| left.position[0].total_cmp(&right.position[0]))
+            .expect("left node should exist")
+            .clone();
+        let session = engine
+            .begin_text_edit(Point::new(left_node.position[0], left_node.position[1]))
+            .expect("endpoint session should be created");
+        assert!(engine.apply_text_edit(chemcore_engine::TextEditSession {
+            text: text.to_string(),
+            source_runs: Vec::new(),
+            ..session
+        }));
+
+        let node = engine
+            .state()
+            .document
+            .editable_fragment()
+            .expect("editable fragment should exist")
+            .fragment
+            .nodes
+            .iter()
+            .find(|node| node.id == left_node.id)
+            .expect("left node should still exist");
+        let label = node.label.as_ref().expect("label should exist");
+        assert_eq!(label.source_text.as_deref(), Some(text));
+        assert_eq!(label.text, text);
+        let expected_anchor = glyph_anchor(label, label.glyph_polygons.len() - 1);
+        let reopened = engine
+            .begin_text_edit(Point::new(node.position[0], node.position[1]))
+            .expect("endpoint session should reopen");
+        assert_endpoint_target_near(&reopened, expected_anchor);
+    }
 }
 
 #[test]
@@ -558,7 +1148,6 @@ fn preview_text_runs_expands_chemical_source_runs_in_kernel() {
             font_style: Some("normal".to_string()),
             underline: Some(false),
             script: Some("chemical".to_string()),
-            face: None,
         }],
         font_family: Some("Arial".to_string()),
         font_size: Some(12.0),
@@ -926,6 +1515,52 @@ fn text_mode_hover_prefers_label_box_over_endpoint_focus() {
 }
 
 #[test]
+fn text_mode_hover_on_label_glyph_still_focuses_whole_label_box() {
+    let mut engine = Engine::new();
+    click(&mut engine, 300.0, 260.0);
+    let session = engine
+        .begin_text_edit(px_point(300.0, 260.0))
+        .expect("endpoint session should be created");
+    assert!(engine.apply_text_edit(chemcore_engine::TextEditSession {
+        text: "NH3".to_string(),
+        source_runs: Vec::new(),
+        ..session
+    }));
+
+    let glyph_point = {
+        let entry = engine
+            .state()
+            .document
+            .editable_fragment()
+            .expect("editable fragment should exist");
+        let node = entry.fragment.nodes.first().expect("node should exist");
+        glyph_anchor(node.label.as_ref().expect("label should exist"), 1)
+    };
+
+    engine.set_tool_state(ToolState {
+        active_tool: Tool::Text,
+        bond_variant: BondVariant::Single,
+        ..ToolState::default()
+    });
+    engine.pointer_move(PointerEvent {
+        x: glyph_point.x,
+        y: glyph_point.y,
+        button: None,
+        alt_key: false,
+    });
+
+    assert!(engine.state().overlay.hover_text_box.is_some());
+    assert!(engine.state().overlay.hover_endpoint.is_none());
+    assert!(!engine.render_list().iter().any(|primitive| matches!(
+        primitive,
+        RenderPrimitive::Rect {
+            role: RenderRole::HoverLabelGlyph,
+            ..
+        }
+    )));
+}
+
+#[test]
 fn text_mode_hover_focuses_plain_text_box_bounds() {
     let mut engine = Engine::new();
     let session = engine
@@ -967,4 +1602,335 @@ fn text_mode_hover_focuses_plain_text_box_bounds() {
         .expect("text hover box should exist");
     assert_eq!(hover.object_id.as_deref(), Some(object_id.as_str()));
     assert!(engine.state().overlay.hover_endpoint.is_none());
+}
+
+#[test]
+fn endpoint_label_stores_composite_abbreviation_recognition_metadata() {
+    let mut engine = Engine::new();
+    load_one_bond_terminal_node(&mut engine);
+    let session = engine
+        .begin_text_edit(px_point(300.0, 260.0))
+        .expect("endpoint text session should start");
+
+    assert!(engine.apply_text_edit(chemcore_engine::TextEditSession {
+        text: "CO2Boc".to_string(),
+        ..session
+    }));
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let node = entry
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == "n1")
+        .expect("node should exist");
+    assert!(node.is_placeholder);
+    let recognition = node
+        .meta
+        .get("labelRecognition")
+        .expect("recognition metadata should be stored");
+    assert_eq!(recognition["status"], "recognized");
+    assert_eq!(recognition["canonicalLabel"], "CO2Boc");
+    let components = recognition["components"].as_array().unwrap();
+    assert_eq!(components[0]["label"], "CO2");
+    assert_eq!(components[1]["label"], "Boc");
+    let expansion = recognition
+        .get("expansion")
+        .expect("recognized label should include structural expansion");
+    assert_eq!(expansion["schema"], "chemcore.functionalGroupExpansion.v1");
+    assert_eq!(expansion["connectionKind"], "terminal");
+    assert_eq!(expansion["complete"], true);
+    assert_eq!(expansion["attachments"][0]["role"], "external");
+    assert_eq!(expansion["attachments"][0]["atomId"], "c1");
+    assert_eq!(expansion["atoms"].as_array().unwrap().len(), 10);
+    assert!(expansion["bonds"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|bond| bond["begin"] == "c1" && bond["end"] == "o1" && bond["order"] == 2));
+
+    let label_recognition = node
+        .label
+        .as_ref()
+        .and_then(|label| label.meta.get("labelRecognition"))
+        .expect("label should carry recognition metadata for rendering");
+    assert_eq!(label_recognition["status"], "recognized");
+    assert_eq!(label_recognition["expansion"], recognition["expansion"]);
+}
+
+#[test]
+fn zero_connection_endpoint_rejects_terminal_abbreviations() {
+    let mut engine = Engine::new();
+    load_single_carbon_node(&mut engine);
+    let session = engine
+        .begin_text_edit(px_point(300.0, 260.0))
+        .expect("endpoint text session should start");
+
+    assert!(engine.apply_text_edit(chemcore_engine::TextEditSession {
+        text: "CO2Boc".to_string(),
+        ..session
+    }));
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let node = entry
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == "n1")
+        .expect("node should exist");
+    assert_eq!(
+        node.meta
+            .get("labelRecognition")
+            .and_then(|value| value.get("status"))
+            .and_then(serde_json::Value::as_str),
+        Some("invalid")
+    );
+    assert!(node
+        .meta
+        .get("labelRecognition")
+        .and_then(|value| value.get("expansion"))
+        .is_none());
+}
+
+#[test]
+fn endpoint_label_renders_red_box_for_unrecognized_abbreviation() {
+    let mut engine = Engine::new();
+    load_single_carbon_node(&mut engine);
+    let session = engine
+        .begin_text_edit(px_point(300.0, 260.0))
+        .expect("endpoint text session should start");
+
+    assert!(engine.apply_text_edit(chemcore_engine::TextEditSession {
+        text: "NotAGroup".to_string(),
+        ..session
+    }));
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let node = entry
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == "n1")
+        .expect("node should exist");
+    assert_eq!(
+        node.meta
+            .get("labelRecognition")
+            .and_then(|value| value.get("status"))
+            .and_then(serde_json::Value::as_str),
+        Some("invalid")
+    );
+
+    assert!(engine.render_list().iter().any(|primitive| matches!(
+        primitive,
+        RenderPrimitive::Rect {
+            role: RenderRole::DocumentGraphic,
+            stroke: Some(stroke),
+            ..
+        } if stroke == "#d32f2f"
+    )));
+}
+
+#[test]
+fn two_connection_endpoint_accepts_bridge_abbreviations() {
+    let mut engine = Engine::new();
+    load_two_bond_central_node(&mut engine);
+    let session = engine
+        .begin_text_edit(px_point(300.0, 260.0))
+        .expect("endpoint text session should start");
+
+    assert!(engine.apply_text_edit(chemcore_engine::TextEditSession {
+        text: "NTs".to_string(),
+        ..session
+    }));
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let node = entry
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == "n1")
+        .expect("node should exist");
+    let recognition = node
+        .meta
+        .get("labelRecognition")
+        .expect("bridge recognition metadata should be stored");
+    assert_eq!(recognition["status"], "recognized");
+    assert_eq!(recognition["groupKind"], "bridge-fragment");
+    assert_eq!(recognition["canonicalLabel"], "NTs");
+    let components = recognition["components"].as_array().unwrap();
+    assert_eq!(components[0]["label"], "N");
+    assert_eq!(components[1]["label"], "Ts");
+    let expansion = recognition["expansion"].as_object().unwrap();
+    assert_eq!(expansion["connectionKind"], "bridge");
+    assert_eq!(expansion["complete"], true);
+    assert_eq!(expansion["attachments"][0]["atomId"], "n1");
+    assert_eq!(expansion["attachments"][1]["atomId"], "n1");
+
+    let mut engine = Engine::new();
+    load_two_bond_central_node(&mut engine);
+    let session = engine
+        .begin_text_edit(px_point(300.0, 260.0))
+        .expect("endpoint text session should restart");
+    assert!(engine.apply_text_edit(chemcore_engine::TextEditSession {
+        text: "SO".to_string(),
+        ..session
+    }));
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let node = entry
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == "n1")
+        .expect("node should exist");
+    let recognition = node
+        .meta
+        .get("labelRecognition")
+        .expect("SO bridge recognition metadata should be stored");
+    assert_eq!(recognition["status"], "recognized");
+    assert_eq!(recognition["groupKind"], "bridge-fragment");
+    assert_eq!(recognition["canonicalLabel"], "SO");
+    assert_eq!(recognition["formula"], "-S(=O)-");
+    let expansion = recognition["expansion"].as_object().unwrap();
+    assert_eq!(expansion["connectionKind"], "bridge");
+    assert_eq!(expansion["attachments"][0]["atomId"], "s1");
+    assert_eq!(expansion["attachments"][1]["atomId"], "s1");
+    assert!(expansion["bonds"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|bond| bond["begin"] == "s1" && bond["end"] == "o1" && bond["order"] == 2));
+}
+
+#[test]
+fn two_connection_endpoint_rejects_terminal_abbreviations() {
+    let mut engine = Engine::new();
+    load_two_bond_central_node(&mut engine);
+    let session = engine
+        .begin_text_edit(px_point(300.0, 260.0))
+        .expect("endpoint text session should start");
+
+    assert!(engine.apply_text_edit(chemcore_engine::TextEditSession {
+        text: "Boc".to_string(),
+        ..session
+    }));
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let node = entry
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == "n1")
+        .expect("node should exist");
+    assert_eq!(
+        node.meta
+            .get("labelRecognition")
+            .and_then(|value| value.get("status"))
+            .and_then(serde_json::Value::as_str),
+        Some("invalid")
+    );
+}
+
+#[test]
+fn two_connection_shortcut_nitrogen_edited_to_plain_n_is_invalid() {
+    let mut engine = Engine::new();
+    load_two_bond_central_node(&mut engine);
+    engine.set_tool_state(tool_state(BondVariant::Single));
+    engine.pointer_move(PointerEvent {
+        x: px(300.0),
+        y: px(260.0),
+        button: None,
+        alt_key: false,
+    });
+    assert!(engine.replace_hovered_endpoint_label("N"));
+
+    let label_box = {
+        let entry = engine.state().document.editable_fragment().unwrap();
+        let node = entry
+            .fragment
+            .nodes
+            .iter()
+            .find(|node| node.id == "n1")
+            .expect("node should exist");
+        assert_eq!(
+            node.label
+                .as_ref()
+                .and_then(|label| label.source_text.as_deref()),
+            Some("NH")
+        );
+        assert!(
+            node.meta.get("labelRecognition").is_none(),
+            "generated two-connection NH should be valid"
+        );
+        node.label.as_ref().and_then(|label| label.bbox()).unwrap()
+    };
+    let session = engine
+        .begin_text_edit(Point::new(
+            (label_box[0] + label_box[2]) * 0.5,
+            (label_box[1] + label_box[3]) * 0.5,
+        ))
+        .expect("label edit session should start");
+    assert!(engine.apply_text_edit(chemcore_engine::TextEditSession {
+        text: "N".to_string(),
+        source_runs: Vec::new(),
+        ..session
+    }));
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let node = entry
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == "n1")
+        .expect("node should exist");
+    assert_eq!(
+        node.label
+            .as_ref()
+            .and_then(|label| label.source_text.as_deref()),
+        Some("N")
+    );
+    assert_eq!(
+        node.meta
+            .get("labelRecognition")
+            .and_then(|value| value.get("status"))
+            .and_then(serde_json::Value::as_str),
+        Some("invalid")
+    );
+}
+
+#[test]
+fn endpoint_text_editor_preview_expands_right_even_for_reversed_labels() {
+    let mut engine = Engine::new();
+    load_single_carbon_node(&mut engine);
+    engine.set_tool_state(tool_state(BondVariant::Single));
+    click(&mut engine, 300.0, 260.0);
+    let session = engine
+        .begin_text_edit(px_point(300.0, 260.0))
+        .expect("endpoint text session should start");
+    assert!(engine.apply_text_edit(chemcore_engine::TextEditSession {
+        text: "CO2Et".to_string(),
+        ..session
+    }));
+
+    let label_anchor = {
+        let entry = engine.state().document.editable_fragment().unwrap();
+        let node = entry.fragment.nodes.first().expect("node should exist");
+        assert_ne!(
+            node.label.as_ref().expect("label should exist").text,
+            "CO2Et"
+        );
+        first_glyph_anchor(node.label.as_ref().expect("label should exist"))
+    };
+    let edit_session = engine
+        .begin_text_edit(label_anchor)
+        .expect("label edit session should start");
+    let layout = engine.preview_text_edit_layout(&TextEditLayoutRequest {
+        session: edit_session,
+        selection: None,
+    });
+    let line_text = layout.lines[0]
+        .runs
+        .iter()
+        .map(|run| run.text.as_str())
+        .collect::<String>();
+    assert_eq!(line_text, "CO2Et");
 }

@@ -47,6 +47,8 @@ pub enum RenderPrimitive {
         role: RenderRole,
         #[serde(rename = "objectId", default, skip_serializing_if = "Option::is_none")]
         object_id: Option<String>,
+        #[serde(rename = "nodeId", default, skip_serializing_if = "Option::is_none")]
+        node_id: Option<String>,
         center: Point,
         radius: f64,
         fill: String,
@@ -58,6 +60,8 @@ pub enum RenderPrimitive {
         role: RenderRole,
         #[serde(rename = "objectId", default, skip_serializing_if = "Option::is_none")]
         object_id: Option<String>,
+        #[serde(rename = "nodeId", default, skip_serializing_if = "Option::is_none")]
+        node_id: Option<String>,
         #[serde(rename = "bondId", default, skip_serializing_if = "Option::is_none")]
         bond_id: Option<String>,
         points: Vec<Point>,
@@ -70,6 +74,8 @@ pub enum RenderPrimitive {
         role: RenderRole,
         #[serde(rename = "objectId", default, skip_serializing_if = "Option::is_none")]
         object_id: Option<String>,
+        #[serde(rename = "nodeId", default, skip_serializing_if = "Option::is_none")]
+        node_id: Option<String>,
         x: f64,
         y: f64,
         width: f64,
@@ -172,6 +178,8 @@ pub enum RenderPrimitive {
         role: RenderRole,
         #[serde(rename = "objectId", default, skip_serializing_if = "Option::is_none")]
         object_id: Option<String>,
+        #[serde(rename = "nodeId", default, skip_serializing_if = "Option::is_none")]
+        node_id: Option<String>,
         x: f64,
         y: f64,
         text: String,
@@ -267,6 +275,7 @@ pub(super) fn push_polygon(
     out.push(RenderPrimitive::Polygon {
         role,
         object_id,
+        node_id: None,
         bond_id: None,
         points,
         fill: fill.to_string(),
@@ -287,6 +296,7 @@ pub(super) fn push_bond_polygon(
     out.push(RenderPrimitive::Polygon {
         role: RenderRole::DocumentBond,
         object_id,
+        node_id: None,
         bond_id: Some(bond_id.to_string()),
         points,
         fill: fill.to_string(),
@@ -307,6 +317,7 @@ pub(super) fn push_knockout_polygon(
     out.push(RenderPrimitive::Polygon {
         role: RenderRole::DocumentKnockout,
         object_id,
+        node_id: None,
         bond_id: None,
         points,
         fill: KNOCKOUT_FILL.to_string(),
@@ -378,9 +389,39 @@ pub(super) fn push_text(
     runs: Vec<crate::LabelRun>,
     object_id: Option<String>,
 ) {
+    push_text_for_node(
+        out,
+        x,
+        y,
+        text,
+        font_size,
+        font_family,
+        fill,
+        text_anchor,
+        runs,
+        object_id,
+        None,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn push_text_for_node(
+    out: &mut Vec<RenderPrimitive>,
+    x: f64,
+    y: f64,
+    text: String,
+    font_size: f64,
+    font_family: Option<String>,
+    fill: Option<String>,
+    text_anchor: Option<String>,
+    runs: Vec<crate::LabelRun>,
+    object_id: Option<String>,
+    node_id: Option<String>,
+) {
     out.push(RenderPrimitive::Text {
         role: RenderRole::DocumentText,
         object_id,
+        node_id,
         x,
         y,
         text,

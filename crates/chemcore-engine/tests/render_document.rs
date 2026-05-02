@@ -1,5 +1,6 @@
 use chemcore_engine::{
-    angular_distance, render_document, ChemcoreDocument, RenderPrimitive, RenderRole,
+    angular_distance, document_to_cdxml, hit_test_bond_center, parse_cdxml_document,
+    render_document, ChemcoreDocument, Engine, Point, RenderPrimitive, RenderRole,
 };
 use serde_json::json;
 use serde_json::Map;
@@ -180,6 +181,756 @@ fn bond_axis_from_points(
 fn bond_axis_length(points: &[chemcore_engine::Point]) -> Option<f64> {
     let (from, to) = bond_axis_from_points(points)?;
     Some(from.distance(to))
+}
+
+fn fixture_path(name: &str) -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join("tmp")
+        .join(name)
+}
+
+#[test]
+fn export_cdxml_emits_chemdraw_document_with_native_fragment() {
+    let document = fragment_document(
+        json!([
+            {
+                "id": "n1",
+                "element": "C",
+                "atomicNumber": 6,
+                "position": [30.0, 40.0],
+                "charge": 0,
+                "numHydrogens": 0
+            },
+            {
+                "id": "n2",
+                "element": "O",
+                "atomicNumber": 8,
+                "position": [70.0, 40.0],
+                "charge": 0,
+                "numHydrogens": 0,
+                "label": {
+                    "text": "O",
+                    "sourceText": "O",
+                    "position": [70.0, 40.0],
+                    "box": [66.0, 28.0, 78.0, 44.0],
+                    "fontSize": 10.0,
+                    "fill": "#000000",
+                    "attachment": "node",
+                    "anchor": "start"
+                }
+            },
+            {
+                "id": "n3",
+                "element": "C",
+                "atomicNumber": 6,
+                "position": [30.0, 80.0],
+                "charge": 0,
+                "numHydrogens": 0,
+                "isPlaceholder": true,
+                "label": {
+                    "text": "CF3",
+                    "sourceText": "CF3",
+                    "position": [30.0, 80.0],
+                    "fontSize": 10.0,
+                    "fill": "#d61f1f",
+                    "attachment": "node",
+                    "anchor": "start"
+                }
+            }
+        ]),
+        json!([
+            {
+                "id": "b1",
+                "begin": "n1",
+                "end": "n2",
+                "order": 2,
+                "double": { "placement": "center", "frozen": false },
+                "strokeWidth": 0.6,
+                "bondSpacing": 18.0
+            },
+            {
+                "id": "b2",
+                "begin": "n1",
+                "end": "n3",
+                "order": 1,
+                "stereo": { "kind": "solid-wedge", "wideEnd": "end" },
+                "strokeWidth": 0.6
+            }
+        ]),
+    );
+
+    let cdxml = document_to_cdxml(&document);
+
+    assert!(cdxml.contains("<!DOCTYPE CDXML"));
+    assert!(cdxml.contains("<CDXML"));
+    assert!(cdxml.contains("<page"));
+    assert!(cdxml.contains("<fragment"));
+    assert!(cdxml.contains("Order=\"2\""));
+    assert!(cdxml.contains("BondSpacing=\"18\""));
+    assert!(cdxml.contains("NodeType=\"Nickname\""));
+    assert!(cdxml.contains("UTF8Text=\"CF3\""));
+
+    let roundtripped =
+        parse_cdxml_document(&cdxml, Some("roundtrip")).expect("export should parse");
+    let fragment = roundtripped
+        .resources
+        .values()
+        .find_map(|resource| resource.data.as_fragment())
+        .expect("roundtrip should create a molecule fragment");
+    assert_eq!(fragment.nodes.len(), 3);
+    assert_eq!(fragment.bonds.len(), 2);
+    assert!(fragment.bonds.iter().any(|bond| bond.order == 2));
+    assert!(fragment
+        .nodes
+        .iter()
+        .any(|node| node.label.as_ref().is_some_and(|label| label.text == "CF3")));
+}
+
+#[test]
+fn parse_cdxml_merges_display_fragments_for_editing_hit_tests() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >
+<CDXML BondLength="18" LineWidth="0.6" BoldWidth="2" HashSpacing="2.5" BondSpacing="18">
+  <page id="1" BoundingBox="0 0 120 80">
+    <fragment id="10" BoundingBox="10 10 40 20">
+      <n id="11" p="10 15"/>
+      <n id="12" p="40 15"/>
+      <b id="13" B="11" E="12" Order="1"/>
+    </fragment>
+    <fragment id="20" BoundingBox="70 10 100 20">
+      <n id="21" p="70 15"/>
+      <n id="22" p="100 15"/>
+      <b id="23" B="21" E="22" Order="1"/>
+    </fragment>
+  </page>
+</CDXML>"#;
+    let mut engine = Engine::new();
+    engine
+        .load_cdxml_document(cdxml)
+        .expect("cdxml should load into editing engine");
+    let document = &engine.state().document;
+    let molecule_objects = document
+        .objects
+        .iter()
+        .filter(|object| object.object_type == "molecule")
+        .count();
+    assert_eq!(molecule_objects, 1);
+    let fragment = document
+        .editable_fragment()
+        .expect("merged fragment should be editable")
+        .fragment;
+    assert_eq!(fragment.bonds.len(), 2);
+    assert!(hit_test_bond_center(&document, Point::new(85.0, 15.0), 30.0).is_some());
+}
+
+#[test]
+fn load_cdxml_document_preserves_imported_acs_drawing_options() {
+    let cdxml = std::fs::read_to_string(fixture_path("db-acs.cdxml")).expect("db-acs.cdxml");
+    let mut engine = Engine::new();
+    engine
+        .load_cdxml_document(&cdxml)
+        .expect("cdxml should load into engine");
+
+    assert_eq!(engine.document_style_preset(), "acs-document-1996");
+    assert!((engine.options().bond_length - 14.4).abs() < 0.05);
+    assert!((engine.options().bond_stroke_width - 0.6).abs() < 0.01);
+    assert!((engine.options().bold_bond_width - 2.0).abs() < 0.05);
+    assert!((engine.options().hash_spacing - 2.5).abs() < 0.05);
+}
+
+#[test]
+fn parse_cdxml_imports_assets_molecules_as_native_fragments() {
+    let cdxml = std::fs::read_to_string(fixture_path("assets.cdxml")).expect("assets.cdxml");
+    let document = parse_cdxml_document(&cdxml, Some("assets")).expect("cdxml should parse");
+
+    assert!(document
+        .objects
+        .iter()
+        .any(|object| object.object_type == "molecule"));
+    let molecule_count = document
+        .objects
+        .iter()
+        .filter(|object| object.object_type == "molecule")
+        .count();
+    assert!(molecule_count >= 1);
+    let fragment = document
+        .resources
+        .values()
+        .find_map(|resource| resource.data.as_fragment())
+        .expect("import should create molecule fragment resource");
+    assert!(fragment.nodes.len() >= 2);
+    assert!(!fragment.bonds.is_empty());
+    assert!(fragment
+        .bonds
+        .iter()
+        .all(|bond| (bond.stroke_width - 0.6).abs() < 0.001));
+    assert!(render_document(&document).iter().any(|primitive| matches!(
+        primitive,
+        RenderPrimitive::Polygon {
+            role: RenderRole::DocumentBond,
+            ..
+        }
+    )));
+}
+
+#[test]
+fn parse_cdxml_imports_arrows_shapes_and_text_objects() {
+    let arrows = std::fs::read_to_string(fixture_path("arrows.cdxml")).expect("arrows.cdxml");
+    let arrow_document =
+        parse_cdxml_document(&arrows, Some("arrows")).expect("arrows should parse");
+    assert!(arrow_document
+        .objects
+        .iter()
+        .any(|object| object.object_type == "line"
+            && object.payload.extra.get("arrowHead").is_some()));
+    assert!(render_document(&arrow_document)
+        .iter()
+        .any(|primitive| matches!(
+            primitive,
+            RenderPrimitive::Path {
+                role: RenderRole::DocumentGraphic,
+                ..
+            } | RenderPrimitive::Polygon {
+                role: RenderRole::DocumentGraphic,
+                ..
+            }
+        )));
+
+    let shapes = std::fs::read_to_string(fixture_path("shape.cdxml")).expect("shape.cdxml");
+    let shape_document = parse_cdxml_document(&shapes, Some("shape")).expect("shape should parse");
+    assert!(shape_document
+        .objects
+        .iter()
+        .any(|object| object.object_type == "shape"));
+    assert!(render_document(&shape_document)
+        .iter()
+        .any(|primitive| matches!(
+            primitive,
+            RenderPrimitive::Path {
+                role: RenderRole::DocumentGraphic,
+                ..
+            }
+        )));
+}
+
+#[test]
+fn parse_cdxml_imports_free_text_object() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML BondLength="14.40" LineWidth="0.60" BoldWidth="2" HashSpacing="2.50">
+  <page id="1">
+    <t id="2" p="10 20" BoundingBox="10 20 80 36" Justification="Left">
+      <s font="3" size="12" face="33" color="0">H2O</s>
+    </t>
+  </page>
+</CDXML>"##;
+    let document = parse_cdxml_document(cdxml, Some("text")).expect("text cdxml should parse");
+    assert!(document
+        .objects
+        .iter()
+        .any(|object| object.object_type == "text"));
+    assert!(render_document(&document).iter().any(|primitive| matches!(
+        primitive,
+        RenderPrimitive::Text {
+            role: RenderRole::DocumentText,
+            text,
+            runs,
+            ..
+        } if text == "H2O" || runs.iter().any(|run| run.text == "H2O")
+    )));
+}
+
+#[test]
+fn parse_cdxml_imports_table_lines_and_text_boxes() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML BondLength="14.40" LineWidth="0.60" BoldWidth="2" HashSpacing="2.50">
+  <page id="1">
+    <graphic id="2" GraphicType="Line" LineType="Dashed" Head3D="10 10 0" Tail3D="80 10 0"/>
+    <t id="3" p="12 14" BoundingBox="12 14 60 30" Justification="Left">
+      <s font="3" size="10" color="0">entry</s>
+    </t>
+  </page>
+</CDXML>"##;
+    let document = parse_cdxml_document(cdxml, Some("table")).expect("table cdxml should parse");
+    let line = document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "line")
+        .expect("plain table line should import");
+    assert!(line.payload.extra.get("arrowHead").is_none());
+    let line_style = document
+        .styles
+        .get(line.style_ref.as_deref().expect("line style ref"))
+        .expect("line style should exist");
+    assert_eq!(line_style["dashArray"], json!([2.7]));
+    assert!(document
+        .objects
+        .iter()
+        .any(|object| object.object_type == "text"));
+    let primitives = render_document(&document);
+    assert!(primitives.iter().any(|primitive| matches!(
+        primitive,
+        RenderPrimitive::Polyline {
+            role: RenderRole::DocumentGraphic,
+            dash_array,
+            ..
+        } if !dash_array.is_empty()
+    )));
+    assert!(primitives.iter().any(|primitive| matches!(
+        primitive,
+        RenderPrimitive::Text {
+            role: RenderRole::DocumentText,
+            text,
+            runs,
+            ..
+        } if text == "entry" || runs.iter().any(|run| run.text == "entry")
+    )));
+}
+
+#[test]
+fn parse_cdxml_imports_example_table_text_at_bbox_positions() {
+    let cdxml = std::fs::read_to_string(fixture_path("02-13/2017-2-13/oleObject1.cdxml"))
+        .expect("example cdxml");
+    let document =
+        parse_cdxml_document(&cdxml, Some("example")).expect("example cdxml should parse");
+    let text_objects: Vec<_> = document
+        .objects
+        .iter()
+        .filter(|object| object.object_type == "text")
+        .collect();
+    assert_eq!(text_objects.len(), 80);
+    for (text, expected_translate) in [
+        ("Entry", [29.08, 127.35]),
+        ("Additive", [155.23, 127.36]),
+        ("Bu4NCl", [158.46, 165.66]),
+        ("KHF2", [162.91, 319.03]),
+        ("Yield (%)", [291.18, 127.1]),
+    ] {
+        let object = text_objects
+            .iter()
+            .find(|object| {
+                object
+                    .payload
+                    .extra
+                    .get("text")
+                    .and_then(serde_json::Value::as_str)
+                    == Some(text)
+            })
+            .expect("expected example text object");
+        assert_eq!(object.transform.translate, expected_translate);
+    }
+}
+
+#[test]
+fn parse_cdxml_uses_chemdraw_legacy_palette_ids() {
+    let cdxml = std::fs::read_to_string(fixture_path("02-13/2017-2-13/oleObject1.cdxml"))
+        .expect("example cdxml");
+    let document =
+        parse_cdxml_document(&cdxml, Some("example")).expect("example cdxml should parse");
+
+    let style_fills: Vec<_> = document
+        .styles
+        .values()
+        .filter_map(|style| style.get("fill").and_then(serde_json::Value::as_str))
+        .collect();
+
+    assert!(style_fills.contains(&"#d61f1f"), "{style_fills:?}");
+    assert!(style_fills.contains(&"#1b32d8"), "{style_fills:?}");
+    assert!(style_fills.contains(&"#55f0f5"), "{style_fills:?}");
+    assert!(style_fills.contains(&"#fff24a"), "{style_fills:?}");
+    assert!(style_fills.contains(&"#cfcfcf"), "{style_fills:?}");
+}
+
+#[test]
+fn parse_cdxml_double_bond_spacing_uses_bond_spacing_percent() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML BondLength="14.40" BondSpacing="18" LineWidth="0.60" BoldWidth="2" HashSpacing="2.50">
+  <page id="1">
+    <fragment id="2" BoundingBox="9 8 26 12">
+      <n id="3" p="10 10"/>
+      <n id="4" p="24.4 10"/>
+      <b id="5" B="3" E="4" Order="2"/>
+    </fragment>
+  </page>
+</CDXML>"##;
+    let document = parse_cdxml_document(cdxml, Some("spacing")).expect("cdxml should parse");
+    let primitives = render_document(&document);
+    let mut center_ys: Vec<f64> = primitives
+        .iter()
+        .filter_map(|primitive| match primitive {
+            RenderPrimitive::Polygon {
+                role,
+                object_id,
+                points,
+                ..
+            } if *role == RenderRole::DocumentBond
+                && object_id.as_deref() == Some("obj_mol_001") =>
+            {
+                bond_axis_from_points(points).map(|(from, to)| (from.y + to.y) * 0.5)
+            }
+            _ => None,
+        })
+        .collect();
+    center_ys.sort_by(f64::total_cmp);
+
+    assert_eq!(center_ys.len(), 2, "{center_ys:?}");
+    let center_distance = center_ys[1] - center_ys[0];
+    assert!(
+        (center_distance - 14.4 * 0.18).abs() < 0.001,
+        "{center_distance}"
+    );
+}
+
+#[test]
+fn parse_cdxml_node_labels_use_internal_attached_layout() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML BondLength="14.40" LineWidth="0.60" BoldWidth="2" HashSpacing="2.50">
+  <page id="1">
+    <fragment id="2" BoundingBox="0 0 120 120">
+      <n id="3" p="50 50" Element="7">
+        <t id="30" p="0 0" BoundingBox="0 0 100 100" UTF8Text="NH">
+          <s font="3" size="10" color="0">NH</s>
+        </t>
+      </n>
+      <n id="4" p="42 65"/>
+      <n id="5" p="58 65"/>
+      <b id="6" B="3" E="4"/>
+      <b id="7" B="3" E="5"/>
+    </fragment>
+  </page>
+</CDXML>"##;
+    let document = parse_cdxml_document(cdxml, Some("labels")).expect("cdxml should parse");
+    let fragment = document
+        .resources
+        .values()
+        .find_map(|resource| resource.data.as_fragment())
+        .expect("import should create molecule fragment resource");
+    let node = fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == "3")
+        .expect("labeled node should import");
+    let label = node.label.as_ref().expect("node label should import");
+
+    assert_eq!(node.position, [50.0, 50.0]);
+    assert_eq!(label.attachment.as_deref(), Some("node"));
+    assert_eq!(label.anchor.as_deref(), Some("start"));
+    assert_eq!(label.lines, vec!["H".to_string(), "N".to_string()]);
+    assert_eq!(label.layout.as_deref(), Some("attached-group-above"));
+    assert!(
+        !label.glyph_polygons.is_empty(),
+        "internal glyph geometry should be generated"
+    );
+    let box_value = label.box_value.expect("internal label box should exist");
+    assert!(
+        box_value[2] - box_value[0] < 30.0 && box_value[3] - box_value[1] < 30.0,
+        "{box_value:?}"
+    );
+    assert_ne!(box_value, [0.0, 0.0, 100.0, 100.0]);
+}
+
+#[test]
+fn parse_cdxml_matches_default_and_acs_double_bond_spacing_samples() {
+    for (fixture, expected_normal, expected_bold, expected_widths) in [
+        ("db.cdxml", 3.6, 5.1, [1.0, 4.0]),
+        ("db-acs.cdxml", 2.592, 3.292, [0.6, 2.0]),
+    ] {
+        let cdxml = std::fs::read_to_string(fixture_path(fixture)).expect("db fixture");
+        let document = parse_cdxml_document(&cdxml, Some(fixture)).expect("cdxml should parse");
+        let primitives = render_document(&document);
+
+        let normal = imported_vertical_line_metrics(&primitives, "obj_mol_001");
+        assert_line_spacing(&normal, expected_normal, fixture);
+        assert_line_widths(&normal, expected_widths[0], expected_widths[0], fixture);
+
+        let dashed_solid = imported_vertical_line_metrics(&primitives, "obj_mol_002");
+        assert_line_spacing(&dashed_solid, expected_normal, fixture);
+        let dashed_solid_bond = imported_fragment_bond(&document, "obj_mol_002", "9");
+        assert_eq!(dashed_solid_bond.order, 2);
+        assert_eq!(
+            dashed_solid_bond.line_styles.right,
+            chemcore_engine::BondLinePattern::Dashed
+        );
+
+        let bold = imported_vertical_line_metrics(&primitives, "obj_mol_003");
+        assert_line_spacing(&bold, expected_bold, fixture);
+        assert_line_widths(&bold, expected_widths[0], expected_widths[1], fixture);
+
+        let dashed = imported_vertical_line_metrics(&primitives, "obj_mol_004");
+        assert_line_spacing(&dashed, expected_normal, fixture);
+        let dashed_bond = imported_fragment_bond(&document, "obj_mol_004", "17");
+        assert_eq!(dashed_bond.order, 2);
+        assert_eq!(
+            dashed_bond.line_styles.left,
+            chemcore_engine::BondLinePattern::Dashed
+        );
+        assert_eq!(
+            dashed_bond.line_styles.right,
+            chemcore_engine::BondLinePattern::Dashed
+        );
+    }
+}
+
+#[test]
+fn parse_cdxml_double_bond_spacing_scales_with_actual_bond_length() {
+    for (fixture, expected_spacings) in [
+        (
+            "db-chang.cdxml",
+            [
+                ("obj_mol_001", 9.0002),
+                ("obj_mol_002", 12.8413),
+                ("obj_mol_003", 14.5250),
+                ("obj_mol_004", 9.5205),
+            ],
+        ),
+        (
+            "db-acs-chang.cdxml",
+            [
+                ("obj_mol_001", 4.7411),
+                ("obj_mol_002", 5.7277),
+                ("obj_mol_003", 5.9441),
+                ("obj_mol_004", 5.2895),
+            ],
+        ),
+    ] {
+        let cdxml = std::fs::read_to_string(fixture_path(fixture)).expect("db chang fixture");
+        let document = parse_cdxml_document(&cdxml, Some(fixture)).expect("cdxml should parse");
+
+        for (object_id, expected) in expected_spacings {
+            let rendered = imported_double_bond_center_spacing(&document, object_id);
+            let formula = imported_double_bond_formula_spacing(&document, object_id);
+            assert!(
+                (rendered - expected).abs() < 0.01,
+                "{fixture} {object_id}: expected {expected}, rendered {rendered}"
+            );
+            assert!(
+                (formula - expected).abs() < 0.01,
+                "{fixture} {object_id}: expected {expected}, formula {formula}"
+            );
+        }
+    }
+}
+
+fn imported_fragment_bond<'a>(
+    document: &'a ChemcoreDocument,
+    object_id: &str,
+    bond_id: &str,
+) -> &'a chemcore_engine::Bond {
+    let object = document
+        .objects
+        .iter()
+        .find(|object| object.id == object_id)
+        .expect("imported molecule object should exist");
+    let resource_ref = object
+        .payload
+        .resource_ref
+        .as_deref()
+        .expect("molecule object should reference fragment resource");
+    let fragment = document
+        .resources
+        .get(resource_ref)
+        .and_then(|resource| resource.data.as_fragment())
+        .expect("fragment resource should exist");
+    fragment
+        .bonds
+        .iter()
+        .find(|bond| bond.id == bond_id)
+        .expect("bond should exist")
+}
+
+fn imported_double_bond_center_spacing(document: &ChemcoreDocument, object_id: &str) -> f64 {
+    let object = document
+        .objects
+        .iter()
+        .find(|object| object.id == object_id)
+        .expect("imported molecule object should exist");
+    let resource_ref = object
+        .payload
+        .resource_ref
+        .as_deref()
+        .expect("molecule object should reference fragment resource");
+    let fragment = document
+        .resources
+        .get(resource_ref)
+        .and_then(|resource| resource.data.as_fragment())
+        .expect("fragment resource should exist");
+    let bond = fragment
+        .bonds
+        .first()
+        .expect("fixture fragment has one bond");
+    let begin = fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == bond.begin)
+        .expect("begin node should exist");
+    let end = fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == bond.end)
+        .expect("end node should exist");
+    let begin = chemcore_engine::Point::new(
+        object.transform.translate[0] + begin.position[0],
+        object.transform.translate[1] + begin.position[1],
+    );
+    let end = chemcore_engine::Point::new(
+        object.transform.translate[0] + end.position[0],
+        object.transform.translate[1] + end.position[1],
+    );
+    let dx = end.x - begin.x;
+    let dy = end.y - begin.y;
+    let length = dx.hypot(dy);
+    let normal = chemcore_engine::Point::new(-dy / length, dx / length);
+    let mut projections: Vec<f64> = render_document(document)
+        .into_iter()
+        .filter_map(|primitive| match primitive {
+            RenderPrimitive::Polygon {
+                role,
+                object_id: primitive_object_id,
+                points,
+                ..
+            } if role == RenderRole::DocumentBond
+                && primitive_object_id.as_deref() == Some(object_id) =>
+            {
+                let projection = points
+                    .iter()
+                    .map(|point| point.x * normal.x + point.y * normal.y)
+                    .sum::<f64>()
+                    / points.len() as f64;
+                Some(projection)
+            }
+            _ => None,
+        })
+        .collect();
+    projections.sort_by(f64::total_cmp);
+    assert!(
+        projections.len() >= 2,
+        "{object_id}: expected at least two rendered bond line polygons"
+    );
+    let split = projections
+        .windows(2)
+        .enumerate()
+        .max_by(|(_, left), (_, right)| {
+            (left[1] - left[0])
+                .abs()
+                .total_cmp(&(right[1] - right[0]).abs())
+        })
+        .map(|(index, _)| index + 1)
+        .expect("projection split should exist");
+    let first = projections[..split].iter().sum::<f64>() / split as f64;
+    let second = projections[split..].iter().sum::<f64>() / (projections.len() - split) as f64;
+    (second - first).abs()
+}
+
+fn imported_double_bond_formula_spacing(document: &ChemcoreDocument, object_id: &str) -> f64 {
+    let object = document
+        .objects
+        .iter()
+        .find(|object| object.id == object_id)
+        .expect("imported molecule object should exist");
+    let resource_ref = object
+        .payload
+        .resource_ref
+        .as_deref()
+        .expect("molecule object should reference fragment resource");
+    let fragment = document
+        .resources
+        .get(resource_ref)
+        .and_then(|resource| resource.data.as_fragment())
+        .expect("fragment resource should exist");
+    let bond = fragment
+        .bonds
+        .first()
+        .expect("fixture fragment has one bond");
+    let begin = fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == bond.begin)
+        .expect("begin node should exist");
+    let end = fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == bond.end)
+        .expect("end node should exist");
+    let length = chemcore_engine::Point::new(begin.position[0], begin.position[1]).distance(
+        chemcore_engine::Point::new(end.position[0], end.position[1]),
+    );
+    let ratio = bond
+        .bond_spacing
+        .expect("cdxml fixture should import bond spacing")
+        / 100.0;
+    let stroke_width = bond.stroke_width;
+    let line_width = |weight| {
+        if weight == chemcore_engine::BondLineWeight::Bold {
+            bond.bold_width.unwrap_or(stroke_width).max(stroke_width)
+        } else {
+            stroke_width
+        }
+    };
+    let first_width = line_width(bond.line_weights.left);
+    let second_width = line_width(bond.line_weights.right);
+    (length * ratio - stroke_width).max(stroke_width * 0.5) + 0.5 * (first_width + second_width)
+}
+
+fn imported_vertical_line_metrics(
+    primitives: &[RenderPrimitive],
+    object_id: &str,
+) -> Vec<(f64, f64)> {
+    let mut metrics: Vec<(f64, f64)> = primitives
+        .iter()
+        .filter_map(|primitive| match primitive {
+            RenderPrimitive::Polygon {
+                role,
+                object_id: primitive_object_id,
+                points,
+                ..
+            } if *role == RenderRole::DocumentBond
+                && primitive_object_id.as_deref() == Some(object_id) =>
+            {
+                let (from, to) = bond_axis_from_points(points)?;
+                let center_x = (from.x + to.x) * 0.5;
+                let min_x = points
+                    .iter()
+                    .map(|point| point.x)
+                    .fold(f64::INFINITY, f64::min);
+                let max_x = points
+                    .iter()
+                    .map(|point| point.x)
+                    .fold(f64::NEG_INFINITY, f64::max);
+                Some((center_x, max_x - min_x))
+            }
+            _ => None,
+        })
+        .collect();
+    metrics.sort_by(|a, b| a.0.total_cmp(&b.0));
+    metrics
+}
+
+fn assert_line_spacing(metrics: &[(f64, f64)], expected: f64, context: &str) {
+    assert_eq!(metrics.len(), 2, "{context}: {metrics:?}");
+    let actual = metrics[1].0 - metrics[0].0;
+    assert!(
+        (actual - expected).abs() < 0.001,
+        "{context}: expected {expected}, got {actual}, metrics={metrics:?}"
+    );
+}
+
+fn assert_line_widths(
+    metrics: &[(f64, f64)],
+    expected_left: f64,
+    expected_right: f64,
+    context: &str,
+) {
+    assert_eq!(metrics.len(), 2, "{context}: {metrics:?}");
+    assert!(
+        (metrics[0].1 - expected_left).abs() < 0.001,
+        "{context}: expected left width {expected_left}, got {}, metrics={metrics:?}",
+        metrics[0].1
+    );
+    assert!(
+        (metrics[1].1 - expected_right).abs() < 0.001,
+        "{context}: expected right width {expected_right}, got {}, metrics={metrics:?}",
+        metrics[1].1
+    );
 }
 
 fn projection_range_on_axis(
@@ -2295,12 +3046,8 @@ fn render_document_scales_side_double_offset_with_bond_length() {
         .map(|(from, to)| ((from.y + to.y) / 2.0 - 80.0).abs())
         .max_by(|a, b| a.total_cmp(b))
         .unwrap();
-    let stroke_width = 0.85;
-    let short_inner_gap = short_offset - stroke_width;
-    let long_inner_gap = long_offset - stroke_width;
-
     assert!(
-        (long_inner_gap - short_inner_gap * 2.0).abs() < 0.05,
+        (long_offset - short_offset * 2.0).abs() < 0.05,
         "{short_offset} {long_offset}"
     );
 }

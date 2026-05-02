@@ -526,8 +526,6 @@ pub struct LabelRun {
     pub underline: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub script: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub face: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -543,6 +541,12 @@ pub struct Bond {
     pub stereo: Option<BondStereo>,
     #[serde(default)]
     pub stroke_width: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bold_width: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hash_spacing: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bond_spacing: Option<f64>,
     #[serde(default)]
     pub line_styles: BondLineStyles,
     #[serde(default)]
