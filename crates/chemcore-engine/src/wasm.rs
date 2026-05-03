@@ -1,6 +1,7 @@
 use crate::{
-    ArrowCurve, ArrowEndpointStyle, ArrowHeadSize, ArrowNoGo, ArrowVariant, BondVariant, Engine,
-    Point, PointerEvent, ShapeKind, ShapeStyle, Tool, ToolState, WorldCm, WorldPoint,
+    ArrowCurve, ArrowEndpointStyle, ArrowHeadSize, ArrowNoGo, ArrowVariant, BondVariant,
+    BracketKind, Engine, Point, PointerEvent, ShapeKind, ShapeStyle, Tool, ToolState, WorldCm,
+    WorldPoint,
 };
 use wasm_bindgen::prelude::*;
 
@@ -36,6 +37,8 @@ impl WasmEngine {
             shape_kind: current.shape_kind,
             shape_style: current.shape_style,
             shape_color: current.shape_color,
+            bracket_kind: current.bracket_kind,
+            symbol_kind: current.symbol_kind,
             template: current.template,
         });
     }
@@ -53,6 +56,20 @@ impl WasmEngine {
     pub fn set_template(&mut self, template: &str) {
         let mut tool = self.inner.state().tool.clone();
         tool.template = template.to_string();
+        self.inner.set_tool_state(tool);
+    }
+
+    #[wasm_bindgen(js_name = setBracketOptions)]
+    pub fn set_bracket_options(&mut self, kind: &str) {
+        let mut tool = self.inner.state().tool.clone();
+        tool.bracket_kind = parse_bracket_kind(kind);
+        self.inner.set_tool_state(tool);
+    }
+
+    #[wasm_bindgen(js_name = setSymbolOptions)]
+    pub fn set_symbol_options(&mut self, kind: &str) {
+        let mut tool = self.inner.state().tool.clone();
+        tool.symbol_kind = parse_bracket_kind(kind);
         self.inner.set_tool_state(tool);
     }
 
@@ -209,6 +226,14 @@ impl WasmEngine {
             Point::from_world(WorldPoint::new(WorldCm(x), WorldCm(y))),
             additive,
         );
+    }
+
+    #[wasm_bindgen(js_name = selectComponentAtPoint)]
+    pub fn select_component_at_point(&mut self, x: f64, y: f64, additive: bool) -> bool {
+        self.inner.select_component_at_point(
+            Point::from_world(WorldPoint::new(WorldCm(x), WorldCm(y))),
+            additive,
+        )
     }
 
     #[wasm_bindgen(js_name = selectInRect)]
@@ -459,11 +484,31 @@ fn parse_tool(value: &str) -> Tool {
     match value {
         "bond" => Tool::Bond,
         "arrow" => Tool::Arrow,
+        "bracket" => Tool::Bracket,
+        "symbol" => Tool::Symbol,
         "delete" => Tool::Delete,
         "text" => Tool::Text,
         "shape" => Tool::Shape,
         "templates" => Tool::Templates,
         _ => Tool::Select,
+    }
+}
+
+fn parse_bracket_kind(value: &str) -> BracketKind {
+    match value {
+        "square" => BracketKind::Square,
+        "curly" => BracketKind::Curly,
+        "double-dagger" | "doubleDagger" => BracketKind::DoubleDagger,
+        "dagger" => BracketKind::Dagger,
+        "circle-plus" | "circlePlus" => BracketKind::CirclePlus,
+        "plus" => BracketKind::Plus,
+        "radical-cation" | "radicalCation" => BracketKind::RadicalCation,
+        "lone-pair" | "lonePair" => BracketKind::LonePair,
+        "circle-minus" | "circleMinus" => BracketKind::CircleMinus,
+        "minus" => BracketKind::Minus,
+        "radical-anion" | "radicalAnion" => BracketKind::RadicalAnion,
+        "electron" => BracketKind::Electron,
+        _ => BracketKind::Round,
     }
 }
 

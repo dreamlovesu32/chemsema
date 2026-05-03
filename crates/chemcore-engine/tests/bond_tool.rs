@@ -1,8 +1,9 @@
 use chemcore_engine::{
     angle_between, direction_from_angle, line_object_points, ArrowCurve, ArrowEndpointStyle,
     ArrowHeadSize, ArrowNoGo, ArrowVariant, BondLinePattern, BondLineWeight, BondVariant,
-    DoubleBondPlacement, Engine, Point, PointerEvent, RenderPrimitive, RenderRole, ShapeKind,
-    ShapeStyle, Tool, ToolState, DEFAULT_BOND_LENGTH, DEFAULT_BOND_STROKE, ENDPOINT_FOCUS_RADIUS,
+    BracketKind, DoubleBondPlacement, Engine, Point, PointerEvent, RenderPrimitive, RenderRole,
+    ShapeKind, ShapeStyle, Tool, ToolState, DEFAULT_BOND_LENGTH, DEFAULT_BOND_STROKE,
+    ENDPOINT_FOCUS_RADIUS,
 };
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -26,6 +27,25 @@ fn polygon_area(points: &[Point]) -> f64 {
         area += points[index].x * points[next].y - points[next].x * points[index].y;
     }
     (area * 0.5).abs()
+}
+
+fn rect_path_coordinate_bounds(d: &str) -> [f64; 4] {
+    let normalized = d.replace(',', " ");
+    let nums: Vec<f64> = normalized
+        .split_whitespace()
+        .filter_map(|part| part.parse().ok())
+        .collect();
+    let mut min_x = f64::INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+    for pair in nums.chunks_exact(2) {
+        min_x = min_x.min(pair[0]);
+        min_y = min_y.min(pair[1]);
+        max_x = max_x.max(pair[0]);
+        max_y = max_y.max(pair[1]);
+    }
+    [min_x, min_y, max_x, max_y]
 }
 
 fn assert_point_close(left: Point, right: Point) {
@@ -5721,4 +5741,993 @@ fn frozen_double_bond_keeps_manual_style_after_new_attachment() {
         manual_placement
     );
     assert_eq!(bond.double.as_ref().map(|double| double.frozen), Some(true));
+}
+
+#[test]
+fn bracket_tool_drag_creates_bracket_object() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(ToolState {
+        active_tool: Tool::Bracket,
+        bracket_kind: BracketKind::Square,
+        ..ToolState::default()
+    });
+
+    drag(
+        &mut engine,
+        Point::new(120.0, 130.0),
+        Point::new(180.0, 220.0),
+    );
+
+    let bracket = engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "bracket")
+        .expect("dragging bracket tool should create bracket object");
+    assert_eq!(
+        bracket
+            .payload
+            .extra
+            .get("kind")
+            .and_then(|value| value.as_str()),
+        Some("square")
+    );
+    assert_eq!(bracket.payload.bbox, Some([0.0, 0.0, 60.0, 90.0]));
+}
+
+#[test]
+fn bracket_tool_focuses_bonds_but_not_endpoints() {
+    let mut engine = Engine::new();
+    click(&mut engine, FIRST_START_X, FIRST_START_Y);
+    engine.set_tool_state(ToolState {
+        active_tool: Tool::Bracket,
+        bracket_kind: BracketKind::Round,
+        ..ToolState::default()
+    });
+
+    hover(&mut engine, FIRST_CENTER_X, FIRST_CENTER_Y);
+    assert!(engine.state().overlay.hover_bond_center.is_some());
+    assert!(engine.state().overlay.hover_endpoint.is_none());
+
+    hover(&mut engine, FIRST_END_X, FIRST_END_Y);
+    assert!(engine.state().overlay.hover_endpoint.is_none());
+}
+
+#[test]
+fn bracket_symbol_click_creates_selectable_symbol_object() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(ToolState {
+        active_tool: Tool::Symbol,
+        symbol_kind: BracketKind::DoubleDagger,
+        ..ToolState::default()
+    });
+
+    click(&mut engine, 150.0, 160.0);
+    let symbol = engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "symbol")
+        .expect("clicking double dagger should create symbol object");
+    assert_eq!(
+        symbol
+            .payload
+            .extra
+            .get("kind")
+            .and_then(|value| value.as_str()),
+        Some("double-dagger")
+    );
+    let symbol_id = symbol.id.clone();
+
+    engine.set_tool_state(ToolState {
+        active_tool: Tool::Select,
+        ..ToolState::default()
+    });
+    engine.select_at_point(Point::new(150.0, 160.0), false);
+    assert_eq!(engine.state().selection.arrow_objects, vec![symbol_id]);
+}
+
+#[test]
+fn symbol_tool_focuses_endpoints_but_not_bonds() {
+    let mut engine = Engine::new();
+    click(&mut engine, FIRST_START_X, FIRST_START_Y);
+    engine.set_tool_state(ToolState {
+        active_tool: Tool::Symbol,
+        symbol_kind: BracketKind::Plus,
+        ..ToolState::default()
+    });
+
+    hover(&mut engine, FIRST_CENTER_X, FIRST_CENTER_Y);
+    assert!(engine.state().overlay.hover_bond_center.is_none());
+    assert!(engine.state().overlay.hover_endpoint.is_none());
+
+    hover(&mut engine, FIRST_END_X, FIRST_END_Y);
+    assert!(engine.state().overlay.hover_endpoint.is_some());
+    assert!(engine.state().overlay.hover_bond_center.is_none());
+}
+
+#[test]
+fn symbol_tool_drag_from_endpoint_orbits_around_endpoint() {
+    let mut engine = Engine::new();
+    click(&mut engine, FIRST_START_X, FIRST_START_Y);
+    engine.set_tool_state(ToolState {
+        active_tool: Tool::Symbol,
+        symbol_kind: BracketKind::Plus,
+        ..ToolState::default()
+    });
+
+    drag(
+        &mut engine,
+        Point::new(FIRST_END_X, FIRST_END_Y),
+        Point::new(FIRST_END_X, FIRST_END_Y - 13.0),
+    );
+
+    let symbol = engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "symbol")
+        .expect("dragging from an endpoint should create a symbol");
+    assert_eq!(
+        symbol
+            .payload
+            .extra
+            .get("kind")
+            .and_then(|value| value.as_str()),
+        Some("plus")
+    );
+    assert_eq!(
+        round_to_2(symbol.transform.translate[0]),
+        round_to_2(FIRST_END_X - 2.16675)
+    );
+    assert_eq!(
+        round_to_2(symbol.transform.translate[1]),
+        round_to_2(FIRST_END_Y - 13.0 - 2.16675)
+    );
+}
+
+fn load_symbol_direction_document(
+    engine: &mut Engine,
+    nodes: serde_json::Value,
+    bonds: serde_json::Value,
+) {
+    let document = json!({
+        "format": {"name": "chemcore", "version": "0.1", "unit": "pt"},
+        "document": {
+            "id": "doc_symbol_direction",
+            "title": "symbol direction",
+            "page": {"width": 200.0, "height": 160.0, "background": "#ffffff"}
+        },
+        "styles": {},
+        "objects": [
+            {
+                "id": "obj_mol_1",
+                "type": "molecule",
+                "visible": true,
+                "locked": false,
+                "zIndex": 10,
+                "transform": {"translate": [0.0, 0.0], "rotate": 0.0, "scale": [1.0, 1.0]},
+                "payload": {"resourceRef": "mol_1", "bbox": [0.0, 0.0, 200.0, 160.0]}
+            }
+        ],
+        "resources": {
+            "mol_1": {
+                "type": "molecule_fragment2d",
+                "encoding": "chemcore.molecule.fragment2d",
+                "data": {
+                    "schema": "chemcore.molecule.fragment2d",
+                    "bbox": [0.0, 0.0, 200.0, 160.0],
+                    "nodes": nodes,
+                    "bonds": bonds
+                }
+            }
+        }
+    });
+    engine
+        .load_document_json(&document.to_string())
+        .expect("symbol direction fixture should load");
+}
+
+#[test]
+fn symbol_tool_click_on_single_bond_endpoint_uses_extension_angle() {
+    let mut engine = Engine::new();
+    load_symbol_direction_document(
+        &mut engine,
+        json!([
+            {"id": "n1", "element": "C", "atomicNumber": 6, "position": [100.0, 100.0], "charge": 0, "numHydrogens": 0},
+            {"id": "n2", "element": "C", "atomicNumber": 6, "position": [130.0, 100.0], "charge": 0, "numHydrogens": 0}
+        ]),
+        json!([
+            {"id": "b1", "begin": "n1", "end": "n2", "order": 1}
+        ]),
+    );
+    engine.set_tool_state(ToolState {
+        active_tool: Tool::Symbol,
+        symbol_kind: BracketKind::CirclePlus,
+        ..ToolState::default()
+    });
+
+    click(&mut engine, 130.0, 100.0);
+
+    let symbol = engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "symbol")
+        .expect("clicking endpoint should create a symbol");
+    assert_eq!(round_to_2(symbol.transform.translate[0]), 132.50);
+    assert_eq!(round_to_2(symbol.transform.translate[1]), 96.25);
+}
+
+#[test]
+fn symbol_tool_click_on_two_bond_junction_uses_convex_side_center() {
+    let mut engine = Engine::new();
+    load_symbol_direction_document(
+        &mut engine,
+        json!([
+            {"id": "n1", "element": "C", "atomicNumber": 6, "position": [100.0, 100.0], "charge": 0, "numHydrogens": 0},
+            {"id": "n2", "element": "C", "atomicNumber": 6, "position": [70.0, 130.0], "charge": 0, "numHydrogens": 0},
+            {"id": "n3", "element": "C", "atomicNumber": 6, "position": [130.0, 130.0], "charge": 0, "numHydrogens": 0}
+        ]),
+        json!([
+            {"id": "b1", "begin": "n1", "end": "n2", "order": 1},
+            {"id": "b2", "begin": "n1", "end": "n3", "order": 1}
+        ]),
+    );
+    engine.set_tool_state(ToolState {
+        active_tool: Tool::Symbol,
+        symbol_kind: BracketKind::CirclePlus,
+        ..ToolState::default()
+    });
+
+    click(&mut engine, 100.0, 100.0);
+
+    let symbol = engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "symbol")
+        .expect("clicking two-bond junction should create a symbol");
+    assert_eq!(round_to_2(symbol.transform.translate[0]), 96.25);
+    assert_eq!(round_to_2(symbol.transform.translate[1]), 90.00);
+}
+
+#[test]
+fn charge_symbol_attaches_to_terminal_carbon_and_reduces_hidden_hydrogen() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, FIRST_START_X, FIRST_START_Y);
+    engine.set_tool_state(ToolState {
+        active_tool: Tool::Symbol,
+        symbol_kind: BracketKind::Plus,
+        ..ToolState::default()
+    });
+
+    click(&mut engine, FIRST_END_X, FIRST_END_Y);
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let terminal = entry
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| (node.position[0] - FIRST_END_X).abs() < 0.01)
+        .expect("terminal carbon should exist");
+    assert_eq!(terminal.charge, 1);
+    assert_eq!(
+        terminal
+            .meta
+            .get("effectiveNumHydrogens")
+            .and_then(|value| value.as_u64()),
+        Some(2)
+    );
+    assert_eq!(
+        terminal
+            .meta
+            .get("chargeSymbolInvalid")
+            .and_then(|value| value.as_bool()),
+        None
+    );
+    let symbol = engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "symbol")
+        .expect("symbol should exist");
+    assert_eq!(
+        symbol
+            .payload
+            .extra
+            .get("attachedAtomId")
+            .and_then(|value| value.as_str()),
+        Some(terminal.id.as_str())
+    );
+}
+
+#[test]
+fn ordinary_charge_or_radical_on_four_connected_carbon_is_invalid_but_radical_ion_is_allowed() {
+    fn four_connected_engine(symbol_kind: BracketKind) -> Engine {
+        let mut engine = Engine::new();
+        load_symbol_direction_document(
+            &mut engine,
+            json!([
+                {"id": "n0", "element": "C", "atomicNumber": 6, "position": [100.0, 100.0], "charge": 0, "numHydrogens": 0},
+                {"id": "n1", "element": "C", "atomicNumber": 6, "position": [70.0, 100.0], "charge": 0, "numHydrogens": 0},
+                {"id": "n2", "element": "C", "atomicNumber": 6, "position": [130.0, 100.0], "charge": 0, "numHydrogens": 0},
+                {"id": "n3", "element": "C", "atomicNumber": 6, "position": [100.0, 70.0], "charge": 0, "numHydrogens": 0},
+                {"id": "n4", "element": "C", "atomicNumber": 6, "position": [100.0, 130.0], "charge": 0, "numHydrogens": 0}
+            ]),
+            json!([
+                {"id": "b1", "begin": "n0", "end": "n1", "order": 1},
+                {"id": "b2", "begin": "n0", "end": "n2", "order": 1},
+                {"id": "b3", "begin": "n0", "end": "n3", "order": 1},
+                {"id": "b4", "begin": "n0", "end": "n4", "order": 1}
+            ]),
+        );
+        engine.set_tool_state(ToolState {
+            active_tool: Tool::Symbol,
+            symbol_kind,
+            ..ToolState::default()
+        });
+        click(&mut engine, 100.0, 100.0);
+        engine
+    }
+
+    for symbol_kind in [BracketKind::Plus, BracketKind::Minus, BracketKind::Electron] {
+        let engine = four_connected_engine(symbol_kind);
+        let entry = engine.state().document.editable_fragment().unwrap();
+        let center = entry
+            .fragment
+            .nodes
+            .iter()
+            .find(|node| node.id == "n0")
+            .unwrap();
+        assert_eq!(
+            center
+                .meta
+                .get("chargeSymbolInvalid")
+                .and_then(|value| value.as_bool()),
+            Some(true),
+            "{symbol_kind:?} should be invalid on four-connected carbon"
+        );
+        assert!(
+            engine.render_list().into_iter().any(|primitive| matches!(
+                primitive,
+                RenderPrimitive::Circle {
+                    role: RenderRole::DocumentGraphic,
+                    node_id: Some(ref node_id),
+                    stroke,
+                    ..
+                } if node_id == "n0" && stroke == "#d32f2f"
+            )),
+            "{symbol_kind:?} should render an invalid red circle"
+        );
+    }
+
+    for symbol_kind in [BracketKind::RadicalCation, BracketKind::RadicalAnion] {
+        let engine = four_connected_engine(symbol_kind);
+        let entry = engine.state().document.editable_fragment().unwrap();
+        let center = entry
+            .fragment
+            .nodes
+            .iter()
+            .find(|node| node.id == "n0")
+            .unwrap();
+        assert_eq!(
+            center
+                .meta
+                .get("chargeSymbolInvalid")
+                .and_then(|value| value.as_bool()),
+            None,
+            "{symbol_kind:?} should be allowed on four-connected carbon"
+        );
+    }
+}
+
+#[test]
+fn hetero_atom_charge_symbols_update_hydrogens_and_invalid_state() {
+    fn terminal_nitrogen_engine(symbol_kind: BracketKind) -> Engine {
+        let mut engine = Engine::new();
+        load_symbol_direction_document(
+            &mut engine,
+            json!([
+                {"id": "n1", "element": "N", "atomicNumber": 7, "position": [100.0, 100.0], "charge": 0, "numHydrogens": 0},
+                {"id": "c1", "element": "C", "atomicNumber": 6, "position": [130.0, 100.0], "charge": 0, "numHydrogens": 0}
+            ]),
+            json!([
+                {"id": "b1", "begin": "n1", "end": "c1", "order": 1}
+            ]),
+        );
+        engine.set_tool_state(ToolState {
+            active_tool: Tool::Symbol,
+            symbol_kind,
+            ..ToolState::default()
+        });
+        click(&mut engine, 100.0, 100.0);
+        engine
+    }
+
+    let engine = terminal_nitrogen_engine(BracketKind::Plus);
+    let nitrogen = engine
+        .state()
+        .document
+        .editable_fragment()
+        .unwrap()
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == "n1")
+        .unwrap();
+    assert_eq!(nitrogen.charge, 1);
+    assert_eq!(nitrogen.num_hydrogens, 3);
+    assert_eq!(
+        nitrogen
+            .meta
+            .get("chargeSymbolInvalid")
+            .and_then(|value| value.as_bool()),
+        None
+    );
+
+    let engine = terminal_nitrogen_engine(BracketKind::Minus);
+    let nitrogen = engine
+        .state()
+        .document
+        .editable_fragment()
+        .unwrap()
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == "n1")
+        .unwrap();
+    assert_eq!(nitrogen.charge, -1);
+    assert_eq!(nitrogen.num_hydrogens, 1);
+    assert_eq!(
+        nitrogen
+            .meta
+            .get("chargeSymbolInvalid")
+            .and_then(|value| value.as_bool()),
+        None
+    );
+
+    let mut engine = Engine::new();
+    load_symbol_direction_document(
+        &mut engine,
+        json!([
+            {"id": "n1", "element": "N", "atomicNumber": 7, "position": [100.0, 100.0], "charge": 0, "numHydrogens": 0},
+            {"id": "c1", "element": "C", "atomicNumber": 6, "position": [70.0, 100.0], "charge": 0, "numHydrogens": 0},
+            {"id": "c2", "element": "C", "atomicNumber": 6, "position": [130.0, 100.0], "charge": 0, "numHydrogens": 0},
+            {"id": "c3", "element": "C", "atomicNumber": 6, "position": [100.0, 130.0], "charge": 0, "numHydrogens": 0}
+        ]),
+        json!([
+            {"id": "b1", "begin": "n1", "end": "c1", "order": 1},
+            {"id": "b2", "begin": "n1", "end": "c2", "order": 1},
+            {"id": "b3", "begin": "n1", "end": "c3", "order": 1}
+        ]),
+    );
+    engine.set_tool_state(ToolState {
+        active_tool: Tool::Symbol,
+        symbol_kind: BracketKind::Minus,
+        ..ToolState::default()
+    });
+    click(&mut engine, 100.0, 100.0);
+    let nitrogen = engine
+        .state()
+        .document
+        .editable_fragment()
+        .unwrap()
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == "n1")
+        .unwrap();
+    assert_eq!(nitrogen.charge, -1);
+    assert_eq!(
+        nitrogen
+            .meta
+            .get("chargeSymbolInvalid")
+            .and_then(|value| value.as_bool()),
+        Some(true)
+    );
+}
+
+#[test]
+fn symbol_tool_uses_current_document_symbol_line_width() {
+    let mut engine = Engine::new();
+    engine.set_document_style_preset("acs-document-1996");
+    engine.set_tool_state(ToolState {
+        active_tool: Tool::Symbol,
+        symbol_kind: BracketKind::CirclePlus,
+        ..ToolState::default()
+    });
+
+    click(&mut engine, 120.0, 140.0);
+
+    let symbol = engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "symbol")
+        .expect("symbol should be created");
+    assert_eq!(symbol.payload.bbox, Some([0.0, 0.0, 7.18, 7.18]));
+    assert_eq!(
+        symbol
+            .payload
+            .extra
+            .get("symbolStyle")
+            .and_then(|value| value.as_str()),
+        Some("acs")
+    );
+    assert_eq!(
+        symbol
+            .payload
+            .extra
+            .get("symbolLineWidth")
+            .and_then(|value| value.as_f64()),
+        Some(0.6)
+    );
+    assert_eq!(
+        symbol
+            .payload
+            .extra
+            .get("symbolAnchorHeight")
+            .and_then(|value| value.as_f64()),
+        Some(7.5)
+    );
+}
+
+#[test]
+fn acs_circle_charge_symbol_uses_full_size_internal_sign() {
+    let mut engine = Engine::new();
+    engine.set_document_style_preset("acs-document-1996");
+    engine.set_tool_state(ToolState {
+        active_tool: Tool::Symbol,
+        symbol_kind: BracketKind::CirclePlus,
+        ..ToolState::default()
+    });
+
+    click(&mut engine, 120.0, 140.0);
+
+    let symbol_id = engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "symbol")
+        .expect("symbol should be created")
+        .id
+        .clone();
+    let sign_bounds = engine
+        .render_list()
+        .into_iter()
+        .filter_map(|primitive| match primitive {
+            RenderPrimitive::FilledPath {
+                object_id: Some(object_id),
+                d,
+                ..
+            } if object_id == symbol_id => Some(rect_path_coordinate_bounds(&d)),
+            _ => None,
+        })
+        .reduce(|left, right| {
+            [
+                left[0].min(right[0]),
+                left[1].min(right[1]),
+                left[2].max(right[2]),
+                left[3].max(right[3]),
+            ]
+        })
+        .expect("circle-plus sign should render as a filled path");
+
+    assert_eq!(round_to_2(sign_bounds[2] - sign_bounds[0]), 3.93);
+    assert_eq!(round_to_2(sign_bounds[3] - sign_bounds[1]), 3.93);
+}
+
+#[test]
+fn bracket_tool_imports_chemdraw_charge_symbol_kinds() {
+    let cdxml = std::fs::read_to_string("../../tmp/kuohao-acs.cdxml")
+        .expect("kuohao-acs fixture should exist");
+    let mut engine = Engine::new();
+    engine
+        .load_cdxml_document(&cdxml)
+        .expect("fixture should load");
+    let kinds: Vec<_> = engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .filter(|object| object.object_type == "symbol")
+        .filter_map(|object| {
+            object
+                .payload
+                .extra
+                .get("kind")
+                .and_then(|value| value.as_str())
+        })
+        .collect();
+    for kind in [
+        "circle-plus",
+        "plus",
+        "radical-cation",
+        "lone-pair",
+        "circle-minus",
+        "minus",
+        "radical-anion",
+        "electron",
+    ] {
+        assert!(kinds.contains(&kind), "missing imported symbol kind {kind}");
+    }
+    let plus = engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .find(|object| {
+            object.object_type == "symbol"
+                && object
+                    .payload
+                    .extra
+                    .get("kind")
+                    .and_then(|value| value.as_str())
+                    == Some("plus")
+        })
+        .expect("ACS plus symbol should import");
+    assert_eq!(plus.payload.bbox, Some([0.0, 0.0, 3.9335, 3.9335]));
+    assert_eq!(
+        plus.payload
+            .extra
+            .get("symbolStyle")
+            .and_then(|value| value.as_str()),
+        Some("acs")
+    );
+    let radical = engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .find(|object| {
+            object.object_type == "symbol"
+                && object
+                    .payload
+                    .extra
+                    .get("kind")
+                    .and_then(|value| value.as_str())
+                    == Some("radical-cation")
+        })
+        .expect("ACS radical cation should import");
+    assert_eq!(radical.payload.bbox, Some([0.0, 0.0, 3.3, 2.2]));
+}
+
+#[test]
+fn bracket_symbol_drag_from_label_glyph_orbits_around_clicked_glyph() {
+    let mut engine = Engine::new();
+    let document = json!({
+        "format": {"name": "chemcore", "version": "0.1", "unit": "pt"},
+        "document": {
+            "id": "doc_symbol_orbit",
+            "title": "symbol orbit",
+            "page": {"width": 200.0, "height": 120.0, "background": "#ffffff"}
+        },
+        "styles": {},
+        "objects": [
+            {
+                "id": "obj_mol_1",
+                "type": "molecule",
+                "visible": true,
+                "locked": false,
+                "zIndex": 10,
+                "transform": {"translate": [0.0, 0.0], "rotate": 0.0, "scale": [1.0, 1.0]},
+                "payload": {"resourceRef": "mol_1", "bbox": [0.0, 0.0, 80.0, 40.0]}
+            }
+        ],
+        "resources": {
+            "mol_1": {
+                "type": "molecule_fragment2d",
+                "encoding": "chemcore.molecule.fragment2d",
+                "data": {
+                    "schema": "chemcore.molecule.fragment2d",
+                    "bbox": [0.0, 0.0, 80.0, 40.0],
+                    "nodes": [
+                        {
+                            "id": "n1",
+                            "element": "N",
+                            "atomicNumber": 7,
+                            "position": [30.0, 30.0],
+                            "charge": 0,
+                            "numHydrogens": 0,
+                            "label": {
+                                "text": "N",
+                                "sourceText": "N",
+                                "position": [30.0, 30.0],
+                                "box": [26.0, 22.0, 34.0, 32.0],
+                                "glyphPolygons": [[[26.0, 22.0], [34.0, 22.0], [34.0, 32.0], [26.0, 32.0]]]
+                            }
+                        }
+                    ],
+                    "bonds": []
+                }
+            }
+        }
+    });
+    engine
+        .load_document_json(&document.to_string())
+        .expect("symbol orbit fixture should load");
+    engine.set_tool_state(ToolState {
+        active_tool: Tool::Symbol,
+        symbol_kind: BracketKind::Plus,
+        ..ToolState::default()
+    });
+
+    drag(&mut engine, Point::new(30.0, 27.0), Point::new(30.0, 14.0));
+
+    let symbol = engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "symbol")
+        .expect("dragging from label glyph should create symbol");
+    assert_eq!(
+        symbol
+            .payload
+            .extra
+            .get("kind")
+            .and_then(|value| value.as_str()),
+        Some("plus")
+    );
+    assert_eq!(round_to_2(symbol.transform.translate[0]), 27.83);
+    assert_eq!(round_to_2(symbol.transform.translate[1]), 16.83);
+}
+
+#[test]
+fn double_click_component_selection_includes_enclosing_bracket() {
+    let mut engine = Engine::new();
+    click(&mut engine, 300.0, 300.0);
+    let (min_x, min_y, max_x, max_y, hit_point) = {
+        let entry = engine.state().document.editable_fragment().unwrap();
+        let points: Vec<Point> = entry
+            .fragment
+            .nodes
+            .iter()
+            .map(|node| entry.world_point_for_node(node))
+            .collect();
+        let min_x = points
+            .iter()
+            .map(|point| point.x)
+            .fold(f64::INFINITY, f64::min);
+        let min_y = points
+            .iter()
+            .map(|point| point.y)
+            .fold(f64::INFINITY, f64::min);
+        let max_x = points
+            .iter()
+            .map(|point| point.x)
+            .fold(f64::NEG_INFINITY, f64::max);
+        let max_y = points
+            .iter()
+            .map(|point| point.y)
+            .fold(f64::NEG_INFINITY, f64::max);
+        (min_x, min_y, max_x, max_y, points[0])
+    };
+    engine.set_tool_state(ToolState {
+        active_tool: Tool::Bracket,
+        bracket_kind: BracketKind::Round,
+        ..ToolState::default()
+    });
+    drag(
+        &mut engine,
+        Point::new(min_x - 10.0, min_y - 10.0),
+        Point::new(max_x + 10.0, max_y + 10.0),
+    );
+    let bracket_id = engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "bracket")
+        .map(|object| object.id.clone())
+        .unwrap();
+
+    assert!(engine.select_component_at_point(hit_point, false));
+    assert!(engine.state().selection.arrow_objects.contains(&bracket_id));
+    assert_eq!(engine.state().selection.nodes.len(), 2);
+    assert_eq!(engine.state().selection.bonds.len(), 1);
+}
+
+#[test]
+fn bracketed_multiple_group_stores_repeating_unit_expansion_when_legal() {
+    let mut engine = Engine::new();
+    let document = json!({
+        "format": {"name": "chemcore", "version": "0.1", "unit": "pt"},
+        "document": {
+            "id": "doc_repeat",
+            "title": "repeat",
+            "page": {"width": 200.0, "height": 120.0, "background": "#ffffff"}
+        },
+        "styles": {},
+        "objects": [
+            {
+                "id": "obj_mol_1",
+                "type": "molecule",
+                "visible": true,
+                "locked": false,
+                "zIndex": 10,
+                "transform": {"translate": [0.0, 0.0], "rotate": 0.0, "scale": [1.0, 1.0]},
+                "payload": {"resourceRef": "mol_1", "bbox": [0.0, 0.0, 80.0, 20.0]}
+            },
+            {
+                "id": "obj_bracket_1",
+                "type": "bracket",
+                "visible": true,
+                "locked": false,
+                "zIndex": 20,
+                "transform": {"translate": [15.0, -10.0], "rotate": 0.0, "scale": [1.0, 1.0]},
+                "payload": {"bbox": [0.0, 0.0, 30.0, 20.0], "kind": "square"}
+            },
+            {
+                "id": "obj_text_1",
+                "type": "text",
+                "visible": true,
+                "locked": false,
+                "zIndex": 30,
+                "transform": {"translate": [45.0, 5.0], "rotate": 0.0, "scale": [1.0, 1.0]},
+                "payload": {"bbox": [0.0, 0.0, 8.0, 10.0], "text": "3"}
+            },
+            {
+                "id": "obj_symbol_1",
+                "type": "symbol",
+                "visible": true,
+                "locked": false,
+                "zIndex": 40,
+                "transform": {"translate": [17.83325, -2.16675], "rotate": 0.0, "scale": [1.0, 1.0]},
+                "payload": {"bbox": [0.0, 0.0, 4.3335, 4.3335], "kind": "plus", "fill": "#000000"}
+            }
+        ],
+        "resources": {
+            "mol_1": {
+                "type": "molecule_fragment2d",
+                "encoding": "chemcore.molecule.fragment2d",
+                "data": {
+                    "schema": "chemcore.molecule.fragment2d",
+                    "bbox": [0.0, -10.0, 70.0, 20.0],
+                    "nodes": [
+                        {"id": "n1", "element": "C", "atomicNumber": 6, "position": [0.0, 0.0], "charge": 0, "numHydrogens": 0},
+                        {"id": "n2", "element": "C", "atomicNumber": 6, "position": [20.0, 0.0], "charge": 0, "numHydrogens": 0},
+                        {"id": "n3", "element": "C", "atomicNumber": 6, "position": [40.0, 0.0], "charge": 0, "numHydrogens": 0},
+                        {"id": "n4", "element": "C", "atomicNumber": 6, "position": [60.0, 0.0], "charge": 0, "numHydrogens": 0}
+                    ],
+                    "bonds": [
+                        {"id": "b1", "begin": "n1", "end": "n2", "order": 1},
+                        {"id": "b2", "begin": "n2", "end": "n3", "order": 1},
+                        {"id": "b3", "begin": "n3", "end": "n4", "order": 1}
+                    ]
+                }
+            }
+        }
+    });
+    engine
+        .load_document_json(&document.to_string())
+        .expect("repeat fixture should load");
+
+    let fragment = engine
+        .state()
+        .document
+        .editable_fragment()
+        .unwrap()
+        .fragment;
+    let units = fragment
+        .meta
+        .get("repeatingUnits")
+        .and_then(|value| value.as_array())
+        .expect("legal bracketed group should store repeatingUnits");
+    assert_eq!(units.len(), 1);
+    let unit = &units[0];
+    assert_eq!(unit["bracketObjectId"], "obj_bracket_1");
+    assert_eq!(unit["countTextObjectId"], "obj_text_1");
+    assert_eq!(unit["repeatCount"]["value"], 3);
+    assert_eq!(unit["atomIds"], json!(["n2", "n3"]));
+    assert_eq!(unit["internalBondIds"], json!(["b2"]));
+
+    let expansion = unit
+        .get("expansion")
+        .expect("legal bracketed group should include expansion");
+    assert_eq!(expansion["schema"], "chemcore.repeatingUnitExpansion.v1");
+    assert_eq!(expansion["complete"], true);
+    assert_eq!(expansion["count"], 3);
+    assert_eq!(expansion["atoms"].as_array().unwrap().len(), 6);
+    assert_eq!(expansion["bonds"].as_array().unwrap().len(), 5);
+    assert_eq!(expansion["attachments"][0]["atomId"], "n2_r1");
+    assert_eq!(expansion["attachments"][1]["atomId"], "n3_r3");
+    let first_atom = expansion["atoms"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|atom| atom["id"] == "n2_r1")
+        .expect("expanded charged atom should exist");
+    assert_eq!(first_atom["charge"], 1);
+    assert_eq!(first_atom["numHydrogens"], 1);
+    assert_eq!(first_atom["electronSymbols"][0]["kind"], "plus");
+    assert_eq!(
+        first_atom["electronSymbols"][0]["sourceSymbolObjectId"],
+        "obj_symbol_1"
+    );
+}
+
+#[test]
+fn bracketed_group_without_numeric_count_does_not_store_expansion() {
+    let mut engine = Engine::new();
+    let document = json!({
+        "format": {"name": "chemcore", "version": "0.1", "unit": "pt"},
+        "document": {
+            "id": "doc_repeat_invalid",
+            "title": "repeat invalid",
+            "page": {"width": 200.0, "height": 120.0, "background": "#ffffff"}
+        },
+        "styles": {},
+        "objects": [
+            {
+                "id": "obj_mol_1",
+                "type": "molecule",
+                "visible": true,
+                "locked": false,
+                "zIndex": 10,
+                "transform": {"translate": [0.0, 0.0], "rotate": 0.0, "scale": [1.0, 1.0]},
+                "payload": {"resourceRef": "mol_1", "bbox": [0.0, 0.0, 80.0, 20.0]}
+            },
+            {
+                "id": "obj_bracket_1",
+                "type": "bracket",
+                "visible": true,
+                "locked": false,
+                "zIndex": 20,
+                "transform": {"translate": [15.0, -10.0], "rotate": 0.0, "scale": [1.0, 1.0]},
+                "payload": {"bbox": [0.0, 0.0, 30.0, 20.0], "kind": "square"}
+            },
+            {
+                "id": "obj_text_1",
+                "type": "text",
+                "visible": true,
+                "locked": false,
+                "zIndex": 30,
+                "transform": {"translate": [45.0, 5.0], "rotate": 0.0, "scale": [1.0, 1.0]},
+                "payload": {"bbox": [0.0, 0.0, 8.0, 10.0], "text": "n"}
+            }
+        ],
+        "resources": {
+            "mol_1": {
+                "type": "molecule_fragment2d",
+                "encoding": "chemcore.molecule.fragment2d",
+                "data": {
+                    "schema": "chemcore.molecule.fragment2d",
+                    "bbox": [0.0, -10.0, 70.0, 20.0],
+                    "nodes": [
+                        {"id": "n1", "element": "C", "atomicNumber": 6, "position": [0.0, 0.0], "charge": 0, "numHydrogens": 0},
+                        {"id": "n2", "element": "C", "atomicNumber": 6, "position": [20.0, 0.0], "charge": 0, "numHydrogens": 0},
+                        {"id": "n3", "element": "C", "atomicNumber": 6, "position": [40.0, 0.0], "charge": 0, "numHydrogens": 0},
+                        {"id": "n4", "element": "C", "atomicNumber": 6, "position": [60.0, 0.0], "charge": 0, "numHydrogens": 0}
+                    ],
+                    "bonds": [
+                        {"id": "b1", "begin": "n1", "end": "n2", "order": 1},
+                        {"id": "b2", "begin": "n2", "end": "n3", "order": 1},
+                        {"id": "b3", "begin": "n3", "end": "n4", "order": 1}
+                    ]
+                }
+            }
+        }
+    });
+    engine
+        .load_document_json(&document.to_string())
+        .expect("invalid repeat fixture should load");
+
+    let fragment = engine
+        .state()
+        .document
+        .editable_fragment()
+        .unwrap()
+        .fragment;
+    assert!(fragment.meta.get("repeatingUnits").is_none());
 }

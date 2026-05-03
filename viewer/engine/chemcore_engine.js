@@ -433,6 +433,16 @@ export class WasmEngine {
         wasm.wasmengine_selectAtPoint(this.__wbg_ptr, x, y, additive);
     }
     /**
+     * @param {number} x
+     * @param {number} y
+     * @param {boolean} additive
+     * @returns {boolean}
+     */
+    selectComponentAtPoint(x, y, additive) {
+        const ret = wasm.wasmengine_selectComponentAtPoint(this.__wbg_ptr, x, y, additive);
+        return ret !== 0;
+    }
+    /**
      * @param {string} points_json
      * @param {boolean} additive
      */
@@ -502,6 +512,14 @@ export class WasmEngine {
         wasm.wasmengine_setArrowOptions(this.__wbg_ptr, ptr0, len0, ptr1, len1, head, tail, bold);
     }
     /**
+     * @param {string} kind
+     */
+    setBracketOptions(kind) {
+        const ptr0 = passStringToWasm0(kind, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.wasmengine_setBracketOptions(this.__wbg_ptr, ptr0, len0);
+    }
+    /**
      * @param {string} preset
      */
     setDocumentStylePreset(preset) {
@@ -522,6 +540,14 @@ export class WasmEngine {
         const ptr2 = passStringToWasm0(color, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len2 = WASM_VECTOR_LEN;
         wasm.wasmengine_setShapeOptions(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2);
+    }
+    /**
+     * @param {string} kind
+     */
+    setSymbolOptions(kind) {
+        const ptr0 = passStringToWasm0(kind, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.wasmengine_setSymbolOptions(this.__wbg_ptr, ptr0, len0);
     }
     /**
      * @param {string} template

@@ -35,6 +35,8 @@ pub enum Tool {
     Select,
     Bond,
     Arrow,
+    Bracket,
+    Symbol,
     Delete,
     Text,
     Shape,
@@ -160,6 +162,30 @@ impl Default for ShapeStyle {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum BracketKind {
+    Round,
+    Square,
+    Curly,
+    DoubleDagger,
+    Dagger,
+    CirclePlus,
+    Plus,
+    RadicalCation,
+    LonePair,
+    CircleMinus,
+    Minus,
+    RadicalAnion,
+    Electron,
+}
+
+impl Default for BracketKind {
+    fn default() -> Self {
+        Self::Round
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EditorOptions {
     pub bond_length: f64,
@@ -231,6 +257,10 @@ pub struct ToolState {
     pub shape_style: ShapeStyle,
     #[serde(default = "default_shape_color")]
     pub shape_color: String,
+    #[serde(default)]
+    pub bracket_kind: BracketKind,
+    #[serde(default = "default_symbol_kind")]
+    pub symbol_kind: BracketKind,
     #[serde(default = "default_template")]
     pub template: String,
 }
@@ -252,6 +282,8 @@ impl Default for ToolState {
             shape_kind: ShapeKind::Circle,
             shape_style: ShapeStyle::Solid,
             shape_color: default_shape_color(),
+            bracket_kind: BracketKind::Round,
+            symbol_kind: default_symbol_kind(),
             template: default_template(),
         }
     }
@@ -267,6 +299,10 @@ fn default_arrow_head_style() -> ArrowEndpointStyle {
 
 fn default_template() -> String {
     "ring-6".to_string()
+}
+
+fn default_symbol_kind() -> BracketKind {
+    BracketKind::CirclePlus
 }
 
 fn default_shape_color() -> String {

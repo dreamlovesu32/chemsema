@@ -2,6 +2,10 @@
 
 本文档记录下一步“化学标签缩写识别引擎”的支持范围。目标是先明确哪些标签是合法缩写、它们对应什么基团、以及将来在 engine 中如何存储和展开。
 
+下一阶段的 formula-like 标签不应继续完全依赖缩写表。`CN`、`CF3`、
+`CO2Cl`、`CH2COOCH2SO2NHCl` 这类标签应由价键驱动解析器推出。该方向
+单独记录在 `docs/valence-label-recognition-rules.zh-CN.md`。
+
 ## 参考来源
 
 本次阅读了两份本地开源源码：

@@ -122,6 +122,7 @@ pub(super) fn render_molecule_object(
 
             for node in &fragment.nodes {
                 render_fragment_label(out, document, object, node, object_id.clone());
+                render_fragment_node_invalid_marker(out, object, node, object_id.clone());
             }
         }
         ResourceData::Text(molblock) => {
@@ -129,6 +130,31 @@ pub(super) fn render_molecule_object(
         }
         _ => {}
     }
+}
+
+fn render_fragment_node_invalid_marker(
+    out: &mut Vec<RenderPrimitive>,
+    object: &SceneObject,
+    node: &Node,
+    object_id: Option<String>,
+) {
+    if !crate::node_has_charge_symbol_invalid(node) {
+        return;
+    }
+    let center = Point::new(
+        object.transform.translate[0] + node.position[0],
+        object.transform.translate[1] + node.position[1],
+    );
+    out.push(RenderPrimitive::Circle {
+        role: RenderRole::DocumentGraphic,
+        object_id,
+        node_id: Some(node.id.clone()),
+        center,
+        radius: crate::ENDPOINT_FOCUS_RADIUS,
+        fill: "none".to_string(),
+        stroke: "#d32f2f".to_string(),
+        stroke_width: 1.0,
+    });
 }
 
 pub(super) fn render_line_object(
@@ -1063,6 +1089,423 @@ pub(super) fn render_shape_object(
         return;
     };
     render_shape_geometry(out, &object.id, &geometry, style);
+}
+
+pub(super) fn render_bracket_object(
+    out: &mut Vec<RenderPrimitive>,
+    _document: &ChemcoreDocument,
+    object: &SceneObject,
+) {
+    let Some([x, y, width, height]) = object.payload.bbox else {
+        return;
+    };
+    if width <= crate::EPSILON || height <= crate::EPSILON {
+        return;
+    }
+    let tx = object.transform.translate[0] + x;
+    let ty = object.transform.translate[1] + y;
+    let bounds = vec![
+        Point::new(tx, ty),
+        Point::new(tx + width, ty),
+        Point::new(tx + width, ty + height),
+        Point::new(tx, ty + height),
+    ];
+    let kind = payload_string(&object.payload, "kind").unwrap_or_else(|| "round".to_string());
+    if object.object_type == "symbol" {
+        render_symbol_object_geometry(out, object, tx, ty, width, height, &kind, bounds);
+        return;
+    }
+
+    out.push(RenderPrimitive::Path {
+        role: RenderRole::DocumentGraphic,
+        object_id: Some(object.id.clone()),
+        bond_id: None,
+        d: bracket_pair_path_d(tx, ty, width, height, &kind),
+        points: bounds,
+        stroke: payload_string(&object.payload, "stroke").unwrap_or_else(|| "#000000".to_string()),
+        stroke_width: payload_number(&object.payload, "strokeWidth").unwrap_or(px_to_cm(1.0)),
+        dash_array: Vec::new(),
+        line_cap: Some("butt".to_string()),
+        line_join: Some(if kind == "curly" { "round" } else { "miter" }.to_string()),
+    });
+}
+
+fn bracket_pair_path_d(x: f64, y: f64, width: f64, height: f64, kind: &str) -> String {
+    let right = x + width;
+    let bottom = y + height;
+    match kind {
+        "square" => {
+            let lip = square_bracket_lip(width, height);
+            format!(
+                "M {},{} L {},{} L {},{} L {},{} M {},{} L {},{} L {},{} L {},{}",
+                x + lip,
+                y,
+                x,
+                y,
+                x,
+                bottom,
+                x + lip,
+                bottom,
+                right - lip,
+                y,
+                right,
+                y,
+                right,
+                bottom,
+                right - lip,
+                bottom
+            )
+        }
+        "curly" => {
+            let depth = curly_bracket_depth(width, height);
+            let half_depth = depth * 0.5;
+            let middle = y + height * 0.5;
+            let c_large = height * 0.039805;
+            let c_small = height * 0.032308;
+            let left_end = x + depth;
+            let left_mid = x + half_depth;
+            let right_end = right - depth;
+            let right_mid = right - half_depth;
+            let top_inner = y + half_depth;
+            let bottom_inner = bottom - half_depth;
+            format!(
+                concat!(
+                    "M {le},{y} ",
+                    "C {le_c},{y} {lm},{y_cs} {lm},{ti} ",
+                    "C {lm},{ti} {lm},{mti} {lm},{mti} ",
+                    "C {lm},{mti_c} {lm_c},{middle} {x},{middle} ",
+                    "C {lm_c},{middle} {lm},{mbi_c} {lm},{mbi} ",
+                    "C {lm},{mbi} {lm},{b_cs} {le_c},{bottom} ",
+                    "C {le},{bottom} {le},{bottom} {le},{bottom} ",
+                    "M {re},{bottom} ",
+                    "C {re_c},{bottom} {rm},{b_cs} {rm},{bi} ",
+                    "C {rm},{bi} {rm},{mbi} {rm},{mbi} ",
+                    "C {rm},{mbi_c} {rm_c},{middle} {right},{middle} ",
+                    "C {rm_c},{middle} {rm},{mti_c} {rm},{mti} ",
+                    "C {rm},{mti} {rm},{y_cs} {re_c},{y} ",
+                    "C {re},{y} {re},{y} {re},{y}"
+                ),
+                le = left_end,
+                le_c = left_end - c_large,
+                lm = left_mid,
+                lm_c = left_mid - c_small,
+                re = right_end,
+                re_c = right_end + c_large,
+                rm = right_mid,
+                rm_c = right_mid + c_small,
+                x = x,
+                right = right,
+                y = y,
+                bottom = bottom,
+                middle = middle,
+                y_cs = y + c_small,
+                b_cs = bottom - c_small,
+                ti = top_inner,
+                bi = bottom_inner,
+                mti = middle - half_depth,
+                mbi = middle + half_depth,
+                mti_c = middle - half_depth + c_large,
+                mbi_c = middle + half_depth - c_large,
+            )
+        }
+        _ => {
+            let depth = round_bracket_depth(width, height);
+            format!(
+                "M {},{} A {height},{height} 0 0 0 {},{} M {},{} A {height},{height} 0 0 0 {},{}",
+                x + depth,
+                y,
+                x + depth,
+                bottom,
+                right - depth,
+                bottom,
+                right - depth,
+                y
+            )
+        }
+    }
+}
+
+fn square_bracket_lip(width: f64, height: f64) -> f64 {
+    (height * 0.07248).min(width * 0.22).max(1.0)
+}
+
+fn round_bracket_depth(width: f64, height: f64) -> f64 {
+    (height * (1.0 - 3.0_f64.sqrt() * 0.5))
+        .min(width * 0.22)
+        .max(1.0)
+}
+
+fn curly_bracket_depth(width: f64, height: f64) -> f64 {
+    (height * 0.14423).min(width * 0.24).max(2.0)
+}
+
+fn bracket_symbol_path_d(x: f64, y: f64, width: f64, height: f64, kind: &str) -> String {
+    let thick = 1.6_f64.min(width * 0.35).min(height * 0.18);
+    let cx = x + width * 0.5;
+    let vertical = rect_path_d(cx - thick * 0.5, y, thick, height);
+    let top_bar = rect_path_d(x, y + height * 0.28 - thick * 0.5, width, thick);
+    if kind == "double-dagger" {
+        let bottom_bar = rect_path_d(x, y + height * 0.72 - thick * 0.5, width, thick);
+        format!("{vertical} {top_bar} {bottom_bar}")
+    } else {
+        format!("{vertical} {top_bar}")
+    }
+}
+
+fn render_symbol_object_geometry(
+    out: &mut Vec<RenderPrimitive>,
+    object: &SceneObject,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    kind: &str,
+    bounds: Vec<Point>,
+) {
+    let fill = payload_string(&object.payload, "fill").unwrap_or_else(|| "#000000".to_string());
+    let stroke_width = payload_number(&object.payload, "strokeWidth").unwrap_or(px_to_cm(1.0));
+    let object_id = Some(object.id.clone());
+    let symbol_style = payload_string(&object.payload, "symbolStyle")
+        .map(|style| crate::cdxml_symbol_style_from_name(&style))
+        .unwrap_or(crate::CdxmlSymbolStyle::Default);
+    let layout = charge_symbol_layout(symbol_style);
+    match kind {
+        "circle-plus" | "circle-minus" => {
+            let center = Point::new(x + width * 0.5, y + height * 0.5);
+            out.push(RenderPrimitive::Path {
+                role: RenderRole::DocumentGraphic,
+                object_id: object_id.clone(),
+                bond_id: None,
+                d: ellipse_path_d(center, width * 0.5, height * 0.5, 0.0),
+                points: bounds.clone(),
+                stroke: fill.clone(),
+                stroke_width,
+                dash_array: Vec::new(),
+                line_cap: None,
+                line_join: None,
+            });
+            let sign_x = center.x - layout.circle_sign_size * 0.5 + layout.circle_sign_offset;
+            let sign_y = center.y - layout.circle_sign_size * 0.5 + layout.circle_sign_offset;
+            if kind == "circle-plus" {
+                push_symbol_filled_paths(
+                    out,
+                    object_id,
+                    plus_symbol_path_ds_with_thick(
+                        sign_x,
+                        sign_y,
+                        layout.circle_sign_size,
+                        layout.circle_sign_size,
+                        layout.sign_thickness,
+                    ),
+                    bounds,
+                    &fill,
+                );
+            } else {
+                push_symbol_filled_path(
+                    out,
+                    object_id,
+                    minus_symbol_path_d_with_thick(
+                        sign_x,
+                        sign_y,
+                        layout.circle_sign_size,
+                        layout.circle_sign_size,
+                        layout.sign_thickness,
+                    ),
+                    bounds,
+                    &fill,
+                );
+            }
+        }
+        "plus" => push_symbol_filled_paths(
+            out,
+            object_id,
+            plus_symbol_path_ds_with_thick(x, y, width, height, layout.sign_thickness),
+            bounds,
+            &fill,
+        ),
+        "minus" => push_symbol_filled_path(
+            out,
+            object_id,
+            minus_symbol_path_d_with_thick(x, y, width, height, layout.sign_thickness),
+            bounds,
+            &fill,
+        ),
+        "radical-cation" => {
+            let mut paths = vec![dot_symbol_path_d(
+                x + layout.dot_diameter * 0.5,
+                y + height * 0.5,
+                layout.dot_diameter,
+            )];
+            paths.extend(plus_symbol_path_ds_with_thick(
+                x + layout.dot_diameter + layout.radical_gap,
+                y + (height - layout.radical_sign_size) * 0.5,
+                layout.radical_sign_size,
+                layout.radical_sign_size,
+                layout.sign_thickness,
+            ));
+            push_symbol_filled_paths(out, object_id, paths, bounds, &fill);
+        }
+        "radical-anion" => push_symbol_filled_paths(
+            out,
+            object_id,
+            vec![
+                dot_symbol_path_d(
+                    x + layout.dot_diameter * 0.5,
+                    y + height * 0.5,
+                    layout.dot_diameter,
+                ),
+                minus_symbol_path_d_with_thick(
+                    x + layout.dot_diameter + layout.radical_gap,
+                    y + (height - layout.radical_sign_size) * 0.5,
+                    layout.radical_sign_size,
+                    layout.radical_sign_size,
+                    layout.sign_thickness,
+                ),
+            ],
+            bounds,
+            &fill,
+        ),
+        "lone-pair" => push_symbol_filled_paths(
+            out,
+            object_id,
+            vec![
+                dot_symbol_path_d(
+                    x + layout.dot_diameter * 0.5,
+                    y + height * 0.5,
+                    layout.dot_diameter,
+                ),
+                dot_symbol_path_d(
+                    x + layout.dot_diameter + layout.lone_pair_gap + layout.dot_diameter * 0.5,
+                    y + height * 0.5,
+                    layout.dot_diameter,
+                ),
+            ],
+            bounds,
+            &fill,
+        ),
+        "electron" => push_symbol_filled_path(
+            out,
+            object_id,
+            dot_symbol_path_d(x + width * 0.5, y + height * 0.5, layout.electron_diameter),
+            bounds,
+            &fill,
+        ),
+        _ => push_symbol_filled_path(
+            out,
+            object_id,
+            bracket_symbol_path_d(x, y, width, height, kind),
+            bounds,
+            &fill,
+        ),
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ChargeSymbolLayout {
+    circle_sign_size: f64,
+    circle_sign_offset: f64,
+    radical_sign_size: f64,
+    sign_thickness: f64,
+    dot_diameter: f64,
+    radical_gap: f64,
+    lone_pair_gap: f64,
+    electron_diameter: f64,
+}
+
+fn charge_symbol_layout(style: crate::CdxmlSymbolStyle) -> ChargeSymbolLayout {
+    match style {
+        crate::CdxmlSymbolStyle::Default => ChargeSymbolLayout {
+            circle_sign_size: 4.3335,
+            circle_sign_offset: -0.01675,
+            radical_sign_size: 4.3335,
+            sign_thickness: 0.8,
+            dot_diameter: 1.667,
+            radical_gap: 0.7495,
+            lone_pair_gap: 2.083,
+            electron_diameter: 1.667,
+        },
+        crate::CdxmlSymbolStyle::Acs => ChargeSymbolLayout {
+            circle_sign_size: 3.9335,
+            circle_sign_offset: -0.01675,
+            radical_sign_size: 2.2,
+            sign_thickness: 0.5,
+            dot_diameter: 0.8,
+            radical_gap: 0.3,
+            lone_pair_gap: 1.0,
+            electron_diameter: 1.6665,
+        },
+    }
+}
+
+fn push_symbol_filled_path(
+    out: &mut Vec<RenderPrimitive>,
+    object_id: Option<String>,
+    d: String,
+    bounds: Vec<Point>,
+    fill: &str,
+) {
+    out.push(RenderPrimitive::FilledPath {
+        role: RenderRole::DocumentGraphic,
+        object_id,
+        d,
+        points: bounds,
+        fill: fill.to_string(),
+        fill_rule: None,
+        clip_path_d: None,
+        clip_rule: None,
+    });
+}
+
+fn push_symbol_filled_paths(
+    out: &mut Vec<RenderPrimitive>,
+    object_id: Option<String>,
+    paths: Vec<String>,
+    bounds: Vec<Point>,
+    fill: &str,
+) {
+    for d in paths {
+        push_symbol_filled_path(out, object_id.clone(), d, bounds.clone(), fill);
+    }
+}
+
+fn plus_symbol_path_ds_with_thick(
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    thick: f64,
+) -> Vec<String> {
+    let cx = x + width * 0.5;
+    let cy = y + height * 0.5;
+    vec![
+        symbol_rect_path_d(x, cy - thick * 0.5, width, thick),
+        symbol_rect_path_d(cx - thick * 0.5, y, thick, height),
+    ]
+}
+
+fn minus_symbol_path_d_with_thick(x: f64, y: f64, width: f64, height: f64, thick: f64) -> String {
+    let cy = y + height * 0.5;
+    symbol_rect_path_d(x, cy - thick * 0.5, width, thick)
+}
+
+fn dot_symbol_path_d(cx: f64, cy: f64, diameter: f64) -> String {
+    let radius = diameter * 0.5;
+    format!(
+        "M {},{} A {r},{r} 0 1 0 {},{} A {r},{r} 0 1 0 {},{} Z",
+        cx - radius,
+        cy,
+        cx + radius,
+        cy,
+        cx - radius,
+        cy,
+        r = radius
+    )
+}
+
+fn symbol_rect_path_d(x: f64, y: f64, width: f64, height: f64) -> String {
+    let right = x + width;
+    let bottom = y + height;
+    format!("M {x},{y} L {right},{y} L {right},{bottom} L {x},{bottom} Z")
 }
 
 struct ShapeStyleSpec {

@@ -63,6 +63,19 @@ fn first_glyph_anchor(label: &chemcore_engine::NodeLabel) -> Point {
     glyph_anchor(label, 0)
 }
 
+fn normal_source_run(text: &str) -> chemcore_engine::LabelRun {
+    chemcore_engine::LabelRun {
+        text: text.to_string(),
+        font_family: Some("Arial".to_string()),
+        font_size: Some(chemcore_engine::DEFAULT_TEXT_FONT_SIZE_CM),
+        fill: Some("#000000".to_string()),
+        font_weight: Some(400),
+        font_style: Some("normal".to_string()),
+        underline: Some(false),
+        script: Some("normal".to_string()),
+    }
+}
+
 fn glyph_anchor(label: &chemcore_engine::NodeLabel, index: usize) -> Point {
     let polygon = label
         .glyph_polygons
@@ -1016,6 +1029,103 @@ fn right_side_whole_labels_do_not_reverse_and_anchor_on_last_glyph() {
 }
 
 #[test]
+fn nonchemical_endpoint_label_skips_recognition_and_red_box() {
+    let mut engine = Engine::new();
+    load_single_carbon_node(&mut engine);
+    let session = engine
+        .begin_text_edit(px_point(300.0, 260.0))
+        .expect("endpoint text session should start");
+
+    assert!(engine.apply_text_edit(chemcore_engine::TextEditSession {
+        text: "NotAGroup".to_string(),
+        source_runs: vec![normal_source_run("NotAGroup")],
+        default_chemical: false,
+        ..session
+    }));
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let node = entry
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == "n1")
+        .expect("node should exist");
+    assert!(node.is_placeholder);
+    assert!(node.meta.get("labelRecognition").is_none());
+    assert!(node
+        .label
+        .as_ref()
+        .expect("plain label should exist")
+        .meta
+        .get("labelRecognition")
+        .is_none());
+    assert!(!engine.render_list().iter().any(|primitive| matches!(
+        primitive,
+        RenderPrimitive::Rect {
+            role: RenderRole::DocumentGraphic,
+            stroke: Some(stroke),
+            ..
+        } if stroke == "#d32f2f"
+    )));
+
+    let reopened = engine
+        .begin_text_edit(px_point(300.0, 260.0))
+        .expect("endpoint text session should reopen");
+    assert!(!reopened.default_chemical);
+}
+
+#[test]
+fn nonchemical_right_side_endpoint_label_keeps_text_and_anchors_last_glyph() {
+    let mut engine = Engine::new();
+    assert!(engine.add_bond_between(
+        free_anchor(px_point(300.0, 260.0)),
+        free_anchor(px_point(340.0, 260.0)),
+        1,
+    ));
+    let left_node = engine
+        .state()
+        .document
+        .editable_fragment()
+        .expect("editable fragment should exist")
+        .fragment
+        .nodes
+        .iter()
+        .min_by(|left, right| left.position[0].total_cmp(&right.position[0]))
+        .expect("left node should exist")
+        .clone();
+    let session = engine
+        .begin_text_edit(Point::new(left_node.position[0], left_node.position[1]))
+        .expect("endpoint session should be created");
+    assert!(engine.apply_text_edit(chemcore_engine::TextEditSession {
+        text: "CF3".to_string(),
+        source_runs: vec![normal_source_run("CF3")],
+        default_chemical: false,
+        ..session
+    }));
+
+    let node = engine
+        .state()
+        .document
+        .editable_fragment()
+        .expect("editable fragment should exist")
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == left_node.id)
+        .expect("left node should still exist");
+    assert!(node.meta.get("labelRecognition").is_none());
+    let label = node.label.as_ref().expect("label should exist");
+    assert_eq!(label.source_text.as_deref(), Some("CF3"));
+    assert_eq!(label.text, "CF3");
+    let expected_anchor = glyph_anchor(label, label.glyph_polygons.len() - 1);
+    let reopened = engine
+        .begin_text_edit(Point::new(node.position[0], node.position[1]))
+        .expect("endpoint session should reopen");
+    assert!(!reopened.default_chemical);
+    assert_endpoint_target_near(&reopened, expected_anchor);
+}
+
+#[test]
 fn reopening_endpoint_label_session_preserves_bbox_and_anchor_precision() {
     let mut engine = Engine::new();
     click(&mut engine, 300.0, 260.0);
@@ -1631,9 +1741,14 @@ fn endpoint_label_stores_composite_abbreviation_recognition_metadata() {
         .expect("recognition metadata should be stored");
     assert_eq!(recognition["status"], "recognized");
     assert_eq!(recognition["canonicalLabel"], "CO2Boc");
+    assert_eq!(recognition["source"], "valence-parser");
     let components = recognition["components"].as_array().unwrap();
-    assert_eq!(components[0]["label"], "CO2");
-    assert_eq!(components[1]["label"], "Boc");
+    assert_eq!(components[0]["label"], "C");
+    assert_eq!(components[1]["label"], "O");
+    assert_eq!(components[1]["bondOrderToParent"], 2);
+    assert_eq!(components[2]["label"], "O");
+    assert_eq!(components[3]["label"], "Boc");
+    assert_eq!(components[3]["bondOrderToParent"], 1);
     let expansion = recognition
         .get("expansion")
         .expect("recognized label should include structural expansion");

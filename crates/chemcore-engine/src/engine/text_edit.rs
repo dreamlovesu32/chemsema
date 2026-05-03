@@ -447,6 +447,9 @@ impl Engine {
             .or(Some(DEFAULT_TEXT_FONT_SIZE));
         let font_size_world_cm = WorldCm(font_size.unwrap_or(DEFAULT_TEXT_FONT_SIZE));
         let line_height = Some((font_size_world_cm.value() * 1.05).max(font_size_world_cm.value()));
+        let default_chemical = label
+            .map(|_| source_runs_are_chemical(&source_runs))
+            .unwrap_or(true);
         Some(TextEditSession {
             target: TextEditTarget::EndpointLabel {
                 node_id: node_id.to_string(),
@@ -472,7 +475,7 @@ impl Engine {
                 ]
             }),
             preserve_lines: true,
-            default_chemical: true,
+            default_chemical,
         })
     }
 
@@ -891,7 +894,9 @@ pub(super) fn apply_node_label_text_edit(
         .map(label_source_text)
         .unwrap_or_default();
     let trimmed = text.trim();
-    if trimmed.is_empty() || trimmed == "C" {
+    let source_runs = normalize_source_runs(session, text);
+    let is_chemical_label = source_runs_are_chemical(&source_runs);
+    if trimmed.is_empty() || (is_chemical_label && trimmed == "C") {
         let changed = previous_element != "C"
             || previous_atomic_number != 6
             || previous_is_placeholder
@@ -912,41 +917,48 @@ pub(super) fn apply_node_label_text_edit(
 
     let mut label_recognition_meta = None;
     let connection_count = connection_angles.len();
-    if let Some(replacement) =
-        classify_node_label_replacement_for_connection_count(trimmed, connection_count)
-    {
-        match replacement {
-            NodeLabelReplacement::Carbon => {}
-            NodeLabelReplacement::Element {
-                element,
-                atomic_number,
-            } => {
-                node.element = element.to_string();
-                node.atomic_number = atomic_number;
-                node.num_hydrogens = 0;
-                node.is_placeholder = false;
+    if is_chemical_label {
+        if let Some(replacement) =
+            classify_node_label_replacement_for_connection_count(trimmed, connection_count)
+        {
+            match replacement {
+                NodeLabelReplacement::Carbon => {}
+                NodeLabelReplacement::Element {
+                    element,
+                    atomic_number,
+                } => {
+                    node.element = element.to_string();
+                    node.atomic_number = atomic_number;
+                    node.num_hydrogens = 0;
+                    node.is_placeholder = false;
+                }
+                NodeLabelReplacement::Abbreviation => {
+                    node.element = "C".to_string();
+                    node.atomic_number = 6;
+                    node.num_hydrogens = 0;
+                    node.is_placeholder = true;
+                    label_recognition_meta =
+                        crate::recognized_abbreviation_meta_for_connection_count(
+                            trimmed,
+                            connection_count,
+                        );
+                }
             }
-            NodeLabelReplacement::Abbreviation => {
-                node.element = "C".to_string();
-                node.atomic_number = 6;
-                node.num_hydrogens = 0;
-                node.is_placeholder = true;
-                label_recognition_meta = crate::recognized_abbreviation_meta_for_connection_count(
-                    trimmed,
-                    connection_count,
-                );
-            }
+        } else {
+            node.element = "C".to_string();
+            node.atomic_number = 6;
+            node.num_hydrogens = 0;
+            node.is_placeholder = true;
+            label_recognition_meta = Some(crate::invalid_abbreviation_meta(trimmed));
         }
     } else {
         node.element = "C".to_string();
         node.atomic_number = 6;
         node.num_hydrogens = 0;
         node.is_placeholder = true;
-        label_recognition_meta = Some(crate::invalid_abbreviation_meta(trimmed));
     }
     set_node_label_recognition_meta(node, label_recognition_meta.clone());
 
-    let source_runs = normalize_source_runs(session, text);
     let session_font_size = session
         .font_size_world_cm()
         .unwrap_or(WorldCm(DEFAULT_TEXT_FONT_SIZE))
@@ -963,7 +975,7 @@ pub(super) fn apply_node_label_text_edit(
     let mut next_label = make_centered_node_label_from_runs(
         text,
         anchor_position,
-        source_runs,
+        source_runs.clone(),
         display_runs,
         session
             .font_family
@@ -1014,7 +1026,11 @@ fn endpoint_label_editor_anchor_world(
                 .clone()
                 .unwrap_or_else(|| label.text.clone())
         };
-        let decision = label_layout_decision_for_text(&source_text, connection_angles);
+        let decision = label_layout_decision_for_text_mode(
+            &source_text,
+            connection_angles,
+            source_runs_are_chemical(&source_runs),
+        );
         let layout = layout_label_text(&source_text, &decision);
         let anchor_index = layout
             .lines
@@ -1164,6 +1180,12 @@ fn normalize_source_runs(session: &TextEditSession, text: &str) -> Vec<LabelRun>
             run
         })
         .collect()
+}
+
+fn source_runs_are_chemical(source_runs: &[LabelRun]) -> bool {
+    source_runs
+        .iter()
+        .any(|run| run.script.as_deref() == Some("chemical"))
 }
 
 fn display_runs_from_source_runs(
@@ -1957,7 +1979,11 @@ fn make_centered_node_label_from_runs(
     connection_angles: &[f64],
     session: &TextEditSession,
 ) -> crate::NodeLabel {
-    let decision = label_layout_decision_for_text(text, connection_angles);
+    let decision = label_layout_decision_for_text_mode(
+        text,
+        connection_angles,
+        source_runs_are_chemical(&source_runs),
+    );
     let layout = layout_label_text(text, &decision);
     let (lines, line_runs) = layout_display_runs(&display_runs, &decision);
     let line_height = (font_size * 1.05).max(font_size);
@@ -2102,11 +2128,19 @@ fn make_centered_node_label_from_runs(
     }
 }
 
-fn label_layout_decision_for_text(
+fn label_layout_decision_for_text_mode(
     text: &str,
     connection_angles: &[f64],
+    is_chemical_label: bool,
 ) -> crate::LabelLayoutDecision {
     let mut decision = decide_label_layout(connection_angles, false, false);
+    if !is_chemical_label {
+        if !matches!(decision.flow, LabelFlow::Reverse) {
+            decision.flow = LabelFlow::Forward;
+        }
+        decision.anchor = crate::LabelAnchorPolicy::WholeLabel;
+        return decision;
+    }
     if label_should_render_as_whole_group(text, connection_angles.len()) {
         decision.anchor = crate::LabelAnchorPolicy::WholeLabel;
     } else if matches!(decision.flow, LabelFlow::Reverse) {
@@ -2576,6 +2610,14 @@ fn refresh_label_recognition_for_node(fragment: &mut crate::MoleculeFragment, no
         set_node_implicit_hydrogen_label_meta(&mut fragment.nodes[node_index], None);
         return;
     };
+    if !source_runs_are_chemical(&source_runs_from_node_label(label)) {
+        let node = &mut fragment.nodes[node_index];
+        set_node_label_recognition_meta(node, None);
+        if let Some(label) = node.label.as_mut() {
+            set_label_recognition_meta(label, None);
+        }
+        return;
+    }
     let text = label_source_text(label);
     let recognition_meta = label_recognition_meta_for_node_text(fragment, node_id, &text);
     let node = &mut fragment.nodes[node_index];
@@ -2727,7 +2769,8 @@ fn implicit_hydrogen_count(fragment: &crate::MoleculeFragment, node_id: &str) ->
     ) else {
         return 0;
     };
-    (valence - radical_count - connection_count - abs_charge).clamp(0, 9) as u8
+    let charge_hydrogen_penalty = if charge > 0 { 0 } else { abs_charge };
+    (valence - radical_count - connection_count - charge_hydrogen_penalty).clamp(0, 9) as u8
 }
 
 fn typical_valence_for_implicit_hydrogen(
@@ -2742,6 +2785,8 @@ fn typical_valence_for_implicit_hydrogen(
         7 | 15 => {
             if charge == 1 {
                 Some(4)
+            } else if charge < 0 {
+                Some(3)
             } else if charge == 2 || radical_count + connection_count + abs_charge <= 3 {
                 Some(3)
             } else {

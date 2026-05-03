@@ -34,16 +34,19 @@ impl Engine {
         }
         if !selection.arrow_objects.is_empty() {
             self.push_undo_snapshot();
-            let selected_arrows: BTreeSet<&str> =
+            let selected_graphics: BTreeSet<&str> =
                 selection.arrow_objects.iter().map(String::as_str).collect();
             let original_len = self.state.document.objects.len();
             self.state.document.objects.retain(|object| {
-                object.object_type != "line" || !selected_arrows.contains(object.id.as_str())
+                !matches!(object.object_type.as_str(), "line" | "bracket" | "symbol")
+                    || !selected_graphics.contains(object.id.as_str())
             });
             let arrow_changed = self.state.document.objects.len() != original_len;
             changed |= arrow_changed;
             if !arrow_changed {
                 self.undo_stack.pop();
+            } else {
+                self.refresh_symbol_chemistry();
             }
         }
         for node_id in &selection.label_nodes {
@@ -73,6 +76,8 @@ impl Engine {
             self.options.bond_stroke_world_cm().value(),
         );
         entry.update_bounds();
+        drop(entry);
+        self.refresh_symbol_chemistry();
         self.state.selection = crate::SelectionState::default();
         self.clear_interaction();
         true

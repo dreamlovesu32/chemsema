@@ -65,6 +65,7 @@ const state = {
   coreRenderList: null,
   runtimeViewBox: null,
   lastEditFocusPoint: null,
+  activeBracketDragStart: null,
   zoomHandoffs: [],
   programmaticScrollTimer: null,
   isProgrammaticScroll: false,
@@ -248,6 +249,8 @@ const editorState = {
   shapeKind: "circle",
   shapeStyle: "solid",
   shapeColor: "#000000",
+  bracketKind: "round",
+  symbolKind: "circle-plus",
   template: "ring-6",
 };
 let activeTextEditor = null;
@@ -279,6 +282,8 @@ function syncEngineToolState() {
     editorState.shapeStyle,
     editorState.shapeColor,
   );
+  state.editorEngine.setBracketOptions?.(editorState.bracketKind);
+  state.editorEngine.setSymbolOptions?.(editorState.symbolKind);
   if (state.editorEngine.setArrowEndpointOptions) {
     state.editorEngine.setArrowEndpointOptions(
       editorState.arrowType,
@@ -1894,6 +1899,14 @@ function syncPrimaryTemplateToolButton() {
   templateButton.setAttribute("title", spec.title);
 }
 
+function syncPrimarySymbolToolButton() {
+  const symbolButton = document.querySelector('.tool-button[data-tool="symbol"]');
+  if (!symbolButton) {
+    return;
+  }
+  symbolButton.innerHTML = bracketIconSvg(editorState.symbolKind);
+}
+
 function syncCanvasCursor() {
   if (!viewerSvg) {
     return;
@@ -2183,6 +2196,67 @@ function shapeToolbarHtml() {
   `;
 }
 
+function bracketIconSvg(kind = "round") {
+  if (kind === "square") {
+    return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5H6v14h3"/><path d="M15 5h3v14h-3"/></svg>`;
+  }
+  if (kind === "curly") {
+    return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5c-2 0-2 2-2 3.5V10c0 1.2-.9 2-2 2 1.1 0 2 .8 2 2v1.5C8 17 8 19 10 19"/><path d="M14 5c2 0 2 2 2 3.5V10c0 1.2.9 2 2 2-1.1 0-2 .8-2 2v1.5c0 1.5 0 3.5-2 3.5"/></svg>`;
+  }
+  if (kind === "double-dagger") {
+    return `<svg viewBox="0 0 24 24" aria-hidden="true"><path class="filled" d="M11 4h2v16h-2z"/><path class="filled" d="M7 8h10v2H7z"/><path class="filled" d="M7 14h10v2H7z"/></svg>`;
+  }
+  if (kind === "dagger") {
+    return `<svg viewBox="0 0 24 24" aria-hidden="true"><path class="filled" d="M11 4h2v16h-2z"/><path class="filled" d="M7 8h10v2H7z"/></svg>`;
+  }
+  if (kind === "circle-plus" || kind === "circle-minus") {
+    const mark = kind === "circle-plus"
+      ? `<path d="M12 8v8"/><path d="M8 12h8"/>`
+      : `<path d="M8 12h8"/>`;
+    return `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6.2"/>${mark}</svg>`;
+  }
+  if (kind === "plus") {
+    return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v10"/><path d="M7 12h10"/></svg>`;
+  }
+  if (kind === "minus") {
+    return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 12h10"/></svg>`;
+  }
+  if (kind === "radical-cation" || kind === "radical-anion") {
+    const mark = kind === "radical-cation"
+      ? `<path d="M15.5 8v8"/><path d="M11.5 12h8"/>`
+      : `<path d="M11.5 12h8"/>`;
+    return `<svg viewBox="0 0 24 24" aria-hidden="true"><circle class="filled" cx="7.5" cy="12" r="1.8"/>${mark}</svg>`;
+  }
+  if (kind === "lone-pair") {
+    return `<svg viewBox="0 0 24 24" aria-hidden="true"><circle class="filled" cx="9" cy="12" r="1.8"/><circle class="filled" cx="15" cy="12" r="1.8"/></svg>`;
+  }
+  if (kind === "electron") {
+    return `<svg viewBox="0 0 24 24" aria-hidden="true"><circle class="filled" cx="12" cy="12" r="2.2"/></svg>`;
+  }
+  return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5c-3 3-3 11 0 14"/><path d="M14 5c3 3 3 11 0 14"/></svg>`;
+}
+
+function bracketToolbarHtml() {
+  return [
+    toolbarButton("bracket-kind-round", "Parentheses", bracketIconSvg("round"), editorState.bracketKind === "round"),
+    toolbarButton("bracket-kind-square", "Square brackets", bracketIconSvg("square"), editorState.bracketKind === "square"),
+    toolbarButton("bracket-kind-curly", "Braces", bracketIconSvg("curly"), editorState.bracketKind === "curly"),
+  ].join("");
+}
+
+function symbolToolbarHtml() {
+  return [
+    toolbarButton("symbol-kind-circle-plus", "Circle plus", bracketIconSvg("circle-plus"), editorState.symbolKind === "circle-plus"),
+    toolbarButton("symbol-kind-plus", "Plus", bracketIconSvg("plus"), editorState.symbolKind === "plus"),
+    toolbarButton("symbol-kind-radical-cation", "Radical cation", bracketIconSvg("radical-cation"), editorState.symbolKind === "radical-cation"),
+    toolbarButton("symbol-kind-lone-pair", "Lone pair", bracketIconSvg("lone-pair"), editorState.symbolKind === "lone-pair"),
+    toolbarButton("symbol-kind-circle-minus", "Circle minus", bracketIconSvg("circle-minus"), editorState.symbolKind === "circle-minus"),
+    toolbarButton("symbol-kind-minus", "Minus", bracketIconSvg("minus"), editorState.symbolKind === "minus"),
+    toolbarButton("symbol-kind-radical-anion", "Radical anion", bracketIconSvg("radical-anion"), editorState.symbolKind === "radical-anion"),
+    toolbarButton("symbol-kind-electron", "Electron", bracketIconSvg("electron"), editorState.symbolKind === "electron"),
+  ].join("");
+}
+
 function ringSvg(sides, aromatic = false) {
   if (aromatic) {
     return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 4 7 4v8l-7 4-7-4V8z"/><circle cx="12" cy="12" r="4.6"/></svg>`;
@@ -2237,6 +2311,10 @@ function renderSecondaryToolbar() {
     secondaryToolbar.innerHTML = textToolbarHtml();
   } else if (editorState.activeTool === "arrow") {
     secondaryToolbar.innerHTML = arrowToolbarHtml();
+  } else if (editorState.activeTool === "bracket") {
+    secondaryToolbar.innerHTML = bracketToolbarHtml();
+  } else if (editorState.activeTool === "symbol") {
+    secondaryToolbar.innerHTML = symbolToolbarHtml();
   } else if (editorState.activeTool === "shape") {
     secondaryToolbar.innerHTML = shapeToolbarHtml();
   } else if (editorState.activeTool === "templates") {
@@ -2246,6 +2324,7 @@ function renderSecondaryToolbar() {
   }
   syncPrimaryBondToolButton();
   syncPrimaryTemplateToolButton();
+  syncPrimarySymbolToolButton();
 }
 
 const textEditorController = createTextEditorController({
@@ -2840,6 +2919,9 @@ function setActiveTool(toolButton) {
   if (editorState.activeTool === "select" && nextTool !== "select") {
     activeSelectionGesture = null;
   }
+  if (nextTool !== "bracket") {
+    state.activeBracketDragStart = null;
+  }
   editorState.activeTool = toolButton?.dataset?.tool || editorState.activeTool;
   document.querySelectorAll("[data-tool]").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.tool === editorState.activeTool);
@@ -2888,8 +2970,13 @@ secondaryToolbar?.addEventListener("click", (event) => {
     editorState.textUnderline = !editorState.textUnderline;
     applyTextFormatCommand("underline");
   } else if (value === "text-chemical") {
-    editorState.textScript = "chemical";
-    applyChemicalFormat();
+    if (editorState.textScript === "chemical") {
+      editorState.textScript = "normal";
+      applyTextScript("normal");
+    } else {
+      editorState.textScript = "chemical";
+      applyChemicalFormat();
+    }
   } else if (value === "text-subscript") {
     editorState.textScript = "subscript";
     applyTextScript("subscript");
@@ -2957,6 +3044,10 @@ secondaryToolbar?.addEventListener("click", (event) => {
   } else if (value === "arrow-bold") {
     editorState.arrowBold = !editorState.arrowBold;
     arrowOptionChanged = true;
+  } else if (value?.startsWith("bracket-kind-")) {
+    editorState.bracketKind = value.replace("bracket-kind-", "");
+  } else if (value?.startsWith("symbol-kind-")) {
+    editorState.symbolKind = value.replace("symbol-kind-", "");
   } else if (value?.startsWith("shape-kind-")) {
     editorState.shapeKind = value.replace("shape-kind-", "");
   } else if (value?.startsWith("shape-style-")) {
@@ -3030,6 +3121,8 @@ function routeEditorPointerEvents() {
     && (editorState.activeTool === "bond"
       || editorState.activeTool === "delete"
       || editorState.activeTool === "arrow"
+      || editorState.activeTool === "bracket"
+      || editorState.activeTool === "symbol"
       || editorState.activeTool === "select"
       || editorState.activeTool === "text"
       || editorState.activeTool === "shape"
@@ -3186,6 +3279,26 @@ function applyArrowOptionsToSelection() {
   return changed;
 }
 
+function bracketLabelAnchorPoint(start, end, kind = editorState.bracketKind) {
+  const left = Math.min(start.x, end.x);
+  const right = Math.max(start.x, end.x);
+  const bottom = Math.max(start.y, end.y);
+  const width = Math.abs(end.x - start.x);
+  const height = Math.abs(end.y - start.y);
+  let nominalRight = right;
+  if (kind === "round") {
+    const depth = Math.max(1, Math.min(height * (1 - Math.sqrt(3) * 0.5), width * 0.22));
+    nominalRight = right - depth;
+  } else if (kind === "curly") {
+    const depth = Math.max(2, Math.min(height * 0.14423, width * 0.24));
+    nominalRight = right - depth * 0.5;
+  }
+  return {
+    x: nominalRight + 4.0,
+    y: bottom - 8.0,
+  };
+}
+
 function handleEditorPointerMove(event) {
   const point = svgPointFromEvent(event);
   if ((editorState.activeTool === "select" || editorState.activeTool === "arrow") && activeSelectionGesture) {
@@ -3259,6 +3372,9 @@ function handleEditorPointerDown(event) {
   }
   const point = svgPointFromEvent(event);
   state.lastEditFocusPoint = point;
+  if (editorState.activeTool === "bracket") {
+    state.activeBracketDragStart = point;
+  }
   if (editorState.activeTool === "text") {
     event.preventDefault();
     openTextEditorAt(point);
@@ -3423,6 +3539,13 @@ function handleEditorPointerUp(event) {
   state.editorEngine.pointerUp(point.x, point.y, event.altKey);
   syncDocumentFromEngine();
   renderDocument();
+  if (editorState.activeTool === "bracket") {
+    const start = state.activeBracketDragStart;
+    state.activeBracketDragStart = null;
+    if (start && pointDistance(start, point) >= cssPxToCm(4)) {
+      openTextEditorAt(bracketLabelAnchorPoint(start, point));
+    }
+  }
 }
 
 function handleEditorPointerLeave() {
@@ -3436,6 +3559,22 @@ function handleEditorPointerLeave() {
     state.editorEngine.clearInteraction();
     renderEditorOverlay();
   }
+}
+
+function handleEditorDoubleClick(event) {
+  if (!routeEditorPointerEvents() || editorState.activeTool !== "select") {
+    return;
+  }
+  const point = svgPointFromEvent(event);
+  const changed = !!state.editorEngine.selectComponentAtPoint?.(point.x, point.y, event.shiftKey);
+  if (!changed) {
+    return;
+  }
+  event.preventDefault();
+  activeSelectionGesture = null;
+  syncDocumentFromEngine();
+  syncSelectCursorForPoint(point);
+  renderDocument();
 }
 
 function renderEditorOverlay(renderList = null) {
@@ -3620,6 +3759,7 @@ function renderEditorOverlay(renderList = null) {
 viewerSvg?.addEventListener("pointermove", handleEditorPointerMove);
 viewerSvg?.addEventListener("pointerdown", handleEditorPointerDown);
 viewerSvg?.addEventListener("pointerup", handleEditorPointerUp);
+viewerSvg?.addEventListener("dblclick", handleEditorDoubleClick);
 viewerSvg?.addEventListener("pointercancel", () => {
   activeSelectionGesture = null;
   state.editorEngine?.clearInteraction?.();
@@ -3721,6 +3861,9 @@ function renderDocument() {
       } else {
         renderTextObject(viewerSvg, object);
       }
+    } else if (object.type === "bracket" || object.type === "symbol") {
+      const corePrimitives = corePrimitivesForObject(object.id);
+      corePrimitives.forEach((primitive) => renderCorePrimitive(viewerSvg, primitive));
     }
   }
 

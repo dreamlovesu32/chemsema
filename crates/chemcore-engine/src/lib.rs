@@ -9,6 +9,8 @@ mod label_rules;
 mod legacy_mol;
 mod render;
 mod render_constants;
+mod repeating_units;
+mod symbols;
 mod units;
 
 pub use abbreviation::*;
@@ -22,6 +24,8 @@ pub(crate) use glyph_kernel::*;
 pub use label_rules::*;
 pub use render::*;
 pub(crate) use render_constants::*;
+pub use repeating_units::*;
+pub use symbols::*;
 pub use units::*;
 
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]

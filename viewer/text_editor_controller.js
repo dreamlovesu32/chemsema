@@ -307,7 +307,11 @@ export function createTextEditorController(deps) {
   }
 
   function applyTextScript(script) {
-    const nextScript = script === "subscript" ? "subscript" : "superscript";
+    const nextScript = script === "subscript"
+      ? "subscript"
+      : script === "superscript"
+        ? "superscript"
+        : "normal";
     mutateEditorSelectionRuns((run) => ({ ...run, script: nextScript }), (style) => ({ ...style, script: nextScript }));
   }
 

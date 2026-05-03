@@ -103,6 +103,7 @@ pub fn parse_cdxml_document(cdxml: &str, title: Option<&str>) -> Result<Chemcore
     }
     append_line_objects(&root, &mut objects, &mut styles, defaults, &colors);
     append_shape_objects(&root, &mut objects, &mut styles, &colors);
+    append_bracket_objects(&root, &mut objects, defaults);
     append_text_objects(
         &root,
         &mut objects,
@@ -340,10 +341,72 @@ pub fn document_to_cdxml(document: &ChemcoreDocument) -> String {
     CdxmlDocumentWriter::new(document).write()
 }
 
+fn export_cdxml_defaults(document: &ChemcoreDocument) -> CdxmlDefaults {
+    let mut defaults = CdxmlDefaults::default();
+    if let Some(import_defaults) = document
+        .document
+        .meta
+        .get("import")
+        .and_then(|value| value.get("cdxml"))
+        .and_then(|value| value.get("defaults"))
+    {
+        if let Some(value) = import_defaults.get("bondLength").and_then(Value::as_f64) {
+            defaults.bond_length = value;
+        }
+        if let Some(value) = import_defaults.get("lineWidth").and_then(Value::as_f64) {
+            defaults.line_width = value;
+        }
+        if let Some(value) = import_defaults.get("boldWidth").and_then(Value::as_f64) {
+            defaults.bold_width = value;
+        }
+        if let Some(value) = import_defaults.get("hashSpacing").and_then(Value::as_f64) {
+            defaults.hash_spacing = value;
+        }
+        if let Some(value) = import_defaults.get("bondSpacing").and_then(Value::as_f64) {
+            defaults.bond_spacing = value;
+        }
+    }
+    if let Some(style) = document.styles.get("style_molecule_default") {
+        if let Some(value) = style_number_value(style, "strokeWidth") {
+            defaults.line_width = value;
+        }
+    }
+    for resource in document.resources.values() {
+        let ResourceData::Fragment(fragment) = &resource.data else {
+            continue;
+        };
+        if let Some(bond) = fragment.bonds.first() {
+            defaults.line_width = bond.stroke_width;
+            if let Some(value) = bond.bold_width {
+                defaults.bold_width = value;
+            }
+            if let Some(value) = bond.hash_spacing {
+                defaults.hash_spacing = value;
+            }
+            break;
+        }
+    }
+    if let Some(value) = document.objects.iter().find_map(|object| {
+        (object.object_type == "symbol")
+            .then(|| {
+                object
+                    .payload
+                    .extra
+                    .get("symbolLineWidth")
+                    .and_then(Value::as_f64)
+            })
+            .flatten()
+    }) {
+        defaults.line_width = value;
+    }
+    defaults
+}
+
 struct CdxmlDocumentWriter<'a> {
     document: &'a ChemcoreDocument,
     next_id: u64,
     colors: CdxmlColorTable,
+    defaults: CdxmlDefaults,
 }
 
 impl<'a> CdxmlDocumentWriter<'a> {
@@ -354,6 +417,7 @@ impl<'a> CdxmlDocumentWriter<'a> {
             document,
             next_id: 1,
             colors,
+            defaults: export_cdxml_defaults(document),
         }
     }
 
@@ -372,11 +436,11 @@ impl<'a> CdxmlDocumentWriter<'a> {
             root_bbox,
             fmt_num(width),
             fmt_num(height),
-            fmt_num(crate::DEFAULT_BOND_STROKE),
-            fmt_num(crate::BOLD_BOND_WIDTH_CM.value()),
-            fmt_num(crate::DEFAULT_BOND_LENGTH),
-            fmt_num(crate::DEFAULT_BOND_SPACING_PERCENT),
-            fmt_num(crate::DEFAULT_HASH_SPACING_CM.value()),
+            fmt_num(self.defaults.line_width),
+            fmt_num(self.defaults.bold_width),
+            fmt_num(self.defaults.bond_length),
+            fmt_num(self.defaults.bond_spacing),
+            fmt_num(self.defaults.hash_spacing),
             self.colors.id_for("#000000"),
             self.colors.id_for(&page.background),
         )
@@ -407,6 +471,7 @@ impl<'a> CdxmlDocumentWriter<'a> {
                 "molecule" => self.write_molecule_object(&mut out, object),
                 "line" => self.write_line_object(&mut out, object),
                 "shape" => self.write_shape_object(&mut out, object),
+                "bracket" | "symbol" => self.write_bracket_object(&mut out, object),
                 "text" => self.write_text_object(&mut out, object),
                 _ => {}
             }
@@ -754,6 +819,113 @@ impl<'a> CdxmlDocumentWriter<'a> {
             attrs.push(("LineWidth", fmt_num(stroke_width)));
         }
         write_empty_tag(out, 4, "graphic", attrs);
+    }
+
+    fn write_bracket_object(&mut self, out: &mut String, object: &SceneObject) {
+        let Some([x, y, width, height]) = object.payload.bbox else {
+            return;
+        };
+        let bbox = [
+            object.transform.translate[0] + x,
+            object.transform.translate[1] + y,
+            object.transform.translate[0] + x + width,
+            object.transform.translate[1] + y + height,
+        ];
+        let kind =
+            payload_string_cdxml(&object.payload, "kind").unwrap_or_else(|| "round".to_string());
+        if object.object_type == "symbol" {
+            let symbol_type = match kind.as_str() {
+                "double-dagger" => "DoubleDagger",
+                "dagger" => "Dagger",
+                "circle-plus" => "CirclePlus",
+                "plus" => "Plus",
+                "radical-cation" => "RadicalCation",
+                "lone-pair" => "LonePair",
+                "circle-minus" => "CircleMinus",
+                "minus" => "Minus",
+                "radical-anion" => "RadicalAnion",
+                "electron" => "Electron",
+                _ => "Dagger",
+            };
+            let style = object
+                .payload
+                .extra
+                .get("symbolStyle")
+                .and_then(Value::as_str)
+                .map(crate::cdxml_symbol_style_from_name)
+                .unwrap_or(crate::CdxmlSymbolStyle::Default);
+            let anchor_width = object
+                .payload
+                .extra
+                .get("symbolAnchorWidth")
+                .and_then(Value::as_f64)
+                .unwrap_or_else(|| crate::cdxml_symbol_anchor_width(&kind, style));
+            let anchor_height = object
+                .payload
+                .extra
+                .get("symbolAnchorHeight")
+                .and_then(Value::as_f64)
+                .unwrap_or_else(|| crate::cdxml_symbol_anchor_height(&kind));
+            let center_x = (bbox[0] + bbox[2]) * 0.5;
+            let center_y = (bbox[1] + bbox[3]) * 0.5;
+            write_empty_tag(
+                out,
+                4,
+                "graphic",
+                vec![
+                    ("id", self.alloc_id()),
+                    ("GraphicType", "Symbol".to_string()),
+                    ("SymbolType", symbol_type.to_string()),
+                    (
+                        "BoundingBox",
+                        fmt_bbox([
+                            center_x - anchor_width * 0.5,
+                            center_y - anchor_height * 0.5,
+                            center_x + anchor_width * 0.5,
+                            center_y + anchor_height * 0.5,
+                        ]),
+                    ),
+                    ("Z", object.z_index.to_string()),
+                ],
+            );
+            return;
+        }
+
+        let bracket_type = match kind.as_str() {
+            "square" => "Square",
+            "curly" => "Curly",
+            _ => "Round",
+        };
+        let left_x = bbox[0];
+        let right_x = bbox[2];
+        let top = bbox[1];
+        let bottom = bbox[3];
+        write_empty_tag(
+            out,
+            4,
+            "graphic",
+            vec![
+                ("id", self.alloc_id()),
+                ("GraphicType", "Bracket".to_string()),
+                ("BracketType", bracket_type.to_string()),
+                ("BoundingBox", fmt_bbox([left_x, bottom, left_x, top])),
+                ("LipSize", "60".to_string()),
+                ("Z", object.z_index.to_string()),
+            ],
+        );
+        write_empty_tag(
+            out,
+            4,
+            "graphic",
+            vec![
+                ("id", self.alloc_id()),
+                ("GraphicType", "Bracket".to_string()),
+                ("BracketType", bracket_type.to_string()),
+                ("BoundingBox", fmt_bbox([right_x, top, right_x, bottom])),
+                ("LipSize", "60".to_string()),
+                ("Z", (object.z_index + 1).to_string()),
+            ],
+        );
     }
 
     fn write_text_object(&mut self, out: &mut String, object: &SceneObject) {
@@ -2087,6 +2259,209 @@ fn append_shape_objects(
         });
         index += 1;
     }
+}
+
+#[derive(Clone)]
+struct PendingCdxmlBracket {
+    kind: String,
+    bbox: [f64; 4],
+    z_index: i32,
+    graphic_id: Option<String>,
+}
+
+fn append_bracket_objects(root: &XmlNode, objects: &mut Vec<SceneObject>, defaults: CdxmlDefaults) {
+    let mut brackets = Vec::new();
+    let mut symbol_index = 1;
+    for node in descendants(root) {
+        if !node.is("graphic") || node.attr("SupersededBy").is_some() {
+            continue;
+        }
+        match node.attr("GraphicType").unwrap_or("") {
+            "Bracket" => {
+                let Some(bbox) = parse_bbox(node.attr("BoundingBox")) else {
+                    continue;
+                };
+                brackets.push(PendingCdxmlBracket {
+                    kind: match node.attr("BracketType").unwrap_or("") {
+                        "Square" => "square",
+                        "Curly" => "curly",
+                        _ => "round",
+                    }
+                    .to_string(),
+                    bbox,
+                    z_index: parse_i32(node.attr("Z")).unwrap_or(15),
+                    graphic_id: node.attr("id").map(ToString::to_string),
+                });
+            }
+            "Symbol" => {
+                let symbol_type = node.attr("SymbolType").unwrap_or("");
+                let Some(kind) = cdxml_symbol_kind(symbol_type) else {
+                    continue;
+                };
+                let Some(raw_bbox) = parse_bbox(node.attr("BoundingBox")) else {
+                    continue;
+                };
+                let cx = (raw_bbox[0] + raw_bbox[2]) * 0.5;
+                let cy = (raw_bbox[1] + raw_bbox[3]) * 0.5;
+                let style = crate::cdxml_symbol_style_from_line_width(defaults.line_width);
+                let metrics =
+                    crate::cdxml_symbol_metrics_from_bbox(kind, raw_bbox, defaults.line_width);
+                let (width, height) = (metrics.width, metrics.height);
+                let mut extra = BTreeMap::new();
+                extra.insert("kind".to_string(), json!(kind));
+                extra.insert("fill".to_string(), json!("#000000"));
+                extra.insert(
+                    "symbolStyle".to_string(),
+                    json!(crate::cdxml_symbol_style_name(style)),
+                );
+                extra.insert(
+                    "symbolAnchorWidth".to_string(),
+                    json!(metrics.cdxml_anchor_width),
+                );
+                extra.insert(
+                    "symbolAnchorHeight".to_string(),
+                    json!(metrics.cdxml_anchor_height),
+                );
+                extra.insert("symbolLineWidth".to_string(), json!(metrics.line_width));
+                extra.insert("cdxmlBoundingBox".to_string(), json!(raw_bbox));
+                if let Some(stroke_width) = metrics.stroke_width {
+                    extra.insert("strokeWidth".to_string(), json!(stroke_width));
+                }
+                objects.push(SceneObject {
+                    id: format!("obj_symbol_{symbol_index:03}"),
+                    object_type: "symbol".to_string(),
+                    name: format!("symbol {symbol_index}"),
+                    visible: true,
+                    locked: false,
+                    z_index: parse_i32(node.attr("Z")).unwrap_or(15),
+                    transform: Transform {
+                        translate: [round2(cx - width * 0.5), round2(cy - height * 0.5)],
+                        rotate: 0.0,
+                        scale: [1.0, 1.0],
+                    },
+                    style_ref: None,
+                    meta: json!({"source": "cdxml", "graphicId": node.attr("id")}),
+                    payload: ObjectPayload {
+                        resource_ref: None,
+                        bbox: Some([0.0, 0.0, width, height]),
+                        extra,
+                    },
+                });
+                symbol_index += 1;
+            }
+            _ => {}
+        }
+    }
+
+    let mut used = vec![false; brackets.len()];
+    let mut object_index = 1;
+    for left_index in 0..brackets.len() {
+        if used[left_index] {
+            continue;
+        }
+        let left = &brackets[left_index];
+        let left_bounds = normalized_bbox(left.bbox);
+        let mut best_index = None;
+        let mut best_dx = f64::INFINITY;
+        for right_index in 0..brackets.len() {
+            if left_index == right_index || used[right_index] {
+                continue;
+            }
+            let right = &brackets[right_index];
+            if right.kind != left.kind {
+                continue;
+            }
+            let right_bounds = normalized_bbox(right.bbox);
+            if (center_y(left_bounds) - center_y(right_bounds)).abs() > 2.0
+                || (height_of(left_bounds) - height_of(right_bounds)).abs() > 2.0
+            {
+                continue;
+            }
+            let dx = (center_x(right_bounds) - center_x(left_bounds)).abs();
+            if dx > crate::EPSILON && dx < best_dx {
+                best_dx = dx;
+                best_index = Some(right_index);
+            }
+        }
+        let Some(right_index) = best_index else {
+            continue;
+        };
+        used[left_index] = true;
+        used[right_index] = true;
+        let right = &brackets[right_index];
+        let lb = normalized_bbox(left.bbox);
+        let rb = normalized_bbox(right.bbox);
+        let min_x = lb[0].min(rb[0]);
+        let min_y = lb[1].min(rb[1]);
+        let max_x = lb[2].max(rb[2]);
+        let max_y = lb[3].max(rb[3]);
+        let mut extra = BTreeMap::new();
+        extra.insert("kind".to_string(), json!(left.kind));
+        extra.insert("stroke".to_string(), json!("#000000"));
+        extra.insert("strokeWidth".to_string(), json!(1.0));
+        extra.insert("lipSize".to_string(), json!(60));
+        objects.push(SceneObject {
+            id: format!("obj_bracket_{object_index:03}"),
+            object_type: "bracket".to_string(),
+            name: format!("bracket {object_index}"),
+            visible: true,
+            locked: false,
+            z_index: left.z_index.min(right.z_index),
+            transform: Transform {
+                translate: [round2(min_x), round2(min_y)],
+                rotate: 0.0,
+                scale: [1.0, 1.0],
+            },
+            style_ref: None,
+            meta: json!({
+                "source": "cdxml",
+                "graphicIds": [left.graphic_id, right.graphic_id],
+            }),
+            payload: ObjectPayload {
+                resource_ref: None,
+                bbox: Some([0.0, 0.0, round2(max_x - min_x), round2(max_y - min_y)]),
+                extra,
+            },
+        });
+        object_index += 1;
+    }
+}
+
+fn normalized_bbox(bbox: [f64; 4]) -> [f64; 4] {
+    [
+        bbox[0].min(bbox[2]),
+        bbox[1].min(bbox[3]),
+        bbox[0].max(bbox[2]),
+        bbox[1].max(bbox[3]),
+    ]
+}
+
+fn center_x(bbox: [f64; 4]) -> f64 {
+    (bbox[0] + bbox[2]) * 0.5
+}
+
+fn center_y(bbox: [f64; 4]) -> f64 {
+    (bbox[1] + bbox[3]) * 0.5
+}
+
+fn height_of(bbox: [f64; 4]) -> f64 {
+    bbox[3] - bbox[1]
+}
+
+fn cdxml_symbol_kind(symbol_type: &str) -> Option<&'static str> {
+    Some(match symbol_type {
+        "DoubleDagger" => "double-dagger",
+        "Dagger" => "dagger",
+        "CirclePlus" => "circle-plus",
+        "Plus" => "plus",
+        "RadicalCation" => "radical-cation",
+        "LonePair" => "lone-pair",
+        "CircleMinus" => "circle-minus",
+        "Minus" => "minus",
+        "RadicalAnion" => "radical-anion",
+        "Electron" => "electron",
+        _ => return None,
+    })
 }
 
 fn append_text_objects(

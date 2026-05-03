@@ -26,7 +26,8 @@ use contact::{
 };
 use legacy_render::render_legacy_molecule_object;
 use object_render::{
-    render_line_object, render_molecule_object, render_shape_object, render_text_object,
+    render_bracket_object, render_line_object, render_molecule_object, render_shape_object,
+    render_text_object,
 };
 use primitives::{
     push_bond_line, push_bond_polygon, push_knockout_polygon, push_line, push_path, push_polygon,
@@ -132,6 +133,7 @@ pub fn render_document(document: &ChemcoreDocument) -> Vec<RenderPrimitive> {
             "line" => render_line_object(&mut out, document, object),
             "text" => render_text_object(&mut out, document, object),
             "shape" => render_shape_object(&mut out, document, object),
+            "bracket" | "symbol" => render_bracket_object(&mut out, document, object),
             _ => {}
         }
     }

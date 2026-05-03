@@ -508,6 +508,73 @@ impl Engine {
         self.hover_select_target(point);
     }
 
+    pub fn select_component_at_point(&mut self, point: Point, additive: bool) -> bool {
+        let Some(entry) = self.state.document.editable_fragment() else {
+            return false;
+        };
+        let hit_node = hit_test_endpoint(&self.state.document, point, ENDPOINT_HIT_RADIUS)
+            .map(|hit| hit.node_id);
+        let hit_bond = if hit_node.is_none() {
+            hit_test_bond_center(&self.state.document, point, BOND_CENTER_HIT_RADIUS)
+                .map(|hit| hit.bond_id)
+        } else {
+            None
+        };
+        let seed_node_id = if let Some(node_id) = hit_node {
+            node_id
+        } else if let Some(bond_id) = hit_bond {
+            let Some(bond) = entry.fragment.bonds.iter().find(|bond| bond.id == bond_id) else {
+                return false;
+            };
+            bond.begin.clone()
+        } else {
+            return false;
+        };
+        let component_node_ids = connected_component_node_ids(entry.fragment, &seed_node_id);
+        let component_bond_ids: Vec<String> = entry
+            .fragment
+            .bonds
+            .iter()
+            .filter(|bond| {
+                component_node_ids.contains(&bond.begin) && component_node_ids.contains(&bond.end)
+            })
+            .map(|bond| bond.id.clone())
+            .collect();
+        let label_node_ids: Vec<String> = entry
+            .fragment
+            .nodes
+            .iter()
+            .filter(|node| component_node_ids.contains(&node.id) && node.label.is_some())
+            .map(|node| node.id.clone())
+            .collect();
+        let bracket_ids = bracket_object_ids_containing_component(
+            &self.state.document,
+            &entry,
+            &component_node_ids,
+        );
+        let mut selection = if additive {
+            self.state.selection.clone()
+        } else {
+            SelectionState::default()
+        };
+        selection.region = false;
+        for node_id in component_node_ids {
+            push_unique(&mut selection.nodes, node_id);
+        }
+        for bond_id in component_bond_ids {
+            push_unique(&mut selection.bonds, bond_id);
+        }
+        for node_id in label_node_ids {
+            push_unique(&mut selection.label_nodes, node_id);
+        }
+        for object_id in bracket_ids {
+            push_unique(&mut selection.arrow_objects, object_id);
+        }
+        self.state.selection = selection;
+        self.clear_interaction();
+        true
+    }
+
     pub fn select_in_rect(&mut self, start: Point, end: Point, additive: bool) {
         let bounds = AxisBounds::new(start.x, start.y, end.x, end.y);
         let selection = self.collect_region_selection(
@@ -611,6 +678,19 @@ impl Engine {
                 bond_id: center.bond_id,
             });
         }
+        for object in self.state.document.objects.iter().rev() {
+            if !matches!(object.object_type.as_str(), "bracket" | "symbol") || !object.visible {
+                continue;
+            }
+            let Some(bounds) = scene_object_selection_bounds(object) else {
+                continue;
+            };
+            if point_in_bounds(point, bounds.expanded(crate::px_to_cm(3.0))) {
+                return Some(SelectHit::ArrowObject {
+                    object_id: object.id.clone(),
+                });
+            }
+        }
         hit_test_arrow_center(&self.state.document, point, BOND_CENTER_HIT_RADIUS).map(|arrow| {
             SelectHit::ArrowObject {
                 object_id: arrow.object_id,
@@ -653,6 +733,17 @@ impl Engine {
             let start = points[0];
             let end = *points.last().unwrap_or(&start);
             if segment_selected(start, end) {
+                selection.arrow_objects.push(object.id.clone());
+            }
+        }
+        for object in &self.state.document.objects {
+            if !matches!(object.object_type.as_str(), "bracket" | "symbol") || !object.visible {
+                continue;
+            }
+            let Some(bounds) = scene_object_selection_bounds(object) else {
+                continue;
+            };
+            if bounds_selected(bounds) {
                 selection.arrow_objects.push(object.id.clone());
             }
         }
@@ -716,7 +807,7 @@ impl Engine {
             if !self.state.selection.arrow_objects.contains(&object.id) {
                 continue;
             }
-            if let Some(arrow_bounds) = arrow_object_selection_bounds(object) {
+            if let Some(arrow_bounds) = scene_object_selection_bounds(object) {
                 bounds.push(arrow_bounds);
             }
         }
@@ -973,7 +1064,7 @@ impl Engine {
             if !self.state.selection.arrow_objects.contains(&object.id) {
                 continue;
             }
-            if let Some(bounds) = arrow_object_selection_bounds(object) {
+            if let Some(bounds) = scene_object_selection_bounds(object) {
                 include_optional_bounds(&mut out, bounds);
             }
         }
@@ -990,13 +1081,21 @@ impl Engine {
 }
 
 fn selected_text_object_ids(engine: &Engine) -> BTreeSet<String> {
-    engine
+    let mut ids: BTreeSet<String> = engine
         .state
         .selection
         .text_objects
         .iter()
         .cloned()
-        .collect()
+        .collect();
+    for object in &engine.state.document.objects {
+        if matches!(object.object_type.as_str(), "bracket" | "symbol")
+            && engine.state.selection.arrow_objects.contains(&object.id)
+        {
+            ids.insert(object.id.clone());
+        }
+    }
+    ids
 }
 
 fn selected_movable_node_ids(engine: &Engine) -> Vec<String> {
@@ -1438,6 +1537,8 @@ fn apply_arrange_items_to_document(engine: &mut Engine, items: &[SelectionArrang
         stroke_width,
     );
     entry.update_bounds();
+    drop(entry);
+    engine.refresh_symbol_chemistry();
 }
 
 fn terminal_node_drag_axis(
@@ -1698,10 +1799,18 @@ fn render_selected_arrow_handles(engine: &Engine, out: &mut Vec<RenderPrimitive>
         if !engine.state.selection.arrow_objects.contains(&object.id) {
             continue;
         }
-        if let Some(bounds) = arrow_object_selection_bounds(object) {
+        if let Some(bounds) = scene_object_selection_bounds(object) {
             push_selection_box(out, bounds, RenderRole::SelectionBox);
         }
     }
+}
+
+fn scene_object_selection_bounds(object: &crate::SceneObject) -> Option<AxisBounds> {
+    if matches!(object.object_type.as_str(), "bracket" | "symbol" | "shape") {
+        return object_bbox_selection_bounds(object)
+            .map(|bounds| bounds.expanded(crate::px_to_cm(3.0)));
+    }
+    arrow_object_selection_bounds(object)
 }
 
 fn arrow_object_selection_bounds(object: &crate::SceneObject) -> Option<AxisBounds> {
@@ -1716,6 +1825,21 @@ fn arrow_object_selection_bounds(object: &crate::SceneObject) -> Option<AxisBoun
         bounds.include_point(handle);
     }
     Some(bounds.expanded(crate::px_to_cm(4.0)))
+}
+
+fn object_bbox_selection_bounds(object: &crate::SceneObject) -> Option<AxisBounds> {
+    let [x, y, width, height] = object.payload.bbox?;
+    if width <= crate::EPSILON || height <= crate::EPSILON {
+        return None;
+    }
+    let tx = object.transform.translate[0];
+    let ty = object.transform.translate[1];
+    Some(AxisBounds::new(
+        tx + x,
+        ty + y,
+        tx + x + width,
+        ty + y + height,
+    ))
 }
 
 fn render_selected_fragment_content(engine: &Engine, out: &mut Vec<RenderPrimitive>) {
@@ -1819,6 +1943,56 @@ fn selected_component_summaries(engine: &Engine) -> Vec<ComponentSelection> {
         });
     }
     components
+}
+
+fn bracket_object_ids_containing_component(
+    document: &crate::ChemcoreDocument,
+    entry: &crate::EditableFragment<'_>,
+    component_node_ids: &[String],
+) -> Vec<String> {
+    let mut sample_points = Vec::new();
+    for node_id in component_node_ids {
+        if let Some(node) = entry.fragment.nodes.iter().find(|node| node.id == *node_id) {
+            sample_points.push(entry.world_point_for_node(node));
+        }
+    }
+    for bond in &entry.fragment.bonds {
+        if !component_node_ids.contains(&bond.begin) || !component_node_ids.contains(&bond.end) {
+            continue;
+        }
+        let Some(begin) = entry
+            .fragment
+            .nodes
+            .iter()
+            .find(|node| node.id == bond.begin)
+        else {
+            continue;
+        };
+        let Some(end) = entry.fragment.nodes.iter().find(|node| node.id == bond.end) else {
+            continue;
+        };
+        sample_points.push(midpoint(
+            entry.world_point_for_node(begin),
+            entry.world_point_for_node(end),
+        ));
+    }
+
+    document
+        .objects
+        .iter()
+        .filter(|object| object.object_type == "bracket" && object.visible)
+        .filter_map(|object| {
+            let bounds = object_bbox_selection_bounds(object)?;
+            if sample_points
+                .iter()
+                .any(|point| point_in_bounds(*point, bounds))
+            {
+                Some(object.id.clone())
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
 fn component_selection_items(
