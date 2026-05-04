@@ -22,12 +22,12 @@ use crate::{
     direction_from_angle, endpoint_from_angle_for_document, hit_test_arrow_center,
     hit_test_bond_center, hit_test_endpoint, hit_test_endpoint_excluding, largest_angular_gap,
     nearest_angle, normalize_angle, refresh_repeating_units, render_document,
-    snapped_angle_for_anchor, ArrowCurve, ArrowEndpointStyle, ArrowHeadSize, ArrowNoGo,
-    ArrowVariant, Bond, BondAnchor, BondLinePattern, BondLineStyles, BondLineWeight,
-    BondLineWeights, BondPreview, BondStereo, BondVariant, BracketKind, ChemcoreDocument,
-    DoubleBond, DoubleBondPlacement, DragState, EditorOptions, EndpointHit, HoverTextBox,
-    OverlayState, Point, PointerEvent, RenderPrimitive, RenderRole, SceneObject, SelectionState,
-    ShapeKind, ShapeStyle, Tool, ToolState, WorldCm, BOND_CENTER_FOCUS_WIDTH,
+    render_primitives_bounds, snapped_angle_for_anchor, ArrowCurve, ArrowEndpointStyle,
+    ArrowHeadSize, ArrowNoGo, ArrowVariant, Bond, BondAnchor, BondLinePattern, BondLineStyles,
+    BondLineWeight, BondLineWeights, BondPreview, BondStereo, BondVariant, BracketKind,
+    ChemcoreDocument, DoubleBond, DoubleBondPlacement, DragState, EditorOptions, EndpointHit,
+    HoverTextBox, OverlayState, Point, PointerEvent, RenderPrimitive, RenderRole, SceneObject,
+    SelectionState, ShapeKind, ShapeStyle, Tool, ToolState, WorldCm, BOND_CENTER_FOCUS_WIDTH,
     BOND_CENTER_HIT_RADIUS, DEFAULT_BOND_LENGTH, DRAG_START_THRESHOLD, ENDPOINT_FOCUS_RADIUS,
     ENDPOINT_HIT_RADIUS, GLOBAL_SNAP_ANGLES,
 };
@@ -47,6 +47,13 @@ const ELLIPSE_MINOR_AXIS_RATIO: f64 = 0.4;
 const ROUND_RECT_CORNER_RADIUS: f64 = 6.0;
 const DEFAULT_DOCUMENT_STYLE_PRESET: &str = "default";
 const ACS_DOCUMENT_1996_PRESET: &str = "acs-document-1996";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RenderBoundsScope {
+    All,
+    Document,
+    Selection,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -192,6 +199,15 @@ impl Engine {
 
     pub fn document_svg(&self) -> String {
         crate::document_to_svg(&self.state.document)
+    }
+
+    pub fn render_bounds(&self, scope: RenderBoundsScope) -> Option<[f64; 4]> {
+        let primitives = self.render_list();
+        render_primitives_bounds(
+            primitives
+                .iter()
+                .filter(|primitive| render_bounds_scope_accepts(scope, primitive)),
+        )
     }
 
     pub fn load_document_json(&mut self, json: &str) -> Result<(), String> {
@@ -3447,73 +3463,66 @@ fn median_near_default(values: &mut [f64]) -> Option<f64> {
 }
 
 fn document_content_center(document: &ChemcoreDocument) -> Option<Point> {
-    let mut bounds: Option<[f64; 4]> = None;
-    for primitive in render_document(document) {
-        extend_bounds_for_render_primitive(&mut bounds, &primitive);
-    }
+    let primitives = render_document(document);
+    let bounds = render_primitives_bounds(primitives.iter());
     bounds.map(|[min_x, min_y, max_x, max_y]| {
         Point::new((min_x + max_x) * 0.5, (min_y + max_y) * 0.5)
     })
 }
 
-fn extend_bounds_for_render_primitive(bounds: &mut Option<[f64; 4]>, primitive: &RenderPrimitive) {
-    match primitive {
-        RenderPrimitive::Line { from, to, .. } => {
-            extend_bounds_for_point(bounds, *from);
-            extend_bounds_for_point(bounds, *to);
+fn render_bounds_scope_accepts(scope: RenderBoundsScope, primitive: &RenderPrimitive) -> bool {
+    match scope {
+        RenderBoundsScope::All => true,
+        RenderBoundsScope::Document => {
+            let role = render_primitive_role(primitive);
+            role != RenderRole::DocumentKnockout
+                && !render_role_is_selection(role)
+                && !render_role_is_hover(role)
+                && !render_role_is_preview(role)
         }
-        RenderPrimitive::Circle { center, radius, .. } => {
-            extend_bounds_for_point(bounds, Point::new(center.x - radius, center.y - radius));
-            extend_bounds_for_point(bounds, Point::new(center.x + radius, center.y + radius));
-        }
-        RenderPrimitive::Polygon { points, .. }
-        | RenderPrimitive::Polyline { points, .. }
-        | RenderPrimitive::Path { points, .. }
-        | RenderPrimitive::FilledPath { points, .. } => {
-            for point in points {
-                extend_bounds_for_point(bounds, *point);
-            }
-        }
-        RenderPrimitive::Rect {
-            x,
-            y,
-            width,
-            height,
-            ..
-        } => {
-            extend_bounds_for_point(bounds, Point::new(*x, *y));
-            extend_bounds_for_point(bounds, Point::new(x + width, y + height));
-        }
-        RenderPrimitive::Ellipse { center, rx, ry, .. } => {
-            extend_bounds_for_point(bounds, Point::new(center.x - rx, center.y - ry));
-            extend_bounds_for_point(bounds, Point::new(center.x + rx, center.y + ry));
-        }
-        RenderPrimitive::Text {
-            x,
-            y,
-            font_size,
-            box_width,
-            ..
-        } => {
-            extend_bounds_for_point(bounds, Point::new(*x, y - font_size));
-            extend_bounds_for_point(
-                bounds,
-                Point::new(x + box_width.unwrap_or(0.0), y + font_size),
-            );
-        }
+        RenderBoundsScope::Selection => render_role_is_selection(render_primitive_role(primitive)),
     }
 }
 
-fn extend_bounds_for_point(bounds: &mut Option<[f64; 4]>, point: Point) {
-    match bounds {
-        Some([min_x, min_y, max_x, max_y]) => {
-            *min_x = min_x.min(point.x);
-            *min_y = min_y.min(point.y);
-            *max_x = max_x.max(point.x);
-            *max_y = max_y.max(point.y);
-        }
-        None => *bounds = Some([point.x, point.y, point.x, point.y]),
+fn render_primitive_role(primitive: &RenderPrimitive) -> RenderRole {
+    match primitive {
+        RenderPrimitive::Line { role, .. }
+        | RenderPrimitive::Circle { role, .. }
+        | RenderPrimitive::Polygon { role, .. }
+        | RenderPrimitive::Rect { role, .. }
+        | RenderPrimitive::Ellipse { role, .. }
+        | RenderPrimitive::Polyline { role, .. }
+        | RenderPrimitive::Path { role, .. }
+        | RenderPrimitive::FilledPath { role, .. }
+        | RenderPrimitive::Text { role, .. } => *role,
     }
+}
+
+fn render_role_is_selection(role: RenderRole) -> bool {
+    matches!(
+        role,
+        RenderRole::SelectionBox
+            | RenderRole::SelectionBond
+            | RenderRole::SelectionBondDot
+            | RenderRole::SelectionNode
+            | RenderRole::SelectionTextBox
+    )
+}
+
+fn render_role_is_hover(role: RenderRole) -> bool {
+    matches!(
+        role,
+        RenderRole::HoverEndpoint
+            | RenderRole::HoverLabelGlyph
+            | RenderRole::HoverBondCenter
+            | RenderRole::HoverArrowCenter
+            | RenderRole::HoverArrowHandle
+            | RenderRole::HoverTextBox
+    )
+}
+
+fn render_role_is_preview(role: RenderRole) -> bool {
+    matches!(role, RenderRole::PreviewBond | RenderRole::PreviewEnd)
 }
 
 fn scale_document_for_style_preset(document: &mut ChemcoreDocument, factor: f64, anchor: Point) {

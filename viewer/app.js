@@ -1,11 +1,27 @@
 import initializeChemcoreEngine, { WasmEngine } from "./engine/chemcore_engine.js";
 import {
+  parseEngineJson,
+  primitivesForObject,
+  renderBoundsFromEngine,
+  renderListFromEngine,
+} from "./engine_bridge.js";
+import {
+  documentTitleForFileName,
+  downloadTextFile,
+  looksLikeCdxmlFile,
+  saveFormatFromFileName,
+} from "./file_io.js";
+import {
+  boundsCenter,
+  boundsSize,
+  boundsToKey,
+  intersectBounds,
+  paddedViewBoxFromBounds,
+  pointDistance,
+  rectContainsBounds,
+} from "./geometry.js";
+import {
   displayLabelFontFamily,
-  ensureSvgDefs,
-  fontStyleForRun,
-  fontWeightForRun,
-  isSubscriptRun,
-  isSuperscriptRun,
   makeSvgNode,
   normalizeDisplayColor,
 } from "./render_support.js";
@@ -31,6 +47,10 @@ import {
   renderShapeObject,
   renderTextObject,
 } from "./object_fallbacks.js";
+import {
+  primitiveStrokeWidthValue,
+  renderCorePrimitive,
+} from "./primitive_dom_renderer.js";
 import {
   CSS_PX_PER_CM,
   cmToCssPx,
@@ -73,7 +93,6 @@ const state = {
   displayMetrics: displayMetrics(),
 };
 let sharedGlyphProfiles = null;
-let renderClipPathId = 0;
 const sharedGlyphProfilesReady = loadSharedGlyphProfiles();
 
 if (typeof window !== "undefined") {
@@ -119,7 +138,6 @@ if (typeof window !== "undefined") {
 const DEFAULT_TEXT_FONT_SIZE = 10;
 const BOND_STROKE = 1.0;
 const CHEMDRAW_PAGE_BACKGROUND = "#ffffff";
-const CHEMDRAW_INK = "#000000";
 const DEFAULT_WORKSPACE_WIDTH = 900;
 const DEFAULT_WORKSPACE_HEIGHT = 600;
 const EDITOR_VIEW_BUFFER_RATIO = 0.6;
@@ -313,15 +331,6 @@ function syncDocumentStylePresetFromEngine() {
   editorState.documentStylePreset = preset;
   if (documentStylePresetInput) {
     documentStylePresetInput.value = preset;
-  }
-}
-
-function parseEngineJson(json, fallback = null) {
-  try {
-    return JSON.parse(json);
-  } catch (error) {
-    console.warn("Failed to parse chemcore engine JSON", error);
-    return fallback;
   }
 }
 
@@ -658,52 +667,6 @@ function worldToLayerPoint(point) {
   };
 }
 
-function subtractPoints(a, b) {
-  return { x: a.x - b.x, y: a.y - b.y };
-}
-
-function pointDistance(a, b) {
-  return Math.hypot(a.x - b.x, a.y - b.y);
-}
-
-function midpoint(a, b) {
-  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-}
-
-function pointLineDistance(point, lineStart, lineEnd) {
-  const dx = lineEnd.x - lineStart.x;
-  const dy = lineEnd.y - lineStart.y;
-  const length = Math.hypot(dx, dy);
-  if (length <= 1.0e-6) {
-    return pointDistance(point, lineStart);
-  }
-  return Math.abs((point.x - lineStart.x) * dy - (point.y - lineStart.y) * dx) / length;
-}
-
-function lineQuadPoints(from, to, strokeWidth) {
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
-  const length = Math.hypot(dx, dy);
-  if (length <= 1.0e-6) {
-    return [from, to, to, from];
-  }
-  const halfWidth = Number(strokeWidth || 0) / 2;
-  const nx = -dy / length;
-  const ny = dx / length;
-  return [
-    { x: from.x + nx * halfWidth, y: from.y + ny * halfWidth },
-    { x: to.x + nx * halfWidth, y: to.y + ny * halfWidth },
-    { x: to.x - nx * halfWidth, y: to.y - ny * halfWidth },
-    { x: from.x - nx * halfWidth, y: from.y - ny * halfWidth },
-  ];
-}
-
-function primitiveStrokeWidthValue(primitive, fallback = 0) {
-  const strokeWidth = primitive?.strokeWidth ?? primitive?.stroke_width;
-  const numeric = Number(strokeWidth);
-  return Number.isFinite(numeric) ? numeric : fallback;
-}
-
 function selectionZoomCenterWorld() {
   const engineState = currentEditorEngineState();
   const selection = engineState?.selection;
@@ -758,77 +721,12 @@ function selectionZoomCenterWorld() {
   };
 }
 
-function boundsCenter(bounds) {
-  return {
-    x: (bounds.minX + bounds.maxX) / 2,
-    y: (bounds.minY + bounds.maxY) / 2,
-  };
-}
-
-function boundsSize(bounds) {
-  return {
-    width: Math.max(0, bounds.maxX - bounds.minX),
-    height: Math.max(0, bounds.maxY - bounds.minY),
-  };
-}
-
-function boundsToKey(bounds) {
-  if (!bounds) {
-    return "none";
-  }
-  return [
-    bounds.minX,
-    bounds.minY,
-    bounds.maxX,
-    bounds.maxY,
-  ].map((value) => Number(value || 0).toFixed(3)).join(",");
-}
-
-function rectContainsBounds(rect, bounds, epsilon = 0.001) {
-  if (!rect || !bounds) {
-    return false;
-  }
-  return bounds.minX >= rect.minX - epsilon
-    && bounds.maxX <= rect.maxX + epsilon
-    && bounds.minY >= rect.minY - epsilon
-    && bounds.maxY <= rect.maxY + epsilon;
-}
-
-function rectIntersectsBounds(rect, bounds, epsilon = 0.001) {
-  if (!rect || !bounds) {
-    return false;
-  }
-  return bounds.maxX >= rect.minX - epsilon
-    && bounds.minX <= rect.maxX + epsilon
-    && bounds.maxY >= rect.minY - epsilon
-    && bounds.minY <= rect.maxY + epsilon;
-}
-
-function intersectBounds(a, b) {
-  if (!rectIntersectsBounds(a, b)) {
-    return null;
-  }
-  return {
-    minX: Math.max(a.minX, b.minX),
-    minY: Math.max(a.minY, b.minY),
-    maxX: Math.min(a.maxX, b.maxX),
-    maxY: Math.min(a.maxY, b.maxY),
-  };
-}
-
 function documentContentBoundsForZoom() {
-  const primitives = state.coreRenderList || (isEditingRustDocument() ? currentEditorRenderList() : []);
-  const documentPrimitives = (primitives || []).filter((primitive) => {
-    const role = String(primitive.role || "");
-    return role && !role.startsWith("selection-") && !role.startsWith("hover-") && !role.startsWith("preview-");
-  });
-  return boundsFromPrimitives(documentPrimitives);
+  return currentRenderBounds("document");
 }
 
 function zoomFocusBounds() {
-  const selectionBounds = isEditingRustDocument()
-    ? selectionOverlayBoundsFromPrimitives(currentEditorRenderList())
-    : null;
+  const selectionBounds = isEditingRustDocument() ? currentRenderBounds("selection") : null;
   const bounds = selectionBounds || documentContentBoundsForZoom();
   if (!bounds) {
     return null;
@@ -1025,107 +923,6 @@ function fitZoomPercentForViewBox(viewBox) {
   return zoomStepAtOrBelow((scale / CSS_PX_PER_CM) * 100);
 }
 
-function extendBounds(bounds, minX, minY, maxX, maxY) {
-  if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
-    return bounds;
-  }
-  if (!bounds) {
-    return { minX, minY, maxX, maxY };
-  }
-  return {
-    minX: Math.min(bounds.minX, minX),
-    minY: Math.min(bounds.minY, minY),
-    maxX: Math.max(bounds.maxX, maxX),
-    maxY: Math.max(bounds.maxY, maxY),
-  };
-}
-
-function boundsFromPrimitive(primitive) {
-  const strokeWidth = primitiveStrokeWidthValue(primitive, 0);
-  const halfStroke = strokeWidth / 2;
-  if (primitive.kind === "line" && primitive.from && primitive.to) {
-    return {
-      minX: Math.min(primitive.from.x, primitive.to.x) - halfStroke,
-      minY: Math.min(primitive.from.y, primitive.to.y) - halfStroke,
-      maxX: Math.max(primitive.from.x, primitive.to.x) + halfStroke,
-      maxY: Math.max(primitive.from.y, primitive.to.y) + halfStroke,
-    };
-  }
-  if ((primitive.kind === "polygon" || primitive.kind === "polyline" || primitive.kind === "path" || primitive.kind === "filled-path") && Array.isArray(primitive.points) && primitive.points.length) {
-    const xs = primitive.points.map((point) => point.x);
-    const ys = primitive.points.map((point) => point.y);
-    return {
-      minX: Math.min(...xs) - halfStroke,
-      minY: Math.min(...ys) - halfStroke,
-      maxX: Math.max(...xs) + halfStroke,
-      maxY: Math.max(...ys) + halfStroke,
-    };
-  }
-  if (primitive.kind === "rect") {
-    return {
-      minX: primitive.x - halfStroke,
-      minY: primitive.y - halfStroke,
-      maxX: primitive.x + primitive.width + halfStroke,
-      maxY: primitive.y + primitive.height + halfStroke,
-    };
-  }
-  if (primitive.kind === "text") {
-    const fontSize = Number(primitive.fontSize || primitive.font_size || DEFAULT_TEXT_FONT_SIZE);
-    const text = String(primitive.text || "");
-    const runs = Array.isArray(primitive.runs) && primitive.runs.length
-      ? primitive.runs
-      : [{ text, fontSize, script: "normal" }];
-    const width = Math.max(fontSize * 0.6, estimateTextRunsWidth(runs, fontSize));
-    const anchor = primitive.textAnchor || primitive.text_anchor || "start";
-    const x = Number(primitive.x || 0);
-    const y = Number(primitive.y || 0);
-    const minX = anchor === "middle" ? x - width / 2 : anchor === "end" ? x - width : x;
-    return {
-      minX,
-      minY: y - fontSize * 0.86,
-      maxX: minX + width,
-      maxY: y + fontSize * 0.24,
-    };
-  }
-  return null;
-}
-
-function boundsFromPrimitives(primitives) {
-  let bounds = null;
-  for (const primitive of primitives || []) {
-    const primitiveBounds = boundsFromPrimitive(primitive);
-    if (!primitiveBounds) {
-      continue;
-    }
-    bounds = extendBounds(
-      bounds,
-      primitiveBounds.minX,
-      primitiveBounds.minY,
-      primitiveBounds.maxX,
-      primitiveBounds.maxY,
-    );
-  }
-  return bounds;
-}
-
-function paddedViewBoxFromBounds(bounds, paddingX, paddingY = paddingX, minWidth = 0, minHeight = 0) {
-  const padded = {
-    x: bounds.minX - paddingX,
-    y: bounds.minY - paddingY,
-    width: (bounds.maxX - bounds.minX) + paddingX * 2,
-    height: (bounds.maxY - bounds.minY) + paddingY * 2,
-  };
-  if (padded.width < minWidth) {
-    padded.x -= (minWidth - padded.width) / 2;
-    padded.width = minWidth;
-  }
-  if (padded.height < minHeight) {
-    padded.y -= (minHeight - padded.height) / 2;
-    padded.height = minHeight;
-  }
-  return padded;
-}
-
 function editorCanvasViewBoxFromBounds(bounds) {
   const metrics = editorViewportMetrics();
   return paddedViewBoxFromBounds(
@@ -1138,10 +935,12 @@ function editorCanvasViewBoxFromBounds(bounds) {
 }
 
 function currentEditorRenderList() {
-  if (!state.editorEngine) {
-    return [];
-  }
-  return parseEngineJson(state.editorEngine.renderListJson(), []) || [];
+  return renderListFromEngine(state.editorEngine);
+}
+
+function currentRenderBounds(scope = "all") {
+  const engine = isEditingRustDocument() ? state.editorEngine : state.documentEngine;
+  return renderBoundsFromEngine(engine, scope);
 }
 
 function ensureEditorViewportCapacity(centerWorld = currentViewportCenterWorld()) {
@@ -1166,11 +965,11 @@ function ensureEditorViewportCapacity(centerWorld = currentViewportCenterWorld()
   return true;
 }
 
-function maybeAutoExpandEditorViewport(primitives) {
+function maybeAutoExpandEditorViewport(_primitives) {
   if (!isEditingRustDocument()) {
     return false;
   }
-  const bounds = boundsFromPrimitives(primitives);
+  const bounds = currentRenderBounds("all");
   if (!bounds) {
     return false;
   }
@@ -1230,16 +1029,16 @@ function syncCoreRenderListFromCurrentDocument() {
       resetDocumentEngine();
     }
     state.documentEngine.loadDocumentJson(JSON.stringify(state.currentDocument));
-    state.coreRenderList = parseEngineJson(state.documentEngine.renderListJson(), []) || [];
+    state.coreRenderList = renderListFromEngine(state.documentEngine);
     return;
   }
   if (state.editorEngine) {
-    state.coreRenderList = parseEngineJson(state.editorEngine.renderListJson(), []) || [];
+    state.coreRenderList = renderListFromEngine(state.editorEngine);
   }
 }
 
 function corePrimitivesForObject(objectId) {
-  return (state.coreRenderList || []).filter((primitive) => primitive.objectId === objectId);
+  return primitivesForObject(state.coreRenderList, objectId);
 }
 
 function activeEndpointEditorNodeId() {
@@ -1268,231 +1067,12 @@ function shouldHidePrimitiveForActiveEndpointEditor(primitive) {
     || role === "hover-text-box";
 }
 
-function renderCorePrimitive(svgRoot, primitive) {
-  if (shouldHidePrimitiveForActiveEndpointEditor(primitive)) {
-    return;
-  }
-  if (primitive.kind === "line" && primitive.from && primitive.to) {
-    const strokeWidth = primitiveStrokeWidthValue(primitive, BOND_STROKE);
-    const attrs = {
-      x1: primitive.from.x,
-      y1: primitive.from.y,
-      x2: primitive.to.x,
-      y2: primitive.to.y,
-      stroke: primitive.stroke || CHEMDRAW_INK,
-      "stroke-width": strokeWidth,
-      "data-bond-id": primitive.bondId || undefined,
-    };
-    if ((primitive.dashArray || primitive.dash_array)?.length) {
-      attrs["stroke-dasharray"] = (primitive.dashArray || primitive.dash_array).join(" ");
-    }
-    if (primitive.role === "document-bond") {
-      attrs.class = "mol-bond-stroked";
-    }
-    svgRoot.appendChild(makeSvgNode("line", attrs));
-    return;
-  }
-  if (primitive.kind === "polyline" && Array.isArray(primitive.points)) {
-    const strokeWidth = primitiveStrokeWidthValue(primitive, BOND_STROKE);
-    const attrs = {
-      points: primitive.points.map((point) => `${point.x},${point.y}`).join(" "),
-      fill: "none",
-      stroke: primitive.stroke || CHEMDRAW_INK,
-      "stroke-width": strokeWidth,
-      "stroke-dasharray": (primitive.dashArray || primitive.dash_array)?.join(" ") || undefined,
-      "stroke-linecap": primitive.lineCap || primitive.line_cap || undefined,
-      "stroke-linejoin": primitive.lineJoin || primitive.line_join || undefined,
-      "data-bond-id": primitive.bondId || undefined,
-    };
-    if (primitive.role === "document-bond") {
-      attrs.class = "mol-bond-stroked";
-    }
-    svgRoot.appendChild(makeSvgNode("polyline", attrs));
-    return;
-  }
-  if (primitive.kind === "path" && primitive.d) {
-    const strokeWidth = primitiveStrokeWidthValue(primitive, BOND_STROKE);
-    const attrs = {
-      d: primitive.d,
-      fill: "none",
-      stroke: primitive.stroke || CHEMDRAW_INK,
-      "stroke-width": strokeWidth,
-      "stroke-dasharray": (primitive.dashArray || primitive.dash_array)?.join(" ") || undefined,
-      "stroke-linecap": primitive.lineCap || primitive.line_cap || undefined,
-      "stroke-linejoin": primitive.lineJoin || primitive.line_join || undefined,
-      "data-bond-id": primitive.bondId || undefined,
-    };
-    if (primitive.role === "document-bond") {
-      attrs.class = "mol-bond-stroked";
-    }
-    svgRoot.appendChild(makeSvgNode("path", attrs));
-    return;
-  }
-  if (primitive.kind === "filled-path" && primitive.d) {
-    const attrs = {
-      d: primitive.d,
-      fill: primitive.fill || CHEMDRAW_INK,
-      "fill-rule": primitive.fillRule || primitive.fill_rule || undefined,
-      stroke: "none",
-    };
-    const clipPathD = primitive.clipPathD || primitive.clip_path_d;
-    if (clipPathD) {
-      const defs = ensureSvgDefs(svgRoot);
-      const clipId = `clip-core-${primitive.objectId || "shape"}-${renderClipPathId++}`;
-      const clipPath = makeSvgNode("clipPath", { id: clipId });
-      clipPath.appendChild(makeSvgNode("path", {
-        d: clipPathD,
-        "clip-rule": primitive.clipRule || primitive.clip_rule || "nonzero",
-      }));
-      defs.appendChild(clipPath);
-      attrs["clip-path"] = `url(#${clipId})`;
-    }
-    svgRoot.appendChild(makeSvgNode("path", attrs));
-    return;
-  }
-  if (primitive.kind === "polygon" && Array.isArray(primitive.points)) {
-    const strokeWidth = primitiveStrokeWidthValue(primitive, BOND_STROKE);
-    const attrs = {
-      points: primitive.points.map((point) => `${point.x},${point.y}`).join(" "),
-      fill: primitive.fill || CHEMDRAW_INK,
-      stroke: strokeWidth > 0 ? (primitive.stroke || primitive.fill || CHEMDRAW_INK) : "none",
-      "stroke-width": strokeWidth,
-      "data-bond-id": primitive.bondId || undefined,
-    };
-    if (primitive.role === "document-bond") {
-      attrs.class = strokeWidth > 0 ? "mol-bond-stroked" : "mol-bond-filled";
-    }
-    svgRoot.appendChild(makeSvgNode("polygon", attrs));
-    return;
-  }
-  if (primitive.kind === "rect") {
-    if (primitive.role === "document-knockout" && !LABEL_DEBUG_MODE) {
-      return;
-    }
-    const attrs = {
-      x: primitive.x,
-      y: primitive.y,
-      width: primitive.width,
-      height: primitive.height,
-      fill: primitive.fill || "none",
-      stroke: primitive.stroke || "none",
-      "stroke-width": primitiveStrokeWidthValue(primitive, 1),
-      rx: primitive.rx,
-      ry: primitive.ry,
-    };
-    if (primitive.role === "document-knockout") {
-      attrs.class = "label-knockout-shape";
-    }
-    const gradient = primitive.fillGradient || primitive.fill_gradient;
-    if (gradient?.stops?.length) {
-      const defs = ensureSvgDefs(svgRoot);
-      const gradientId = `grad-core-${primitive.objectId || Math.random().toString(36).slice(2)}`;
-      const linearGradient = makeSvgNode("linearGradient", {
-        id: gradientId,
-        x1: gradient.x1 || "0%",
-        y1: gradient.y1 || "0%",
-        x2: gradient.x2 || "0%",
-        y2: gradient.y2 || "100%",
-      });
-      for (const stop of gradient.stops) {
-        linearGradient.appendChild(makeSvgNode("stop", {
-          offset: stop.offset,
-          "stop-color": stop.color,
-        }));
-      }
-      defs.appendChild(linearGradient);
-      attrs.fill = `url(#${gradientId})`;
-    }
-    if ((primitive.dashArray || primitive.dash_array)?.length) {
-      attrs["stroke-dasharray"] = (primitive.dashArray || primitive.dash_array).join(" ");
-    }
-    svgRoot.appendChild(makeSvgNode("rect", attrs));
-    return;
-  }
-  if (primitive.kind === "ellipse") {
-    const attrs = {
-      cx: primitive.center?.x,
-      cy: primitive.center?.y,
-      rx: primitive.rx,
-      ry: primitive.ry,
-      fill: primitive.fill || "none",
-      stroke: primitive.stroke || "none",
-      "stroke-width": primitiveStrokeWidthValue(primitive, 1),
-    };
-    const rotate = Number(primitive.rotate || 0);
-    if (Math.abs(rotate) > 0.0001) {
-      attrs.transform = `rotate(${rotate} ${primitive.center.x} ${primitive.center.y})`;
-    }
-    const gradient = primitive.fillGradient || primitive.fill_gradient;
-    if (gradient?.stops?.length) {
-      const defs = ensureSvgDefs(svgRoot);
-      const gradientId = `grad-core-${primitive.objectId || Math.random().toString(36).slice(2)}`;
-      const linearGradient = makeSvgNode("linearGradient", {
-        id: gradientId,
-        x1: gradient.x1 || "0%",
-        y1: gradient.y1 || "0%",
-        x2: gradient.x2 || "100%",
-        y2: gradient.y2 || "100%",
-      });
-      for (const stop of gradient.stops) {
-        linearGradient.appendChild(makeSvgNode("stop", {
-          offset: stop.offset,
-          "stop-color": stop.color,
-        }));
-      }
-      defs.appendChild(linearGradient);
-      attrs.fill = `url(#${gradientId})`;
-    }
-    if ((primitive.dashArray || primitive.dash_array)?.length) {
-      attrs["stroke-dasharray"] = (primitive.dashArray || primitive.dash_array).join(" ");
-    }
-    svgRoot.appendChild(makeSvgNode("ellipse", attrs));
-    return;
-  }
-  if (primitive.kind === "text") {
-    const textNode = makeSvgNode("text", {
-      x: primitive.x,
-      y: primitive.y,
-      class: "chem-text",
-      "font-size": primitive.fontSize || primitive.font_size || DEFAULT_TEXT_FONT_SIZE,
-      "dominant-baseline": "alphabetic",
-      "text-anchor": primitive.textAnchor || primitive.text_anchor || "start",
-      fill: primitive.fill ? normalizeDisplayColor(primitive.fill) : undefined,
-      "font-family": primitive.fontFamily
-        ? displayLabelFontFamily(primitive.fontFamily)
-        : primitive.font_family
-          ? displayLabelFontFamily(primitive.font_family)
-          : undefined,
-    });
-    if (Array.isArray(primitive.runs) && primitive.runs.length) {
-      for (const run of primitive.runs) {
-        const runFontSize = Number(run.fontSize || primitive.fontSize || DEFAULT_TEXT_FONT_SIZE);
-        const isSub = isSubscriptRun(run);
-        const isSuper = isSuperscriptRun(run);
-        const isSubOrSuper = isSub || isSuper;
-        const scriptScale = isSub ? editorScriptScale("subscript") : isSuper ? editorScriptScale("superscript") : 1;
-        const tspan = makeSvgNode("tspan", {
-          fill: run.fill ? normalizeDisplayColor(run.fill) : undefined,
-          "font-size": isSubOrSuper ? Math.max(cssPxToCm(7), runFontSize * scriptScale) : runFontSize,
-          "font-family": run.fontFamily ? displayLabelFontFamily(run.fontFamily) : undefined,
-          "font-weight": fontWeightForRun(run),
-          "font-style": fontStyleForRun(run),
-          "text-decoration": run.underline ? "underline" : undefined,
-          "baseline-shift": isSub
-            ? `-${editorGlyphLayoutConfig().subscriptShiftDownEm}em`
-            : isSuper
-              ? `${editorGlyphLayoutConfig().superscriptShiftUpEm}em`
-              : undefined,
-          dx: isSuper ? "-0.02em" : undefined,
-        });
-        tspan.textContent = run.text || "";
-        textNode.appendChild(tspan);
-      }
-    } else {
-      textNode.textContent = primitive.text || "";
-    }
-    svgRoot.appendChild(textNode);
-  }
+function corePrimitiveRenderOptions() {
+  return {
+    labelDebugMode: LABEL_DEBUG_MODE,
+    sharedGlyphProfiles,
+    shouldHide: shouldHidePrimitiveForActiveEndpointEditor,
+  };
 }
 
 function syncDocumentFromEngine() {
@@ -2357,7 +1937,7 @@ const textEditorController = createTextEditorController({
   editorSourceRunsFromSession,
   previewTextEditLayoutFromKernel,
   defaultLineHeight: defaultTextEditorLineHeight,
-  scriptScale: editorScriptScale,
+  scriptScale: (script) => computeEditorScriptScale(sharedGlyphProfiles, script),
   scriptShiftEm: (script) => {
     if (script === "subscript") {
       return editorGlyphLayoutConfig().subscriptShiftDownEm;
@@ -2585,10 +2165,6 @@ function editorGlyphProfiles() {
 
 function editorGlyphLayoutConfig() {
   return editorGlyphProfiles().layout;
-}
-
-function editorScriptScale(script) {
-  return computeEditorScriptScale(sharedGlyphProfiles, script);
 }
 
 function buildEditorTextLayout() {
@@ -3151,56 +2727,6 @@ function screenPxToWorld(px) {
   return px / Math.max(1, viewportScale());
 }
 
-function extendSelectionBounds(bounds, next) {
-  if (!next) {
-    return bounds;
-  }
-  if (!bounds) {
-    return { ...next };
-  }
-  return {
-    minX: Math.min(bounds.minX, next.minX),
-    minY: Math.min(bounds.minY, next.minY),
-    maxX: Math.max(bounds.maxX, next.maxX),
-    maxY: Math.max(bounds.maxY, next.maxY),
-  };
-}
-
-function selectionOverlayBoundsFromPrimitives(primitives = currentEditorRenderList()) {
-  const selectionRoles = new Set([
-    "selection-box",
-    "selection-bond",
-    "selection-node",
-    "selection-text-box",
-  ]);
-  let bounds = null;
-  for (const primitive of primitives || []) {
-    if (!selectionRoles.has(primitive.role)) {
-      continue;
-    }
-    if (primitive.kind === "rect") {
-      bounds = extendSelectionBounds(bounds, {
-        minX: Number(primitive.x || 0),
-        minY: Number(primitive.y || 0),
-        maxX: Number(primitive.x || 0) + Number(primitive.width || 0),
-        maxY: Number(primitive.y || 0) + Number(primitive.height || 0),
-      });
-    } else if ((primitive.kind === "polygon" || primitive.kind === "polyline" || primitive.kind === "path") && Array.isArray(primitive.points)) {
-      const xs = primitive.points.map((candidate) => Number(candidate.x || 0));
-      const ys = primitive.points.map((candidate) => Number(candidate.y || 0));
-      if (xs.length && ys.length) {
-        bounds = extendSelectionBounds(bounds, {
-          minX: Math.min(...xs),
-          minY: Math.min(...ys),
-          maxX: Math.max(...xs),
-          maxY: Math.max(...ys),
-        });
-      }
-    }
-  }
-  return bounds;
-}
-
 function selectionRotateHandleFromBounds(bounds) {
   if (!bounds) {
     return null;
@@ -3215,7 +2741,7 @@ function selectionRotateHandleFromBounds(bounds) {
 }
 
 function currentSelectionRotateHandle() {
-  return selectionRotateHandleFromBounds(selectionOverlayBoundsFromPrimitives());
+  return selectionRotateHandleFromBounds(currentRenderBounds("selection"));
 }
 
 function selectionRotateHandleHit(point) {
@@ -3617,7 +3143,7 @@ function renderEditorOverlay(renderList = null) {
     }
     if (isDocumentPreviewPrimitive(primitive)) {
       if (previewActive) {
-        renderCorePrimitive(overlay, primitive);
+        renderCorePrimitive(overlay, primitive, corePrimitiveRenderOptions());
       }
       continue;
     }
@@ -3710,7 +3236,7 @@ function renderEditorOverlay(renderList = null) {
     }));
     overlay.lastChild.textContent = formatRotationAngle(activeSelectionGesture.angle || 0);
   } else if (editorState.activeTool === "select" && !activeSelectionGesture) {
-    const handle = selectionRotateHandleFromBounds(selectionOverlayBoundsFromPrimitives(primitives));
+    const handle = selectionRotateHandleFromBounds(currentRenderBounds("selection"));
     if (handle) {
       const topCenter = {
         x: (handle.bounds.minX + handle.bounds.maxX) * 0.5,
@@ -3849,32 +3375,32 @@ function renderDocument() {
     if (object.type === "molecule") {
       const corePrimitives = corePrimitivesForObject(object.id);
       if (corePrimitives.length) {
-        corePrimitives.forEach((primitive) => renderCorePrimitive(viewerSvg, primitive));
+        corePrimitives.forEach((primitive) => renderCorePrimitive(viewerSvg, primitive, corePrimitiveRenderOptions()));
       }
     } else if (object.type === "shape") {
       const corePrimitives = corePrimitivesForObject(object.id);
       if (corePrimitives.length) {
-        corePrimitives.forEach((primitive) => renderCorePrimitive(viewerSvg, primitive));
+        corePrimitives.forEach((primitive) => renderCorePrimitive(viewerSvg, primitive, corePrimitiveRenderOptions()));
       } else {
         renderShapeObject(viewerSvg, object, documentData.styles);
       }
     } else if (object.type === "line") {
       const corePrimitives = corePrimitivesForObject(object.id);
       if (corePrimitives.length) {
-        corePrimitives.forEach((primitive) => renderCorePrimitive(viewerSvg, primitive));
+        corePrimitives.forEach((primitive) => renderCorePrimitive(viewerSvg, primitive, corePrimitiveRenderOptions()));
       } else {
         renderLineObject(viewerSvg, object, state.currentDocument.styles);
       }
     } else if (object.type === "text") {
       const corePrimitives = corePrimitivesForObject(object.id);
       if (corePrimitives.length) {
-        corePrimitives.forEach((primitive) => renderCorePrimitive(viewerSvg, primitive));
+        corePrimitives.forEach((primitive) => renderCorePrimitive(viewerSvg, primitive, corePrimitiveRenderOptions()));
       } else {
         renderTextObject(viewerSvg, object);
       }
     } else if (object.type === "bracket" || object.type === "symbol") {
       const corePrimitives = corePrimitivesForObject(object.id);
-      corePrimitives.forEach((primitive) => renderCorePrimitive(viewerSvg, primitive));
+      corePrimitives.forEach((primitive) => renderCorePrimitive(viewerSvg, primitive, corePrimitiveRenderOptions()));
     }
   }
 
@@ -3897,7 +3423,7 @@ function fitView() {
   let nextViewBox;
   let fitTargetBox = null;
   if (isEditingRustDocument()) {
-    const bounds = boundsFromPrimitives(state.coreRenderList || []);
+    const bounds = currentRenderBounds("all");
     if (!bounds) {
       nextViewBox = defaultEditorViewBox();
       state.runtimeViewBox = nextViewBox;
@@ -3926,15 +3452,6 @@ async function loadDocument(path) {
     throw new Error(`Failed to load ${path}: ${response.status}`);
   }
   return response.json();
-}
-
-function documentTitleForFileName(documentData) {
-  const rawTitle = String(documentData?.document?.title || "chemcore-document").trim();
-  const safeTitle = rawTitle
-    .replace(/[\\/:*?"<>|]+/g, "-")
-    .replace(/\s+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return `${safeTitle || "chemcore-document"}.chemcore.json`;
 }
 
 function validateChemcoreJsonDocument(documentData) {
@@ -4000,17 +3517,6 @@ function saveAsBaseName() {
   return baseName.replace(/\.[^.]+$/, "") || "chemcore-document";
 }
 
-function saveFormatFromFileName(fileName) {
-  const lowerName = String(fileName || "").toLowerCase();
-  if (lowerName.endsWith(".svg")) {
-    return "svg";
-  }
-  if (lowerName.endsWith(".cdxml")) {
-    return "cdxml";
-  }
-  return "json";
-}
-
 function savePayloadForFormat(format) {
   if (format === "svg") {
     return {
@@ -4050,15 +3556,7 @@ async function saveCurrentDocumentJson() {
     viewerTitle.textContent = state.currentDocument?.document?.title || state.currentFileName || "Untitled";
     return;
   }
-  const blob = new Blob([json], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = suggestedName;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+  downloadTextFile(json, suggestedName, "application/json");
 }
 
 function currentDocumentCdxmlForSave() {
@@ -4097,15 +3595,7 @@ async function saveCurrentDocumentCdxml() {
     viewerTitle.textContent = state.currentDocument?.document?.title || state.currentFileName || "Untitled";
     return;
   }
-  const blob = new Blob([cdxml], { type: "chemical/x-cdxml" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = suggestedName;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+  downloadTextFile(cdxml, suggestedName, "chemical/x-cdxml");
 }
 
 async function saveCurrentDocumentSvg() {
@@ -4126,15 +3616,7 @@ async function saveCurrentDocumentSvg() {
     await writable.close();
     return;
   }
-  const blob = new Blob([svg], { type: "image/svg+xml" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = suggestedName;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+  downloadTextFile(svg, suggestedName, "image/svg+xml");
 }
 
 async function saveCurrentDocumentAs() {
@@ -4168,15 +3650,6 @@ async function saveCurrentDocumentAs() {
     return;
   }
   await saveCurrentDocumentJson();
-}
-
-function looksLikeCdxmlFile(file, text) {
-  const name = (file?.name || "").toLowerCase();
-  const type = (file?.type || "").toLowerCase();
-  if (name.endsWith(".cdxml") || type.includes("cdxml")) {
-    return true;
-  }
-  return /^\s*(?:<\?xml[^>]*>\s*)?<CDXML\b/i.test(text);
 }
 
 async function openDocumentFile(file) {

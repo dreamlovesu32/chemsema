@@ -1,7 +1,7 @@
 use crate::{
     ArrowCurve, ArrowEndpointStyle, ArrowHeadSize, ArrowNoGo, ArrowVariant, BondVariant,
-    BracketKind, Engine, Point, PointerEvent, ShapeKind, ShapeStyle, Tool, ToolState, WorldCm,
-    WorldPoint,
+    BracketKind, Engine, Point, PointerEvent, RenderBoundsScope, ShapeKind, ShapeStyle, Tool,
+    ToolState, WorldCm, WorldPoint,
 };
 use wasm_bindgen::prelude::*;
 
@@ -476,6 +476,25 @@ impl WasmEngine {
     pub fn render_list_json(&self) -> Result<String, JsValue> {
         serde_json::to_string(&self.inner.render_list())
             .map_err(|error| JsValue::from_str(&error.to_string()))
+    }
+
+    #[wasm_bindgen(js_name = renderBoundsJson)]
+    pub fn render_bounds_json(&self, scope: &str) -> String {
+        let scope = match scope {
+            "document" => RenderBoundsScope::Document,
+            "selection" => RenderBoundsScope::Selection,
+            _ => RenderBoundsScope::All,
+        };
+        match self.inner.render_bounds(scope) {
+            Some([min_x, min_y, max_x, max_y]) => serde_json::json!({
+                "minX": min_x,
+                "minY": min_y,
+                "maxX": max_x,
+                "maxY": max_y,
+            })
+            .to_string(),
+            None => "null".to_string(),
+        }
     }
 }
 

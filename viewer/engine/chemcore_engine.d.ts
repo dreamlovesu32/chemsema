@@ -37,6 +37,7 @@ export class WasmEngine {
     previewTextEditLayout(request_json: string): string;
     previewTextRuns(session_json: string): string;
     redo(): boolean;
+    renderBoundsJson(scope: string): string;
     renderListJson(): string;
     replaceHoveredEndpointLabel(label: string): boolean;
     selectAtPoint(x: number, y: number, additive: boolean): void;
@@ -97,6 +98,7 @@ export interface InitOutput {
     readonly wasmengine_previewTextEditLayout: (a: number, b: number, c: number) => [number, number, number, number];
     readonly wasmengine_previewTextRuns: (a: number, b: number, c: number) => [number, number, number, number];
     readonly wasmengine_redo: (a: number) => number;
+    readonly wasmengine_renderBoundsJson: (a: number, b: number, c: number) => [number, number];
     readonly wasmengine_renderListJson: (a: number) => [number, number, number, number];
     readonly wasmengine_replaceHoveredEndpointLabel: (a: number, b: number, c: number) => number;
     readonly wasmengine_selectAtPoint: (a: number, b: number, c: number, d: number) => void;

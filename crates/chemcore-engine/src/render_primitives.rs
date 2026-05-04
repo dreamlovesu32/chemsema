@@ -4,7 +4,7 @@ use serde_json::Value as JsonValue;
 
 use super::{compact_polygon_points, polygon_area_signed, KNOCKOUT_FILL};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum RenderRole {
     DocumentBond,

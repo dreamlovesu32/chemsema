@@ -140,6 +140,27 @@ pub fn render_document(document: &ChemcoreDocument) -> Vec<RenderPrimitive> {
     out
 }
 
+pub fn render_primitives_bounds<'a>(
+    primitives: impl IntoIterator<Item = &'a RenderPrimitive>,
+) -> Option<[f64; 4]> {
+    let mut bounds: Option<[f64; 4]> = None;
+    for primitive in primitives {
+        let Some([min_x, min_y, max_x, max_y]) = render_primitive_bounds(primitive) else {
+            continue;
+        };
+        bounds = Some(match bounds {
+            Some([current_min_x, current_min_y, current_max_x, current_max_y]) => [
+                f64::min(current_min_x, min_x),
+                f64::min(current_min_y, min_y),
+                f64::max(current_max_x, max_x),
+                f64::max(current_max_y, max_y),
+            ],
+            None => [min_x, min_y, max_x, max_y],
+        });
+    }
+    bounds
+}
+
 pub(crate) fn fragment_bond_visual_bounds(
     document: &ChemcoreDocument,
     object: &SceneObject,
@@ -211,7 +232,7 @@ fn primitive_matches_bond(primitive: &RenderPrimitive, bond_id: &str) -> bool {
     }
 }
 
-fn render_primitive_bounds(primitive: &RenderPrimitive) -> Option<[f64; 4]> {
+pub fn render_primitive_bounds(primitive: &RenderPrimitive) -> Option<[f64; 4]> {
     match primitive {
         RenderPrimitive::Line {
             from,
@@ -280,8 +301,49 @@ fn render_primitive_bounds(primitive: &RenderPrimitive) -> Option<[f64; 4]> {
             center.x + radius,
             center.y + radius,
         ]),
-        RenderPrimitive::Text { .. } => None,
+        RenderPrimitive::Text {
+            x,
+            y,
+            font_size,
+            line_height,
+            box_width,
+            text,
+            runs,
+            text_anchor,
+            ..
+        } => {
+            let width = box_width.unwrap_or_else(|| estimate_text_width(text, runs, *font_size));
+            let line_count = text.lines().count().max(1) as f64;
+            let height = line_height.unwrap_or(*font_size * 1.2).max(*font_size) * line_count;
+            let min_x = match text_anchor.as_deref() {
+                Some("middle") => x - width * 0.5,
+                Some("end") => x - width,
+                _ => *x,
+            };
+            Some([
+                min_x,
+                y - font_size * 0.86,
+                min_x + width,
+                y - font_size * 0.86 + height,
+            ])
+        }
     }
+}
+
+fn estimate_text_width(text: &str, runs: &[LabelRun], fallback_font_size: f64) -> f64 {
+    if !runs.is_empty() {
+        return runs
+            .iter()
+            .map(|run| {
+                let font_size = run.font_size.unwrap_or(fallback_font_size)
+                    * crate::shared_script_scale_factor(run.script.as_deref());
+                run.text.chars().count() as f64 * font_size * 0.56
+            })
+            .sum();
+    }
+    text.lines()
+        .map(|line| line.chars().count() as f64 * fallback_font_size * 0.56)
+        .fold(0.0, f64::max)
 }
 
 fn point_list_bounds(points: &[Point], margin: f64) -> Option<[f64; 4]> {
