@@ -31,3 +31,5 @@ tmp/
 .DS_Store
 *.swp
 *.swo
+*:Zone.Identifier
+*:mshield

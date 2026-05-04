@@ -22,6 +22,7 @@ export class WasmEngine {
     documentCdxml(): string;
     documentJson(): string;
     documentStylePreset(): string;
+    documentSvg(): string;
     finishHoverArrowEdit(x: number, y: number, alt_key: boolean): boolean;
     finishSelectionMove(x: number, y: number, alt_key: boolean): boolean;
     finishSelectionRotate(x: number, y: number, alt_key: boolean): boolean;
@@ -81,6 +82,7 @@ export interface InitOutput {
     readonly wasmengine_documentCdxml: (a: number) => [number, number];
     readonly wasmengine_documentJson: (a: number) => [number, number, number, number];
     readonly wasmengine_documentStylePreset: (a: number) => [number, number];
+    readonly wasmengine_documentSvg: (a: number) => [number, number];
     readonly wasmengine_finishHoverArrowEdit: (a: number, b: number, c: number, d: number) => number;
     readonly wasmengine_finishSelectionMove: (a: number, b: number, c: number, d: number) => number;
     readonly wasmengine_finishSelectionRotate: (a: number, b: number, c: number, d: number) => number;

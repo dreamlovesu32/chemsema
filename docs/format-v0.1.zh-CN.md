@@ -471,6 +471,12 @@ text 对象表示带定位信息的富文本内容。
   "begin": "n1",
   "end": "n2",
   "order": 1,
+  "strokeWidth": 0.6,
+  "boldWidth": 2.0,
+  "wedgeWidth": 3.0,
+  "labelClipMargin": 0.95,
+  "hashSpacing": 2.5,
+  "bondSpacing": 18.0,
   "stereo": {
     "kind": "solid-wedge",
     "wideEnd": "end"
@@ -508,9 +514,26 @@ text 对象表示带定位信息的富文本内容。
 键字段：
 
 - `order`：数字键级
+- `strokeWidth`：普通键线宽，单位为 pt
+- `boldWidth`：粗实键模板宽度，单位为 pt
+- `wedgeWidth`：实锲形键和虚锲形键宽端总宽，单位为 pt；这是模板参数，不从键长反推
+- `labelClipMargin`：键端从 label glyph/box 退开的额外距离，单位为 pt；Default 和 ACS 模板不同
+- `hashSpacing`：hash / hashed wedge 模板间距，单位为 pt
+- `bondSpacing`：双键间距百分比，对应 ChemDraw `BondSpacing`
 - `stereo.kind`：`solid-wedge | hashed-wedge`
 - `stereo.wideEnd`：`begin | end`
 - `double.placement`：`left | right | center`
+
+当前内置绘图模板的关键值：
+
+| 字段 | Default | ACS Document 1996 |
+| --- | ---: | ---: |
+| `strokeWidth` | `1.0` | `0.6` |
+| `boldWidth` | `4.0` | `2.0` |
+| `wedgeWidth` | `6.0` | `3.0` |
+| `labelClipMargin` | `1.35` | `0.95` |
+| `hashSpacing` | `2.9` | `2.5` |
+| `bondSpacing` | `12.0` | `18.0` |
 
 ## Line 对象
 
@@ -566,6 +589,15 @@ line 对象表示页面上的线性笔画几何。
 - `tail`：`none | start | end | both`
 - `arrowHead`：可选箭头装饰数据；省略或为 `null` 就是普通线
 - `curve`：可选，bezier 或弧线等曲线元数据
+
+`arrowHead` 的尺寸字段使用 ChemDraw 对应语义：
+
+- `length` 对应 CDXML `HeadSize / 100`
+- `centerLength` 对应 CDXML `ArrowheadCenterSize / 100`
+- `width` 对应 CDXML `ArrowheadWidth / 100`。对实心箭头，ChemDraw 将该值作为宽端半宽参数，渲染轮廓使用约 `width + 0.05` 的外侧半宽，并用该半宽的 `7/16` 作为内侧贝塞尔控制点偏移；对开放/空心箭头，该值作为头部相对箭杆半宽的额外宽度参数
+- `curve` 对应 CDXML `AngularSize`，负值和正值分别表示两种弯曲方向
+- `noGo` 对应 CDXML `NoGo`，可取 `none | cross | hash`
+- `kind` 为 `hollow` 或 `open` 时使用空心/开口箭头自己的尺寸模板，不复用实心箭头模板
 
 line 的外观主要放在样式里，包括：
 
@@ -650,8 +682,8 @@ shape 对象表示简单的填充或描边区域。
   "meta": {},
   "payload": {
     "kind": "roundRect",
-    "box": [420, 80, 160, 64],
-    "radius": 8
+    "bbox": [0, 0, 160, 64],
+    "cornerRadius": 8
   }
 }
 ```
@@ -659,8 +691,9 @@ shape 对象表示简单的填充或描边区域。
 ### Shape Payload 字段
 
 - `kind`：`circle | ellipse | rect | roundRect`
-- `box`：必填，局部包围盒
-- `radius`：可选，`roundRect` 的圆角半径
+- `bbox`：矩形/圆角矩形使用的局部包围盒；导入 CDXML 时直接来自 `BoundingBox`
+- `cornerRadius`：可选，`roundRect` 的圆角半径，对应 CDXML `CornerRadius / 100`
+- `center` / `majorAxisEnd` / `minorAxisEnd`：圆和椭圆使用的实际轴端点，对应 CDXML `Center3D`、`MajorAxisEnd3D`、`MinorAxisEnd3D`
 
 shape 的外观主要放在样式里，包括：
 
@@ -669,6 +702,9 @@ shape 的外观主要放在样式里，包括：
 - 描边宽度
 - 虚线模式
 - 是否填充
+- `shaded`：对应 CDXML `Shaded`
+- `shadow`：对应 CDXML `Shadow` / `Shadowed`
+- `shadowSize`：对应 CDXML `ShadowSize / 100`
 
 ## Group 对象
 

@@ -47,7 +47,6 @@ const HASH_TARGET_GAP_LENGTH: f64 = crate::HASH_TARGET_GAP_LENGTH_CM.value();
 const HASH_WEDGE_EDGE_OVERDRAW: f64 = crate::HASH_WEDGE_EDGE_OVERDRAW_CM.value();
 const HASH_MULTI_BOND_RETREAT_GAP: f64 = crate::HASH_MULTI_BOND_RETREAT_GAP_CM.value();
 const SOLID_WEDGE_END_INSET: f64 = crate::SOLID_WEDGE_END_INSET_CM.value();
-const SOLID_WEDGE_HALF_WIDTH: f64 = crate::SOLID_WEDGE_HALF_WIDTH_CM.value();
 const CENTER_DOUBLE_NO_EXTENSION_ANGLE_DEGREES: f64 = 162.0;
 const CHEMCORE_INK: &str = "#000000";
 const KNOCKOUT_FILL: &str = "#ffffff";
@@ -417,7 +416,7 @@ fn compute_bold_bond_points(
     end_endpoint_profile: Option<Vec<Point>>,
 ) -> Vec<Point> {
     let direction = Vector::new(end.x - start.x, end.y - start.y);
-    let length = direction.length().max(1.0);
+    let length = direction.length();
     let unit = direction.normalized();
     let normal = Vector::new(-unit.y, unit.x);
     let half_width =
@@ -788,9 +787,9 @@ fn solid_wedge_edge_join_point(
                 }
                 let endpoint_distance = intersection.distance(endpoint);
                 let max_join_distance = other_line.length.min(edge_direction.length()) * 0.45;
+                let other_stroke_width = neighbor_bond_stroke_width(other_bond, stroke_width);
                 if endpoint_distance
-                    > (stroke_width.max(other_bond.stroke_width.max(VIEWER_BOND_STROKE)) * 4.5)
-                        .max(max_join_distance)
+                    > (stroke_width.max(other_stroke_width) * 4.5).max(max_join_distance)
                 {
                     continue;
                 }
@@ -810,7 +809,7 @@ fn solid_wedge_edge_join_point(
                 other_bond,
                 shared_node_id,
                 other_side,
-                stroke_width.max(other_bond.stroke_width.max(VIEWER_BOND_STROKE)),
+                neighbor_bond_stroke_width(other_bond, stroke_width),
             ) else {
                 continue;
             };
@@ -916,7 +915,7 @@ fn bold_edge_join_point(
                 other_bond,
                 shared_node_id,
                 other_side,
-                stroke_width.max(other_bond.stroke_width.max(VIEWER_BOND_STROKE)),
+                neighbor_bond_stroke_width(other_bond, stroke_width),
             ) else {
                 continue;
             };
@@ -952,7 +951,10 @@ fn compute_hashed_wedge_segments(
     stroke_width: f64,
 ) -> Vec<(Point, Point, f64)> {
     let direction = Vector::new(end.x - start.x, end.y - start.y);
-    let length = direction.length().max(1.0);
+    let length = direction.length();
+    if length <= EPSILON {
+        return Vec::new();
+    }
     let unit = direction.normalized();
     let normal = Vector::new(-unit.y, unit.x);
     let start_gap = HASH_WEDGE_START_OFFSET.min(length * 0.3);
@@ -1031,6 +1033,14 @@ fn is_joinable_main_line_render(
     line_weight: BondLineWeight,
 ) -> bool {
     allow_bold_contacts && line_weight == BondLineWeight::Normal && has_joinable_main_line(bond)
+}
+
+fn neighbor_bond_stroke_width(bond: &Bond, fallback: f64) -> f64 {
+    if bond.stroke_width > 0.0 {
+        bond.stroke_width
+    } else {
+        fallback
+    }
 }
 
 fn boundary_lines_from_endpoint(
@@ -1263,7 +1273,7 @@ fn wide_endpoint_join_points_against_main_lines(
         if !has_joinable_main_line(other_bond) {
             continue;
         }
-        let other_stroke_width = other_bond.stroke_width.max(VIEWER_BOND_STROKE);
+        let other_stroke_width = neighbor_bond_stroke_width(other_bond, stroke_width);
         let Some(other) = main_line_boundary_lines_for_endpoint(
             object,
             node_map,
@@ -1317,7 +1327,7 @@ fn main_line_join_points_against_wide_bonds(
         if is_hashed_wedge_bond(other_bond) {
             continue;
         }
-        let other_stroke_width = stroke_width.max(other_bond.stroke_width.max(VIEWER_BOND_STROKE));
+        let other_stroke_width = neighbor_bond_stroke_width(other_bond, stroke_width);
         let Some(other) = wide_boundary_line_pair_for_endpoint(
             object,
             node_map,
@@ -1406,7 +1416,7 @@ fn bold_main_line_join_polygon(
         if !solid_joinable_main_line(other_bond) {
             continue;
         }
-        let other_stroke_width = other_bond.stroke_width.max(VIEWER_BOND_STROKE);
+        let other_stroke_width = neighbor_bond_stroke_width(other_bond, stroke_width);
         let Some(far_boundary) = main_line_far_boundary_for_wide_bond(
             object,
             node_map,
@@ -1600,7 +1610,7 @@ fn endpoint_retreat_against_center_double_outer_line(
         if other_bond.begin != shared_node_id && other_bond.end != shared_node_id {
             continue;
         }
-        let other_stroke_width = stroke_width.max(other_bond.stroke_width.max(VIEWER_BOND_STROKE));
+        let other_stroke_width = neighbor_bond_stroke_width(other_bond, stroke_width);
         let Some(other) = centered_double_outer_line_boundary_pair_for_direction(
             object,
             node_map,
@@ -1747,7 +1757,7 @@ fn wide_boundary_lines_for_endpoint(
     }) else {
         return Vec::new();
     };
-    let cap_half_width = solid_wedge_half_width(stroke_width);
+    let cap_half_width = solid_wedge_half_width_for_bond(bond, stroke_width);
     let tip_half_width = solid_wedge_tip_half_width(stroke_width);
     for (cap_point, tip_point) in [
         (
@@ -2001,7 +2011,7 @@ fn segment_intersection_fraction(
     }
 }
 
-fn clip_point_out_of_polygons(start: Point, end: Point, polygons: &[Vec<Point>]) -> Point {
+fn clip_point_out_of_polygons(start: Point, end: Point, polygons: &[Vec<Point>]) -> Option<Point> {
     let mut best_t: Option<f64> = None;
     for polygon in polygons {
         if polygon.len() < 3 {
@@ -2027,14 +2037,26 @@ fn clip_point_out_of_polygons(start: Point, end: Point, polygons: &[Vec<Point>])
             }
         }
     }
-    best_t
-        .map(|t| {
-            Point::new(
-                start.x + (end.x - start.x) * t,
-                start.y + (end.y - start.y) * t,
-            )
-        })
-        .unwrap_or(start)
+    best_t.map(|t| {
+        Point::new(
+            start.x + (end.x - start.x) * t,
+            start.y + (end.y - start.y) * t,
+        )
+    })
+}
+
+fn advance_point_toward(point: Point, target: Point, distance: f64) -> Point {
+    if distance <= EPSILON {
+        return point;
+    }
+    let direction = Vector::new(target.x - point.x, target.y - point.y);
+    let length = direction.length();
+    if length <= EPSILON {
+        return point;
+    }
+    let step = distance.min(length);
+    let unit = direction.normalized();
+    Point::new(point.x + unit.x * step, point.y + unit.y * step)
 }
 
 fn clip_point_out_of_box(start: Point, end: Point, rect: Option<RectBox>, margin: f64) -> Point {
@@ -2083,6 +2105,8 @@ fn clip_point_out_of_label_geometry(
         return clip_point_out_of_box(start, end, rect, margin);
     }
     clip_point_out_of_polygons(start, end, polygons)
+        .map(|point| advance_point_toward(point, end, margin))
+        .unwrap_or(start)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2418,7 +2442,7 @@ fn arrow_head_points(from: Point, to: Point, arrow_head: ArrowHeadGeometry) -> V
         .length
         .max(crate::ARROW_SHAPE_MIN_HEAD_LENGTH_CM.value());
     let head_half_width =
-        (arrow_head.width + 0.05).max(crate::ARROW_SHAPE_MIN_HEAD_WIDTH_CM.value() * 0.5);
+        (arrow_head.width.max(0.0) + 0.05).max(crate::ARROW_SHAPE_MIN_HEAD_WIDTH_CM.value());
     let notch_length = arrow_head
         .center_length
         .max(crate::ARROW_SHAPE_MIN_NOTCH_LENGTH_CM.value())
@@ -2459,17 +2483,9 @@ fn hollow_arrow_outline_points(
     has_tail: bool,
 ) -> Option<Vec<Point>> {
     let (unit, normal, length) = arrow_axis(start, end)?;
-    let shaft_half_width = if arrow_head.bold {
-        arrow_head.center_length.max(arrow_head.length) * 0.575
-    } else {
-        arrow_head.center_length.max(arrow_head.length) * 0.5
-    };
+    let shaft_half_width = arrow_head.center_length.max(arrow_head.length) * 0.5;
     let head_length = arrow_head.length.min(length * 0.45);
-    let head_half_width = if arrow_head.bold {
-        arrow_head.center_length.max(arrow_head.length) * 1.15
-    } else {
-        arrow_head.center_length.max(arrow_head.length)
-    };
+    let head_half_width = shaft_half_width + arrow_head.width.max(0.0) * 0.5;
     let neck_offset = (head_length * 0.5).min(length * 0.3);
     let start_neck = if has_tail {
         start.translated(unit.scaled(neck_offset))
@@ -2593,7 +2609,10 @@ fn wrap_text_lines(text: &str, max_width: f64, font_size: f64) -> Vec<String> {
 fn unit_normal(start: Point, end: Point) -> (f64, f64) {
     let dx = end.x - start.x;
     let dy = end.y - start.y;
-    let length = dx.hypot(dy).max(1.0);
+    let length = dx.hypot(dy);
+    if length <= EPSILON {
+        return (0.0, 0.0);
+    }
     (-dy / length, dx / length)
 }
 
@@ -2604,7 +2623,10 @@ fn inset_bond_segment(
     inset_end: f64,
 ) -> (Point, Point) {
     let direction = Vector::new(end.x - start.x, end.y - start.y);
-    let length = direction.length().max(1.0);
+    let length = direction.length();
+    if length <= EPSILON {
+        return (start, end);
+    }
     let unit = direction.normalized();
     let clamped_start = inset_start.max(0.0).min(length * 0.45);
     let clamped_end = inset_end.max(0.0).min(length * 0.45);
@@ -2694,14 +2716,52 @@ fn triple_bond_offset_distance(start: Point, end: Point, stroke_width: f64) -> f
     multi_bond_inner_gap(None, start, end, stroke_width) + stroke_width
 }
 
+fn solid_wedge_half_width_for_bond(bond: &Bond, stroke_width: f64) -> f64 {
+    bond.wedge_width
+        .unwrap_or_else(|| solid_wedge_width_for_legacy_bond_template(bond, stroke_width))
+        .max(stroke_width)
+        * 0.5
+}
+
 fn solid_wedge_half_width(stroke_width: f64) -> f64 {
-    let _ = stroke_width;
-    SOLID_WEDGE_HALF_WIDTH
+    crate::SOLID_WEDGE_WIDTH_CM.value().max(stroke_width) * 0.5
 }
 
 fn solid_wedge_tip_half_width(stroke_width: f64) -> f64 {
-    let _ = stroke_width;
-    crate::SOLID_WEDGE_TIP_HALF_WIDTH_CM.value()
+    stroke_width * 0.5
+}
+
+fn label_clip_margin_for_bond(bond: &Bond, stroke_width: f64) -> f64 {
+    bond.label_clip_margin
+        .unwrap_or_else(|| label_clip_margin_for_legacy_bond_template(bond, stroke_width))
+}
+
+fn solid_wedge_width_for_legacy_bond_template(bond: &Bond, stroke_width: f64) -> f64 {
+    if is_acs_document_1996_bond_template(bond, stroke_width) {
+        3.0
+    } else {
+        crate::SOLID_WEDGE_WIDTH_CM.value()
+    }
+}
+
+fn label_clip_margin_for_legacy_bond_template(bond: &Bond, stroke_width: f64) -> f64 {
+    if is_acs_document_1996_bond_template(bond, stroke_width) {
+        crate::ACS_LABEL_GEOMETRY_CLIP_MARGIN_CM.value()
+    } else {
+        crate::LABEL_GEOMETRY_CLIP_MARGIN_CM.value()
+    }
+}
+
+fn is_acs_document_1996_bond_template(bond: &Bond, stroke_width: f64) -> bool {
+    let bold_width = bond.bold_width.unwrap_or(BOLD_BOND_WIDTH);
+    (stroke_width - 0.6).abs() <= 0.01
+        && (bold_width - 2.0).abs() <= 0.05
+        && bond
+            .hash_spacing
+            .is_none_or(|spacing| (spacing - 2.5).abs() <= 0.05)
+        && bond
+            .bond_spacing
+            .is_none_or(|spacing| (spacing - 18.0).abs() <= 0.05)
 }
 
 fn dash_gap_intervals(length: f64, dash_array: &[f64]) -> Vec<(f64, f64)> {
@@ -3255,7 +3315,7 @@ fn outer_bond_endpoint_profile_for_side(
         return None;
     }
 
-    let current_stroke_width = stroke_width.max(bond.stroke_width.max(VIEWER_BOND_STROKE));
+    let current_stroke_width = stroke_width.max(bond.stroke_width);
     let (current, current_center) = outer_bond_boundary_line_pair_for_endpoint(
         object,
         node_map,
@@ -3276,7 +3336,7 @@ fn outer_bond_endpoint_profile_for_side(
         if other_bond.begin != shared_node_id && other_bond.end != shared_node_id {
             continue;
         }
-        let other_stroke_width = other_bond.stroke_width.max(VIEWER_BOND_STROKE);
+        let other_stroke_width = neighbor_bond_stroke_width(other_bond, stroke_width);
         let mut same_side_outer_candidate = false;
         for other_side in outer_bond_candidate_sides(other_bond) {
             if outer_line_pattern(other_bond, other_side) != BondLinePattern::Solid {
@@ -3438,7 +3498,7 @@ fn center_double_endpoint_profile_for_line_side(
     {
         return None;
     }
-    let current_stroke_width = stroke_width.max(bond.stroke_width.max(VIEWER_BOND_STROKE));
+    let current_stroke_width = stroke_width.max(bond.stroke_width);
     let (current, current_center) = centered_double_line_boundary_pair_for_endpoint(
         object,
         node_map,
@@ -3459,7 +3519,7 @@ fn center_double_endpoint_profile_for_line_side(
         if other_bond.begin != shared_node_id && other_bond.end != shared_node_id {
             continue;
         }
-        let other_stroke_width = other_bond.stroke_width.max(VIEWER_BOND_STROKE);
+        let other_stroke_width = neighbor_bond_stroke_width(other_bond, stroke_width);
         let mut candidates = Vec::new();
         if let Some(candidate) = main_bond_drawn_boundary_pair_for_endpoint(
             object,
@@ -3713,6 +3773,8 @@ mod tests {
             stereo: None,
             stroke_width: VIEWER_BOND_STROKE,
             bold_width: None,
+            wedge_width: None,
+            label_clip_margin: None,
             hash_spacing: None,
             bond_spacing: None,
             line_styles: crate::BondLineStyles::default(),

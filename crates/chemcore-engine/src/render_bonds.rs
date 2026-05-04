@@ -35,21 +35,16 @@ pub(super) fn render_fragment_bond(
         .as_ref()
         .is_some_and(|label| label.has_visible_text());
 
-    const LABEL_GEOMETRY_CLIP_MARGIN: f64 = crate::LABEL_GEOMETRY_CLIP_MARGIN_CM.value();
+    let label_clip_margin = label_clip_margin_for_bond(bond, stroke_width);
     start = clip_point_out_of_label_geometry(
         start,
         finish,
         begin_box,
         &begin_polygons,
-        LABEL_GEOMETRY_CLIP_MARGIN,
+        label_clip_margin,
     );
-    finish = clip_point_out_of_label_geometry(
-        finish,
-        start,
-        end_box,
-        &end_polygons,
-        LABEL_GEOMETRY_CLIP_MARGIN,
-    );
+    finish =
+        clip_point_out_of_label_geometry(finish, start, end_box, &end_polygons, label_clip_margin);
 
     if let Some(stereo) = bond_stereo_kind(bond) {
         render_stereo_bond(
@@ -633,13 +628,17 @@ pub(super) fn compute_solid_wedge_points(
     end_inset: f64,
     wide_contact_directions: Vec<Vector>,
     stroke_width: f64,
+    wide_half_width: f64,
 ) -> Vec<Point> {
     let direction = Vector::new(end.x - start.x, end.y - start.y);
-    let length = direction.length().max(1.0);
+    let length = direction.length();
+    if length <= EPSILON {
+        return Vec::new();
+    }
     let unit = direction.normalized();
     let normal = Vector::new(-unit.y, unit.x);
     let tip_half_width = solid_wedge_tip_half_width(stroke_width);
-    let width = solid_wedge_half_width(stroke_width);
+    let width = wide_half_width;
     let tip_plus = Point::new(
         start.x + normal.x * tip_half_width,
         start.y + normal.y * tip_half_width,
@@ -757,7 +756,7 @@ fn compute_fragment_solid_wedge_points(
                 wide_node_id,
                 end,
                 Vector::new(start.x - end.x, start.y - end.y).normalized(),
-                solid_wedge_half_width(stroke_width),
+                solid_wedge_half_width_for_bond(bond, stroke_width),
                 stroke_width,
             )
             .unwrap_or(0.0),
@@ -765,11 +764,14 @@ fn compute_fragment_solid_wedge_points(
     }
     let (start, end) = apply_segment_endpoint_retreats(start, end, start_retreat, end_retreat);
     let direction = Vector::new(end.x - start.x, end.y - start.y);
-    let length = direction.length().max(1.0);
+    let length = direction.length();
+    if length <= EPSILON {
+        return Vec::new();
+    }
     let unit = direction.normalized();
     let normal = Vector::new(-unit.y, unit.x);
     let tip_half_width = solid_wedge_tip_half_width(stroke_width);
-    let width = solid_wedge_half_width(stroke_width);
+    let width = solid_wedge_half_width_for_bond(bond, stroke_width);
     let tip_plus = Point::new(
         start.x + normal.x * tip_half_width,
         start.y + normal.y * tip_half_width,
@@ -838,6 +840,7 @@ fn compute_fragment_solid_wedge_points(
             Vec::new()
         },
         stroke_width,
+        solid_wedge_half_width_for_bond(bond, stroke_width),
     );
     if points.len() == 4 {
         return bond_polygon_from_endpoint_profiles(start_profile, vec![points[1], points[2]]);

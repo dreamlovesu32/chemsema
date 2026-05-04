@@ -467,6 +467,11 @@ impl WasmEngine {
         self.inner.document_cdxml()
     }
 
+    #[wasm_bindgen(js_name = documentSvg)]
+    pub fn document_svg(&self) -> String {
+        self.inner.document_svg()
+    }
+
     #[wasm_bindgen(js_name = renderListJson)]
     pub fn render_list_json(&self) -> Result<String, JsValue> {
         serde_json::to_string(&self.inner.render_list())

@@ -70,7 +70,7 @@ The viewer now has a “Save CDXML” command using the browser save picker, and
 
 The Default and ACS Document 1996 drawing formats were recalibrated:
 
-- ACS preset: bond length `14.4`, line width `0.6`, bold width `2.0`, hash spacing `2.5`, and graphic stroke width `0.6`.
+- ACS preset: bond length `14.4`, line width `0.6`, bold width `2.0`, wedge wide-end width `3.0`, label clip margin `0.95`, hash spacing `2.5`, bond spacing `18`, and graphic stroke width `0.6`.
 - Newly drawn bonds, template bonds, downgraded replacement bonds, paste/template-generated bonds, and graphics inherit the current `EditorOptions`.
 - CDXML import restores drawing options from root defaults and, where needed, inferred bond metrics.
 - If an imported document matches ACS, `Engine::document_style_preset()` returns `acs-document-1996`.

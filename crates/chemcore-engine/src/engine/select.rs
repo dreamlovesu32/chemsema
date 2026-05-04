@@ -679,7 +679,9 @@ impl Engine {
             });
         }
         for object in self.state.document.objects.iter().rev() {
-            if !matches!(object.object_type.as_str(), "bracket" | "symbol") || !object.visible {
+            if !matches!(object.object_type.as_str(), "bracket" | "symbol" | "shape")
+                || !object.visible
+            {
                 continue;
             }
             let Some(bounds) = scene_object_selection_bounds(object) else {
@@ -737,7 +739,9 @@ impl Engine {
             }
         }
         for object in &self.state.document.objects {
-            if !matches!(object.object_type.as_str(), "bracket" | "symbol") || !object.visible {
+            if !matches!(object.object_type.as_str(), "bracket" | "symbol" | "shape")
+                || !object.visible
+            {
                 continue;
             }
             let Some(bounds) = scene_object_selection_bounds(object) else {

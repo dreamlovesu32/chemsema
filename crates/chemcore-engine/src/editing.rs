@@ -191,7 +191,10 @@ pub struct EditorOptions {
     pub bond_length: f64,
     pub bond_stroke_width: f64,
     pub bold_bond_width: f64,
+    pub wedge_width: f64,
+    pub label_clip_margin: f64,
     pub hash_spacing: f64,
+    pub bond_spacing: f64,
     pub graphic_stroke_width: f64,
 }
 
@@ -201,7 +204,10 @@ impl Default for EditorOptions {
             bond_length: DEFAULT_BOND_LENGTH,
             bond_stroke_width: crate::DEFAULT_BOND_STROKE,
             bold_bond_width: crate::BOLD_BOND_WIDTH_CM.value(),
+            wedge_width: crate::SOLID_WEDGE_WIDTH_CM.value(),
+            label_clip_margin: crate::LABEL_GEOMETRY_CLIP_MARGIN_CM.value(),
             hash_spacing: crate::DEFAULT_HASH_SPACING_CM.value(),
+            bond_spacing: crate::DEFAULT_BOND_SPACING_PERCENT,
             graphic_stroke_width: crate::DEFAULT_BOND_STROKE,
         }
     }
@@ -220,8 +226,20 @@ impl EditorOptions {
         WorldCm(self.bold_bond_width)
     }
 
+    pub const fn wedge_width_world_cm(&self) -> WorldCm {
+        WorldCm(self.wedge_width)
+    }
+
+    pub const fn label_clip_margin_world_cm(&self) -> WorldCm {
+        WorldCm(self.label_clip_margin)
+    }
+
     pub const fn hash_spacing_world_cm(&self) -> WorldCm {
         WorldCm(self.hash_spacing)
+    }
+
+    pub const fn bond_spacing_percent(&self) -> f64 {
+        self.bond_spacing
     }
 
     pub const fn graphic_stroke_world_cm(&self) -> WorldCm {
@@ -1525,13 +1543,19 @@ mod tests {
             bond_length: 30.0,
             bond_stroke_width: 1.0,
             bold_bond_width: 4.0,
+            wedge_width: 6.0,
+            label_clip_margin: 1.35,
             hash_spacing: 2.9,
+            bond_spacing: 12.0,
             graphic_stroke_width: 1.0,
         };
         assert_eq!(options.bond_length_world_cm(), WorldCm(30.0));
         assert_eq!(options.bond_stroke_world_cm(), WorldCm(1.0));
         assert_eq!(options.bold_bond_width_world_cm(), WorldCm(4.0));
+        assert_eq!(options.wedge_width_world_cm(), WorldCm(6.0));
+        assert_eq!(options.label_clip_margin_world_cm(), WorldCm(1.35));
         assert_eq!(options.hash_spacing_world_cm(), WorldCm(2.9));
+        assert_eq!(options.bond_spacing_percent(), 12.0);
         assert_eq!(options.graphic_stroke_world_cm(), WorldCm(1.0));
     }
 

@@ -24,6 +24,8 @@ struct CdxmlDefaults {
     bold_width: f64,
     hash_spacing: f64,
     bond_spacing: f64,
+    label_size: f64,
+    caption_size: f64,
 }
 
 impl Default for CdxmlDefaults {
@@ -34,6 +36,8 @@ impl Default for CdxmlDefaults {
             bold_width: crate::BOLD_BOND_WIDTH_CM.value(),
             hash_spacing: crate::DEFAULT_HASH_SPACING_CM.value(),
             bond_spacing: crate::DEFAULT_BOND_SPACING_PERCENT,
+            label_size: crate::DEFAULT_MOLECULE_LABEL_FONT_SIZE_CM,
+            caption_size: crate::DEFAULT_TEXT_FONT_SIZE_CM,
         }
     }
 }
@@ -102,7 +106,7 @@ pub fn parse_cdxml_document(cdxml: &str, title: Option<&str>) -> Result<Chemcore
         });
     }
     append_line_objects(&root, &mut objects, &mut styles, defaults, &colors);
-    append_shape_objects(&root, &mut objects, &mut styles, &colors);
+    append_shape_objects(&root, &mut objects, &mut styles, defaults, &colors);
     append_bracket_objects(&root, &mut objects, defaults);
     append_text_objects(
         &root,
@@ -137,6 +141,8 @@ pub fn parse_cdxml_document(cdxml: &str, title: Option<&str>) -> Result<Chemcore
                             "boldWidth": defaults.bold_width,
                             "hashSpacing": defaults.hash_spacing,
                             "bondSpacing": defaults.bond_spacing,
+                            "labelSize": defaults.label_size,
+                            "captionSize": defaults.caption_size,
                         }
                     }
                 },
@@ -365,6 +371,12 @@ fn export_cdxml_defaults(document: &ChemcoreDocument) -> CdxmlDefaults {
         if let Some(value) = import_defaults.get("bondSpacing").and_then(Value::as_f64) {
             defaults.bond_spacing = value;
         }
+        if let Some(value) = import_defaults.get("labelSize").and_then(Value::as_f64) {
+            defaults.label_size = value;
+        }
+        if let Some(value) = import_defaults.get("captionSize").and_then(Value::as_f64) {
+            defaults.caption_size = value;
+        }
     }
     if let Some(style) = document.styles.get("style_molecule_default") {
         if let Some(value) = style_number_value(style, "strokeWidth") {
@@ -431,11 +443,13 @@ impl<'a> CdxmlDocumentWriter<'a> {
         out.push_str("<!DOCTYPE CDXML SYSTEM \"http://www.cambridgesoft.com/xml/cdxml.dtd\" >\n");
         write!(
             out,
-            "<CDXML Name=\"{}\" BoundingBox=\"{}\" WindowPosition=\"0 0\" WindowSize=\"{} {}\" FractionalWidths=\"yes\" InterpretChemically=\"yes\" ShowAtomQuery=\"yes\" ShowBondQuery=\"yes\" LabelFont=\"3\" LabelSize=\"10\" CaptionFont=\"3\" CaptionSize=\"10\" LineWidth=\"{}\" BoldWidth=\"{}\" BondLength=\"{}\" BondSpacing=\"{}\" HashSpacing=\"{}\" color=\"{}\" bgcolor=\"{}\">\n",
+            "<CDXML Name=\"{}\" BoundingBox=\"{}\" WindowPosition=\"0 0\" WindowSize=\"{} {}\" FractionalWidths=\"yes\" InterpretChemically=\"yes\" ShowAtomQuery=\"yes\" ShowBondQuery=\"yes\" LabelFont=\"3\" LabelSize=\"{}\" CaptionFont=\"3\" CaptionSize=\"{}\" LineWidth=\"{}\" BoldWidth=\"{}\" BondLength=\"{}\" BondSpacing=\"{}\" HashSpacing=\"{}\" color=\"{}\" bgcolor=\"{}\">\n",
             xml_escape_attr(&self.document.document.title),
             root_bbox,
             fmt_num(width),
             fmt_num(height),
+            fmt_num(self.defaults.label_size),
+            fmt_num(self.defaults.caption_size),
             fmt_num(self.defaults.line_width),
             fmt_num(self.defaults.bold_width),
             fmt_num(self.defaults.bond_length),
@@ -703,6 +717,13 @@ impl<'a> CdxmlDocumentWriter<'a> {
             ("Z", object.z_index.to_string()),
         ];
         if has_head || has_tail {
+            if arrow
+                .and_then(|value| value.get("bold"))
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
+            {
+                attrs.push(("LineType", "Bold".to_string()));
+            }
             attrs.push((
                 "ArrowheadHead",
                 if has_head { "Full" } else { "None" }.to_string(),
@@ -711,12 +732,46 @@ impl<'a> CdxmlDocumentWriter<'a> {
                 "ArrowheadTail",
                 if has_tail { "Full" } else { "None" }.to_string(),
             ));
-            attrs.push(("ArrowheadType", cdxml_arrow_kind(arrow).to_string()));
+            let arrow_kind = cdxml_arrow_kind(arrow);
+            attrs.push(("ArrowheadType", arrow_kind.to_string()));
             if let Some(value) = arrow
                 .and_then(|value| value.get("length"))
                 .and_then(Value::as_f64)
             {
                 attrs.push(("HeadSize", fmt_num(value * 100.0)));
+            }
+            if let Some(value) = arrow
+                .and_then(|value| {
+                    value
+                        .get("centerLength")
+                        .or_else(|| value.get("center_length"))
+                })
+                .and_then(Value::as_f64)
+            {
+                attrs.push(("ArrowheadCenterSize", fmt_num(value * 100.0)));
+                if matches!(arrow_kind, "Hollow" | "Angle") {
+                    attrs.push(("ArrowShaftSpacing", fmt_num(value * 100.0)));
+                }
+            }
+            if let Some(value) = arrow
+                .and_then(|value| value.get("width"))
+                .and_then(Value::as_f64)
+            {
+                attrs.push(("ArrowheadWidth", fmt_num(value * 100.0)));
+            }
+            if let Some(value) = arrow
+                .and_then(|value| value.get("curve"))
+                .and_then(Value::as_f64)
+                .filter(|value| value.abs() > crate::EPSILON)
+            {
+                attrs.push(("AngularSize", fmt_num(value)));
+            }
+            if let Some(value) = arrow
+                .and_then(|value| value.get("noGo").or_else(|| value.get("no_go")))
+                .and_then(Value::as_str)
+                .and_then(cdxml_arrow_no_go)
+            {
+                attrs.push(("NoGo", value.to_string()));
             }
             write_empty_tag(out, 4, "arrow", attrs);
         } else {
@@ -735,7 +790,21 @@ impl<'a> CdxmlDocumentWriter<'a> {
         let stroke = style.and_then(|style| style_nullable_string_value(style, "stroke"));
         let fill = style.and_then(|style| style_nullable_string_value(style, "fill"));
         let color = fill.as_deref().or(stroke.as_deref()).unwrap_or("#000000");
-        let filled = fill.is_some();
+        let filled = fill.is_some() && stroke.is_none();
+        let shaded = style
+            .and_then(|style| style.get("shaded"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let shadowed = style
+            .and_then(|style| style.get("shadow"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let dashed = style
+            .and_then(|style| style_number_array(style, "dashArray"))
+            .is_some_and(|dash| !dash.is_empty());
+        let shadow_size = style
+            .and_then(|style| style_number_value(style, "shadowSize"))
+            .unwrap_or(4.0);
         if matches!(kind.as_str(), "circle" | "ellipse") {
             let center = payload_point_cdxml(&object.payload, "center").unwrap_or_else(|| {
                 Point::new(
@@ -753,6 +822,14 @@ impl<'a> CdxmlDocumentWriter<'a> {
                 object.transform.translate[0] + x + width,
                 object.transform.translate[1] + y + height,
             ];
+            let mut oval_type = String::new();
+            if kind == "circle" {
+                oval_type.push_str("Circle");
+            }
+            push_cdxml_shape_type_flag(&mut oval_type, dashed, "Dashed");
+            push_cdxml_shape_type_flag(&mut oval_type, shaded, "Shaded");
+            push_cdxml_shape_type_flag(&mut oval_type, filled, "Filled");
+            push_cdxml_shape_type_flag(&mut oval_type, shadowed, "Shadowed");
             let mut attrs = vec![
                 ("id", self.alloc_id()),
                 ("GraphicType", "Oval".to_string()),
@@ -760,17 +837,7 @@ impl<'a> CdxmlDocumentWriter<'a> {
                 ("Center3D", fmt_point3(center)),
                 ("MajorAxisEnd3D", fmt_point3(major)),
                 ("MinorAxisEnd3D", fmt_point3(minor)),
-                (
-                    "OvalType",
-                    if kind == "circle" {
-                        "Circle"
-                    } else if filled {
-                        "Filled"
-                    } else {
-                        ""
-                    }
-                    .to_string(),
-                ),
+                ("OvalType", oval_type),
                 ("color", self.colors.id_for(color)),
                 ("Z", object.z_index.to_string()),
             ];
@@ -778,6 +845,9 @@ impl<'a> CdxmlDocumentWriter<'a> {
                 style.and_then(|style| style_number_value(style, "strokeWidth"))
             {
                 attrs.push(("LineWidth", fmt_num(stroke_width)));
+            }
+            if shadowed {
+                attrs.push(("ShadowSize", fmt_num(shadow_size * 100.0)));
             }
             write_empty_tag(out, 4, "graphic", attrs);
             return;
@@ -792,12 +862,13 @@ impl<'a> CdxmlDocumentWriter<'a> {
         if kind == "roundRect" {
             rectangle_type.push_str("RoundEdge");
         }
-        if filled {
-            if !rectangle_type.is_empty() {
-                rectangle_type.push(' ');
-            }
-            rectangle_type.push_str("Filled");
+        if kind == "rect" && !dashed && !shaded && !filled && !shadowed {
+            rectangle_type.push_str("Plain");
         }
+        push_cdxml_shape_type_flag(&mut rectangle_type, dashed, "Dashed");
+        push_cdxml_shape_type_flag(&mut rectangle_type, shaded, "Shaded");
+        push_cdxml_shape_type_flag(&mut rectangle_type, filled, "Filled");
+        push_cdxml_shape_type_flag(&mut rectangle_type, shadowed, "Shadow");
         let mut attrs = vec![
             ("id", self.alloc_id()),
             ("GraphicType", "Rectangle".to_string()),
@@ -817,6 +888,9 @@ impl<'a> CdxmlDocumentWriter<'a> {
         if let Some(stroke_width) = style.and_then(|style| style_number_value(style, "strokeWidth"))
         {
             attrs.push(("LineWidth", fmt_num(stroke_width)));
+        }
+        if shadowed {
+            attrs.push(("ShadowSize", fmt_num(shadow_size * 100.0)));
         }
         write_empty_tag(out, 4, "graphic", attrs);
     }
@@ -1033,9 +1107,13 @@ impl<'a> CdxmlDocumentWriter<'a> {
             if run.font_style.as_deref() == Some("italic") {
                 face |= 2;
             }
+            if run.underline.unwrap_or(false) {
+                face |= 4;
+            }
             match run.script.as_deref() {
                 Some("subscript") => face |= 32,
                 Some("superscript") => face |= 64,
+                Some("chemical") => face |= 96,
                 _ => {}
             }
             let mut attrs = vec![
@@ -1179,6 +1257,17 @@ fn style_nullable_string_value(style: &Value, key: &str) -> Option<String> {
 
 fn style_number_value(style: &Value, key: &str) -> Option<f64> {
     style.get(key)?.as_f64()
+}
+
+fn style_number_array(style: &Value, key: &str) -> Option<Vec<f64>> {
+    Some(
+        style
+            .get(key)?
+            .as_array()?
+            .iter()
+            .filter_map(Value::as_f64)
+            .collect(),
+    )
 }
 
 fn payload_string_cdxml(payload: &ObjectPayload, key: &str) -> Option<String> {
@@ -1354,6 +1443,24 @@ fn cdxml_arrow_kind(value: Option<&Value>) -> &'static str {
         "open" | "angle" | "retrosynthetic" => "Angle",
         _ => "Solid",
     }
+}
+
+fn cdxml_arrow_no_go(value: &str) -> Option<&'static str> {
+    match value.to_ascii_lowercase().as_str() {
+        "cross" => Some("Cross"),
+        "hash" => Some("Hash"),
+        _ => None,
+    }
+}
+
+fn push_cdxml_shape_type_flag(out: &mut String, enabled: bool, flag: &str) {
+    if !enabled {
+        return;
+    }
+    if !out.is_empty() {
+        out.push(' ');
+    }
+    out.push_str(flag);
 }
 
 fn cdxml_justification(value: Option<&str>) -> &'static str {
@@ -1596,6 +1703,10 @@ fn cdxml_defaults(root: &XmlNode) -> CdxmlDefaults {
             .unwrap_or(crate::DEFAULT_HASH_SPACING_CM.value()),
         bond_spacing: parse_f64(root.attr("BondSpacing"))
             .unwrap_or(crate::DEFAULT_BOND_SPACING_PERCENT),
+        label_size: parse_f64(root.attr("LabelSize"))
+            .unwrap_or(crate::DEFAULT_MOLECULE_LABEL_FONT_SIZE_CM),
+        caption_size: parse_f64(root.attr("CaptionSize"))
+            .unwrap_or(crate::DEFAULT_TEXT_FONT_SIZE_CM),
     }
 }
 
@@ -1608,7 +1719,7 @@ fn default_cdxml_styles(defaults: CdxmlDefaults) -> BTreeMap<String, Value> {
                 "stroke": "#000000",
                 "strokeWidth": defaults.line_width,
                 "fontFamily": "Arial",
-                "fontSize": crate::DEFAULT_MOLECULE_LABEL_FONT_SIZE_CM,
+                "fontSize": defaults.label_size,
             }),
         ),
         (
@@ -1616,7 +1727,7 @@ fn default_cdxml_styles(defaults: CdxmlDefaults) -> BTreeMap<String, Value> {
             json!({
                 "kind": "text",
                 "fontFamily": "Arial",
-                "fontSize": 10.0,
+                "fontSize": defaults.caption_size,
                 "fontWeight": 400,
                 "fill": "#000000",
                 "stroke": null,
@@ -1842,7 +1953,7 @@ fn node_label(
         .filter_map(|run| {
             let run_text = run.full_text();
             (!run_text.is_empty()).then(|| {
-                label_run(
+                label_source_run(
                     &run_text,
                     parse_u32(run.attr("face")).unwrap_or(0),
                     run.attr("font").unwrap_or(parent_font),
@@ -1961,12 +2072,52 @@ fn normalize_bond(
         stereo,
         stroke_width,
         bold_width: Some(bold_width),
+        wedge_width: Some(cdxml_template_wedge_width(stroke_width, bold_width)),
+        label_clip_margin: Some(cdxml_template_label_clip_margin(
+            stroke_width,
+            bold_width,
+            hash_spacing,
+            bond_spacing,
+        )),
         hash_spacing: Some(hash_spacing),
         bond_spacing: Some(bond_spacing),
         line_styles: cdxml_bond_line_styles(order, display, bond.attr("Display2").unwrap_or("")),
         line_weights: cdxml_bond_line_weights(order, display, bond.attr("Display2").unwrap_or("")),
         meta: json!({"import": {"cdxml": {"display": empty_as_null(bond.attr("Display")), "doublePosition": empty_as_null(bond.attr("DoublePosition"))}}}),
     })
+}
+
+fn cdxml_template_wedge_width(stroke_width: f64, bold_width: f64) -> f64 {
+    if (stroke_width - 0.6).abs() <= 0.01 && (bold_width - 2.0).abs() <= 0.05 {
+        3.0
+    } else {
+        crate::SOLID_WEDGE_WIDTH_CM.value()
+    }
+}
+
+fn cdxml_template_label_clip_margin(
+    stroke_width: f64,
+    bold_width: f64,
+    hash_spacing: f64,
+    bond_spacing: f64,
+) -> f64 {
+    if is_acs_document_1996_bond_template(stroke_width, bold_width, hash_spacing, bond_spacing) {
+        crate::ACS_LABEL_GEOMETRY_CLIP_MARGIN_CM.value()
+    } else {
+        crate::LABEL_GEOMETRY_CLIP_MARGIN_CM.value()
+    }
+}
+
+fn is_acs_document_1996_bond_template(
+    stroke_width: f64,
+    bold_width: f64,
+    hash_spacing: f64,
+    bond_spacing: f64,
+) -> bool {
+    (stroke_width - 0.6).abs() <= 0.01
+        && (bold_width - 2.0).abs() <= 0.05
+        && (hash_spacing - 2.5).abs() <= 0.05
+        && (bond_spacing - 18.0).abs() <= 0.05
 }
 
 fn cdxml_bond_order(value: Option<&str>) -> u8 {
@@ -2044,6 +2195,62 @@ fn append_line_objects(
             ]),
         );
         if is_arrow {
+            let mut arrow_head = BTreeMap::new();
+            arrow_head.insert(
+                "kind".to_string(),
+                json!(node
+                    .attr("ArrowheadType")
+                    .or_else(|| node.attr("ArrowType"))
+                    .unwrap_or("Solid")
+                    .to_ascii_lowercase()),
+            );
+            arrow_head.insert(
+                "head".to_string(),
+                json!(node
+                    .attr("ArrowheadHead")
+                    .unwrap_or(if head_enabled { "Full" } else { "None" })
+                    .to_ascii_lowercase()),
+            );
+            arrow_head.insert(
+                "tail".to_string(),
+                json!(node
+                    .attr("ArrowheadTail")
+                    .unwrap_or(if tail_enabled { "Full" } else { "None" })
+                    .to_ascii_lowercase()),
+            );
+            arrow_head.insert(
+                "length".to_string(),
+                json!(parse_scaled_100(node.attr("HeadSize")).unwrap_or(defaults.bond_length * 0.7)),
+            );
+            arrow_head.insert(
+                "centerLength".to_string(),
+                json!(parse_scaled_100(node.attr("ArrowheadCenterSize"))
+                    .or_else(|| parse_scaled_100(node.attr("ArrowShaftSpacing")))
+                    .unwrap_or(defaults.bond_length * 0.45)),
+            );
+            arrow_head.insert(
+                "width".to_string(),
+                json!(parse_scaled_100(node.attr("ArrowheadWidth"))
+                    .unwrap_or(defaults.bond_length * 0.25)),
+            );
+            if let Some(curve) =
+                parse_f64(node.attr("AngularSize")).filter(|value| value.abs() > crate::EPSILON)
+            {
+                arrow_head.insert("curve".to_string(), json!(curve));
+            }
+            if let Some(no_go) = node
+                .attr("NoGo")
+                .map(str::trim)
+                .filter(|value| !value.is_empty() && !value.eq_ignore_ascii_case("None"))
+            {
+                arrow_head.insert("noGo".to_string(), json!(no_go.to_ascii_lowercase()));
+            }
+            if node
+                .attr("LineType")
+                .is_some_and(|value| value.eq_ignore_ascii_case("Bold"))
+            {
+                arrow_head.insert("bold".to_string(), json!(true));
+            }
             extra.insert(
                 "head".to_string(),
                 json!(if head_enabled { "end" } else { "none" }),
@@ -2052,17 +2259,7 @@ fn append_line_objects(
                 "tail".to_string(),
                 json!(if tail_enabled { "start" } else { "none" }),
             );
-            extra.insert(
-                "arrowHead".to_string(),
-                json!({
-                    "kind": node.attr("ArrowheadType").or_else(|| node.attr("ArrowType")).unwrap_or("Solid").to_ascii_lowercase(),
-                    "head": node.attr("ArrowheadHead").unwrap_or(if head_enabled { "Full" } else { "None" }).to_ascii_lowercase(),
-                    "tail": node.attr("ArrowheadTail").unwrap_or(if tail_enabled { "Full" } else { "None" }).to_ascii_lowercase(),
-                    "length": parse_scaled_100(node.attr("HeadSize")).unwrap_or(defaults.bond_length * 0.7),
-                    "centerLength": parse_scaled_100(node.attr("ArrowheadCenterSize")).unwrap_or(defaults.bond_length * 0.45),
-                    "width": parse_scaled_100(node.attr("ArrowheadWidth")).unwrap_or(defaults.bond_length * 0.25),
-                }),
-            );
+            extra.insert("arrowHead".to_string(), json!(arrow_head));
         }
         let style_ref = cdxml_line_style_ref(node, is_arrow, styles, defaults, colors);
         objects.push(SceneObject {
@@ -2130,6 +2327,7 @@ fn append_shape_objects(
     root: &XmlNode,
     objects: &mut Vec<SceneObject>,
     styles: &mut BTreeMap<String, Value>,
+    defaults: CdxmlDefaults,
     colors: &BTreeMap<String, String>,
 ) {
     let mut index = 1;
@@ -2158,6 +2356,15 @@ fn append_shape_objects(
         let filled = type_value.contains("Filled");
         let shaded = type_value.contains("Shaded");
         let shadow = type_value.contains("Shadow");
+        let line_type = node.attr("LineType").unwrap_or("");
+        let dashed = type_value.contains("Dashed") || line_type.contains("Dashed");
+        let bold = line_type.contains("Bold");
+        let stroke_width = parse_f64(node.attr("LineWidth")).unwrap_or(if bold {
+            defaults.bold_width
+        } else {
+            defaults.line_width
+        });
+        let shadow_size = parse_scaled_100(node.attr("ShadowSize")).unwrap_or(4.0);
         let style_id = format!("style_shape_{index:03}");
         styles.insert(
             style_id.clone(),
@@ -2165,10 +2372,11 @@ fn append_shape_objects(
                 "kind": "shape",
                 "fill": if filled || shaded { json!(color) } else { Value::Null },
                 "stroke": if filled { Value::Null } else { json!(color) },
-                "strokeWidth": if filled { 0.0 } else { 1.0 },
-                "dashArray": if type_value.contains("Dashed") { json!([2.7]) } else { json!([]) },
+                "strokeWidth": if filled { 0.0 } else { stroke_width },
+                "dashArray": if dashed { json!([2.7]) } else { json!([]) },
                 "shaded": if shaded { json!(true) } else { Value::Null },
                 "shadow": if shadow { json!(true) } else { Value::Null },
+                "shadowSize": if shadow { json!(shadow_size) } else { Value::Null },
             }),
         );
         let (transform, payload) = if graphic_type == "Oval" {
@@ -2593,10 +2801,12 @@ fn text_object(
     });
     let runs: Vec<LabelRun> = node
         .direct_children("s")
-        .filter_map(|run| {
+        .flat_map(|run| {
             let run_text = run.full_text();
-            (!run_text.is_empty()).then(|| {
-                label_run(
+            if run_text.is_empty() {
+                Vec::new()
+            } else {
+                label_display_runs(
                     &run_text,
                     parse_u32(run.attr("face")).unwrap_or(0),
                     run.attr("font").unwrap_or(font_id),
@@ -2605,17 +2815,17 @@ fn text_object(
                     colors,
                     fonts,
                 )
-            })
+            }
         })
         .collect();
     let width = bbox
         .map(|bbox| (bbox[2] - bbox[0]).abs())
-        .unwrap_or(160.0)
-        .max(24.0);
+        .filter(|width| *width > crate::EPSILON)
+        .unwrap_or_else(|| (text.chars().count() as f64 * font_size * 0.55).max(font_size));
     let height = bbox
         .map(|bbox| (bbox[3] - bbox[1]).abs())
-        .unwrap_or(font_size * 1.4)
-        .max(14.0);
+        .filter(|height| *height > crate::EPSILON)
+        .unwrap_or(font_size * 1.4);
     let translate = if let Some(bbox) = bbox {
         let x = match align.as_str() {
             "center" => (bbox[0] + bbox[2]) * 0.5,
@@ -2662,7 +2872,7 @@ fn text_object(
     })
 }
 
-fn label_run(
+fn label_source_run(
     text: &str,
     face: u32,
     font_id: &str,
@@ -2671,6 +2881,7 @@ fn label_run(
     colors: &BTreeMap<String, String>,
     fonts: &BTreeMap<String, String>,
 ) -> LabelRun {
+    let decoded_face = decode_cdxml_face(face);
     LabelRun {
         text: text.to_string(),
         font_family: Some(
@@ -2686,20 +2897,102 @@ fn label_run(
                 .cloned()
                 .unwrap_or_else(|| "#000000".to_string()),
         ),
-        font_weight: Some(if face & 1 != 0 { 700 } else { 400 }),
-        font_style: Some(if face & 2 != 0 { "italic" } else { "normal" }.to_string()),
-        underline: None,
-        script: Some(
-            if face & 32 != 0 && face & 64 == 0 {
-                "subscript"
-            } else if face & 64 != 0 && face & 32 == 0 {
-                "superscript"
+        font_weight: Some(if decoded_face.bold { 700 } else { 400 }),
+        font_style: Some(
+            if decoded_face.italic {
+                "italic"
             } else {
                 "normal"
             }
             .to_string(),
         ),
+        underline: Some(decoded_face.underline),
+        script: Some(decoded_face.script.to_string()),
     }
+}
+
+fn label_display_runs(
+    text: &str,
+    face: u32,
+    font_id: &str,
+    color_id: &str,
+    font_size: f64,
+    colors: &BTreeMap<String, String>,
+    fonts: &BTreeMap<String, String>,
+) -> Vec<LabelRun> {
+    let source = label_source_run(text, face, font_id, color_id, font_size, colors, fonts);
+    if source.script.as_deref() == Some("chemical") {
+        expand_cdxml_chemical_run(&source)
+    } else {
+        vec![source]
+    }
+}
+
+struct CdxmlFace {
+    bold: bool,
+    italic: bool,
+    underline: bool,
+    script: &'static str,
+}
+
+fn decode_cdxml_face(face: u32) -> CdxmlFace {
+    let has_subscript = face & 32 != 0;
+    let has_superscript = face & 64 != 0;
+    let script = match (has_subscript, has_superscript) {
+        (true, true) => "chemical",
+        (true, false) => "subscript",
+        (false, true) => "superscript",
+        (false, false) => "normal",
+    };
+    CdxmlFace {
+        bold: face & 1 != 0,
+        italic: face & 2 != 0,
+        underline: face & 4 != 0,
+        script,
+    }
+}
+
+fn expand_cdxml_chemical_run(base: &LabelRun) -> Vec<LabelRun> {
+    let chars: Vec<char> = base.text.chars().collect();
+    let mut scripts = vec!["normal"; chars.len()];
+
+    for index in 0..chars.len() {
+        let character = chars[index];
+        if character.is_ascii_digit() && index > 0 && chars[index - 1].is_ascii_alphabetic() {
+            scripts[index] = "subscript";
+        }
+        if matches!(character, '+' | '-') {
+            scripts[index] = "superscript";
+            if index > 0 && chars[index - 1].is_ascii_digit() {
+                let previous_index = index - 1;
+                if previous_index > 0 && !chars[previous_index - 1].is_whitespace() {
+                    scripts[previous_index] = "superscript";
+                }
+            }
+        }
+    }
+
+    let mut out = Vec::new();
+    let mut buffer = String::new();
+    let mut active_script = "normal";
+    for (index, character) in chars.into_iter().enumerate() {
+        let script = scripts[index];
+        if !buffer.is_empty() && script != active_script {
+            let mut run = base.clone();
+            run.text = std::mem::take(&mut buffer);
+            run.script = Some(active_script.to_string());
+            out.push(run);
+        }
+        active_script = script;
+        buffer.push(character);
+    }
+    if !buffer.is_empty() {
+        let mut run = base.clone();
+        run.text = buffer;
+        run.script = Some(active_script.to_string());
+        out.push(run);
+    }
+    out
 }
 
 fn page_from_objects(objects: &[SceneObject]) -> Page {

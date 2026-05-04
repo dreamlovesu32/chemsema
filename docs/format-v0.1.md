@@ -585,6 +585,15 @@ Example:
 - `arrowHead`: optional arrow decoration data; omitted or `null` means plain line
 - `curve`: optional curve metadata for bezier or arc-like lines
 
+`arrowHead` size fields follow the matching ChemDraw meanings:
+
+- `length` maps to CDXML `HeadSize / 100`
+- `centerLength` maps to CDXML `ArrowheadCenterSize / 100`
+- `width` maps to CDXML `ArrowheadWidth / 100`. For solid arrowheads, ChemDraw treats this as the broad-end half-width parameter: the rendered outline uses an outer half-width of about `width + 0.05` and an inner Bezier control offset of `7/16` of that half-width. For open and hollow arrowheads, this value is the extra head-width parameter relative to the shaft half-width
+- `curve` maps to CDXML `AngularSize`; negative and positive values represent opposite bend directions
+- `noGo` maps to CDXML `NoGo` and may be `none | cross | hash`
+- `hollow` and `open` arrow kinds use their own size template instead of reusing the solid arrow template
+
 Line appearance belongs primarily in styles, including:
 
 - stroke color
@@ -671,8 +680,8 @@ Example:
   "meta": {},
   "payload": {
     "kind": "roundRect",
-    "box": [420, 80, 160, 64],
-    "radius": 8
+    "bbox": [0, 0, 160, 64],
+    "cornerRadius": 8
   }
 }
 ```
@@ -680,8 +689,9 @@ Example:
 ### Shape Payload Fields
 
 - `kind`: `circle | ellipse | rect | roundRect`
-- `box`: required local bounding box
-- `radius`: optional corner radius for `roundRect`
+- `bbox`: local bounding box for rectangles and rounded rectangles; CDXML import maps this from `BoundingBox`
+- `cornerRadius`: optional corner radius for `roundRect`, mapped from CDXML `CornerRadius / 100`
+- `center` / `majorAxisEnd` / `minorAxisEnd`: actual circle and ellipse axis points, mapped from CDXML `Center3D`, `MajorAxisEnd3D`, and `MinorAxisEnd3D`
 
 Shape appearance belongs primarily in styles, including:
 
@@ -690,6 +700,9 @@ Shape appearance belongs primarily in styles, including:
 - stroke width
 - dash pattern
 - filled vs unfilled
+- `shaded`, mapped from CDXML `Shaded`
+- `shadow`, mapped from CDXML `Shadow` / `Shadowed`
+- `shadowSize`, mapped from CDXML `ShadowSize / 100`
 
 ## Group Object
 

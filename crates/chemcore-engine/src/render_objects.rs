@@ -12,14 +12,13 @@ fn text_anchor(align: &str) -> String {
 }
 
 fn fragment_label_font_size(label: &crate::NodeLabel) -> f64 {
-    let mut size = label
-        .font_size
-        .unwrap_or(0.0)
-        .max(DEFAULT_MOLECULE_LABEL_FONT_SIZE_CM);
+    let mut size = label.font_size;
     for run in &label.runs {
-        size = size.max(run.font_size.unwrap_or(0.0));
+        if let Some(run_size) = run.font_size {
+            size = Some(size.map_or(run_size, |current| current.max(run_size)));
+        }
     }
-    size.max(DEFAULT_MOLECULE_LABEL_FONT_SIZE_CM)
+    size.unwrap_or(DEFAULT_MOLECULE_LABEL_FONT_SIZE_CM)
 }
 
 fn fragment_label_lines(label: &crate::NodeLabel) -> Vec<String> {
@@ -606,26 +605,18 @@ fn render_solid_arrow_line(
     }
     render_arrow_no_go_on_axis(out, start, end, stroke, arrow_head, object_id.clone());
     if head_style.enabled() {
-        push_polygon(
+        render_solid_arrow_head(
             out,
-            solid_arrow_head_points(start, end, arrow_head, head_style),
+            start,
+            end,
+            arrow_head,
+            head_style,
             stroke,
-            stroke,
-            0.0,
-            RenderRole::DocumentGraphic,
             object_id.clone(),
         );
     }
     if tail_style.enabled() {
-        push_polygon(
-            out,
-            solid_arrow_head_points(end, start, arrow_head, tail_style),
-            stroke,
-            stroke,
-            0.0,
-            RenderRole::DocumentGraphic,
-            object_id,
-        );
+        render_solid_arrow_head(out, end, start, arrow_head, tail_style, stroke, object_id);
     }
 }
 
@@ -756,8 +747,7 @@ fn solid_arrow_head_points(
     let head_length = arrow_head
         .length
         .max(crate::ARROW_SHAPE_MIN_HEAD_LENGTH_CM.value());
-    let head_half_width =
-        (arrow_head.width + 0.05).max(crate::ARROW_SHAPE_MIN_HEAD_WIDTH_CM.value() * 0.5);
+    let head_half_width = solid_arrow_head_outer_half_width(arrow_head);
     let notch_length = arrow_head
         .center_length
         .max(crate::ARROW_SHAPE_MIN_NOTCH_LENGTH_CM.value())
@@ -785,6 +775,115 @@ fn solid_arrow_head_points(
         RenderArrowEndpointStyle::Right => vec![to, right, right_inner, notch],
         RenderArrowEndpointStyle::Full | RenderArrowEndpointStyle::None => Vec::new(),
     }
+}
+
+fn render_solid_arrow_head(
+    out: &mut Vec<RenderPrimitive>,
+    from: Point,
+    to: Point,
+    arrow_head: ArrowHeadGeometry,
+    style: RenderArrowEndpointStyle,
+    fill: &str,
+    object_id: Option<String>,
+) {
+    if style == RenderArrowEndpointStyle::Full {
+        if let Some(path) = solid_full_arrow_head_path(from, to, arrow_head) {
+            out.push(RenderPrimitive::FilledPath {
+                role: RenderRole::DocumentGraphic,
+                object_id,
+                d: path.d,
+                points: path.points,
+                fill: fill.to_string(),
+                fill_rule: None,
+                clip_path_d: None,
+                clip_rule: None,
+            });
+        }
+        return;
+    }
+    push_polygon(
+        out,
+        solid_arrow_head_points(from, to, arrow_head, style),
+        fill,
+        fill,
+        0.0,
+        RenderRole::DocumentGraphic,
+        object_id,
+    );
+}
+
+struct SolidArrowHeadPath {
+    d: String,
+    points: Vec<Point>,
+}
+
+fn solid_full_arrow_head_path(
+    from: Point,
+    to: Point,
+    arrow_head: ArrowHeadGeometry,
+) -> Option<SolidArrowHeadPath> {
+    let (unit, normal, _) = arrow_axis(from, to)?;
+    let head_length = arrow_head
+        .length
+        .max(crate::ARROW_SHAPE_MIN_HEAD_LENGTH_CM.value());
+    let head_half_width = solid_arrow_head_outer_half_width(arrow_head);
+    let notch_length = arrow_head
+        .center_length
+        .max(crate::ARROW_SHAPE_MIN_NOTCH_LENGTH_CM.value())
+        .min(head_length - crate::ARROW_SHAPE_MIN_HEAD_TO_NOTCH_GAP_CM.value());
+    let control_half_width = head_half_width * 7.0 / 16.0;
+
+    let tip = to;
+    let left = to
+        .translated(unit.scaled(-head_length))
+        .translated(normal.scaled(head_half_width));
+    let left_control = to
+        .translated(unit.scaled(-notch_length))
+        .translated(normal.scaled(control_half_width));
+    let notch = to.translated(unit.scaled(-notch_length));
+    let right_control = to
+        .translated(unit.scaled(-notch_length))
+        .translated(normal.scaled(-control_half_width));
+    let right = to
+        .translated(unit.scaled(-head_length))
+        .translated(normal.scaled(-head_half_width));
+
+    Some(SolidArrowHeadPath {
+        d: format!(
+            "M {},{} C {},{} {},{} {},{} C {},{} {},{} {},{} C {},{} {},{} {},{} C {},{} {},{} {},{}",
+            tip.x,
+            tip.y,
+            tip.x,
+            tip.y,
+            left.x,
+            left.y,
+            left.x,
+            left.y,
+            left.x,
+            left.y,
+            left_control.x,
+            left_control.y,
+            notch.x,
+            notch.y,
+            right_control.x,
+            right_control.y,
+            right.x,
+            right.y,
+            right.x,
+            right.y,
+            right.x,
+            right.y,
+            tip.x,
+            tip.y,
+            tip.x,
+            tip.y
+        ),
+        points: vec![tip, left, left_control, notch, right_control, right],
+    })
+}
+
+fn solid_arrow_head_outer_half_width(arrow_head: ArrowHeadGeometry) -> f64 {
+    (arrow_head.width.max(0.0) + 0.05).max(crate::ARROW_SHAPE_MIN_HEAD_WIDTH_CM.value())
 }
 
 fn arrow_endpoint_shaft_trim(
@@ -819,11 +918,7 @@ fn render_hollow_arrow_line(
         points,
         "none",
         stroke,
-        if arrow_head.bold {
-            2.0
-        } else {
-            stroke_width.max(1.0)
-        },
+        if arrow_head.bold { 2.0 } else { stroke_width },
         RenderRole::DocumentGraphic,
         object_id,
     );
@@ -846,11 +941,7 @@ fn render_open_arrow_line(
     let Some((unit, normal, length)) = arrow_axis(start, end) else {
         return;
     };
-    let line_width = if arrow_head.bold {
-        2.0
-    } else {
-        stroke_width.max(1.0)
-    };
+    let line_width = if arrow_head.bold { 2.0 } else { stroke_width };
     let shaft_half_width = open_arrow_shaft_half_width(arrow_head);
     let head_length = arrow_head.length.min(length * 0.45);
     let neck_offset = (head_length * 0.5).min(length * 0.3);
@@ -941,21 +1032,11 @@ fn render_open_arrow_line(
 }
 
 fn open_arrow_shaft_half_width(arrow_head: ArrowHeadGeometry) -> f64 {
-    let width = arrow_head.center_length.max(arrow_head.length) * 0.5;
-    if arrow_head.bold {
-        width * 1.15
-    } else {
-        width
-    }
+    arrow_head.center_length.max(arrow_head.length) * 0.5
 }
 
 fn open_arrow_head_half_width(arrow_head: ArrowHeadGeometry) -> f64 {
-    let width = arrow_head.center_length.max(arrow_head.length);
-    if arrow_head.bold {
-        width * 1.15
-    } else {
-        width
-    }
+    open_arrow_shaft_half_width(arrow_head) + arrow_head.width.max(0.0) * 0.5
 }
 
 fn open_arrow_head_outline_points(
@@ -1226,17 +1307,17 @@ fn bracket_pair_path_d(x: f64, y: f64, width: f64, height: f64, kind: &str) -> S
 }
 
 fn square_bracket_lip(width: f64, height: f64) -> f64 {
-    (height * 0.07248).min(width * 0.22).max(1.0)
+    (height * 0.07248).min(width * 0.22).max(0.0)
 }
 
 fn round_bracket_depth(width: f64, height: f64) -> f64 {
     (height * (1.0 - 3.0_f64.sqrt() * 0.5))
         .min(width * 0.22)
-        .max(1.0)
+        .max(0.0)
 }
 
 fn curly_bracket_depth(width: f64, height: f64) -> f64 {
-    (height * 0.14423).min(width * 0.24).max(2.0)
+    (height * 0.14423).min(width * 0.24).max(0.0)
 }
 
 fn bracket_symbol_path_d(x: f64, y: f64, width: f64, height: f64, kind: &str) -> String {
@@ -1515,6 +1596,7 @@ struct ShapeStyleSpec {
     dash_array: Vec<f64>,
     fill_gradient: Option<JsonValue>,
     render_style: ShapeRenderStyle,
+    shadow_size: f64,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -1550,6 +1632,9 @@ impl ShapeStyleSpec {
             .and_then(|value| value.get("shadow"))
             .and_then(JsonValue::as_bool)
             .unwrap_or(false);
+        let shadow_size = style
+            .and_then(|value| style_number(value, "shadowSize"))
+            .unwrap_or(4.0);
         let render_style = if shaded {
             ShapeRenderStyle::Shaded
         } else if shadowed {
@@ -1570,6 +1655,7 @@ impl ShapeStyleSpec {
             dash_array,
             fill_gradient,
             render_style,
+            shadow_size,
         }
     }
 
@@ -1810,10 +1896,10 @@ fn render_shape_geometry(
             push_shape_shadow_path(
                 out,
                 object_id,
-                geometry.shifted_fill_path_d(4.0, 4.0),
+                geometry.shifted_fill_path_d(style.shadow_size, style.shadow_size),
                 geometry.fill_path_d(),
                 shape_shadow_fill(style.stroke.as_deref(), style.fill.as_deref()),
-                geometry.shadow_bounds_points(4.0),
+                geometry.shadow_bounds_points(style.shadow_size),
             );
             if let Some(fill) = style.fill {
                 push_shape_fill(out, object_id, geometry, fill);

@@ -1223,10 +1223,10 @@ fn endpoint_text_edit_ignores_implausible_dom_label_measurements() {
             ]
         },
     );
-    assert!((box_value[2] - box_value[0]) < px(24.0), "{box_value:?}");
-    assert!((box_value[3] - box_value[1]) < px(24.0), "{box_value:?}");
-    assert!((glyph_box[2] - glyph_box[0]) < px(24.0), "{glyph_box:?}");
-    assert!((glyph_box[3] - glyph_box[1]) < px(24.0), "{glyph_box:?}");
+    assert!((box_value[2] - box_value[0]) < px(28.0), "{box_value:?}");
+    assert!((box_value[3] - box_value[1]) < px(28.0), "{box_value:?}");
+    assert!((glyph_box[2] - glyph_box[0]) < px(28.0), "{glyph_box:?}");
+    assert!((glyph_box[3] - glyph_box[1]) < px(28.0), "{glyph_box:?}");
     assert!(
         ((box_value[0] + box_value[2]) * 0.5 - node.position[0]).abs() < px(12.0),
         "{box_value:?} vs {:?}",

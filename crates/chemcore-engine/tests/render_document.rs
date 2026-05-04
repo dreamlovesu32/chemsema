@@ -1,6 +1,7 @@
 use chemcore_engine::{
-    angular_distance, document_to_cdxml, hit_test_bond_center, parse_cdxml_document,
-    render_document, ChemcoreDocument, Engine, Point, RenderPrimitive, RenderRole,
+    angular_distance, document_to_cdxml, document_to_svg, hit_test_bond_center,
+    parse_cdxml_document, render_document, ChemcoreDocument, Engine, Point, RenderPrimitive,
+    RenderRole,
 };
 use serde_json::json;
 use serde_json::Map;
@@ -178,6 +179,21 @@ fn bond_axis_from_points(
     ))
 }
 
+fn bond_polygon_normal_widths(points: &[chemcore_engine::Point]) -> Option<(f64, f64)> {
+    let (from, to) = bond_axis_from_points(points)?;
+    let axis = chemcore_engine::Point::new(to.x - from.x, to.y - from.y);
+    let length = (axis.x.powi(2) + axis.y.powi(2)).sqrt();
+    if length <= 1.0e-9 {
+        return None;
+    }
+    let normal = chemcore_engine::Point::new(-axis.y / length, axis.x / length);
+    let start_width =
+        ((points[0].x - points[3].x) * normal.x + (points[0].y - points[3].y) * normal.y).abs();
+    let end_width =
+        ((points[1].x - points[2].x) * normal.x + (points[1].y - points[2].y) * normal.y).abs();
+    Some((start_width, end_width))
+}
+
 fn bond_axis_length(points: &[chemcore_engine::Point]) -> Option<f64> {
     let (from, to) = bond_axis_from_points(points)?;
     Some(from.distance(to))
@@ -288,6 +304,60 @@ fn export_cdxml_emits_chemdraw_document_with_native_fragment() {
 }
 
 #[test]
+fn export_svg_emits_rendered_document_primitives() {
+    let document = fragment_document(
+        json!([
+            {
+                "id": "n1",
+                "element": "C",
+                "atomicNumber": 6,
+                "position": [30.0, 40.0],
+                "charge": 0,
+                "numHydrogens": 0
+            },
+            {
+                "id": "n2",
+                "element": "O",
+                "atomicNumber": 8,
+                "position": [70.0, 40.0],
+                "charge": 0,
+                "numHydrogens": 0,
+                "label": {
+                    "text": "O",
+                    "sourceText": "O",
+                    "position": [70.0, 40.0],
+                    "box": [66.0, 28.0, 78.0, 44.0],
+                    "fontSize": 10.0,
+                    "fill": "#000000",
+                    "attachment": "node",
+                    "anchor": "start"
+                }
+            }
+        ]),
+        json!([
+            {
+                "id": "b1",
+                "begin": "n1",
+                "end": "n2",
+                "order": 2,
+                "double": { "placement": "center", "frozen": false },
+                "strokeWidth": 0.6,
+                "bondSpacing": 18.0
+            }
+        ]),
+    );
+
+    let svg = document_to_svg(&document);
+
+    assert!(svg.starts_with("<svg xmlns=\"http://www.w3.org/2000/svg\""));
+    assert!(svg.contains("viewBox=\""));
+    assert!(svg.contains("<polygon"));
+    assert!(svg.contains("<text"));
+    assert!(svg.contains(">O</"));
+    assert!(!svg.contains("document-knockout"));
+}
+
+#[test]
 fn parse_cdxml_merges_display_fragments_for_editing_hit_tests() {
     let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >
@@ -336,7 +406,10 @@ fn load_cdxml_document_preserves_imported_acs_drawing_options() {
     assert!((engine.options().bond_length - 14.4).abs() < 0.05);
     assert!((engine.options().bond_stroke_width - 0.6).abs() < 0.01);
     assert!((engine.options().bold_bond_width - 2.0).abs() < 0.05);
+    assert!((engine.options().wedge_width - 3.0).abs() < 0.05);
+    assert!((engine.options().label_clip_margin - 0.95).abs() < 0.05);
     assert!((engine.options().hash_spacing - 2.5).abs() < 0.05);
+    assert!((engine.options().bond_spacing - 18.0).abs() < 0.05);
 }
 
 #[test]
@@ -415,6 +488,198 @@ fn parse_cdxml_imports_arrows_shapes_and_text_objects() {
 }
 
 #[test]
+fn parse_cdxml_preserves_shape_style_parameters() {
+    let shapes = std::fs::read_to_string(fixture_path("shape.cdxml")).expect("shape.cdxml");
+    let document = parse_cdxml_document(&shapes, Some("shape")).expect("shape should parse");
+
+    let dashed_circle = document
+        .objects
+        .iter()
+        .find(|object| {
+            object.object_type == "shape"
+                && object
+                    .payload
+                    .extra
+                    .get("kind")
+                    .and_then(|value| value.as_str())
+                    == Some("circle")
+                && object.style_ref.as_ref().is_some_and(|style_ref| {
+                    document.styles[style_ref]
+                        .get("dashArray")
+                        .and_then(|value| value.as_array())
+                        .is_some_and(|dash| !dash.is_empty())
+                })
+        })
+        .expect("dashed circle should import");
+    let dashed_style = &document.styles[dashed_circle.style_ref.as_ref().unwrap()];
+    assert_eq!(
+        dashed_style
+            .get("strokeWidth")
+            .and_then(|value| value.as_f64()),
+        Some(0.6)
+    );
+
+    let shadowed_rect = document
+        .objects
+        .iter()
+        .find(|object| {
+            object.object_type == "shape"
+                && object.style_ref.as_ref().is_some_and(|style_ref| {
+                    document.styles[style_ref]
+                        .get("shadow")
+                        .and_then(|value| value.as_bool())
+                        == Some(true)
+                })
+        })
+        .expect("shadowed shape should import");
+    let shadow_style = &document.styles[shadowed_rect.style_ref.as_ref().unwrap()];
+    assert_eq!(
+        shadow_style
+            .get("shadowSize")
+            .and_then(|value| value.as_f64()),
+        Some(4.0)
+    );
+}
+
+#[test]
+fn export_cdxml_writes_shape_style_parameters() {
+    let document: ChemcoreDocument = serde_json::from_value(json!({
+        "format": { "name": "chemcore", "version": "0.1" },
+        "document": {
+            "id": "doc_test",
+            "title": "test",
+            "page": { "width": 400.0, "height": 240.0, "background": "#ffffff" }
+        },
+        "styles": {
+            "style_circle": {
+                "kind": "shape",
+                "fill": null,
+                "stroke": "#000000",
+                "strokeWidth": 0.6,
+                "dashArray": [2.7]
+            },
+            "style_shadow": {
+                "kind": "shape",
+                "fill": null,
+                "stroke": "#000000",
+                "strokeWidth": 0.6,
+                "dashArray": [],
+                "shadow": true,
+                "shadowSize": 4.0
+            }
+        },
+        "objects": [{
+            "id": "obj_shape_001",
+            "type": "shape",
+            "visible": true,
+            "zIndex": 10,
+            "transform": { "translate": [0.0, 0.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+            "styleRef": "style_circle",
+            "payload": {
+                "bbox": [40.0, 40.0, 40.0, 40.0],
+                "kind": "circle",
+                "center": [60.0, 60.0],
+                "majorAxisEnd": [80.0, 60.0],
+                "minorAxisEnd": [60.0, 80.0]
+            }
+        }, {
+            "id": "obj_shape_002",
+            "type": "shape",
+            "visible": true,
+            "zIndex": 11,
+            "transform": { "translate": [100.0, 50.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+            "styleRef": "style_shadow",
+            "payload": {
+                "bbox": [0.0, 0.0, 50.0, 30.0],
+                "kind": "rect"
+            }
+        }],
+        "resources": {}
+    }))
+    .expect("document should deserialize");
+
+    let cdxml = document_to_cdxml(&document);
+    assert!(cdxml.contains("OvalType=\"Circle Dashed\""));
+    assert!(cdxml.contains("RectangleType=\"Shadow\""));
+    assert!(cdxml.contains("LineWidth=\"0.6\""));
+    assert!(cdxml.contains("ShadowSize=\"400\""));
+}
+
+#[test]
+fn parse_cdxml_preserves_arrow_geometry_modifiers() {
+    let assets = std::fs::read_to_string(fixture_path("assets.cdxml")).expect("assets.cdxml");
+    let document = parse_cdxml_document(&assets, Some("assets")).expect("assets should parse");
+    assert!(document.objects.iter().any(|object| {
+        object.payload.extra.get("arrowHead").is_some_and(|arrow| {
+            arrow.get("noGo").and_then(|value| value.as_str()) == Some("cross")
+                && arrow.get("length").and_then(|value| value.as_f64()) == Some(22.5)
+                && arrow.get("centerLength").and_then(|value| value.as_f64()) == Some(19.69)
+                && arrow.get("width").and_then(|value| value.as_f64()) == Some(5.63)
+        })
+    }));
+    assert!(document.objects.iter().any(|object| {
+        object.payload.extra.get("arrowHead").is_some_and(|arrow| {
+            arrow.get("curve").and_then(|value| value.as_f64()) == Some(-270.0)
+                && arrow.get("length").and_then(|value| value.as_f64()) == Some(8.0)
+                && arrow.get("width").and_then(|value| value.as_f64()) == Some(2.0)
+        })
+    }));
+}
+
+#[test]
+fn export_cdxml_writes_arrow_geometry_modifiers() {
+    let document: ChemcoreDocument = serde_json::from_value(json!({
+        "format": { "name": "chemcore", "version": "0.1" },
+        "document": {
+            "id": "doc_test",
+            "title": "test",
+            "page": { "width": 400.0, "height": 200.0, "background": "#ffffff" }
+        },
+        "styles": {
+            "style_arrow_default": {
+                "kind": "stroke",
+                "stroke": "#000000",
+                "strokeWidth": 1.0
+            }
+        },
+        "objects": [{
+            "id": "obj_line_001",
+            "type": "line",
+            "visible": true,
+            "zIndex": 10,
+            "transform": { "translate": [0.0, 0.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+            "styleRef": "style_arrow_default",
+            "payload": {
+                "points": [[10.0, 20.0], [110.0, 20.0]],
+                "head": "end",
+                "tail": "none",
+                "arrowHead": {
+                    "kind": "solid",
+                    "curve": -270.0,
+                    "length": 8.0,
+                    "centerLength": 7.0,
+                    "width": 2.0,
+                    "head": "full",
+                    "tail": "none",
+                    "bold": true,
+                    "noGo": "hash"
+                }
+            }
+        }],
+        "resources": {}
+    }))
+    .expect("document should deserialize");
+
+    let cdxml = document_to_cdxml(&document);
+    assert!(cdxml.contains("HeadSize=\"800\""));
+    assert!(cdxml.contains("ArrowheadCenterSize=\"700\""));
+    assert!(cdxml.contains("ArrowheadWidth=\"200\""));
+    assert!(cdxml.contains("AngularSize=\"-270\""));
+    assert!(cdxml.contains("NoGo=\"Hash\""));
+    assert!(cdxml.contains("LineType=\"Bold\""));
+}
+
+#[test]
 fn parse_cdxml_imports_free_text_object() {
     let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
 <CDXML BondLength="14.40" LineWidth="0.60" BoldWidth="2" HashSpacing="2.50">
@@ -438,6 +703,125 @@ fn parse_cdxml_imports_free_text_object() {
             ..
         } if text == "H2O" || runs.iter().any(|run| run.text == "H2O")
     )));
+}
+
+#[test]
+fn parse_cdxml_preserves_small_text_object_bbox() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML BondLength="14.40" LineWidth="0.60" BoldWidth="2" HashSpacing="2.50">
+  <page id="1">
+    <t id="2" p="10 20" BoundingBox="10 20 18 28" Justification="Left" UTF8Text="x">
+      <s font="3" size="6" face="0" color="0">x</s>
+    </t>
+  </page>
+</CDXML>"##;
+    let document =
+        parse_cdxml_document(cdxml, Some("small text")).expect("text cdxml should parse");
+    let text_object = document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "text")
+        .expect("text should import");
+    let bbox: [f64; 4] = serde_json::from_value(
+        text_object
+            .payload
+            .extra
+            .get("box")
+            .cloned()
+            .expect("text object should preserve box"),
+    )
+    .expect("text box should deserialize");
+
+    assert_eq!(bbox, [0.0, 0.0, 8.0, 8.0]);
+}
+
+#[test]
+fn parse_cdxml_formula_face_expands_digits_to_subscript() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML BondLength="14.40" LineWidth="0.60" BoldWidth="2" HashSpacing="2.50">
+  <page id="1">
+    <t id="2" p="10 20" BoundingBox="10 20 80 36" Justification="Left" UTF8Text="CF3">
+      <s font="3" size="12" face="97" color="0">CF3</s>
+    </t>
+  </page>
+</CDXML>"##;
+    let document = parse_cdxml_document(cdxml, Some("formula")).expect("text cdxml should parse");
+    let text_object = document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "text")
+        .expect("formula text should import");
+    let runs: Vec<chemcore_engine::LabelRun> = serde_json::from_value(
+        text_object
+            .payload
+            .extra
+            .get("runs")
+            .cloned()
+            .expect("imported text should preserve runs"),
+    )
+    .expect("runs should deserialize");
+
+    assert_eq!(runs.len(), 2);
+    assert_eq!(runs[0].text, "CF");
+    assert_eq!(runs[0].font_weight, Some(700));
+    assert_eq!(runs[0].script.as_deref(), Some("normal"));
+    assert_eq!(runs[1].text, "3");
+    assert_eq!(runs[1].font_weight, Some(700));
+    assert_eq!(runs[1].script.as_deref(), Some("subscript"));
+}
+
+#[test]
+fn parse_cdxml_decodes_face_bit_combinations() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML BondLength="14.40" LineWidth="0.60" BoldWidth="2" HashSpacing="2.50">
+  <page id="1">
+    <t id="2" p="10 20" BoundingBox="10 20 120 36" Justification="Left" UTF8Text="A2B+NO2">
+      <s font="3" size="12" face="39" color="0">A2</s>
+      <s font="3" size="12" face="70" color="0">B+</s>
+      <s font="3" size="12" face="103" color="0">NO2</s>
+    </t>
+  </page>
+</CDXML>"##;
+    let document = parse_cdxml_document(cdxml, Some("faces")).expect("text cdxml should parse");
+    let text_object = document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "text")
+        .expect("text should import");
+    let runs: Vec<chemcore_engine::LabelRun> = serde_json::from_value(
+        text_object
+            .payload
+            .extra
+            .get("runs")
+            .cloned()
+            .expect("imported text should preserve runs"),
+    )
+    .expect("runs should deserialize");
+
+    assert_eq!(runs[0].text, "A2");
+    assert_eq!(runs[0].font_weight, Some(700));
+    assert_eq!(runs[0].font_style.as_deref(), Some("italic"));
+    assert_eq!(runs[0].underline, Some(true));
+    assert_eq!(runs[0].script.as_deref(), Some("subscript"));
+
+    assert_eq!(runs[1].text, "B+");
+    assert_eq!(runs[1].font_weight, Some(400));
+    assert_eq!(runs[1].font_style.as_deref(), Some("italic"));
+    assert_eq!(runs[1].underline, Some(true));
+    assert_eq!(runs[1].script.as_deref(), Some("superscript"));
+
+    assert_eq!(
+        runs.iter().map(|run| run.text.as_str()).collect::<Vec<_>>(),
+        vec!["A2", "B+", "NO", "2"]
+    );
+    assert_eq!(runs[2].font_weight, Some(700));
+    assert_eq!(runs[2].font_style.as_deref(), Some("italic"));
+    assert_eq!(runs[2].underline, Some(true));
+    assert_eq!(runs[2].script.as_deref(), Some("normal"));
+    assert_eq!(runs[3].font_weight, Some(700));
+    assert_eq!(runs[3].font_style.as_deref(), Some("italic"));
+    assert_eq!(runs[3].underline, Some(true));
+    assert_eq!(runs[3].script.as_deref(), Some("subscript"));
 }
 
 #[test]
@@ -519,6 +903,36 @@ fn parse_cdxml_imports_example_table_text_at_bbox_positions() {
             .expect("expected example text object");
         assert_eq!(object.transform.translate, expected_translate);
     }
+}
+
+#[test]
+fn parse_cdxml_imports_example_formula_face_node_labels_with_subscripts() {
+    let cdxml = std::fs::read_to_string(fixture_path("02-13/2017-2-13/oleObject1.cdxml"))
+        .expect("example cdxml");
+    let document =
+        parse_cdxml_document(&cdxml, Some("example")).expect("example cdxml should parse");
+    let cf3_label = document
+        .resources
+        .values()
+        .filter_map(|resource| resource.data.as_fragment())
+        .flat_map(|fragment| fragment.nodes.iter())
+        .filter_map(|node| node.label.as_ref())
+        .find(|label| label.source_text.as_deref() == Some("CF3"))
+        .expect("example should import CF3 node label");
+
+    assert_eq!(
+        cf3_label
+            .runs
+            .iter()
+            .map(|run| run.text.as_str())
+            .collect::<Vec<_>>(),
+        vec!["F", "3", "C"]
+    );
+    assert!(cf3_label
+        .runs
+        .iter()
+        .all(|run| run.font_weight == Some(700)));
+    assert_eq!(cf3_label.runs[1].script.as_deref(), Some("subscript"));
 }
 
 #[test]
@@ -1283,23 +1697,219 @@ fn render_document_emits_arrow_line_primitives() {
     assert_eq!(shaft.len(), 2);
     assert!(shaft[1].x < 110.0);
 
-    let arrow_head_polygon_count = primitives
+    let arrow_head_paths: Vec<_> = primitives
         .iter()
-        .filter(|primitive| {
-            matches!(
-                primitive,
-                RenderPrimitive::Polygon {
-                    role,
-                    object_id,
-                    points,
-                    ..
-                } if *role == RenderRole::DocumentGraphic
-                    && object_id.as_deref() == Some("obj_line_001")
-                    && points.len() == 4
-            )
+        .filter_map(|primitive| match primitive {
+            RenderPrimitive::FilledPath {
+                role,
+                object_id,
+                points,
+                d,
+                ..
+            } if *role == RenderRole::DocumentGraphic
+                && object_id.as_deref() == Some("obj_line_001")
+                && points.len() == 6 =>
+            {
+                Some((points.clone(), d.clone()))
+            }
+            _ => None,
         })
-        .count();
-    assert_eq!(arrow_head_polygon_count, 2);
+        .collect();
+    assert_eq!(arrow_head_paths.len(), 2);
+    assert!(arrow_head_paths[0].1.contains(" C "));
+    let head_width = arrow_head_paths[0]
+        .0
+        .iter()
+        .map(|point| point.y)
+        .fold(f64::NEG_INFINITY, f64::max)
+        - arrow_head_paths[0]
+            .0
+            .iter()
+            .map(|point| point.y)
+            .fold(f64::INFINITY, f64::min);
+    assert!((head_width - 11.36).abs() <= 0.001);
+}
+
+#[test]
+fn render_document_uses_open_arrow_width_as_extra_head_width() {
+    let document: ChemcoreDocument = serde_json::from_value(json!({
+        "format": { "name": "chemcore", "version": "0.1" },
+        "document": {
+            "id": "doc_test",
+            "title": "test",
+            "page": { "width": 400.0, "height": 200.0, "background": "#ffffff" }
+        },
+        "styles": {
+            "style_arrow_default": {
+                "kind": "stroke",
+                "stroke": "#222222",
+                "strokeWidth": 0.72,
+                "lineCap": "butt",
+                "lineJoin": "miter"
+            }
+        },
+        "objects": [{
+            "id": "obj_line_001",
+            "type": "line",
+            "visible": true,
+            "zIndex": 10,
+            "transform": { "translate": [0.0, 0.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+            "styleRef": "style_arrow_default",
+            "payload": {
+                "points": [[10.0, 20.0], [110.0, 20.0]],
+                "head": "end",
+                "tail": "none",
+                "arrowHead": {
+                    "kind": "hollow",
+                    "length": 12.0,
+                    "centerLength": 12.0,
+                    "width": 3.0,
+                    "head": "full",
+                    "tail": "none"
+                }
+            }
+        }],
+        "resources": {}
+    }))
+    .expect("document should deserialize");
+
+    let primitives = render_document(&document);
+    let outline = primitives
+        .iter()
+        .find_map(|primitive| match primitive {
+            RenderPrimitive::Polygon {
+                role,
+                object_id,
+                points,
+                ..
+            } if *role == RenderRole::DocumentGraphic
+                && object_id.as_deref() == Some("obj_line_001")
+                && points.len() > 4 =>
+            {
+                Some(points.clone())
+            }
+            _ => None,
+        })
+        .expect("hollow arrow outline polygon");
+    let outline_width = outline
+        .iter()
+        .map(|point| point.y)
+        .fold(f64::NEG_INFINITY, f64::max)
+        - outline
+            .iter()
+            .map(|point| point.y)
+            .fold(f64::INFINITY, f64::min);
+    assert!((outline_width - 15.0).abs() <= 0.001);
+}
+
+#[test]
+fn render_document_respects_thin_open_and_hollow_arrow_stroke_width() {
+    let document: ChemcoreDocument = serde_json::from_value(json!({
+        "format": { "name": "chemcore", "version": "0.1" },
+        "document": {
+            "id": "doc_test",
+            "title": "test",
+            "page": { "width": 400.0, "height": 200.0, "background": "#ffffff" }
+        },
+        "styles": {
+            "style_arrow_thin": {
+                "kind": "stroke",
+                "stroke": "#222222",
+                "strokeWidth": 0.6,
+                "lineCap": "butt",
+                "lineJoin": "miter"
+            }
+        },
+        "objects": [
+            {
+                "id": "obj_hollow",
+                "type": "line",
+                "visible": true,
+                "zIndex": 10,
+                "transform": { "translate": [0.0, 0.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+                "styleRef": "style_arrow_thin",
+                "payload": {
+                    "points": [[10.0, 20.0], [110.0, 20.0]],
+                    "head": "end",
+                    "tail": "none",
+                    "arrowHead": {
+                        "kind": "hollow",
+                        "length": 12.0,
+                        "centerLength": 12.0,
+                        "width": 3.0,
+                        "head": "full",
+                        "tail": "none"
+                    }
+                }
+            },
+            {
+                "id": "obj_open",
+                "type": "line",
+                "visible": true,
+                "zIndex": 11,
+                "transform": { "translate": [0.0, 0.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+                "styleRef": "style_arrow_thin",
+                "payload": {
+                    "points": [[10.0, 80.0], [110.0, 80.0]],
+                    "head": "end",
+                    "tail": "none",
+                    "arrowHead": {
+                        "kind": "open",
+                        "length": 12.0,
+                        "centerLength": 12.0,
+                        "width": 3.0,
+                        "head": "full",
+                        "tail": "none"
+                    }
+                }
+            }
+        ],
+        "resources": {}
+    }))
+    .expect("document should deserialize");
+
+    let primitives = render_document(&document);
+    let hollow_width = primitives
+        .iter()
+        .find_map(|primitive| match primitive {
+            RenderPrimitive::Polygon {
+                role,
+                object_id,
+                stroke_width,
+                ..
+            } if *role == RenderRole::DocumentGraphic
+                && object_id.as_deref() == Some("obj_hollow") =>
+            {
+                Some(*stroke_width)
+            }
+            _ => None,
+        })
+        .expect("hollow arrow outline");
+    assert!((hollow_width - 0.6).abs() <= 1.0e-6, "{hollow_width}");
+
+    let open_widths: Vec<_> = primitives
+        .iter()
+        .filter_map(|primitive| match primitive {
+            RenderPrimitive::Polyline {
+                role,
+                object_id,
+                stroke_width,
+                ..
+            } if *role == RenderRole::DocumentGraphic
+                && object_id.as_deref() == Some("obj_open") =>
+            {
+                Some(*stroke_width)
+            }
+            _ => None,
+        })
+        .collect();
+    assert!(!open_widths.is_empty());
+    assert!(
+        open_widths
+            .iter()
+            .all(|width| (*width - 0.6).abs() <= 1.0e-6),
+        "{open_widths:?}"
+    );
 }
 
 #[test]
@@ -1828,6 +2438,104 @@ fn render_document_emits_fragment_label_text_and_knockout() {
 }
 
 #[test]
+fn render_document_respects_explicit_small_fragment_label_font_size() {
+    let document = fragment_document(
+        json!([
+            {
+                "id": "n1",
+                "element": "N",
+                "atomicNumber": 7,
+                "position": [20.0, 20.0],
+                "charge": 0,
+                "numHydrogens": 0,
+                "label": {
+                    "text": "N",
+                    "sourceText": "N",
+                    "position": [18.0, 20.0],
+                    "box": [18.0, 14.0, 22.0, 20.0],
+                    "fontSize": 6.0,
+                    "runs": [{
+                        "text": "N",
+                        "fontFamily": "Arial",
+                        "fontSize": 6.0,
+                        "fill": "#000000",
+                        "fontWeight": 400,
+                        "fontStyle": "normal",
+                        "script": "normal"
+                    }]
+                }
+            }
+        ]),
+        json!([]),
+    );
+
+    let font_size = render_document(&document)
+        .into_iter()
+        .find_map(|primitive| match primitive {
+            RenderPrimitive::Text {
+                role, font_size, ..
+            } if role == RenderRole::DocumentText => Some(font_size),
+            _ => None,
+        })
+        .expect("fragment label text");
+
+    assert!((font_size - 6.0).abs() <= 1.0e-6, "{font_size}");
+}
+
+#[test]
+fn render_document_scales_small_bracket_geometry_without_fixed_minimums() {
+    let document: ChemcoreDocument = serde_json::from_value(json!({
+        "format": { "name": "chemcore", "version": "0.1" },
+        "document": {
+            "id": "doc_test",
+            "title": "test",
+            "page": { "width": 80.0, "height": 80.0, "background": "#ffffff" }
+        },
+        "styles": {},
+        "objects": [{
+            "id": "obj_bracket_001",
+            "type": "bracket",
+            "visible": true,
+            "zIndex": 10,
+            "transform": { "translate": [0.0, 0.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+            "payload": {
+                "kind": "square",
+                "bbox": [0.0, 0.0, 2.0, 6.0],
+                "stroke": "#000000",
+                "strokeWidth": 0.6
+            }
+        }],
+        "resources": {}
+    }))
+    .expect("document should deserialize");
+
+    let d = render_document(&document)
+        .into_iter()
+        .find_map(|primitive| match primitive {
+            RenderPrimitive::Path {
+                role, object_id, d, ..
+            } if role == RenderRole::DocumentGraphic
+                && object_id.as_deref() == Some("obj_bracket_001") =>
+            {
+                Some(d)
+            }
+            _ => None,
+        })
+        .expect("bracket path");
+    let first_x = d
+        .trim_start_matches("M ")
+        .split(',')
+        .next()
+        .and_then(|value| value.parse::<f64>().ok())
+        .expect("first bracket x coordinate");
+
+    assert!(
+        first_x > 0.0 && first_x < 0.5,
+        "small bracket lip should scale with bbox instead of using a fixed 1pt minimum: {d}"
+    );
+}
+
+#[test]
 fn render_document_uses_label_glyph_polygons_for_knockout_and_endpoint_clipping() {
     let document = fragment_document(
         json!([
@@ -1876,7 +2584,10 @@ fn render_document_uses_label_glyph_polygons_for_knockout_and_endpoint_clipping(
     let centerlines = object_bond_centerlines(&primitives);
     assert_eq!(centerlines.len(), 1, "{centerlines:?}");
     let start_x = centerlines[0].0.x.min(centerlines[0].1.x);
-    assert!((start_x - 23.0).abs() <= 1.0e-3, "{centerlines:?}");
+    assert!(
+        start_x > 24.0 && start_x < 25.0,
+        "endpoint should be clipped from the glyph polygon plus margin, not the full label box: {centerlines:?}"
+    );
 }
 
 #[test]
@@ -3278,6 +3989,50 @@ fn render_document_joins_center_double_only_on_occupied_side() {
 }
 
 #[test]
+fn render_document_keeps_center_double_joined_line_normal_width() {
+    let document = fragment_document(
+        json!([
+            { "id": "n1", "element": "C", "atomicNumber": 6, "position": [20.0, 40.0], "charge": 0, "numHydrogens": 0 },
+            { "id": "n2", "element": "C", "atomicNumber": 6, "position": [56.0, 40.0], "charge": 0, "numHydrogens": 0 },
+            { "id": "n3", "element": "C", "atomicNumber": 6, "position": [74.0, 12.0], "charge": 0, "numHydrogens": 0 }
+        ]),
+        json!([
+            {
+                "id": "b1",
+                "begin": "n1",
+                "end": "n2",
+                "order": 2,
+                "strokeWidth": 0.6,
+                "double": { "placement": "center" }
+            },
+            {
+                "id": "b2",
+                "begin": "n2",
+                "end": "n3",
+                "order": 1,
+                "strokeWidth": 0.6
+            }
+        ]),
+    );
+
+    let polygons: Vec<_> = object_bond_polygons_with_ids(&render_document(&document))
+        .into_iter()
+        .filter(|(bond_id, _)| bond_id == "b1")
+        .map(|(_, points)| points)
+        .collect();
+    assert_eq!(polygons.len(), 2);
+
+    for polygon in &polygons {
+        let (start_width, end_width) =
+            bond_polygon_normal_widths(polygon).expect("center double polygon width");
+        assert!(
+            (start_width - 0.6).abs() <= 1.0e-6 && (end_width - 0.6).abs() <= 1.0e-6,
+            "{polygon:?} start={start_width} end={end_width}"
+        );
+    }
+}
+
+#[test]
 fn render_document_keeps_center_double_original_for_straight_through_180_degrees() {
     let document = fragment_document(
         json!([
@@ -3507,6 +4262,102 @@ fn render_document_keeps_terminal_side_double_offset_with_label_retreat() {
     assert!(
         (unlabeled_gap - labeled_gap).abs() <= 1.0e-4,
         "{unlabeled_gap} {labeled_gap}"
+    );
+}
+
+#[test]
+fn render_document_applies_label_clip_margin_to_glyph_polygons() {
+    let document = fragment_document(
+        json!([
+            { "id": "n1", "element": "C", "atomicNumber": 6, "position": [20.0, 40.0], "charge": 0, "numHydrogens": 0 },
+            {
+                "id": "n2",
+                "element": "N",
+                "atomicNumber": 7,
+                "position": [56.0, 40.0],
+                "charge": 0,
+                "numHydrogens": 0,
+                "label": {
+                    "text": "N",
+                    "position": [56.0, 45.0],
+                    "box": [51.0, 34.0, 61.0, 46.0],
+                    "glyphPolygons": [[
+                        [51.0, 34.0],
+                        [61.0, 34.0],
+                        [61.0, 46.0],
+                        [51.0, 46.0]
+                    ]]
+                }
+            }
+        ]),
+        json!([
+            { "id": "b1", "begin": "n1", "end": "n2", "order": 1, "strokeWidth": 0.85 }
+        ]),
+    );
+
+    let polygon = object_bond_polygons_with_ids(&render_document(&document))
+        .into_iter()
+        .find_map(|(bond_id, points)| (bond_id == "b1").then_some(points))
+        .expect("bond polygon should render");
+    let (from, to) = bond_axis_from_points(&polygon).expect("bond axis");
+    let label_endpoint = if from.x > to.x { from } else { to };
+
+    assert!(
+        51.0 - label_endpoint.x > 1.0,
+        "glyph polygon clipping should leave extra margin before the label: {polygon:?}"
+    );
+}
+
+#[test]
+fn render_document_uses_smaller_acs_label_clip_margin() {
+    let document = fragment_document(
+        json!([
+            { "id": "n1", "element": "C", "atomicNumber": 6, "position": [20.0, 40.0], "charge": 0, "numHydrogens": 0 },
+            {
+                "id": "n2",
+                "element": "N",
+                "atomicNumber": 7,
+                "position": [56.0, 40.0],
+                "charge": 0,
+                "numHydrogens": 0,
+                "label": {
+                    "text": "N",
+                    "position": [56.0, 45.0],
+                    "box": [51.0, 34.0, 61.0, 46.0],
+                    "glyphPolygons": [[
+                        [51.0, 34.0],
+                        [61.0, 34.0],
+                        [61.0, 46.0],
+                        [51.0, 46.0]
+                    ]]
+                }
+            }
+        ]),
+        json!([
+            {
+                "id": "b1",
+                "begin": "n1",
+                "end": "n2",
+                "order": 1,
+                "strokeWidth": 0.6,
+                "boldWidth": 2.0,
+                "hashSpacing": 2.5,
+                "bondSpacing": 18.0
+            }
+        ]),
+    );
+
+    let polygon = object_bond_polygons_with_ids(&render_document(&document))
+        .into_iter()
+        .find_map(|(bond_id, points)| (bond_id == "b1").then_some(points))
+        .expect("bond polygon should render");
+    let (from, to) = bond_axis_from_points(&polygon).expect("bond axis");
+    let label_endpoint = if from.x > to.x { from } else { to };
+    let margin = 51.0 - label_endpoint.x;
+
+    assert!(
+        (margin - 0.95).abs() < 0.02,
+        "ACS label clipping should use the ACS template margin: {margin} {polygon:?}"
     );
 }
 
@@ -4042,7 +4893,7 @@ fn render_document_uses_explicit_solid_wedge_wide_and_tip_widths() {
     let document = fragment_document(
         json!([
             { "id": "n1", "element": "C", "atomicNumber": 6, "position": [20.0, 40.0], "charge": 0, "numHydrogens": 0 },
-            { "id": "n2", "element": "C", "atomicNumber": 6, "position": [56.0, 40.0], "charge": 0, "numHydrogens": 0 }
+            { "id": "n2", "element": "C", "atomicNumber": 6, "position": [34.4, 40.0], "charge": 0, "numHydrogens": 0 }
         ]),
         json!([
             {
@@ -4050,7 +4901,9 @@ fn render_document_uses_explicit_solid_wedge_wide_and_tip_widths() {
                 "begin": "n1",
                 "end": "n2",
                 "order": 1,
-                "strokeWidth": 0.85,
+                "strokeWidth": 0.6,
+                "boldWidth": 2.0,
+                "wedgeWidth": 3.0,
                 "stereo": {
                     "kind": "solid-wedge",
                     "wideEnd": "end"
@@ -4081,11 +4934,56 @@ fn render_document_uses_explicit_solid_wedge_wide_and_tip_widths() {
     let wide_width =
         ((polygon[1].x - polygon[2].x).powi(2) + (polygon[1].y - polygon[2].y).powi(2)).sqrt();
 
-    assert!(
-        (tip_width - chemcore_engine::DEFAULT_BOND_STROKE_CM).abs() < 0.01,
-        "{tip_width}"
+    assert!((tip_width - 0.6).abs() < 0.01, "{tip_width}");
+    assert!((wide_width - 3.0).abs() < 0.01, "{wide_width}");
+}
+
+#[test]
+fn render_document_uses_acs_template_wedge_width_for_legacy_json_without_wedge_width() {
+    let document = fragment_document(
+        json!([
+            { "id": "n1", "element": "C", "atomicNumber": 6, "position": [20.0, 40.0], "charge": 0, "numHydrogens": 0 },
+            { "id": "n2", "element": "C", "atomicNumber": 6, "position": [34.4, 40.0], "charge": 0, "numHydrogens": 0 }
+        ]),
+        json!([
+            {
+                "id": "b1",
+                "begin": "n1",
+                "end": "n2",
+                "order": 1,
+                "strokeWidth": 0.6,
+                "boldWidth": 2.0,
+                "hashSpacing": 2.5,
+                "bondSpacing": 18.0,
+                "stereo": {
+                    "kind": "solid-wedge",
+                    "wideEnd": "end"
+                }
+            }
+        ]),
     );
-    assert!((wide_width - 6.0).abs() < 0.01, "{wide_width}");
+
+    let polygon = render_document(&document)
+        .into_iter()
+        .find_map(|primitive| match primitive {
+            RenderPrimitive::Polygon {
+                role,
+                object_id,
+                points,
+                ..
+            } if role == RenderRole::DocumentBond
+                && object_id.as_deref() == Some("obj_molecule_001") =>
+            {
+                Some(points)
+            }
+            _ => None,
+        })
+        .expect("solid wedge polygon");
+
+    let wide_width =
+        ((polygon[1].x - polygon[2].x).powi(2) + (polygon[1].y - polygon[2].y).powi(2)).sqrt();
+
+    assert!((wide_width - 3.0).abs() < 0.01, "{wide_width}");
 }
 
 #[test]

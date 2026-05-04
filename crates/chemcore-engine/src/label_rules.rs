@@ -148,6 +148,19 @@ pub fn decide_label_layout(
         };
     }
 
+    let has_right = connection_angles
+        .iter()
+        .any(|angle| direction_from_angle(*angle).x > DIRECTION_EPSILON);
+    let all_right_or_vertical = connection_angles
+        .iter()
+        .all(|angle| direction_from_angle(*angle).x >= -DIRECTION_EPSILON);
+    if has_right && all_right_or_vertical {
+        return LabelLayoutDecision {
+            flow: LabelFlow::Reverse,
+            anchor: LabelAnchorPolicy::OriginalFirstGroup,
+        };
+    }
+
     LabelLayoutDecision {
         flow: LabelFlow::Forward,
         anchor: LabelAnchorPolicy::FirstGlyph,
@@ -318,6 +331,13 @@ mod tests {
         assert_eq!(layout.lines, vec!["Cu", "F3Ph2"]);
         assert_eq!(layout.anchor_line, 0);
         assert_eq!(layout.anchor_char, 0);
+    }
+
+    #[test]
+    fn reverses_multi_bond_right_labels_with_vertical_connection() {
+        let decision = decide_label_layout(&[0.0, 270.0], false, false);
+        assert_eq!(decision.flow, LabelFlow::Reverse);
+        assert_eq!(decision.anchor, LabelAnchorPolicy::OriginalFirstGroup);
     }
 
     #[test]

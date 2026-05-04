@@ -544,6 +544,10 @@ pub struct Bond {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bold_width: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wedge_width: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label_clip_margin: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hash_spacing: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bond_spacing: Option<f64>,

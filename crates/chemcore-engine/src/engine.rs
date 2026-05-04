@@ -190,6 +190,10 @@ impl Engine {
         crate::document_to_cdxml(&self.state.document)
     }
 
+    pub fn document_svg(&self) -> String {
+        crate::document_to_svg(&self.state.document)
+    }
+
     pub fn load_document_json(&mut self, json: &str) -> Result<(), String> {
         let mut document = crate::parse_document_json(json)?;
         refresh_repeating_units(&mut document);
@@ -1049,8 +1053,10 @@ impl Engine {
             stereo: pending_stereo,
             stroke_width: self.options.bond_stroke_world_cm().value(),
             bold_width: Some(self.options.bold_bond_width_world_cm().value()),
+            wedge_width: Some(self.options.wedge_width_world_cm().value()),
+            label_clip_margin: Some(self.options.label_clip_margin_world_cm().value()),
             hash_spacing: Some(self.options.hash_spacing_world_cm().value()),
-            bond_spacing: None,
+            bond_spacing: Some(self.options.bond_spacing_percent()),
             line_styles: pending_line_styles,
             line_weights: pending_line_weights,
             meta: serde_json::Value::Null,
@@ -1354,6 +1360,7 @@ impl Engine {
                 "strokeWidth": stroke_width,
                 "dashArray": [],
                 "shadow": true,
+                "shadowSize": 4.0,
             }),
         }
     }
@@ -1778,8 +1785,10 @@ impl Engine {
             stereo: self.pending_bond_stereo(),
             stroke_width: self.options.bond_stroke_world_cm().value(),
             bold_width: Some(self.options.bold_bond_width_world_cm().value()),
+            wedge_width: Some(self.options.wedge_width_world_cm().value()),
+            label_clip_margin: Some(self.options.label_clip_margin_world_cm().value()),
             hash_spacing: Some(self.options.hash_spacing_world_cm().value()),
-            bond_spacing: None,
+            bond_spacing: Some(self.options.bond_spacing_percent()),
             line_styles: self.pending_line_styles(),
             line_weights: self.pending_line_weights(),
             meta: serde_json::Value::Null,
@@ -2994,6 +3003,19 @@ fn arrow_head_dimensions(size: ArrowHeadSize, bold: bool) -> (f64, f64, f64) {
     }
 }
 
+fn open_arrow_head_dimensions(size: ArrowHeadSize, bold: bool) -> (f64, f64, f64) {
+    let (length, center_length, width) = match size {
+        ArrowHeadSize::Large => (12.0, 12.0, 3.0),
+        ArrowHeadSize::Medium => (9.0, 9.0, 2.25),
+        ArrowHeadSize::Small => (6.0, 6.0, 1.5),
+    };
+    if bold {
+        (length * 2.0, center_length * 2.0, width * 2.0)
+    } else {
+        (length, center_length, width)
+    }
+}
+
 fn arrow_payload_dimensions(
     variant: ArrowVariant,
     size: ArrowHeadSize,
@@ -3002,7 +3024,7 @@ fn arrow_payload_dimensions(
     match variant {
         ArrowVariant::Solid => arrow_head_dimensions(size, bold),
         ArrowVariant::Curved | ArrowVariant::CurvedMirror => arrow_head_dimensions(size, bold),
-        ArrowVariant::Hollow | ArrowVariant::Open => (12.0, 12.0, 3.0),
+        ArrowVariant::Hollow | ArrowVariant::Open => open_arrow_head_dimensions(size, bold),
     }
 }
 
@@ -3234,6 +3256,14 @@ impl Engine {
             }
         }
         apply_existing_document_style_preset(&mut self.state.document, &next_options);
+        if let Some(mut entry) = self.state.document.editable_fragment_mut() {
+            refresh_attached_node_label_geometry_for_all_nodes(
+                entry.fragment,
+                entry.object.transform.translate,
+                next_options.bond_stroke_world_cm().value(),
+            );
+            entry.update_bounds();
+        }
         self.options = next_options;
         self.document_style_preset = preset.to_string();
         self.clear_interaction();
@@ -3253,7 +3283,10 @@ fn document_style_preset_options(preset: &str) -> EditorOptions {
             bond_length: 14.4,
             bond_stroke_width: 0.6,
             bold_bond_width: 2.0,
+            wedge_width: 3.0,
+            label_clip_margin: crate::ACS_LABEL_GEOMETRY_CLIP_MARGIN_CM.value(),
             hash_spacing: 2.5,
+            bond_spacing: 18.0,
             graphic_stroke_width: 0.6,
         },
         _ => EditorOptions::default(),
@@ -3273,7 +3306,10 @@ fn editor_options_approx_eq(left: &EditorOptions, right: &EditorOptions) -> bool
     (left.bond_length - right.bond_length).abs() <= 0.05
         && (left.bond_stroke_width - right.bond_stroke_width).abs() <= 0.01
         && (left.bold_bond_width - right.bold_bond_width).abs() <= 0.05
+        && (left.wedge_width - right.wedge_width).abs() <= 0.05
+        && (left.label_clip_margin - right.label_clip_margin).abs() <= 0.05
         && (left.hash_spacing - right.hash_spacing).abs() <= 0.05
+        && (left.bond_spacing - right.bond_spacing).abs() <= 0.05
         && (left.graphic_stroke_width - right.graphic_stroke_width).abs() <= 0.01
 }
 
@@ -3283,6 +3319,7 @@ fn editor_options_from_cdxml_document(document: &ChemcoreDocument) -> EditorOpti
     let mut has_line_width = false;
     let mut has_bold_width = false;
     let mut has_hash_spacing = false;
+    let mut has_bond_spacing = false;
     if let Some(defaults) = document
         .document
         .meta
@@ -3307,6 +3344,10 @@ fn editor_options_from_cdxml_document(document: &ChemcoreDocument) -> EditorOpti
             options.hash_spacing = value;
             has_hash_spacing = true;
         }
+        if let Some(value) = defaults.get("bondSpacing").and_then(JsonValue::as_f64) {
+            options.bond_spacing = value;
+            has_bond_spacing = true;
+        }
     }
     if let Some(metrics) = infer_cdxml_document_bond_metrics(document) {
         if !has_bond_length {
@@ -3323,6 +3364,20 @@ fn editor_options_from_cdxml_document(document: &ChemcoreDocument) -> EditorOpti
         if !has_hash_spacing {
             options.hash_spacing = metrics.hash_spacing.unwrap_or(options.hash_spacing);
         }
+        if !has_bond_spacing {
+            options.bond_spacing = metrics.bond_spacing.unwrap_or(options.bond_spacing);
+        }
+    }
+    let acs = document_style_preset_options(ACS_DOCUMENT_1996_PRESET);
+    if (options.bond_length - acs.bond_length).abs() <= 0.05
+        && (options.bond_stroke_width - acs.bond_stroke_width).abs() <= 0.01
+        && (options.bold_bond_width - acs.bold_bond_width).abs() <= 0.05
+        && (options.hash_spacing - acs.hash_spacing).abs() <= 0.05
+        && (options.bond_spacing - acs.bond_spacing).abs() <= 0.05
+        && (options.graphic_stroke_width - acs.graphic_stroke_width).abs() <= 0.01
+    {
+        options.wedge_width = acs.wedge_width;
+        options.label_clip_margin = acs.label_clip_margin;
     }
     options
 }
@@ -3333,6 +3388,7 @@ struct InferredBondMetrics {
     line_width: Option<f64>,
     bold_width: Option<f64>,
     hash_spacing: Option<f64>,
+    bond_spacing: Option<f64>,
 }
 
 fn infer_cdxml_document_bond_metrics(document: &ChemcoreDocument) -> Option<InferredBondMetrics> {
@@ -3341,6 +3397,7 @@ fn infer_cdxml_document_bond_metrics(document: &ChemcoreDocument) -> Option<Infe
     let mut line_widths = Vec::new();
     let mut bold_widths = Vec::new();
     let mut hash_spacings = Vec::new();
+    let mut bond_spacings = Vec::new();
     for bond in &entry.fragment.bonds {
         let Some(begin) = entry
             .fragment
@@ -3368,12 +3425,16 @@ fn infer_cdxml_document_bond_metrics(document: &ChemcoreDocument) -> Option<Infe
         if let Some(value) = bond.hash_spacing.filter(|value| *value > crate::EPSILON) {
             hash_spacings.push(value);
         }
+        if let Some(value) = bond.bond_spacing.filter(|value| *value > crate::EPSILON) {
+            bond_spacings.push(value);
+        }
     }
     Some(InferredBondMetrics {
         bond_length: median_near_default(&mut lengths),
         line_width: median_near_default(&mut line_widths),
         bold_width: median_near_default(&mut bold_widths),
         hash_spacing: median_near_default(&mut hash_spacings),
+        bond_spacing: median_near_default(&mut bond_spacings),
     })
 }
 
@@ -3551,14 +3612,13 @@ fn style_scale_key_as_length_scalar(key: &str) -> bool {
             | "strokeWidth"
             | "boldWidth"
             | "hashSpacing"
-            | "fontSize"
-            | "lineHeight"
             | "wrapWidth"
             | "pad"
             | "padding"
             | "length"
             | "centerLength"
             | "cornerRadius"
+            | "shadowSize"
     )
 }
 
@@ -3590,18 +3650,38 @@ fn apply_existing_document_style_preset(document: &mut ChemcoreDocument, options
         let Some(fragment) = resource.data.as_fragment_mut() else {
             continue;
         };
+        for node in &mut fragment.nodes {
+            if let Some(label) = node.label.as_mut() {
+                label.font_size = Some(crate::DEFAULT_MOLECULE_LABEL_FONT_SIZE_CM);
+                for run in &mut label.runs {
+                    run.font_size = Some(crate::DEFAULT_MOLECULE_LABEL_FONT_SIZE_CM);
+                }
+                for line in &mut label.line_runs {
+                    for run in line {
+                        run.font_size = Some(crate::DEFAULT_MOLECULE_LABEL_FONT_SIZE_CM);
+                    }
+                }
+            }
+        }
         for bond in &mut fragment.bonds {
             bond.stroke_width = options.bond_stroke_world_cm().value();
             bond.bold_width = Some(options.bold_bond_width_world_cm().value());
+            bond.wedge_width = Some(options.wedge_width_world_cm().value());
+            bond.label_clip_margin = Some(options.label_clip_margin_world_cm().value());
             bond.hash_spacing = Some(options.hash_spacing_world_cm().value());
+            bond.bond_spacing = Some(options.bond_spacing_percent());
         }
     }
     for style in document.styles.values_mut() {
         let Some(object) = style.as_object_mut() else {
             continue;
         };
-        let kind = object.get("kind").and_then(JsonValue::as_str).unwrap_or("");
-        let target_width = match kind {
+        let kind = object
+            .get("kind")
+            .and_then(JsonValue::as_str)
+            .unwrap_or("")
+            .to_string();
+        let target_width = match kind.as_str() {
             "molecule" => Some(options.bond_stroke_world_cm().value()),
             "stroke" | "shape" => existing_style_has_stroke_width(object)
                 .then_some(options.graphic_stroke_world_cm().value()),
@@ -3609,6 +3689,21 @@ fn apply_existing_document_style_preset(document: &mut ChemcoreDocument, options
         };
         if let Some(width) = target_width {
             object.insert("strokeWidth".to_string(), json_number(width));
+        }
+        match kind.as_str() {
+            "molecule" => {
+                object.insert(
+                    "fontSize".to_string(),
+                    json_number(crate::DEFAULT_MOLECULE_LABEL_FONT_SIZE_CM),
+                );
+            }
+            "text" => {
+                object.insert(
+                    "fontSize".to_string(),
+                    json_number(crate::DEFAULT_TEXT_FONT_SIZE_CM),
+                );
+            }
+            _ => {}
         }
     }
 }

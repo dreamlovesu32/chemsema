@@ -319,6 +319,7 @@ fn render_legacy_bond(
             },
             legacy_wide_contact_directions(parsed, bond, bond.end, atom_points, hidden_atoms),
             stroke_width,
+            solid_wedge_half_width(stroke_width),
         );
         push_polygon(
             out,

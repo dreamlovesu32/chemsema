@@ -290,7 +290,7 @@ pub(super) fn main_bond_endpoint_geometry<'a>(
 
     if let Some(stereo_kind) = bond_stereo_kind(bond) {
         let narrow_half_width = solid_wedge_tip_half_width(stroke_width);
-        let wide_half_width = solid_wedge_half_width(stroke_width);
+        let wide_half_width = solid_wedge_half_width_for_bond(bond, stroke_width);
         return match stereo_kind {
             BondStereoKind::SolidWedgeEnd | BondStereoKind::HashedWedgeEnd
                 if node_id == bond.end =>
@@ -810,22 +810,6 @@ mod tests {
     }
 
     #[test]
-    fn centered_double_extension_threshold_uses_162_degrees() {
-        let axis = Vector::new(1.0, 0.0);
-        let skip_axis = Vector::new(
-            (-170.0_f64).to_radians().cos(),
-            (-170.0_f64).to_radians().sin(),
-        );
-        let extend_axis = Vector::new(
-            (-150.0_f64).to_radians().cos(),
-            (-150.0_f64).to_radians().sin(),
-        );
-
-        assert!(center_double_skips_extension(axis, skip_axis));
-        assert!(!center_double_skips_extension(axis, extend_axis));
-    }
-
-    #[test]
     fn bounded_main_contour_intersection_clamps_far_miter() {
         let first = contour(Point::new(0.0, 1.0), Vector::new(1.0, 0.0), 20.0, 1.0);
         let second = contour(Point::new(0.0, -1.0), Vector::new(1.0, 0.1), 20.0, 1.0);
@@ -847,5 +831,21 @@ mod tests {
         approx_eq(join.first.y, 1.0);
         approx_eq(join.second.x, 4.0);
         approx_eq(join.second.y, 1.0);
+    }
+
+    #[test]
+    fn centered_double_extension_threshold_uses_162_degrees() {
+        let axis = Vector::new(1.0, 0.0);
+        let skip_axis = Vector::new(
+            (-170.0_f64).to_radians().cos(),
+            (-170.0_f64).to_radians().sin(),
+        );
+        let extend_axis = Vector::new(
+            (-150.0_f64).to_radians().cos(),
+            (-150.0_f64).to_radians().sin(),
+        );
+
+        assert!(center_double_skips_extension(axis, skip_axis));
+        assert!(!center_double_skips_extension(axis, extend_axis));
     }
 }

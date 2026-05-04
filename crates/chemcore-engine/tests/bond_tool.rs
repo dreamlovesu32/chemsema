@@ -48,6 +48,22 @@ fn rect_path_coordinate_bounds(d: &str) -> [f64; 4] {
     [min_x, min_y, max_x, max_y]
 }
 
+fn label_glyph_bounds(label: &chemcore_engine::NodeLabel) -> [f64; 4] {
+    let mut min_x = f64::INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+    for polygon in &label.glyph_polygons {
+        for [x, y] in polygon {
+            min_x = min_x.min(*x);
+            min_y = min_y.min(*y);
+            max_x = max_x.max(*x);
+            max_y = max_y.max(*y);
+        }
+    }
+    [min_x, min_y, max_x, max_y]
+}
+
 fn assert_point_close(left: Point, right: Point) {
     assert!(
         left.distance(right) < 1e-9,
@@ -543,6 +559,50 @@ fn arrow_tool_defaults_to_small_head_without_selecting_created_arrow() {
 }
 
 #[test]
+fn hollow_and_open_arrow_sizes_use_their_own_three_step_template() {
+    for (variant, size, expected) in [
+        (ArrowVariant::Hollow, ArrowHeadSize::Large, 12.0),
+        (ArrowVariant::Hollow, ArrowHeadSize::Medium, 9.0),
+        (ArrowVariant::Hollow, ArrowHeadSize::Small, 6.0),
+        (ArrowVariant::Open, ArrowHeadSize::Large, 12.0),
+        (ArrowVariant::Open, ArrowHeadSize::Medium, 9.0),
+        (ArrowVariant::Open, ArrowHeadSize::Small, 6.0),
+    ] {
+        let mut engine = Engine::new();
+        engine.set_tool_state(ToolState {
+            active_tool: Tool::Arrow,
+            arrow_variant: variant,
+            arrow_head_size: size,
+            ..ToolState::default()
+        });
+        drag(&mut engine, Point::new(10.0, 20.0), Point::new(90.0, 20.0));
+
+        let arrow_head = engine
+            .state()
+            .document
+            .objects
+            .iter()
+            .find(|object| object.object_type == "line")
+            .and_then(|object| object.payload.extra.get("arrowHead"))
+            .expect("created arrow should carry arrowHead payload");
+        assert_eq!(
+            arrow_head.get("length").and_then(|value| value.as_f64()),
+            Some(expected)
+        );
+        assert_eq!(
+            arrow_head
+                .get("centerLength")
+                .and_then(|value| value.as_f64()),
+            Some(expected)
+        );
+        assert_eq!(
+            arrow_head.get("width").and_then(|value| value.as_f64()),
+            Some(expected * 0.25)
+        );
+    }
+}
+
+#[test]
 fn arrow_hover_endpoint_drag_updates_head_with_angle_snap() {
     let mut engine = Engine::new();
     engine.set_tool_state(ToolState {
@@ -1004,6 +1064,7 @@ fn click_on_blank_canvas_creates_up_right_single_bond() {
     );
     assert_eq!(entry.fragment.nodes[1].position, [FIRST_END_X, FIRST_END_Y]);
     assert_eq!(entry.fragment.bonds[0].stroke_width, DEFAULT_BOND_STROKE);
+    assert_eq!(entry.fragment.bonds[0].bond_spacing, Some(12.0));
 }
 
 #[test]
@@ -1021,7 +1082,47 @@ fn acs_document_1996_preset_sets_new_bond_metrics() {
     assert!((begin.distance(end) - 14.4).abs() < 0.001);
     assert!((bond.stroke_width - 0.6).abs() < 0.001);
     assert_eq!(bond.bold_width, Some(2.0));
+    assert_eq!(bond.wedge_width, Some(3.0));
+    assert_eq!(bond.label_clip_margin, Some(0.95));
     assert_eq!(bond.hash_spacing, Some(2.5));
+    assert_eq!(bond.bond_spacing, Some(18.0));
+}
+
+#[test]
+fn acs_document_1996_preset_reflows_existing_endpoint_label_geometry() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, px(300.0), px(260.0));
+    hover(&mut engine, FIRST_END_HOVER_X, FIRST_END_HOVER_Y);
+    assert!(engine.replace_hovered_endpoint_label("N"));
+
+    engine.set_document_style_preset("acs-document-1996");
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let labeled = entry
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| node.element == "N")
+        .expect("endpoint label should remain an N node");
+    let label = labeled.label.as_ref().expect("N node should have a label");
+    let bounds = label_glyph_bounds(label);
+    let glyph_width = bounds[2] - bounds[0];
+    let box_width = label.bbox().map(|bbox| bbox[2] - bbox[0]).unwrap_or(0.0);
+
+    assert_eq!(
+        label.font_size,
+        Some(chemcore_engine::DEFAULT_MOLECULE_LABEL_FONT_SIZE_CM)
+    );
+    assert!(
+        glyph_width > 8.0,
+        "ACS style switch should reflow glyph geometry for the 10pt label, not keep a scaled 0.48x box: {bounds:?}"
+    );
+    assert!(
+        box_width > 7.0,
+        "label bbox should also be reflowed at the current font size: {:?}",
+        label.bbox()
+    );
 }
 
 #[test]
@@ -1219,6 +1320,8 @@ fn acs_document_1996_preset_scales_existing_document_as_one_group() {
         .bonds[0];
     assert!((bond.stroke_width - 0.6).abs() < 0.001);
     assert_eq!(bond.bold_width, Some(2.0));
+    assert_eq!(bond.wedge_width, Some(3.0));
+    assert_eq!(bond.label_clip_margin, Some(0.95));
     assert_eq!(bond.hash_spacing, Some(2.5));
 
     engine.set_document_style_preset("default");
@@ -1243,6 +1346,8 @@ fn acs_document_1996_preset_scales_existing_document_as_one_group() {
     assert_eq!(engine.document_style_preset(), "default");
     assert!((default_begin.distance(default_end) - DEFAULT_BOND_LENGTH).abs() < 0.001);
     assert!((default_bond.stroke_width - DEFAULT_BOND_STROKE).abs() < 0.001);
+    assert_eq!(default_bond.wedge_width, Some(6.0));
+    assert_eq!(default_bond.label_clip_margin, Some(1.35));
 }
 
 #[test]
@@ -4386,6 +4491,51 @@ fn shape_tool_rectangles_use_drag_corners() {
             ..
         } if (*stroke_width - 1.0).abs() < 0.001 && dash_array.is_empty() && d.starts_with("M ")
     )));
+}
+
+#[test]
+fn select_tool_click_selects_loaded_shape_object() {
+    let mut engine = Engine::new();
+    let document = json!({
+        "format": { "name": "chemcore", "version": "0.1" },
+        "document": {
+            "id": "doc_shape_select",
+            "title": "shape select",
+            "page": { "width": 200.0, "height": 160.0, "background": "#ffffff" }
+        },
+        "styles": {
+            "style_shape": {
+                "kind": "shape",
+                "stroke": "#000000",
+                "strokeWidth": 0.6,
+                "fill": null
+            }
+        },
+        "objects": [{
+            "id": "obj_shape_loaded",
+            "type": "shape",
+            "visible": true,
+            "zIndex": 10,
+            "transform": { "translate": [20.0, 30.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+            "styleRef": "style_shape",
+            "payload": {
+                "kind": "rect",
+                "bbox": [0.0, 0.0, 40.0, 24.0]
+            }
+        }],
+        "resources": {}
+    });
+    engine
+        .load_document_json(&document.to_string())
+        .expect("shape document should load");
+    engine.set_tool_state(select_tool());
+
+    engine.select_at_point(Point::new(40.0, 42.0), false);
+
+    assert_eq!(
+        engine.state().selection.arrow_objects,
+        vec!["obj_shape_loaded".to_string()]
+    );
 }
 
 #[test]

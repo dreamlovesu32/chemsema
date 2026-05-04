@@ -116,7 +116,7 @@ if (typeof window !== "undefined") {
   };
 }
 
-const DEFAULT_TEXT_FONT_SIZE = 7.5;
+const DEFAULT_TEXT_FONT_SIZE = 10;
 const BOND_STROKE = 1.0;
 const CHEMDRAW_PAGE_BACKGROUND = "#ffffff";
 const CHEMDRAW_INK = "#000000";
@@ -1677,10 +1677,10 @@ document.querySelectorAll("[data-command]").forEach((button) => {
     }
     if (command === "save") {
       try {
-        await saveCurrentDocumentJson();
+        await saveCurrentDocumentAs();
       } catch (error) {
         if (!isAbortError(error)) {
-          console.error("Failed to save chemcore JSON", error);
+          console.error("Failed to save document", error);
           window.alert?.(`Save failed: ${error.message || error}`);
         }
       }
@@ -1693,6 +1693,17 @@ document.querySelectorAll("[data-command]").forEach((button) => {
         if (!isAbortError(error)) {
           console.error("Failed to save CDXML", error);
           window.alert?.(`Save CDXML failed: ${error.message || error}`);
+        }
+      }
+      return;
+    }
+    if (command === "save-svg") {
+      try {
+        await saveCurrentDocumentSvg();
+      } catch (error) {
+        if (!isAbortError(error)) {
+          console.error("Failed to save SVG", error);
+          window.alert?.(`Save SVG failed: ${error.message || error}`);
         }
       }
       return;
@@ -3979,6 +3990,46 @@ function cdxmlFileNameForSave() {
   return baseName.replace(/\.[^.]+$/, "") + ".cdxml";
 }
 
+function svgFileNameForSave() {
+  const baseName = state.currentFileName || documentTitleForFileName(state.currentDocument);
+  return baseName.replace(/\.[^.]+$/, "") + ".svg";
+}
+
+function saveAsBaseName() {
+  const baseName = state.currentFileName || documentTitleForFileName(state.currentDocument);
+  return baseName.replace(/\.[^.]+$/, "") || "chemcore-document";
+}
+
+function saveFormatFromFileName(fileName) {
+  const lowerName = String(fileName || "").toLowerCase();
+  if (lowerName.endsWith(".svg")) {
+    return "svg";
+  }
+  if (lowerName.endsWith(".cdxml")) {
+    return "cdxml";
+  }
+  return "json";
+}
+
+function savePayloadForFormat(format) {
+  if (format === "svg") {
+    return {
+      content: currentDocumentSvgForSave(),
+      mimeType: "image/svg+xml",
+    };
+  }
+  if (format === "cdxml") {
+    return {
+      content: currentDocumentCdxmlForSave(),
+      mimeType: "chemical/x-cdxml",
+    };
+  }
+  return {
+    content: currentDocumentJsonForSave(),
+    mimeType: "application/json",
+  };
+}
+
 async function saveCurrentDocumentJson() {
   const json = currentDocumentJsonForSave();
   const suggestedName = state.currentFileName || documentTitleForFileName(state.currentDocument);
@@ -4018,6 +4069,14 @@ function currentDocumentCdxmlForSave() {
   return state.editorEngine.documentCdxml();
 }
 
+function currentDocumentSvgForSave() {
+  finishActiveTextEditor(true);
+  if (!state.editorEngine?.documentSvg) {
+    throw new Error("SVG export is unavailable.");
+  }
+  return state.editorEngine.documentSvg();
+}
+
 async function saveCurrentDocumentCdxml() {
   const cdxml = currentDocumentCdxmlForSave();
   const suggestedName = cdxmlFileNameForSave();
@@ -4047,6 +4106,68 @@ async function saveCurrentDocumentCdxml() {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+async function saveCurrentDocumentSvg() {
+  const svg = currentDocumentSvgForSave();
+  const suggestedName = svgFileNameForSave();
+  if (window.showSaveFilePicker) {
+    const handle = await window.showSaveFilePicker({
+      suggestedName,
+      types: [
+        {
+          description: "Scalable Vector Graphics",
+          accept: { "image/svg+xml": [".svg"] },
+        },
+      ],
+    });
+    const writable = await handle.createWritable();
+    await writable.write(svg);
+    await writable.close();
+    return;
+  }
+  const blob = new Blob([svg], { type: "image/svg+xml" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = suggestedName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function saveCurrentDocumentAs() {
+  if (window.showSaveFilePicker) {
+    const handle = await window.showSaveFilePicker({
+      suggestedName: `${saveAsBaseName()}.cdxml`,
+      types: [
+        {
+          description: "ChemDraw CDXML",
+          accept: { "chemical/x-cdxml": [".cdxml"], "text/xml": [".cdxml"] },
+        },
+        {
+          description: "Scalable Vector Graphics",
+          accept: { "image/svg+xml": [".svg"] },
+        },
+        {
+          description: "chemcore JSON",
+          accept: { "application/json": [".json"] },
+        },
+      ],
+    });
+    const format = saveFormatFromFileName(handle.name);
+    const { content } = savePayloadForFormat(format);
+    const writable = await handle.createWritable();
+    await writable.write(content);
+    await writable.close();
+    if (format !== "svg") {
+      state.currentFileName = handle.name || state.currentFileName;
+      viewerTitle.textContent = state.currentDocument?.document?.title || state.currentFileName || "Untitled";
+    }
+    return;
+  }
+  await saveCurrentDocumentJson();
 }
 
 function looksLikeCdxmlFile(file, text) {
