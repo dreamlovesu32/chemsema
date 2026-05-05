@@ -33,3 +33,5 @@ tmp/
 *.swo
 *:Zone.Identifier
 *:mshield
+*Zone.Identifier
+*mshield

@@ -1,6 +1,7 @@
 import {
   CHEMCORE_COMPRESSED_EXTENSION,
   CHEMCORE_COMPRESSED_MIME,
+  CHEMCORE_TEXT_EXTENSION,
   CHEMCORE_TEXT_MIME,
   baseNameWithoutDocumentExtension,
   chemcoreOpenAcceptTypes,
@@ -117,7 +118,6 @@ export function createDocumentFlow(options) {
   }
 
   async function saveCurrentDocumentNative() {
-    const payload = await savePayloadForFormat("ccjz");
     const suggestedName = `${saveAsBaseName()}${CHEMCORE_COMPRESSED_EXTENSION}`;
     if (window.showSaveFilePicker) {
       const handle = await window.showSaveFilePicker({
@@ -127,6 +127,7 @@ export function createDocumentFlow(options) {
           accept: { [CHEMCORE_COMPRESSED_MIME]: [CHEMCORE_COMPRESSED_EXTENSION] },
         }],
       });
+      const payload = await savePayloadForFormat("ccjz");
       const writable = await handle.createWritable();
       await writable.write(payload.content);
       await writable.close();
@@ -134,6 +135,7 @@ export function createDocumentFlow(options) {
       options.viewerTitle.textContent = options.state.currentDocument?.document?.title || options.state.currentFileName || "Untitled";
       return;
     }
+    const payload = await savePayloadForFormat("ccjz");
     downloadBinaryFile(payload.content, suggestedName, payload.mimeType);
   }
 
@@ -154,13 +156,13 @@ export function createDocumentFlow(options) {
   }
 
   async function saveCurrentDocumentCdxml() {
-    const cdxml = currentDocumentCdxmlForSave();
     const suggestedName = cdxmlFileNameForSave();
     if (window.showSaveFilePicker) {
       const handle = await window.showSaveFilePicker({
         suggestedName,
         types: [{ description: "ChemDraw CDXML", accept: { "chemical/x-cdxml": [".cdxml"], "text/xml": [".cdxml"] } }],
       });
+      const cdxml = currentDocumentCdxmlForSave();
       const writable = await handle.createWritable();
       await writable.write(cdxml);
       await writable.close();
@@ -168,22 +170,24 @@ export function createDocumentFlow(options) {
       options.viewerTitle.textContent = options.state.currentDocument?.document?.title || options.state.currentFileName || "Untitled";
       return;
     }
+    const cdxml = currentDocumentCdxmlForSave();
     downloadTextFile(cdxml, suggestedName, "chemical/x-cdxml");
   }
 
   async function saveCurrentDocumentSvg() {
-    const svg = currentDocumentSvgForSave();
     const suggestedName = svgFileNameForSave();
     if (window.showSaveFilePicker) {
       const handle = await window.showSaveFilePicker({
         suggestedName,
         types: [{ description: "Scalable Vector Graphics", accept: { "image/svg+xml": [".svg"] } }],
       });
+      const svg = currentDocumentSvgForSave();
       const writable = await handle.createWritable();
       await writable.write(svg);
       await writable.close();
       return;
     }
+    const svg = currentDocumentSvgForSave();
     downloadTextFile(svg, suggestedName, "image/svg+xml");
   }
 
