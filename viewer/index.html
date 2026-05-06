@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>chemcore editor</title>
     <link rel="icon" href="data:," />
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./styles.css?v=20260506-toolbar-density" />
   </head>
   <body data-view-mode="document">
     <div id="desktop-titlebar" class="desktop-titlebar" aria-label="Window title bar">
@@ -61,7 +61,7 @@
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 7 4.5 4.5L15 16"/><path d="M19 11.5H9.5a5 5 0 0 0 0 10"/></svg>
             </button>
             <button class="icon-button" type="button" data-tool="delete" aria-label="Delete" title="Delete">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14"/><path d="M9 7V4h6v3"/><path d="M7 7l1 13h8l1-13"/><path d="M10.5 11v5"/><path d="M13.5 11v5"/></svg>
+              <svg class="chemcore-icon cc-command-icon" viewBox="0 0 24 24" aria-hidden="true"><path class="cc-delete-stroke" d="M5.85 7.75h12.3"/><path class="cc-delete-stroke" d="M9.3 7.75V5.2h5.4v2.55"/><path class="cc-delete-stroke" d="M7.85 7.75 8.55 18.85h6.9l.7-11.1"/><path class="cc-delete-soft" d="M10.65 11.05v4.65"/><path class="cc-delete-soft" d="M13.35 11.05v4.65"/></svg>
             </button>
             <button class="icon-button" type="button" data-command="cut" aria-label="Cut" title="Cut">
               <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6.5" cy="17.5" r="2.2"/><circle cx="17.5" cy="17.5" r="2.2"/><path d="M8.2 16 18 5"/><path d="m6 5 9.8 11"/></svg>
@@ -156,6 +156,6 @@
       <pre id="doc-meta" class="visually-hidden"></pre>
     </div>
 
-    <script type="module" src="./app.js?v=20260506-desktop-native"></script>
+    <script type="module" src="./app.js?v=20260506-toolbar-density"></script>
   </body>
 </html>

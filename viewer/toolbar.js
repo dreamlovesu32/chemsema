@@ -342,7 +342,7 @@ function commandIconSvg(name) {
     save: iconSvg(`<path class="cc-stroke" d="M5.1 4.2h11.3l2.5 2.5v13.1H5.1z"/><path class="cc-stroke" d="M8.2 4.2v6h7.2v-6"/><path class="cc-stroke" d="M8.2 15.5h7.6v4.3H8.2z"/>`, "cc-command-icon"),
     undo: iconSvg(`<path class="cc-stroke" d="M9.1 7.1 4.7 11.5 9.1 16"/><path class="cc-stroke" d="M5 11.5h9.3c3.5 0 5.5 2.2 5.5 5.1 0 2.7-2.1 4.9-5.2 4.9"/>`, "cc-command-icon"),
     redo: iconSvg(`<path class="cc-stroke" d="m14.9 7.1 4.4 4.4-4.4 4.5"/><path class="cc-stroke" d="M19 11.5H9.7c-3.5 0-5.5 2.2-5.5 5.1 0 2.7 2.1 4.9 5.2 4.9"/>`, "cc-command-icon"),
-    delete: iconSvg(`<path class="cc-stroke" d="M5.7 7.75h12.6"/><path class="cc-stroke" d="M9.15 7.75V5.15h5.7v2.6"/><path class="cc-stroke" d="M7.65 7.75 8.35 19h7.3l.7-11.25"/><path class="cc-stroke cc-stroke-soft" d="M10.55 11.05v4.85"/><path class="cc-stroke cc-stroke-soft" d="M13.45 11.05v4.85"/>`, "cc-command-icon"),
+    delete: iconSvg(`<path class="cc-delete-stroke" d="M5.85 7.75h12.3"/><path class="cc-delete-stroke" d="M9.3 7.75V5.2h5.4v2.55"/><path class="cc-delete-stroke" d="M7.85 7.75 8.55 18.85h6.9l.7-11.1"/><path class="cc-delete-soft" d="M10.65 11.05v4.65"/><path class="cc-delete-soft" d="M13.35 11.05v4.65"/>`, "cc-command-icon"),
     cut: iconSvg(`<circle class="cc-stroke" cx="6.5" cy="17.3" r="2.05"/><circle class="cc-stroke" cx="17.5" cy="17.3" r="2.05"/><path class="cc-stroke" d="M8.1 15.9 18 5.3"/><path class="cc-stroke" d="m6.1 5.3 9.8 10.6"/>`, "cc-command-icon"),
     copy: iconSvg(`<rect class="cc-stroke" x="8.2" y="7.2" width="9.7" height="11.6"/><rect class="cc-stroke" x="5.2" y="4.2" width="9.7" height="11.6"/>`, "cc-command-icon"),
     paste: iconSvg(`<path class="cc-stroke" d="M8.2 5.2h7.6v3H8.2z"/><path class="cc-stroke" d="M6.2 7.2h11.6v12.6H6.2z"/><path class="cc-stroke" d="M9.1 12.3h5.8"/><path class="cc-stroke" d="M9.1 16h5"/>`, "cc-command-icon"),
@@ -363,6 +363,11 @@ export function syncPrimaryChromeIcons(root = document) {
     if (svg) {
       button.innerHTML = svg;
     }
+  }
+  const deleteToolButton = root.querySelector('.icon-button[data-tool="delete"]');
+  const deleteSvg = commandIconSvg("delete");
+  if (deleteToolButton && deleteSvg) {
+    deleteToolButton.innerHTML = deleteSvg;
   }
   for (const [tool, svg] of [
     ["select", commandIconSvg("select")],

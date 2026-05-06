@@ -565,7 +565,7 @@ fn resolve_anchor_glyph_index(
 
 fn locate_glyph_run(
     placements: &[GlyphPlacement],
-    config: LayoutConfig,
+    _config: LayoutConfig,
     anchor_glyph_index: Option<usize>,
 ) -> LabelAnchor {
     let Some(index) = resolve_anchor_glyph_index(placements, anchor_glyph_index) else {
@@ -581,18 +581,8 @@ fn locate_glyph_run(
         valid: true,
         glyph_index: index,
         x_px: (placement.background_box_px[0] + placement.background_box_px[2]) * 0.5,
-        y_px: placement.baseline_y_px + standard_glyph_center_y_offset(config),
+        y_px: (placement.background_box_px[1] + placement.background_box_px[3]) * 0.5,
     }
-}
-
-fn standard_glyph_center_y_offset(config: LayoutConfig) -> f64 {
-    let profile = default_upper_profile();
-    (profile.ink_top_em + profile.ink_bottom_em) * 0.5 * config.font_size_px
-}
-
-pub fn shared_standard_glyph_anchor_y_offset(font_size: f64) -> f64 {
-    let profile = default_upper_profile();
-    (profile.ink_top_em + profile.ink_bottom_em) * 0.5 * font_size
 }
 
 fn visible_bounds(placements: &[GlyphPlacement]) -> Option<[f64; 4]> {
@@ -895,10 +885,6 @@ fn shared_glyph_profiles() -> &'static SharedGlyphProfiles {
                 .expect("shared glyph profile manifest must be valid JSON");
         SharedGlyphProfiles::from_json(manifest)
     })
-}
-
-fn default_upper_profile() -> GlyphProfile {
-    shared_glyph_profiles().defaults.upper
 }
 
 fn default_lower_profile() -> GlyphProfile {

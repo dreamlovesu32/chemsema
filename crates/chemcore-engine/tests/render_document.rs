@@ -2120,7 +2120,7 @@ fn parse_cdxml_keeps_numeric_suffix_node_label_anchored_on_letter() {
             .collect()
     }
 
-    fn glyph_center(label: &chemcore_engine::NodeLabel, index: usize) -> Point {
+    fn anchor_of(label: &chemcore_engine::NodeLabel, index: usize) -> Point {
         let polygon = label
             .glyph_polygons
             .get(index)
@@ -2136,33 +2136,25 @@ fn parse_cdxml_keeps_numeric_suffix_node_label_anchored_on_letter() {
         Point::new((min_x + max_x) * 0.5, (min_y + max_y) * 0.5)
     }
 
-    fn assert_n3_aligns_with_right_ph(document: &ChemcoreDocument) {
+    fn assert_n3_preserves_cdxml_center_display(document: &ChemcoreDocument) {
         let nodes = labeled_nodes(document);
         let (n3_node, n3_label) = nodes
             .iter()
             .copied()
             .find(|(_, label)| label.source_text.as_deref() == Some("N3"))
             .expect("example should contain an N3 node label");
-        let (_, ph_label) = nodes
-            .iter()
-            .copied()
-            .find(|(node, label)| {
-                label.source_text.as_deref() == Some("Ph")
-                    && (node.position[1] - n3_node.position[1]).abs() < 0.01
-                    && node.position[0] > n3_node.position[0]
-            })
-            .expect("example should contain the matching right-side Ph label");
 
         assert_eq!(n3_label.runs[1].script.as_deref(), Some("subscript"));
+        assert_eq!(n3_label.align.as_deref(), Some("center"));
+        assert_eq!(n3_label.layout.as_deref(), Some("attached-group-center"));
+        let bbox = n3_label.bbox().expect("centered label should keep a bbox");
         assert!(
-            (glyph_center(n3_label, 1).x - n3_node.position[0]).abs() < 0.01,
-            "N3 should use the subscript digit for anchor x: node={n3_node:?}, label={n3_label:?}"
+            (((bbox[0] + bbox[2]) * 0.5) - n3_node.position[0]).abs() < 0.01,
+            "centered CDXML labels should use whole text width for anchor x: node={n3_node:?}, label={n3_label:?}"
         );
         assert!(
-            (n3_label.position.unwrap()[1] - ph_label.position.unwrap()[1]).abs() < 0.5,
-            "N3 and the matching Ph should keep the same baseline: n3={:?}, ph={:?}",
-            n3_label.position,
-            ph_label.position
+            (anchor_of(n3_label, 0).y - n3_node.position[1]).abs() < 0.5,
+            "centered CDXML labels should use the center glyph y, not a forced baseline y: node={n3_node:?}, label={n3_label:?}"
         );
     }
 
@@ -2170,12 +2162,17 @@ fn parse_cdxml_keeps_numeric_suffix_node_label_anchored_on_letter() {
         .expect("example cdxml");
     let imported =
         parse_cdxml_document(&cdxml, Some("example")).expect("example cdxml should parse");
-    assert_n3_aligns_with_right_ph(&imported);
+    assert_n3_preserves_cdxml_center_display(&imported);
 
     let exported = document_to_cdxml(&imported);
+    assert!(exported.contains("LabelDisplay=\"Center\""), "{exported}");
+    assert!(
+        exported.contains("LabelJustification=\"Center\""),
+        "{exported}"
+    );
     let reimported =
         parse_cdxml_document(&exported, Some("example export")).expect("export should parse");
-    assert_n3_aligns_with_right_ph(&reimported);
+    assert_n3_preserves_cdxml_center_display(&reimported);
 
     let invalid_cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >
@@ -2208,12 +2205,8 @@ fn parse_cdxml_keeps_numeric_suffix_node_label_anchored_on_letter() {
     );
     assert_eq!(invalid_label.runs[1].script.as_deref(), Some("subscript"));
     assert!(
-        (glyph_center(invalid_label, 1).x - invalid_node.position[0]).abs() < 0.01,
-        "invalid labels should still use subscript/superscript glyphs for anchor x: node={invalid_node:?}, label={invalid_label:?}"
-    );
-    assert!(
-        (glyph_center(invalid_label, 1).y - invalid_node.position[1]).abs() > 1.0,
-        "subscript glyph bbox y should not be used as the label anchor y: node={invalid_node:?}, label={invalid_label:?}"
+        anchor_of(invalid_label, 0).distance(invalid_node.point()) < 0.01,
+        "invalid labels should prefer non-script glyph anchors over subscript/superscript glyphs: node={invalid_node:?}, label={invalid_label:?}"
     );
 }
 

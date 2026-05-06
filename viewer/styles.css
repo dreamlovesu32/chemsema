@@ -12,6 +12,13 @@
   --hover: #eef3f8;
   --danger: #b44747;
   --canvas: #ffffff;
+  --editor-topbar-height: 94px;
+  --toolbar-primary-height: 52px;
+  --toolbar-secondary-height: 42px;
+  --tool-rail-width: 52px;
+  --tool-button-width: 44px;
+  --tool-button-height: 40px;
+  --tool-icon-size: 28px;
 }
 
 * {
@@ -63,8 +70,8 @@ button {
 
 .editor-shell {
   display: grid;
-  grid-template-columns: 60px minmax(0, 1fr);
-  grid-template-rows: 94px minmax(0, 1fr);
+  grid-template-columns: var(--tool-rail-width) minmax(0, 1fr);
+  grid-template-rows: var(--editor-topbar-height) minmax(0, 1fr);
   width: 100vw;
   height: 100vh;
   background: var(--canvas);
@@ -73,21 +80,21 @@ button {
 body.desktop-shell .editor-shell {
   height: auto;
   min-height: 0;
-  grid-template-rows: 94px minmax(0, 1fr);
+  grid-template-rows: var(--editor-topbar-height) minmax(0, 1fr);
 }
 
 .editor-topbar {
   grid-column: 1 / -1;
   grid-row: 1;
   display: grid;
-  grid-template-rows: 52px 42px;
+  grid-template-rows: var(--toolbar-primary-height) var(--toolbar-secondary-height);
   border-bottom: 1px solid var(--line-strong);
   background: var(--chrome);
   user-select: none;
 }
 
 body.desktop-shell .editor-topbar {
-  grid-template-rows: 52px 42px;
+  grid-template-rows: var(--toolbar-primary-height) var(--toolbar-secondary-height);
 }
 
 .desktop-titlebar {
@@ -490,6 +497,23 @@ body.browser-shell .document-tabbar {
   stroke-width: 1.45;
 }
 
+.chemcore-icon .cc-delete-stroke,
+.chemcore-icon .cc-delete-soft {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.chemcore-icon .cc-delete-stroke {
+  stroke-width: 1.48;
+}
+
+.chemcore-icon .cc-delete-soft {
+  stroke-width: 1.28;
+}
+
 .chemcore-icon .cc-guide {
   fill: none;
   stroke: currentColor;
@@ -725,7 +749,7 @@ body.browser-shell .document-tabbar {
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  padding: 7px 4px;
+  padding: 6px 3px;
   border-right: 1px solid var(--line-strong);
   background: var(--chrome);
   user-select: none;
@@ -733,8 +757,13 @@ body.browser-shell .document-tabbar {
 }
 
 .tool-button {
-  width: 50px;
-  height: 46px;
+  width: var(--tool-button-width);
+  height: var(--tool-button-height);
+}
+
+.tool-button svg {
+  width: var(--tool-icon-size);
+  height: var(--tool-icon-size);
 }
 
 .tool-button.is-active {

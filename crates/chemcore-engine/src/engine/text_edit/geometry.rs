@@ -8,6 +8,10 @@ pub(super) fn endpoint_label_editor_anchor_world(
     let label = node.label.as_ref()?;
     let glyph_polygons = label.glyph_polygons();
     if !glyph_polygons.is_empty() {
+        if let Some(anchor) = centered_label_anchor_world(label, &glyph_polygons, object_translate)
+        {
+            return Some(anchor);
+        }
         let source_runs = source_runs_from_node_label(label);
         let source_text = if !source_runs.is_empty() {
             runs_text(&source_runs)
@@ -23,16 +27,23 @@ pub(super) fn endpoint_label_editor_anchor_world(
             source_runs_are_chemical(&source_runs),
         );
         let layout = layout_label_text(&source_text, &decision);
-        let anchor_index = layout
-            .lines
-            .iter()
-            .take(layout.anchor_line)
-            .map(|line| line.chars().count())
-            .sum::<usize>()
-            + layout.anchor_char;
-        if let Some(anchor) = glyph_polygons.get(anchor_index).and_then(|polygon| {
-            label_glyph_anchor_point(label, polygon, layout.anchor_line, layout.lines.len())
-        }) {
+        let font_family = label
+            .font_family
+            .clone()
+            .unwrap_or_else(|| DEFAULT_TEXT_FONT_FAMILY.to_string());
+        let font_size = WorldCm(label.font_size.unwrap_or(DEFAULT_TEXT_FONT_SIZE)).value();
+        let fill = label
+            .fill
+            .clone()
+            .unwrap_or_else(|| DEFAULT_TEXT_FILL.to_string());
+        let display_runs =
+            display_runs_from_source_runs(&source_runs, &font_family, font_size, &fill);
+        let (_, line_runs) = layout_display_runs(&display_runs, &decision);
+        let anchor_index = label_anchor_index_for_layout(&line_runs, &layout);
+        if let Some(anchor) = glyph_polygons
+            .get(anchor_index)
+            .and_then(|polygon| polygon_anchor_point(polygon))
+        {
             return Some(Point::new(
                 anchor.x + object_translate[0],
                 anchor.y + object_translate[1],
@@ -46,32 +57,65 @@ pub(super) fn endpoint_label_editor_anchor_world(
     ))
 }
 
-fn label_glyph_anchor_point(
+fn centered_label_anchor_world(
     label: &crate::NodeLabel,
-    polygon: &[Point],
-    line_index: usize,
-    line_count: usize,
+    glyph_polygons: &[Vec<Point>],
+    object_translate: [f64; 2],
 ) -> Option<Point> {
-    let mut point = polygon_anchor_point(polygon)?;
-    let font_size = WorldCm(label.font_size.unwrap_or(DEFAULT_TEXT_FONT_SIZE)).value();
-    point.y = label_line_anchor_y(label, line_index, line_count, font_size)?;
-    Some(point)
+    if !label_is_centered(label) {
+        return None;
+    }
+    let bbox = label.bbox()?;
+    let center_x = (bbox[0] + bbox[2]) * 0.5;
+    let (_, glyph_box) = centered_label_glyph_box(glyph_polygons, center_x)?;
+    Some(Point::new(
+        center_x + object_translate[0],
+        (glyph_box[1] + glyph_box[3]) * 0.5 + object_translate[1],
+    ))
 }
 
-fn label_line_anchor_y(
-    label: &crate::NodeLabel,
-    line_index: usize,
-    line_count: usize,
-    font_size: f64,
-) -> Option<f64> {
-    let baseline_y = if line_count > 1 {
-        let bbox = label.bbox()?;
-        let line_height = (bbox[3] - bbox[1]) / line_count as f64;
-        bbox[1] + line_height * line_index as f64 + line_height * 0.82
+fn label_is_centered(label: &crate::NodeLabel) -> bool {
+    label.layout.as_deref() == Some("attached-group-center")
+        || (label.align.as_deref() == Some("center") && label.anchor.as_deref() == Some("middle"))
+}
+
+fn centered_label_glyph_box(
+    glyph_polygons: &[Vec<Point>],
+    center_x: f64,
+) -> Option<(usize, [f64; 4])> {
+    glyph_polygons
+        .iter()
+        .enumerate()
+        .filter_map(|(index, polygon)| polygon_bounds(polygon).map(|bbox| (index, bbox)))
+        .min_by(|(_, left), (_, right)| {
+            glyph_center_distance_to_x(*left, center_x)
+                .total_cmp(&glyph_center_distance_to_x(*right, center_x))
+        })
+}
+
+fn glyph_center_distance_to_x(bbox: [f64; 4], x: f64) -> f64 {
+    if x >= bbox[0] && x <= bbox[2] {
+        0.0
     } else {
-        label.position.map(|position| position[1])?
-    };
-    Some(baseline_y + crate::glyph_kernel::shared_standard_glyph_anchor_y_offset(font_size))
+        (((bbox[0] + bbox[2]) * 0.5) - x).abs()
+    }
+}
+
+fn polygon_bounds(polygon: &[Point]) -> Option<[f64; 4]> {
+    if polygon.is_empty() {
+        return None;
+    }
+    let mut min_x = f64::INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+    for point in polygon {
+        min_x = min_x.min(point.x);
+        min_y = min_y.min(point.y);
+        max_x = max_x.max(point.x);
+        max_y = max_y.max(point.y);
+    }
+    Some([min_x, min_y, max_x, max_y])
 }
 
 pub(super) fn polygon_anchor_point(polygon: &[Point]) -> Option<Point> {

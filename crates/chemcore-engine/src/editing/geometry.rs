@@ -35,10 +35,12 @@ pub(super) fn label_anchor_geometries(
     }
 
     let glyph_polygons = label.glyph_polygons();
+    if let Some(center_anchor) = centered_label_anchor_geometry(label, &glyph_polygons, entry) {
+        return vec![center_anchor];
+    }
     let glyph_points: Vec<Point> = glyph_polygons
         .iter()
-        .enumerate()
-        .filter_map(|(index, polygon)| label_glyph_anchor_point(label, polygon, index))
+        .filter_map(|polygon| polygon_anchor_point(&polygon))
         .map(|point| {
             Point::new(
                 point.x + entry.object.transform.translate[0],
@@ -87,6 +89,84 @@ pub(super) fn label_anchor_geometries(
         .collect()
 }
 
+fn centered_label_anchor_geometry(
+    label: &crate::NodeLabel,
+    glyph_polygons: &[Vec<Point>],
+    entry: &EditableFragment<'_>,
+) -> Option<LabelAnchorGeometry> {
+    if !label_is_centered(label) {
+        return None;
+    }
+    let bbox = label.bbox()?;
+    let center_x = (bbox[0] + bbox[2]) * 0.5;
+    let (glyph_index, glyph_box_local) = centered_label_glyph_box(glyph_polygons, center_x)?;
+    let translate = entry.object.transform.translate;
+    let glyph_box = [
+        glyph_box_local[0] + translate[0],
+        glyph_box_local[1] + translate[1],
+        glyph_box_local[2] + translate[0],
+        glyph_box_local[3] + translate[1],
+    ];
+    let glyph_point = Point::new(
+        center_x + translate[0],
+        (glyph_box_local[1] + glyph_box_local[3]) * 0.5 + translate[1],
+    );
+    Some(LabelAnchorGeometry {
+        glyph_index,
+        glyph_point,
+        glyph_box,
+        first_glyph_point: glyph_point,
+        left_point: glyph_point,
+        right_point: glyph_point,
+        rightmost_glyph_index: glyph_index,
+        right_group_point: Some(glyph_point),
+    })
+}
+
+fn label_is_centered(label: &crate::NodeLabel) -> bool {
+    label.layout.as_deref() == Some("attached-group-center")
+        || (label.align.as_deref() == Some("center") && label.anchor.as_deref() == Some("middle"))
+}
+
+fn centered_label_glyph_box(
+    glyph_polygons: &[Vec<Point>],
+    center_x: f64,
+) -> Option<(usize, [f64; 4])> {
+    glyph_polygons
+        .iter()
+        .enumerate()
+        .filter_map(|(index, polygon)| polygon_bounds(polygon).map(|bbox| (index, bbox)))
+        .min_by(|(_, left), (_, right)| {
+            glyph_center_distance_to_x(*left, center_x)
+                .total_cmp(&glyph_center_distance_to_x(*right, center_x))
+        })
+}
+
+fn glyph_center_distance_to_x(bbox: [f64; 4], x: f64) -> f64 {
+    if x >= bbox[0] && x <= bbox[2] {
+        0.0
+    } else {
+        (((bbox[0] + bbox[2]) * 0.5) - x).abs()
+    }
+}
+
+fn polygon_bounds(polygon: &[Point]) -> Option<[f64; 4]> {
+    if polygon.is_empty() {
+        return None;
+    }
+    let mut min_x = f64::INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+    for point in polygon {
+        min_x = min_x.min(point.x);
+        min_y = min_y.min(point.y);
+        max_x = max_x.max(point.x);
+        max_y = max_y.max(point.y);
+    }
+    Some([min_x, min_y, max_x, max_y])
+}
+
 pub(super) fn polygon_anchor_point(polygon: &[Point]) -> Option<Point> {
     if polygon.is_empty() {
         return None;
@@ -102,64 +182,6 @@ pub(super) fn polygon_anchor_point(polygon: &[Point]) -> Option<Point> {
         max_y = max_y.max(point.y);
     }
     Some(Point::new((min_x + max_x) * 0.5, (min_y + max_y) * 0.5))
-}
-
-fn label_glyph_anchor_point(
-    label: &crate::NodeLabel,
-    polygon: &[Point],
-    glyph_index: usize,
-) -> Option<Point> {
-    let mut point = polygon_anchor_point(polygon)?;
-    let font_size = label
-        .font_size
-        .unwrap_or(crate::DEFAULT_MOLECULE_LABEL_FONT_SIZE_CM);
-    point.y = label_glyph_anchor_y(label, glyph_index, font_size)?;
-    Some(point)
-}
-
-fn label_glyph_anchor_y(
-    label: &crate::NodeLabel,
-    glyph_index: usize,
-    font_size: f64,
-) -> Option<f64> {
-    let line_lengths = label_line_lengths(label);
-    let line_count = line_lengths.len().max(1);
-    let mut remaining = glyph_index;
-    let mut line_index = 0usize;
-    for (index, length) in line_lengths.iter().copied().enumerate() {
-        if remaining < length {
-            line_index = index;
-            break;
-        }
-        remaining = remaining.saturating_sub(length);
-        line_index = index;
-    }
-    let baseline_y = if line_count > 1 {
-        let bbox = label.bbox()?;
-        let line_height = (bbox[3] - bbox[1]) / line_count as f64;
-        bbox[1] + line_height * line_index as f64 + line_height * 0.82
-    } else {
-        label.position.map(|position| position[1])?
-    };
-    Some(baseline_y + crate::glyph_kernel::shared_standard_glyph_anchor_y_offset(font_size))
-}
-
-fn label_line_lengths(label: &crate::NodeLabel) -> Vec<usize> {
-    if !label.line_runs.is_empty() {
-        return label
-            .line_runs
-            .iter()
-            .map(|line| line.iter().map(|run| run.text.chars().count()).sum())
-            .collect();
-    }
-    if !label.lines.is_empty() {
-        return label
-            .lines
-            .iter()
-            .map(|line| line.chars().count())
-            .collect();
-    }
-    vec![label.text.chars().count()]
 }
 
 pub(super) fn polygon_bounds_world(polygon: &[Point], translate: [f64; 2]) -> Option<[f64; 4]> {

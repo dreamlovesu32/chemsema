@@ -596,20 +596,49 @@ fn node_label(
             })
         })
         .collect();
+    let text_position = parse_xy(text_el.attr("p")).or_else(|| parse_xy(node.attr("p")));
+    let local_position =
+        text_position.map(|point| [round2(point[0] - origin[0]), round2(point[1] - origin[1])]);
+    let local_bbox = bbox.map(|bbox| {
+        [
+            round2(bbox[0] - origin[0]),
+            round2(bbox[1] - origin[1]),
+            round2(bbox[2] - origin[0]),
+            round2(bbox[3] - origin[1]),
+        ]
+    });
+    let label_display = node.attr("LabelDisplay");
+    let label_justification = text_el
+        .attr("Justification")
+        .or_else(|| text_el.attr("LabelJustification"));
+    let is_centered = attr_eq_ignore_ascii_case(label_display, "Center")
+        || attr_eq_ignore_ascii_case(label_justification, "Center");
+    let glyph_polygons = if is_centered {
+        if let Some(position) = local_position {
+            let width = local_bbox
+                .map(|bbox| (bbox[2] - bbox[0]).abs())
+                .filter(|width| *width > EPSILON)
+                .unwrap_or_else(|| {
+                    (text.chars().count() as f64 * parent_size * 0.55).max(parent_size)
+                });
+            crate::build_label_glyph_polygons(
+                &runs,
+                &[],
+                [round2(position[0] - width * 0.5), position[1]],
+                local_bbox,
+                parent_size,
+            )
+        } else {
+            Vec::new()
+        }
+    } else {
+        Vec::new()
+    };
     Some(NodeLabel {
         text: text.clone(),
         source_text: Some(text.clone()),
-        position: parse_xy(text_el.attr("p"))
-            .or_else(|| parse_xy(node.attr("p")))
-            .map(|point| [round2(point[0] - origin[0]), round2(point[1] - origin[1])]),
-        box_field: bbox.map(|bbox| {
-            [
-                round2(bbox[0] - origin[0]),
-                round2(bbox[1] - origin[1]),
-                round2(bbox[2] - origin[0]),
-                round2(bbox[3] - origin[1]),
-            ]
-        }),
+        position: local_position,
+        box_field: local_bbox,
         runs,
         line_runs: Vec::new(),
         lines: if text.contains('\n') {
@@ -617,10 +646,10 @@ fn node_label(
         } else {
             Vec::new()
         },
-        align: Some("left".to_string()),
-        layout: None,
+        align: Some(if is_centered { "center" } else { "left" }.to_string()),
+        layout: is_centered.then(|| "attached-group-center".to_string()),
         attachment: Some("node".to_string()),
-        anchor: Some("start".to_string()),
+        anchor: Some(if is_centered { "middle" } else { "start" }.to_string()),
         font_family: Some(
             fonts
                 .get(parent_font)
@@ -629,15 +658,16 @@ fn node_label(
         ),
         fill: Some(colors.resolve(Some(parent_color))),
         font_size: Some(parent_size),
-        glyph_polygons: Vec::new(),
-        box_value: None,
+        glyph_polygons,
+        box_value: is_centered.then_some(local_bbox).flatten(),
         meta: json!({
             "import": {
                 "cdxml": {
                     "font": parent_font,
                     "color": parent_color,
-                    "textPosition": parse_xy(text_el.attr("p")),
+                    "textPosition": text_position,
                     "boundingBox": bbox,
+                    "labelDisplay": empty_as_null(label_display),
                     "labelAlignment": empty_as_null(text_el.attr("LabelAlignment")),
                     "labelJustification": empty_as_null(text_el.attr("LabelJustification")),
                     "justification": empty_as_null(text_el.attr("Justification")),
@@ -645,6 +675,10 @@ fn node_label(
             }
         }),
     })
+}
+
+fn attr_eq_ignore_ascii_case(value: Option<&str>, expected: &str) -> bool {
+    value.is_some_and(|value| value.eq_ignore_ascii_case(expected))
 }
 
 fn normalize_bond(

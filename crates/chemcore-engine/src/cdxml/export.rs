@@ -263,6 +263,13 @@ impl<'a> CdxmlDocumentWriter<'a> {
         } else if is_nickname {
             attrs.push(("NodeType", "Nickname".to_string()));
         }
+        if node
+            .label
+            .as_ref()
+            .is_some_and(|label| label.layout.as_deref() == Some("attached-group-center"))
+        {
+            attrs.push(("LabelDisplay", "Center".to_string()));
+        }
         if node.charge != 0 {
             attrs.push(("Charge", node.charge.to_string()));
         }
@@ -1238,6 +1245,8 @@ fn charge_suffix(charge: i32) -> String {
 fn cdxml_node_label_alignment(label: &NodeLabel) -> &'static str {
     if label.layout.as_deref() == Some("attached-group-above") {
         "Above"
+    } else if label.layout.as_deref() == Some("attached-group-center") {
+        "Right"
     } else {
         "Auto"
     }
