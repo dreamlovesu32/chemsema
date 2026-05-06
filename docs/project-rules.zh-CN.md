@@ -2,6 +2,8 @@
 
 这份文档记录当前开发阶段也必须保持的项目级规则。更细的行为规则仍放在各专题文档里，例如格式、键绘制和命令历史。
 
+Windows 桌面端和 Office 集成的长期方案见 `docs/windows-desktop-office-architecture.zh-CN.md`。该方案的核心约束是：桌面端和 Office 集成层不能复制化学逻辑，必须继续通过 Rust engine 和统一 document service 工作。
+
 ## 内核边界
 
 - Rust `crates/chemcore-engine` 是当前编辑行为、文档 mutation、命中测试、吸附、选择、删除、命令历史和 render primitive 的权威。
@@ -21,19 +23,19 @@
 - 日常开发允许 Rust 源码和 `viewer/engine` 生成物短暂不同步。
 - 需要在 viewer 里验证 engine 行为时，必须先重建 Web engine：
 
-```bash
+```powershell
 npm run build:engine-wasm
 ```
 
 - 高频修改 Rust engine 时，建议开一个自动重建进程：
 
-```bash
+```powershell
 npm run dev:engine
 ```
 
 - 准备提交、交付或让别人验证 viewer 前，必须跑：
 
-```bash
+```powershell
 npm run verify
 ```
 
@@ -73,7 +75,7 @@ npm run verify
 
 ## 常用命令
 
-```bash
+```powershell
 cargo test
 npm run build:engine-wasm
 npm run dev:engine
