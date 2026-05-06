@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 use chemcore_engine::{
     BondAnchor, BondVariant, Engine, Point, PointerEvent, RenderPrimitive, RenderRole,
     TextEditLayoutRequest, TextEditSelection, TextEditTarget, Tool, ToolState, DEFAULT_BOND_LENGTH,
@@ -306,6 +308,102 @@ fn load_two_bond_central_node(engine: &mut Engine) {
     engine
         .load_document_json(&document.to_string())
         .expect("two bond document should load");
+}
+
+fn load_three_bond_central_oxygen(engine: &mut Engine, charge: i32) {
+    let document = json!({
+        "format": { "name": "chemcore", "version": "0.1", "unit": "pt" },
+        "document": {
+            "id": "doc_three_bond_oxygen",
+            "title": "three bond oxygen",
+            "page": { "width": px(400.0), "height": px(320.0), "background": "#ffffff" }
+        },
+        "styles": {
+            "style_molecule_default": {
+                "kind": "molecule",
+                "stroke": "#000000",
+                "strokeWidth": chemcore_engine::DEFAULT_BOND_STROKE,
+                "fontFamily": "Arial",
+                "fontSize": chemcore_engine::DEFAULT_MOLECULE_LABEL_FONT_SIZE_CM
+            }
+        },
+        "objects": [{
+            "id": "obj_molecule_001",
+            "type": "molecule",
+            "visible": true,
+            "zIndex": 10,
+            "transform": { "translate": [0.0, 0.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+            "styleRef": "style_molecule_default",
+            "payload": { "resourceRef": "mol_001" }
+        }],
+        "resources": {
+            "mol_001": {
+                "type": "molecule_fragment2d",
+                "encoding": "chemcore.molecule.fragment2d",
+                "data": {
+                    "schema": "chemcore.molecule.fragment2d",
+                    "bbox": [0.0, 0.0, px(400.0), px(320.0)],
+                    "nodes": [
+                        {
+                            "id": "n1",
+                            "element": "O",
+                            "atomicNumber": 8,
+                            "position": [px(300.0), px(260.0)],
+                            "charge": charge,
+                            "numHydrogens": 0,
+                            "label": {
+                                "text": "O",
+                                "sourceText": "O",
+                                "position": [px(296.5), px(263.5)],
+                                "box": [px(296.5), px(254.0), px(303.5), px(264.0)],
+                                "runs": [{
+                                    "text": "O",
+                                    "fontFamily": "Arial",
+                                    "fontSize": chemcore_engine::DEFAULT_TEXT_FONT_SIZE_CM,
+                                    "fill": "#000000",
+                                    "fontWeight": 400,
+                                    "fontStyle": "normal",
+                                    "underline": false,
+                                    "script": "chemical"
+                                }],
+                                "align": "left",
+                                "layout": "attached-group",
+                                "attachment": "node",
+                                "anchor": "start",
+                                "fontFamily": "Arial",
+                                "fill": "#000000",
+                                "fontSize": chemcore_engine::DEFAULT_TEXT_FONT_SIZE_CM,
+                                "boxValue": [px(296.5), px(254.0), px(303.5), px(264.0)],
+                                "meta": {
+                                    "sourceRuns": [{
+                                        "text": "O",
+                                        "fontFamily": "Arial",
+                                        "fontSize": chemcore_engine::DEFAULT_TEXT_FONT_SIZE_CM,
+                                        "fill": "#000000",
+                                        "fontWeight": 400,
+                                        "fontStyle": "normal",
+                                        "underline": false,
+                                        "script": "chemical"
+                                    }]
+                                }
+                            }
+                        },
+                        { "id": "n2", "element": "C", "atomicNumber": 6, "position": [px(240.0), px(260.0)], "charge": 0, "numHydrogens": 0 },
+                        { "id": "n3", "element": "C", "atomicNumber": 6, "position": [px(360.0), px(260.0)], "charge": 0, "numHydrogens": 0 },
+                        { "id": "n4", "element": "C", "atomicNumber": 6, "position": [px(300.0), px(200.0)], "charge": 0, "numHydrogens": 0 }
+                    ],
+                    "bonds": [
+                        { "id": "b1", "begin": "n1", "end": "n2", "order": 1, "strokeWidth": chemcore_engine::DEFAULT_BOND_STROKE, "lineStyles": {}, "lineWeights": {} },
+                        { "id": "b2", "begin": "n1", "end": "n3", "order": 1, "strokeWidth": chemcore_engine::DEFAULT_BOND_STROKE, "lineStyles": {}, "lineWeights": {} },
+                        { "id": "b3", "begin": "n1", "end": "n4", "order": 1, "strokeWidth": chemcore_engine::DEFAULT_BOND_STROKE, "lineStyles": {}, "lineWeights": {} }
+                    ]
+                }
+            }
+        }
+    });
+    engine
+        .load_document_json(&document.to_string())
+        .expect("three bond oxygen document should load");
 }
 
 fn assert_endpoint_target_near(session: &chemcore_engine::TextEditSession, expected: Point) {
@@ -2173,6 +2271,53 @@ fn two_connection_shortcut_nitrogen_edited_to_plain_n_is_invalid() {
             .and_then(|value| value.get("status"))
             .and_then(serde_json::Value::as_str),
         Some("invalid")
+    );
+}
+
+#[test]
+fn neutral_three_connection_oxygen_label_is_invalid() {
+    let mut engine = Engine::new();
+    load_three_bond_central_oxygen(&mut engine, 0);
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let node = entry
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == "n1")
+        .expect("oxygen node should exist");
+    assert_eq!(
+        node.meta
+            .get("labelRecognition")
+            .and_then(|value| value.get("status"))
+            .and_then(serde_json::Value::as_str),
+        Some("invalid")
+    );
+    assert!(engine.render_list().iter().any(|primitive| matches!(
+        primitive,
+        RenderPrimitive::Rect {
+            role: RenderRole::DocumentGraphic,
+            stroke: Some(stroke),
+            ..
+        } if stroke == "#d32f2f"
+    )));
+}
+
+#[test]
+fn positive_three_connection_oxygen_label_is_valid() {
+    let mut engine = Engine::new();
+    load_three_bond_central_oxygen(&mut engine, 1);
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let node = entry
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == "n1")
+        .expect("oxygen node should exist");
+    assert!(
+        node.meta.get("labelRecognition").is_none(),
+        "three-connection oxygen should be valid when it carries +1 charge"
     );
 }
 

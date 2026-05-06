@@ -592,7 +592,7 @@ pub(super) fn label_recognition_meta_for_node_text(
         .is_some()
         || element_label_replacement(trimmed).is_some()
     {
-        return if element_hydrogen_label_is_valid_for_node(trimmed, node) {
+        return if element_hydrogen_label_is_valid_for_node(trimmed, fragment, node) {
             None
         } else {
             Some(crate::invalid_abbreviation_meta(trimmed))
@@ -605,7 +605,11 @@ pub(super) fn label_recognition_meta_for_node_text(
         .or_else(|| Some(crate::invalid_abbreviation_meta(trimmed)))
 }
 
-pub(super) fn element_hydrogen_label_is_valid_for_node(text: &str, node: &crate::Node) -> bool {
+pub(super) fn element_hydrogen_label_is_valid_for_node(
+    text: &str,
+    fragment: &crate::MoleculeFragment,
+    node: &crate::Node,
+) -> bool {
     if node.is_placeholder {
         return false;
     }
@@ -618,7 +622,38 @@ pub(super) fn element_hydrogen_label_is_valid_for_node(text: &str, node: &crate:
     {
         return false;
     }
-    trimmed == implicit_hydrogen_label_text(node, node.element.as_str())
+    if !element_valence_is_valid_for_node(fragment, node) {
+        return false;
+    }
+    let expected_hydrogens = implicit_hydrogen_count(fragment, node.id.as_str());
+    trimmed == implicit_hydrogen_label_text_for_count(&node.element, expected_hydrogens)
+}
+
+pub(super) fn element_valence_is_valid_for_node(
+    fragment: &crate::MoleculeFragment,
+    node: &crate::Node,
+) -> bool {
+    if node.is_placeholder || node.atomic_number == 1 || node.atomic_number == 6 {
+        return true;
+    }
+    let connection_order: i32 = fragment
+        .bonds
+        .iter()
+        .filter(|bond| bond.begin == node.id || bond.end == node.id)
+        .map(|bond| i32::from(bond.order.max(1)))
+        .sum();
+    let radical_count = 0;
+    let charge = node.charge;
+    let Some(valence) = typical_valence_for_implicit_hydrogen(
+        node.atomic_number,
+        charge,
+        connection_order,
+        radical_count,
+        charge.abs(),
+    ) else {
+        return true;
+    };
+    connection_order <= valence
 }
 
 pub(super) fn set_node_label_recognition_meta(node: &mut crate::Node, meta: Option<Value>) {
@@ -797,6 +832,55 @@ pub(super) fn refresh_label_recognition_for_node(
     }
     let text = label_source_text(label);
     let recognition_meta = label_recognition_meta_for_node_text(fragment, node_id, &text);
+    let node = &mut fragment.nodes[node_index];
+    set_node_label_recognition_meta(node, recognition_meta.clone());
+    if let Some(label) = node.label.as_mut() {
+        set_label_recognition_meta(label, recognition_meta);
+    }
+}
+
+pub(crate) fn refresh_element_valence_recognition_for_all_nodes(
+    fragment: &mut crate::MoleculeFragment,
+) {
+    let node_ids: Vec<_> = fragment.nodes.iter().map(|node| node.id.clone()).collect();
+    for node_id in node_ids {
+        refresh_element_valence_recognition_for_node(fragment, &node_id);
+    }
+}
+
+fn refresh_element_valence_recognition_for_node(
+    fragment: &mut crate::MoleculeFragment,
+    node_id: &str,
+) {
+    let Some(node_index) = fragment.nodes.iter().position(|node| node.id == node_id) else {
+        return;
+    };
+    let Some(label) = fragment.nodes[node_index].label.as_ref() else {
+        return;
+    };
+    if !source_runs_are_chemical(&source_runs_from_node_label(label)) {
+        return;
+    }
+    let text = label_source_text(label);
+    let trimmed = text.trim();
+    if trimmed.is_empty() || trimmed == "C" {
+        return;
+    }
+    let is_element_label = parse_element_hydrogen_label(trimmed)
+        .and_then(|parsed| element_label_replacement(parsed.element).map(|_| parsed))
+        .is_some()
+        || element_label_replacement(trimmed).is_some();
+    if !is_element_label {
+        return;
+    }
+    let recognition_meta = {
+        let node = &fragment.nodes[node_index];
+        if element_hydrogen_label_is_valid_for_node(trimmed, fragment, node) {
+            None
+        } else {
+            Some(crate::invalid_abbreviation_meta(trimmed))
+        }
+    };
     let node = &mut fragment.nodes[node_index];
     set_node_label_recognition_meta(node, recognition_meta.clone());
     if let Some(label) = node.label.as_mut() {
@@ -1002,13 +1086,17 @@ pub(super) fn implicit_hydrogen_label_text(node: &crate::Node, current_text: &st
     if !label_text_matches_node_element(current_text, node) {
         return current_text.to_string();
     }
-    if node.num_hydrogens == 0 {
-        return node.element.clone();
+    implicit_hydrogen_label_text_for_count(&node.element, node.num_hydrogens)
+}
+
+pub(super) fn implicit_hydrogen_label_text_for_count(element: &str, num_hydrogens: u8) -> String {
+    if num_hydrogens == 0 {
+        return element.to_string();
     }
-    if node.num_hydrogens == 1 {
-        format!("{}H", node.element)
+    if num_hydrogens == 1 {
+        format!("{element}H")
     } else {
-        format!("{}H{}", node.element, node.num_hydrogens)
+        format!("{element}H{num_hydrogens}")
     }
 }
 

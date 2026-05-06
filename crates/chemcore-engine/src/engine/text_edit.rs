@@ -30,6 +30,7 @@ use self::labels::*;
 pub(crate) use self::labels::{
     refresh_attached_node_label_geometry_for_all_nodes,
     refresh_attached_node_label_geometry_for_node,
+    refresh_element_valence_recognition_for_all_nodes,
 };
 use self::layout::*;
 use self::runs::*;

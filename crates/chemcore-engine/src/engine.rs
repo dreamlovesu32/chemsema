@@ -14,8 +14,10 @@ mod text_edit;
 pub use self::command::{
     CommandAnchor, EditorCommand, FocusedDeleteSource, HistoryEntry, TextEditCommandTarget,
 };
-use self::text_edit::endpoint_label_world_bounds;
 pub(crate) use self::text_edit::refresh_attached_node_label_geometry_for_all_nodes;
+use self::text_edit::{
+    endpoint_label_world_bounds, refresh_element_valence_recognition_for_all_nodes,
+};
 pub use self::text_edit::{
     TextEditLayout, TextEditLayoutCaret, TextEditLayoutCaretOffset, TextEditLayoutLine,
     TextEditLayoutRect, TextEditSelection, TextEditSelectionState, TextEditSession, TextEditTarget,
@@ -287,6 +289,9 @@ impl Engine {
         self.options = EditorOptions::default();
         self.document_style_preset = DEFAULT_DOCUMENT_STYLE_PRESET.to_string();
         self.refresh_symbol_chemistry();
+        if let Some(entry) = self.state.document.editable_fragment_mut() {
+            refresh_element_valence_recognition_for_all_nodes(entry.fragment);
+        }
         self.state.selection = SelectionState::default();
         self.clear_interaction();
         self.undo_stack.clear();
@@ -306,6 +311,9 @@ impl Engine {
         self.options = options;
         self.document_style_preset = preset;
         self.refresh_symbol_chemistry();
+        if let Some(entry) = self.state.document.editable_fragment_mut() {
+            refresh_element_valence_recognition_for_all_nodes(entry.fragment);
+        }
         self.state.selection = SelectionState::default();
         self.clear_interaction();
         self.undo_stack.clear();
