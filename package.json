@@ -10,6 +10,9 @@
   },
   "scripts": {
     "build:engine-wasm": "node scripts/build-engine-wasm.mjs",
+    "desktop:build": "node scripts/desktop-tauri.mjs build",
+    "desktop:dev": "node scripts/desktop-tauri.mjs dev",
+    "desktop:info": "node scripts/desktop-tauri.mjs info",
     "dev:engine": "node scripts/dev-engine-wasm.mjs",
     "verify": "node scripts/verify.mjs",
     "screenshot": "node scripts/viewer-screenshot.mjs",

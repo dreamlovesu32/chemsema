@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "crates/chemcore-engine",
+  "apps/chemcore-desktop/src-tauri",
 ]
 resolver = "2"
 

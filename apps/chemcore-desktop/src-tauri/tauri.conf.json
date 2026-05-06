@@ -1,0 +1,42 @@
+{
+  "$schema": "../../../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "Chemcore",
+  "version": "0.1.0",
+  "identifier": "com.chemcore.desktop",
+  "build": {
+    "frontendDist": "../../../viewer",
+    "devUrl": "http://127.0.0.1:8767/viewer/",
+    "beforeDevCommand": "node ../../scripts/desktop-dev-server.mjs",
+    "beforeBuildCommand": "node ../../scripts/build-engine-wasm.mjs"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Chemcore",
+        "width": 1280,
+        "height": 900,
+        "minWidth": 960,
+        "minHeight": 640,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "android": {
+      "debugApplicationIdSuffix": ".debug"
+    }
+  }
+}
