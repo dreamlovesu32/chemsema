@@ -14,9 +14,10 @@ pub(super) struct ResolvedTextEditLine {
 pub(super) struct ResolvedTextEditCharBox {
     offset: usize,
     x: f64,
-    y: f64,
     width: f64,
     height: f64,
+    line_y: f64,
+    line_height: f64,
     line_index: usize,
 }
 
@@ -151,9 +152,10 @@ pub(super) fn build_text_edit_layout_geometry(
                 char_boxes.push(ResolvedTextEditCharBox {
                     offset,
                     x: cursor_x,
-                    y: char_top,
                     width: metrics.advance,
                     height: (char_bottom - char_top).max(0.0),
+                    line_y: line.y,
+                    line_height: line.height,
                     line_index,
                 });
                 cursor_x += metrics.advance;
@@ -226,18 +228,18 @@ pub(super) fn build_text_edit_selection_rects(
             .find(|(line_index, _)| *line_index == entry.line_index)
         {
             current.x = current.x.min(entry.x);
-            current.y = current.y.min(entry.y);
+            current.y = current.y.min(entry.line_y);
             current.width = current.width.max(entry.x + entry.width - current.x);
-            current.height = current.height.max(entry.height);
+            current.height = current.height.max(entry.line_height);
             continue;
         }
         grouped.push((
             entry.line_index,
             TextEditLayoutRect {
                 x: entry.x,
-                y: entry.y,
+                y: entry.line_y,
                 width: entry.width.max(0.0),
-                height: entry.height.max(0.0),
+                height: entry.line_height.max(entry.height).max(0.0),
             },
         ));
     }

@@ -1,7 +1,7 @@
 use crate::{
-    Bond, BondLineStyles, BondLineWeights, BondStereo, ChemcoreDocument, DocumentInfo, FormatInfo,
-    LabelRun, MoleculeFragment, Node, NodeLabel, ObjectPayload, Page, Resource, ResourceData,
-    SceneObject, Transform,
+    Bond, BondLineStyles, BondLineWeights, BondStereo, ChemcoreDocument, DocumentInfo, DoubleBond,
+    DoubleBondPlacement, FormatInfo, LabelRun, MoleculeFragment, Node, NodeLabel, ObjectPayload,
+    Page, Point, Resource, ResourceData, SceneObject, Transform, EPSILON,
 };
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -471,7 +471,7 @@ fn normalize_fragment(
         .collect();
     let bonds: Vec<Bond> = fragment
         .direct_children("b")
-        .filter_map(|bond| normalize_bond(bond, &node_ids, defaults))
+        .filter_map(|bond| normalize_bond(bond, &node_ids, defaults, colors))
         .collect();
     if nodes.len() < 2 || bonds.is_empty() {
         return None;
@@ -496,6 +496,7 @@ fn normalize_fragment(
             }
         }),
     };
+    infer_cdxml_ring_double_bond_placements(&mut fragment);
     crate::engine::refresh_attached_node_label_geometry_for_all_nodes(
         &mut fragment,
         origin,
@@ -650,6 +651,7 @@ fn normalize_bond(
     bond: &XmlNode,
     node_ids: &BTreeSet<String>,
     defaults: CdxmlDefaults,
+    colors: &CdxmlColorTable,
 ) -> Option<Bond> {
     let begin = bond.attr("B")?.to_string();
     let end = bond.attr("E")?.to_string();
@@ -704,6 +706,7 @@ fn normalize_bond(
         }),
         stereo,
         stroke_width,
+        stroke: bond.attr("color").map(|color| colors.resolve(Some(color))),
         bold_width: Some(bold_width),
         wedge_width: Some(cdxml_template_wedge_width(stroke_width, bold_width)),
         label_clip_margin: Some(cdxml_template_label_clip_margin(
@@ -718,6 +721,172 @@ fn normalize_bond(
         line_weights: cdxml_bond_line_weights(order, display, bond.attr("Display2").unwrap_or("")),
         meta: json!({"import": {"cdxml": {"display": empty_as_null(bond.attr("Display")), "doublePosition": empty_as_null(bond.attr("DoublePosition"))}}}),
     })
+}
+
+fn infer_cdxml_ring_double_bond_placements(fragment: &mut MoleculeFragment) {
+    let node_positions: BTreeMap<String, Point> = fragment
+        .nodes
+        .iter()
+        .map(|node| {
+            (
+                node.id.clone(),
+                Point::new(node.position[0], node.position[1]),
+            )
+        })
+        .collect();
+    let mut adjacency: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut bond_by_edge: BTreeMap<(String, String), usize> = BTreeMap::new();
+    for (index, bond) in fragment.bonds.iter().enumerate() {
+        if !node_positions.contains_key(&bond.begin) || !node_positions.contains_key(&bond.end) {
+            continue;
+        }
+        adjacency
+            .entry(bond.begin.clone())
+            .or_default()
+            .push(bond.end.clone());
+        adjacency
+            .entry(bond.end.clone())
+            .or_default()
+            .push(bond.begin.clone());
+        bond_by_edge.insert(edge_key(&bond.begin, &bond.end), index);
+    }
+
+    let mut inferred = Vec::new();
+    for (index, bond) in fragment.bonds.iter().enumerate() {
+        if bond.order != 2 || cdxml_bond_has_explicit_double_position(bond) {
+            continue;
+        }
+        let Some(cycle) = find_alternating_six_ring_for_double_bond(
+            index,
+            &fragment.bonds,
+            &adjacency,
+            &bond_by_edge,
+        ) else {
+            continue;
+        };
+        let Some(placement) =
+            double_bond_placement_toward_ring_center(bond, &cycle, &node_positions)
+        else {
+            continue;
+        };
+        inferred.push((index, placement));
+    }
+
+    for (index, placement) in inferred {
+        fragment.bonds[index].double = Some(DoubleBond {
+            placement,
+            center_exit_side: None,
+            frozen: true,
+        });
+    }
+}
+
+fn cdxml_bond_has_explicit_double_position(bond: &Bond) -> bool {
+    bond.meta
+        .pointer("/import/cdxml/doublePosition")
+        .and_then(Value::as_str)
+        .is_some_and(|value| !value.trim().is_empty())
+}
+
+fn find_alternating_six_ring_for_double_bond(
+    bond_index: usize,
+    bonds: &[Bond],
+    adjacency: &BTreeMap<String, Vec<String>>,
+    bond_by_edge: &BTreeMap<(String, String), usize>,
+) -> Option<Vec<String>> {
+    let bond = bonds.get(bond_index)?;
+    find_alternating_six_ring_path(&bond.begin, &bond.end, bonds, adjacency, bond_by_edge).or_else(
+        || find_alternating_six_ring_path(&bond.end, &bond.begin, bonds, adjacency, bond_by_edge),
+    )
+}
+
+fn find_alternating_six_ring_path(
+    start: &str,
+    second: &str,
+    bonds: &[Bond],
+    adjacency: &BTreeMap<String, Vec<String>>,
+    bond_by_edge: &BTreeMap<(String, String), usize>,
+) -> Option<Vec<String>> {
+    let mut path = vec![start.to_string(), second.to_string()];
+    find_alternating_six_ring_path_rec(start, second, bonds, adjacency, bond_by_edge, &mut path)
+}
+
+fn find_alternating_six_ring_path_rec(
+    start: &str,
+    current: &str,
+    bonds: &[Bond],
+    adjacency: &BTreeMap<String, Vec<String>>,
+    bond_by_edge: &BTreeMap<(String, String), usize>,
+    path: &mut Vec<String>,
+) -> Option<Vec<String>> {
+    if path.len() == 6 {
+        let close_index = *bond_by_edge.get(&edge_key(current, start))?;
+        return (bonds.get(close_index)?.order == 1).then(|| path.clone());
+    }
+    let next_edge_index = path.len() - 1;
+    let expected_order = if next_edge_index % 2 == 1 { 1 } else { 2 };
+    for neighbor in adjacency.get(current)? {
+        if neighbor == start || path.iter().any(|node_id| node_id == neighbor) {
+            continue;
+        }
+        let edge_index = *bond_by_edge.get(&edge_key(current, neighbor))?;
+        if bonds.get(edge_index)?.order != expected_order {
+            continue;
+        }
+        path.push(neighbor.clone());
+        if let Some(cycle) = find_alternating_six_ring_path_rec(
+            start,
+            neighbor,
+            bonds,
+            adjacency,
+            bond_by_edge,
+            path,
+        ) {
+            return Some(cycle);
+        }
+        path.pop();
+    }
+    None
+}
+
+fn double_bond_placement_toward_ring_center(
+    bond: &Bond,
+    cycle: &[String],
+    node_positions: &BTreeMap<String, Point>,
+) -> Option<DoubleBondPlacement> {
+    let begin = *node_positions.get(&bond.begin)?;
+    let end = *node_positions.get(&bond.end)?;
+    let mut center = Point::new(0.0, 0.0);
+    for node_id in cycle {
+        let point = *node_positions.get(node_id)?;
+        center.x += point.x;
+        center.y += point.y;
+    }
+    center.x /= cycle.len() as f64;
+    center.y /= cycle.len() as f64;
+    let dx = end.x - begin.x;
+    let dy = end.y - begin.y;
+    let length = dx.hypot(dy);
+    if length <= EPSILON {
+        return None;
+    }
+    let midpoint = Point::new((begin.x + end.x) * 0.5, (begin.y + end.y) * 0.5);
+    let left_normal = Point::new(-dy / length, dx / length);
+    let projection =
+        (center.x - midpoint.x) * left_normal.x + (center.y - midpoint.y) * left_normal.y;
+    Some(if projection >= 0.0 {
+        DoubleBondPlacement::Left
+    } else {
+        DoubleBondPlacement::Right
+    })
+}
+
+fn edge_key(left: &str, right: &str) -> (String, String) {
+    if left <= right {
+        (left.to_string(), right.to_string())
+    } else {
+        (right.to_string(), left.to_string())
+    }
 }
 
 fn cdxml_template_wedge_width(stroke_width: f64, bold_width: f64) -> f64 {

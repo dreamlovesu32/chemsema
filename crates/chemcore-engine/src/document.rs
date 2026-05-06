@@ -1018,6 +1018,8 @@ pub struct Bond {
     #[serde(default)]
     pub stroke_width: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stroke: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bold_width: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wedge_width: Option<f64>,

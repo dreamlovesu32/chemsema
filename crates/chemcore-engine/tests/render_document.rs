@@ -94,8 +94,22 @@ fn engine_reports_document_colors_from_document_model() {
                                 "charge": 0,
                                 "numHydrogens": 0,
                                 "label": { "text": "Me", "fill": "#00ff00" }
+                            }, {
+                                "id": "n2",
+                                "element": "C",
+                                "atomicNumber": 6,
+                                "position": [50.0, 20.0],
+                                "charge": 0,
+                                "numHydrogens": 0
                             }],
-                            "bonds": []
+                            "bonds": [{
+                                "id": "b1",
+                                "begin": "n1",
+                                "end": "n2",
+                                "order": 1,
+                                "stroke": "#ff00ff",
+                                "strokeWidth": 0.85
+                            }]
                         }
                     }
                 }
@@ -109,6 +123,7 @@ fn engine_reports_document_colors_from_document_model() {
     assert!(colors.contains(&"#010203".to_string()));
     assert!(colors.contains(&"#aabbcc".to_string()));
     assert!(colors.contains(&"#00ff00".to_string()));
+    assert!(colors.contains(&"#ff00ff".to_string()));
     assert_eq!(colors.iter().filter(|color| *color == "#ffffff").count(), 1);
 }
 
@@ -2135,6 +2150,95 @@ fn parse_cdxml_color_table_keeps_duplicate_slots() {
 }
 
 #[test]
+fn parse_cdxml_infers_benzene_double_bond_sides_and_bond_colors() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML BondLength="14.40" BondSpacing="18" LineWidth="0.60" color="0" bgcolor="1">
+  <colortable>
+    <color r="1" g="1" b="1"/>
+    <color r="0" g="0" b="0"/>
+    <color r="1" g="0" b="0"/>
+  </colortable>
+  <page id="1">
+    <fragment id="2" BoundingBox="7 10 33 39">
+      <n id="n1" p="20.00 10.00"/>
+      <n id="n2" p="32.47 17.20"/>
+      <n id="n3" p="32.47 31.60"/>
+      <n id="n4" p="20.00 38.80"/>
+      <n id="n5" p="7.53 31.60"/>
+      <n id="n6" p="7.53 17.20"/>
+      <b id="b1" B="n1" E="n2" Order="2" BondCircularOrdering="b2 0 0 b6"/>
+      <b id="b2" B="n2" E="n3"/>
+      <b id="b3" B="n3" E="n4" Order="2" color="4" BondCircularOrdering="b4 0 0 b2"/>
+      <b id="b4" B="n4" E="n5"/>
+      <b id="b5" B="n5" E="n6" Order="2" BondCircularOrdering="b6 0 0 b4"/>
+      <b id="b6" B="n6" E="n1"/>
+    </fragment>
+  </page>
+</CDXML>"##;
+    let document = parse_cdxml_document(cdxml, Some("benzene")).expect("cdxml should parse");
+    let fragment = document
+        .resources
+        .values()
+        .find_map(|resource| resource.data.as_fragment())
+        .expect("fragment should import");
+
+    for bond_id in ["b1", "b3", "b5"] {
+        let bond = fragment
+            .bonds
+            .iter()
+            .find(|bond| bond.id == bond_id)
+            .expect("benzene double bond should import");
+        assert_eq!(
+            bond.double.as_ref().map(|double| double.placement),
+            Some(chemcore_engine::DoubleBondPlacement::Left),
+            "{bond_id} should infer an inward side double placement"
+        );
+    }
+    assert_eq!(
+        fragment
+            .bonds
+            .iter()
+            .find(|bond| bond.id == "b3")
+            .and_then(|bond| bond.stroke.as_deref()),
+        Some("#ff0000")
+    );
+
+    let primitives = render_document(&document);
+    assert!(
+        primitives.iter().any(|primitive| matches!(
+            primitive,
+            RenderPrimitive::Line {
+                role: RenderRole::DocumentBond,
+                bond_id: Some(id),
+                stroke,
+                ..
+            } | RenderPrimitive::Polygon {
+                role: RenderRole::DocumentBond,
+                bond_id: Some(id),
+                stroke,
+                ..
+            } if id == "b3" && stroke == "#ff0000"
+        )),
+        "colored CDXML bond should render with its imported stroke"
+    );
+
+    let exported = document_to_cdxml(&document);
+    assert!(exported.contains("color=\"4\""), "{exported}");
+    assert!(exported.contains("DoublePosition=\"Left\""), "{exported}");
+    let reimported =
+        parse_cdxml_document(&exported, Some("benzene export")).expect("export should parse");
+    let reimported_fragment = reimported
+        .resources
+        .values()
+        .find_map(|resource| resource.data.as_fragment())
+        .expect("reimported fragment should exist");
+    assert!(reimported_fragment
+        .bonds
+        .iter()
+        .any(|bond| bond.stroke.as_deref() == Some("#ff0000")));
+}
+
+#[test]
 fn cdxml_export_import_preserves_non_white_page_background() {
     let document = parse_document_json(
         &json!({
@@ -3275,12 +3379,16 @@ fn cdxml_acs_hollow_and_open_arrows_keep_chemdraw_head_width() {
                     object_id: Some(id),
                     points,
                     ..
-                } if *role == RenderRole::DocumentGraphic && id == object_id => {
-                    Some(
-                        points.iter().map(|point| point.y).fold(f64::NEG_INFINITY, f64::max)
-                            - points.iter().map(|point| point.y).fold(f64::INFINITY, f64::min),
-                    )
-                }
+                } if *role == RenderRole::DocumentGraphic && id == object_id => Some(
+                    points
+                        .iter()
+                        .map(|point| point.y)
+                        .fold(f64::NEG_INFINITY, f64::max)
+                        - points
+                            .iter()
+                            .map(|point| point.y)
+                            .fold(f64::INFINITY, f64::min),
+                ),
                 _ => None,
             })
             .fold(0.0, f64::max);

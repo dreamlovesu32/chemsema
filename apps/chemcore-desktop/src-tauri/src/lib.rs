@@ -4,12 +4,17 @@ use chemcore_desktop_service::{
     SessionId,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
-use tauri::{DragDropEvent, Emitter, Manager, WindowEvent};
+use tauri::{
+    DragDropEvent, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent,
+};
 
+const USE_NATIVE_MENU: bool = false;
 const EVENT_DESKTOP_MENU: &str = "chemcore-desktop-menu";
 const EVENT_DESKTOP_OPEN_PATHS: &str = "chemcore-desktop-open-paths";
 const FORMAT_CHEMCORE_FRAGMENT: &str = "Chemcore Clipboard Fragment";
@@ -23,6 +28,7 @@ const GMEM_MOVEABLE_FLAG: u32 = 0x0002;
 struct DesktopState {
     service: Mutex<DesktopDocumentService>,
     pending_open_paths: Mutex<Vec<String>>,
+    pending_detached_documents: Mutex<BTreeMap<String, DesktopDetachedDocumentPayload>>,
 }
 
 impl DesktopState {
@@ -30,6 +36,7 @@ impl DesktopState {
         Self {
             service: Mutex::new(DesktopDocumentService::new()),
             pending_open_paths: Mutex::new(Vec::new()),
+            pending_detached_documents: Mutex::new(BTreeMap::new()),
         }
     }
 }
@@ -44,6 +51,16 @@ struct DesktopMenuPayload {
 #[serde(rename_all = "camelCase")]
 struct DesktopOpenPathsPayload {
     paths: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopDetachedDocumentPayload {
+    title: String,
+    file_name: Option<String>,
+    file_path: Option<String>,
+    document_json: String,
+    zoom_percent: Option<f64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -166,14 +183,6 @@ fn desktop_engine_document_colors_json(
 }
 
 #[tauri::command]
-fn desktop_color_choose(
-    initial_color: String,
-    custom_colors: Vec<String>,
-) -> Result<Option<String>, String> {
-    native_choose_color(&initial_color, &custom_colors)
-}
-
-#[tauri::command]
 fn desktop_file_choose_open() -> Result<Option<String>, String> {
     Ok(document_file_dialog()
         .pick_file()
@@ -250,7 +259,8 @@ fn desktop_file_write_base64(
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(content_base64)
         .map_err(|error| format!("Failed to decode export data: {error}"))?;
-    fs::write(&path, bytes).map_err(|error| format!("Failed to write {}: {error}", path.display()))?;
+    fs::write(&path, bytes)
+        .map_err(|error| format!("Failed to write {}: {error}", path.display()))?;
     refresh_native_menu(&app);
     Ok(DesktopSavedDocument {
         file_name: path
@@ -323,6 +333,98 @@ fn desktop_take_startup_open_paths(
 }
 
 #[tauri::command]
+fn desktop_window_set_title(window: WebviewWindow, title: String) -> Result<(), String> {
+    let title = title.trim();
+    window
+        .set_title(if title.is_empty() { "Chemcore" } else { title })
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn desktop_window_minimize(window: WebviewWindow) -> Result<(), String> {
+    window.minimize().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn desktop_window_toggle_maximize(window: WebviewWindow) -> Result<(), String> {
+    if window.is_maximized().map_err(|error| error.to_string())? {
+        window.unmaximize().map_err(|error| error.to_string())
+    } else {
+        window.maximize().map_err(|error| error.to_string())
+    }
+}
+
+#[tauri::command]
+fn desktop_window_close(window: WebviewWindow) -> Result<(), String> {
+    window.close().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn desktop_window_start_dragging(window: WebviewWindow) -> Result<(), String> {
+    window.start_dragging().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn desktop_window_is_maximized(window: WebviewWindow) -> Result<bool, String> {
+    window.is_maximized().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn desktop_window_detach_document(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, DesktopState>,
+    document: DesktopDetachedDocumentPayload,
+    screen_x: Option<f64>,
+    screen_y: Option<f64>,
+) -> Result<String, String> {
+    let label = next_document_window_label(&app);
+    {
+        let mut pending = state
+            .pending_detached_documents
+            .lock()
+            .map_err(|error| error.to_string())?;
+        pending.insert(label.clone(), document.clone());
+    }
+    let title = if document.title.trim().is_empty() {
+        "Untitled"
+    } else {
+        document.title.trim()
+    };
+    let url = editor_window_url(&app)?;
+    let mut builder = WebviewWindowBuilder::new(&app, label.clone(), url)
+        .title(title)
+        .inner_size(1280.0, 900.0)
+        .min_inner_size(960.0, 640.0)
+        .resizable(true)
+        .decorations(false)
+        .shadow(true)
+        .drag_and_drop(true)
+        .focused(true);
+    if let (Some(x), Some(y)) = (screen_x, screen_y) {
+        builder = builder.position((x - 240.0).max(0.0), (y - 20.0).max(0.0));
+    }
+    if let Err(error) = builder.build() {
+        if let Ok(mut pending) = state.pending_detached_documents.lock() {
+            pending.remove(&label);
+        }
+        return Err(error.to_string());
+    }
+    Ok(label)
+}
+
+#[tauri::command]
+fn desktop_window_take_detached_document(
+    window: WebviewWindow,
+    state: tauri::State<'_, DesktopState>,
+) -> Result<Option<DesktopDetachedDocumentPayload>, String> {
+    let mut pending = state
+        .pending_detached_documents
+        .lock()
+        .map_err(|error| error.to_string())?;
+    Ok(pending.remove(window.label()))
+}
+
+#[tauri::command]
 fn desktop_clipboard_write(payload: NativeClipboardWritePayload) -> Result<(), String> {
     native_clipboard_write(payload)
 }
@@ -354,7 +456,10 @@ fn native_clipboard_write(payload: NativeClipboardWritePayload) -> Result<(), St
 
     let mut wrote = false;
     for (format_name, value) in [
-        (FORMAT_CHEMCORE_FRAGMENT, payload.chemcore_fragment_json.as_deref()),
+        (
+            FORMAT_CHEMCORE_FRAGMENT,
+            payload.chemcore_fragment_json.as_deref(),
+        ),
         (
             FORMAT_CHEMCORE_DOCUMENT_JSON,
             payload.chemcore_document_json.as_deref(),
@@ -369,10 +474,19 @@ fn native_clipboard_write(payload: NativeClipboardWritePayload) -> Result<(), St
         };
         let format = unsafe { RegisterClipboardFormatW(wide_null(format_name).as_ptr()) };
         if format == 0 {
-            return Err(format!("Failed to register clipboard format {format_name}."));
+            return Err(format!(
+                "Failed to register clipboard format {format_name}."
+            ));
         }
         unsafe {
-            write_clipboard_utf8(format, value, GlobalAlloc, GlobalLock, GlobalUnlock, SetClipboardData)?;
+            write_clipboard_utf8(
+                format,
+                value,
+                GlobalAlloc,
+                GlobalLock,
+                GlobalUnlock,
+                SetClipboardData,
+            )?;
         }
         wrote = true;
     }
@@ -384,7 +498,14 @@ fn native_clipboard_write(payload: NativeClipboardWritePayload) -> Result<(), St
         .filter(|value| !value.is_empty());
     if let Some(text) = text {
         unsafe {
-            write_clipboard_utf16(13, text, GlobalAlloc, GlobalLock, GlobalUnlock, SetClipboardData)?;
+            write_clipboard_utf16(
+                13,
+                text,
+                GlobalAlloc,
+                GlobalLock,
+                GlobalUnlock,
+                SetClipboardData,
+            )?;
         }
         wrote = true;
     }
@@ -454,68 +575,6 @@ fn native_clipboard_read() -> Result<NativeClipboardReadPayload, String> {
 }
 
 #[cfg(target_os = "windows")]
-fn native_choose_color(
-    initial_color: &str,
-    custom_colors: &[String],
-) -> Result<Option<String>, String> {
-    use windows_sys::Win32::UI::Controls::Dialogs::{
-        ChooseColorW, CommDlgExtendedError, CHOOSECOLORW, CC_FULLOPEN, CC_RGBINIT,
-    };
-
-    let mut custom_color_refs = [0u32; 16];
-    for (index, color) in custom_colors.iter().take(custom_color_refs.len()).enumerate() {
-        custom_color_refs[index] = colorref_from_hex(color).unwrap_or(0x00ff_ffff);
-    }
-
-    let mut choose = CHOOSECOLORW {
-        lStructSize: std::mem::size_of::<CHOOSECOLORW>() as u32,
-        hwndOwner: std::ptr::null_mut(),
-        hInstance: std::ptr::null_mut(),
-        rgbResult: colorref_from_hex(initial_color).unwrap_or(0),
-        lpCustColors: custom_color_refs.as_mut_ptr(),
-        Flags: CC_FULLOPEN | CC_RGBINIT,
-        lCustData: 0,
-        lpfnHook: None,
-        lpTemplateName: std::ptr::null(),
-    };
-
-    let picked = unsafe { ChooseColorW(&mut choose) };
-    if picked != 0 {
-        return Ok(Some(hex_from_colorref(choose.rgbResult)));
-    }
-    let error = unsafe { CommDlgExtendedError() };
-    if error == 0 {
-        Ok(None)
-    } else {
-        Err(format!("Windows color dialog failed with error code {error}."))
-    }
-}
-
-#[cfg(not(target_os = "windows"))]
-fn native_choose_color(
-    _initial_color: &str,
-    _custom_colors: &[String],
-) -> Result<Option<String>, String> {
-    Err("Native color dialog is only implemented on Windows.".to_string())
-}
-
-fn colorref_from_hex(color: &str) -> Option<u32> {
-    let raw = color.trim().trim_start_matches('#');
-    if raw.len() < 6 || !raw[..6].chars().all(|character| character.is_ascii_hexdigit()) {
-        return None;
-    }
-    let rgb = u32::from_str_radix(&raw[..6], 16).ok()?;
-    Some(rgb_to_colorref(rgb))
-}
-
-fn hex_from_colorref(colorref: u32) -> String {
-    let red = colorref & 0xff;
-    let green = (colorref >> 8) & 0xff;
-    let blue = (colorref >> 16) & 0xff;
-    format!("#{red:02x}{green:02x}{blue:02x}")
-}
-
-#[cfg(target_os = "windows")]
 struct ClipboardCloseGuard;
 
 #[cfg(target_os = "windows")]
@@ -539,8 +598,10 @@ unsafe fn write_clipboard_utf8(
     global_alloc: unsafe extern "system" fn(u32, usize) -> *mut std::ffi::c_void,
     global_lock: unsafe extern "system" fn(*mut std::ffi::c_void) -> *mut std::ffi::c_void,
     global_unlock: unsafe extern "system" fn(*mut std::ffi::c_void) -> i32,
-    set_clipboard_data:
-        unsafe extern "system" fn(u32, *mut std::ffi::c_void) -> *mut std::ffi::c_void,
+    set_clipboard_data: unsafe extern "system" fn(
+        u32,
+        *mut std::ffi::c_void,
+    ) -> *mut std::ffi::c_void,
 ) -> Result<(), String> {
     let bytes = value.as_bytes();
     let handle = global_alloc(GMEM_MOVEABLE_FLAG, bytes.len() + 1);
@@ -567,8 +628,10 @@ unsafe fn write_clipboard_utf16(
     global_alloc: unsafe extern "system" fn(u32, usize) -> *mut std::ffi::c_void,
     global_lock: unsafe extern "system" fn(*mut std::ffi::c_void) -> *mut std::ffi::c_void,
     global_unlock: unsafe extern "system" fn(*mut std::ffi::c_void) -> i32,
-    set_clipboard_data:
-        unsafe extern "system" fn(u32, *mut std::ffi::c_void) -> *mut std::ffi::c_void,
+    set_clipboard_data: unsafe extern "system" fn(
+        u32,
+        *mut std::ffi::c_void,
+    ) -> *mut std::ffi::c_void,
 ) -> Result<(), String> {
     let wide = wide_null(value);
     let byte_len = wide.len() * std::mem::size_of::<u16>();
@@ -607,7 +670,10 @@ unsafe fn read_clipboard_utf8(
         return Ok(None);
     }
     let slice = std::slice::from_raw_parts(source, size);
-    let len = slice.iter().position(|byte| *byte == 0).unwrap_or(slice.len());
+    let len = slice
+        .iter()
+        .position(|byte| *byte == 0)
+        .unwrap_or(slice.len());
     let text = String::from_utf8_lossy(&slice[..len]).to_string();
     global_unlock(handle);
     Ok(Some(text))
@@ -632,7 +698,10 @@ unsafe fn read_clipboard_utf16(
         return Ok(None);
     }
     let slice = std::slice::from_raw_parts(source, size / std::mem::size_of::<u16>());
-    let len = slice.iter().position(|unit| *unit == 0).unwrap_or(slice.len());
+    let len = slice
+        .iter()
+        .position(|unit| *unit == 0)
+        .unwrap_or(slice.len());
     let text = String::from_utf16_lossy(&slice[..len]);
     global_unlock(handle);
     Ok(Some(text))
@@ -683,8 +752,14 @@ fn write_emf_preview(path: &Path, render_list_json: &str, bounds_json: &str) -> 
         SetBkMode(hdc, TRANSPARENT as i32);
     }
 
-    for primitive in primitives.iter().filter(|primitive| is_document_primitive(primitive)) {
-        let kind = primitive.get("kind").and_then(|value| value.as_str()).unwrap_or("");
+    for primitive in primitives
+        .iter()
+        .filter(|primitive| is_document_primitive(primitive))
+    {
+        let kind = primitive
+            .get("kind")
+            .and_then(|value| value.as_str())
+            .unwrap_or("");
         match kind {
             "line" => {
                 let Some(from) = point_from_json(primitive.get("from")) else {
@@ -754,7 +829,10 @@ fn write_emf_preview(path: &Path, render_list_json: &str, bounds_json: &str) -> 
                 let Some(center) = point_from_json(primitive.get("center")) else {
                     continue;
                 };
-                let radius = primitive.get("radius").and_then(|value| value.as_f64()).unwrap_or(0.0);
+                let radius = primitive
+                    .get("radius")
+                    .and_then(|value| value.as_f64())
+                    .unwrap_or(0.0);
                 let center = layout.point(center);
                 let radius = (radius * layout.scale).round().max(1.0) as i32;
                 with_pen_and_brush(
@@ -778,8 +856,14 @@ fn write_emf_preview(path: &Path, render_list_json: &str, bounds_json: &str) -> 
                 let Some(center) = point_from_json(primitive.get("center")) else {
                     continue;
                 };
-                let rx = primitive.get("rx").and_then(|value| value.as_f64()).unwrap_or(0.0);
-                let ry = primitive.get("ry").and_then(|value| value.as_f64()).unwrap_or(0.0);
+                let rx = primitive
+                    .get("rx")
+                    .and_then(|value| value.as_f64())
+                    .unwrap_or(0.0);
+                let ry = primitive
+                    .get("ry")
+                    .and_then(|value| value.as_f64())
+                    .unwrap_or(0.0);
                 let center = layout.point(center);
                 let rx = (rx * layout.scale).round().max(1.0) as i32;
                 let ry = (ry * layout.scale).round().max(1.0) as i32;
@@ -790,7 +874,13 @@ fn write_emf_preview(path: &Path, render_list_json: &str, bounds_json: &str) -> 
                     color_from_json(primitive.get("fill"), 0xffffff),
                     primitive.get("fill").is_some(),
                     || unsafe {
-                        Ellipse(hdc, center.x - rx, center.y - ry, center.x + rx, center.y + ry);
+                        Ellipse(
+                            hdc,
+                            center.x - rx,
+                            center.y - ry,
+                            center.x + rx,
+                            center.y + ry,
+                        );
                     },
                 );
             }
@@ -798,13 +888,25 @@ fn write_emf_preview(path: &Path, render_list_json: &str, bounds_json: &str) -> 
                 let Some(text) = primitive.get("text").and_then(|value| value.as_str()) else {
                     continue;
                 };
-                let x = primitive.get("x").and_then(|value| value.as_f64()).unwrap_or(0.0);
-                let y = primitive.get("y").and_then(|value| value.as_f64()).unwrap_or(0.0);
+                let x = primitive
+                    .get("x")
+                    .and_then(|value| value.as_f64())
+                    .unwrap_or(0.0);
+                let y = primitive
+                    .get("y")
+                    .and_then(|value| value.as_f64())
+                    .unwrap_or(0.0);
                 let point = layout.point((x, y));
                 let wide = wide_null(text);
                 unsafe {
                     SetTextColor(hdc, color_from_json(primitive.get("fill"), 0x000000));
-                    TextOutW(hdc, point.x, point.y, wide.as_ptr(), text.encode_utf16().count() as i32);
+                    TextOutW(
+                        hdc,
+                        point.x,
+                        point.y,
+                        wide.as_ptr(),
+                        text.encode_utf16().count() as i32,
+                    );
                 }
             }
             _ => {}
@@ -822,7 +924,11 @@ fn write_emf_preview(path: &Path, render_list_json: &str, bounds_json: &str) -> 
 }
 
 #[cfg(not(target_os = "windows"))]
-fn write_emf_preview(_path: &Path, _render_list_json: &str, _bounds_json: &str) -> Result<(), String> {
+fn write_emf_preview(
+    _path: &Path,
+    _render_list_json: &str,
+    _bounds_json: &str,
+) -> Result<(), String> {
     Err("EMF export is only implemented on Windows.".to_string())
 }
 
@@ -907,7 +1013,10 @@ fn points_from_json(
         .unwrap_or_default()
 }
 
-fn rect_from_json(primitive: &serde_json::Value, layout: &EmfLayout) -> Option<(i32, i32, i32, i32)> {
+fn rect_from_json(
+    primitive: &serde_json::Value,
+    layout: &EmfLayout,
+) -> Option<(i32, i32, i32, i32)> {
     let x = primitive.get("x")?.as_f64()?;
     let y = primitive.get("y")?.as_f64()?;
     let width = primitive.get("width")?.as_f64()?;
@@ -949,7 +1058,11 @@ fn primitive_points(primitive: &serde_json::Value) -> Vec<(f64, f64)> {
         }
     }
     if let Some(array) = primitive.get("points").and_then(|value| value.as_array()) {
-        points.extend(array.iter().filter_map(|point| point_from_json(Some(point))));
+        points.extend(
+            array
+                .iter()
+                .filter_map(|point| point_from_json(Some(point))),
+        );
     }
     if let (Some(x), Some(y), Some(width), Some(height)) = (
         primitive.get("x").and_then(|value| value.as_f64()),
@@ -996,7 +1109,12 @@ fn rgb_to_colorref(rgb: u32) -> u32 {
 }
 
 #[cfg(target_os = "windows")]
-fn with_pen<F: FnOnce()>(hdc: windows_sys::Win32::Graphics::Gdi::HDC, color: u32, width: i32, draw: F) {
+fn with_pen<F: FnOnce()>(
+    hdc: windows_sys::Win32::Graphics::Gdi::HDC,
+    color: u32,
+    width: i32,
+    draw: F,
+) {
     use windows_sys::Win32::Graphics::Gdi::{CreatePen, DeleteObject, SelectObject, PS_SOLID};
     unsafe {
         let pen = CreatePen(PS_SOLID, width, color);
@@ -1175,6 +1293,9 @@ fn build_native_menu(
 }
 
 fn refresh_native_menu(app: &tauri::AppHandle) {
+    if !USE_NATIVE_MENU {
+        return;
+    }
     let recent_files = app
         .try_state::<DesktopState>()
         .and_then(|state| {
@@ -1191,6 +1312,9 @@ fn refresh_native_menu(app: &tauri::AppHandle) {
 }
 
 fn install_native_menu(app: &tauri::App) -> tauri::Result<()> {
+    if !USE_NATIVE_MENU {
+        return Ok(());
+    }
     let recent_files = app
         .try_state::<DesktopState>()
         .and_then(|state| {
@@ -1256,24 +1380,74 @@ fn handle_native_menu_event(app: &tauri::AppHandle, id: &str) {
         "desktop-view-fit" => "fit",
         _ => return,
     };
-    let _ = app.emit(
-        EVENT_DESKTOP_MENU,
-        DesktopMenuPayload {
-            command: command.to_string(),
-        },
-    );
+    emit_menu_command_to_focused(app, command);
 }
 
 fn emit_open_paths(app: &tauri::AppHandle, paths: Vec<String>) {
     if paths.is_empty() {
         return;
     }
+    let target = app
+        .webview_windows()
+        .into_values()
+        .find(|window| window.is_focused().unwrap_or(false))
+        .or_else(|| app.get_webview_window("main"))
+        .or_else(|| app.webview_windows().into_values().next());
+    if let Some(window) = target {
+        let _ = window.emit(EVENT_DESKTOP_OPEN_PATHS, DesktopOpenPathsPayload { paths });
+        return;
+    }
     if let Some(state) = app.try_state::<DesktopState>() {
         if let Ok(mut pending) = state.pending_open_paths.lock() {
-            pending.extend(paths.iter().cloned());
+            pending.extend(paths);
         }
     }
-    let _ = app.emit(EVENT_DESKTOP_OPEN_PATHS, DesktopOpenPathsPayload { paths });
+}
+
+fn emit_menu_command_to_focused(app: &tauri::AppHandle, command: &str) {
+    let payload = DesktopMenuPayload {
+        command: command.to_string(),
+    };
+    let focused = app
+        .webview_windows()
+        .into_values()
+        .find(|window| window.is_focused().unwrap_or(false))
+        .or_else(|| app.get_webview_window("main"))
+        .or_else(|| app.webview_windows().into_values().next());
+    if let Some(window) = focused {
+        let _ = window.emit(EVENT_DESKTOP_MENU, payload);
+    }
+}
+
+fn editor_window_url(app: &tauri::AppHandle) -> Result<WebviewUrl, String> {
+    let query = "chemcoreWindow=1";
+    if tauri::is_dev() {
+        let mut url = app
+            .config()
+            .build
+            .dev_url
+            .clone()
+            .ok_or_else(|| "Desktop dev URL is unavailable.".to_string())?;
+        url.set_query(Some(query));
+        return Ok(WebviewUrl::External(url));
+    }
+    Ok(WebviewUrl::App(PathBuf::from(format!(
+        "index.html?{query}"
+    ))))
+}
+
+fn next_document_window_label(app: &tauri::AppHandle) -> String {
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or_default();
+    for index in 0..1000 {
+        let label = format!("document-{stamp}-{index}");
+        if app.get_webview_window(&label).is_none() {
+            return label;
+        }
+    }
+    format!("document-{stamp}")
 }
 
 fn focus_main_window(app: &tauri::AppHandle) {
@@ -1329,8 +1503,9 @@ pub fn run() {
             let paths = openable_document_args(args.into_iter().skip(1), Some(Path::new(&cwd)));
             if !paths.is_empty() {
                 emit_open_paths(app, paths);
+            } else {
+                focus_main_window(app);
             }
-            focus_main_window(app);
         }))
         .manage(DesktopState::new())
         .invoke_handler(tauri::generate_handler![
@@ -1345,7 +1520,6 @@ pub fn run() {
             desktop_engine_document_cdxml,
             desktop_engine_document_svg,
             desktop_engine_document_colors_json,
-            desktop_color_choose,
             desktop_file_choose_open,
             desktop_file_choose_save,
             desktop_file_choose_export_save,
@@ -1356,6 +1530,14 @@ pub fn run() {
             desktop_recent_files,
             desktop_clear_recent_files,
             desktop_take_startup_open_paths,
+            desktop_window_set_title,
+            desktop_window_minimize,
+            desktop_window_toggle_maximize,
+            desktop_window_close,
+            desktop_window_start_dragging,
+            desktop_window_is_maximized,
+            desktop_window_detach_document,
+            desktop_window_take_detached_document,
             desktop_clipboard_write,
             desktop_clipboard_read,
         ])

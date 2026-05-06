@@ -194,6 +194,7 @@ mod tests {
             double: None,
             stereo: None,
             stroke_width: VIEWER_BOND_STROKE,
+            stroke: None,
             bold_width: None,
             wedge_width: None,
             label_clip_margin: None,

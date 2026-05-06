@@ -144,7 +144,8 @@ pub(super) fn rightmost_group_anchor_index(
     let grouped_text = chars.iter().collect::<String>();
     let groups = split_label_groups(&grouped_text);
     let rightmost_group = groups.last()?;
-    let anchor_char = chars.len().checked_sub(rightmost_group.chars().count())?;
+    let group_start = chars.len().checked_sub(rightmost_group.chars().count())?;
+    let anchor_char = group_start + crate::terminal_letter_anchor_offset(rightmost_group);
     Some(anchor_char)
 }
 

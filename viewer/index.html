@@ -8,6 +8,34 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body data-view-mode="document">
+    <div id="desktop-titlebar" class="desktop-titlebar" aria-label="Window title bar">
+      <div class="titlebar-brand" data-titlebar-drag-region aria-hidden="true">
+        <svg viewBox="0 0 24 24" focusable="false">
+          <circle cx="8" cy="12" r="3.6"/>
+          <circle cx="16" cy="12" r="3.6"/>
+          <path d="M10.9 10.2h2.2M10.9 13.8h2.2"/>
+        </svg>
+      </div>
+      <div class="document-tabbar" aria-label="Document tabs">
+        <div id="document-tabs" class="document-tabs" role="tablist" aria-label="Open documents"></div>
+        <button id="document-tab-new" class="document-tab-new" type="button" data-command="new" aria-label="New file" title="New file">
+          <span aria-hidden="true">+</span>
+        </button>
+      </div>
+      <div class="titlebar-drag-region" data-titlebar-drag-region></div>
+      <div class="window-controls" aria-label="Window controls">
+        <button class="window-control" type="button" data-window-command="minimize" aria-label="Minimize" title="Minimize">
+          <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5h8"/></svg>
+        </button>
+        <button class="window-control" type="button" data-window-command="maximize" aria-label="Maximize" title="Maximize">
+          <svg class="window-icon-maximize" viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="2.5" width="7" height="7"/></svg>
+          <svg class="window-icon-restore" viewBox="0 0 12 12" aria-hidden="true"><path d="M4 2.5h5.5V8H8"/><rect x="2.5" y="4" width="5.5" height="5.5"/></svg>
+        </button>
+        <button class="window-control window-control-close" type="button" data-window-command="close" aria-label="Close" title="Close">
+          <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3 3 9"/></svg>
+        </button>
+      </div>
+    </div>
     <div class="editor-shell">
       <header class="editor-topbar" aria-label="Editor toolbar">
         <div class="toolbar-row toolbar-row-primary">

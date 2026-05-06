@@ -9,7 +9,14 @@ import { createDesktopFileHost } from "./desktop_file_host.js";
 import { createEngineHost } from "./engine_host.js";
 import { bindEditorControls } from "./editor_bindings.js";
 import { createDocumentFlow } from "./document_flow.js";
-import { chemcoreOpenAcceptString } from "./file_io.js";
+import {
+  chemcoreOpenAcceptString,
+  chemcoreOpenAcceptTypes,
+  decompressChemcoreText,
+  looksLikeCdxmlFile,
+  looksLikeCompressedChemcoreFile,
+  saveFormatFromFileName,
+} from "./file_io.js";
 import {
   boundsCenter,
   boundsSize,
@@ -105,9 +112,13 @@ const state = {
 };
 const engineHost = createEngineHost();
 const desktopFileHost = createDesktopFileHost();
-const colorHost = createColorHost({ desktopFileHost });
+const colorHost = createColorHost();
+const isDesktopShell = !!desktopFileHost?.available;
 let sharedGlyphProfiles = null;
 const sharedGlyphProfilesReady = loadSharedGlyphProfiles();
+
+document.body.classList.toggle("desktop-shell", isDesktopShell);
+document.body.classList.toggle("browser-shell", !isDesktopShell);
 
 if (typeof window !== "undefined") {
   window.__chemcoreDebug = {
@@ -188,6 +199,8 @@ const viewerStats = document.getElementById("viewer-stats");
 const viewerSvg = document.getElementById("viewer-svg");
 const viewerContainer = document.getElementById("viewer-container");
 const secondaryToolbar = document.getElementById("secondary-toolbar");
+const desktopTitlebar = document.getElementById("desktop-titlebar");
+const documentTabsRoot = document.getElementById("document-tabs");
 const documentStylePresetInput = document.getElementById("document-style-preset");
 const openFileInput = document.createElement("input");
 openFileInput.type = "file";
@@ -208,6 +221,7 @@ const textSymbolCatalogReady = loadTextSymbolCatalog().then((catalog) => {
 });
 
 syncPrimaryChromeIcons();
+bindDesktopWindowChrome();
 
 if (sampleSelect) {
   for (const samplePath of SAMPLE_FILES) {
@@ -238,6 +252,29 @@ toggleTexts?.addEventListener("change", () => renderDocument());
 
 const zoomInput = document.getElementById("zoom-input");
 let zoomPercent = 100;
+const documentTabs = [];
+let activeDocumentTabId = null;
+const BROWSER_PENDING_DOCUMENT_KEY_PREFIX = "chemcore:pending-browser-document:";
+const BROWSER_PENDING_DOCUMENT_PARAM = "chemcorePendingDocument";
+let activeTitlebarTabDrag = null;
+let detachingDocumentTabId = null;
+let suppressNextDocumentTabClick = false;
+
+const syncWindowTitle = () => {
+  updateActiveDocumentTabTitle();
+  const title = activeDocumentTab()?.title || String(viewerTitle?.textContent || "Untitled").trim() || "Untitled";
+  document.title = `${title} - Chemcore`;
+  desktopFileHost?.setWindowTitle?.(title).catch?.(() => {});
+};
+
+if (viewerTitle) {
+  new MutationObserver(syncWindowTitle).observe(viewerTitle, {
+    childList: true,
+    characterData: true,
+    subtree: true,
+  });
+  syncWindowTitle();
+}
 
 const editorState = {
   activeTool: "bond",
@@ -245,7 +282,7 @@ const editorState = {
   selectMode: "free",
   bondType: "single",
   textFontFamily: "Arial",
-  textFontSize: normalizeToolbarFontSize(cmToCssPx(DEFAULT_TEXT_FONT_SIZE)),
+  textFontSize: cmToCssPx(DEFAULT_TEXT_FONT_SIZE),
   textColor: "#000000",
   selectionColor: "#000000",
   textAlign: "left",
@@ -272,6 +309,337 @@ const editorState = {
 };
 let activeTextEditor = null;
 let activeSelectionGesture = null;
+
+const TAB_STATE_KEYS = [
+  "currentPath",
+  "currentFileName",
+  "currentFilePath",
+  "currentDocument",
+  "editorEngine",
+  "documentEngine",
+  "coreRenderList",
+  "runtimeViewBox",
+  "lastEditFocusPoint",
+  "activeBracketDragStart",
+  "zoomHandoffs",
+];
+
+function activeDocumentTab() {
+  return documentTabs.find((tab) => tab.id === activeDocumentTabId) || null;
+}
+
+function createDocumentTab(title = "Untitled") {
+  return {
+    id: `doc-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    title,
+    zoomPercent: 100,
+    currentPath: null,
+    currentFileName: null,
+    currentFilePath: null,
+    currentDocument: null,
+    editorEngine: null,
+    documentEngine: null,
+    coreRenderList: null,
+    runtimeViewBox: null,
+    lastEditFocusPoint: null,
+    activeBracketDragStart: null,
+    zoomHandoffs: [],
+  };
+}
+
+function ensureDocumentTab() {
+  if (activeDocumentTab()) {
+    return activeDocumentTab();
+  }
+  const tab = createDocumentTab();
+  documentTabs.push(tab);
+  activeDocumentTabId = tab.id;
+  return tab;
+}
+
+function saveActiveDocumentTabState() {
+  const tab = activeDocumentTab();
+  if (!tab) {
+    return;
+  }
+  for (const key of TAB_STATE_KEYS) {
+    tab[key] = state[key];
+  }
+  tab.zoomPercent = zoomPercent;
+  tab.title = documentTitleFromState();
+}
+
+function restoreDocumentTabState(tab) {
+  for (const key of TAB_STATE_KEYS) {
+    state[key] = tab[key];
+  }
+  zoomPercent = Number(tab.zoomPercent || 100);
+  activeSelectionGesture = null;
+  textEditorLayer.replaceChildren();
+  activeTextEditor = null;
+  syncDocumentStylePresetFromEngine();
+  syncEngineToolState();
+  syncZoomControl();
+  renderSecondaryToolbar();
+  renderDocument();
+  renderDocumentTabs();
+  syncWindowTitle();
+}
+
+function documentTitleFromState() {
+  const fileName = state.currentFileName || fileNameFromPath(state.currentPath) || fileNameFromPath(state.currentFilePath);
+  if (fileName) {
+    return fileName;
+  }
+  const title = String(state.currentDocument?.document?.title || "").trim();
+  return title || "Untitled";
+}
+
+function fileNameFromPath(path) {
+  return String(path || "").split(/[\\/]/).filter(Boolean).pop() || "";
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function updateActiveDocumentTabTitle() {
+  const tab = activeDocumentTab();
+  if (!tab) {
+    return;
+  }
+  const nextTitle = documentTitleFromState();
+  if (tab.title !== nextTitle) {
+    tab.title = nextTitle;
+    renderDocumentTabs();
+  }
+}
+
+function renderDocumentTabs() {
+  if (!documentTabsRoot) {
+    return;
+  }
+  documentTabsRoot.innerHTML = documentTabs.map((tab) => {
+    const active = tab.id === activeDocumentTabId;
+    const title = escapeHtml(tab.title || "Untitled");
+    const dragging = tab.id === detachingDocumentTabId;
+    return `
+      <div class="document-tab${active ? " is-active" : ""}${dragging ? " is-dragging" : ""}" role="tab" tabindex="0" aria-selected="${active ? "true" : "false"}" data-document-tab-id="${tab.id}" title="${title}">
+        <span class="document-tab-title">${title}</span>
+        <button class="document-tab-close" type="button" data-document-tab-close="${tab.id}" aria-label="Close ${title}" title="Close">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10"/><path d="M17 7 7 17"/></svg>
+        </button>
+      </div>
+    `;
+  }).join("");
+}
+
+function documentTabElement(tabId) {
+  if (!documentTabsRoot || !tabId) {
+    return null;
+  }
+  return Array.from(documentTabsRoot.querySelectorAll("[data-document-tab-id]"))
+    .find((element) => element.dataset.documentTabId === tabId) || null;
+}
+
+function setDetachingDocumentTabId(tabId) {
+  if (detachingDocumentTabId === tabId) {
+    return;
+  }
+  if (detachingDocumentTabId) {
+    documentTabElement(detachingDocumentTabId)?.classList.remove("is-dragging");
+  }
+  detachingDocumentTabId = tabId;
+  if (detachingDocumentTabId) {
+    documentTabElement(detachingDocumentTabId)?.classList.add("is-dragging");
+  }
+}
+
+async function activateDocumentTab(tabId) {
+  if (tabId === activeDocumentTabId) {
+    return;
+  }
+  const nextTab = documentTabs.find((tab) => tab.id === tabId);
+  if (!nextTab) {
+    return;
+  }
+  finishActiveTextEditor(true);
+  saveActiveDocumentTabState();
+  activeDocumentTabId = nextTab.id;
+  restoreDocumentTabState(nextTab);
+}
+
+async function closeDocumentTab(tabId) {
+  const index = documentTabs.findIndex((tab) => tab.id === tabId);
+  if (index < 0) {
+    return;
+  }
+  const closing = documentTabs[index];
+  const wasActive = closing.id === activeDocumentTabId;
+  if (wasActive) {
+    finishActiveTextEditor(true);
+    saveActiveDocumentTabState();
+  }
+  closing.editorEngine?.free?.();
+  closing.documentEngine?.free?.();
+  documentTabs.splice(index, 1);
+  if (!documentTabs.length) {
+    const tab = createDocumentTab();
+    documentTabs.push(tab);
+    activeDocumentTabId = tab.id;
+    restoreDocumentTabState(tab);
+    resetEditorEngine();
+    renderDocument();
+    fitView();
+    saveActiveDocumentTabState();
+    renderDocumentTabs();
+    return;
+  }
+  if (wasActive) {
+    const nextTab = documentTabs[Math.max(0, Math.min(index, documentTabs.length - 1))];
+    activeDocumentTabId = nextTab.id;
+    restoreDocumentTabState(nextTab);
+  } else {
+    renderDocumentTabs();
+  }
+}
+
+documentTabsRoot?.addEventListener("click", async (event) => {
+  if (suppressNextDocumentTabClick) {
+    suppressNextDocumentTabClick = false;
+    event.preventDefault();
+    event.stopPropagation();
+    return;
+  }
+  const close = event.target.closest("[data-document-tab-close]");
+  if (close) {
+    event.stopPropagation();
+    await closeDocumentTab(close.dataset.documentTabClose);
+    return;
+  }
+  const tab = event.target.closest("[data-document-tab-id]");
+  if (tab) {
+    await activateDocumentTab(tab.dataset.documentTabId);
+  }
+});
+
+documentTabsRoot?.addEventListener("keydown", async (event) => {
+  if (event.key !== "Enter" && event.key !== " ") {
+    return;
+  }
+  const tab = event.target.closest("[data-document-tab-id]");
+  if (!tab) {
+    return;
+  }
+  event.preventDefault();
+  await activateDocumentTab(tab.dataset.documentTabId);
+});
+
+documentTabsRoot?.addEventListener("pointerdown", (event) => {
+  if (!isDesktopShell || event.button !== 0 || event.target.closest("[data-document-tab-close]")) {
+    return;
+  }
+  const tab = event.target.closest("[data-document-tab-id]");
+  if (!tab) {
+    return;
+  }
+  activeTitlebarTabDrag = {
+    tabId: tab.dataset.documentTabId,
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    screenX: event.screenX,
+    screenY: event.screenY,
+    dragging: false,
+  };
+  tab.setPointerCapture?.(event.pointerId);
+});
+
+documentTabsRoot?.addEventListener("pointermove", (event) => {
+  const drag = activeTitlebarTabDrag;
+  if (!drag || drag.pointerId !== event.pointerId) {
+    return;
+  }
+  drag.screenX = event.screenX;
+  drag.screenY = event.screenY;
+  const dx = event.clientX - drag.startX;
+  const dy = event.clientY - drag.startY;
+  if (!drag.dragging && Math.hypot(dx, dy) >= 8) {
+    drag.dragging = true;
+  }
+  const titlebarBottom = desktopTitlebar?.getBoundingClientRect().bottom || 42;
+  const shouldDetach = drag.dragging && event.clientY > titlebarBottom + 18;
+  setDetachingDocumentTabId(shouldDetach ? drag.tabId : null);
+});
+
+documentTabsRoot?.addEventListener("pointerup", async (event) => {
+  const drag = activeTitlebarTabDrag;
+  if (!drag || drag.pointerId !== event.pointerId) {
+    return;
+  }
+  activeTitlebarTabDrag = null;
+  const shouldDetach = detachingDocumentTabId === drag.tabId;
+  setDetachingDocumentTabId(null);
+  if (shouldDetach) {
+    suppressNextDocumentTabClick = true;
+    event.preventDefault();
+    event.stopPropagation();
+    await detachDocumentTab(drag.tabId, drag.screenX, drag.screenY);
+  }
+});
+
+documentTabsRoot?.addEventListener("pointercancel", () => {
+  activeTitlebarTabDrag = null;
+  setDetachingDocumentTabId(null);
+});
+
+function bindDesktopWindowChrome() {
+  if (!isDesktopShell || !desktopFileHost?.available) {
+    return;
+  }
+  desktopTitlebar?.querySelectorAll("[data-window-command]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const command = button.dataset.windowCommand;
+      if (command === "minimize") {
+        await desktopFileHost.minimizeWindow?.();
+      } else if (command === "maximize") {
+        await desktopFileHost.toggleMaximizeWindow?.();
+        await syncDesktopMaximizedState();
+      } else if (command === "close") {
+        await desktopFileHost.closeWindow?.();
+      }
+    });
+  });
+  desktopTitlebar?.querySelectorAll("[data-titlebar-drag-region]").forEach((region) => {
+    region.addEventListener("dblclick", async (event) => {
+      event.preventDefault();
+      await desktopFileHost.toggleMaximizeWindow?.();
+      await syncDesktopMaximizedState();
+    });
+    region.addEventListener("pointerdown", async (event) => {
+      if (event.button !== 0 || event.detail > 1) {
+        return;
+      }
+      await desktopFileHost.startWindowDrag?.();
+    });
+  });
+  window.addEventListener("resize", () => {
+    syncDesktopMaximizedState();
+  }, { passive: true });
+  syncDesktopMaximizedState();
+}
+
+async function syncDesktopMaximizedState() {
+  if (!isDesktopShell || !desktopFileHost?.isWindowMaximized) {
+    return;
+  }
+  const maximized = await desktopFileHost.isWindowMaximized().catch(() => false);
+  document.body.classList.toggle("is-window-maximized", !!maximized);
+}
 
 async function loadSharedGlyphProfiles() {
   const url = new URL("../shared/glyph_profiles.json", import.meta.url);
@@ -1531,7 +1899,10 @@ function editorRootBaseStyle(root) {
 
 function syncTextToolbarStateFromSession(session) {
   editorState.textFontFamily = session.fontFamily || editorState.textFontFamily;
-  editorState.textFontSize = normalizeToolbarFontSize(session.fontSize || editorState.textFontSize);
+  const fontSize = Number(session.fontSize);
+  if (Number.isFinite(fontSize) && fontSize > 0) {
+    editorState.textFontSize = fontSize;
+  }
   editorState.textColor = session.fill || editorState.textColor;
   editorState.textAlign = session.align || "left";
   editorState.textScript = session.defaultChemical ? "chemical" : "normal";
@@ -2022,10 +2393,10 @@ const documentFlow = createDocumentFlow({
 });
 
 const {
-  chooseAndOpenDocument,
   isAbortError,
   loadAndRender,
   loadJsonDocumentIntoEditor,
+  openDocumentText,
   openDocumentFile,
   openDocumentPath,
   saveCurrentDocument,
@@ -2036,6 +2407,216 @@ const {
   saveCurrentDocumentSvg,
   updateDocumentMeta,
 } = documentFlow;
+
+function browserTabUrlForPendingDocument(id) {
+  const url = new URL(window.location.href);
+  url.searchParams.set(BROWSER_PENDING_DOCUMENT_PARAM, id);
+  return url.toString();
+}
+
+function openBrowserBlankDocumentTab() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  const url = new URL(window.location.href);
+  url.searchParams.delete(BROWSER_PENDING_DOCUMENT_PARAM);
+  return !!window.open(url.toString(), "_blank", "noopener,noreferrer");
+}
+
+async function openBrowserFileInNewTab(file) {
+  if (!file) {
+    return false;
+  }
+  const text = looksLikeCompressedChemcoreFile(file)
+    ? await decompressChemcoreText(await file.arrayBuffer())
+    : await file.text();
+  const id = `doc-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const payload = {
+    text,
+    fileName: file.name || null,
+    filePath: null,
+    format: looksLikeCdxmlFile(file, text) ? "cdxml" : saveFormatFromFileName(file.name),
+  };
+  localStorage.setItem(`${BROWSER_PENDING_DOCUMENT_KEY_PREFIX}${id}`, JSON.stringify(payload));
+  const opened = !!window.open(browserTabUrlForPendingDocument(id), "_blank", "noopener,noreferrer");
+  if (!opened) {
+    localStorage.removeItem(`${BROWSER_PENDING_DOCUMENT_KEY_PREFIX}${id}`);
+  }
+  return opened;
+}
+
+function takeBrowserPendingDocument() {
+  if (isDesktopShell || typeof window === "undefined") {
+    return null;
+  }
+  const id = new URL(window.location.href).searchParams.get(BROWSER_PENDING_DOCUMENT_PARAM);
+  if (!id) {
+    return null;
+  }
+  const key = `${BROWSER_PENDING_DOCUMENT_KEY_PREFIX}${id}`;
+  const raw = localStorage.getItem(key);
+  localStorage.removeItem(key);
+  if (!raw) {
+    return null;
+  }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function documentSnapshotFromTab(tab) {
+  if (!tab) {
+    return null;
+  }
+  if (tab.id === activeDocumentTabId) {
+    finishActiveTextEditor(true);
+    if (state.editorEngine) {
+      syncDocumentFromEngine();
+    }
+    saveActiveDocumentTabState();
+  }
+  const freshTab = documentTabs.find((entry) => entry.id === tab.id) || tab;
+  if (!freshTab.currentDocument) {
+    return null;
+  }
+  return {
+    title: freshTab.title || documentTitleFromState(),
+    fileName: freshTab.currentFileName || null,
+    filePath: freshTab.currentFilePath || null,
+    documentJson: JSON.stringify(freshTab.currentDocument),
+    zoomPercent: Number(freshTab.zoomPercent || 100),
+  };
+}
+
+async function detachDocumentTab(tabId, screenX = null, screenY = null) {
+  if (!desktopFileHost?.detachDocumentWindow) {
+    return false;
+  }
+  const tab = documentTabs.find((entry) => entry.id === tabId);
+  const snapshot = documentSnapshotFromTab(tab);
+  if (!snapshot) {
+    return false;
+  }
+  await desktopFileHost.detachDocumentWindow(snapshot, screenX, screenY);
+  await closeDocumentTab(tabId);
+  return true;
+}
+
+function loadDetachedDocumentPayload(payload) {
+  if (!payload?.documentJson) {
+    return false;
+  }
+  const documentData = JSON.parse(payload.documentJson);
+  loadJsonDocumentIntoEditor(documentData, payload.fileName || null, payload.filePath || null);
+  if (Number.isFinite(Number(payload.zoomPercent))) {
+    setZoomPercent(Number(payload.zoomPercent));
+  }
+  saveActiveDocumentTabState();
+  renderDocumentTabs();
+  return true;
+}
+
+function loadBrowserPendingDocumentPayload(payload) {
+  if (!payload?.text) {
+    return false;
+  }
+  openDocumentText(payload.text, payload.fileName || null, payload.filePath || null, payload.format || null);
+  saveActiveDocumentTabState();
+  renderDocumentTabs();
+  return true;
+}
+
+async function newDocumentTab() {
+  if (!isDesktopShell && openBrowserBlankDocumentTab()) {
+    return;
+  }
+  finishActiveTextEditor(true);
+  saveActiveDocumentTabState();
+  const tab = createDocumentTab();
+  documentTabs.push(tab);
+  activeDocumentTabId = tab.id;
+  restoreDocumentTabState(tab);
+  resetEditorEngine();
+  renderDocument();
+  fitView();
+  saveActiveDocumentTabState();
+  renderDocumentTabs();
+}
+
+async function openDocumentPathInTab(path) {
+  if (!path) {
+    return;
+  }
+  finishActiveTextEditor(true);
+  saveActiveDocumentTabState();
+  const previousTabId = activeDocumentTabId;
+  const tab = createDocumentTab(fileNameFromPath(path) || "Loading...");
+  documentTabs.push(tab);
+  activeDocumentTabId = tab.id;
+  restoreDocumentTabState(tab);
+  try {
+    await openDocumentPath(path);
+    saveActiveDocumentTabState();
+    renderDocumentTabs();
+  } catch (error) {
+    await closeDocumentTab(tab.id);
+    if (previousTabId && activeDocumentTabId !== previousTabId) {
+      await activateDocumentTab(previousTabId);
+    }
+    throw error;
+  }
+}
+
+async function openDocumentFileInTab(file) {
+  if (!file) {
+    return;
+  }
+  if (!isDesktopShell && await openBrowserFileInNewTab(file)) {
+    return;
+  }
+  finishActiveTextEditor(true);
+  saveActiveDocumentTabState();
+  const previousTabId = activeDocumentTabId;
+  const tab = createDocumentTab(file.name || "Loading...");
+  documentTabs.push(tab);
+  activeDocumentTabId = tab.id;
+  restoreDocumentTabState(tab);
+  try {
+    await openDocumentFile(file);
+    saveActiveDocumentTabState();
+    renderDocumentTabs();
+  } catch (error) {
+    await closeDocumentTab(tab.id);
+    if (previousTabId && activeDocumentTabId !== previousTabId) {
+      await activateDocumentTab(previousTabId);
+    }
+    throw error;
+  }
+}
+
+async function chooseAndOpenDocumentTab() {
+  if (desktopFileHost?.available) {
+    const path = await desktopFileHost.chooseOpenPath();
+    if (path) {
+      await openDocumentPathInTab(path);
+    }
+    return;
+  }
+  if (window.showOpenFilePicker) {
+    const [handle] = await window.showOpenFilePicker({
+      multiple: false,
+      types: chemcoreOpenAcceptTypes(),
+      excludeAcceptAllOption: false,
+    });
+    if (handle) {
+      await openDocumentFileInTab(await handle.getFile());
+    }
+    return;
+  }
+  openFileInput.click();
+}
 
 bindEditorControls({
   state,
@@ -2048,9 +2629,14 @@ bindEditorControls({
   documentStylePresetInput,
   getActiveTextEditor: () => activeTextEditor,
   clearActiveSelectionGesture: () => { activeSelectionGesture = null; },
+  newDocumentTab,
+  chooseAndOpenDocumentTab,
+  openDocumentPathInTab,
+  openDocumentFileInTab,
   getZoomPercent: () => zoomPercent,
   setTextFontSize: (size) => {
-    editorState.textFontSize = normalizeToolbarFontSize(Math.max(5, Math.min(288, size)));
+    const fontSize = normalizeToolbarFontSize(Math.max(5, Math.min(288, size)));
+    editorState.textFontSize = cmToCssPx(fontSize);
   },
   isEditingRustDocument,
   syncEngineToolState,
@@ -2061,7 +2647,6 @@ bindEditorControls({
   renderSecondaryToolbar,
   syncCanvasCursor,
   finishActiveTextEditor,
-  chooseAndOpenDocument,
   openDocumentPath,
   saveCurrentDocument,
   saveCurrentDocumentAs,
@@ -2858,9 +3443,39 @@ function fitView() {
 
 watchDisplayMetrics();
 
+async function loadInitialDocumentTabs() {
+  ensureDocumentTab();
+  renderDocumentTabs();
+  const detachedDocument = await desktopFileHost?.takeDetachedDocument?.();
+  if (detachedDocument) {
+    loadDetachedDocumentPayload(detachedDocument);
+    return;
+  }
+  const browserPendingDocument = takeBrowserPendingDocument();
+  if (browserPendingDocument) {
+    loadBrowserPendingDocumentPayload(browserPendingDocument);
+    return;
+  }
+  const pendingStartupPaths = await desktopFileHost?.takeStartupOpenPaths?.();
+  const startupPaths = Array.isArray(pendingStartupPaths) ? pendingStartupPaths : [];
+  const [firstPath, ...extraPaths] = startupPaths;
+  if (firstPath) {
+    await openDocumentPath(firstPath);
+    saveActiveDocumentTabState();
+    renderDocumentTabs();
+    for (const path of extraPaths) {
+      await openDocumentPathInTab(path);
+    }
+    return;
+  }
+  await loadAndRender();
+  saveActiveDocumentTabState();
+  renderDocumentTabs();
+}
+
 try {
   await Promise.all([engineHost.initialize(), sharedGlyphProfilesReady, textSymbolCatalogReady]);
-  await loadAndRender();
+  await loadInitialDocumentTabs();
 } catch (error) {
   viewerTitle.textContent = "Runtime load failed";
   viewerStats.textContent = "";

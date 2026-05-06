@@ -1,3 +1,5 @@
+import { cssPxToCm } from "./units.js";
+
 export const TEXT_FONT_OPTIONS = [
   "Arial",
   "Helvetica",
@@ -356,7 +358,7 @@ function commandIconSvg(name) {
 }
 
 export function syncPrimaryChromeIcons(root = document) {
-  for (const button of root.querySelectorAll("[data-command]")) {
+  for (const button of root.querySelectorAll(".icon-button[data-command]")) {
     const svg = commandIconSvg(button.dataset.command);
     if (svg) {
       button.innerHTML = svg;
@@ -710,7 +712,7 @@ function textToolbarHtml(editorState) {
   const fontOptions = TEXT_FONT_OPTIONS
     .map((fontFamily) => `<option value="${fontFamily}"${editorState.textFontFamily === fontFamily ? " selected" : ""}>${fontFamily}</option>`)
     .join("");
-  const normalizedFontSize = normalizeToolbarFontSize(editorState.textFontSize);
+  const normalizedFontSize = normalizeToolbarFontSize(cssPxToCm(editorState.textFontSize));
   const knownFontSizes = new Set(TEXT_FONT_SIZE_OPTIONS);
   const fontSizeOptions = [
     ...TEXT_FONT_SIZE_OPTIONS,

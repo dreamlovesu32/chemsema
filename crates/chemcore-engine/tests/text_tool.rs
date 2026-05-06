@@ -65,6 +65,10 @@ fn first_glyph_anchor(label: &chemcore_engine::NodeLabel) -> Point {
     glyph_anchor(label, 0)
 }
 
+fn last_glyph_anchor(label: &chemcore_engine::NodeLabel) -> Point {
+    glyph_anchor(label, label.glyph_polygons.len().saturating_sub(1))
+}
+
 fn normal_source_run(text: &str) -> chemcore_engine::LabelRun {
     chemcore_engine::LabelRun {
         text: text.to_string(),
@@ -491,6 +495,8 @@ fn preview_text_edit_layout_returns_kernel_caret_and_selection_geometry() {
         Some(5)
     );
     assert_eq!(layout.selection_rects.len(), 1);
+    assert_eq!(layout.selection_rects[0].y, layout.lines[0].y);
+    assert_eq!(layout.selection_rects[0].height, layout.lines[0].height);
     assert!(layout.width >= px(8.0));
     assert!(layout.height >= layout.line_height);
 }
@@ -575,6 +581,49 @@ fn centered_text_object_selection_rects_use_visual_line_bounds() {
         "{selection_rect:?}"
     );
     assert_eq!(first_caret.x, selection_rect.x);
+    assert_eq!(selection_rect.y, layout.lines[0].y);
+    assert_eq!(selection_rect.height, layout.lines[0].height);
+}
+
+#[test]
+fn text_object_default_box_height_wraps_descenders() {
+    let mut engine = Engine::new();
+    let session = engine
+        .begin_text_edit(px_point(120.0, 88.0))
+        .expect("text session should be created");
+
+    assert_eq!(
+        session.line_height,
+        Some(chemcore_engine::DEFAULT_TEXT_LINE_HEIGHT_CM)
+    );
+    assert!(engine.apply_text_edit(chemcore_engine::TextEditSession {
+        text: "apple".to_string(),
+        ..session
+    }));
+
+    let text_object = engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "text")
+        .expect("text object should exist");
+    let font_size = text_object
+        .payload
+        .extra
+        .get("fontSize")
+        .and_then(serde_json::Value::as_f64)
+        .expect("font size should be persisted");
+    let line_height = text_object
+        .payload
+        .extra
+        .get("lineHeight")
+        .and_then(serde_json::Value::as_f64)
+        .expect("line height should be persisted");
+    let bbox = text_object.payload.bbox.expect("text bbox");
+
+    assert!(line_height > font_size, "{font_size} {line_height}");
+    assert!(bbox[3] >= line_height, "{bbox:?} {line_height}");
 }
 
 #[test]
@@ -1421,7 +1470,7 @@ fn reopening_endpoint_label_session_preserves_bbox_and_anchor_precision() {
         .expect("endpoint session should reopen");
     let box_value = reopened.box_value.expect("session box");
     let anchor_offset = reopened.anchor_offset.expect("session anchor offset");
-    let expected_anchor = first_glyph_anchor(node.label.as_ref().expect("label should exist"));
+    let expected_anchor = last_glyph_anchor(node.label.as_ref().expect("label should exist"));
 
     assert!((box_value[0] - label_box[0]).abs() < 1.0e-6);
     assert!((box_value[1] - label_box[1]).abs() < 1.0e-6);
@@ -1577,13 +1626,10 @@ fn reopening_existing_endpoint_label_uses_stable_label_anchor() {
         .expect("node should exist");
     let label = node.label.as_ref().expect("label should exist");
     let box_value = label.bbox().expect("label should have bbox");
-    let expected_anchor = first_glyph_anchor(label);
+    let expected_anchor = last_glyph_anchor(label);
 
     let reopened = engine
-        .begin_text_edit(Point::new(
-            node.position[0] + px(9.0),
-            node.position[1] + px(7.0),
-        ))
+        .begin_text_edit(expected_anchor)
         .expect("existing label session should be created");
     assert_endpoint_target_near(&reopened, expected_anchor);
     let anchor_offset = reopened.anchor_offset.expect("session anchor offset");

@@ -17,6 +17,7 @@ pub(super) fn render_fragment_bond(
     let Some(end) = node_map.get(bond.end.as_str()).copied() else {
         return;
     };
+    let stroke = bond.stroke.as_deref().unwrap_or(stroke);
     let stroke_width = bond_stroke_width(document, object, bond);
     let actual_start = world_point(object, begin);
     let actual_finish = world_point(object, end);

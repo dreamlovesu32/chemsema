@@ -771,6 +771,7 @@ fn insert_ring_bond(
         }),
         stereo: None,
         stroke_width,
+        stroke: None,
         bold_width: Some(engine.options.bold_bond_width_world_cm().value()),
         wedge_width: Some(engine.options.wedge_width_world_cm().value()),
         label_clip_margin: Some(engine.options.label_clip_margin_world_cm().value()),

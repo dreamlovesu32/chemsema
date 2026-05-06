@@ -2226,6 +2226,44 @@ fn click_on_label_glyph_uses_rightmost_group_anchor_for_default_bond() {
 }
 
 #[test]
+fn single_group_label_right_anchor_uses_terminal_letter_but_not_digit() {
+    for (label, expected_anchor_x) in [("Ph", px(305.0)), ("N3", px(297.0))] {
+        let mut engine = Engine::new();
+        engine.set_tool_state(bond_tool());
+        load_label_document(
+            &mut engine,
+            label,
+            vec![
+                rect_polygon(294.0, 256.0, 300.0, 264.0),
+                rect_polygon(302.0, 256.0, 308.0, 264.0),
+            ],
+            json!([]),
+        );
+
+        hover(&mut engine, px(305.0), px(260.0));
+
+        let anchor = engine
+            .state()
+            .overlay
+            .hover_endpoint
+            .as_ref()
+            .and_then(|hover| hover.label_anchor.as_ref())
+            .expect("label anchor should exist");
+        let right_group_point = anchor
+            .right_group_point
+            .expect("right group anchor should exist");
+        assert!(
+            (right_group_point.x - expected_anchor_x).abs() < 0.01,
+            "{label}: {right_group_point:?}"
+        );
+        assert!(
+            (right_group_point.y - px(260.0)).abs() < 0.01,
+            "{label}: {right_group_point:?}"
+        );
+    }
+}
+
+#[test]
 fn drag_from_label_glyph_uses_focused_glyph_for_vertical_bond() {
     let mut engine = Engine::new();
     engine.set_tool_state(bond_tool());
@@ -4813,6 +4851,184 @@ fn select_tool_shift_click_adds_to_selection() {
     engine.select_at_point(Point::new(FIRST_START_X, FIRST_START_Y), true);
 
     assert_eq!(engine.state().selection.nodes.len(), 2);
+}
+
+#[test]
+fn selection_color_applies_to_all_selected_object_kinds() {
+    let mut engine = Engine::new();
+    let document = json!({
+        "format": { "name": "chemcore", "version": "0.1", "unit": "pt" },
+        "document": {
+            "id": "doc_selection_color",
+            "title": "selection color",
+            "page": { "width": 160.0, "height": 100.0, "background": "#ffffff" }
+        },
+        "styles": {
+            "style_molecule_default": {
+                "kind": "molecule",
+                "stroke": "#111111",
+                "fill": "#111111",
+                "strokeWidth": 0.85,
+                "fontSize": 10.0
+            },
+            "style_text": { "kind": "text", "fill": "#111111", "fontSize": 10.0 },
+            "style_line": {
+                "kind": "line",
+                "stroke": "#111111",
+                "strokeWidth": 1.0,
+                "lineCap": "round",
+                "lineJoin": "round"
+            },
+            "style_shape": {
+                "kind": "shape",
+                "fill": null,
+                "stroke": "#111111",
+                "strokeWidth": 1.0
+            }
+        },
+        "objects": [
+            {
+                "id": "obj_mol",
+                "type": "molecule",
+                "styleRef": "style_molecule_default",
+                "transform": { "translate": [0.0, 0.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+                "payload": { "resourceRef": "mol" }
+            },
+            {
+                "id": "obj_text",
+                "type": "text",
+                "styleRef": "style_text",
+                "transform": { "translate": [40.0, 4.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+                "payload": {
+                    "bbox": [0.0, 0.0, 26.0, 12.0],
+                    "text": "note",
+                    "fontSize": 10.0,
+                    "lineHeight": 12.0,
+                    "align": "left",
+                    "preserveLines": true
+                }
+            },
+            {
+                "id": "obj_line",
+                "type": "line",
+                "styleRef": "style_line",
+                "payload": { "points": [[8.0, 40.0], [30.0, 40.0]], "kind": "line" }
+            },
+            {
+                "id": "obj_shape",
+                "type": "shape",
+                "styleRef": "style_shape",
+                "transform": { "translate": [40.0, 30.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+                "payload": { "bbox": [0.0, 0.0, 22.0, 14.0], "kind": "rect" }
+            },
+            {
+                "id": "obj_bracket",
+                "type": "bracket",
+                "transform": { "translate": [70.0, 26.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+                "payload": {
+                    "bbox": [0.0, 0.0, 16.0, 24.0],
+                    "kind": "round",
+                    "stroke": "#111111",
+                    "strokeWidth": 1.0
+                }
+            },
+            {
+                "id": "obj_symbol",
+                "type": "symbol",
+                "transform": { "translate": [96.0, 30.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+                "payload": {
+                    "bbox": [0.0, 0.0, 10.0, 10.0],
+                    "kind": "plus",
+                    "fill": "#111111",
+                    "strokeWidth": 1.0
+                }
+            }
+        ],
+        "resources": {
+            "mol": {
+                "type": "molecule_fragment2d",
+                "encoding": "chemcore.molecule.fragment2d",
+                "data": {
+                    "schema": "chemcore.molecule.fragment2d",
+                    "bbox": [0.0, 0.0, 40.0, 20.0],
+                    "nodes": [
+                        { "id": "n1", "element": "C", "atomicNumber": 6, "position": [10.0, 10.0], "charge": 0, "numHydrogens": 0 },
+                        { "id": "n2", "element": "C", "atomicNumber": 6, "position": [30.0, 10.0], "charge": 0, "numHydrogens": 0 }
+                    ],
+                    "bonds": [
+                        { "id": "b1", "begin": "n1", "end": "n2", "order": 1, "strokeWidth": 0.85 }
+                    ]
+                }
+            }
+        }
+    });
+    engine
+        .load_document_json(&document.to_string())
+        .expect("selection color fixture should load");
+
+    engine.select_in_rect(Point::new(0.0, 0.0), Point::new(120.0, 70.0), false);
+    assert_eq!(engine.state().selection.text_objects, vec!["obj_text"]);
+    assert!(engine
+        .state()
+        .selection
+        .arrow_objects
+        .iter()
+        .any(|object_id| object_id == "obj_shape"));
+    assert!(engine.apply_color_to_selection("#2288cc"));
+
+    let document = &engine.state().document;
+    let fragment = document
+        .resources
+        .values()
+        .find_map(|resource| resource.data.as_fragment())
+        .expect("fragment should remain editable");
+    assert_eq!(
+        fragment.bonds[0].stroke.as_deref(),
+        Some("#2288cc"),
+        "selected bond should receive its own stroke"
+    );
+
+    let style_value = |style_id: &str, key: &str| {
+        document
+            .styles
+            .get(style_id)
+            .and_then(|style| style.get(key))
+            .and_then(|value| value.as_str())
+            .map(str::to_string)
+    };
+    assert_eq!(
+        style_value("style_obj_text_color", "fill").as_deref(),
+        Some("#2288cc")
+    );
+    assert_eq!(
+        style_value("style_obj_line_color", "stroke").as_deref(),
+        Some("#2288cc")
+    );
+    assert_eq!(
+        style_value("style_obj_shape_color", "stroke").as_deref(),
+        Some("#2288cc")
+    );
+    assert_eq!(
+        style_value("style_obj_mol_color", "stroke").as_deref(),
+        Some("#2288cc")
+    );
+    let payload_value = |object_id: &str, key: &str| {
+        document
+            .objects
+            .iter()
+            .find(|object| object.id == object_id)
+            .and_then(|object| object.payload.extra.get(key))
+            .and_then(|value| value.as_str())
+            .map(str::to_string)
+    };
+    assert_eq!(
+        payload_value("obj_bracket", "stroke").as_deref(),
+        Some("#2288cc")
+    );
+    assert_eq!(
+        payload_value("obj_symbol", "fill").as_deref(),
+        Some("#2288cc")
+    );
 }
 
 #[test]

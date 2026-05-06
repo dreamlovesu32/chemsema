@@ -1041,10 +1041,7 @@ fn open_arrow_head_half_width(arrow_head: ArrowHeadGeometry) -> f64 {
     hollow_open_arrow_head_half_width(open_arrow_shaft_half_width(arrow_head), arrow_head)
 }
 
-fn hollow_open_arrow_head_half_width(
-    shaft_half_width: f64,
-    arrow_head: ArrowHeadGeometry,
-) -> f64 {
+fn hollow_open_arrow_head_half_width(shaft_half_width: f64, arrow_head: ArrowHeadGeometry) -> f64 {
     shaft_half_width + arrow_head.width.max(0.0) * 2.0
 }
 

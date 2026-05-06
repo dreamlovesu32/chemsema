@@ -19,6 +19,38 @@ export class DesktopFileHost {
     return this.invoke("desktop_file_choose_open");
   }
 
+  async setWindowTitle(title) {
+    return this.invoke("desktop_window_set_title", { title });
+  }
+
+  async minimizeWindow() {
+    return this.invoke("desktop_window_minimize");
+  }
+
+  async toggleMaximizeWindow() {
+    return this.invoke("desktop_window_toggle_maximize");
+  }
+
+  async closeWindow() {
+    return this.invoke("desktop_window_close");
+  }
+
+  async startWindowDrag() {
+    return this.invoke("desktop_window_start_dragging");
+  }
+
+  async isWindowMaximized() {
+    return this.invoke("desktop_window_is_maximized");
+  }
+
+  async detachDocumentWindow(document, screenX = null, screenY = null) {
+    return this.invoke("desktop_window_detach_document", { document, screenX, screenY });
+  }
+
+  async takeDetachedDocument() {
+    return this.invoke("desktop_window_take_detached_document");
+  }
+
   async chooseSavePath(suggestedName) {
     return this.invoke("desktop_file_choose_save", { suggestedName });
   }
@@ -41,10 +73,6 @@ export class DesktopFileHost {
 
   async exportEmf(path, renderListJson, boundsJson) {
     return this.invoke("desktop_file_export_emf", { path, renderListJson, boundsJson });
-  }
-
-  async chooseColor(initialColor, customColors = []) {
-    return this.invoke("desktop_color_choose", { initialColor, customColors });
   }
 
   async recentFiles() {

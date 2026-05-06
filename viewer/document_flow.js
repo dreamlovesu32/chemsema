@@ -45,12 +45,12 @@ export function createDocumentFlow(options) {
     }
   }
 
-  function loadJsonDocumentIntoEditor(documentData, fileName = null) {
+  function loadJsonDocumentIntoEditor(documentData, fileName = null, filePath = null) {
     validateChemcoreJsonDocument(documentData);
     options.finishActiveTextEditor(false);
     options.state.currentPath = null;
     options.state.currentFileName = fileName;
-    options.state.currentFilePath = null;
+    options.state.currentFilePath = filePath;
     options.state.editorEngine?.free?.();
     options.state.editorEngine = options.engineHost.createEngineSession();
     options.state.lastEditFocusPoint = null;
@@ -353,11 +353,16 @@ export function createDocumentFlow(options) {
     const text = looksLikeCompressedChemcoreFile(file)
       ? await decompressChemcoreText(await file.arrayBuffer())
       : await file.text();
-    if (looksLikeCdxmlFile(file, text)) {
-      loadCdxmlDocumentIntoEditor(text, file.name || null, null);
+    openDocumentText(text, file.name || null, null, looksLikeCdxmlFile(file, text) ? "cdxml" : saveFormatFromFileName(file.name));
+  }
+
+  function openDocumentText(text, fileName = null, filePath = null, format = null) {
+    const resolvedFormat = format || saveFormatFromFileName(fileName);
+    if (resolvedFormat === "cdxml" || looksLikeCdxmlFile({ name: fileName || "" }, text)) {
+      loadCdxmlDocumentIntoEditor(text, fileName, filePath);
       return;
     }
-    loadJsonDocumentIntoEditor(JSON.parse(text), file.name || null);
+    loadJsonDocumentIntoEditor(JSON.parse(text), fileName, filePath);
   }
 
   async function openDocumentPath(path) {
@@ -369,8 +374,7 @@ export function createDocumentFlow(options) {
       loadCdxmlDocumentIntoEditor(opened.text, opened.fileName || fileNameFromPath(path), opened.path || path);
       return;
     }
-    loadJsonDocumentIntoEditor(JSON.parse(opened.text), opened.fileName || fileNameFromPath(path));
-    options.state.currentFilePath = opened.path || path;
+    loadJsonDocumentIntoEditor(JSON.parse(opened.text), opened.fileName || fileNameFromPath(path), opened.path || path);
   }
 
   function loadCdxmlDocumentIntoEditor(cdxml, fileName = null, filePath = null) {
@@ -487,6 +491,7 @@ export function createDocumentFlow(options) {
     isAbortError,
     loadAndRender,
     loadJsonDocumentIntoEditor,
+    openDocumentText,
     openDocumentFile,
     openDocumentPath,
     saveCurrentDocument,

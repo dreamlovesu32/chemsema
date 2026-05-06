@@ -340,6 +340,9 @@ impl<'a> CdxmlDocumentWriter<'a> {
         if let Some(display2) = cdxml_bond_display(bond, true) {
             attrs.push(("Display2", display2.to_string()));
         }
+        if let Some(stroke) = &bond.stroke {
+            attrs.push(("color", self.colors.id_for(stroke)));
+        }
         if let Some(double) = &bond.double {
             attrs.push((
                 "DoublePosition",
@@ -984,6 +987,11 @@ fn collect_document_colors(document: &ChemcoreDocument, colors: &mut CdxmlColorT
                 if let Some(fill) = &run.fill {
                     colors.ensure(fill);
                 }
+            }
+        }
+        for bond in &fragment.bonds {
+            if let Some(stroke) = &bond.stroke {
+                colors.ensure(stroke);
             }
         }
     }

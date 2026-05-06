@@ -46,6 +46,7 @@ impl MainBondEndpointKey {
 #[derive(Debug, Clone)]
 struct MainBondContactPatch {
     points: Vec<Point>,
+    stroke: Option<String>,
 }
 
 const MIN_CONTACT_POLYGON_AREA: f64 = 1.0e-8;
@@ -234,7 +235,10 @@ pub(super) fn build_main_bond_contact_kernel<'a>(
                         }
                     }
                     if let Some(points) = contact.bridge {
-                        kernel.patches.push(MainBondContactPatch { points });
+                        kernel.patches.push(MainBondContactPatch {
+                            points,
+                            stroke: shared_contact_stroke(&geometries),
+                        });
                     }
                 }
             }
@@ -252,6 +256,7 @@ pub(super) fn render_main_bond_contact_patches(
     object_id: Option<String>,
 ) {
     for patch in &kernel.patches {
+        let stroke = patch.stroke.as_deref().unwrap_or(stroke);
         push_polygon(
             out,
             patch.points.clone(),
@@ -584,7 +589,10 @@ fn push_two_bond_contact_triangles(
         ]),
     ] {
         if is_valid_contact_polygon(&points) {
-            out.push(MainBondContactPatch { points });
+            out.push(MainBondContactPatch {
+                points,
+                stroke: geometry.bond.stroke.clone(),
+            });
         }
     }
 }
@@ -637,9 +645,20 @@ fn append_multi_bond_main_contact(
             next_intersection,
         ]);
         if is_valid_contact_polygon(&points) {
-            kernel.patches.push(MainBondContactPatch { points });
+            kernel.patches.push(MainBondContactPatch {
+                points,
+                stroke: current.bond.stroke.clone(),
+            });
         }
     }
+}
+
+fn shared_contact_stroke(geometries: &[MainBondEndpointGeometry<'_>]) -> Option<String> {
+    let first = geometries.first()?.bond.stroke.as_deref()?;
+    geometries
+        .iter()
+        .all(|geometry| geometry.bond.stroke.as_deref() == Some(first))
+        .then(|| first.to_string())
 }
 
 pub(super) fn main_contact_side(axis: Vector, other_axis: Vector) -> Option<f64> {

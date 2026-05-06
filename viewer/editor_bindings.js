@@ -34,7 +34,11 @@ function bindCommandButtons(options) {
     button.addEventListener("click", async () => {
       const command = button.dataset.command;
       if (command === "open") {
-        await runSafe(options.chooseAndOpenDocument, "Open failed", "Failed to open document");
+        await runSafe(options.chooseAndOpenDocumentTab, "Open failed", "Failed to open document");
+        return;
+      }
+      if (command === "new") {
+        await runSafe(options.newDocumentTab, "New failed", "Failed to create document tab");
         return;
       }
       if (command === "save") {
@@ -69,13 +73,6 @@ function bindCommandButtons(options) {
       } else if (command === "zoom-out") {
         options.setZoomPercent(options.nextZoomStep(-1));
       } else if (command === "fit") {
-        options.fitView();
-      } else if (command === "new") {
-        options.state.currentPath = null;
-        options.state.currentFileName = null;
-        options.state.currentFilePath = null;
-        options.resetEditorEngine();
-        options.renderDocument();
         options.fitView();
       }
     });
@@ -112,7 +109,11 @@ function bindDesktopCommands(options) {
       return;
     }
     if (command === "open") {
-      await runSafe(options.chooseAndOpenDocument, "Open failed", "Failed to open document");
+      await runSafe(options.chooseAndOpenDocumentTab, "Open failed", "Failed to open document");
+      return;
+    }
+    if (command === "new") {
+      await runSafe(options.newDocumentTab, "New failed", "Failed to create document tab");
       return;
     }
     if (command === "save") {
@@ -139,15 +140,6 @@ function bindDesktopCommands(options) {
       await runSafe(options.saveCurrentDocumentEmf, "Save EMF failed", "Failed to save EMF");
       return;
     }
-    if (command === "new") {
-      options.state.currentPath = null;
-      options.state.currentFileName = null;
-      options.state.currentFilePath = null;
-      options.resetEditorEngine();
-      options.renderDocument();
-      options.fitView();
-      return;
-    }
     if (await options.runEditorCommand(command)) {
       return;
     }
@@ -162,16 +154,10 @@ function bindDesktopCommands(options) {
 
   options.desktopFileHost.listenMenu(runCommand);
   options.desktopFileHost.listenOpenPaths(async (paths) => {
-    const [path] = paths;
-    if (!path) {
-      return;
-    }
-    await runSafe(() => options.openDocumentPath(path), "Open failed", "Failed to open dropped document");
-  });
-  options.desktopFileHost.takeStartupOpenPaths?.().then(async (paths) => {
-    const [path] = Array.isArray(paths) ? paths : [];
-    if (path) {
-      await runSafe(() => options.openDocumentPath(path), "Open failed", "Failed to open startup document");
+    for (const path of paths) {
+      if (path) {
+        await runSafe(() => options.openDocumentPathInTab(path), "Open failed", "Failed to open dropped document");
+      }
     }
   });
 }
@@ -181,7 +167,7 @@ function bindFileInput(options) {
     const [file] = Array.from(options.openFileInput.files || []);
     options.openFileInput.value = "";
     try {
-      await options.openDocumentFile(file);
+      await options.openDocumentFileInTab(file);
     } catch (error) {
       console.error("Failed to open document", error);
       window.alert?.(`Open failed: ${error.message || error}`);
@@ -198,6 +184,9 @@ function bindZoomInput(options) {
 
 function bindKeyboard(options) {
   document.addEventListener("keydown", async (event) => {
+    if (await runGlobalFileShortcut(event, options)) {
+      return;
+    }
     const target = event.target;
     if (options.getActiveTextEditor()?.root?.contains?.(target)) {
       if (event.key === "Escape") {
@@ -219,6 +208,38 @@ function bindKeyboard(options) {
       event.preventDefault();
     }
   });
+}
+
+async function runGlobalFileShortcut(event, options) {
+  const commandKey = event.ctrlKey || event.metaKey;
+  if (!commandKey || event.altKey) {
+    return false;
+  }
+  const key = event.key.toLowerCase();
+  const run = async (action, label) => {
+    event.preventDefault();
+    try {
+      await action();
+    } catch (error) {
+      if (!options.isAbortError(error)) {
+        console.error(`${label} failed`, error);
+        window.alert?.(`${label} failed: ${error.message || error}`);
+      }
+    }
+  };
+  if (key === "n") {
+    await run(options.newDocumentTab, "New");
+    return true;
+  }
+  if (key === "o") {
+    await run(options.chooseAndOpenDocumentTab, "Open");
+    return true;
+  }
+  if (key === "s") {
+    await run(event.shiftKey ? options.saveCurrentDocumentAs : options.saveCurrentDocument, "Save");
+    return true;
+  }
+  return false;
 }
 
 function keyboardCommand(event) {
@@ -661,16 +682,7 @@ function openColorDialog(currentColor, onPick, options) {
 }
 
 function colorDialogCustomColors(options) {
-  const curated = [
-    "#111827", "#374151", "#6b7280", "#9ca3af",
-    "#e5e7eb", "#f8fafc", "#334155", "#0f172a",
-    "#0f766e", "#0e7490", "#2563eb", "#4f46e5",
-    "#7c3aed", "#be185d", "#dc2626", "#ea580c",
-  ];
-  const colors = [
-    ...(options.getDocumentColors?.() || []),
-    ...curated,
-  ].map(normalizeHexColor).filter(Boolean);
+  const colors = (options.getDocumentColors?.() || []).map(normalizeHexColor).filter(Boolean);
   return colors.filter((color, index) => colors.indexOf(color) === index).slice(0, 16);
 }
 
@@ -700,6 +712,9 @@ function clampRgb(value) {
 function normalizeArrowEndpointOptions(editorState) {
   if (arrowTypeSupportsHeadSize(editorState.arrowType)) {
     return true;
+  }
+  if (editorState.arrowType === "hollow" || editorState.arrowType === "open") {
+    editorState.arrowHeadSize = "large";
   }
   if (editorState.arrowHeadStyle === "left" || editorState.arrowHeadStyle === "right") {
     editorState.arrowHeadStyle = "full";

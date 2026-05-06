@@ -70,6 +70,15 @@ pub fn reverse_label_groups(text: &str) -> String {
     groups.concat()
 }
 
+pub fn terminal_letter_anchor_offset(group: &str) -> usize {
+    group
+        .chars()
+        .enumerate()
+        .filter_map(|(index, character)| character.is_ascii_alphabetic().then_some(index))
+        .last()
+        .unwrap_or(0)
+}
+
 pub fn decide_label_layout(
     connection_angles: &[f64],
     forward_collides: bool,
@@ -206,11 +215,15 @@ pub fn layout_label_text(text: &str, decision: &LabelLayoutDecision) -> LabelLay
             let rendered_text = rendered_groups.concat();
             let anchor_char = match decision.anchor {
                 LabelAnchorPolicy::WholeLabel => rendered_text.chars().count().saturating_sub(1),
-                LabelAnchorPolicy::OriginalFirstGroup => rendered_groups
-                    .iter()
-                    .take(rendered_groups.len().saturating_sub(1))
-                    .map(|group| group.chars().count())
-                    .sum(),
+                LabelAnchorPolicy::OriginalFirstGroup => {
+                    let original_first_group = groups.first().map(String::as_str).unwrap_or("");
+                    let original_first_group_start = rendered_groups
+                        .iter()
+                        .take(rendered_groups.len().saturating_sub(1))
+                        .map(|group| group.chars().count())
+                        .sum::<usize>();
+                    original_first_group_start + terminal_letter_anchor_offset(original_first_group)
+                }
                 _ => 0,
             };
             LabelLayout {
@@ -280,6 +293,13 @@ mod tests {
     }
 
     #[test]
+    fn terminal_letter_anchor_offset_skips_trailing_digits() {
+        assert_eq!(terminal_letter_anchor_offset("Ph"), 1);
+        assert_eq!(terminal_letter_anchor_offset("Ph2"), 1);
+        assert_eq!(terminal_letter_anchor_offset("N3"), 0);
+    }
+
+    #[test]
     fn whole_label_reverse_keeps_text_and_anchors_rightmost_glyph() {
         let decision = LabelLayoutDecision {
             flow: LabelFlow::Reverse,
@@ -306,7 +326,23 @@ mod tests {
         let layout = layout_label_text("CuF3Ph2", &decision);
         assert_eq!(layout.lines, vec!["Ph2F3Cu"]);
         assert_eq!(layout.anchor_line, 0);
-        assert_eq!(layout.anchor_char, 5);
+        assert_eq!(layout.anchor_char, 6);
+    }
+
+    #[test]
+    fn reversed_single_group_anchors_terminal_letter_not_digit() {
+        let decision = LabelLayoutDecision {
+            flow: LabelFlow::Reverse,
+            anchor: LabelAnchorPolicy::OriginalFirstGroup,
+        };
+
+        let ph = layout_label_text("Ph", &decision);
+        assert_eq!(ph.lines, vec!["Ph"]);
+        assert_eq!(ph.anchor_char, 1);
+
+        let n3 = layout_label_text("N3", &decision);
+        assert_eq!(n3.lines, vec!["N3"]);
+        assert_eq!(n3.anchor_char, 0);
     }
 
     #[test]

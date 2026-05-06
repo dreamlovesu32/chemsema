@@ -49,6 +49,7 @@ impl Engine {
             double: self.pending_double_state_for_new_bond(&begin_id, &end_id, order.max(1)),
             stereo: self.pending_bond_stereo(),
             stroke_width: self.options.bond_stroke_world_cm().value(),
+            stroke: None,
             bold_width: Some(self.options.bold_bond_width_world_cm().value()),
             wedge_width: Some(self.options.wedge_width_world_cm().value()),
             label_clip_margin: Some(self.options.label_clip_margin_world_cm().value()),

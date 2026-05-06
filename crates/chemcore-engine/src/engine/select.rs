@@ -11,7 +11,7 @@ use crate::{
     ENDPOINT_HIT_RADIUS, GLOBAL_SNAP_ANGLES,
 };
 use serde_json::{json, Value as JsonValue};
-use std::collections::{BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 const SELECTION_NODE_BOX_SIZE: f64 = ENDPOINT_FOCUS_RADIUS * 2.0;
 const SELECTION_BOX_STROKE_WIDTH: f64 = crate::px_to_cm(1.2);
@@ -575,7 +575,14 @@ impl Engine {
                     }
                 }
             }
-            if !selected_nodes.is_empty() || !selected_bonds.is_empty() {
+            for bond in &mut entry.fragment.bonds {
+                if !selected_bonds.contains(&bond.id) || bond.stroke.as_deref() == Some(color) {
+                    continue;
+                }
+                bond.stroke = Some(color.to_string());
+                changed = true;
+            }
+            if !selected_nodes.is_empty() {
                 let object_id = entry.object.id.clone();
                 drop(entry);
                 if let Some(index) = self
@@ -617,16 +624,23 @@ impl Engine {
                 changed |= set_style_string(&mut style, "fill", color);
             }
             ColorTarget::Graphic => {
-                let has_stroke = style
-                    .get("stroke")
-                    .is_some_and(|value| !value.is_null());
-                let has_fill = style.get("fill").is_some_and(|value| !value.is_null());
-                if has_stroke || !has_fill {
+                let (color_stroke, color_fill) = match object_type.as_str() {
+                    "symbol" => (false, true),
+                    "bracket" => (true, false),
+                    _ => {
+                        let has_stroke = style.get("stroke").is_some_and(|value| !value.is_null());
+                        let has_fill = style.get("fill").is_some_and(|value| !value.is_null());
+                        (has_stroke || !has_fill, has_fill)
+                    }
+                };
+                if color_stroke {
                     changed |= set_style_string(&mut style, "stroke", color);
                 }
-                if has_fill {
+                if color_fill {
                     changed |= set_style_string(&mut style, "fill", color);
                 }
+                changed |=
+                    self.apply_color_to_graphic_payload(index, color, color_stroke, color_fill);
             }
         }
         if !changed {
@@ -642,11 +656,45 @@ impl Engine {
         true
     }
 
+    fn apply_color_to_graphic_payload(
+        &mut self,
+        index: usize,
+        color: &str,
+        color_stroke: bool,
+        color_fill: bool,
+    ) -> bool {
+        let Some(object) = self.state.document.objects.get_mut(index) else {
+            return false;
+        };
+        let mut changed = false;
+        match object.object_type.as_str() {
+            "bracket" => {
+                changed |= set_payload_string(&mut object.payload.extra, "stroke", color);
+            }
+            "symbol" => {
+                changed |= set_payload_string(&mut object.payload.extra, "fill", color);
+            }
+            _ => {
+                if color_stroke && object.payload.extra.contains_key("stroke") {
+                    changed |= set_payload_string(&mut object.payload.extra, "stroke", color);
+                }
+                if color_fill && object.payload.extra.contains_key("fill") {
+                    changed |= set_payload_string(&mut object.payload.extra, "fill", color);
+                }
+            }
+        }
+        changed
+    }
+
     fn apply_color_to_text_object_runs(&mut self, index: usize, color: &str) -> bool {
         let Some(object) = self.state.document.objects.get_mut(index) else {
             return false;
         };
-        let Some(runs) = object.payload.extra.get_mut("runs").and_then(JsonValue::as_array_mut)
+        let Some(runs) = object
+            .payload
+            .extra
+            .get_mut("runs")
+            .and_then(JsonValue::as_array_mut)
         else {
             return false;
         };
@@ -1282,5 +1330,13 @@ fn set_style_string(
         return false;
     }
     style.insert(key.to_string(), JsonValue::String(value.to_string()));
+    true
+}
+
+fn set_payload_string(payload: &mut BTreeMap<String, JsonValue>, key: &str, value: &str) -> bool {
+    if payload.get(key).and_then(JsonValue::as_str) == Some(value) {
+        return false;
+    }
+    payload.insert(key.to_string(), JsonValue::String(value.to_string()));
     true
 }
