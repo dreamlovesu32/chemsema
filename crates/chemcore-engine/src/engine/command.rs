@@ -99,6 +99,7 @@ pub enum EditorCommand {
     },
     MoveSelection,
     RotateSelection,
+    ResizeSelection,
     ApplyTextEdit {
         target: TextEditCommandTarget,
     },

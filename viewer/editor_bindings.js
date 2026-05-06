@@ -416,8 +416,15 @@ function bindSecondaryToolbar(options) {
   });
 }
 
+let suppressColorPickerClickUntil = 0;
+
 function bindToolbarColorPickers(options) {
   let drag = null;
+  const stopDragListeners = () => {
+    window.removeEventListener("pointermove", handleDragMove);
+    window.removeEventListener("pointerup", finishDrag);
+    window.removeEventListener("pointercancel", cancelDrag);
+  };
   const clearHovered = () => {
     document.querySelectorAll(".color-panel-swatch.is-hovered, .color-panel-other.is-hovered")
       .forEach((node) => node.classList.remove("is-hovered"));
@@ -431,6 +438,7 @@ function bindToolbarColorPickers(options) {
     const rect = picker.getBoundingClientRect();
     const left = Math.max(4, Math.min(window.innerWidth - 138, (pointerX ?? rect.left) - 5));
     picker.style.setProperty("--color-panel-left", `${left}px`);
+    picker.style.setProperty("--color-panel-top", `${Math.min(window.innerHeight - 150, rect.bottom + 6)}px`);
   };
   const targetAtPointer = (event) => {
     const element = document.elementFromPoint(event.clientX, event.clientY);
@@ -441,6 +449,47 @@ function bindToolbarColorPickers(options) {
     const target = targetAtPointer(event);
     target?.classList?.add("is-hovered");
     return target;
+  };
+  const handleDragMove = (event) => {
+    if (!drag || drag.pointerId !== event.pointerId || !drag.opened) {
+      return;
+    }
+    updateDragHover(event);
+    event.preventDefault();
+  };
+  const finishDrag = (event) => {
+    if (!drag || drag.pointerId !== event.pointerId) {
+      return;
+    }
+    window.clearTimeout(drag.timer);
+    const activeDrag = drag;
+    drag = null;
+    stopDragListeners();
+    if (!activeDrag.opened) {
+      return;
+    }
+    suppressColorPickerClickUntil = performance.now() + 450;
+    const target = updateDragHover(event);
+    clearHovered();
+    if (target?.dataset?.colorSwatchValue) {
+      applyToolbarColor(activeDrag.picker?.dataset?.colorPrefix, target.dataset.colorSwatchValue, options);
+    } else if (target?.hasAttribute?.("data-color-other")) {
+      openColorDialog(currentColorForPrefix(activeDrag.picker?.dataset?.colorPrefix, options), (color) => {
+        applyToolbarColor(activeDrag.picker?.dataset?.colorPrefix, color, options);
+      }, options);
+    }
+    closeColorPickers();
+    event.preventDefault();
+  };
+  const cancelDrag = (event) => {
+    if (!drag || drag.pointerId !== event.pointerId) {
+      return;
+    }
+    window.clearTimeout(drag.timer);
+    drag = null;
+    stopDragListeners();
+    clearHovered();
+    closeColorPickers();
   };
 
   options.secondaryToolbar?.addEventListener("pointerdown", (event) => {
@@ -460,43 +509,9 @@ function bindToolbarColorPickers(options) {
       }, startsOnArrow ? 120 : 360),
     };
     button.setPointerCapture?.(event.pointerId);
-  });
-
-  options.secondaryToolbar?.addEventListener("pointermove", (event) => {
-    if (!drag || drag.pointerId !== event.pointerId) {
-      return;
-    }
-    if (!drag.opened) {
-      return;
-    }
-    updateDragHover(event);
-    event.preventDefault();
-  });
-
-  options.secondaryToolbar?.addEventListener("pointerup", (event) => {
-    if (!drag || drag.pointerId !== event.pointerId) {
-      return;
-    }
-    window.clearTimeout(drag.timer);
-    const activeDrag = drag;
-    drag = null;
-    if (!activeDrag.opened) {
-      return;
-    }
-    const target = updateDragHover(event);
-    clearHovered();
-    if (target?.dataset?.colorSwatchValue) {
-      applyToolbarColor(activeDrag.picker?.dataset?.colorPrefix, target.dataset.colorSwatchValue, options);
-      closeColorPickers();
-    } else if (target?.hasAttribute?.("data-color-other")) {
-      openColorDialog(currentColorForPrefix(activeDrag.picker?.dataset?.colorPrefix, options), (color) => {
-        applyToolbarColor(activeDrag.picker?.dataset?.colorPrefix, color, options);
-      }, options);
-      closeColorPickers();
-    } else {
-      closeColorPickers();
-    }
-    event.preventDefault();
+    window.addEventListener("pointermove", handleDragMove);
+    window.addEventListener("pointerup", finishDrag);
+    window.addEventListener("pointercancel", cancelDrag);
   });
 
   document.addEventListener("pointerdown", (event) => {
@@ -507,6 +522,11 @@ function bindToolbarColorPickers(options) {
 }
 
 function handleColorPickerClick(event, options) {
+  if (performance.now() < suppressColorPickerClickUntil) {
+    event.preventDefault();
+    event.stopPropagation();
+    return true;
+  }
   const swatch = event.target.closest("[data-color-swatch-value]");
   if (swatch) {
     const picker = swatch.closest(".color-picker");
@@ -539,6 +559,7 @@ function handleColorPickerClick(event, options) {
       closeColorPickers(picker);
       const rect = picker.getBoundingClientRect();
       picker.style.setProperty("--color-panel-left", `${Math.max(4, Math.min(window.innerWidth - 138, rect.left - 5))}px`);
+      picker.style.setProperty("--color-panel-top", `${Math.min(window.innerHeight - 150, rect.bottom + 6)}px`);
       picker.classList.add("is-open");
     }
     event.preventDefault();

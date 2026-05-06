@@ -145,31 +145,11 @@ pub(super) fn build_main_bond_contact_kernel<'a>(
 
         let incident_bonds: Vec<&Bond> = bonds
             .iter()
-            .filter(|bond| bond.begin == node.id || bond.end == node.id)
+            .filter(|bond| {
+                (bond.begin == node.id || bond.end == node.id) && !is_hash_contact_obstacle(bond)
+            })
             .collect();
         if incident_bonds.len() < 2 {
-            continue;
-        }
-
-        let has_hash_obstacle = incident_bonds
-            .iter()
-            .any(|bond| is_hash_contact_obstacle(bond));
-        if has_hash_obstacle {
-            if incident_bonds.len() > 2 {
-                for bond in &incident_bonds {
-                    if is_hash_contact_obstacle(bond) {
-                        continue;
-                    }
-                    let endpoint_key = MainBondEndpointKey::new(&bond.id, &node.id);
-                    let retreat = HASH_MULTI_BOND_RETREAT_GAP
-                        * (bond_stroke_width(document, object, bond) / VIEWER_BOND_STROKE);
-                    kernel
-                        .endpoint_retreats
-                        .entry(endpoint_key)
-                        .and_modify(|current| *current = current.max(retreat))
-                        .or_insert(retreat);
-                }
-            }
             continue;
         }
 

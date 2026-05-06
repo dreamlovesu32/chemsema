@@ -10,6 +10,7 @@ export const wasmengine_applySelectionArrangeCommand: (a: number, b: number, c: 
 export const wasmengine_applyTextEdit: (a: number, b: number, c: number) => [number, number, number];
 export const wasmengine_beginHoverArrowEdit: (a: number, b: number, c: number) => [number, number];
 export const wasmengine_beginSelectionMove: (a: number, b: number, c: number, d: number, e: number) => number;
+export const wasmengine_beginSelectionResize: (a: number, b: number, c: number, d: number, e: number) => number;
 export const wasmengine_beginSelectionRotate: (a: number, b: number, c: number) => number;
 export const wasmengine_beginTextEdit: (a: number, b: number, c: number) => [number, number, number, number];
 export const wasmengine_canRedo: (a: number) => number;
@@ -26,6 +27,7 @@ export const wasmengine_documentStylePreset: (a: number) => [number, number];
 export const wasmengine_documentSvg: (a: number) => [number, number];
 export const wasmengine_finishHoverArrowEdit: (a: number, b: number, c: number, d: number) => number;
 export const wasmengine_finishSelectionMove: (a: number, b: number, c: number, d: number) => number;
+export const wasmengine_finishSelectionResize: (a: number, b: number, c: number) => number;
 export const wasmengine_finishSelectionRotate: (a: number, b: number, c: number, d: number) => number;
 export const wasmengine_hoverArrowAction: (a: number, b: number, c: number) => [number, number];
 export const wasmengine_loadDocumentCdxml: (a: number, b: number, c: number) => [number, number];
@@ -59,6 +61,7 @@ export const wasmengine_stateJson: (a: number) => [number, number, number, numbe
 export const wasmengine_undo: (a: number) => number;
 export const wasmengine_updateHoverArrowEdit: (a: number, b: number, c: number, d: number) => number;
 export const wasmengine_updateSelectionMove: (a: number, b: number, c: number, d: number) => number;
+export const wasmengine_updateSelectionResize: (a: number, b: number, c: number) => number;
 export const wasmengine_updateSelectionRotate: (a: number, b: number, c: number, d: number) => number;
 export const __wbindgen_externrefs: WebAssembly.Table;
 export const __wbindgen_malloc: (a: number, b: number) => number;

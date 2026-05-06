@@ -152,6 +152,7 @@ pub struct Engine {
     arrow_edit_drag: Option<ArrowEditDragState>,
     selection_drag: Option<select::SelectionMoveDrag>,
     selection_rotate_drag: Option<select::SelectionRotateDrag>,
+    selection_resize_drag: Option<select::SelectionResizeDrag>,
     template_drag: Option<templates::TemplateDrag>,
     shape_drag: Option<ShapeDragState>,
     bracket_drag: Option<BracketDragState>,
@@ -241,6 +242,7 @@ impl Engine {
             arrow_edit_drag: None,
             selection_drag: None,
             selection_rotate_drag: None,
+            selection_resize_drag: None,
             template_drag: None,
             shape_drag: None,
             bracket_drag: None,
@@ -794,6 +796,7 @@ impl Engine {
         self.arrow_edit_drag = None;
         self.selection_drag = None;
         self.selection_rotate_drag = None;
+        self.selection_resize_drag = None;
         self.template_drag = None;
         self.shape_drag = None;
         self.bracket_drag = None;

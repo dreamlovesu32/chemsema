@@ -12,6 +12,7 @@ export class WasmEngine {
     applyTextEdit(session_json: string): boolean;
     beginHoverArrowEdit(x: number, y: number): string;
     beginSelectionMove(x: number, y: number, additive: boolean, alt_key: boolean): boolean;
+    beginSelectionResize(handle: string, x: number, y: number): boolean;
     beginSelectionRotate(x: number, y: number): boolean;
     beginTextEdit(x: number, y: number): string;
     canRedo(): boolean;
@@ -28,6 +29,7 @@ export class WasmEngine {
     documentSvg(): string;
     finishHoverArrowEdit(x: number, y: number, alt_key: boolean): boolean;
     finishSelectionMove(x: number, y: number, alt_key: boolean): boolean;
+    finishSelectionResize(x: number, y: number): boolean;
     finishSelectionRotate(x: number, y: number, alt_key: boolean): boolean;
     hoverArrowAction(x: number, y: number): string;
     loadDocumentCdxml(cdxml: string): void;
@@ -61,6 +63,7 @@ export class WasmEngine {
     undo(): boolean;
     updateHoverArrowEdit(x: number, y: number, alt_key: boolean): boolean;
     updateSelectionMove(x: number, y: number, alt_key: boolean): boolean;
+    updateSelectionResize(x: number, y: number): boolean;
     updateSelectionRotate(x: number, y: number, alt_key: boolean): boolean;
 }
 
@@ -77,6 +80,7 @@ export interface InitOutput {
     readonly wasmengine_applyTextEdit: (a: number, b: number, c: number) => [number, number, number];
     readonly wasmengine_beginHoverArrowEdit: (a: number, b: number, c: number) => [number, number];
     readonly wasmengine_beginSelectionMove: (a: number, b: number, c: number, d: number, e: number) => number;
+    readonly wasmengine_beginSelectionResize: (a: number, b: number, c: number, d: number, e: number) => number;
     readonly wasmengine_beginSelectionRotate: (a: number, b: number, c: number) => number;
     readonly wasmengine_beginTextEdit: (a: number, b: number, c: number) => [number, number, number, number];
     readonly wasmengine_canRedo: (a: number) => number;
@@ -93,6 +97,7 @@ export interface InitOutput {
     readonly wasmengine_documentSvg: (a: number) => [number, number];
     readonly wasmengine_finishHoverArrowEdit: (a: number, b: number, c: number, d: number) => number;
     readonly wasmengine_finishSelectionMove: (a: number, b: number, c: number, d: number) => number;
+    readonly wasmengine_finishSelectionResize: (a: number, b: number, c: number) => number;
     readonly wasmengine_finishSelectionRotate: (a: number, b: number, c: number, d: number) => number;
     readonly wasmengine_hoverArrowAction: (a: number, b: number, c: number) => [number, number];
     readonly wasmengine_loadDocumentCdxml: (a: number, b: number, c: number) => [number, number];
@@ -126,6 +131,7 @@ export interface InitOutput {
     readonly wasmengine_undo: (a: number) => number;
     readonly wasmengine_updateHoverArrowEdit: (a: number, b: number, c: number, d: number) => number;
     readonly wasmengine_updateSelectionMove: (a: number, b: number, c: number, d: number) => number;
+    readonly wasmengine_updateSelectionResize: (a: number, b: number, c: number) => number;
     readonly wasmengine_updateSelectionRotate: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_externrefs: WebAssembly.Table;
     readonly __wbindgen_malloc: (a: number, b: number) => number;

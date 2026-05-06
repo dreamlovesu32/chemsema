@@ -12,13 +12,48 @@
   --hover: #eef3f8;
   --danger: #b44747;
   --canvas: #ffffff;
+  --chrome-font-size: 16px;
   --editor-topbar-height: 94px;
   --toolbar-primary-height: 52px;
   --toolbar-secondary-height: 42px;
+  --toolbar-row-padding-y: 3px;
+  --toolbar-row-padding-x: 8px;
+  --toolbar-primary-gap: 7px;
+  --toolbar-secondary-gap: 4px;
+  --toolbar-group-gap: 3px;
+  --toolbar-divider-height: 24px;
+  --toolbar-divider-margin: 4px;
+  --icon-button-size: 43px;
+  --icon-svg-size: 30px;
+  --toolbar-control-height: 36px;
+  --zoom-input-width: 74px;
+  --style-button-min-width: 92px;
   --tool-rail-width: 52px;
+  --tool-rail-padding-y: 6px;
+  --tool-rail-padding-x: 3px;
+  --tool-rail-gap: 4px;
   --tool-button-width: 44px;
   --tool-button-height: 40px;
   --tool-icon-size: 28px;
+  --secondary-button-width: 41px;
+  --secondary-button-height: 37px;
+  --secondary-arrow-endpoint-width: 46px;
+  --secondary-script-width: 44px;
+  --secondary-field-height: 25px;
+  --secondary-divider-height: 22px;
+  --secondary-divider-margin: 4px;
+  --chrome-svg-stroke-width: 1.8;
+  --cc-bond-stroke-width: 1.72;
+  --cc-bond-hash-stroke-width: 2.05;
+  --cc-arrow-stroke-width: 1.72;
+  --cc-arrow-bold-stroke-width: 2.45;
+  --cc-main-stroke-width: 1.65;
+  --cc-soft-stroke-width: 1.45;
+  --cc-text-stroke-width: 2.25;
+  --cc-select-stroke-width: 1.35;
+  --cc-shadow-stroke-width: 1.2;
+  --cc-shadow-edge-stroke-width: 1.25;
+  --cc-distribute-stroke-width: 0.7;
 }
 
 * {
@@ -44,6 +79,48 @@ body.desktop-shell {
 
 body.browser-shell {
   display: block;
+  --chrome-font-size: 12.16px;
+  --editor-topbar-height: 71.44px;
+  --toolbar-primary-height: 39.52px;
+  --toolbar-secondary-height: 31.92px;
+  --toolbar-row-padding-y: 2.28px;
+  --toolbar-row-padding-x: 6.08px;
+  --toolbar-primary-gap: 5.32px;
+  --toolbar-secondary-gap: 3.04px;
+  --toolbar-group-gap: 2.28px;
+  --toolbar-divider-height: 18.24px;
+  --toolbar-divider-margin: 3.04px;
+  --icon-button-size: 32.68px;
+  --icon-svg-size: 22.8px;
+  --toolbar-control-height: 27.36px;
+  --zoom-input-width: 56.24px;
+  --style-button-min-width: 69.92px;
+  --tool-rail-width: 39.52px;
+  --tool-rail-padding-y: 4.56px;
+  --tool-rail-padding-x: 2.28px;
+  --tool-rail-gap: 3.04px;
+  --tool-button-width: 33.44px;
+  --tool-button-height: 30.4px;
+  --tool-icon-size: 21.28px;
+  --secondary-button-width: 31.16px;
+  --secondary-button-height: 28.12px;
+  --secondary-arrow-endpoint-width: 34.96px;
+  --secondary-script-width: 33.44px;
+  --secondary-field-height: 19px;
+  --secondary-divider-height: 16.72px;
+  --secondary-divider-margin: 3.04px;
+  --chrome-svg-stroke-width: 1.37;
+  --cc-bond-stroke-width: 1.31;
+  --cc-bond-hash-stroke-width: 1.56;
+  --cc-arrow-stroke-width: 1.31;
+  --cc-arrow-bold-stroke-width: 1.86;
+  --cc-main-stroke-width: 1.25;
+  --cc-soft-stroke-width: 1.1;
+  --cc-text-stroke-width: 1.71;
+  --cc-select-stroke-width: 1.03;
+  --cc-shadow-stroke-width: 0.91;
+  --cc-shadow-edge-stroke-width: 0.95;
+  --cc-distribute-stroke-width: 0.53;
 }
 
 button,
@@ -90,6 +167,7 @@ body.desktop-shell .editor-shell {
   grid-template-rows: var(--toolbar-primary-height) var(--toolbar-secondary-height);
   border-bottom: 1px solid var(--line-strong);
   background: var(--chrome);
+  font-size: var(--chrome-font-size);
   user-select: none;
 }
 
@@ -335,15 +413,15 @@ body.browser-shell .document-tabbar {
   display: flex;
   align-items: center;
   min-width: 0;
-  padding: 3px 8px;
+  padding: var(--toolbar-row-padding-y) var(--toolbar-row-padding-x);
 }
 
 .toolbar-row-primary {
-  gap: 7px;
+  gap: var(--toolbar-primary-gap);
 }
 
 .toolbar-row-secondary {
-  gap: 4px;
+  gap: var(--toolbar-secondary-gap);
   overflow-x: auto;
   overflow-y: hidden;
   border-top: 1px solid var(--line);
@@ -353,13 +431,13 @@ body.browser-shell .document-tabbar {
 .toolbar-group {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: var(--toolbar-group-gap);
 }
 
 .toolbar-divider {
   width: 1px;
-  height: 24px;
-  margin: 0 4px;
+  height: var(--toolbar-divider-height);
+  margin: 0 var(--toolbar-divider-margin);
   background: var(--line-strong);
 }
 
@@ -378,8 +456,8 @@ body.browser-shell .document-tabbar {
 }
 
 .icon-button {
-  width: 43px;
-  height: 43px;
+  width: var(--icon-button-size);
+  height: var(--icon-button-size);
 }
 
 .icon-button:hover,
@@ -417,8 +495,8 @@ body.browser-shell .document-tabbar {
 .icon-button svg,
 .tool-button svg,
 .secondary-button svg {
-  width: 30px;
-  height: 30px;
+  width: var(--icon-svg-size);
+  height: var(--icon-svg-size);
   overflow: visible;
 }
 
@@ -435,7 +513,7 @@ body.browser-shell .document-tabbar {
 .toolbar-row-secondary svg polygon {
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.8;
+  stroke-width: var(--chrome-svg-stroke-width);
   stroke-linecap: round;
   stroke-linejoin: round;
 }
@@ -469,32 +547,32 @@ body.browser-shell .document-tabbar {
 }
 
 .chemcore-icon .cc-bond {
-  stroke-width: 1.72;
+  stroke-width: var(--cc-bond-stroke-width);
   stroke-linecap: butt;
 }
 
 .chemcore-icon .cc-bond-hash {
-  stroke-width: 2.05;
+  stroke-width: var(--cc-bond-hash-stroke-width);
   stroke-linecap: butt;
 }
 
 .chemcore-icon .cc-arrow {
-  stroke-width: 1.72;
+  stroke-width: var(--cc-arrow-stroke-width);
 }
 
 .chemcore-icon .cc-arrow-bold {
-  stroke-width: 2.45;
+  stroke-width: var(--cc-arrow-bold-stroke-width);
 }
 
 .chemcore-icon .cc-shape,
 .chemcore-icon .cc-ring,
 .chemcore-icon .cc-stroke,
 .chemcore-icon .cc-guide {
-  stroke-width: 1.65;
+  stroke-width: var(--cc-main-stroke-width);
 }
 
 .chemcore-icon .cc-stroke-soft {
-  stroke-width: 1.45;
+  stroke-width: var(--cc-soft-stroke-width);
 }
 
 .chemcore-icon .cc-delete-stroke,
@@ -507,11 +585,11 @@ body.browser-shell .document-tabbar {
 }
 
 .chemcore-icon .cc-delete-stroke {
-  stroke-width: 1.48;
+  stroke-width: var(--cc-main-stroke-width);
 }
 
 .chemcore-icon .cc-delete-soft {
-  stroke-width: 1.28;
+  stroke-width: var(--cc-soft-stroke-width);
 }
 
 .chemcore-icon .cc-guide {
@@ -546,14 +624,14 @@ body.browser-shell .document-tabbar {
 .chemcore-icon .cc-shadow-fill {
   fill: rgba(17, 19, 24, 0.14);
   stroke: currentColor;
-  stroke-width: 1.2;
+  stroke-width: var(--cc-shadow-stroke-width);
   stroke-linejoin: round;
 }
 
 .chemcore-icon .cc-shadow-edge {
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.25;
+  stroke-width: var(--cc-shadow-edge-stroke-width);
   stroke-linecap: round;
   stroke-linejoin: round;
 }
@@ -561,7 +639,7 @@ body.browser-shell .document-tabbar {
 .chemcore-icon .cc-distribute-fill {
   fill: currentColor;
   stroke: currentColor;
-  stroke-width: 0.7;
+  stroke-width: var(--cc-distribute-stroke-width);
 }
 
 .chemcore-icon .cc-empty-fill {
@@ -570,7 +648,7 @@ body.browser-shell .document-tabbar {
 
 .chemcore-icon .cc-select-fill {
   stroke: currentColor;
-  stroke-width: 1.35;
+  stroke-width: var(--cc-select-stroke-width);
   stroke-linejoin: round;
 }
 
@@ -597,11 +675,11 @@ body.browser-shell .document-tabbar {
 }
 
 .chemcore-icon .cc-text-stroke {
-  stroke-width: 2.25;
+  stroke-width: var(--cc-text-stroke-width);
 }
 
 .chemcore-icon .cc-text-underline {
-  stroke-width: 1.65;
+  stroke-width: var(--cc-main-stroke-width);
 }
 
 .chemcore-icon .cc-chemical-main,
@@ -650,20 +728,20 @@ body.browser-shell .document-tabbar {
 }
 
 .secondary-button:has(.cc-arrow-endpoint-icon) {
-  width: 46px;
+  width: var(--secondary-arrow-endpoint-width);
 }
 
 .secondary-button:has(.cc-script-icon) {
-  width: 44px;
+  width: var(--secondary-script-width);
 }
 
 .zoom-group {
-  gap: 4px;
+  gap: var(--toolbar-secondary-gap);
 }
 
 .zoom-input {
-  width: 74px;
-  height: 36px;
+  width: var(--zoom-input-width);
+  height: var(--toolbar-control-height);
   border: 1px solid var(--line-strong);
   border-radius: 6px;
   padding: 0 7px;
@@ -677,8 +755,8 @@ body.browser-shell .document-tabbar {
 }
 
 .style-preset-button {
-  height: 36px;
-  min-width: 92px;
+  height: var(--toolbar-control-height);
+  min-width: var(--style-button-min-width);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -748,10 +826,11 @@ body.browser-shell .document-tabbar {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  padding: 6px 3px;
+  gap: var(--tool-rail-gap);
+  padding: var(--tool-rail-padding-y) var(--tool-rail-padding-x);
   border-right: 1px solid var(--line-strong);
   background: var(--chrome);
+  font-size: var(--chrome-font-size);
   user-select: none;
   z-index: 4;
 }
@@ -773,8 +852,8 @@ body.browser-shell .document-tabbar {
 }
 
 .secondary-button {
-  width: 41px;
-  height: 37px;
+  width: var(--secondary-button-width);
+  height: var(--secondary-button-height);
   flex: 0 0 auto;
   color: var(--ink);
 }
@@ -788,15 +867,15 @@ body.browser-shell .document-tabbar {
 
 .secondary-divider {
   width: 1px;
-  height: 22px;
-  margin: 0 4px;
+  height: var(--secondary-divider-height);
+  margin: 0 var(--secondary-divider-margin);
   flex: 0 0 auto;
   background: var(--line-strong);
 }
 
 .secondary-select,
 .secondary-input {
-  height: 25px;
+  height: var(--secondary-field-height);
   flex: 0 0 auto;
   border: 1px solid var(--line-strong);
   border-radius: 5px;
@@ -841,10 +920,10 @@ body.browser-shell .document-tabbar {
 }
 
 .color-picker-swatch {
-  width: 24px;
+  width: 21px;
   height: 21px;
   border: 1px solid #7f8793;
-  border-radius: 0;
+  border-radius: 50%;
   background: var(--swatch, #000000);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.32);
 }
@@ -871,15 +950,15 @@ body.browser-shell .document-tabbar {
 
 .color-picker-panel {
   position: fixed;
-  top: 93px;
+  top: var(--color-panel-top, 93px);
   left: var(--color-panel-left, 8px);
   z-index: 30;
   display: none;
   width: 132px;
-  min-height: 242px;
-  padding: 12px 5px 5px;
+  min-height: 145px;
+  padding: 9px 5px 5px;
   border: 1px solid #bfc6d0;
-  border-top: 7px solid #b7c5d8;
+  border-radius: 9px;
   background: #eeeeee;
   box-shadow: 0 2px 6px rgba(17, 19, 24, 0.18);
 }
@@ -891,19 +970,19 @@ body.browser-shell .document-tabbar {
 
 .color-panel-grid {
   display: grid;
-  grid-template-columns: repeat(4, 24px);
-  grid-auto-rows: 24px;
+  grid-template-columns: repeat(4, 21px);
+  grid-auto-rows: 21px;
   align-content: start;
-  gap: 8px 9px;
-  min-height: 178px;
+  gap: 7px 12px;
+  min-height: 52px;
 }
 
 .color-panel-swatch {
-  width: 24px;
-  height: 24px;
+  width: 21px;
+  height: 21px;
   padding: 0;
   border: 1px solid #b6bbc3;
-  border-radius: 0;
+  border-radius: 50%;
   background: var(--swatch, #000000);
   cursor: pointer;
 }
@@ -916,10 +995,10 @@ body.browser-shell .document-tabbar {
 
 .color-panel-other {
   width: 100%;
-  height: 30px;
+  height: 28px;
   margin-top: auto;
   border: 1px solid #c9ced6;
-  border-radius: 4px;
+  border-radius: 6px;
   background: #ffffff;
   color: #000000;
   font-family: "Courier New", monospace;
@@ -995,12 +1074,13 @@ body.browser-shell .document-tabbar {
 .color-dialog-custom-grid {
   display: grid;
   grid-template-columns: repeat(8, 36px);
+  grid-auto-rows: 26px;
   gap: 7px 9px;
 }
 
 .color-dialog-chip {
   width: 36px;
-  height: 32px;
+  height: 26px;
   border: 1px solid #9ca4ad;
   border-radius: 0;
   background: var(--swatch, #000000);
@@ -1535,8 +1615,8 @@ body.browser-shell .document-tabbar {
 
 .editor-selection-bond-dot {
   fill: rgba(47, 111, 237, 0.92);
-  stroke: #ffffff;
-  stroke-width: 1px;
+  stroke: none;
+  stroke-width: 0;
   vector-effect: non-scaling-stroke;
 }
 
@@ -1555,8 +1635,22 @@ body.browser-shell .document-tabbar {
   vector-effect: non-scaling-stroke;
 }
 
+.editor-selection-resize-handle {
+  fill: #ffffff;
+  stroke: rgba(47, 111, 237, 0.92);
+  stroke-width: 1.2px;
+  vector-effect: non-scaling-stroke;
+}
+
 .editor-selection-rotate-angle {
   fill: rgba(17, 19, 24, 0.8);
+  font-size: 12px;
+  font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+  dominant-baseline: text-after-edge;
+}
+
+.editor-selection-resize-label {
+  fill: rgba(17, 19, 24, 0.86);
   font-size: 12px;
   font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
   dominant-baseline: text-after-edge;

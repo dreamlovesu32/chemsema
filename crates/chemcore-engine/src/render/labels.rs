@@ -251,6 +251,14 @@ pub(super) fn render_fragment_line_with_profiles(
         .get(bond.end.as_str())
         .map(|node| label_polygons_world(node, object))
         .unwrap_or_default();
+    let start_has_label = node_map
+        .get(bond.begin.as_str())
+        .and_then(|node| node.label.as_ref())
+        .is_some_and(|label| label.has_visible_text());
+    let end_has_label = node_map
+        .get(bond.end.as_str())
+        .and_then(|node| node.label.as_ref())
+        .is_some_and(|label| label.has_visible_text());
     let (clipped_start, clipped_end) = if clip_against_label_geometry {
         let clipped_start =
             clip_point_out_of_label_geometry(start, end, start_box, &start_polygons, 0.8);
@@ -260,45 +268,17 @@ pub(super) fn render_fragment_line_with_profiles(
     } else {
         (start, end)
     };
+    let hash_pattern_start = clipped_start;
+    let hash_pattern_end = clipped_end;
     let mut start_retreat = contact_kernel.endpoint_retreat(&bond.id, &bond.begin);
     let mut end_retreat = contact_kernel.endpoint_retreat(&bond.id, &bond.end);
     if is_hash_bond(bond) && line_weight == BondLineWeight::Bold && !dash_array.is_empty() {
-        let direction = Vector::new(
-            clipped_end.x - clipped_start.x,
-            clipped_end.y - clipped_start.y,
-        );
-        if direction.length() > EPSILON {
-            let unit = direction.normalized();
-            let half_width =
-                line_weight_stroke_width_for_bond(bond, stroke_width, line_weight) * 0.5;
-            start_retreat = start_retreat.max(
-                endpoint_retreat_against_center_double_outer_line(
-                    object,
-                    bonds,
-                    node_map,
-                    bond,
-                    &bond.begin,
-                    clipped_start,
-                    unit,
-                    half_width,
-                    stroke_width,
-                )
-                .unwrap_or(0.0),
-            );
-            end_retreat = end_retreat.max(
-                endpoint_retreat_against_center_double_outer_line(
-                    object,
-                    bonds,
-                    node_map,
-                    bond,
-                    &bond.end,
-                    clipped_end,
-                    Vector::new(-unit.x, -unit.y),
-                    half_width,
-                    stroke_width,
-                )
-                .unwrap_or(0.0),
-            );
+        let retreat = hash_contact_retreat_distance_for_bond(bond, stroke_width);
+        if !start_has_label && endpoint_has_other_bond(bonds, bond, &bond.begin) {
+            start_retreat = start_retreat.max(retreat);
+        }
+        if !end_has_label && endpoint_has_other_bond(bonds, bond, &bond.end) {
+            end_retreat = end_retreat.max(retreat);
         }
     }
     let (clipped_start, clipped_end) =
@@ -393,8 +373,16 @@ pub(super) fn render_fragment_line_with_profiles(
             );
             let knockouts = if line_weight == BondLineWeight::Bold {
                 hash_bond_knockout_polygons(
-                    clipped_start,
-                    clipped_end,
+                    if is_hash_bond(bond) {
+                        hash_pattern_start
+                    } else {
+                        clipped_start
+                    },
+                    if is_hash_bond(bond) {
+                        hash_pattern_end
+                    } else {
+                        clipped_end
+                    },
                     line_weight_stroke_width_for_bond(bond, stroke_width, line_weight),
                     stroke_width,
                 )

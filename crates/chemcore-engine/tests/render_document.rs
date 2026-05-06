@@ -3017,19 +3017,6 @@ fn shared_point_count(
         .count()
 }
 
-fn polygons_have_same_vertices(
-    first: &[chemcore_engine::Point],
-    second: &[chemcore_engine::Point],
-    tolerance: f64,
-) -> bool {
-    first.len() == second.len()
-        && first.iter().all(|point| {
-            second
-                .iter()
-                .any(|other| point.distance(*other) <= tolerance)
-        })
-}
-
 fn point_lies_on_segment(
     point: chemcore_engine::Point,
     from: chemcore_engine::Point,
@@ -3046,6 +3033,19 @@ fn point_lies_on_segment(
     }
     let length_squared = (to.x - from.x).powi(2) + (to.y - from.y).powi(2);
     dot <= length_squared + tolerance
+}
+
+fn polygons_have_same_vertices(
+    first: &[chemcore_engine::Point],
+    second: &[chemcore_engine::Point],
+    tolerance: f64,
+) -> bool {
+    first.len() == second.len()
+        && first.iter().all(|point| {
+            second
+                .iter()
+                .any(|other| point.distance(*other) <= tolerance)
+        })
 }
 
 fn point_lies_on_polygon_boundary(
@@ -4805,26 +4805,7 @@ fn render_document_emits_main_contact_patches_for_connected_single_and_solid_wed
 }
 
 #[test]
-fn render_document_keeps_hashed_wedge_mother_polygon_original_against_connected_single_bond() {
-    let isolated = fragment_document(
-        json!([
-            { "id": "n1", "element": "C", "atomicNumber": 6, "position": [20.0, 40.0], "charge": 0, "numHydrogens": 0 },
-            { "id": "n2", "element": "C", "atomicNumber": 6, "position": [56.0, 40.0], "charge": 0, "numHydrogens": 0 }
-        ]),
-        json!([
-            {
-                "id": "b1",
-                "begin": "n1",
-                "end": "n2",
-                "order": 1,
-                "strokeWidth": 0.85,
-                "stereo": {
-                    "kind": "hashed-wedge",
-                    "wideEnd": "end"
-                }
-            }
-        ]),
-    );
+fn render_document_retreats_hashed_wedge_against_connected_single_bond() {
     let connected = fragment_document(
         json!([
             { "id": "n1", "element": "C", "atomicNumber": 6, "position": [20.0, 40.0], "charge": 0, "numHydrogens": 0 },
@@ -4852,32 +4833,45 @@ fn render_document_keeps_hashed_wedge_mother_polygon_original_against_connected_
             }
         ]),
     );
-    let isolated_polygon = object_bond_polygons_with_ids(&render_document(&isolated))
-        .into_iter()
-        .find_map(|(bond_id, points)| (bond_id == "b1").then_some(points))
-        .expect("isolated hashed wedge polygon");
     let connected_primitives = render_document(&connected);
     let connected_polygons = object_bond_polygons_with_ids(&connected_primitives);
     let hashed_wedge = connected_polygons
         .iter()
         .find_map(|(bond_id, points)| (bond_id == "b1").then_some(points.clone()))
         .expect("hashed wedge polygon");
+    let branch = connected_polygons
+        .iter()
+        .find_map(|(bond_id, points)| (bond_id == "b2").then_some(points.clone()))
+        .expect("branch polygon");
+    let connected_end =
+        closest_points_to_target(&hashed_wedge, chemcore_engine::Point::new(56.0, 40.0), 2);
 
     assert_eq!(hashed_wedge.len(), 4);
-    assert!(polygons_have_same_vertices(
-        &isolated_polygon,
-        &hashed_wedge,
-        1.0e-4,
-    ));
-    assert!(object_knockout_polygons(&connected_primitives).len() >= 1);
+    assert!(
+        connected_end.iter().all(|point| point.x < 55.0),
+        "{hashed_wedge:?}"
+    );
+    assert!(
+        average_closest_distance_to_point(&branch, chemcore_engine::Point::new(56.0, 40.0), 2)
+            < 0.6,
+        "{branch:?}"
+    );
+    let knockouts = object_knockout_polygons(&connected_primitives);
+    assert!(knockouts.len() >= 1);
+    assert!(
+        knockouts.iter().flatten().any(|point| point.x > 55.0),
+        "{knockouts:?}"
+    );
 }
 
 #[test]
-fn render_document_keeps_hash_bond_mother_polygon_original_against_connected_single_bond() {
-    let isolated = fragment_document(
+fn render_document_retreats_hashed_wedge_at_both_connected_endpoints() {
+    let document = fragment_document(
         json!([
             { "id": "n1", "element": "C", "atomicNumber": 6, "position": [20.0, 40.0], "charge": 0, "numHydrogens": 0 },
-            { "id": "n2", "element": "C", "atomicNumber": 6, "position": [56.0, 40.0], "charge": 0, "numHydrogens": 0 }
+            { "id": "n2", "element": "C", "atomicNumber": 6, "position": [56.0, 40.0], "charge": 0, "numHydrogens": 0 },
+            { "id": "n3", "element": "C", "atomicNumber": 6, "position": [2.0, 12.0], "charge": 0, "numHydrogens": 0 },
+            { "id": "n4", "element": "C", "atomicNumber": 6, "position": [74.0, 68.0], "charge": 0, "numHydrogens": 0 }
         ]),
         json!([
             {
@@ -4886,19 +4880,104 @@ fn render_document_keeps_hash_bond_mother_polygon_original_against_connected_sin
                 "end": "n2",
                 "order": 1,
                 "strokeWidth": 0.85,
-                "lineStyles": {
-                    "main": "dashed",
-                    "left": "solid",
-                    "right": "solid"
-                },
-                "lineWeights": {
-                    "main": "bold",
-                    "left": "normal",
-                    "right": "normal"
+                "stereo": {
+                    "kind": "hashed-wedge",
+                    "wideEnd": "end"
                 }
-            }
+            },
+            { "id": "b2", "begin": "n1", "end": "n3", "order": 1, "strokeWidth": 0.85 },
+            { "id": "b3", "begin": "n2", "end": "n4", "order": 1, "strokeWidth": 0.85 }
         ]),
     );
+
+    let primitives = render_document(&document);
+    let hashed_wedge = object_bond_polygons_with_ids(&primitives)
+        .into_iter()
+        .find_map(|(bond_id, points)| (bond_id == "b1").then_some(points))
+        .expect("hashed wedge polygon");
+    let begin_end =
+        closest_points_to_target(&hashed_wedge, chemcore_engine::Point::new(20.0, 40.0), 2);
+    let wide_end =
+        closest_points_to_target(&hashed_wedge, chemcore_engine::Point::new(56.0, 40.0), 2);
+
+    assert_eq!(hashed_wedge.len(), 4);
+    assert!(
+        begin_end.iter().all(|point| point.x > 21.0),
+        "{hashed_wedge:?}"
+    );
+    assert!(
+        wide_end.iter().all(|point| point.x < 55.0),
+        "{hashed_wedge:?}"
+    );
+    assert!(object_knockout_polygons(&primitives).len() >= 1);
+}
+
+#[test]
+fn render_document_keeps_hashed_wedge_label_clip_without_extra_hash_retreat() {
+    let labeled_nodes = json!([
+        { "id": "n1", "element": "C", "atomicNumber": 6, "position": [20.0, 40.0], "charge": 0, "numHydrogens": 0 },
+        {
+            "id": "n2",
+            "element": "N",
+            "atomicNumber": 7,
+            "position": [56.0, 40.0],
+            "charge": 0,
+            "numHydrogens": 0,
+            "label": {
+                "text": "N",
+                "position": [52.0, 44.0],
+                "box": [50.0, 34.0, 62.0, 46.0],
+                "runs": [{ "text": "N", "fontFamily": "Arial", "fontSize": 10.0, "fill": "#000000" }]
+            }
+        }
+    ]);
+    let isolated = fragment_document(
+        labeled_nodes.clone(),
+        json!([{
+            "id": "b1",
+            "begin": "n1",
+            "end": "n2",
+            "order": 1,
+            "strokeWidth": 0.85,
+            "stereo": { "kind": "hashed-wedge", "wideEnd": "end" }
+        }]),
+    );
+    let connected = fragment_document(
+        json!([
+            labeled_nodes[0].clone(),
+            labeled_nodes[1].clone(),
+            { "id": "n3", "element": "C", "atomicNumber": 6, "position": [74.0, 58.0], "charge": 0, "numHydrogens": 0 }
+        ]),
+        json!([
+            {
+                "id": "b1",
+                "begin": "n1",
+                "end": "n2",
+                "order": 1,
+                "strokeWidth": 0.85,
+                "stereo": { "kind": "hashed-wedge", "wideEnd": "end" }
+            },
+            { "id": "b2", "begin": "n2", "end": "n3", "order": 1, "strokeWidth": 0.85 }
+        ]),
+    );
+    let isolated_wedge = object_bond_polygons_with_ids(&render_document(&isolated))
+        .into_iter()
+        .find_map(|(bond_id, points)| (bond_id == "b1").then_some(points))
+        .expect("isolated hashed wedge polygon");
+    let connected_wedge = object_bond_polygons_with_ids(&render_document(&connected))
+        .into_iter()
+        .find_map(|(bond_id, points)| (bond_id == "b1").then_some(points))
+        .expect("connected hashed wedge polygon");
+
+    assert!(polygons_have_same_vertices(
+        &isolated_wedge,
+        &connected_wedge,
+        1.0e-4,
+    ));
+}
+
+#[test]
+fn render_document_retreats_hash_bond_against_connected_single_bond() {
     let connected = fragment_document(
         json!([
             { "id": "n1", "element": "C", "atomicNumber": 6, "position": [20.0, 40.0], "charge": 0, "numHydrogens": 0 },
@@ -4932,23 +5011,91 @@ fn render_document_keeps_hash_bond_mother_polygon_original_against_connected_sin
             }
         ]),
     );
-    let isolated_polygon = object_bond_polygons_with_ids(&render_document(&isolated))
-        .into_iter()
-        .find_map(|(bond_id, points)| (bond_id == "b1").then_some(points))
-        .expect("isolated hash bond polygon");
     let connected_primitives = render_document(&connected);
-    let hash_bond = object_bond_polygons_with_ids(&connected_primitives)
-        .into_iter()
+    let connected_polygons = object_bond_polygons_with_ids(&connected_primitives);
+    let hash_bond = connected_polygons
+        .iter()
         .find_map(|(bond_id, points)| (bond_id == "b1").then_some(points))
         .expect("connected hash bond polygon");
+    let branch = connected_polygons
+        .iter()
+        .find_map(|(bond_id, points)| (bond_id == "b2").then_some(points.clone()))
+        .expect("branch polygon");
+    let connected_end =
+        closest_points_to_target(&hash_bond, chemcore_engine::Point::new(56.0, 40.0), 2);
 
     assert_eq!(hash_bond.len(), 4);
+    assert!(
+        connected_end.iter().all(|point| point.x < 55.0),
+        "{hash_bond:?}"
+    );
+    assert!(
+        average_closest_distance_to_point(&branch, chemcore_engine::Point::new(56.0, 40.0), 2)
+            < 0.6,
+        "{branch:?}"
+    );
+    let knockouts = object_knockout_polygons(&connected_primitives);
+    assert!(knockouts.len() >= 1);
+    assert!(
+        knockouts.iter().flatten().any(|point| point.x > 55.0),
+        "{knockouts:?}"
+    );
+}
+
+#[test]
+fn render_document_keeps_hash_bond_label_clip_without_extra_hash_retreat() {
+    let labeled_nodes = json!([
+        { "id": "n1", "element": "C", "atomicNumber": 6, "position": [20.0, 40.0], "charge": 0, "numHydrogens": 0 },
+        {
+            "id": "n2",
+            "element": "N",
+            "atomicNumber": 7,
+            "position": [56.0, 40.0],
+            "charge": 0,
+            "numHydrogens": 0,
+            "label": {
+                "text": "N",
+                "position": [52.0, 44.0],
+                "box": [50.0, 34.0, 62.0, 46.0],
+                "runs": [{ "text": "N", "fontFamily": "Arial", "fontSize": 10.0, "fill": "#000000" }]
+            }
+        }
+    ]);
+    let hash_bond = json!({
+        "id": "b1",
+        "begin": "n1",
+        "end": "n2",
+        "order": 1,
+        "strokeWidth": 0.85,
+        "lineStyles": { "main": "dashed", "left": "solid", "right": "solid" },
+        "lineWeights": { "main": "bold", "left": "normal", "right": "normal" }
+    });
+    let isolated = fragment_document(labeled_nodes.clone(), json!([hash_bond.clone()]));
+    let connected = fragment_document(
+        json!([
+            labeled_nodes[0].clone(),
+            labeled_nodes[1].clone(),
+            { "id": "n3", "element": "C", "atomicNumber": 6, "position": [74.0, 58.0], "charge": 0, "numHydrogens": 0 }
+        ]),
+        json!([
+            hash_bond,
+            { "id": "b2", "begin": "n2", "end": "n3", "order": 1, "strokeWidth": 0.85 }
+        ]),
+    );
+    let isolated_hash = object_bond_polygons_with_ids(&render_document(&isolated))
+        .into_iter()
+        .find_map(|(bond_id, points)| (bond_id == "b1").then_some(points))
+        .expect("isolated hash polygon");
+    let connected_hash = object_bond_polygons_with_ids(&render_document(&connected))
+        .into_iter()
+        .find_map(|(bond_id, points)| (bond_id == "b1").then_some(points))
+        .expect("connected hash polygon");
+
     assert!(polygons_have_same_vertices(
-        &isolated_polygon,
-        &hash_bond,
+        &isolated_hash,
+        &connected_hash,
         1.0e-4,
     ));
-    assert!(object_knockout_polygons(&connected_primitives).len() >= 1);
 }
 
 #[test]
@@ -5076,32 +5223,7 @@ fn render_document_retreats_hashed_wedge_mother_polygon_against_center_double_ou
 }
 
 #[test]
-fn render_document_keeps_hash_bond_original_and_retreats_other_bonds_in_multi_bond_node() {
-    let isolated = fragment_document(
-        json!([
-            { "id": "n1", "element": "C", "atomicNumber": 6, "position": [20.0, 40.0], "charge": 0, "numHydrogens": 0 },
-            { "id": "n2", "element": "C", "atomicNumber": 6, "position": [56.0, 40.0], "charge": 0, "numHydrogens": 0 }
-        ]),
-        json!([
-            {
-                "id": "b1",
-                "begin": "n1",
-                "end": "n2",
-                "order": 1,
-                "strokeWidth": 0.85,
-                "lineStyles": {
-                    "main": "dashed",
-                    "left": "solid",
-                    "right": "solid"
-                },
-                "lineWeights": {
-                    "main": "bold",
-                    "left": "normal",
-                    "right": "normal"
-                }
-            }
-        ]),
-    );
+fn render_document_retreats_hash_bond_and_ignores_it_for_other_bond_contacts() {
     let document = fragment_document(
         json!([
             { "id": "n1", "element": "C", "atomicNumber": 6, "position": [20.0, 40.0], "charge": 0, "numHydrogens": 0 },
@@ -5132,63 +5254,22 @@ fn render_document_keeps_hash_bond_original_and_retreats_other_bonds_in_multi_bo
         ]),
     );
 
-    let isolated_hash = object_bond_polygons_with_ids(&render_document(&isolated))
-        .into_iter()
-        .find_map(|(bond_id, points)| (bond_id == "b1").then_some(points))
-        .expect("isolated hash bond polygon");
     let primitives = render_document(&document);
     let polygons = object_bond_polygons_with_ids(&primitives);
     let hash_bond = polygons
         .iter()
         .find_map(|(bond_id, points)| (bond_id == "b1").then_some(points.clone()))
         .expect("hash bond polygon");
-    let branch_one = polygons
-        .iter()
-        .find_map(|(bond_id, points)| (bond_id == "b2").then_some(points.clone()))
-        .expect("branch one polygon");
-    let branch_two = polygons
-        .iter()
-        .find_map(|(bond_id, points)| (bond_id == "b3").then_some(points.clone()))
-        .expect("branch two polygon");
 
-    assert!(polygons_have_same_vertices(
-        &isolated_hash,
-        &hash_bond,
-        1.0e-4
-    ));
     assert!(
-        average_closest_distance_to_point(&branch_one, chemcore_engine::Point::new(56.0, 40.0), 2)
-            > 0.5,
-        "{branch_one:?}"
-    );
-    assert!(
-        average_closest_distance_to_point(&branch_two, chemcore_engine::Point::new(56.0, 40.0), 2)
-            > 0.5,
-        "{branch_two:?}"
+        average_closest_distance_to_point(&hash_bond, chemcore_engine::Point::new(56.0, 40.0), 2)
+            > 1.0,
+        "{hash_bond:?}"
     );
 }
 
 #[test]
-fn render_document_keeps_hashed_wedge_original_and_retreats_other_bonds_in_multi_bond_node() {
-    let isolated = fragment_document(
-        json!([
-            { "id": "n1", "element": "C", "atomicNumber": 6, "position": [20.0, 40.0], "charge": 0, "numHydrogens": 0 },
-            { "id": "n2", "element": "C", "atomicNumber": 6, "position": [56.0, 40.0], "charge": 0, "numHydrogens": 0 }
-        ]),
-        json!([
-            {
-                "id": "b1",
-                "begin": "n1",
-                "end": "n2",
-                "order": 1,
-                "strokeWidth": 0.85,
-                "stereo": {
-                    "kind": "hashed-wedge",
-                    "wideEnd": "end"
-                }
-            }
-        ]),
-    );
+fn render_document_retreats_hashed_wedge_and_ignores_it_for_other_bond_contacts() {
     let document = fragment_document(
         json!([
             { "id": "n1", "element": "C", "atomicNumber": 6, "position": [20.0, 40.0], "charge": 0, "numHydrogens": 0 },
@@ -5213,39 +5294,21 @@ fn render_document_keeps_hashed_wedge_original_and_retreats_other_bonds_in_multi
         ]),
     );
 
-    let isolated_wedge = object_bond_polygons_with_ids(&render_document(&isolated))
-        .into_iter()
-        .find_map(|(bond_id, points)| (bond_id == "b1").then_some(points))
-        .expect("isolated hashed wedge polygon");
     let primitives = render_document(&document);
     let polygons = object_bond_polygons_with_ids(&primitives);
     let hashed_wedge = polygons
         .iter()
         .find_map(|(bond_id, points)| (bond_id == "b1").then_some(points.clone()))
         .expect("hashed wedge polygon");
-    let branch_one = polygons
-        .iter()
-        .find_map(|(bond_id, points)| (bond_id == "b2").then_some(points.clone()))
-        .expect("branch one polygon");
-    let branch_two = polygons
-        .iter()
-        .find_map(|(bond_id, points)| (bond_id == "b3").then_some(points.clone()))
-        .expect("branch two polygon");
 
-    assert!(polygons_have_same_vertices(
-        &isolated_wedge,
-        &hashed_wedge,
-        1.0e-4,
-    ));
+    assert_eq!(hashed_wedge.len(), 4);
     assert!(
-        average_closest_distance_to_point(&branch_one, chemcore_engine::Point::new(56.0, 40.0), 2)
-            > 0.5,
-        "{branch_one:?}"
-    );
-    assert!(
-        average_closest_distance_to_point(&branch_two, chemcore_engine::Point::new(56.0, 40.0), 2)
-            > 0.5,
-        "{branch_two:?}"
+        average_closest_distance_to_point(
+            &hashed_wedge,
+            chemcore_engine::Point::new(56.0, 40.0),
+            2
+        ) > 1.0,
+        "{hashed_wedge:?}"
     );
     assert!(object_knockout_polygons(&primitives).len() >= 1);
 }

@@ -555,13 +555,13 @@ fn render_stereo_bond(
             push_bond_polygon(out, &bond.id, points, stroke, stroke, 0.0, object_id);
         }
         BondStereoKind::HashedWedgeEnd => {
-            let points = compute_fragment_solid_wedge_points(
-                object,
-                contact_kernel,
+            let (points, pattern_points) = compute_fragment_hashed_wedge_points(
                 bonds,
-                node_map,
                 bond,
+                &bond.begin,
                 &bond.end,
+                begin_has_label,
+                end_has_label,
                 start,
                 end,
                 if end_has_label {
@@ -570,7 +570,6 @@ fn render_stereo_bond(
                     0.0
                 },
                 stroke_width,
-                !contact_kernel.uses_endpoint(&bond.id, &bond.end),
             );
             push_bond_polygon(
                 out,
@@ -582,19 +581,19 @@ fn render_stereo_bond(
                 object_id.clone(),
             );
             for knockout in
-                compute_fragment_hashed_wedge_knockout_polygons(&points, stroke_width, bond)
+                compute_fragment_hashed_wedge_knockout_polygons(&pattern_points, stroke_width, bond)
             {
                 push_knockout_polygon(out, knockout, object_id.clone());
             }
         }
         BondStereoKind::HashedWedgeBegin => {
-            let points = compute_fragment_solid_wedge_points(
-                object,
-                contact_kernel,
+            let (points, pattern_points) = compute_fragment_hashed_wedge_points(
                 bonds,
-                node_map,
                 bond,
+                &bond.end,
                 &bond.begin,
+                end_has_label,
+                begin_has_label,
                 end,
                 start,
                 if begin_has_label {
@@ -603,7 +602,6 @@ fn render_stereo_bond(
                     0.0
                 },
                 stroke_width,
-                !contact_kernel.uses_endpoint(&bond.id, &bond.begin),
             );
             push_bond_polygon(
                 out,
@@ -615,7 +613,7 @@ fn render_stereo_bond(
                 object_id.clone(),
             );
             for knockout in
-                compute_fragment_hashed_wedge_knockout_polygons(&points, stroke_width, bond)
+                compute_fragment_hashed_wedge_knockout_polygons(&pattern_points, stroke_width, bond)
             {
                 push_knockout_polygon(out, knockout, object_id.clone());
             }
@@ -742,27 +740,7 @@ fn compute_fragment_solid_wedge_points(
         bond.begin.as_str()
     };
     let start_retreat = contact_kernel.endpoint_retreat(&bond.id, narrow_node_id);
-    let mut end_retreat = if is_hashed_wedge_bond(bond) {
-        0.0
-    } else {
-        contact_kernel.endpoint_retreat(&bond.id, wide_node_id)
-    };
-    if is_hashed_wedge_bond(bond) && allow_endpoint_contacts {
-        end_retreat = end_retreat.max(
-            endpoint_retreat_against_center_double_outer_line(
-                object,
-                bonds,
-                node_map,
-                bond,
-                wide_node_id,
-                end,
-                Vector::new(start.x - end.x, start.y - end.y).normalized(),
-                solid_wedge_half_width_for_bond(bond, stroke_width),
-                stroke_width,
-            )
-            .unwrap_or(0.0),
-        );
-    }
+    let end_retreat = contact_kernel.endpoint_retreat(&bond.id, wide_node_id);
     let (start, end) = apply_segment_endpoint_retreats(start, end, start_retreat, end_retreat);
     let direction = Vector::new(end.x - start.x, end.y - start.y);
     let length = direction.length();
@@ -809,10 +787,6 @@ fn compute_fragment_solid_wedge_points(
         }
     }
 
-    if is_hashed_wedge_bond(bond) {
-        return bond_polygon_from_endpoint_profiles(start_profile, vec![cap_plus, cap_minus]);
-    }
-
     if allow_endpoint_contacts {
         if let Some((join_plus, join_minus)) = solid_wedge_cap_points(
             object,
@@ -847,6 +821,90 @@ fn compute_fragment_solid_wedge_points(
         return bond_polygon_from_endpoint_profiles(start_profile, vec![points[1], points[2]]);
     }
     points
+}
+
+fn compute_fragment_hashed_wedge_points(
+    bonds: &[Bond],
+    bond: &Bond,
+    start_node_id: &str,
+    end_node_id: &str,
+    start_has_label: bool,
+    end_has_label: bool,
+    start: Point,
+    end: Point,
+    end_inset: f64,
+    stroke_width: f64,
+) -> (Vec<Point>, Vec<Point>) {
+    let wide_half_width = solid_wedge_half_width_for_bond(bond, stroke_width);
+    let pattern_points = compute_plain_wedge_trapezoid(
+        start,
+        end,
+        0.0,
+        0.0,
+        end_inset,
+        stroke_width,
+        wide_half_width,
+    );
+    let retreat = hash_contact_retreat_distance_for_bond(bond, stroke_width);
+    let start_retreat = if !start_has_label && endpoint_has_other_bond(bonds, bond, start_node_id) {
+        retreat
+    } else {
+        0.0
+    };
+    let end_retreat = if !end_has_label && endpoint_has_other_bond(bonds, bond, end_node_id) {
+        retreat
+    } else {
+        0.0
+    };
+    let outline_points = compute_plain_wedge_trapezoid(
+        start,
+        end,
+        start_retreat,
+        end_retreat,
+        end_inset,
+        stroke_width,
+        wide_half_width,
+    );
+    (outline_points, pattern_points)
+}
+
+fn compute_plain_wedge_trapezoid(
+    start: Point,
+    end: Point,
+    start_retreat: f64,
+    end_retreat: f64,
+    end_inset: f64,
+    stroke_width: f64,
+    wide_half_width: f64,
+) -> Vec<Point> {
+    let (start, end) = apply_segment_endpoint_retreats(start, end, start_retreat, end_retreat);
+    let direction = Vector::new(end.x - start.x, end.y - start.y);
+    let length = direction.length();
+    if length <= EPSILON {
+        return Vec::new();
+    }
+    let unit = direction.normalized();
+    let normal = Vector::new(-unit.y, unit.x);
+    let tip_half_width = solid_wedge_tip_half_width(stroke_width);
+    let tip_plus = Point::new(
+        start.x + normal.x * tip_half_width,
+        start.y + normal.y * tip_half_width,
+    );
+    let tip_minus = Point::new(
+        start.x - normal.x * tip_half_width,
+        start.y - normal.y * tip_half_width,
+    );
+    let cap_inset = end_inset.min(length * 0.22);
+    let cap_center = Point::new(end.x - unit.x * cap_inset, end.y - unit.y * cap_inset);
+    let cap_plus = Point::new(
+        cap_center.x + normal.x * wide_half_width,
+        cap_center.y + normal.y * wide_half_width,
+    );
+    let cap_minus = Point::new(
+        cap_center.x - normal.x * wide_half_width,
+        cap_center.y - normal.y * wide_half_width,
+    );
+    vec![tip_plus, cap_plus, cap_minus, tip_minus]
 }
 
 fn compute_fragment_hashed_wedge_knockout_polygons(

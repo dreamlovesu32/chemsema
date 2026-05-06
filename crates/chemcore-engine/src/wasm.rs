@@ -345,6 +345,26 @@ impl WasmEngine {
         )
     }
 
+    #[wasm_bindgen(js_name = beginSelectionResize)]
+    pub fn begin_selection_resize(&mut self, handle: &str, x: f64, y: f64) -> bool {
+        self.inner.begin_selection_resize(
+            handle,
+            Point::from_world(WorldPoint::new(WorldCm(x), WorldCm(y))),
+        )
+    }
+
+    #[wasm_bindgen(js_name = updateSelectionResize)]
+    pub fn update_selection_resize(&mut self, x: f64, y: f64) -> bool {
+        self.inner
+            .update_selection_resize(Point::from_world(WorldPoint::new(WorldCm(x), WorldCm(y))))
+    }
+
+    #[wasm_bindgen(js_name = finishSelectionResize)]
+    pub fn finish_selection_resize(&mut self, x: f64, y: f64) -> bool {
+        self.inner
+            .finish_selection_resize(Point::from_world(WorldPoint::new(WorldCm(x), WorldCm(y))))
+    }
+
     #[wasm_bindgen(js_name = applySelectionArrangeCommand)]
     pub fn apply_selection_arrange_command(&mut self, command: &str) -> bool {
         self.inner.apply_selection_arrange_command(command)

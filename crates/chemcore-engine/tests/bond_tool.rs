@@ -1038,6 +1038,19 @@ fn text_translate(engine: &Engine, object_id: &str) -> [f64; 2] {
         .translate
 }
 
+fn text_bbox(engine: &Engine, object_id: &str) -> [f64; 4] {
+    engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .find(|object| object.id == object_id)
+        .expect("text object should exist")
+        .payload
+        .bbox
+        .expect("text object should have a bbox")
+}
+
 fn select_all_arrange_text_objects(engine: &mut Engine) {
     engine.set_tool_state(select_tool());
     engine.select_at_point(Point::new(5.0, 5.0), false);
@@ -5108,6 +5121,73 @@ fn select_tool_move_undo_redo_returns_to_final_drag_position() {
     );
     assert!(engine.redo());
     assert_eq!(node_world_point(&engine, "n_1"), final_n1);
+}
+
+#[test]
+fn select_tool_resizing_selected_bond_from_east_scales_selected_nodes() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, px(300.0), px(260.0));
+    engine.set_tool_state(select_tool());
+    let center = Point::new(FIRST_CENTER_X, FIRST_CENTER_Y);
+
+    engine.select_at_point(center, false);
+    let (x, y, width, height) = selection_bond_rect(&engine);
+    let pivot_x = x;
+    let target = Point::new(x + width * 2.0, y + height * 0.5);
+
+    assert!(engine.begin_selection_resize("east", Point::new(x + width, y + height * 0.5)));
+    assert!(engine.update_selection_resize(target));
+    assert!(engine.finish_selection_resize(target));
+
+    let n1 = node_world_point(&engine, "n_1");
+    let n2 = node_world_point(&engine, "n_2");
+    assert!((n1.x - round_to_2(pivot_x + (FIRST_START_X - pivot_x) * 2.0)).abs() < 0.001);
+    assert!((n1.y - FIRST_START_Y).abs() < 0.001);
+    assert!((n2.x - round_to_2(pivot_x + (FIRST_END_X - pivot_x) * 2.0)).abs() < 0.001);
+    assert!((n2.y - FIRST_END_Y).abs() < 0.001);
+
+    let final_n2 = n2;
+    assert!(engine.undo());
+    assert_eq!(node_world_point(&engine, "n_2"), Point::new(FIRST_END_X, FIRST_END_Y));
+    assert!(engine.redo());
+    assert_eq!(node_world_point(&engine, "n_2"), final_n2);
+}
+
+#[test]
+fn select_tool_resizing_one_text_selection_box_scales_all_selected_text_objects() {
+    let mut engine = Engine::new();
+    load_arrange_text_document(&mut engine);
+    select_all_arrange_text_objects(&mut engine);
+
+    assert!(engine.begin_selection_resize("east", Point::new(40.0, 25.0)));
+    assert!(engine.update_selection_resize(Point::new(260.0, 25.0)));
+    assert!(engine.finish_selection_resize(Point::new(260.0, 25.0)));
+
+    assert_eq!(text_translate(&engine, "obj_text_a"), [0.0, 0.0]);
+    assert_eq!(text_translate(&engine, "obj_text_b"), [60.0, 20.0]);
+    assert_eq!(text_translate(&engine, "obj_text_c"), [200.0, 40.0]);
+    assert_eq!(text_bbox(&engine, "obj_text_a")[2], 20.0);
+    assert_eq!(text_bbox(&engine, "obj_text_b")[2], 20.0);
+    assert_eq!(text_bbox(&engine, "obj_text_c")[2], 60.0);
+}
+
+#[test]
+fn select_tool_corner_resize_is_proportional() {
+    let mut engine = Engine::new();
+    load_arrange_text_document(&mut engine);
+    select_all_arrange_text_objects(&mut engine);
+
+    assert!(engine.begin_selection_resize("ne", Point::new(130.0, 0.0)));
+    assert!(engine.update_selection_resize(Point::new(260.0, -50.0)));
+    assert!(engine.finish_selection_resize(Point::new(260.0, -50.0)));
+
+    assert_eq!(text_translate(&engine, "obj_text_b"), [60.0, -10.0]);
+    assert_eq!(text_translate(&engine, "obj_text_c"), [200.0, 30.0]);
+    assert_eq!(text_bbox(&engine, "obj_text_a")[2], 20.0);
+    assert_eq!(text_bbox(&engine, "obj_text_a")[3], 20.0);
+    assert_eq!(text_bbox(&engine, "obj_text_c")[2], 60.0);
+    assert_eq!(text_bbox(&engine, "obj_text_c")[3], 20.0);
 }
 
 #[test]

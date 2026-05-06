@@ -7,15 +7,15 @@ use crate::{
     angle_between, arrow_object_handle_points, direction_from_angle, fragment_bond_visual_bounds,
     hit_test_arrow_center, hit_test_bond_center, hit_test_endpoint, line_object_points,
     nearest_angle, round2, HoverTextBox, Point, RenderPrimitive, RenderRole, SelectionState,
-    BOND_CENTER_HIT_RADIUS, DEFAULT_BOND_LENGTH, DRAG_START_THRESHOLD, ENDPOINT_FOCUS_RADIUS,
-    ENDPOINT_HIT_RADIUS, GLOBAL_SNAP_ANGLES,
+    SceneObject, BOND_CENTER_HIT_RADIUS, DEFAULT_BOND_LENGTH, DRAG_START_THRESHOLD,
+    ENDPOINT_FOCUS_RADIUS, ENDPOINT_HIT_RADIUS, GLOBAL_SNAP_ANGLES,
 };
 use serde_json::{json, Value as JsonValue};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 const SELECTION_NODE_BOX_SIZE: f64 = ENDPOINT_FOCUS_RADIUS * 2.0;
 const SELECTION_BOX_STROKE_WIDTH: f64 = crate::px_to_cm(1.2);
-const SELECTION_BOND_DOT_RADIUS: f64 = crate::px_to_cm(3.0);
+const SELECTION_BOND_DOT_RADIUS: f64 = 0.5;
 
 #[path = "select/arrange.rs"]
 mod arrange;
@@ -96,6 +96,22 @@ impl AxisBounds {
             max_y: self.max_y + amount,
         }
     }
+
+    fn width(self) -> f64 {
+        (self.max_x - self.min_x).max(0.0)
+    }
+
+    fn height(self) -> f64 {
+        (self.max_y - self.min_y).max(0.0)
+    }
+
+    fn center_x(self) -> f64 {
+        (self.min_x + self.max_x) * 0.5
+    }
+
+    fn center_y(self) -> f64 {
+        (self.min_y + self.max_y) * 0.5
+    }
 }
 
 struct ComponentSelection {
@@ -165,6 +181,55 @@ pub(super) struct SelectionRotateDrag {
     start_angle: f64,
     node_originals: Vec<NodeMoveOriginal>,
     text_originals: Vec<TextMoveOriginal>,
+    undo_pushed: bool,
+    changed: bool,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum SelectionResizeHandle {
+    North,
+    South,
+    East,
+    West,
+    NorthEast,
+    NorthWest,
+    SouthEast,
+    SouthWest,
+}
+
+impl SelectionResizeHandle {
+    fn from_name(value: &str) -> Option<Self> {
+        match value.to_ascii_lowercase().replace(['_', '-'], "").as_str() {
+            "n" | "north" | "top" => Some(Self::North),
+            "s" | "south" | "bottom" => Some(Self::South),
+            "e" | "east" | "right" => Some(Self::East),
+            "w" | "west" | "left" => Some(Self::West),
+            "ne" | "northeast" | "topright" => Some(Self::NorthEast),
+            "nw" | "northwest" | "topleft" => Some(Self::NorthWest),
+            "se" | "southeast" | "bottomright" => Some(Self::SouthEast),
+            "sw" | "southwest" | "bottomleft" => Some(Self::SouthWest),
+            _ => None,
+        }
+    }
+
+    fn is_corner(self) -> bool {
+        matches!(
+            self,
+            Self::NorthEast | Self::NorthWest | Self::SouthEast | Self::SouthWest
+        )
+    }
+}
+
+#[derive(Clone)]
+struct ObjectResizeOriginal {
+    object: SceneObject,
+}
+
+pub(super) struct SelectionResizeDrag {
+    handle: SelectionResizeHandle,
+    bounds: AxisBounds,
+    node_originals: Vec<NodeMoveOriginal>,
+    object_originals: Vec<ObjectResizeOriginal>,
     undo_pushed: bool,
     changed: bool,
 }
@@ -374,6 +439,8 @@ impl Engine {
         };
         self.drag = None;
         clear_select_hover_overlay(self);
+        self.selection_rotate_drag = None;
+        self.selection_resize_drag = None;
         self.selection_drag = Some(drag);
         true
     }
@@ -384,8 +451,24 @@ impl Engine {
         };
         self.drag = None;
         self.selection_drag = None;
+        self.selection_resize_drag = None;
         clear_select_hover_overlay(self);
         self.selection_rotate_drag = Some(drag);
+        true
+    }
+
+    pub fn begin_selection_resize(&mut self, handle: &str, point: Point) -> bool {
+        let Some(handle) = SelectionResizeHandle::from_name(handle) else {
+            return false;
+        };
+        let Some(drag) = self.build_selection_resize_drag(handle, point) else {
+            return false;
+        };
+        self.drag = None;
+        self.selection_drag = None;
+        self.selection_rotate_drag = None;
+        clear_select_hover_overlay(self);
+        self.selection_resize_drag = Some(drag);
         true
     }
 
@@ -420,6 +503,41 @@ impl Engine {
             .as_ref()
             .is_some_and(|drag| drag.changed);
         self.selection_rotate_drag = None;
+        self.hover_select_target(point);
+        changed
+    }
+
+    pub fn update_selection_resize(&mut self, point: Point) -> bool {
+        self.with_command(EditorCommand::ResizeSelection, |engine| {
+            engine.update_selection_resize_untracked(point)
+        })
+    }
+
+    fn update_selection_resize_untracked(&mut self, point: Point) -> bool {
+        if self.selection_resize_drag.is_none() {
+            return false;
+        }
+        clear_select_hover_overlay(self);
+        self.apply_selection_resize_drag(point);
+        true
+    }
+
+    pub fn finish_selection_resize(&mut self, point: Point) -> bool {
+        self.with_command(EditorCommand::ResizeSelection, |engine| {
+            engine.finish_selection_resize_untracked(point)
+        })
+    }
+
+    fn finish_selection_resize_untracked(&mut self, point: Point) -> bool {
+        if self.selection_resize_drag.is_none() {
+            return false;
+        }
+        self.apply_selection_resize_drag(point);
+        let changed = self
+            .selection_resize_drag
+            .as_ref()
+            .is_some_and(|drag| drag.changed);
+        self.selection_resize_drag = None;
         self.hover_select_target(point);
         changed
     }
@@ -1261,6 +1379,92 @@ impl Engine {
             drag.changed = true;
         }
         self.selection_rotate_drag = Some(drag);
+    }
+
+    fn build_selection_resize_drag(
+        &self,
+        handle: SelectionResizeHandle,
+        _start: Point,
+    ) -> Option<SelectionResizeDrag> {
+        if self.state.selection.is_empty() {
+            return None;
+        }
+        let bounds = self.selection_rotation_bounds()?;
+        if bounds.width() <= crate::EPSILON || bounds.height() <= crate::EPSILON {
+            return None;
+        }
+
+        let mut node_ids = selected_movable_node_ids(self);
+        let selected_objects = self.selected_resize_object_ids();
+        if node_ids.is_empty() && selected_objects.is_empty() {
+            return None;
+        }
+
+        let mut node_originals = Vec::new();
+        if let Some(entry) = self.state.document.editable_fragment() {
+            node_ids.sort();
+            for node_id in &node_ids {
+                if let Some(node) = entry.fragment.nodes.iter().find(|node| &node.id == node_id) {
+                    node_originals.push(NodeMoveOriginal {
+                        node_id: node.id.clone(),
+                        position: node.position,
+                    });
+                }
+            }
+        }
+
+        let object_originals = self
+            .state
+            .document
+            .objects
+            .iter()
+            .filter(|object| selected_objects.contains(&object.id))
+            .cloned()
+            .map(|object| ObjectResizeOriginal { object })
+            .collect::<Vec<_>>();
+
+        if node_originals.is_empty() && object_originals.is_empty() {
+            return None;
+        }
+
+        Some(SelectionResizeDrag {
+            handle,
+            bounds,
+            node_originals,
+            object_originals,
+            undo_pushed: false,
+            changed: false,
+        })
+    }
+
+    fn apply_selection_resize_drag(&mut self, point: Point) {
+        let Some(mut drag) = self.selection_resize_drag.take() else {
+            return;
+        };
+        let (scale_x, scale_y) = selection_resize_scale(&drag, point);
+        let changed = (scale_x - 1.0).abs() > crate::EPSILON
+            || (scale_y - 1.0).abs() > crate::EPSILON;
+        if changed && !drag.undo_pushed {
+            self.push_undo_snapshot();
+            drag.undo_pushed = true;
+        }
+        if changed || drag.changed {
+            apply_selection_resize_to_document(self, &drag, scale_x, scale_y);
+        }
+        if changed {
+            drag.changed = true;
+        }
+        self.selection_resize_drag = Some(drag);
+    }
+
+    fn selected_resize_object_ids(&self) -> BTreeSet<String> {
+        self.state
+            .selection
+            .text_objects
+            .iter()
+            .chain(self.state.selection.arrow_objects.iter())
+            .cloned()
+            .collect()
     }
 
     pub(super) fn selection_render_list(&self) -> Vec<RenderPrimitive> {

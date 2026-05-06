@@ -180,6 +180,9 @@ const ZOOM_MAX_PERCENT = ZOOM_STEP_LEVELS[ZOOM_STEP_LEVELS.length - 1];
 const SELECTION_ROTATE_HANDLE_OFFSET_PX = 26;
 const SELECTION_ROTATE_HANDLE_RADIUS_PX = 6;
 const SELECTION_ROTATE_HANDLE_HIT_RADIUS_PX = 12;
+const SELECTION_RESIZE_HANDLE_SIZE_PX = 8;
+const SELECTION_RESIZE_HANDLE_HIT_RADIUS_PX = 14;
+const SELECTION_RESIZE_MIN_SCALE = 0.05;
 const DELETE_CURSOR_SVG = encodeURIComponent(
   `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
     <rect x="4" y="4" width="8" height="8" fill="#ffffff" stroke="#000000" stroke-width="1"/>
@@ -279,7 +282,7 @@ if (viewerTitle) {
 
 const editorState = {
   activeTool: "bond",
-  selectMode: "free",
+  selectMode: "box",
   bondType: "single",
   textFontFamily: "Arial",
   textFontSize: cmToCssPx(DEFAULT_TEXT_FONT_SIZE),
@@ -1642,6 +1645,10 @@ function syncCanvasCursor() {
   if (!viewerSvg) {
     return;
   }
+  if (activeSelectionGesture?.kind === "resize") {
+    viewerSvg.style.cursor = activeSelectionGesture.cursor || "default";
+    return;
+  }
   if (activeSelectionGesture?.kind === "move" || activeSelectionGesture?.kind === "rotate") {
     viewerSvg.style.cursor = "grabbing";
     return;
@@ -1678,6 +1685,10 @@ function syncArrowAwareCursorForPoint(point) {
     viewerSvg.style.cursor = "grabbing";
     return;
   }
+  if (activeSelectionGesture?.kind === "resize") {
+    viewerSvg.style.cursor = activeSelectionGesture.cursor || "default";
+    return;
+  }
   if (activeSelectionGesture?.kind === "arrow-endpoint") {
     viewerSvg.style.cursor = "move";
     return;
@@ -1685,6 +1696,13 @@ function syncArrowAwareCursorForPoint(point) {
   if (activeSelectionGesture?.kind === "arrow-curve") {
     viewerSvg.style.cursor = "nesw-resize";
     return;
+  }
+  if (editorState.activeTool === "select") {
+    const resizeHandle = selectionResizeHandleHit(point);
+    if (resizeHandle) {
+      viewerSvg.style.cursor = resizeHandle.cursor;
+      return;
+    }
   }
   if (selectionRotateHandleHit(point)) {
     viewerSvg.style.cursor = "grab";
@@ -2741,6 +2759,145 @@ function selectionRotateHandleHit(point) {
   return !!handle && pointDistance(point, handle) <= handle.hitRadius;
 }
 
+function selectionBoxPrimitives(renderList = currentEditorRenderList()) {
+  const selectionRoles = new Set(["selection-box", "selection-bond", "selection-node", "selection-text-box"]);
+  return (renderList || [])
+    .filter((primitive) => primitive?.kind === "rect"
+      && selectionRoles.has(primitive.role)
+      && primitive.width > 0
+      && primitive.height > 0);
+}
+
+function selectionResizeHandlesForBounds(bounds) {
+  if (!bounds) {
+    return [];
+  }
+  const size = screenPxToWorld(SELECTION_RESIZE_HANDLE_SIZE_PX);
+  const hitRadius = screenPxToWorld(SELECTION_RESIZE_HANDLE_HIT_RADIUS_PX);
+  const midX = (bounds.minX + bounds.maxX) * 0.5;
+  const midY = (bounds.minY + bounds.maxY) * 0.5;
+  return [
+    { name: "nw", x: bounds.minX, y: bounds.minY, cursor: "nwse-resize" },
+    { name: "n", x: midX, y: bounds.minY, cursor: "ns-resize" },
+    { name: "ne", x: bounds.maxX, y: bounds.minY, cursor: "nesw-resize" },
+    { name: "e", x: bounds.maxX, y: midY, cursor: "ew-resize" },
+    { name: "se", x: bounds.maxX, y: bounds.maxY, cursor: "nwse-resize" },
+    { name: "s", x: midX, y: bounds.maxY, cursor: "ns-resize" },
+    { name: "sw", x: bounds.minX, y: bounds.maxY, cursor: "nesw-resize" },
+    { name: "w", x: bounds.minX, y: midY, cursor: "ew-resize" },
+  ].map((handle) => ({ ...handle, size, hitRadius, bounds }));
+}
+
+function selectionResizeHandles(renderList = currentEditorRenderList()) {
+  const handles = selectionBoxPrimitives(renderList).flatMap((primitive) => selectionResizeHandlesForBounds({
+    minX: primitive.x,
+    minY: primitive.y,
+    maxX: primitive.x + primitive.width,
+    maxY: primitive.y + primitive.height,
+  }));
+  const globalBounds = currentRenderBounds("selection");
+  if (globalBounds) {
+    handles.push(...selectionResizeHandlesForBounds(globalBounds).map((handle) => ({
+      ...handle,
+      global: true,
+    })));
+  }
+  return handles;
+}
+
+function selectionResizeHandleHit(point) {
+  return selectionResizeHandles()
+    .map((handle) => {
+      const dx = Math.abs(point.x - handle.x);
+      const dy = Math.abs(point.y - handle.y);
+      const squareHit = dx <= handle.hitRadius && dy <= handle.hitRadius;
+      const distance = pointDistance(point, handle);
+      return { handle, distance, squareHit };
+    })
+    .filter((entry) => entry.squareHit || entry.distance <= entry.handle.hitRadius)
+    .sort((a, b) => {
+      const cornerPriority = Number(b.handle.name.length === 2) - Number(a.handle.name.length === 2);
+      if (cornerPriority) {
+        return cornerPriority;
+      }
+      const globalPriority = Number(b.handle.global) - Number(a.handle.global);
+      if (globalPriority) {
+        return globalPriority;
+      }
+      return a.distance - b.distance;
+    })[0]?.handle || null;
+}
+
+function selectionResizePivot(handleName, bounds) {
+  const centerX = (bounds.minX + bounds.maxX) * 0.5;
+  const centerY = (bounds.minY + bounds.maxY) * 0.5;
+  switch (handleName) {
+    case "n": return { x: centerX, y: bounds.maxY };
+    case "s": return { x: centerX, y: bounds.minY };
+    case "e": return { x: bounds.minX, y: centerY };
+    case "w": return { x: bounds.maxX, y: centerY };
+    case "ne": return { x: bounds.minX, y: bounds.maxY };
+    case "nw": return { x: bounds.maxX, y: bounds.maxY };
+    case "se": return { x: bounds.minX, y: bounds.minY };
+    case "sw": return { x: bounds.maxX, y: bounds.minY };
+    default: return { x: centerX, y: centerY };
+  }
+}
+
+function selectionResizeHandlePoint(handleName, bounds) {
+  const centerX = (bounds.minX + bounds.maxX) * 0.5;
+  const centerY = (bounds.minY + bounds.maxY) * 0.5;
+  switch (handleName) {
+    case "n": return { x: centerX, y: bounds.minY };
+    case "s": return { x: centerX, y: bounds.maxY };
+    case "e": return { x: bounds.maxX, y: centerY };
+    case "w": return { x: bounds.minX, y: centerY };
+    case "ne": return { x: bounds.maxX, y: bounds.minY };
+    case "nw": return { x: bounds.minX, y: bounds.minY };
+    case "se": return { x: bounds.maxX, y: bounds.maxY };
+    case "sw": return { x: bounds.minX, y: bounds.maxY };
+    default: return { x: centerX, y: centerY };
+  }
+}
+
+function selectionResizeGestureScale(gesture, point) {
+  const bounds = gesture?.bounds;
+  const handle = gesture?.handle;
+  if (!bounds || !handle) {
+    return 1;
+  }
+  const width = Math.max(Number.EPSILON, bounds.maxX - bounds.minX);
+  const height = Math.max(Number.EPSILON, bounds.maxY - bounds.minY);
+  if (handle.length === 2) {
+    const pivot = selectionResizePivot(handle, bounds);
+    const original = selectionResizeHandlePoint(handle, bounds);
+    const dx = original.x - pivot.x;
+    const dy = original.y - pivot.y;
+    const denominator = dx * dx + dy * dy;
+    if (denominator <= Number.EPSILON) {
+      return 1;
+    }
+    return Math.max(SELECTION_RESIZE_MIN_SCALE, ((point.x - pivot.x) * dx + (point.y - pivot.y) * dy) / denominator);
+  }
+  if (handle === "e") {
+    return Math.max(SELECTION_RESIZE_MIN_SCALE, (point.x - bounds.minX) / width);
+  }
+  if (handle === "w") {
+    return Math.max(SELECTION_RESIZE_MIN_SCALE, (bounds.maxX - point.x) / width);
+  }
+  if (handle === "s") {
+    return Math.max(SELECTION_RESIZE_MIN_SCALE, (point.y - bounds.minY) / height);
+  }
+  if (handle === "n") {
+    return Math.max(SELECTION_RESIZE_MIN_SCALE, (bounds.maxY - point.y) / height);
+  }
+  return 1;
+}
+
+function formatResizeScale(scale) {
+  return `${(scale * 100).toFixed(1)}%`;
+}
+
 function signedAngleDelta(start, end) {
   let delta = ((end - start) % 360 + 360) % 360;
   if (delta > 180) {
@@ -2855,6 +3012,15 @@ function handleEditorPointerMove(event) {
       renderDocument();
       return;
     }
+    if (activeSelectionGesture.kind === "resize") {
+      activeSelectionGesture.current = point;
+      activeSelectionGesture.scale = selectionResizeGestureScale(activeSelectionGesture, point);
+      state.editorEngine.updateSelectionResize?.(point.x, point.y);
+      syncDocumentFromEngine();
+      syncSelectCursorForPoint(point);
+      renderDocument();
+      return;
+    }
     if (activeSelectionGesture.kind === "move") {
       activeSelectionGesture.current = point;
       state.editorEngine.updateSelectionMove(point.x, point.y, event.altKey);
@@ -2913,6 +3079,21 @@ function handleEditorPointerDown(event) {
     event.preventDefault();
     viewerSvg.setPointerCapture?.(event.pointerId);
     state.editorEngine.pointerMove(point.x, point.y, event.altKey);
+    const resizeHandle = selectionResizeHandleHit(point);
+    if (resizeHandle && state.editorEngine.beginSelectionResize?.(resizeHandle.name, point.x, point.y)) {
+      activeSelectionGesture = {
+        kind: "resize",
+        handle: resizeHandle.name,
+        cursor: resizeHandle.cursor,
+        bounds: currentRenderBounds("selection"),
+        start: point,
+        current: point,
+        scale: 1,
+      };
+      syncSelectCursorForPoint(point);
+      renderDocument();
+      return;
+    }
     const arrowEditAction = state.editorEngine.beginHoverArrowEdit?.(point.x, point.y) || "";
     if (arrowEditAction) {
       activeSelectionGesture = {
@@ -3031,6 +3212,13 @@ function handleEditorPointerUp(event) {
     }
     if (gesture.kind === "rotate") {
       state.editorEngine.finishSelectionRotate(point.x, point.y, event.altKey);
+      syncDocumentFromEngine();
+      syncSelectCursorForPoint(point);
+      renderDocument();
+      return;
+    }
+    if (gesture.kind === "resize") {
+      state.editorEngine.finishSelectionResize?.(point.x, point.y);
       syncDocumentFromEngine();
       syncSelectCursorForPoint(point);
       renderDocument();
@@ -3206,7 +3394,19 @@ function renderEditorOverlay(renderList = null) {
       }));
     }
   }
-  if (editorState.activeTool === "select" && activeSelectionGesture?.kind === "rotate") {
+  if (editorState.activeTool === "select" && activeSelectionGesture?.kind === "resize") {
+    const bounds = currentRenderBounds("selection") || activeSelectionGesture.bounds;
+    if (bounds) {
+      const labelOffset = screenPxToWorld(8);
+      overlay.appendChild(makeSvgNode("text", {
+        x: bounds.maxX + labelOffset,
+        y: bounds.minY - labelOffset,
+        class: "editor-selection-resize-label",
+        "data-role": "selection-resize-scale",
+      }));
+      overlay.lastChild.textContent = formatResizeScale(activeSelectionGesture.scale || 1);
+    }
+  } else if (editorState.activeTool === "select" && activeSelectionGesture?.kind === "rotate") {
     const bounds = activeSelectionGesture.bounds;
     const labelOffset = screenPxToWorld(8);
     overlay.appendChild(makeSvgNode("text", {
@@ -3228,6 +3428,16 @@ function renderEditorOverlay(renderList = null) {
     }));
     overlay.lastChild.textContent = formatRotationAngle(activeSelectionGesture.angle || 0);
   } else if (editorState.activeTool === "select" && !activeSelectionGesture) {
+    for (const handle of selectionResizeHandles(primitives)) {
+      overlay.appendChild(makeSvgNode("rect", {
+        x: handle.x - handle.size * 0.5,
+        y: handle.y - handle.size * 0.5,
+        width: handle.size,
+        height: handle.size,
+        class: "editor-selection-resize-handle",
+        "data-role": `selection-resize-${handle.name}`,
+      }));
+    }
     const handle = selectionRotateHandleFromBounds(currentRenderBounds("selection"));
     if (handle) {
       const topCenter = {

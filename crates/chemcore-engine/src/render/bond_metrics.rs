@@ -63,6 +63,11 @@ pub(super) fn hash_target_gap_length_for_bond(bond: &Bond, stroke_width: f64) ->
         .unwrap_or(HASH_TARGET_GAP_LENGTH * scale)
 }
 
+pub(super) fn hash_contact_retreat_distance_for_bond(bond: &Bond, stroke_width: f64) -> f64 {
+    let scale = stroke_width / VIEWER_BOND_STROKE;
+    HASH_BLACK_SEGMENT_LENGTH * scale + hash_target_gap_length_for_bond(bond, stroke_width)
+}
+
 pub(super) fn multi_bond_inner_gap(
     bond: Option<&Bond>,
     start: Point,

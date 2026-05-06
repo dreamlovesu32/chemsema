@@ -191,6 +191,12 @@ pub(super) fn is_hash_contact_obstacle(bond: &Bond) -> bool {
     is_hash_bond(bond) || is_hashed_wedge_bond(bond)
 }
 
+pub(super) fn endpoint_has_other_bond(bonds: &[Bond], bond: &Bond, node_id: &str) -> bool {
+    bonds
+        .iter()
+        .any(|other| other.id != bond.id && (other.begin == node_id || other.end == node_id))
+}
+
 pub(super) fn apply_segment_endpoint_retreats(
     start: Point,
     end: Point,
@@ -1219,122 +1225,6 @@ pub(super) fn main_line_polygon_points(
         start_profile,
         end_profile,
     ))
-}
-
-pub(super) fn is_centered_double_bond(bond: &Bond) -> bool {
-    bond.order == 2 && side_double_placement(bond).is_none()
-}
-
-pub(super) fn centered_double_line_weight_for_side(bond: &Bond, line_side: f64) -> BondLineWeight {
-    if line_side > 0.0 {
-        bond.line_weights.left
-    } else {
-        bond.line_weights.right
-    }
-}
-
-pub(super) fn centered_double_outer_line_boundary_pair_for_direction(
-    object: &SceneObject,
-    node_map: &BTreeMap<&str, &Node>,
-    bond: &Bond,
-    shared_node_id: &str,
-    reference_direction: Vector,
-    stroke_width: f64,
-) -> Option<[LineGeometry; 2]> {
-    if !is_centered_double_bond(bond) {
-        return None;
-    }
-    let center = main_bond_center_line_for_endpoint(object, node_map, bond, shared_node_id)?;
-    // Choose the centered-double child line by the bond's global axis rather than the
-    // endpoint-local axis. At `bond.end`, the local axis points back into the bond, which
-    // would flip the side test and make hash bonds / hashed wedges retreat to the wrong line.
-    let axis = if shared_node_id == bond.begin {
-        center.direction
-    } else if shared_node_id == bond.end {
-        Vector::new(-center.direction.x, -center.direction.y)
-    } else {
-        return None;
-    };
-    let line_side = main_contact_side(axis, reference_direction)?;
-    let begin = world_point(object, node_map.get(bond.begin.as_str()).copied()?);
-    let end = world_point(object, node_map.get(bond.end.as_str()).copied()?);
-    centered_double_line_boundary_pair_for_endpoint(
-        object,
-        node_map,
-        bond,
-        shared_node_id,
-        line_side,
-        double_bond_center_distance_for_weights(
-            begin,
-            end,
-            stroke_width,
-            bond.line_weights.left,
-            bond.line_weights.right,
-        ) * 0.5,
-        stroke_width,
-        centered_double_line_weight_for_side(bond, line_side),
-    )
-    .map(|(lines, _)| lines)
-}
-
-pub(super) fn endpoint_retreat_against_center_double_outer_line(
-    object: &SceneObject,
-    bonds: &[Bond],
-    node_map: &BTreeMap<&str, &Node>,
-    bond: &Bond,
-    shared_node_id: &str,
-    endpoint: Point,
-    forward: Vector,
-    half_width: f64,
-    stroke_width: f64,
-) -> Option<f64> {
-    let shared_node = node_map.get(shared_node_id).copied()?;
-    if shared_node
-        .label
-        .as_ref()
-        .is_some_and(|label| label.has_visible_text())
-    {
-        return None;
-    }
-    let current = boundary_lines_from_endpoint(endpoint, forward, half_width)?;
-    let mut best: Option<f64> = None;
-    for other_bond in bonds {
-        if other_bond.id == bond.id {
-            continue;
-        }
-        if other_bond.begin != shared_node_id && other_bond.end != shared_node_id {
-            continue;
-        }
-        let other_stroke_width = neighbor_bond_stroke_width(other_bond, stroke_width);
-        let Some(other) = centered_double_outer_line_boundary_pair_for_direction(
-            object,
-            node_map,
-            other_bond,
-            shared_node_id,
-            forward,
-            other_stroke_width,
-        ) else {
-            continue;
-        };
-        let Some((points, _)) = extended_boundary_line_join_points(current, other) else {
-            continue;
-        };
-        let retreat = points
-            .into_iter()
-            .zip(current.into_iter())
-            .map(|(point, line)| {
-                let delta = Vector::new(point.x - line.point.x, point.y - line.point.y);
-                vector_dot(delta, line.direction).max(0.0)
-            })
-            .fold(0.0, f64::max);
-        if retreat <= EPSILON {
-            continue;
-        }
-        if best.is_none_or(|current_best| retreat < current_best) {
-            best = Some(retreat);
-        }
-    }
-    best
 }
 
 #[allow(clippy::too_many_arguments)]

@@ -234,3 +234,490 @@ pub(super) fn terminal_drag_target(
     let angle = nearest_angle(angle_between(pivot, point), GLOBAL_SNAP_ANGLES);
     pivot.translated(direction_from_angle(angle).scaled(length))
 }
+
+const SELECTION_RESIZE_MIN_SCALE: f64 = 0.05;
+
+pub(super) fn selection_resize_scale(drag: &SelectionResizeDrag, point: Point) -> (f64, f64) {
+    let bounds = drag.bounds;
+    if drag.handle.is_corner() {
+        let pivot = selection_resize_pivot(drag.handle, bounds);
+        let handle = selection_resize_handle_point(drag.handle, bounds);
+        let original = Point::new(handle.x - pivot.x, handle.y - pivot.y);
+        let current = Point::new(point.x - pivot.x, point.y - pivot.y);
+        let denominator = original.x * original.x + original.y * original.y;
+        if denominator <= crate::EPSILON {
+            return (1.0, 1.0);
+        }
+        let scale = ((current.x * original.x + current.y * original.y) / denominator)
+            .max(SELECTION_RESIZE_MIN_SCALE);
+        return (scale, scale);
+    }
+
+    match drag.handle {
+        SelectionResizeHandle::East => (
+            ((point.x - bounds.min_x) / bounds.width()).max(SELECTION_RESIZE_MIN_SCALE),
+            1.0,
+        ),
+        SelectionResizeHandle::West => (
+            ((bounds.max_x - point.x) / bounds.width()).max(SELECTION_RESIZE_MIN_SCALE),
+            1.0,
+        ),
+        SelectionResizeHandle::South => (
+            1.0,
+            ((point.y - bounds.min_y) / bounds.height()).max(SELECTION_RESIZE_MIN_SCALE),
+        ),
+        SelectionResizeHandle::North => (
+            1.0,
+            ((bounds.max_y - point.y) / bounds.height()).max(SELECTION_RESIZE_MIN_SCALE),
+        ),
+        SelectionResizeHandle::NorthEast
+        | SelectionResizeHandle::NorthWest
+        | SelectionResizeHandle::SouthEast
+        | SelectionResizeHandle::SouthWest => unreachable!("corner handles returned above"),
+    }
+}
+
+pub(super) fn apply_selection_resize_to_document(
+    engine: &mut Engine,
+    drag: &SelectionResizeDrag,
+    scale_x: f64,
+    scale_y: f64,
+) {
+    let pivot = selection_resize_pivot(drag.handle, drag.bounds);
+
+    for original in &drag.object_originals {
+        let Some(object) = engine
+            .state
+            .document
+            .objects
+            .iter_mut()
+            .find(|object| object.id == original.object.id)
+        else {
+            continue;
+        };
+        *object = resized_scene_object(&original.object, pivot, scale_x, scale_y);
+    }
+
+    let stroke_width = engine.options.bond_stroke_world_cm().value();
+    let Some(mut entry) = engine.state.document.editable_fragment_mut() else {
+        return;
+    };
+    let object_translate = entry.object.transform.translate;
+    for original in &drag.node_originals {
+        let original_world = Point::new(
+            object_translate[0] + original.position[0],
+            object_translate[1] + original.position[1],
+        );
+        let next = scale_point_from_pivot(original_world, pivot, scale_x, scale_y);
+        if let Some(node) = entry
+            .fragment
+            .nodes
+            .iter_mut()
+            .find(|node| node.id == original.node_id)
+        {
+            node.position = [
+                round2(next.x - object_translate[0]),
+                round2(next.y - object_translate[1]),
+            ];
+        }
+    }
+    refresh_attached_node_label_geometry_for_all_nodes(
+        entry.fragment,
+        object_translate,
+        stroke_width,
+    );
+    entry.update_bounds();
+    drop(entry);
+    engine.refresh_symbol_chemistry();
+}
+
+fn selection_resize_pivot(handle: SelectionResizeHandle, bounds: AxisBounds) -> Point {
+    match handle {
+        SelectionResizeHandle::North => Point::new(bounds.center_x(), bounds.max_y),
+        SelectionResizeHandle::South => Point::new(bounds.center_x(), bounds.min_y),
+        SelectionResizeHandle::East => Point::new(bounds.min_x, bounds.center_y()),
+        SelectionResizeHandle::West => Point::new(bounds.max_x, bounds.center_y()),
+        SelectionResizeHandle::NorthEast => Point::new(bounds.min_x, bounds.max_y),
+        SelectionResizeHandle::NorthWest => Point::new(bounds.max_x, bounds.max_y),
+        SelectionResizeHandle::SouthEast => Point::new(bounds.min_x, bounds.min_y),
+        SelectionResizeHandle::SouthWest => Point::new(bounds.max_x, bounds.min_y),
+    }
+}
+
+fn selection_resize_handle_point(handle: SelectionResizeHandle, bounds: AxisBounds) -> Point {
+    match handle {
+        SelectionResizeHandle::North => Point::new(bounds.center_x(), bounds.min_y),
+        SelectionResizeHandle::South => Point::new(bounds.center_x(), bounds.max_y),
+        SelectionResizeHandle::East => Point::new(bounds.max_x, bounds.center_y()),
+        SelectionResizeHandle::West => Point::new(bounds.min_x, bounds.center_y()),
+        SelectionResizeHandle::NorthEast => Point::new(bounds.max_x, bounds.min_y),
+        SelectionResizeHandle::NorthWest => Point::new(bounds.min_x, bounds.min_y),
+        SelectionResizeHandle::SouthEast => Point::new(bounds.max_x, bounds.max_y),
+        SelectionResizeHandle::SouthWest => Point::new(bounds.min_x, bounds.max_y),
+    }
+}
+
+fn scale_point_from_pivot(point: Point, pivot: Point, scale_x: f64, scale_y: f64) -> Point {
+    Point::new(
+        pivot.x + (point.x - pivot.x) * scale_x,
+        pivot.y + (point.y - pivot.y) * scale_y,
+    )
+}
+
+fn resized_scene_object(
+    original: &SceneObject,
+    pivot: Point,
+    scale_x: f64,
+    scale_y: f64,
+) -> SceneObject {
+    let mut object = original.clone();
+    let scale_transform = object_transform_participates_in_render(original);
+    let original_translate = Point::new(
+        original.transform.translate[0],
+        original.transform.translate[1],
+    );
+    let next_translate = if scale_transform {
+        scale_point_from_pivot(original_translate, pivot, scale_x, scale_y)
+    } else {
+        original_translate
+    };
+    object.transform.translate = [round2(next_translate.x), round2(next_translate.y)];
+
+    resize_payload_bbox(&mut object, original_translate, next_translate, pivot, scale_x, scale_y);
+    resize_payload_box(&mut object, original_translate, next_translate, pivot, scale_x, scale_y);
+    resize_payload_points(&mut object, original_translate, next_translate, pivot, scale_x, scale_y);
+    resize_payload_named_points(
+        &mut object,
+        original_translate,
+        next_translate,
+        pivot,
+        scale_x,
+        scale_y,
+    );
+    resize_text_dimensions(&mut object, scale_x, scale_y);
+    resize_graphic_dimensions(&mut object, scale_x, scale_y);
+    object
+}
+
+fn object_transform_participates_in_render(object: &SceneObject) -> bool {
+    match object.object_type.as_str() {
+        "text" | "bracket" | "symbol" => true,
+        "shape" => !shape_uses_absolute_points(object),
+        _ => false,
+    }
+}
+
+fn shape_uses_absolute_points(object: &SceneObject) -> bool {
+    object.object_type == "shape"
+        && matches!(
+            object
+                .payload
+                .extra
+                .get("kind")
+                .and_then(JsonValue::as_str)
+                .unwrap_or("rect"),
+            "circle" | "ellipse"
+        )
+}
+
+fn resize_payload_bbox(
+    object: &mut SceneObject,
+    original_translate: Point,
+    next_translate: Point,
+    pivot: Point,
+    scale_x: f64,
+    scale_y: f64,
+) {
+    let Some(bbox) = object.payload.bbox else {
+        return;
+    };
+    object.payload.bbox = Some(scale_local_box(
+        bbox,
+        original_translate,
+        next_translate,
+        pivot,
+        scale_x,
+        scale_y,
+    ));
+}
+
+fn resize_payload_box(
+    object: &mut SceneObject,
+    original_translate: Point,
+    next_translate: Point,
+    pivot: Point,
+    scale_x: f64,
+    scale_y: f64,
+) {
+    let Some(box_value) = json_array_to_box(object.payload.extra.get("box")) else {
+        return;
+    };
+    object.payload.extra.insert(
+        "box".to_string(),
+        json!(scale_local_box(
+            box_value,
+            original_translate,
+            next_translate,
+            pivot,
+            scale_x,
+            scale_y,
+        )),
+    );
+}
+
+fn scale_local_box(
+    bbox: [f64; 4],
+    original_translate: Point,
+    next_translate: Point,
+    pivot: Point,
+    scale_x: f64,
+    scale_y: f64,
+) -> [f64; 4] {
+    let min = scale_local_point_to_next_local(
+        Point::new(bbox[0], bbox[1]),
+        original_translate,
+        next_translate,
+        pivot,
+        scale_x,
+        scale_y,
+    );
+    let max = scale_local_point_to_next_local(
+        Point::new(bbox[0] + bbox[2], bbox[1] + bbox[3]),
+        original_translate,
+        next_translate,
+        pivot,
+        scale_x,
+        scale_y,
+    );
+    [
+        round2(min.x.min(max.x)),
+        round2(min.y.min(max.y)),
+        round2((max.x - min.x).abs()),
+        round2((max.y - min.y).abs()),
+    ]
+}
+
+fn resize_payload_points(
+    object: &mut SceneObject,
+    original_translate: Point,
+    next_translate: Point,
+    pivot: Point,
+    scale_x: f64,
+    scale_y: f64,
+) {
+    let keys = ["points"];
+    for key in keys {
+        let Some(points) = object.payload.extra.get(key).and_then(JsonValue::as_array) else {
+            continue;
+        };
+        let next_points = points
+            .iter()
+            .filter_map(|value| {
+                let point = json_array_to_point(value)?;
+                let next = scale_local_point_to_next_local(
+                    point,
+                    original_translate,
+                    next_translate,
+                    pivot,
+                    scale_x,
+                    scale_y,
+                );
+                Some(json!([round2(next.x), round2(next.y)]))
+            })
+            .collect::<Vec<_>>();
+        object.payload.extra.insert(key.to_string(), JsonValue::Array(next_points));
+    }
+}
+
+fn resize_payload_named_points(
+    object: &mut SceneObject,
+    original_translate: Point,
+    next_translate: Point,
+    pivot: Point,
+    scale_x: f64,
+    scale_y: f64,
+) {
+    for key in ["center", "majorAxisEnd", "minorAxisEnd"] {
+        resize_extra_point(
+            &mut object.payload.extra,
+            key,
+            original_translate,
+            next_translate,
+            pivot,
+            scale_x,
+            scale_y,
+        );
+    }
+    let Some(geometry) = object
+        .payload
+        .extra
+        .get_mut("arrowGeometry")
+        .and_then(JsonValue::as_object_mut)
+    else {
+        return;
+    };
+    for key in ["center", "majorAxisEnd", "minorAxisEnd"] {
+        resize_object_point(
+            geometry,
+            key,
+            original_translate,
+            next_translate,
+            pivot,
+            scale_x,
+            scale_y,
+        );
+    }
+}
+
+fn resize_extra_point(
+    extra: &mut BTreeMap<String, JsonValue>,
+    key: &str,
+    original_translate: Point,
+    next_translate: Point,
+    pivot: Point,
+    scale_x: f64,
+    scale_y: f64,
+) {
+    let Some(point) = extra.get(key).and_then(json_array_to_point) else {
+        return;
+    };
+    let next = scale_local_point_to_next_local(
+        point,
+        original_translate,
+        next_translate,
+        pivot,
+        scale_x,
+        scale_y,
+    );
+    extra.insert(key.to_string(), json!([round2(next.x), round2(next.y)]));
+}
+
+fn resize_object_point(
+    object: &mut serde_json::Map<String, JsonValue>,
+    key: &str,
+    original_translate: Point,
+    next_translate: Point,
+    pivot: Point,
+    scale_x: f64,
+    scale_y: f64,
+) {
+    let Some(point) = object.get(key).and_then(json_array_to_point) else {
+        return;
+    };
+    let next = scale_local_point_to_next_local(
+        point,
+        original_translate,
+        next_translate,
+        pivot,
+        scale_x,
+        scale_y,
+    );
+    object.insert(key.to_string(), json!([round2(next.x), round2(next.y)]));
+}
+
+fn scale_local_point_to_next_local(
+    point: Point,
+    original_translate: Point,
+    next_translate: Point,
+    pivot: Point,
+    scale_x: f64,
+    scale_y: f64,
+) -> Point {
+    let world = Point::new(
+        original_translate.x + point.x,
+        original_translate.y + point.y,
+    );
+    let scaled = scale_point_from_pivot(world, pivot, scale_x, scale_y);
+    Point::new(scaled.x - next_translate.x, scaled.y - next_translate.y)
+}
+
+fn resize_text_dimensions(object: &mut SceneObject, scale_x: f64, scale_y: f64) {
+    if object.object_type != "text" {
+        return;
+    }
+    let text_scale = if (scale_x - 1.0).abs() <= crate::EPSILON {
+        scale_y
+    } else if (scale_y - 1.0).abs() <= crate::EPSILON {
+        1.0
+    } else {
+        (scale_x.abs() + scale_y.abs()) * 0.5
+    };
+    if (text_scale - 1.0).abs() <= crate::EPSILON {
+        return;
+    }
+    scale_extra_number(&mut object.payload.extra, "fontSize", text_scale);
+    scale_extra_number(&mut object.payload.extra, "lineHeight", text_scale);
+    for key in ["runs", "sourceRuns", "displayRuns"] {
+        scale_run_font_sizes(&mut object.payload.extra, key, text_scale);
+    }
+}
+
+fn resize_graphic_dimensions(object: &mut SceneObject, scale_x: f64, scale_y: f64) {
+    let dimension_scale = if (scale_x - 1.0).abs() <= crate::EPSILON {
+        scale_y
+    } else if (scale_y - 1.0).abs() <= crate::EPSILON {
+        scale_x
+    } else {
+        (scale_x.abs() + scale_y.abs()) * 0.5
+    };
+    if (dimension_scale - 1.0).abs() <= crate::EPSILON {
+        return;
+    }
+    scale_extra_number(&mut object.payload.extra, "cornerRadius", dimension_scale);
+    if matches!(object.object_type.as_str(), "bracket" | "symbol") {
+        scale_extra_number(&mut object.payload.extra, "strokeWidth", dimension_scale);
+    }
+    let Some(arrow_head) = object
+        .payload
+        .extra
+        .get_mut("arrowHead")
+        .and_then(JsonValue::as_object_mut)
+    else {
+        return;
+    };
+    for key in ["length", "centerLength", "width"] {
+        if let Some(value) = arrow_head.get(key).and_then(JsonValue::as_f64) {
+            arrow_head.insert(key.to_string(), json!(round2(value * dimension_scale)));
+        }
+    }
+}
+
+fn scale_extra_number(extra: &mut BTreeMap<String, JsonValue>, key: &str, scale: f64) {
+    let Some(value) = extra.get(key).and_then(JsonValue::as_f64) else {
+        return;
+    };
+    extra.insert(key.to_string(), json!(round2(value * scale)));
+}
+
+fn scale_run_font_sizes(extra: &mut BTreeMap<String, JsonValue>, key: &str, scale: f64) {
+    let Some(runs) = extra.get_mut(key).and_then(JsonValue::as_array_mut) else {
+        return;
+    };
+    for run in runs {
+        let Some(object) = run.as_object_mut() else {
+            continue;
+        };
+        let Some(value) = object.get("fontSize").and_then(JsonValue::as_f64) else {
+            continue;
+        };
+        object.insert("fontSize".to_string(), json!(round2(value * scale)));
+    }
+}
+
+fn json_array_to_box(value: Option<&JsonValue>) -> Option<[f64; 4]> {
+    let coords = value?.as_array()?;
+    Some([
+        coords.first()?.as_f64()?,
+        coords.get(1)?.as_f64()?,
+        coords.get(2)?.as_f64()?,
+        coords.get(3)?.as_f64()?,
+    ])
+}
+
+fn json_array_to_point(value: &JsonValue) -> Option<Point> {
+    let coords = value.as_array()?;
+    Some(Point::new(
+        coords.first()?.as_f64()?,
+        coords.get(1)?.as_f64()?,
+    ))
+}

@@ -174,24 +174,6 @@ pub(super) fn flip_items(items: &mut [SelectionArrangeItem], axis: FlipAxis) -> 
     changed
 }
 
-impl AxisBounds {
-    fn width(self) -> f64 {
-        (self.max_x - self.min_x).max(0.0)
-    }
-
-    fn height(self) -> f64 {
-        (self.max_y - self.min_y).max(0.0)
-    }
-
-    fn center_x(self) -> f64 {
-        (self.min_x + self.max_x) * 0.5
-    }
-
-    fn center_y(self) -> f64 {
-        (self.min_y + self.max_y) * 0.5
-    }
-}
-
 impl SelectionArrangeItem {
     fn translate(&mut self, dx: f64, dy: f64) -> bool {
         if dx.abs() <= crate::EPSILON && dy.abs() <= crate::EPSILON {
