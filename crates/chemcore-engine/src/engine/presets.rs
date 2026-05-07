@@ -1,10 +1,11 @@
 use super::text_edit::refresh_attached_node_label_geometry_for_all_nodes;
 use super::{Engine, ACS_DOCUMENT_1996_PRESET, DEFAULT_DOCUMENT_STYLE_PRESET};
 use crate::{
-    render_document, render_primitives_bounds, ChemcoreDocument, EditorOptions, ObjectSettings,
-    Point, SceneObject, WorldCm, DEFAULT_BOND_LENGTH,
+    render_document, render_primitives_bounds, Bond, ChemcoreDocument, EditorOptions,
+    ObjectSettings, Point, SceneObject, WorldCm, DEFAULT_BOND_LENGTH,
 };
 use serde_json::{Map as JsonMap, Value as JsonValue};
+use std::collections::BTreeSet;
 
 impl Engine {
     pub fn options(&self) -> &EditorOptions {
@@ -32,7 +33,7 @@ impl Engine {
     }
 
     pub fn object_settings_dialog_json(&self) -> String {
-        serde_json::to_string(&object_settings_dialog_payload(&self.options, "cm"))
+        serde_json::to_string(&self.object_settings_dialog_payload("cm"))
             .unwrap_or_else(|_| "{}".to_string())
     }
 
@@ -50,15 +51,15 @@ impl Engine {
             .get("values")
             .and_then(JsonValue::as_object)
             .ok_or_else(|| "Object settings payload must include values.".to_string())?;
-        let settings = ObjectSettings {
-            bond_length: parse_object_setting(values, "bondLength", unit, true)?,
-            line_width: parse_object_setting(values, "lineWidth", unit, true)?,
-            bold_width: parse_object_setting(values, "boldWidth", unit, true)?,
-            bond_spacing: parse_object_setting(values, "bondSpacing", unit, false)?,
-            margin_width: parse_object_setting(values, "marginWidth", unit, true)?,
-            hash_spacing: parse_object_setting(values, "hashSpacing", unit, true)?,
+        let settings = SelectedObjectSettings {
+            bond_length: parse_optional_object_setting(values, "bondLength", unit, true)?,
+            line_width: parse_optional_object_setting(values, "lineWidth", unit, true)?,
+            bold_width: parse_optional_object_setting(values, "boldWidth", unit, true)?,
+            bond_spacing: parse_optional_object_setting(values, "bondSpacing", unit, false)?,
+            margin_width: parse_optional_object_setting(values, "marginWidth", unit, true)?,
+            hash_spacing: parse_optional_object_setting(values, "hashSpacing", unit, true)?,
         };
-        Ok(self.apply_object_settings(settings))
+        Ok(self.apply_object_settings_to_selection(settings))
     }
 
     pub fn apply_object_settings(&mut self, settings: ObjectSettings) -> bool {
@@ -99,6 +100,282 @@ impl Engine {
         self.document_style_preset = "custom".to_string();
         self.clear_interaction();
         true
+    }
+
+    pub fn has_object_settings_fields(&self) -> bool {
+        !self.object_settings_fields("cm").is_empty()
+    }
+
+    fn object_settings_dialog_payload(&self, unit: &str) -> JsonValue {
+        let unit = if unit == "pt" { "pt" } else { "cm" };
+        serde_json::json!({
+            "unit": unit,
+            "units": ["cm", "pt"],
+            "fields": self.object_settings_fields(unit),
+        })
+    }
+
+    fn object_settings_fields(&self, unit: &str) -> Vec<JsonValue> {
+        let mut fields = Vec::new();
+        let selected_bonds = self.selected_object_settings_bonds();
+        let selected_graphics = self.selected_object_settings_graphics();
+
+        let bond_lengths = selected_bonds
+            .iter()
+            .filter_map(|bond| self.bond_length_value(bond))
+            .collect::<Vec<_>>();
+        if let Some(value) = first_finite(bond_lengths) {
+            fields.push(object_settings_dialog_field(
+                "bondLength",
+                "Bond Length",
+                value,
+                unit,
+            ));
+        }
+
+        let mut line_widths = selected_bonds
+            .iter()
+            .map(|bond| bond.stroke_width)
+            .collect::<Vec<_>>();
+        line_widths.extend(
+            selected_graphics
+                .iter()
+                .filter_map(|object| self.graphic_stroke_width_value(object)),
+        );
+        if let Some(value) = first_finite(line_widths) {
+            fields.push(object_settings_dialog_field(
+                "lineWidth",
+                "Line Width",
+                value,
+                unit,
+            ));
+        }
+
+        let bold_widths = selected_bonds
+            .iter()
+            .filter(|bond| bond_uses_bold_width(bond))
+            .map(|bond| bond.bold_width.unwrap_or(self.options.bold_bond_width))
+            .collect::<Vec<_>>();
+        if let Some(value) = first_finite(bold_widths) {
+            fields.push(object_settings_dialog_field(
+                "boldWidth",
+                "Bold Width",
+                value,
+                unit,
+            ));
+        }
+
+        let bond_spacings = selected_bonds
+            .iter()
+            .filter(|bond| bond.order >= 2)
+            .map(|bond| bond.bond_spacing.unwrap_or(self.options.bond_spacing))
+            .collect::<Vec<_>>();
+        if let Some(value) = first_finite(bond_spacings) {
+            fields.push(object_settings_dialog_field(
+                "bondSpacing",
+                "Double Spacing",
+                value,
+                "%",
+            ));
+        }
+
+        let margin_widths = selected_bonds
+            .iter()
+            .map(|bond| bond.margin_width.unwrap_or(self.options.margin_width))
+            .collect::<Vec<_>>();
+        if let Some(value) = first_finite(margin_widths) {
+            fields.push(object_settings_dialog_field(
+                "marginWidth",
+                "Margin Width",
+                value,
+                unit,
+            ));
+        }
+
+        let hash_spacings = selected_bonds
+            .iter()
+            .filter(|bond| bond_uses_hash_spacing(bond))
+            .map(|bond| bond.hash_spacing.unwrap_or(self.options.hash_spacing))
+            .collect::<Vec<_>>();
+        if let Some(value) = first_finite(hash_spacings) {
+            fields.push(object_settings_dialog_field(
+                "hashSpacing",
+                "Hash Spacing",
+                value,
+                unit,
+            ));
+        }
+
+        fields
+    }
+
+    fn apply_object_settings_to_selection(&mut self, settings: SelectedObjectSettings) -> bool {
+        if settings.is_empty() || self.state.selection.is_empty() {
+            return false;
+        }
+        self.with_command(
+            super::command::EditorCommand::LegacyMutation {
+                label: "apply-object-settings-selection".to_string(),
+            },
+            |engine| engine.apply_object_settings_to_selection_untracked(settings),
+        )
+    }
+
+    fn apply_object_settings_to_selection_untracked(
+        &mut self,
+        settings: SelectedObjectSettings,
+    ) -> bool {
+        self.push_undo_snapshot();
+        let mut changed = false;
+        let selected_bonds: BTreeSet<String> = self.state.selection.bonds.iter().cloned().collect();
+        let selected_graphics: BTreeSet<String> =
+            self.state.selection.arrow_objects.iter().cloned().collect();
+
+        let stroke_width = self.options.bond_stroke_world_cm().value();
+        if !selected_bonds.is_empty() {
+            if let Some(mut entry) = self.state.document.editable_fragment_mut() {
+                let object_translate = entry.object.transform.translate;
+                for bond_index in 0..entry.fragment.bonds.len() {
+                    if !selected_bonds.contains(&entry.fragment.bonds[bond_index].id) {
+                        continue;
+                    }
+                    changed |= apply_settings_to_bond(
+                        entry.fragment,
+                        bond_index,
+                        &settings,
+                        &self.options,
+                    );
+                }
+                if changed {
+                    refresh_attached_node_label_geometry_for_all_nodes(
+                        entry.fragment,
+                        object_translate,
+                        stroke_width,
+                    );
+                    entry.update_bounds();
+                }
+            }
+        }
+
+        for object_id in selected_graphics {
+            changed |= self.apply_object_settings_to_graphic(&object_id, &settings);
+        }
+
+        if !changed {
+            self.undo_stack.pop();
+            return false;
+        }
+        self.clear_interaction();
+        true
+    }
+
+    fn apply_object_settings_to_graphic(
+        &mut self,
+        object_id: &str,
+        settings: &SelectedObjectSettings,
+    ) -> bool {
+        let Some(line_width) = settings.line_width else {
+            return false;
+        };
+        let Some(object) = self.state.document.find_scene_object(object_id) else {
+            return false;
+        };
+        if !object_has_line_width_setting(object) {
+            return false;
+        }
+        let style_id = format!("style_{object_id}_object_settings");
+        let mut changed = false;
+        if let Some(style_ref) = object.style_ref.as_ref() {
+            let mut style = self
+                .state
+                .document
+                .styles
+                .get(style_ref)
+                .cloned()
+                .unwrap_or_else(|| serde_json::json!({ "kind": object.object_type }));
+            if set_json_number(&mut style, "strokeWidth", line_width) {
+                self.state.document.styles.insert(style_id.clone(), style);
+                if let Some(object) = self.state.document.find_scene_object_mut(object_id) {
+                    changed |= object.style_ref.as_deref() != Some(style_id.as_str());
+                    object.style_ref = Some(style_id);
+                }
+            }
+        } else if let Some(object) = self.state.document.find_scene_object_mut(object_id) {
+            changed |= set_payload_number(object, "strokeWidth", line_width);
+        }
+        changed
+    }
+
+    fn selected_object_settings_bonds(&self) -> Vec<&Bond> {
+        let selected: BTreeSet<&str> = self
+            .state
+            .selection
+            .bonds
+            .iter()
+            .map(String::as_str)
+            .collect();
+        self.state
+            .document
+            .editable_fragment()
+            .map(|entry| {
+                entry
+                    .fragment
+                    .bonds
+                    .iter()
+                    .filter(|bond| selected.contains(bond.id.as_str()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    fn selected_object_settings_graphics(&self) -> Vec<&SceneObject> {
+        let selected: BTreeSet<&str> = self
+            .state
+            .selection
+            .arrow_objects
+            .iter()
+            .map(String::as_str)
+            .collect();
+        self.state
+            .document
+            .scene_objects()
+            .into_iter()
+            .filter(|object| selected.contains(object.id.as_str()))
+            .filter(|object| object_has_line_width_setting(object))
+            .collect()
+    }
+
+    fn bond_length_value(&self, bond: &Bond) -> Option<f64> {
+        let entry = self.state.document.editable_fragment()?;
+        let begin = entry
+            .fragment
+            .nodes
+            .iter()
+            .find(|node| node.id == bond.begin)?
+            .point();
+        let end = entry
+            .fragment
+            .nodes
+            .iter()
+            .find(|node| node.id == bond.end)?
+            .point();
+        Some(begin.distance(end))
+    }
+
+    fn graphic_stroke_width_value(&self, object: &SceneObject) -> Option<f64> {
+        object
+            .payload
+            .extra
+            .get("strokeWidth")
+            .and_then(JsonValue::as_f64)
+            .or_else(|| {
+                object
+                    .style_ref
+                    .as_ref()
+                    .and_then(|style_ref| self.state.document.styles.get(style_ref))
+                    .and_then(|style| style.get("strokeWidth"))
+                    .and_then(JsonValue::as_f64)
+            })
     }
 
     pub fn set_document_style_preset(&mut self, preset: &str) {
@@ -150,22 +427,6 @@ fn object_settings_to_options(settings: ObjectSettings) -> Option<EditorOptions>
     })
 }
 
-fn object_settings_dialog_payload(options: &EditorOptions, unit: &str) -> JsonValue {
-    let unit = if unit == "pt" { "pt" } else { "cm" };
-    serde_json::json!({
-        "unit": unit,
-        "units": ["cm", "pt"],
-        "fields": [
-            object_settings_dialog_field("bondLength", "Bond Length", options.bond_length, unit),
-            object_settings_dialog_field("lineWidth", "Line Width", options.bond_stroke_width, unit),
-            object_settings_dialog_field("boldWidth", "Bold Width", options.bold_bond_width, unit),
-            object_settings_dialog_field("bondSpacing", "Double Spacing", options.bond_spacing, "%"),
-            object_settings_dialog_field("marginWidth", "Margin Width", options.margin_width, unit),
-            object_settings_dialog_field("hashSpacing", "Hash Spacing", options.hash_spacing, unit),
-        ]
-    })
-}
-
 fn object_settings_dialog_field(key: &str, label: &str, value: f64, unit: &str) -> JsonValue {
     let display_value = if unit == "%" {
         value
@@ -214,6 +475,188 @@ fn parse_object_setting(
     } else {
         Ok(value)
     }
+}
+
+#[derive(Clone, Copy, Default)]
+struct SelectedObjectSettings {
+    bond_length: Option<f64>,
+    line_width: Option<f64>,
+    bold_width: Option<f64>,
+    bond_spacing: Option<f64>,
+    margin_width: Option<f64>,
+    hash_spacing: Option<f64>,
+}
+
+impl SelectedObjectSettings {
+    fn is_empty(&self) -> bool {
+        self.bond_length.is_none()
+            && self.line_width.is_none()
+            && self.bold_width.is_none()
+            && self.bond_spacing.is_none()
+            && self.margin_width.is_none()
+            && self.hash_spacing.is_none()
+    }
+}
+
+fn parse_optional_object_setting(
+    values: &JsonMap<String, JsonValue>,
+    key: &str,
+    unit: &str,
+    is_length: bool,
+) -> Result<Option<f64>, String> {
+    if !values.contains_key(key) {
+        return Ok(None);
+    }
+    parse_object_setting(values, key, unit, is_length).map(Some)
+}
+
+fn first_finite(values: Vec<f64>) -> Option<f64> {
+    values
+        .into_iter()
+        .find(|value| value.is_finite() && *value > 0.0)
+}
+
+fn bond_uses_bold_width(bond: &Bond) -> bool {
+    bond.line_weights.main == crate::BondLineWeight::Bold
+        || bond.line_weights.left == crate::BondLineWeight::Bold
+        || bond.line_weights.right == crate::BondLineWeight::Bold
+        || bond
+            .stereo
+            .as_ref()
+            .is_some_and(|stereo| stereo.kind.contains("wedge"))
+}
+
+fn bond_uses_hash_spacing(bond: &Bond) -> bool {
+    bond.meta
+        .get("contextMenuBondStyle")
+        .and_then(JsonValue::as_str)
+        == Some("single-hashed")
+        || bond
+            .stereo
+            .as_ref()
+            .is_some_and(|stereo| stereo.kind.contains("hashed"))
+}
+
+fn object_has_line_width_setting(object: &SceneObject) -> bool {
+    matches!(
+        object.object_type.as_str(),
+        "line" | "shape" | "bracket" | "symbol"
+    )
+}
+
+fn apply_settings_to_bond(
+    fragment: &mut crate::MoleculeFragment,
+    bond_index: usize,
+    settings: &SelectedObjectSettings,
+    options: &EditorOptions,
+) -> bool {
+    let mut changed = false;
+    if let Some(length) = settings.bond_length {
+        changed |= set_bond_length(fragment, bond_index, length);
+    }
+    let bond = &mut fragment.bonds[bond_index];
+    if let Some(value) = settings.line_width {
+        if (bond.stroke_width - value).abs() > crate::EPSILON {
+            bond.stroke_width = value;
+            changed = true;
+        }
+    }
+    if let Some(value) = settings.bold_width {
+        if bond_uses_bold_width(bond) {
+            changed |= set_bond_option_number(&mut bond.bold_width, value);
+            changed |= set_bond_option_number(&mut bond.wedge_width, derived_wedge_width(value));
+            changed |= set_bond_option_number(
+                &mut bond.label_clip_margin,
+                derived_label_clip_margin(value),
+            );
+        }
+    }
+    if let Some(value) = settings.bond_spacing {
+        if bond.order >= 2 {
+            changed |= set_bond_option_number(&mut bond.bond_spacing, value);
+        }
+    }
+    if let Some(value) = settings.margin_width {
+        changed |= set_bond_option_number(&mut bond.margin_width, value);
+    }
+    if let Some(value) = settings.hash_spacing {
+        if bond_uses_hash_spacing(bond) {
+            changed |= set_bond_option_number(&mut bond.hash_spacing, value);
+        }
+    }
+    if bond.bold_width.is_none() && bond_uses_bold_width(bond) {
+        changed |= set_bond_option_number(&mut bond.bold_width, options.bold_bond_width);
+    }
+    changed
+}
+
+fn set_bond_length(fragment: &mut crate::MoleculeFragment, bond_index: usize, length: f64) -> bool {
+    let begin_id = fragment.bonds[bond_index].begin.clone();
+    let end_id = fragment.bonds[bond_index].end.clone();
+    let Some(begin_index) = fragment.nodes.iter().position(|node| node.id == begin_id) else {
+        return false;
+    };
+    let Some(end_index) = fragment.nodes.iter().position(|node| node.id == end_id) else {
+        return false;
+    };
+    let begin = fragment.nodes[begin_index].point();
+    let end = fragment.nodes[end_index].point();
+    let current = begin.distance(end);
+    if current <= crate::EPSILON || (current - length).abs() <= crate::EPSILON {
+        return false;
+    }
+    let center = Point::new((begin.x + end.x) * 0.5, (begin.y + end.y) * 0.5);
+    let direction = Point::new((end.x - begin.x) / current, (end.y - begin.y) / current);
+    let half = length * 0.5;
+    fragment.nodes[begin_index].position = [
+        crate::round2(center.x - direction.x * half),
+        crate::round2(center.y - direction.y * half),
+    ];
+    fragment.nodes[end_index].position = [
+        crate::round2(center.x + direction.x * half),
+        crate::round2(center.y + direction.y * half),
+    ];
+    true
+}
+
+fn set_bond_option_number(slot: &mut Option<f64>, value: f64) -> bool {
+    if slot.is_some_and(|current| (current - value).abs() <= crate::EPSILON) {
+        return false;
+    }
+    *slot = Some(value);
+    true
+}
+
+fn set_payload_number(object: &mut SceneObject, key: &str, value: f64) -> bool {
+    if object
+        .payload
+        .extra
+        .get(key)
+        .and_then(JsonValue::as_f64)
+        .is_some_and(|current| (current - value).abs() <= crate::EPSILON)
+    {
+        return false;
+    }
+    object
+        .payload
+        .extra
+        .insert(key.to_string(), serde_json::json!(crate::round2(value)));
+    true
+}
+
+fn set_json_number(value: &mut JsonValue, key: &str, number: f64) -> bool {
+    let Some(object) = value.as_object_mut() else {
+        return false;
+    };
+    if object
+        .get(key)
+        .and_then(JsonValue::as_f64)
+        .is_some_and(|current| (current - number).abs() <= crate::EPSILON)
+    {
+        return false;
+    }
+    object.insert(key.to_string(), serde_json::json!(crate::round2(number)));
+    true
 }
 
 fn positive_or_none(value: f64) -> Option<f64> {

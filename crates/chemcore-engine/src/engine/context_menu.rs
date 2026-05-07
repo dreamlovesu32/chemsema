@@ -99,7 +99,7 @@ impl Engine {
                     self.selected_scene_object_count(),
                 ),
                 separator(),
-                item("Object Settings...", "object-settings", ""),
+                self.object_settings_item(),
             ]);
             return items;
         }
@@ -110,7 +110,7 @@ impl Engine {
                 self.bond_type_menu(),
                 separator(),
                 self.color_menu(),
-                item("Object Settings...", "object-settings", ""),
+                self.object_settings_item(),
             ]);
             return items;
         }
@@ -139,7 +139,7 @@ impl Engine {
                 json!({"label": "Chemical Check", "command": "chemical-check", "value": if self.selected_chemical_check_enabled() { "off" } else { "on" }, "checked": self.selected_chemical_check_enabled()}),
                 separator(),
                 self.color_menu(),
-                item("Object Settings...", "object-settings", ""),
+                self.object_settings_item(),
             ]);
             return items;
         }
@@ -157,7 +157,7 @@ impl Engine {
                     transform_subitems_flat(true),
                     separator(),
                     self.color_menu(),
-                    item("Object Settings...", "object-settings", ""),
+                    self.object_settings_item(),
                 ]);
             }
             Some("shape") => {
@@ -171,7 +171,7 @@ impl Engine {
                     transform_subitems_flat(true),
                     separator(),
                     self.color_menu(),
-                    item("Object Settings...", "object-settings", ""),
+                    self.object_settings_item(),
                 ]);
             }
             Some("bracket") => {
@@ -184,7 +184,7 @@ impl Engine {
                     transform_subitems_flat(true),
                     separator(),
                     self.color_menu(),
-                    item("Object Settings...", "object-settings", ""),
+                    self.object_settings_item(),
                 ]);
             }
             Some("symbol") => {
@@ -196,7 +196,7 @@ impl Engine {
                     transform_subitems_flat(true),
                     separator(),
                     self.color_menu(),
-                    item("Object Settings...", "object-settings", ""),
+                    self.object_settings_item(),
                 ]);
             }
             Some("text") => {
@@ -214,7 +214,7 @@ impl Engine {
                     json!({"label": "Center on Page", "command": "center-page"}),
                     separator(),
                     self.color_menu(),
-                    item("Object Settings...", "object-settings", ""),
+                    self.object_settings_item(),
                 ]);
             }
             _ => {
@@ -223,7 +223,7 @@ impl Engine {
                     order_subitems_flat(),
                     separator(),
                     self.color_menu(),
-                    item("Object Settings...", "object-settings", ""),
+                    self.object_settings_item(),
                 ]);
             }
         }
@@ -401,6 +401,14 @@ impl Engine {
 
     fn text_alignment_menu(&self) -> JsonValue {
         text_alignment_menu(self.selected_uniform_text_align().as_deref())
+    }
+
+    fn object_settings_item(&self) -> JsonValue {
+        json!({
+            "label": "Object Settings...",
+            "command": "object-settings",
+            "disabled": !self.has_object_settings_fields(),
+        })
     }
 
     fn selected_scene_objects(&self) -> Vec<&SceneObject> {

@@ -1470,6 +1470,18 @@ fn object_settings_update_bond_and_graphic_metrics() {
         .load_document_json(&document.to_string())
         .expect("object settings fixture should load");
 
+    engine.select_at_point(Point::new(25.0, 10.0), false);
+    let dialog: serde_json::Value =
+        serde_json::from_str(&engine.object_settings_dialog_json()).unwrap();
+    let field_keys = dialog["fields"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|field| field["key"].as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(field_keys, vec!["bondLength", "lineWidth", "marginWidth"]);
+
+    let original_options = engine.options().clone();
     let changed = engine
         .apply_object_settings_dialog_json(
             r#"{
@@ -1477,45 +1489,89 @@ fn object_settings_update_bond_and_graphic_metrics() {
                 "values": {
                     "bondLength": 15.0,
                     "lineWidth": 0.7,
-                    "boldWidth": 2.1,
-                    "bondSpacing": 16.0,
-                    "marginWidth": 1.8,
-                    "hashSpacing": 2.4
+                    "marginWidth": 1.8
                 }
             }"#,
         )
         .expect("object settings should parse");
     assert!(changed);
-    assert!((engine.options().bond_length - 15.0).abs() < 0.001);
-    assert!((engine.options().bond_stroke_width - 0.7).abs() < 0.001);
-    assert!((engine.options().graphic_stroke_width - 0.7).abs() < 0.001);
+    assert!((engine.options().bond_length - original_options.bond_length).abs() < 0.001);
+    assert!(
+        (engine.options().bond_stroke_width - original_options.bond_stroke_width).abs() < 0.001
+    );
+    assert!(
+        (engine.options().graphic_stroke_width - original_options.graphic_stroke_width).abs()
+            < 0.001
+    );
 
     let fragment = engine.state().document.editable_fragment().unwrap();
     let bond = &fragment.fragment.bonds[0];
+    let begin = fragment
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == bond.begin)
+        .unwrap();
+    let end = fragment
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == bond.end)
+        .unwrap();
+    assert!((begin.point().distance(end.point()) - 15.0).abs() < 0.001);
     assert!((bond.stroke_width - 0.7).abs() < 0.001);
-    assert_eq!(bond.bold_width, Some(2.1));
-    assert_eq!(bond.bond_spacing, Some(16.0));
     assert_eq!(bond.margin_width, Some(1.8));
-    assert_eq!(bond.hash_spacing, Some(2.4));
+    assert_eq!(bond.bold_width, None);
+    assert_eq!(bond.bond_spacing, None);
+    assert_eq!(bond.hash_spacing, None);
 
+    engine.select_at_point(Point::new(70.0, 20.0), false);
+    let dialog: serde_json::Value =
+        serde_json::from_str(&engine.object_settings_dialog_json()).unwrap();
+    let field_keys = dialog["fields"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|field| field["key"].as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(field_keys, vec!["lineWidth"]);
+    assert!(engine
+        .apply_object_settings_dialog_json(
+            r#"{
+                "unit": "pt",
+                "values": {
+                    "lineWidth": 0.7
+                }
+            }"#,
+        )
+        .expect("graphic settings should parse"));
+
+    let line = engine
+        .state()
+        .document
+        .find_scene_object("obj_line")
+        .unwrap();
+    let line_style = line.style_ref.as_deref().unwrap();
     assert_eq!(
-        engine.state().document.styles["style_line"]["strokeWidth"],
+        engine.state().document.styles[line_style]["strokeWidth"],
         json!(0.7)
     );
     assert_eq!(
+        engine.state().document.styles["style_line"]["strokeWidth"],
+        json!(1.0)
+    );
+    assert_eq!(
         engine.state().document.styles["style_shape"]["strokeWidth"],
-        json!(0.7)
+        json!(1.0)
     );
     let bracket = engine
         .state()
         .document
         .find_scene_object("obj_bracket")
         .unwrap();
-    assert_eq!(bracket.payload.extra["strokeWidth"], json!(0.7));
+    assert_eq!(bracket.payload.extra["strokeWidth"], json!(1.0));
     let defaults = &engine.state().document.document.meta["import"]["cdxml"]["defaults"];
-    assert_eq!(defaults["bondLength"], json!(15.0));
-    assert_eq!(defaults["lineWidth"], json!(0.7));
-    assert_eq!(defaults["bondSpacing"], json!(16.0));
+    assert!(defaults.is_null());
 }
 
 #[test]
