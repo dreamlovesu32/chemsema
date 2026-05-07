@@ -382,7 +382,11 @@ class TauriEngineSession {
   }
 
   finishHoverArrowEdit(x, y, altKey) {
-    return this.invokeMutation("desktop_engine_finish_hover_arrow_edit", { x, y, altKey });
+    return this.invokeMutation(
+      "desktop_engine_finish_hover_arrow_edit",
+      { x, y, altKey },
+      { refresh: "interaction", dirtyExports: false },
+    );
   }
 
   hoverShapeAction(x, y) {
@@ -398,7 +402,11 @@ class TauriEngineSession {
   }
 
   finishHoverShapeEdit(x, y, altKey) {
-    return this.invokeMutation("desktop_engine_finish_hover_shape_edit", { x, y, altKey });
+    return this.invokeMutation(
+      "desktop_engine_finish_hover_shape_edit",
+      { x, y, altKey },
+      { refresh: "interaction", dirtyExports: false },
+    );
   }
 
   activeArrowEditDegrees() {

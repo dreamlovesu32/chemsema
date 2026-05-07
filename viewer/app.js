@@ -1504,6 +1504,17 @@ async function renderSelectionOnlyUpdate(point, syncCursor = syncSelectCursorFor
   refreshCommandAvailability();
 }
 
+async function selectClickTarget(point, additive = false) {
+  const selectedComponent = !!(await state.editorEngine.selectComponentAtPoint?.(
+    point.x,
+    point.y,
+    additive,
+  ));
+  if (!selectedComponent) {
+    await state.editorEngine.selectAtPoint(point.x, point.y, additive);
+  }
+}
+
 function currentEditorEngineState() {
   if (!state.editorEngine) {
     return null;
@@ -1782,9 +1793,8 @@ async function openCanvasContextMenu(event) {
   let hit = await contextHitTest(point);
   const temporarySelection = editorState.activeTool !== "select" && hit.kind !== "canvas" && !hit.selected;
   if (hit.kind !== "canvas" && !hit.selected) {
-    await state.editorEngine.selectAtPoint(point.x, point.y, false);
-    await syncDocumentFromEngine();
-    renderDocument();
+    await selectClickTarget(point, false);
+    await renderSelectionOnlyUpdate(point);
     hit = await contextHitTest(point);
   }
   activeContextMenuState = {
@@ -4025,7 +4035,7 @@ async function handleEditorPointerDown(event) {
         return;
       }
     }
-    if (await state.editorEngine.beginSelectionMove?.(point.x, point.y, !!event.shiftKey, event.altKey)) {
+    if (overSelection && await state.editorEngine.beginSelectionMove?.(point.x, point.y, !!event.shiftKey, event.altKey)) {
       activeSelectionGesture = {
         kind: "move",
         start: point,
@@ -4102,27 +4112,46 @@ async function handleEditorPointerUp(event) {
     && (activeSelectionGesture?.kind === "arrow-endpoint" || activeSelectionGesture?.kind === "arrow-curve")) {
     const gesture = activeSelectionGesture;
     activeSelectionGesture = null;
-    await state.editorEngine.finishHoverArrowEdit?.(point.x, point.y, event.altKey);
-    await syncDocumentFromEngine();
-    if (!gesture.dragged && editorState.activeTool === "select") {
-      await state.editorEngine.selectAtPoint(point.x, point.y, gesture.additive);
+    const changed = !!(await state.editorEngine.finishHoverArrowEdit?.(point.x, point.y, event.altKey));
+    if (changed) {
+      await state.editorEngine.refreshRenderState?.();
+      await syncDocumentFromEngine();
+    } else if (!gesture.dragged && editorState.activeTool === "select") {
+      await selectClickTarget(point, gesture.additive);
+      clearDocumentObjectPreviewTransform();
+      await renderSelectionOnlyUpdate(point, syncArrowAwareCursorForPoint);
+      return;
     }
-    await syncArrowAwareCursorForPoint(point);
-    renderDocument();
+    if (changed) {
+      await syncArrowAwareCursorForPoint(point);
+      renderDocument();
+    } else {
+      clearDocumentObjectPreviewTransform();
+      await renderSelectionOnlyUpdate(point, syncArrowAwareCursorForPoint);
+    }
     return;
   }
   if ((editorState.activeTool === "select" || editorState.activeTool === "shape")
     && activeSelectionGesture?.kind === "shape-resize") {
     const gesture = activeSelectionGesture;
     activeSelectionGesture = null;
-    await state.editorEngine.finishHoverShapeEdit?.(point.x, point.y, event.altKey);
-    await syncDocumentFromEngine();
-    if (!gesture.dragged && editorState.activeTool === "select") {
-      await state.editorEngine.selectAtPoint(point.x, point.y, gesture.additive);
+    const changed = !!(await state.editorEngine.finishHoverShapeEdit?.(point.x, point.y, event.altKey));
+    if (changed) {
+      await state.editorEngine.refreshRenderState?.();
       await syncDocumentFromEngine();
+    } else if (!gesture.dragged && editorState.activeTool === "select") {
+      await selectClickTarget(point, gesture.additive);
+      clearDocumentObjectPreviewTransform();
+      await renderSelectionOnlyUpdate(point, syncArrowAwareCursorForPoint);
+      return;
     }
-    await syncArrowAwareCursorForPoint(point);
-    renderDocument();
+    if (changed) {
+      await syncArrowAwareCursorForPoint(point);
+      renderDocument();
+    } else {
+      clearDocumentObjectPreviewTransform();
+      await renderSelectionOnlyUpdate(point, syncArrowAwareCursorForPoint);
+    }
     return;
   }
   if (editorState.activeTool === "select") {
@@ -4155,14 +4184,14 @@ async function handleEditorPointerUp(event) {
         clearDocumentObjectPreviewTransform();
         renderDocument();
       } else {
-        await state.editorEngine.selectAtPoint(point.x, point.y, gesture.additive);
+        await selectClickTarget(point, gesture.additive);
         clearDocumentObjectPreviewTransform();
         await renderSelectionOnlyUpdate(point);
       }
       return;
     }
     if (!gesture.dragged) {
-      await state.editorEngine.selectAtPoint(point.x, point.y, gesture.additive);
+      await selectClickTarget(point, gesture.additive);
     } else if (editorState.selectMode === "box") {
       await state.editorEngine.selectInRect(
         gesture.start.x,

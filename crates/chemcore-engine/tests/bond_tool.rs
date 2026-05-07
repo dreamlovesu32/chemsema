@@ -990,6 +990,31 @@ fn load_label_document(
         .expect("document should load");
 }
 
+#[test]
+fn component_selection_from_label_selects_whole_fragment() {
+    let mut engine = Engine::new();
+    load_label_document(
+        &mut engine,
+        "Ph",
+        vec![json!([
+            [px(314.0), px(256.0)],
+            [px(324.0), px(256.0)],
+            [px(324.0), px(264.0)],
+            [px(314.0), px(264.0)]
+        ])],
+        json!([{ "id": "b1", "begin": "n0", "end": "n1", "order": 1 }]),
+    );
+
+    assert!(engine.select_component_at_point(px_point(318.0, 260.0), false));
+
+    let selection = &engine.state().selection;
+    assert_eq!(selection.nodes.len(), 2);
+    assert!(selection.nodes.contains(&"n0".to_string()));
+    assert!(selection.nodes.contains(&"n1".to_string()));
+    assert_eq!(selection.bonds, vec!["b1".to_string()]);
+    assert_eq!(selection.label_nodes, vec!["n1".to_string()]);
+}
+
 fn load_text_object_document(engine: &mut Engine) {
     let document = json!({
         "format": { "name": "chemcore", "version": "0.1" },

@@ -945,26 +945,21 @@ impl Engine {
     }
 
     pub fn select_component_at_point(&mut self, point: Point, additive: bool) -> bool {
+        let Some(hit) = self.select_hit_at_point(point) else {
+            return false;
+        };
         let Some(entry) = self.state.document.editable_fragment() else {
             return false;
         };
-        let hit_node = hit_test_endpoint(&self.state.document, point, ENDPOINT_HIT_RADIUS)
-            .map(|hit| hit.node_id);
-        let hit_bond = if hit_node.is_none() {
-            hit_test_bond_center(&self.state.document, point, BOND_CENTER_HIT_RADIUS)
-                .map(|hit| hit.bond_id)
-        } else {
-            None
-        };
-        let seed_node_id = if let Some(node_id) = hit_node {
-            node_id
-        } else if let Some(bond_id) = hit_bond {
-            let Some(bond) = entry.fragment.bonds.iter().find(|bond| bond.id == bond_id) else {
-                return false;
-            };
-            bond.begin.clone()
-        } else {
-            return false;
+        let seed_node_id = match hit {
+            SelectHit::Label { node_id } | SelectHit::Node { node_id } => node_id,
+            SelectHit::Bond { bond_id } => {
+                let Some(bond) = entry.fragment.bonds.iter().find(|bond| bond.id == bond_id) else {
+                    return false;
+                };
+                bond.begin.clone()
+            }
+            SelectHit::TextObject { .. } | SelectHit::ArrowObject { .. } => return false,
         };
         let component_node_ids = connected_component_node_ids(entry.fragment, &seed_node_id);
         let component_bond_ids: Vec<String> = entry
