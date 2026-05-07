@@ -16,14 +16,14 @@ use windows_sys::core::GUID;
 use windows_sys::Win32::Foundation::{
     GlobalFree, COLORREF, ERROR_FILE_NOT_FOUND, ERROR_SUCCESS, HGLOBAL, POINT, POINTL, RECT, SIZE,
 };
+use windows_sys::Win32::Globalization::WideCharToMultiByte;
 use windows_sys::Win32::Graphics::Gdi::{
     CloseEnhMetaFile, CloseMetaFile, CreateEnhMetaFileW, CreateFontW, CreateMetaFileW, CreatePen,
     CreateSolidBrush, DeleteEnhMetaFile, DeleteMetaFile, DeleteObject, Ellipse, GetEnhMetaFileBits,
     GetMetaFileBitsEx, GetStockObject, LineTo, MoveToEx, Polygon, Rectangle, SelectObject,
     SetBkMode, SetMapMode, SetTextAlign, SetTextColor, SetViewportExtEx, SetWindowExtEx,
     StretchDIBits, TextOutA, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HDC, HGDIOBJ,
-    MM_ANISOTROPIC, NULL_BRUSH, PS_SOLID, SRCCOPY, TA_BASELINE, TA_CENTER, TA_LEFT, TA_RIGHT,
-    TRANSPARENT,
+    MM_ANISOTROPIC, NULL_BRUSH, PS_SOLID, SRCCOPY, TA_BASELINE, TA_LEFT, TRANSPARENT,
 };
 use windows_sys::Win32::System::Com::StructuredStorage::{
     CreateILockBytesOnHGlobal, StgCreateDocfile, StgCreateDocfileOnILockBytes, WriteClassStg,
@@ -73,7 +73,7 @@ const DEFAULT_OBJECT_WIDTH_HIMETRIC: i32 = 6000;
 const DEFAULT_OBJECT_HEIGHT_HIMETRIC: i32 = 3000;
 const HIMETRIC_PER_CM: f64 = 1000.0;
 const WORD_A4_BODY_WIDTH_CM: f64 = 21.0 - 2.0 * 3.18;
-const WMF_PREVIEW_WIDTH: i32 = 200;
+const WMF_PREVIEW_MAX_EXTENT: i32 = 30_000;
 const MIN_OBJECT_EXTENT_HIMETRIC: i32 = 100;
 
 const CLSID_CHEMCORE_DOCUMENT: GUID = GUID {
@@ -1878,14 +1878,15 @@ fn visible_payload_bounds(payload: &OleObjectPayload) -> Option<[f64; 4]> {
 }
 
 fn wmf_preview_canvas_size(extent: SIZE) -> SIZE {
-    let width = WMF_PREVIEW_WIDTH.max(1);
-    let height = if extent.cx > 0 && extent.cy > 0 {
-        ((width as f64) * (extent.cy as f64 / extent.cx as f64))
-            .round()
-            .clamp(1.0, 2000.0) as i32
-    } else {
-        width
-    };
+    let source_width = extent.cx.max(1) as f64;
+    let source_height = extent.cy.max(1) as f64;
+    let scale = (WMF_PREVIEW_MAX_EXTENT as f64 / source_width.max(source_height)).min(1.0);
+    let width = (source_width * scale)
+        .round()
+        .clamp(1.0, WMF_PREVIEW_MAX_EXTENT as f64) as i32;
+    let height = (source_height * scale)
+        .round()
+        .clamp(1.0, WMF_PREVIEW_MAX_EXTENT as f64) as i32;
     SIZE {
         cx: width,
         cy: height,
@@ -3540,74 +3541,303 @@ unsafe fn draw_preview_primitive(
             runs,
             ..
         } => {
-            let font_height = transform.length(*font_size).max(1);
-            let family = wide_null(font_family.as_deref().unwrap_or("Arial"));
-            let font = CreateFontW(
-                -font_height,
-                0,
-                0,
-                0,
-                400,
-                0,
-                0,
-                0,
-                1,
-                0,
-                0,
-                0,
-                0,
-                family.as_ptr(),
-            );
-            let old_font = if font.is_null() {
-                null_mut()
-            } else {
-                SelectObject(dc, font as HGDIOBJ)
-            };
-            let align = match text_anchor.as_deref() {
-                Some("middle") => TA_CENTER,
-                Some("end") => TA_RIGHT,
-                _ => TA_LEFT,
-            } | TA_BASELINE;
-            let old_align = SetTextAlign(dc, align);
-            SetBkMode(dc, TRANSPARENT as i32);
-            SetTextColor(
+            draw_preview_text(
                 dc,
-                fill.as_deref()
-                    .and_then(colorref_from_css)
-                    .unwrap_or(0x000000),
+                *x,
+                *y,
+                text,
+                *font_size,
+                font_family.as_deref(),
+                fill.as_deref(),
+                text_anchor.as_deref(),
+                *line_height,
+                runs,
+                transform,
             );
-            let line_step_world = (*line_height).unwrap_or(*font_size * 1.2).max(0.01);
-            let text_source = preview_text_content(text, runs);
-            for (index, line) in text_source.lines().enumerate() {
-                let p = transform.xy(*x, *y + index as f64 * line_step_world);
-                let label = ansi_metafile_text_bytes(line);
-                if label.is_empty() {
-                    continue;
-                }
-                TextOutA(dc, p.x, p.y, label.as_ptr(), label.len() as i32);
-            }
-            SetTextAlign(dc, old_align);
-            if !font.is_null() {
-                if !old_font.is_null() {
-                    SelectObject(dc, old_font);
-                }
-                DeleteObject(font as HGDIOBJ);
-            }
         }
     }
 }
 
-fn preview_text_content(text: &str, runs: &[chemcore_engine::LabelRun]) -> String {
-    if !text.is_empty() || runs.is_empty() {
-        return text.to_string();
+#[allow(clippy::too_many_arguments)]
+unsafe fn draw_preview_text(
+    dc: HDC,
+    x: f64,
+    y: f64,
+    text: &str,
+    font_size: f64,
+    font_family: Option<&str>,
+    fill: Option<&str>,
+    text_anchor: Option<&str>,
+    line_height: Option<f64>,
+    runs: &[chemcore_engine::LabelRun],
+    transform: &PreviewTransform,
+) {
+    let old_align = SetTextAlign(dc, TA_LEFT | TA_BASELINE);
+    SetBkMode(dc, TRANSPARENT as i32);
+    SetTextColor(dc, fill.and_then(colorref_from_css).unwrap_or(0x000000));
+
+    let line_step_world = line_height.unwrap_or(font_size * 1.2).max(0.01);
+    let lines = preview_text_lines(text, runs);
+    for (index, line_runs) in lines.iter().enumerate() {
+        if line_runs.is_empty() {
+            continue;
+        }
+        let origin = transform.xy(x, y + index as f64 * line_step_world);
+        let width = preview_line_width(line_runs, font_size, transform);
+        let mut cursor_x = match text_anchor {
+            Some("middle") => origin.x - width / 2,
+            Some("end") => origin.x - width,
+            _ => origin.x,
+        };
+        for run in line_runs {
+            cursor_x += draw_preview_text_run(
+                dc,
+                cursor_x,
+                origin.y,
+                run,
+                font_size,
+                font_family,
+                transform,
+            );
+        }
     }
-    runs.iter().map(|run| run.text.as_str()).collect()
+
+    SetTextAlign(dc, old_align);
+}
+
+#[derive(Clone)]
+struct PreviewTextRun {
+    text: String,
+    font_family: Option<String>,
+    font_size: Option<f64>,
+    fill: Option<String>,
+    font_weight: Option<u32>,
+    font_style: Option<String>,
+    underline: Option<bool>,
+    script: Option<String>,
+}
+
+fn preview_text_lines(text: &str, runs: &[chemcore_engine::LabelRun]) -> Vec<Vec<PreviewTextRun>> {
+    if runs.is_empty() {
+        return text
+            .lines()
+            .map(|line| {
+                vec![PreviewTextRun {
+                    text: line.to_string(),
+                    font_family: None,
+                    font_size: None,
+                    fill: None,
+                    font_weight: None,
+                    font_style: None,
+                    underline: None,
+                    script: None,
+                }]
+            })
+            .collect();
+    }
+
+    let mut lines = vec![Vec::new()];
+    for run in runs {
+        let segments: Vec<&str> = run.text.split('\n').collect();
+        for (index, segment) in segments.iter().enumerate() {
+            if !segment.is_empty() {
+                lines.last_mut().expect("line exists").push(PreviewTextRun {
+                    text: (*segment).to_string(),
+                    font_family: run.font_family.clone(),
+                    font_size: run.font_size,
+                    fill: run.fill.clone(),
+                    font_weight: run.font_weight,
+                    font_style: run.font_style.clone(),
+                    underline: run.underline,
+                    script: run.script.clone(),
+                });
+            }
+            if index + 1 < segments.len() {
+                lines.push(Vec::new());
+            }
+        }
+    }
+    lines
+}
+
+unsafe fn preview_line_width(
+    runs: &[PreviewTextRun],
+    fallback_font_size: f64,
+    transform: &PreviewTransform,
+) -> i32 {
+    runs.iter()
+        .map(|run| preview_text_run_advance(run, fallback_font_size, transform))
+        .sum()
+}
+
+unsafe fn draw_preview_text_run(
+    dc: HDC,
+    x: i32,
+    baseline_y: i32,
+    run: &PreviewTextRun,
+    fallback_font_size: f64,
+    fallback_family: Option<&str>,
+    transform: &PreviewTransform,
+) -> i32 {
+    let label = ansi_metafile_text_bytes(&run.text);
+    if label.is_empty() {
+        return 0;
+    }
+    let font = create_preview_font(run, fallback_font_size, fallback_family, transform);
+    let old_font = if font.is_null() {
+        null_mut()
+    } else {
+        SelectObject(dc, font as HGDIOBJ)
+    };
+    let text_color = run
+        .fill
+        .as_deref()
+        .and_then(colorref_from_css)
+        .unwrap_or(0x000000);
+    SetTextColor(dc, text_color);
+    let script_shift = preview_script_baseline_shift(run, fallback_font_size, transform);
+    TextOutA(
+        dc,
+        x,
+        baseline_y + script_shift,
+        label.as_ptr(),
+        label.len() as i32,
+    );
+    let advance = preview_text_run_advance(run, fallback_font_size, transform);
+    if !font.is_null() {
+        if !old_font.is_null() {
+            SelectObject(dc, old_font);
+        }
+        DeleteObject(font as HGDIOBJ);
+    }
+    advance
+}
+
+fn preview_text_run_advance(
+    run: &PreviewTextRun,
+    fallback_font_size: f64,
+    transform: &PreviewTransform,
+) -> i32 {
+    let script_scale = preview_script_scale(run.script.as_deref());
+    let font_size = run.font_size.unwrap_or(fallback_font_size) * script_scale;
+    let world_width: f64 = run
+        .text
+        .chars()
+        .map(|character| preview_char_advance_em(character) * font_size)
+        .sum();
+    (world_width * transform.scale).round().max(0.0) as i32
+}
+
+unsafe fn create_preview_font(
+    run: &PreviewTextRun,
+    fallback_font_size: f64,
+    fallback_family: Option<&str>,
+    transform: &PreviewTransform,
+) -> HGDIOBJ {
+    let script_scale = preview_script_scale(run.script.as_deref());
+    let font_size = run.font_size.unwrap_or(fallback_font_size) * script_scale;
+    let font_height = transform.length(font_size).max(1);
+    let family = wide_null(
+        run.font_family
+            .as_deref()
+            .or(fallback_family)
+            .unwrap_or("Arial"),
+    );
+    CreateFontW(
+        -font_height,
+        0,
+        0,
+        0,
+        run.font_weight.unwrap_or(400).clamp(100, 900) as i32,
+        (run.font_style.as_deref() == Some("italic")) as u32,
+        run.underline.unwrap_or(false) as u32,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        family.as_ptr(),
+    ) as HGDIOBJ
+}
+
+fn preview_script_baseline_shift(
+    run: &PreviewTextRun,
+    fallback_font_size: f64,
+    transform: &PreviewTransform,
+) -> i32 {
+    let base_height = transform.length(run.font_size.unwrap_or(fallback_font_size));
+    match run.script.as_deref() {
+        Some("subscript") => (base_height as f64 * 0.22).round() as i32,
+        Some("superscript") => -(base_height as f64 * 0.38).round() as i32,
+        _ => 0,
+    }
+}
+
+fn preview_script_scale(script: Option<&str>) -> f64 {
+    match script {
+        Some("subscript" | "superscript") => 0.7,
+        _ => 1.0,
+    }
+}
+
+fn preview_char_advance_em(character: char) -> f64 {
+    match character {
+        ' ' | '\t' => 0.32,
+        'i' | 'l' | 'I' | '!' | '|' => 0.28,
+        'f' | 'j' | 'r' | 't' | ',' | '.' | ':' | ';' => 0.34,
+        '(' | ')' | '[' | ']' | '{' | '}' => 0.36,
+        'M' | 'W' => 0.86,
+        'm' | 'w' => 0.78,
+        '0'..='9' => 0.56,
+        'A'..='Z' => 0.68,
+        '+' | '-' | '=' | '/' | '\\' => 0.55,
+        _ if character.is_ascii() => 0.52,
+        _ => 0.9,
+    }
 }
 
 fn ansi_metafile_text_bytes(text: &str) -> Vec<u8> {
-    text.chars()
-        .map(|ch| if ch.is_ascii() { ch as u8 } else { b'?' })
-        .collect()
+    const CP_ACP: u32 = 0;
+    let wide: Vec<u16> = text.encode_utf16().collect();
+    if wide.is_empty() {
+        return Vec::new();
+    }
+    unsafe {
+        let needed = WideCharToMultiByte(
+            CP_ACP,
+            0,
+            wide.as_ptr(),
+            wide.len() as i32,
+            null_mut(),
+            0,
+            null(),
+            null_mut(),
+        );
+        if needed <= 0 {
+            return text
+                .chars()
+                .map(|ch| if ch.is_ascii() { ch as u8 } else { b'?' })
+                .collect();
+        }
+        let mut out = vec![0u8; needed as usize];
+        let written = WideCharToMultiByte(
+            CP_ACP,
+            0,
+            wide.as_ptr(),
+            wide.len() as i32,
+            out.as_mut_ptr(),
+            out.len() as i32,
+            null(),
+            null_mut(),
+        );
+        if written <= 0 {
+            Vec::new()
+        } else {
+            out.truncate(written as usize);
+            out
+        }
+    }
 }
 
 unsafe fn draw_preview_line(
