@@ -58,7 +58,7 @@ export function createDocumentFlow(options) {
     options.clearZoomHandoffs();
     await options.state.editorEngine.loadDocumentJson(JSON.stringify(documentData));
     await options.syncEngineToolState();
-    options.syncDocumentFromEngine();
+    await options.syncDocumentFromEngine();
     options.state.runtimeViewBox = options.state.currentDocument?.document?.page
       ? options.pageViewBox(options.state.currentDocument.document.page)
       : options.defaultEditorViewBox();
@@ -71,7 +71,7 @@ export function createDocumentFlow(options) {
   async function currentDocumentJsonForSave() {
     await options.finishActiveTextEditor(true);
     if (options.state.editorEngine && !options.state.currentPath) {
-      options.syncDocumentFromEngine();
+      await options.syncDocumentFromEngine();
     }
     if (!options.state.currentDocument) {
       throw new Error("No document to save.");
@@ -389,7 +389,7 @@ export function createDocumentFlow(options) {
     options.clearZoomHandoffs();
     await options.state.editorEngine.loadDocumentCdxml(cdxml);
     await options.syncEngineToolState();
-    options.syncDocumentFromEngine();
+    await options.syncDocumentFromEngine();
     options.state.runtimeViewBox = options.state.currentDocument?.document?.page
       ? options.pageViewBox(options.state.currentDocument.document.page)
       : options.defaultEditorViewBox();

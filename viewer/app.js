@@ -288,6 +288,9 @@ const BROWSER_PENDING_DOCUMENT_PARAM = "chemcorePendingDocument";
 let activeTitlebarTabDrag = null;
 let detachingDocumentTabId = null;
 let suppressNextDocumentTabClick = false;
+let activeDocumentPreviewObjectIds = new Set();
+let activeDocumentPreviewLayer = false;
+let activeDocumentPreviewTransform = "";
 
 const syncWindowTitle = () => {
   updateActiveDocumentTabTitle();
@@ -1419,6 +1422,20 @@ async function syncCoreRenderListFromCurrentDocument() {
   if (state.editorEngine) {
     state.coreRenderList = renderListFromEngine(state.editorEngine);
   }
+}
+
+function syncEditorRenderListFromEngine() {
+  if (!state.editorEngine) {
+    return [];
+  }
+  state.coreRenderList = renderListFromEngine(state.editorEngine);
+  maybeAutoExpandEditorViewport(state.coreRenderList || []);
+  return state.coreRenderList || [];
+}
+
+function currentEditorOverlayRenderList() {
+  const renderList = state.coreRenderList || currentEditorRenderList();
+  return (renderList || []).filter((primitive) => !isDocumentPreviewPrimitive(primitive));
 }
 
 function corePrimitivesForObject(objectId) {
@@ -3358,6 +3375,196 @@ function isDocumentPreviewPrimitive(primitive) {
     || primitive?.role === "document-text";
 }
 
+function activeGestureUsesDocumentPreview() {
+  if (activeDocumentPreviewObjectIds.size || activeDocumentPreviewLayer) {
+    return false;
+  }
+  return ["move", "resize", "rotate", "arrow-endpoint", "arrow-curve", "shape-resize"]
+    .includes(activeSelectionGesture?.kind);
+}
+
+function primitiveObjectId(primitive) {
+  return primitive?.objectId || primitive?.object_id || null;
+}
+
+function primitiveNodeId(primitive) {
+  return primitive?.nodeId || primitive?.node_id || null;
+}
+
+function primitiveBondId(primitive) {
+  return primitive?.bondId || primitive?.bond_id || null;
+}
+
+function documentPrimitiveSelectedByState(primitive, selection) {
+  if (!selection) {
+    return false;
+  }
+  const objectId = primitiveObjectId(primitive);
+  if (objectId && (
+    selection.textObjects?.includes(objectId)
+    || selection.arrowObjects?.includes(objectId)
+  )) {
+    return true;
+  }
+  const bondId = primitiveBondId(primitive);
+  if (bondId && selection.bonds?.includes(bondId)) {
+    return true;
+  }
+  const nodeId = primitiveNodeId(primitive);
+  if (nodeId && (
+    selection.nodes?.includes(nodeId)
+    || selection.labelNodes?.includes(nodeId)
+  )) {
+    return true;
+  }
+  return false;
+}
+
+function selectedWholeDocumentObjectIds(renderList = currentEditorRenderList()) {
+  const selection = currentEditorEngineState()?.selection;
+  if (!selection || editorSelectionHasItems(selection) === false) {
+    return [];
+  }
+  const objectSelection = new Map();
+  for (const primitive of renderList || []) {
+    if (!isDocumentPreviewPrimitive(primitive)) {
+      continue;
+    }
+    const objectId = primitiveObjectId(primitive);
+    if (!objectId || primitive.role === "document-knockout") {
+      continue;
+    }
+    const entry = objectSelection.get(objectId) || { total: 0, selected: 0 };
+    entry.total += 1;
+    if (documentPrimitiveSelectedByState(primitive, selection)) {
+      entry.selected += 1;
+    }
+    objectSelection.set(objectId, entry);
+  }
+  return [...objectSelection.entries()]
+    .filter(([, entry]) => entry.total > 0 && entry.total === entry.selected)
+    .map(([objectId]) => objectId);
+}
+
+function clearDocumentObjectPreviewTransform() {
+  const documentLayer = viewerSvg.querySelector('[data-layer="document-content"]');
+  if (activeDocumentPreviewLayer) {
+    documentLayer?.removeAttribute("transform");
+    activeDocumentPreviewLayer = false;
+  }
+  if (!activeDocumentPreviewObjectIds.size) {
+    activeDocumentPreviewTransform = "";
+    return;
+  }
+  for (const objectId of activeDocumentPreviewObjectIds) {
+    const group = viewerSvg.querySelector(`[data-layer="document-content"] > [data-object-id="${CSS.escape(objectId)}"]`);
+    group?.removeAttribute("transform");
+    group?.classList.remove("is-preview-transforming");
+  }
+  activeDocumentPreviewObjectIds = new Set();
+  activeDocumentPreviewTransform = "";
+}
+
+function selectionGestureTransform(gesture) {
+  if (!gesture) {
+    return "";
+  }
+  if (gesture.kind === "move") {
+    const dx = (gesture.current?.x ?? gesture.start?.x ?? 0) - (gesture.start?.x ?? 0);
+    const dy = (gesture.current?.y ?? gesture.start?.y ?? 0) - (gesture.start?.y ?? 0);
+    return `translate(${dx} ${dy})`;
+  }
+  if (gesture.kind === "rotate" && gesture.center) {
+    return `rotate(${gesture.angle || 0} ${gesture.center.x} ${gesture.center.y})`;
+  }
+  if (gesture.kind === "resize" && gesture.bounds && gesture.handle) {
+    const pivot = selectionResizePivot(gesture.handle, gesture.bounds);
+    const scale = gesture.scale || 1;
+    return `translate(${pivot.x} ${pivot.y}) scale(${scale}) translate(${-pivot.x} ${-pivot.y})`;
+  }
+  return "";
+}
+
+function applyDocumentObjectPreviewTransform() {
+  const transform = selectionGestureTransform(activeSelectionGesture);
+  if (!transform) {
+    clearDocumentObjectPreviewTransform();
+    return false;
+  }
+  if (activeSelectionGesture.previewUsesLayer) {
+    const documentLayer = viewerSvg.querySelector('[data-layer="document-content"]');
+    documentLayer?.setAttribute("transform", transform);
+    activeDocumentPreviewLayer = true;
+    activeDocumentPreviewObjectIds = new Set();
+    activeDocumentPreviewTransform = transform;
+    return true;
+  }
+  const hasCachedObjectIds = Array.isArray(activeSelectionGesture.previewObjectIds);
+  const objectIds = activeSelectionGesture.previewObjectIds || selectedWholeDocumentObjectIds();
+  if (!objectIds.length) {
+    clearDocumentObjectPreviewTransform();
+    return false;
+  }
+  activeSelectionGesture.previewObjectIds = objectIds;
+  const nextIds = new Set(objectIds);
+  const documentLayer = viewerSvg.querySelector('[data-layer="document-content"]');
+  const allGroups = hasCachedObjectIds
+    ? []
+    : [...viewerSvg.querySelectorAll('[data-layer="document-content"] > [data-object-id]')];
+  const canTransformLayer = !hasCachedObjectIds
+    && allGroups.length > 0
+    && nextIds.size === allGroups.length
+    && allGroups.every((group) => nextIds.has(group.dataset.objectId));
+  if (canTransformLayer) {
+    for (const objectId of activeDocumentPreviewObjectIds) {
+      const group = viewerSvg.querySelector(`[data-layer="document-content"] > [data-object-id="${CSS.escape(objectId)}"]`);
+      group?.removeAttribute("transform");
+      group?.classList.remove("is-preview-transforming");
+    }
+    documentLayer?.setAttribute("transform", transform);
+    activeDocumentPreviewLayer = true;
+    activeDocumentPreviewObjectIds = new Set();
+    activeDocumentPreviewTransform = transform;
+    activeSelectionGesture.previewUsesLayer = true;
+    return true;
+  }
+  if (activeDocumentPreviewLayer) {
+    documentLayer?.removeAttribute("transform");
+    activeDocumentPreviewLayer = false;
+  }
+  for (const objectId of activeDocumentPreviewObjectIds) {
+    if (!nextIds.has(objectId)) {
+      const group = viewerSvg.querySelector(`[data-layer="document-content"] > [data-object-id="${CSS.escape(objectId)}"]`);
+      group?.removeAttribute("transform");
+      group?.classList.remove("is-preview-transforming");
+    }
+  }
+  for (const objectId of nextIds) {
+    const group = viewerSvg.querySelector(`[data-layer="document-content"] > [data-object-id="${CSS.escape(objectId)}"]`);
+    if (!group) {
+      continue;
+    }
+    group.setAttribute("transform", transform);
+    group.classList.add("is-preview-transforming");
+  }
+  activeDocumentPreviewObjectIds = nextIds;
+  activeDocumentPreviewTransform = transform;
+  return true;
+}
+
+function syncEditorOverlayPreviewTransform() {
+  const overlay = viewerSvg.querySelector('[data-layer="editor-overlay"]');
+  if (!overlay) {
+    return false;
+  }
+  if (activeDocumentPreviewTransform) {
+    overlay.setAttribute("transform", activeDocumentPreviewTransform);
+  } else {
+    overlay.removeAttribute("transform");
+  }
+  return true;
+}
+
 function screenPxToWorld(px) {
   return px / Math.max(1, viewportScale());
 }
@@ -3623,9 +3830,8 @@ async function handleEditorPointerMove(event) {
       if (activeSelectionGesture.kind === "arrow-curve") {
         activeSelectionGesture.angle = state.editorEngine.activeArrowEditDegrees?.() || 0;
       }
-      await syncDocumentFromEngine();
       await syncArrowAwareCursorForPoint(point);
-      renderDocument();
+      renderEditorOverlay(syncEditorRenderListFromEngine());
       return;
     }
     if (activeSelectionGesture.kind === "shape-resize") {
@@ -3634,35 +3840,48 @@ async function handleEditorPointerMove(event) {
       }
       activeSelectionGesture.current = point;
       await state.editorEngine.updateHoverShapeEdit?.(point.x, point.y, event.altKey);
-      await syncDocumentFromEngine();
       await syncArrowAwareCursorForPoint(point);
-      renderDocument();
+      renderEditorOverlay(syncEditorRenderListFromEngine());
       return;
     }
     if (activeSelectionGesture.kind === "rotate") {
       activeSelectionGesture.current = point;
       activeSelectionGesture.angle = selectionRotateAngleForGesture(activeSelectionGesture, point, event.altKey);
+      if (applyDocumentObjectPreviewTransform()) {
+        await syncSelectCursorForPoint(point);
+        renderEditorOverlay(currentEditorOverlayRenderList());
+        return;
+      }
       await state.editorEngine.updateSelectionRotate(point.x, point.y, event.altKey);
-      await syncDocumentFromEngine();
       await syncSelectCursorForPoint(point);
-      renderDocument();
+      renderEditorOverlay(syncEditorRenderListFromEngine());
       return;
     }
     if (activeSelectionGesture.kind === "resize") {
       activeSelectionGesture.current = point;
       activeSelectionGesture.scale = selectionResizeGestureScale(activeSelectionGesture, point);
+      if (applyDocumentObjectPreviewTransform()) {
+        await syncSelectCursorForPoint(point);
+        renderEditorOverlay(currentEditorOverlayRenderList());
+        return;
+      }
       await state.editorEngine.updateSelectionResize?.(point.x, point.y);
-      await syncDocumentFromEngine();
       await syncSelectCursorForPoint(point);
-      renderDocument();
+      renderEditorOverlay(syncEditorRenderListFromEngine());
       return;
     }
     if (activeSelectionGesture.kind === "move") {
       activeSelectionGesture.current = point;
+      if (applyDocumentObjectPreviewTransform()) {
+        await syncSelectCursorForPoint(point);
+        if (!syncEditorOverlayPreviewTransform()) {
+          renderEditorOverlay(currentEditorOverlayRenderList());
+        }
+        return;
+      }
       await state.editorEngine.updateSelectionMove(point.x, point.y, event.altKey);
-      await syncDocumentFromEngine();
       await syncSelectCursorForPoint(point);
-      renderDocument();
+      renderEditorOverlay(syncEditorRenderListFromEngine());
       return;
     }
     if (pointDistance(activeSelectionGesture.start, point) >= cssPxToCm(3)) {
@@ -3727,7 +3946,8 @@ async function handleEditorPointerDown(event) {
         scale: 1,
       };
       await syncSelectCursorForPoint(point);
-      renderDocument();
+      syncEditorRenderListFromEngine();
+      renderEditorOverlay(currentEditorOverlayRenderList());
       return;
     }
     const overSelection = !!state.editorEngine.selectionContainsPoint?.(point.x, point.y);
@@ -3785,7 +4005,8 @@ async function handleEditorPointerDown(event) {
           angle: 0,
         };
         await syncSelectCursorForPoint(point);
-        renderDocument();
+        syncEditorRenderListFromEngine();
+        renderEditorOverlay(currentEditorOverlayRenderList());
         return;
       }
     }
@@ -3797,7 +4018,8 @@ async function handleEditorPointerDown(event) {
         additive: !!event.shiftKey,
       };
       await syncSelectCursorForPoint(point);
-      renderDocument();
+      syncEditorRenderListFromEngine();
+      renderEditorOverlay(currentEditorOverlayRenderList());
       return;
     }
     activeSelectionGesture = {
@@ -3898,6 +4120,7 @@ async function handleEditorPointerUp(event) {
       await state.editorEngine.finishSelectionRotate(point.x, point.y, event.altKey);
       await syncDocumentFromEngine();
       await syncSelectCursorForPoint(point);
+      clearDocumentObjectPreviewTransform();
       renderDocument();
       return;
     }
@@ -3905,6 +4128,7 @@ async function handleEditorPointerUp(event) {
       await state.editorEngine.finishSelectionResize?.(point.x, point.y);
       await syncDocumentFromEngine();
       await syncSelectCursorForPoint(point);
+      clearDocumentObjectPreviewTransform();
       renderDocument();
       return;
     }
@@ -3916,6 +4140,7 @@ async function handleEditorPointerUp(event) {
         await state.editorEngine.selectAtPoint(point.x, point.y, gesture.additive);
       }
       await syncSelectCursorForPoint(point);
+      clearDocumentObjectPreviewTransform();
       renderDocument();
       return;
     }
@@ -3985,7 +4210,11 @@ function renderEditorOverlay(renderList = null) {
   }
   const primitives = renderList || currentEditorRenderList();
   const overlay = makeSvgNode("g", { "data-layer": "editor-overlay", "pointer-events": "none" });
-  const previewActive = primitives.some((primitive) => primitive.role === "preview-end");
+  if (activeDocumentPreviewTransform) {
+    overlay.setAttribute("transform", activeDocumentPreviewTransform);
+  }
+  const previewActive = activeGestureUsesDocumentPreview()
+    || primitives.some((primitive) => primitive.role === "preview-end");
   if (previewActive) {
     const viewBox = activeViewBox();
     const pageBackground = normalizeDisplayColor(
@@ -4186,6 +4415,7 @@ viewerSvg?.addEventListener("pointerup", handleEditorPointerUp);
 viewerSvg?.addEventListener("dblclick", handleEditorDoubleClick);
 viewerSvg?.addEventListener("pointercancel", async () => {
   activeSelectionGesture = null;
+  clearDocumentObjectPreviewTransform();
   await state.editorEngine?.clearInteraction?.();
   syncCanvasCursor();
   renderEditorOverlay();
@@ -4242,6 +4472,9 @@ function renderDocument() {
   const page = documentData.document.page;
   const viewBox = activeViewBox();
   viewerSvg.innerHTML = "";
+  activeDocumentPreviewObjectIds = new Set();
+  activeDocumentPreviewLayer = false;
+  activeDocumentPreviewTransform = "";
   applyViewerViewport();
   const pageBackground = normalizeDisplayColor(page.background, CHEMDRAW_PAGE_BACKGROUND);
   viewerSvg.style.setProperty("--chemcore-page-bg", pageBackground);
@@ -4253,6 +4486,8 @@ function renderDocument() {
     fill: pageBackground,
     "data-layer": "page-background",
   }));
+  const documentLayer = makeSvgNode("g", { "data-layer": "document-content" });
+  viewerSvg.appendChild(documentLayer);
 
   const visibleObjects = buildRenderList(documentData);
 
@@ -4273,35 +4508,43 @@ function renderDocument() {
       continue;
     }
 
+    const objectLayer = makeSvgNode("g", {
+      "data-object-id": object.id,
+      "data-object-type": object.type,
+    });
+
     if (object.type === "molecule") {
       const corePrimitives = corePrimitivesForObject(object.id);
       if (corePrimitives.length) {
-        corePrimitives.forEach((primitive) => renderCorePrimitive(viewerSvg, primitive, corePrimitiveRenderOptions()));
+        corePrimitives.forEach((primitive) => renderCorePrimitive(objectLayer, primitive, corePrimitiveRenderOptions()));
       }
     } else if (object.type === "shape") {
       const corePrimitives = corePrimitivesForObject(object.id);
       if (corePrimitives.length) {
-        corePrimitives.forEach((primitive) => renderCorePrimitive(viewerSvg, primitive, corePrimitiveRenderOptions()));
+        corePrimitives.forEach((primitive) => renderCorePrimitive(objectLayer, primitive, corePrimitiveRenderOptions()));
       } else {
-        renderShapeObject(viewerSvg, object, documentData.styles);
+        renderShapeObject(objectLayer, object, documentData.styles);
       }
     } else if (object.type === "line") {
       const corePrimitives = corePrimitivesForObject(object.id);
       if (corePrimitives.length) {
-        corePrimitives.forEach((primitive) => renderCorePrimitive(viewerSvg, primitive, corePrimitiveRenderOptions()));
+        corePrimitives.forEach((primitive) => renderCorePrimitive(objectLayer, primitive, corePrimitiveRenderOptions()));
       } else {
-        renderLineObject(viewerSvg, object, state.currentDocument.styles);
+        renderLineObject(objectLayer, object, state.currentDocument.styles);
       }
     } else if (object.type === "text") {
       const corePrimitives = corePrimitivesForObject(object.id);
       if (corePrimitives.length) {
-        corePrimitives.forEach((primitive) => renderCorePrimitive(viewerSvg, primitive, corePrimitiveRenderOptions()));
+        corePrimitives.forEach((primitive) => renderCorePrimitive(objectLayer, primitive, corePrimitiveRenderOptions()));
       } else {
-        renderTextObject(viewerSvg, object);
+        renderTextObject(objectLayer, object);
       }
     } else if (object.type === "bracket" || object.type === "symbol") {
       const corePrimitives = corePrimitivesForObject(object.id);
-      corePrimitives.forEach((primitive) => renderCorePrimitive(viewerSvg, primitive, corePrimitiveRenderOptions()));
+      corePrimitives.forEach((primitive) => renderCorePrimitive(objectLayer, primitive, corePrimitiveRenderOptions()));
+    }
+    if (objectLayer.childNodes.length) {
+      documentLayer.appendChild(objectLayer);
     }
   }
 

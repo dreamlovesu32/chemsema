@@ -67,7 +67,7 @@ class TauriEngineSession {
     if (!this.sessionId) {
       this.sessionId = await this.invoke("desktop_engine_create");
     }
-    await this.refreshRenderState();
+    await this.refreshSnapshot("document");
     return this;
   }
 
@@ -81,16 +81,24 @@ class TauriEngineSession {
   }
 
   async invokeMutation(command, args = {}, options = {}) {
-    const refresh = options.refresh ?? "render";
+    const refresh = options.refresh ?? "document";
+    const dirtyExports = options.dirtyExports ?? (refresh === "all" || refresh === "document");
     const run = async () => {
       await this.ready();
       const result = await this.invoke(command, { sessionId: this.sessionId, ...args });
-      if (refresh === "all") {
-        await this.refreshAll();
-      } else if (refresh === "render") {
-        await this.refreshRenderState();
+      if (dirtyExports) {
+        this.markExportsDirty();
+      }
+      if (refresh === "all" || refresh === "document") {
+        await this.refreshSnapshot("document");
+      } else if (refresh === "selection") {
+        await this.refreshSnapshot("selection");
+      } else if (refresh === "interaction") {
+        await this.refreshSnapshot("interaction");
+      } else if (refresh === "state") {
+        await this.refreshSnapshot("state");
       } else if (refresh === "exports") {
-        this.exportDirty = true;
+        this.markExportsDirty();
       }
       return result;
     };
@@ -99,42 +107,59 @@ class TauriEngineSession {
     return next;
   }
 
-  async refreshRenderState() {
-    const [
-      documentJson,
-      stateJson,
-      renderListJson,
-      allBoundsJson,
-      documentBoundsJson,
-      selectionBoundsJson,
-      documentColorsJson,
-      documentStylePreset,
-      canUndo,
-      canRedo,
-    ] = await Promise.all([
-      this.invoke("desktop_engine_document_json", { sessionId: this.sessionId }),
-      this.invoke("desktop_engine_state_json", { sessionId: this.sessionId }),
-      this.invoke("desktop_engine_render_list_json", { sessionId: this.sessionId }),
-      this.invoke("desktop_engine_render_bounds_json", { sessionId: this.sessionId, scope: "all" }),
-      this.invoke("desktop_engine_render_bounds_json", { sessionId: this.sessionId, scope: "document" }),
-      this.invoke("desktop_engine_render_bounds_json", { sessionId: this.sessionId, scope: "selection" }),
-      this.invoke("desktop_engine_document_colors_json", { sessionId: this.sessionId }),
-      this.invoke("desktop_engine_document_style_preset", { sessionId: this.sessionId }),
-      this.invoke("desktop_engine_can_undo", { sessionId: this.sessionId }),
-      this.invoke("desktop_engine_can_redo", { sessionId: this.sessionId }),
-    ]);
-    this.cache.documentJson = documentJson;
-    this.cache.stateJson = stateJson;
-    this.cache.renderListJson = renderListJson;
-    this.cache.renderBoundsJson.set("all", allBoundsJson);
-    this.cache.renderBoundsJson.set("document", documentBoundsJson);
-    this.cache.renderBoundsJson.set("selection", selectionBoundsJson);
-    this.cache.documentColorsJson = documentColorsJson;
-    this.cache.documentStylePreset = documentStylePreset;
-    this.cache.canUndo = Boolean(canUndo);
-    this.cache.canRedo = Boolean(canRedo);
+  markExportsDirty() {
     this.exportDirty = true;
+    this.cache.documentCdxml = null;
+    this.cache.documentSvg = null;
+  }
+
+  applySnapshot(snapshot) {
+    if (!snapshot || typeof snapshot !== "object") {
+      return;
+    }
+    if (snapshot.documentJson != null) {
+      this.cache.documentJson = snapshot.documentJson;
+      if (this.layoutEngine?.loadDocumentJson) {
+        this.layoutEngine.loadDocumentJson(snapshot.documentJson);
+      }
+    }
+    if (snapshot.stateJson != null) {
+      this.cache.stateJson = snapshot.stateJson;
+    }
+    if (snapshot.renderListJson != null) {
+      this.cache.renderListJson = snapshot.renderListJson;
+    }
+    if (snapshot.allBoundsJson != null) {
+      this.cache.renderBoundsJson.set("all", snapshot.allBoundsJson);
+    }
+    if (snapshot.documentBoundsJson != null) {
+      this.cache.renderBoundsJson.set("document", snapshot.documentBoundsJson);
+    }
+    if (snapshot.selectionBoundsJson != null) {
+      this.cache.renderBoundsJson.set("selection", snapshot.selectionBoundsJson);
+    }
+    if (snapshot.documentColorsJson != null) {
+      this.cache.documentColorsJson = snapshot.documentColorsJson;
+    }
+    if (snapshot.documentStylePreset != null) {
+      this.cache.documentStylePreset = snapshot.documentStylePreset;
+    }
+    if (snapshot.canUndo != null) {
+      this.cache.canUndo = Boolean(snapshot.canUndo);
+    }
+    if (snapshot.canRedo != null) {
+      this.cache.canRedo = Boolean(snapshot.canRedo);
+    }
+  }
+
+  async refreshSnapshot(mode = "document") {
+    const snapshotJson = await this.invoke("desktop_engine_snapshot_json", { sessionId: this.sessionId, mode });
+    this.applySnapshot(safeJsonParse(snapshotJson, null));
     return this;
+  }
+
+  async refreshRenderState() {
+    return this.refreshSnapshot("document");
   }
 
   async refreshExports() {
@@ -154,7 +179,6 @@ class TauriEngineSession {
 
   async refreshAll() {
     await this.refreshRenderState();
-    await this.refreshExports();
     return this;
   }
 
@@ -162,11 +186,11 @@ class TauriEngineSession {
     if (this.layoutEngine?.loadDocumentJson) {
       this.layoutEngine.loadDocumentJson(json);
     }
-    return this.invokeMutation("desktop_engine_load_document_json", { json }, { refresh: "all" });
+    return this.invokeMutation("desktop_engine_load_document_json", { json }, { refresh: "document" });
   }
 
   async loadDocumentCdxml(cdxml) {
-    const result = await this.invokeMutation("desktop_engine_load_document_cdxml", { cdxml }, { refresh: "all" });
+    const result = await this.invokeMutation("desktop_engine_load_document_cdxml", { cdxml }, { refresh: "document" });
     if (this.layoutEngine?.loadDocumentJson) {
       this.layoutEngine.loadDocumentJson(this.cache.documentJson);
     }
@@ -204,23 +228,23 @@ class TauriEngineSession {
   }
 
   setTool(activeTool, bondVariant) {
-    return this.invokeMutation("desktop_engine_set_tool", { activeTool, bondVariant });
+    return this.invokeMutation("desktop_engine_set_tool", { activeTool, bondVariant }, { refresh: "state", dirtyExports: false });
   }
 
   setShapeOptions(kind, style, color) {
-    return this.invokeMutation("desktop_engine_set_shape_options", { kind, style, color });
+    return this.invokeMutation("desktop_engine_set_shape_options", { kind, style, color }, { refresh: "state", dirtyExports: false });
   }
 
   setTemplate(template) {
-    return this.invokeMutation("desktop_engine_set_template", { template });
+    return this.invokeMutation("desktop_engine_set_template", { template }, { refresh: "state", dirtyExports: false });
   }
 
   setBracketOptions(kind) {
-    return this.invokeMutation("desktop_engine_set_bracket_options", { kind });
+    return this.invokeMutation("desktop_engine_set_bracket_options", { kind }, { refresh: "state", dirtyExports: false });
   }
 
   setSymbolOptions(kind) {
-    return this.invokeMutation("desktop_engine_set_symbol_options", { kind });
+    return this.invokeMutation("desktop_engine_set_symbol_options", { kind }, { refresh: "state", dirtyExports: false });
   }
 
   setDocumentStylePreset(preset) {
@@ -291,39 +315,39 @@ class TauriEngineSession {
   }
 
   pointerMove(x, y, altKey) {
-    return this.invokeMutation("desktop_engine_pointer_move", { x, y, altKey });
+    return this.invokeMutation("desktop_engine_pointer_move", { x, y, altKey }, { refresh: "interaction", dirtyExports: false });
   }
 
   pointerDown(x, y, altKey) {
-    return this.invokeMutation("desktop_engine_pointer_down", { x, y, altKey });
+    return this.invokeMutation("desktop_engine_pointer_down", { x, y, altKey }, { refresh: "interaction", dirtyExports: false });
   }
 
   pointerUp(x, y, altKey) {
-    return this.invokeMutation("desktop_engine_pointer_up", { x, y, altKey });
+    return this.invokeMutation("desktop_engine_pointer_up", { x, y, altKey }, { refresh: "document" });
   }
 
   selectAtPoint(x, y, additive) {
-    return this.invokeMutation("desktop_engine_select_at_point", { x, y, additive });
+    return this.invokeMutation("desktop_engine_select_at_point", { x, y, additive }, { refresh: "selection", dirtyExports: false });
   }
 
   selectComponentAtPoint(x, y, additive) {
-    return this.invokeMutation("desktop_engine_select_component_at_point", { x, y, additive });
+    return this.invokeMutation("desktop_engine_select_component_at_point", { x, y, additive }, { refresh: "selection", dirtyExports: false });
   }
 
   selectInRect(x1, y1, x2, y2, additive) {
-    return this.invokeMutation("desktop_engine_select_in_rect", { x1, y1, x2, y2, additive });
+    return this.invokeMutation("desktop_engine_select_in_rect", { x1, y1, x2, y2, additive }, { refresh: "selection", dirtyExports: false });
   }
 
   selectInPolygon(pointsJson, additive) {
-    return this.invokeMutation("desktop_engine_select_in_polygon", { pointsJson, additive });
+    return this.invokeMutation("desktop_engine_select_in_polygon", { pointsJson, additive }, { refresh: "selection", dirtyExports: false });
   }
 
   selectAll() {
-    return this.invokeMutation("desktop_engine_select_all");
+    return this.invokeMutation("desktop_engine_select_all", {}, { refresh: "selection", dirtyExports: false });
   }
 
   clearSelection() {
-    return this.invokeMutation("desktop_engine_clear_selection");
+    return this.invokeMutation("desktop_engine_clear_selection", {}, { refresh: "selection", dirtyExports: false });
   }
 
   async contextHitTestJson(x, y) {
@@ -350,11 +374,11 @@ class TauriEngineSession {
   }
 
   beginHoverArrowEdit(x, y) {
-    return this.invokeMutation("desktop_engine_begin_hover_arrow_edit", { x, y });
+    return this.invokeMutation("desktop_engine_begin_hover_arrow_edit", { x, y }, { refresh: "interaction", dirtyExports: false });
   }
 
   updateHoverArrowEdit(x, y, altKey) {
-    return this.invokeMutation("desktop_engine_update_hover_arrow_edit", { x, y, altKey });
+    return this.invokeMutation("desktop_engine_update_hover_arrow_edit", { x, y, altKey }, { refresh: "interaction", dirtyExports: false });
   }
 
   finishHoverArrowEdit(x, y, altKey) {
@@ -366,11 +390,11 @@ class TauriEngineSession {
   }
 
   beginHoverShapeEdit(x, y) {
-    return this.invokeMutation("desktop_engine_begin_hover_shape_edit", { x, y });
+    return this.invokeMutation("desktop_engine_begin_hover_shape_edit", { x, y }, { refresh: "interaction", dirtyExports: false });
   }
 
   updateHoverShapeEdit(x, y, altKey) {
-    return this.invokeMutation("desktop_engine_update_hover_shape_edit", { x, y, altKey });
+    return this.invokeMutation("desktop_engine_update_hover_shape_edit", { x, y, altKey }, { refresh: "interaction", dirtyExports: false });
   }
 
   finishHoverShapeEdit(x, y, altKey) {
@@ -382,11 +406,11 @@ class TauriEngineSession {
   }
 
   beginSelectionMove(x, y, additive, altKey) {
-    return this.invokeMutation("desktop_engine_begin_selection_move", { x, y, additive, altKey });
+    return this.invokeMutation("desktop_engine_begin_selection_move", { x, y, additive, altKey }, { refresh: "interaction", dirtyExports: false });
   }
 
   updateSelectionMove(x, y, altKey) {
-    return this.invokeMutation("desktop_engine_update_selection_move", { x, y, altKey });
+    return this.invokeMutation("desktop_engine_update_selection_move", { x, y, altKey }, { refresh: "interaction", dirtyExports: false });
   }
 
   finishSelectionMove(x, y, altKey) {
@@ -394,11 +418,11 @@ class TauriEngineSession {
   }
 
   beginSelectionRotate(x, y) {
-    return this.invokeMutation("desktop_engine_begin_selection_rotate", { x, y });
+    return this.invokeMutation("desktop_engine_begin_selection_rotate", { x, y }, { refresh: "interaction", dirtyExports: false });
   }
 
   updateSelectionRotate(x, y, altKey) {
-    return this.invokeMutation("desktop_engine_update_selection_rotate", { x, y, altKey });
+    return this.invokeMutation("desktop_engine_update_selection_rotate", { x, y, altKey }, { refresh: "interaction", dirtyExports: false });
   }
 
   finishSelectionRotate(x, y, altKey) {
@@ -406,11 +430,11 @@ class TauriEngineSession {
   }
 
   beginSelectionResize(handle, x, y) {
-    return this.invokeMutation("desktop_engine_begin_selection_resize", { handle, x, y });
+    return this.invokeMutation("desktop_engine_begin_selection_resize", { handle, x, y }, { refresh: "interaction", dirtyExports: false });
   }
 
   updateSelectionResize(x, y) {
-    return this.invokeMutation("desktop_engine_update_selection_resize", { x, y });
+    return this.invokeMutation("desktop_engine_update_selection_resize", { x, y }, { refresh: "interaction", dirtyExports: false });
   }
 
   finishSelectionResize(x, y) {
@@ -487,7 +511,7 @@ class TauriEngineSession {
   }
 
   clearInteraction() {
-    return this.invokeMutation("desktop_engine_clear_interaction");
+    return this.invokeMutation("desktop_engine_clear_interaction", {}, { refresh: "interaction", dirtyExports: false });
   }
 
   undo() {
@@ -511,7 +535,7 @@ class TauriEngineSession {
   }
 
   copySelection() {
-    return this.invokeMutation("desktop_engine_copy_selection");
+    return this.invokeMutation("desktop_engine_copy_selection", {}, { refresh: "state", dirtyExports: false });
   }
 
   async hasClipboard() {
@@ -541,7 +565,7 @@ class TauriEngineSession {
   }
 
   beginTextEdit(x, y) {
-    return this.invokeMutation("desktop_engine_begin_text_edit", { x, y });
+    return this.invokeMutation("desktop_engine_begin_text_edit", { x, y }, { refresh: "interaction", dirtyExports: false });
   }
 
   applyTextEdit(sessionJson) {

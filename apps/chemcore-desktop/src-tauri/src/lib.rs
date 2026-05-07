@@ -1,7 +1,7 @@
 use base64::Engine as _;
 use chemcore_desktop_service::{
-    DesktopDocumentService, DesktopOpenedDocument, DesktopRecentFile, DesktopSavedDocument,
-    SessionId,
+    DesktopDocumentService, DesktopEngineSnapshotMode, DesktopOpenedDocument, DesktopRecentFile,
+    DesktopSavedDocument, SessionId,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -153,6 +153,16 @@ fn desktop_engine_render_bounds_json(
 ) -> Result<String, String> {
     let service = state.service.lock().map_err(|error| error.to_string())?;
     service.render_bounds_json(session_id, &scope)
+}
+
+#[tauri::command]
+fn desktop_engine_snapshot_json(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    mode: DesktopEngineSnapshotMode,
+) -> Result<String, String> {
+    let service = state.service.lock().map_err(|error| error.to_string())?;
+    service.snapshot_json(session_id, mode)
 }
 
 #[tauri::command]
@@ -2375,6 +2385,7 @@ pub fn run() {
             desktop_engine_state_json,
             desktop_engine_render_list_json,
             desktop_engine_render_bounds_json,
+            desktop_engine_snapshot_json,
             desktop_engine_document_cdxml,
             desktop_engine_document_svg,
             desktop_engine_document_colors_json,

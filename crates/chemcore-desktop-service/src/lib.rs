@@ -1,7 +1,8 @@
 use chemcore_engine::{
     ArrowCurve, ArrowEndpointStyle, ArrowHeadSize, ArrowNoGo, ArrowVariant, BondVariant,
     BracketKind, Engine, Point, PointerEvent, RenderBoundsScope, ShapeKind, ShapeStyle,
-    TextEditLayoutRequest, TextEditSession, Tool, ToolState, WorldCm, WorldPoint,
+    RenderPrimitive, RenderRole, TextEditLayoutRequest, TextEditSession, Tool, ToolState, WorldCm,
+    WorldPoint,
 };
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
@@ -60,6 +61,30 @@ pub struct DesktopSavedDocument {
     pub path: String,
     pub file_name: String,
     pub format: String,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum DesktopEngineSnapshotMode {
+    State,
+    Interaction,
+    Selection,
+    Document,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopEngineSnapshot {
+    pub document_json: Option<String>,
+    pub state_json: Option<String>,
+    pub render_list_json: Option<String>,
+    pub all_bounds_json: Option<String>,
+    pub document_bounds_json: Option<String>,
+    pub selection_bounds_json: Option<String>,
+    pub document_colors_json: Option<String>,
+    pub document_style_preset: Option<String>,
+    pub can_undo: Option<bool>,
+    pub can_redo: Option<bool>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -149,6 +174,71 @@ impl DesktopDocumentService {
             .session(session_id)?
             .render_bounds(parse_render_bounds_scope(scope))
             .map(RenderBounds::from))
+    }
+
+    pub fn snapshot_json(
+        &self,
+        session_id: SessionId,
+        mode: DesktopEngineSnapshotMode,
+    ) -> Result<String, String> {
+        let session = self.session(session_id)?;
+        let include_document = mode == DesktopEngineSnapshotMode::Document;
+        let include_render = mode != DesktopEngineSnapshotMode::State;
+        let include_all_bounds = mode == DesktopEngineSnapshotMode::Document;
+        let include_document_bounds = mode == DesktopEngineSnapshotMode::Document;
+        let include_selection_bounds = matches!(
+            mode,
+            DesktopEngineSnapshotMode::Interaction
+                | DesktopEngineSnapshotMode::Selection
+                | DesktopEngineSnapshotMode::Document
+        );
+
+        let primitives = if include_render {
+            Some(session.render_list())
+        } else {
+            None
+        };
+        let render_list_json = primitives
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()
+            .map_err(|error| error.to_string())?;
+
+        let snapshot = DesktopEngineSnapshot {
+            document_json: include_document
+                .then(|| session.document_json())
+                .transpose()
+                .map_err(|error| error.to_string())?,
+            state_json: Some(
+                session
+                    .state_json()
+                    .map_err(|error| error.to_string())?,
+            ),
+            render_list_json,
+            all_bounds_json: bounds_json_for_snapshot(
+                primitives.as_deref(),
+                RenderBoundsScope::All,
+                include_all_bounds,
+            )?,
+            document_bounds_json: bounds_json_for_snapshot(
+                primitives.as_deref(),
+                RenderBoundsScope::Document,
+                include_document_bounds,
+            )?,
+            selection_bounds_json: bounds_json_for_snapshot(
+                primitives.as_deref(),
+                RenderBoundsScope::Selection,
+                include_selection_bounds,
+            )?,
+            document_colors_json: include_document
+                .then(|| serde_json::to_string(&session.document_colors()))
+                .transpose()
+                .map_err(|error| error.to_string())?,
+            document_style_preset: Some(session.document_style_preset().to_string()),
+            can_undo: Some(session.can_undo()),
+            can_redo: Some(session.can_redo()),
+        };
+        serde_json::to_string(&snapshot).map_err(|error| error.to_string())
     }
 
     pub fn document_cdxml(&self, session_id: SessionId) -> Result<String, String> {
@@ -1109,6 +1199,83 @@ fn parse_render_bounds_scope(scope: &str) -> RenderBoundsScope {
         "selection" => RenderBoundsScope::Selection,
         _ => RenderBoundsScope::All,
     }
+}
+
+fn bounds_json_for_snapshot(
+    primitives: Option<&[RenderPrimitive]>,
+    scope: RenderBoundsScope,
+    include: bool,
+) -> Result<Option<String>, String> {
+    if !include {
+        return Ok(None);
+    }
+    let bounds = primitives.and_then(|items| {
+        chemcore_engine::render_primitives_bounds(
+            items
+                .iter()
+                .filter(|primitive| render_bounds_scope_accepts(scope, primitive)),
+        )
+        .map(RenderBounds::from)
+    });
+    serde_json::to_string(&bounds)
+        .map(Some)
+        .map_err(|error| error.to_string())
+}
+
+fn render_bounds_scope_accepts(scope: RenderBoundsScope, primitive: &RenderPrimitive) -> bool {
+    match scope {
+        RenderBoundsScope::All => true,
+        RenderBoundsScope::Document => {
+            let role = render_primitive_role(primitive);
+            role != RenderRole::DocumentKnockout
+                && !render_role_is_selection(role)
+                && !render_role_is_hover(role)
+                && !render_role_is_preview(role)
+        }
+        RenderBoundsScope::Selection => render_role_is_selection(render_primitive_role(primitive)),
+    }
+}
+
+fn render_primitive_role(primitive: &RenderPrimitive) -> RenderRole {
+    match primitive {
+        RenderPrimitive::Line { role, .. }
+        | RenderPrimitive::Circle { role, .. }
+        | RenderPrimitive::Polygon { role, .. }
+        | RenderPrimitive::Rect { role, .. }
+        | RenderPrimitive::Ellipse { role, .. }
+        | RenderPrimitive::Polyline { role, .. }
+        | RenderPrimitive::Path { role, .. }
+        | RenderPrimitive::FilledPath { role, .. }
+        | RenderPrimitive::Text { role, .. } => *role,
+    }
+}
+
+fn render_role_is_selection(role: RenderRole) -> bool {
+    matches!(
+        role,
+        RenderRole::SelectionBox
+            | RenderRole::SelectionBond
+            | RenderRole::SelectionBondDot
+            | RenderRole::SelectionNode
+            | RenderRole::SelectionTextBox
+    )
+}
+
+fn render_role_is_hover(role: RenderRole) -> bool {
+    matches!(
+        role,
+        RenderRole::HoverEndpoint
+            | RenderRole::HoverLabelGlyph
+            | RenderRole::HoverBondCenter
+            | RenderRole::HoverArrowCenter
+            | RenderRole::HoverArrowHandle
+            | RenderRole::HoverShapeHandle
+            | RenderRole::HoverTextBox
+    )
+}
+
+fn render_role_is_preview(role: RenderRole) -> bool {
+    matches!(role, RenderRole::PreviewBond | RenderRole::PreviewEnd)
 }
 
 fn point(x: f64, y: f64) -> Point {
