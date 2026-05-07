@@ -17,11 +17,12 @@ use windows_sys::Win32::Foundation::{
 };
 use windows_sys::Win32::Graphics::Gdi::{
     CloseEnhMetaFile, CloseMetaFile, CreateEnhMetaFileW, CreateFontW, CreateMetaFileW, CreatePen,
-    CreateSolidBrush, DeleteEnhMetaFile, DeleteMetaFile, DeleteObject, Ellipse, GetStockObject,
-    LineTo, MoveToEx, Polygon, Rectangle, SelectObject, SetBkMode, SetMapMode, SetTextAlign,
-    SetTextColor, SetViewportExtEx, SetWindowExtEx, StretchDIBits, TextOutW, BITMAPINFO,
-    BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HDC, HGDIOBJ, MM_ANISOTROPIC, NULL_BRUSH, PS_SOLID,
-    SRCCOPY, TA_BASELINE, TA_CENTER, TA_LEFT, TA_RIGHT, TRANSPARENT,
+    CreateSolidBrush, DeleteEnhMetaFile, DeleteMetaFile, DeleteObject, Ellipse, GetEnhMetaFileBits,
+    GetMetaFileBitsEx, GetStockObject, LineTo, MoveToEx, Polygon, Rectangle, SelectObject,
+    SetBkMode, SetMapMode, SetTextAlign, SetTextColor, SetViewportExtEx, SetWindowExtEx,
+    StretchDIBits, TextOutW, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HDC, HGDIOBJ,
+    MM_ANISOTROPIC, NULL_BRUSH, PS_SOLID, SRCCOPY, TA_BASELINE, TA_CENTER, TA_LEFT, TA_RIGHT,
+    TRANSPARENT,
 };
 use windows_sys::Win32::System::Com::StructuredStorage::{
     CreateILockBytesOnHGlobal, StgCreateDocfile, StgCreateDocfileOnILockBytes, WriteClassStg,
@@ -58,6 +59,8 @@ const CLSID_STRING: &str = "{CB69F54F-F21E-44DE-84FB-89D98FECE056}";
 const OLE_STREAM_MANIFEST: &str = "ChemcoreManifest";
 const OLE_STREAM_DOCUMENT: &str = "ChemcoreDocument";
 const OLE_STREAM_PREVIEW_SVG: &str = "ChemcorePreviewSvg";
+const OLE_STREAM_PRESENTATION_WMF: &str = "\u{0002}OlePres000";
+const OLE_STREAM_PRESENTATION_EMF: &str = "\u{0002}OlePres001";
 const CLIPBOARD_FORMAT_EMBEDDED_OBJECT: &str = "Embedded Object";
 const CLIPBOARD_FORMAT_EMBED_SOURCE: &str = "Embed Source";
 const CLIPBOARD_FORMAT_OBJECT_DESCRIPTOR: &str = "Object Descriptor";
@@ -638,6 +641,8 @@ fn run_persist_storage_self_test() -> Result<(), String> {
         let document = storage_read_stream(storage, OLE_STREAM_DOCUMENT)?;
         let manifest = storage_read_stream(storage, OLE_STREAM_MANIFEST)?;
         let preview = storage_read_stream(storage, OLE_STREAM_PREVIEW_SVG)?;
+        let presentation_wmf = storage_read_stream(storage, OLE_STREAM_PRESENTATION_WMF)?;
+        let presentation_emf = storage_read_stream(storage, OLE_STREAM_PRESENTATION_EMF)?;
 
         com_release(persist_storage);
         com_release(storage);
@@ -658,6 +663,9 @@ fn run_persist_storage_self_test() -> Result<(), String> {
             .map_err(|error| format!("ChemcorePreviewSvg stream is not UTF-8: {error}"))?;
         if !preview.contains("<svg") || !preview.contains(DOCUMENT_DISPLAY_NAME) {
             return Err("ChemcorePreviewSvg stream did not contain the preview placeholder".into());
+        }
+        if presentation_wmf.len() <= 40 || presentation_emf.len() <= 40 {
+            return Err("OLE presentation streams were unexpectedly empty.".into());
         }
 
         Ok(())
@@ -1602,6 +1610,22 @@ unsafe fn write_ole_storage_payload(storage: *mut c_void, payload: &OleObjectPay
             return hr;
         }
     }
+    if let Ok(presentation) =
+        ole_presentation_stream_for_payload(payload, payload.extent_himetric(), CF_METAFILEPICT)
+    {
+        let hr = storage_write_stream(storage, OLE_STREAM_PRESENTATION_WMF, &presentation);
+        if !hresult_succeeded(hr) {
+            return hr;
+        }
+    }
+    if let Ok(presentation) =
+        ole_presentation_stream_for_payload(payload, payload.extent_himetric(), CF_ENHMETAFILE)
+    {
+        let hr = storage_write_stream(storage, OLE_STREAM_PRESENTATION_EMF, &presentation);
+        if !hresult_succeeded(hr) {
+            return hr;
+        }
+    }
 
     storage_commit(storage)
 }
@@ -1786,27 +1810,7 @@ fn wmf_preview_canvas_size(extent: SIZE) -> SIZE {
 
 fn hglobal_for_metafile_pict(payload: &OleObjectPayload, extent: SIZE) -> Result<HGLOBAL, i32> {
     unsafe {
-        let canvas = wmf_preview_canvas_size(extent);
-        let metafile_dc = CreateMetaFileW(null());
-        if metafile_dc.is_null() {
-            return Err(E_FAIL);
-        }
-        SetMapMode(metafile_dc, MM_ANISOTROPIC);
-        SetWindowExtEx(metafile_dc, canvas.cx, canvas.cy, null_mut());
-        SetViewportExtEx(metafile_dc, canvas.cx, canvas.cy, null_mut());
-        let bounds = RECT {
-            left: 0,
-            top: 0,
-            right: canvas.cx,
-            bottom: canvas.cy,
-        };
-        if !draw_payload_vector_preview(metafile_dc, &bounds, payload) {
-            draw_placeholder_preview(metafile_dc, &bounds);
-        }
-        let metafile = CloseMetaFile(metafile_dc);
-        if metafile.is_null() {
-            return Err(E_FAIL);
-        }
+        let metafile = windows_metafile_for_payload(payload, extent)?;
 
         let handle = GlobalAlloc(GMEM_MOVEABLE_FLAG, std::mem::size_of::<METAFILEPICT>());
         if handle.is_null() {
@@ -1826,6 +1830,34 @@ fn hglobal_for_metafile_pict(payload: &OleObjectPayload, extent: SIZE) -> Result
         GlobalUnlock(handle);
         Ok(handle)
     }
+}
+
+unsafe fn windows_metafile_for_payload(
+    payload: &OleObjectPayload,
+    extent: SIZE,
+) -> Result<*mut c_void, i32> {
+    let canvas = wmf_preview_canvas_size(extent);
+    let metafile_dc = CreateMetaFileW(null());
+    if metafile_dc.is_null() {
+        return Err(E_FAIL);
+    }
+    SetMapMode(metafile_dc, MM_ANISOTROPIC);
+    SetWindowExtEx(metafile_dc, canvas.cx, canvas.cy, null_mut());
+    SetViewportExtEx(metafile_dc, canvas.cx, canvas.cy, null_mut());
+    let bounds = RECT {
+        left: 0,
+        top: 0,
+        right: canvas.cx,
+        bottom: canvas.cy,
+    };
+    if !draw_payload_vector_preview(metafile_dc, &bounds, payload) {
+        draw_placeholder_preview(metafile_dc, &bounds);
+    }
+    let metafile = CloseMetaFile(metafile_dc);
+    if metafile.is_null() {
+        return Err(E_FAIL);
+    }
+    Ok(metafile)
 }
 
 fn enhanced_metafile_for_payload(
@@ -1854,6 +1886,87 @@ fn enhanced_metafile_for_payload(
             return Err(E_FAIL);
         }
         Ok(metafile)
+    }
+}
+
+fn ole_presentation_stream_for_payload(
+    payload: &OleObjectPayload,
+    extent: SIZE,
+    format: u16,
+) -> Result<Vec<u8>, i32> {
+    let data = match format {
+        CF_METAFILEPICT => windows_metafile_bits_for_payload(payload, extent)?,
+        CF_ENHMETAFILE => enhanced_metafile_bits_for_payload(payload, extent)?,
+        _ => return Err(DV_E_FORMATETC),
+    };
+    Ok(ole_presentation_stream_bytes(format, extent, &data))
+}
+
+fn ole_presentation_stream_bytes(format: u16, extent: SIZE, data: &[u8]) -> Vec<u8> {
+    let mut out =
+        Vec::with_capacity(40 + data.len() + if format == CF_METAFILEPICT { 18 } else { 0 });
+    write_u32_le(&mut out, 0xFFFF_FFFF);
+    write_u32_le(&mut out, format as u32);
+    write_u32_le(&mut out, 4);
+    write_u32_le(&mut out, DVASPECT_CONTENT);
+    write_u32_le(&mut out, 0xFFFF_FFFF);
+    write_u32_le(&mut out, 2);
+    write_u32_le(&mut out, 0);
+    write_u32_le(&mut out, extent.cx.max(1) as u32);
+    write_u32_le(&mut out, extent.cy.max(1) as u32);
+    write_u32_le(&mut out, data.len().min(u32::MAX as usize) as u32);
+    out.extend_from_slice(data);
+    if format == CF_METAFILEPICT {
+        out.extend_from_slice(&[0u8; 18]);
+    }
+    out
+}
+
+fn write_u32_le(out: &mut Vec<u8>, value: u32) {
+    out.extend_from_slice(&value.to_le_bytes());
+}
+
+fn windows_metafile_bits_for_payload(
+    payload: &OleObjectPayload,
+    extent: SIZE,
+) -> Result<Vec<u8>, i32> {
+    unsafe {
+        let metafile = windows_metafile_for_payload(payload, extent)?;
+        let size = GetMetaFileBitsEx(metafile, 0, null_mut());
+        if size == 0 {
+            DeleteMetaFile(metafile);
+            return Err(E_FAIL);
+        }
+        let mut bytes = vec![0u8; size as usize];
+        let written = GetMetaFileBitsEx(metafile, size, bytes.as_mut_ptr().cast::<c_void>());
+        DeleteMetaFile(metafile);
+        if written == 0 {
+            return Err(E_FAIL);
+        }
+        bytes.truncate(written as usize);
+        Ok(bytes)
+    }
+}
+
+fn enhanced_metafile_bits_for_payload(
+    payload: &OleObjectPayload,
+    extent: SIZE,
+) -> Result<Vec<u8>, i32> {
+    unsafe {
+        let metafile = enhanced_metafile_for_payload(payload, extent)?;
+        let size = GetEnhMetaFileBits(metafile, 0, null_mut());
+        if size == 0 {
+            DeleteEnhMetaFile(metafile);
+            return Err(E_FAIL);
+        }
+        let mut bytes = vec![0u8; size as usize];
+        let written = GetEnhMetaFileBits(metafile, size, bytes.as_mut_ptr());
+        DeleteEnhMetaFile(metafile);
+        if written == 0 {
+            return Err(E_FAIL);
+        }
+        bytes.truncate(written as usize);
+        Ok(bytes)
     }
 }
 
@@ -2095,7 +2208,11 @@ fn ole_manifest_stream_payload() -> Result<Vec<u8>, i32> {
         "classId": CLSID_STRING,
         "progId": PROG_ID,
         "documentStream": OLE_STREAM_DOCUMENT,
-        "previewSvgStream": OLE_STREAM_PREVIEW_SVG
+        "previewSvgStream": OLE_STREAM_PREVIEW_SVG,
+        "presentationStreams": [
+            OLE_STREAM_PRESENTATION_WMF,
+            OLE_STREAM_PRESENTATION_EMF
+        ]
     }))
     .map_err(|_| E_FAIL)
 }
