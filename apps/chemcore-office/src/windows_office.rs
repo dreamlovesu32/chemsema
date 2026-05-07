@@ -8,8 +8,8 @@ use std::ptr::{null, null_mut};
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use chemcore_engine::{
-    parse_document_json, render_document, render_primitives_bounds, Bond, ChemcoreDocument,
-    Node, Point as CorePoint, RenderPrimitive, RenderRole, PT_PER_CM,
+    parse_document_json, render_document, render_primitives_bounds, Point as CorePoint,
+    RenderPrimitive, RenderRole, PT_PER_CM,
 };
 use windows_sys::core::GUID;
 use windows_sys::Win32::Foundation::{
@@ -314,12 +314,6 @@ struct ClipboardPayload {
     svg: Option<String>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
-struct ClipboardFragmentPayload {
-    nodes: Vec<Node>,
-    bonds: Vec<Bond>,
-}
-
 #[derive(Debug, Clone)]
 struct OleObjectPayload {
     chemcore_fragment_json: Option<String>,
@@ -342,19 +336,8 @@ impl OleObjectPayload {
     fn from_clipboard(payload: ClipboardPayload) -> Self {
         let fallback = Self::blank();
         let document_json = payload
-            .chemcore_fragment_json
-            .as_deref()
-            .and_then(|fragment_json| {
-                document_json_from_clipboard_fragment(
-                    fragment_json,
-                    payload.chemcore_document_json.as_deref(),
-                )
-            })
-            .or_else(|| {
-                payload
-                    .chemcore_document_json
-                    .filter(|value| !value.trim().is_empty())
-            })
+            .chemcore_document_json
+            .filter(|value| !value.trim().is_empty())
             .unwrap_or(fallback.chemcore_document_json);
         Self {
             chemcore_fragment_json: payload.chemcore_fragment_json,
@@ -372,40 +355,6 @@ impl OleObjectPayload {
             cy: DEFAULT_OBJECT_HEIGHT_HIMETRIC,
         })
     }
-}
-
-fn document_json_from_clipboard_fragment(
-    fragment_json: &str,
-    source_document_json: Option<&str>,
-) -> Option<String> {
-    if fragment_json.trim().is_empty() {
-        return None;
-    }
-    let fragment: ClipboardFragmentPayload = serde_json::from_str(fragment_json).ok()?;
-    if fragment.nodes.is_empty() {
-        return None;
-    }
-
-    let document = source_document_json
-        .filter(|value| !value.trim().is_empty())
-        .and_then(|json| parse_document_json(json).ok())
-        .unwrap_or_else(ChemcoreDocument::blank);
-    let mut scratch = ChemcoreDocument::blank();
-    scratch.styles = document.styles.clone();
-    scratch.document = document.document.clone();
-    let page_width = scratch.document.page.width;
-    let page_height = scratch.document.page.height;
-
-    if let Some(entry) = scratch.editable_fragment_mut() {
-        entry.fragment.nodes = fragment.nodes;
-        entry.fragment.bonds = fragment.bonds;
-        entry.fragment.bbox = [0.0, 0.0, page_width, page_height];
-        entry.object.payload.bbox = Some(entry.fragment.bbox);
-    } else {
-        return None;
-    }
-
-    serde_json::to_string(&scratch).ok()
 }
 
 fn copy_clipboard_payload(payload_path: PathBuf) -> Result<(), String> {
