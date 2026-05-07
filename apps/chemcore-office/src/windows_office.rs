@@ -1,17 +1,18 @@
 use std::env;
 use std::ffi::c_void;
 use std::mem::zeroed;
+use std::os::windows::ffi::OsStrExt;
 use std::path::PathBuf;
 use std::ptr::{null, null_mut};
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use windows_sys::core::GUID;
 use windows_sys::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_SUCCESS};
-use windows_sys::Win32::System::Com::StructuredStorage::WriteClassStg;
+use windows_sys::Win32::System::Com::StructuredStorage::{StgCreateDocfile, WriteClassStg};
 use windows_sys::Win32::System::Com::{
     CoInitializeEx, CoRegisterClassObject, CoRevokeClassObject, CoTaskMemAlloc, CoUninitialize,
     CLSCTX_LOCAL_SERVER, COINIT_APARTMENTTHREADED, DVASPECT_CONTENT, FORMATETC, REGCLS_MULTIPLEUSE,
-    STGMEDIUM,
+    STATSTG, STGC_DEFAULT, STGMEDIUM, STGM_CREATE, STGM_READ, STGM_READWRITE, STGM_SHARE_EXCLUSIVE,
 };
 use windows_sys::Win32::System::Ole::{
     OleRegEnumVerbs, OleRegGetMiscStatus, OleRegGetUserType, OLEMISC_ACTIVATEWHENVISIBLE,
@@ -30,6 +31,9 @@ const DOCUMENT_DISPLAY_NAME: &str = "Chemcore Document";
 const PROG_ID: &str = "Chemcore.Document";
 const VERSIONED_PROG_ID: &str = "Chemcore.Document.1";
 const CLSID_STRING: &str = "{CB69F54F-F21E-44DE-84FB-89D98FECE056}";
+const OLE_STREAM_MANIFEST: &str = "ChemcoreManifest";
+const OLE_STREAM_DOCUMENT: &str = "ChemcoreDocument";
+const OLE_STREAM_PREVIEW_SVG: &str = "ChemcorePreviewSvg";
 
 const CLSID_CHEMCORE_DOCUMENT: GUID = GUID {
     data1: 0xcb69f54f,
@@ -103,6 +107,7 @@ const IID_IRUNNABLE_OBJECT: GUID = GUID {
 
 const S_OK: i32 = 0;
 const S_FALSE: i32 = 1;
+const E_FAIL: i32 = 0x80004005u32 as i32;
 const E_POINTER: i32 = 0x80004003u32 as i32;
 const E_NOINTERFACE: i32 = 0x80004002u32 as i32;
 const E_NOTIMPL: i32 = 0x80004001u32 as i32;
@@ -291,8 +296,94 @@ fn run_self_test() -> Result<(), String> {
         }
     }
 
+    run_persist_storage_self_test()?;
+
     println!("{DOCUMENT_DISPLAY_NAME} COM object self-test passed.");
     Ok(())
+}
+
+fn run_persist_storage_self_test() -> Result<(), String> {
+    let storage_path = env::temp_dir().join(format!(
+        "chemcore-office-self-test-{}.ole",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&storage_path);
+
+    let result = (|| unsafe {
+        let mut storage = null_mut();
+        let storage_path_w = wide_path_null(&storage_path);
+        let hr = StgCreateDocfile(
+            storage_path_w.as_ptr(),
+            STGM_CREATE | STGM_READWRITE | STGM_SHARE_EXCLUSIVE,
+            0,
+            &mut storage,
+        );
+        if !hresult_succeeded(hr) || storage.is_null() {
+            return Err(format!(
+                "StgCreateDocfile for OLE storage self-test failed: 0x{:08X}",
+                hr as u32
+            ));
+        }
+
+        let mut persist_storage = null_mut();
+        let factory = (&CLASS_FACTORY as *const ClassFactory)
+            .cast_mut()
+            .cast::<c_void>();
+        let hr = class_factory_create_instance(
+            factory,
+            null_mut(),
+            &IID_IPERSIST_STORAGE,
+            &mut persist_storage,
+        );
+        if !hresult_succeeded(hr) || persist_storage.is_null() {
+            com_release(storage);
+            return Err(format!(
+                "IClassFactory::CreateInstance(IPersistStorage) failed: 0x{:08X}",
+                hr as u32
+            ));
+        }
+
+        let init_new = (*(*(persist_storage.cast::<*const PersistStorageVtbl>()))).init_new;
+        let hr = init_new(persist_storage, storage);
+        if !hresult_succeeded(hr) {
+            com_release(persist_storage);
+            com_release(storage);
+            return Err(format!(
+                "IPersistStorage::InitNew storage self-test failed: 0x{:08X}",
+                hr as u32
+            ));
+        }
+
+        let document = storage_read_stream(storage, OLE_STREAM_DOCUMENT)?;
+        let manifest = storage_read_stream(storage, OLE_STREAM_MANIFEST)?;
+        let preview = storage_read_stream(storage, OLE_STREAM_PREVIEW_SVG)?;
+
+        com_release(persist_storage);
+        com_release(storage);
+
+        let document = String::from_utf8(document)
+            .map_err(|error| format!("ChemcoreDocument stream is not UTF-8: {error}"))?;
+        if !document.contains("\"name\":\"chemcore\"") || !document.contains("\"objects\"") {
+            return Err("ChemcoreDocument stream did not contain a blank Chemcore document".into());
+        }
+
+        let manifest = String::from_utf8(manifest)
+            .map_err(|error| format!("ChemcoreManifest stream is not UTF-8: {error}"))?;
+        if !manifest.contains(OLE_STREAM_DOCUMENT) || !manifest.contains(OLE_STREAM_PREVIEW_SVG) {
+            return Err("ChemcoreManifest stream did not reference required object streams".into());
+        }
+
+        let preview = String::from_utf8(preview)
+            .map_err(|error| format!("ChemcorePreviewSvg stream is not UTF-8: {error}"))?;
+        if !preview.contains("<svg") || !preview.contains(DOCUMENT_DISPLAY_NAME) {
+            return Err("ChemcorePreviewSvg stream did not contain the preview placeholder".into());
+        }
+
+        Ok(())
+    })();
+
+    let _ = std::fs::remove_file(storage_path);
+    result
 }
 
 fn current_server_path() -> Result<PathBuf, String> {
@@ -354,6 +445,13 @@ fn delete_tree(root: HKEY, subkey: &str) -> Result<(), String> {
 
 fn wide_null(value: &str) -> Vec<u16> {
     value.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+fn wide_path_null(path: &PathBuf) -> Vec<u16> {
+    path.as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect()
 }
 
 #[repr(C)]
@@ -848,7 +946,7 @@ unsafe extern "system" fn persist_storage_init_new(this: *mut c_void, storage: *
         return E_POINTER;
     }
     (*object).storage = storage;
-    WriteClassStg(storage, &CLSID_CHEMCORE_DOCUMENT)
+    write_ole_storage_payload(storage)
 }
 
 unsafe extern "system" fn persist_storage_load(this: *mut c_void, storage: *mut c_void) -> i32 {
@@ -868,7 +966,7 @@ unsafe extern "system" fn persist_storage_save(
     if storage.is_null() {
         return E_POINTER;
     }
-    WriteClassStg(storage, &CLSID_CHEMCORE_DOCUMENT)
+    write_ole_storage_payload(storage)
 }
 
 unsafe extern "system" fn persist_storage_save_completed(
@@ -888,6 +986,242 @@ unsafe extern "system" fn persist_storage_hands_off_storage(this: *mut c_void) -
         (*object).storage = null_mut();
     }
     S_OK
+}
+
+#[repr(C)]
+struct StorageVtbl {
+    query_interface: unsafe extern "system" fn(*mut c_void, *const GUID, *mut *mut c_void) -> i32,
+    add_ref: unsafe extern "system" fn(*mut c_void) -> u32,
+    release: unsafe extern "system" fn(*mut c_void) -> u32,
+    create_stream:
+        unsafe extern "system" fn(*mut c_void, *const u16, u32, u32, u32, *mut *mut c_void) -> i32,
+    open_stream: unsafe extern "system" fn(
+        *mut c_void,
+        *const u16,
+        *mut c_void,
+        u32,
+        u32,
+        *mut *mut c_void,
+    ) -> i32,
+    create_storage:
+        unsafe extern "system" fn(*mut c_void, *const u16, u32, u32, u32, *mut *mut c_void) -> i32,
+    open_storage: unsafe extern "system" fn(
+        *mut c_void,
+        *const u16,
+        *mut c_void,
+        u32,
+        *mut *mut u16,
+        u32,
+        *mut *mut c_void,
+    ) -> i32,
+    copy_to:
+        unsafe extern "system" fn(*mut c_void, u32, *const GUID, *mut *mut u16, *mut c_void) -> i32,
+    move_element_to:
+        unsafe extern "system" fn(*mut c_void, *const u16, *mut c_void, *const u16, u32) -> i32,
+    commit: unsafe extern "system" fn(*mut c_void, i32) -> i32,
+    revert: unsafe extern "system" fn(*mut c_void) -> i32,
+    enum_elements:
+        unsafe extern "system" fn(*mut c_void, u32, *mut c_void, u32, *mut *mut c_void) -> i32,
+    destroy_element: unsafe extern "system" fn(*mut c_void, *const u16) -> i32,
+    rename_element: unsafe extern "system" fn(*mut c_void, *const u16, *const u16) -> i32,
+    set_element_times: unsafe extern "system" fn(
+        *mut c_void,
+        *const u16,
+        *const c_void,
+        *const c_void,
+        *const c_void,
+    ) -> i32,
+    set_class: unsafe extern "system" fn(*mut c_void, *const GUID) -> i32,
+    set_state_bits: unsafe extern "system" fn(*mut c_void, u32, u32) -> i32,
+    stat: unsafe extern "system" fn(*mut c_void, *mut STATSTG, u32) -> i32,
+}
+
+#[repr(C)]
+struct StreamVtbl {
+    query_interface: unsafe extern "system" fn(*mut c_void, *const GUID, *mut *mut c_void) -> i32,
+    add_ref: unsafe extern "system" fn(*mut c_void) -> u32,
+    release: unsafe extern "system" fn(*mut c_void) -> u32,
+    read: unsafe extern "system" fn(*mut c_void, *mut c_void, u32, *mut u32) -> i32,
+    write: unsafe extern "system" fn(*mut c_void, *const c_void, u32, *mut u32) -> i32,
+    seek: unsafe extern "system" fn(*mut c_void, i64, u32, *mut u64) -> i32,
+    set_size: unsafe extern "system" fn(*mut c_void, u64) -> i32,
+    copy_to: unsafe extern "system" fn(*mut c_void, *mut c_void, u64, *mut u64, *mut u64) -> i32,
+    commit: unsafe extern "system" fn(*mut c_void, i32) -> i32,
+    revert: unsafe extern "system" fn(*mut c_void) -> i32,
+    lock_region: unsafe extern "system" fn(*mut c_void, u64, u64, u32) -> i32,
+    unlock_region: unsafe extern "system" fn(*mut c_void, u64, u64, u32) -> i32,
+    stat: unsafe extern "system" fn(*mut c_void, *mut STATSTG, u32) -> i32,
+    clone: unsafe extern "system" fn(*mut c_void, *mut *mut c_void) -> i32,
+}
+
+unsafe fn write_ole_storage_payload(storage: *mut c_void) -> i32 {
+    if storage.is_null() {
+        return E_POINTER;
+    }
+    let hr = WriteClassStg(storage, &CLSID_CHEMCORE_DOCUMENT);
+    if !hresult_succeeded(hr) {
+        return hr;
+    }
+
+    let document = match chemcore_document_stream_payload() {
+        Ok(document) => document,
+        Err(hr) => return hr,
+    };
+    let manifest = match ole_manifest_stream_payload() {
+        Ok(manifest) => manifest,
+        Err(hr) => return hr,
+    };
+    let preview = ole_preview_svg_stream_payload();
+
+    let streams = [
+        (OLE_STREAM_MANIFEST, manifest.as_slice()),
+        (OLE_STREAM_DOCUMENT, document.as_slice()),
+        (OLE_STREAM_PREVIEW_SVG, preview.as_slice()),
+    ];
+    for (name, bytes) in streams {
+        let hr = storage_write_stream(storage, name, bytes);
+        if !hresult_succeeded(hr) {
+            return hr;
+        }
+    }
+
+    storage_commit(storage)
+}
+
+fn chemcore_document_stream_payload() -> Result<Vec<u8>, i32> {
+    serde_json::to_vec(&chemcore_engine::ChemcoreDocument::blank()).map_err(|_| E_FAIL)
+}
+
+fn ole_manifest_stream_payload() -> Result<Vec<u8>, i32> {
+    serde_json::to_vec(&serde_json::json!({
+        "format": "chemcore-ole-object",
+        "version": 1,
+        "classId": CLSID_STRING,
+        "progId": PROG_ID,
+        "documentStream": OLE_STREAM_DOCUMENT,
+        "previewSvgStream": OLE_STREAM_PREVIEW_SVG
+    }))
+    .map_err(|_| E_FAIL)
+}
+
+fn ole_preview_svg_stream_payload() -> Vec<u8> {
+    format!(
+        r##"<svg xmlns="http://www.w3.org/2000/svg" width="240" height="120" viewBox="0 0 240 120"><rect width="240" height="120" fill="#ffffff"/><path d="M56 68h128" stroke="#111827" stroke-width="4" stroke-linecap="round"/><circle cx="56" cy="68" r="7" fill="#111827"/><circle cx="184" cy="68" r="7" fill="#111827"/><text x="120" y="32" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" fill="#111827">{DOCUMENT_DISPLAY_NAME}</text></svg>"##
+    )
+    .into_bytes()
+}
+
+unsafe fn storage_write_stream(storage: *mut c_void, name: &str, bytes: &[u8]) -> i32 {
+    let mut stream = null_mut();
+    let name_w = wide_null(name);
+    let storage_vtbl = *(storage.cast::<*const StorageVtbl>());
+    let hr = ((*storage_vtbl).create_stream)(
+        storage,
+        name_w.as_ptr(),
+        STGM_CREATE | STGM_READWRITE | STGM_SHARE_EXCLUSIVE,
+        0,
+        0,
+        &mut stream,
+    );
+    if !hresult_succeeded(hr) || stream.is_null() {
+        return hr;
+    }
+
+    let hr = stream_write_all(stream, bytes);
+    let commit_hr = if hresult_succeeded(hr) {
+        stream_commit(stream)
+    } else {
+        hr
+    };
+    com_release(stream);
+    commit_hr
+}
+
+unsafe fn storage_read_stream(storage: *mut c_void, name: &str) -> Result<Vec<u8>, String> {
+    let mut stream = null_mut();
+    let name_w = wide_null(name);
+    let storage_vtbl = *(storage.cast::<*const StorageVtbl>());
+    let hr = ((*storage_vtbl).open_stream)(
+        storage,
+        name_w.as_ptr(),
+        null_mut(),
+        STGM_READ | STGM_SHARE_EXCLUSIVE,
+        0,
+        &mut stream,
+    );
+    if !hresult_succeeded(hr) || stream.is_null() {
+        return Err(format!(
+            "IStorage::OpenStream({name}) failed: 0x{:08X}",
+            hr as u32
+        ));
+    }
+    let result = stream_read_all(stream).map_err(|hr| {
+        format!(
+            "IStream::Read for stream {name} failed: 0x{:08X}",
+            hr as u32
+        )
+    });
+    com_release(stream);
+    result
+}
+
+unsafe fn storage_commit(storage: *mut c_void) -> i32 {
+    let storage_vtbl = *(storage.cast::<*const StorageVtbl>());
+    ((*storage_vtbl).commit)(storage, STGC_DEFAULT)
+}
+
+unsafe fn stream_write_all(stream: *mut c_void, bytes: &[u8]) -> i32 {
+    let stream_vtbl = *(stream.cast::<*const StreamVtbl>());
+    let mut offset = 0usize;
+    while offset < bytes.len() {
+        let remaining = (bytes.len() - offset).min(u32::MAX as usize) as u32;
+        let mut written = 0;
+        let hr = ((*stream_vtbl).write)(
+            stream,
+            bytes[offset..].as_ptr().cast::<c_void>(),
+            remaining,
+            &mut written,
+        );
+        if !hresult_succeeded(hr) {
+            return hr;
+        }
+        if written == 0 {
+            return E_FAIL;
+        }
+        offset += written as usize;
+    }
+    S_OK
+}
+
+unsafe fn stream_read_all(stream: *mut c_void) -> Result<Vec<u8>, i32> {
+    let stream_vtbl = *(stream.cast::<*const StreamVtbl>());
+    let mut out = Vec::new();
+    let mut buffer = [0u8; 4096];
+    loop {
+        let mut read = 0;
+        let hr = ((*stream_vtbl).read)(
+            stream,
+            buffer.as_mut_ptr().cast::<c_void>(),
+            buffer.len() as u32,
+            &mut read,
+        );
+        if !hresult_succeeded(hr) {
+            return Err(hr);
+        }
+        if read == 0 {
+            break;
+        }
+        out.extend_from_slice(&buffer[..read as usize]);
+        if read < buffer.len() as u32 {
+            break;
+        }
+    }
+    Ok(out)
+}
+
+unsafe fn stream_commit(stream: *mut c_void) -> i32 {
+    let stream_vtbl = *(stream.cast::<*const StreamVtbl>());
+    ((*stream_vtbl).commit)(stream, STGC_DEFAULT)
 }
 
 #[repr(C)]

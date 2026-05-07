@@ -272,14 +272,22 @@ target\debug\chemcore-office.exe --unregister-machine
 - 已注册 `Insertable`、`LocalServer32`、`ProgID`、`VersionIndependentProgID`、`Verb` 和 `DefaultIcon` 等 OLE 基础键。
 - 已有 `IClassFactory` local server 骨架，可被 COM 启动并注册 class object。
 - `IClassFactory::CreateInstance` 已能返回 Chemcore object，并支持查询 `IOleObject`、`IDataObject`、`IPersistStorage`、`IViewObject2` 和 `IRunnableObject`。
-- `npm run office:self-test` 用于无 Office 环境下验证 COM object 创建、接口查询和 CLSID 返回。
+- `IPersistStorage::InitNew/Save` 已开始写入 Chemcore OLE compound storage。当前固定 stream 名称为：
+
+```text
+ChemcoreManifest    OLE object manifest，记录 class/progId 和 payload stream 名称。
+ChemcoreDocument    Chemcore document JSON，内容由 chemcore-engine 生成。
+ChemcorePreviewSvg  当前阶段的 SVG preview placeholder，后续由真实渲染结果替换。
+```
+
+- `npm run office:self-test` 用于无 Office 环境下验证 COM object 创建、接口查询、CLSID 返回，以及 OLE storage stream 写入/读回。
 
 后续仍需补齐真正的 embedded object 接口：
 
 ```text
 IOleObject      当前骨架已存在，下一步补 DoVerb 双击激活、extent、advise。
 IDataObject     当前骨架已存在，下一步补 clipboard/embedded object formats。
-IPersistStorage 当前骨架已存在，下一步补 Chemcore payload stream 和 preview stream。
+IPersistStorage 已写入 Chemcore payload stream 和 SVG preview stream，下一步补 Load 回读和编辑回写。
 IViewObject2    当前骨架已存在，下一步补 EMF preview Draw/GetExtent。
 IRunnableObject 当前骨架已存在，下一步补运行状态和桌面端唤醒。
 ```
