@@ -52,11 +52,6 @@ const CLIPBOARD_FORMAT_EMBED_SOURCE: &str = "Embed Source";
 const CLIPBOARD_FORMAT_OBJECT_DESCRIPTOR: &str = "Object Descriptor";
 const FORMAT_CHEMCORE_FRAGMENT: &str = "Chemcore Clipboard Fragment";
 const FORMAT_CHEMCORE_DOCUMENT_JSON: &str = "Chemcore Document JSON";
-const FORMAT_CHEMDRAW_INTERCHANGE: &str = "ChemDraw Interchange Format";
-const FORMAT_CDXML_MIME: &str = "chemical/x-cdxml";
-const FORMAT_SVG_MIME: &str = "image/svg+xml";
-const FORMAT_SVG: &str = "SVG";
-const CF_UNICODETEXT: u16 = 13;
 const GMEM_MOVEABLE_FLAG: u32 = 0x0002;
 const DEFAULT_OBJECT_WIDTH_HIMETRIC: i32 = 6000;
 const DEFAULT_OBJECT_HEIGHT_HIMETRIC: i32 = 3000;
@@ -166,7 +161,10 @@ pub fn run() -> Result<(), String> {
             })?;
             copy_clipboard_payload(PathBuf::from(payload_path))
         }
-        "--serve" | "-Embedding" | "/Embedding" | "--embedding" => run_com_server(),
+        "--serve" | "-Embedding" | "/Embedding" | "--embedding" => {
+            log_ole_event(&format!("COM server launch command: {command}"));
+            run_com_server()
+        }
         "" | "--help" | "-h" | "/?" => {
             print_help();
             Ok(())
@@ -296,18 +294,14 @@ fn print_registration() -> Result<(), String> {
 struct ClipboardPayload {
     chemcore_fragment_json: Option<String>,
     chemcore_document_json: Option<String>,
-    cdxml: Option<String>,
     svg: Option<String>,
-    text: Option<String>,
 }
 
 #[derive(Debug, Clone)]
 struct OleObjectPayload {
     chemcore_fragment_json: Option<String>,
     chemcore_document_json: String,
-    cdxml: Option<String>,
     svg: String,
-    text: Option<String>,
 }
 
 impl OleObjectPayload {
@@ -318,9 +312,7 @@ impl OleObjectPayload {
         Self {
             chemcore_fragment_json: None,
             chemcore_document_json,
-            cdxml: None,
             svg: String::from_utf8(ole_preview_svg_stream_payload()).unwrap_or_default(),
-            text: Some(DOCUMENT_DISPLAY_NAME.to_string()),
         }
     }
 
@@ -332,15 +324,10 @@ impl OleObjectPayload {
                 .chemcore_document_json
                 .filter(|value| !value.trim().is_empty())
                 .unwrap_or(fallback.chemcore_document_json),
-            cdxml: payload.cdxml.filter(|value| !value.trim().is_empty()),
             svg: payload
                 .svg
                 .filter(|value| !value.trim().is_empty())
                 .unwrap_or(fallback.svg),
-            text: payload
-                .text
-                .filter(|value| !value.trim().is_empty())
-                .or(Some(DOCUMENT_DISPLAY_NAME.to_string())),
         }
     }
 }
@@ -1668,33 +1655,6 @@ fn ole_clipboard_formats(payload: &OleObjectPayload, _extent: SIZE) -> Vec<FORMA
         clipboard_format(FORMAT_CHEMCORE_DOCUMENT_JSON),
         TYMED_HGLOBAL as u32,
     );
-    if payload.cdxml.is_some() {
-        push_format(
-            &mut formats,
-            clipboard_format(FORMAT_CHEMDRAW_INTERCHANGE),
-            TYMED_HGLOBAL as u32,
-        );
-        push_format(
-            &mut formats,
-            clipboard_format(FORMAT_CDXML_MIME),
-            TYMED_HGLOBAL as u32,
-        );
-    }
-    if !payload.svg.is_empty() {
-        push_format(
-            &mut formats,
-            clipboard_format(FORMAT_SVG_MIME),
-            TYMED_HGLOBAL as u32,
-        );
-        push_format(
-            &mut formats,
-            clipboard_format(FORMAT_SVG),
-            TYMED_HGLOBAL as u32,
-        );
-    }
-    if payload.text.is_some() {
-        push_format(&mut formats, CF_UNICODETEXT, TYMED_HGLOBAL as u32);
-    }
 
     formats.retain(|format| format.cfFormat != 0);
     formats
@@ -1762,28 +1722,6 @@ unsafe fn write_clipboard_format_to_medium(
     if format.cfFormat == clipboard_format(FORMAT_CHEMCORE_DOCUMENT_JSON) {
         return hglobal_text_medium(&payload.chemcore_document_json, false, medium);
     }
-    if format.cfFormat == clipboard_format(FORMAT_CHEMDRAW_INTERCHANGE)
-        || format.cfFormat == clipboard_format(FORMAT_CDXML_MIME)
-    {
-        return payload
-            .cdxml
-            .as_deref()
-            .map(|value| hglobal_text_medium(value, false, medium))
-            .unwrap_or(DV_E_FORMATETC);
-    }
-    if format.cfFormat == clipboard_format(FORMAT_SVG_MIME)
-        || format.cfFormat == clipboard_format(FORMAT_SVG)
-    {
-        return hglobal_text_medium(&payload.svg, false, medium);
-    }
-    if format.cfFormat == CF_UNICODETEXT {
-        return payload
-            .text
-            .as_deref()
-            .map(|value| hglobal_text_medium(value, true, medium))
-            .unwrap_or(DV_E_FORMATETC);
-    }
-
     DV_E_FORMATETC
 }
 
