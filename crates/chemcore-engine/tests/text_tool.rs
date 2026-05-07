@@ -518,6 +518,73 @@ fn switching_to_select_selects_latest_text_object_or_edited_molecule_label() {
     label_engine.set_tool_state(select_tool_state());
     assert_eq!(label_engine.state().selection.nodes.len(), 2);
     assert_eq!(label_engine.state().selection.bonds.len(), 1);
+
+    let mut abbreviation_engine = Engine::new();
+    abbreviation_engine.set_tool_state(tool_state(BondVariant::Single));
+    click(&mut abbreviation_engine, 300.0, 260.0);
+    abbreviation_engine.set_tool_state(ToolState {
+        active_tool: Tool::Text,
+        bond_variant: BondVariant::Single,
+        ..ToolState::default()
+    });
+    let end_node_position = {
+        let entry = abbreviation_engine
+            .state()
+            .document
+            .editable_fragment()
+            .expect("editable fragment should exist");
+        entry
+            .fragment
+            .nodes
+            .get(1)
+            .expect("terminal node should exist")
+            .position
+    };
+    let session = abbreviation_engine
+        .begin_text_edit(Point::new(end_node_position[0], end_node_position[1]))
+        .expect("terminal endpoint text session should be created");
+    assert!(
+        abbreviation_engine.apply_text_edit(chemcore_engine::TextEditSession {
+            text: "Ph".to_string(),
+            ..session
+        })
+    );
+    abbreviation_engine.set_tool_state(select_tool_state());
+    assert_eq!(abbreviation_engine.state().selection.nodes.len(), 2);
+    assert_eq!(abbreviation_engine.state().selection.bonds.len(), 1);
+    let label_bounds = abbreviation_engine
+        .state()
+        .document
+        .editable_fragment()
+        .expect("editable fragment should exist")
+        .fragment
+        .nodes
+        .get(1)
+        .and_then(|node| node.label.as_ref())
+        .and_then(|label| label.bbox())
+        .expect("terminal Ph label should have bounds");
+    let selection_box = abbreviation_engine
+        .render_list()
+        .into_iter()
+        .find_map(|primitive| match primitive {
+            RenderPrimitive::Rect {
+                role: RenderRole::SelectionBox,
+                x,
+                y,
+                width,
+                height,
+                ..
+            } => Some([x, y, x + width, y + height]),
+            _ => None,
+        })
+        .expect("complete molecule selection should render a group box");
+    assert!(
+        selection_box[0] <= label_bounds[0]
+            && selection_box[1] <= label_bounds[1]
+            && selection_box[2] >= label_bounds[2]
+            && selection_box[3] >= label_bounds[3],
+        "selection box {selection_box:?} should include Ph label bounds {label_bounds:?}"
+    );
 }
 
 #[test]

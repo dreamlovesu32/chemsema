@@ -613,11 +613,12 @@ impl Engine {
         self.state.overlay.hover_shape = None;
         self.state.overlay.preview = None;
         self.state.overlay.hover_endpoint = Some(EndpointHit {
-            node_id: hovered_node_id,
+            node_id: hovered_node_id.clone(),
             point: hover_point,
             distance: 0.0,
             label_anchor: None,
         });
+        self.note_pending_select_target(PendingSelectTarget::MoleculeNode(hovered_node_id));
         true
     }
 

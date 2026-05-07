@@ -2446,6 +2446,8 @@ fn hovered_endpoint_can_be_replaced_with_abbreviation_label() {
     engine.set_tool_state(bond_tool());
 
     click(&mut engine, px(300.0), px(260.0));
+    engine.set_tool_state(delete_tool());
+    engine.set_tool_state(bond_tool());
     hover(&mut engine, FIRST_END_HOVER_X, FIRST_END_HOVER_Y);
 
     assert!(engine.replace_hovered_endpoint_label("Ph"));
@@ -2472,6 +2474,10 @@ fn hovered_endpoint_can_be_replaced_with_abbreviation_label() {
         node.label.as_ref().and_then(|label| label.align.as_deref()),
         Some("left")
     );
+
+    engine.set_tool_state(select_tool());
+    assert_eq!(engine.state().selection.nodes.len(), 2);
+    assert_eq!(engine.state().selection.bonds.len(), 1);
 }
 
 #[test]

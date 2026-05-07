@@ -42,7 +42,10 @@ const server = createServer((request, response) => {
   }
 
   const contentType = contentTypes[extname(filePath).toLowerCase()] || "application/octet-stream";
-  response.writeHead(200, { "content-type": contentType });
+  response.writeHead(200, {
+    "content-type": contentType,
+    "cache-control": "no-store",
+  });
   createReadStream(filePath).pipe(response);
 });
 

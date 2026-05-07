@@ -364,7 +364,15 @@ pub(super) fn component_selection_items(
     component: &ComponentSelection,
 ) -> Vec<FragmentSelectionItem> {
     let mut items = Vec::new();
-    for node_id in &component.label_node_ids {
+    let mut label_node_ids = component.label_node_ids.clone();
+    if component.complete {
+        for node_id in &component.node_ids {
+            if !label_node_ids.iter().any(|existing| existing == node_id) {
+                label_node_ids.push(node_id.clone());
+            }
+        }
+    }
+    for node_id in &label_node_ids {
         let Some(node) = entry.fragment.nodes.iter().find(|node| node.id == *node_id) else {
             continue;
         };
