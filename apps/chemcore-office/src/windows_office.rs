@@ -16,10 +16,11 @@ use windows_sys::Win32::Foundation::{
     GlobalFree, COLORREF, ERROR_FILE_NOT_FOUND, ERROR_SUCCESS, HGLOBAL, POINT, POINTL, RECT, SIZE,
 };
 use windows_sys::Win32::Graphics::Gdi::{
-    CloseMetaFile, CreateMetaFileW, CreatePen, CreateSolidBrush, DeleteMetaFile, DeleteObject,
-    Ellipse, GetStockObject, LineTo, MoveToEx, Polygon, Rectangle, SelectObject, SetBkMode,
-    SetMapMode, SetTextColor, SetViewportExtEx, SetWindowExtEx, TextOutW, HDC, HGDIOBJ,
-    MM_ANISOTROPIC, NULL_BRUSH, PS_SOLID, TRANSPARENT,
+    CloseEnhMetaFile, CloseMetaFile, CreateEnhMetaFileW, CreateMetaFileW, CreatePen,
+    CreateSolidBrush, DeleteEnhMetaFile, DeleteMetaFile, DeleteObject, Ellipse, GetStockObject,
+    LineTo, MoveToEx, Polygon, Rectangle, SelectObject, SetBkMode, SetMapMode, SetTextColor,
+    SetViewportExtEx, SetWindowExtEx, TextOutW, HDC, HGDIOBJ, MM_ANISOTROPIC, NULL_BRUSH, PS_SOLID,
+    TRANSPARENT,
 };
 use windows_sys::Win32::System::Com::StructuredStorage::{
     CreateILockBytesOnHGlobal, StgCreateDocfile, StgCreateDocfileOnILockBytes, WriteClassStg,
@@ -28,7 +29,7 @@ use windows_sys::Win32::System::Com::{
     CoInitializeEx, CoRegisterClassObject, CoRevokeClassObject, CoTaskMemAlloc, CoUninitialize,
     CLSCTX_LOCAL_SERVER, COINIT_APARTMENTTHREADED, DATADIR_GET, DVASPECT_CONTENT, FORMATETC,
     REGCLS_MULTIPLEUSE, STATSTG, STGC_DEFAULT, STGMEDIUM, STGM_CREATE, STGM_READ, STGM_READWRITE,
-    STGM_SHARE_EXCLUSIVE, TYMED_HGLOBAL, TYMED_ISTORAGE, TYMED_MFPICT,
+    STGM_SHARE_EXCLUSIVE, TYMED_ENHMF, TYMED_HGLOBAL, TYMED_ISTORAGE, TYMED_MFPICT,
 };
 use windows_sys::Win32::System::Console::FreeConsole;
 use windows_sys::Win32::System::DataExchange::{RegisterClipboardFormatW, METAFILEPICT};
@@ -36,9 +37,9 @@ use windows_sys::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock};
 use windows_sys::Win32::System::Ole::{
     CreateOleAdviseHolder, OleCreateFromData, OleFlushClipboard, OleInitialize, OleRegEnumVerbs,
     OleRegGetMiscStatus, OleRegGetUserType, OleSave, OleSetClipboard, OleUninitialize,
-    ReleaseStgMedium, CF_METAFILEPICT, OBJECTDESCRIPTOR, OLEMISC_ACTIVATEWHENVISIBLE,
-    OLEMISC_INSIDEOUT, OLEMISC_RENDERINGISDEVICEINDEPENDENT, OLEMISC_SETCLIENTSITEFIRST,
-    OLERENDER_DRAW,
+    ReleaseStgMedium, CF_ENHMETAFILE, CF_METAFILEPICT, OBJECTDESCRIPTOR,
+    OLEMISC_ACTIVATEWHENVISIBLE, OLEMISC_INSIDEOUT, OLEMISC_RENDERINGISDEVICEINDEPENDENT,
+    OLEMISC_SETCLIENTSITEFIRST, OLERENDER_FORMAT,
 };
 use windows_sys::Win32::System::Registry::{
     RegCloseKey, RegCreateKeyW, RegDeleteTreeW, RegSetValueExW, HKEY, HKEY_CURRENT_USER,
@@ -64,6 +65,8 @@ const FORMAT_CHEMCORE_DOCUMENT_JSON: &str = "Chemcore Document JSON";
 const GMEM_MOVEABLE_FLAG: u32 = 0x0002;
 const DEFAULT_OBJECT_WIDTH_HIMETRIC: i32 = 6000;
 const DEFAULT_OBJECT_HEIGHT_HIMETRIC: i32 = 3000;
+const WMF_PREVIEW_WIDTH: i32 = 200;
+const WMF_PREVIEW_HEIGHT: i32 = 100;
 
 const CLSID_CHEMCORE_DOCUMENT: GUID = GUID {
     data1: 0xcb69f54f,
@@ -538,12 +541,19 @@ unsafe fn run_ole_create_from_data_self_test(data_object: *mut c_void) -> Result
         ));
     }
 
+    let render_format = FORMATETC {
+        cfFormat: CF_ENHMETAFILE,
+        ptd: null_mut(),
+        dwAspect: DVASPECT_CONTENT,
+        lindex: -1,
+        tymed: TYMED_ENHMF as u32,
+    };
     let mut ole_object = null_mut();
     let hr = OleCreateFromData(
         data_object,
         &IID_IOLE_OBJECT,
-        OLERENDER_DRAW as u32,
-        null(),
+        OLERENDER_FORMAT as u32,
+        &render_format,
         null_mut(),
         storage,
         &mut ole_object,
@@ -1724,13 +1734,23 @@ fn hglobal_for_metafile_pict(payload: &OleObjectPayload, extent: SIZE) -> Result
             return Err(E_FAIL);
         }
         SetMapMode(metafile_dc, MM_ANISOTROPIC);
-        SetWindowExtEx(metafile_dc, extent.cx.max(1), extent.cy.max(1), null_mut());
-        SetViewportExtEx(metafile_dc, extent.cx.max(1), extent.cy.max(1), null_mut());
+        SetWindowExtEx(
+            metafile_dc,
+            WMF_PREVIEW_WIDTH,
+            WMF_PREVIEW_HEIGHT,
+            null_mut(),
+        );
+        SetViewportExtEx(
+            metafile_dc,
+            WMF_PREVIEW_WIDTH,
+            WMF_PREVIEW_HEIGHT,
+            null_mut(),
+        );
         let bounds = RECT {
             left: 0,
             top: 0,
-            right: extent.cx.max(1),
-            bottom: extent.cy.max(1),
+            right: WMF_PREVIEW_WIDTH,
+            bottom: WMF_PREVIEW_HEIGHT,
         };
         if !draw_payload_preview(metafile_dc, &bounds, payload) {
             draw_placeholder_preview(metafile_dc, &bounds);
@@ -1757,6 +1777,35 @@ fn hglobal_for_metafile_pict(payload: &OleObjectPayload, extent: SIZE) -> Result
         (*target).hMF = metafile;
         GlobalUnlock(handle);
         Ok(handle)
+    }
+}
+
+fn enhanced_metafile_for_payload(
+    payload: &OleObjectPayload,
+    extent: SIZE,
+) -> Result<*mut c_void, i32> {
+    unsafe {
+        let bounds = RECT {
+            left: 0,
+            top: 0,
+            right: extent.cx.max(1),
+            bottom: extent.cy.max(1),
+        };
+        let dc = CreateEnhMetaFileW(0 as HDC, null(), &bounds, null());
+        if dc.is_null() {
+            return Err(E_FAIL);
+        }
+        SetMapMode(dc, MM_ANISOTROPIC);
+        SetWindowExtEx(dc, extent.cx.max(1), extent.cy.max(1), null_mut());
+        SetViewportExtEx(dc, extent.cx.max(1), extent.cy.max(1), null_mut());
+        if !draw_payload_preview(dc, &bounds, payload) {
+            draw_placeholder_preview(dc, &bounds);
+        }
+        let metafile = CloseEnhMetaFile(dc);
+        if metafile.is_null() {
+            return Err(E_FAIL);
+        }
+        Ok(metafile)
     }
 }
 
@@ -1792,6 +1841,22 @@ fn metafile_pict_medium(handle: HGLOBAL, medium: *mut STGMEDIUM) -> i32 {
     S_OK
 }
 
+fn enhanced_metafile_medium(handle: *mut c_void, medium: *mut STGMEDIUM) -> i32 {
+    if medium.is_null() {
+        unsafe {
+            DeleteEnhMetaFile(handle);
+        }
+        return E_POINTER;
+    }
+    unsafe {
+        *medium = STGMEDIUM::default();
+        (*medium).tymed = TYMED_ENHMF as u32;
+        (*medium).u.hEnhMetaFile = handle;
+        (*medium).pUnkForRelease = null_mut();
+    }
+    S_OK
+}
+
 fn hglobal_text_medium(value: &str, unicode: bool, medium: *mut STGMEDIUM) -> i32 {
     let handle = if unicode {
         hglobal_for_utf16_nul(value)
@@ -1815,6 +1880,8 @@ fn known_clipboard_format_name(format: u16) -> &'static str {
         CLIPBOARD_FORMAT_EMBEDDED_OBJECT
     } else if format == clipboard_format(CLIPBOARD_FORMAT_OBJECT_DESCRIPTOR) {
         CLIPBOARD_FORMAT_OBJECT_DESCRIPTOR
+    } else if format == CF_ENHMETAFILE {
+        "CF_ENHMETAFILE"
     } else if format == CF_METAFILEPICT {
         "CF_METAFILEPICT"
     } else if format == clipboard_format(FORMAT_CHEMCORE_FRAGMENT) {
@@ -1874,7 +1941,7 @@ fn ole_clipboard_formats(payload: &OleObjectPayload, _extent: SIZE) -> Vec<FORMA
         clipboard_format(FORMAT_CHEMCORE_DOCUMENT_JSON),
         TYMED_HGLOBAL as u32,
     );
-    push_format(&mut formats, CF_METAFILEPICT, TYMED_MFPICT as u32);
+    push_format(&mut formats, CF_ENHMETAFILE, TYMED_ENHMF as u32);
 
     formats.retain(|format| format.cfFormat != 0);
     formats
@@ -1923,6 +1990,15 @@ unsafe fn write_clipboard_format_to_medium(
             return DV_E_TYMED;
         }
         return create_ole_storage_medium(payload, medium);
+    }
+    if format.cfFormat == CF_ENHMETAFILE {
+        if (format.tymed & TYMED_ENHMF as u32) == 0 {
+            return DV_E_TYMED;
+        }
+        return match enhanced_metafile_for_payload(payload, extent) {
+            Ok(handle) => enhanced_metafile_medium(handle, medium),
+            Err(hr) => hr,
+        };
     }
     if format.cfFormat == CF_METAFILEPICT {
         if (format.tymed & TYMED_MFPICT as u32) == 0 {
@@ -2783,10 +2859,7 @@ fn office_preview_primitive_visible(primitive: &RenderPrimitive) -> bool {
     };
     matches!(
         role,
-        RenderRole::DocumentBond
-            | RenderRole::DocumentGraphic
-            | RenderRole::DocumentKnockout
-            | RenderRole::DocumentText
+        RenderRole::DocumentBond | RenderRole::DocumentGraphic | RenderRole::DocumentText
     )
 }
 
@@ -2811,15 +2884,22 @@ unsafe fn draw_preview_primitive(
             transform,
         ),
         RenderPrimitive::Polygon {
+            role,
             points,
             fill,
             stroke,
             stroke_width,
             ..
-        } => draw_preview_polygon(dc, points, fill, stroke, *stroke_width, transform),
-        RenderPrimitive::FilledPath { points, fill, .. } => {
-            draw_preview_polygon(dc, points, fill, fill, 0.0, transform)
-        }
+        } => draw_preview_polygon(dc, *role, points, fill, stroke, *stroke_width, transform),
+        RenderPrimitive::FilledPath { points, fill, .. } => draw_preview_polygon(
+            dc,
+            RenderRole::DocumentGraphic,
+            points,
+            fill,
+            fill,
+            0.0,
+            transform,
+        ),
         RenderPrimitive::Polyline {
             points,
             stroke,
@@ -2977,6 +3057,7 @@ unsafe fn draw_preview_line(
 
 unsafe fn draw_preview_polygon(
     dc: HDC,
+    role: RenderRole,
     points: &[CorePoint],
     fill: &str,
     stroke: &str,
@@ -3005,6 +3086,41 @@ unsafe fn draw_preview_polygon(
     if fill_color.is_some() {
         DeleteObject(brush as HGDIOBJ);
     }
+    if role == RenderRole::DocumentBond {
+        draw_preview_polygon_centerline(dc, points, fill, transform);
+    }
+}
+
+unsafe fn draw_preview_polygon_centerline(
+    dc: HDC,
+    points: &[CorePoint],
+    color: &str,
+    transform: &PreviewTransform,
+) {
+    if points.len() < 4 {
+        return;
+    }
+    let middle = points.len() / 2;
+    if middle == 0 || middle >= points.len() {
+        return;
+    }
+    let start = CorePoint {
+        x: (points[0].x + points[points.len() - 1].x) * 0.5,
+        y: (points[0].y + points[points.len() - 1].y) * 0.5,
+    };
+    let end = CorePoint {
+        x: (points[middle - 1].x + points[middle].x) * 0.5,
+        y: (points[middle - 1].y + points[middle].y) * 0.5,
+    };
+    let width = points[0].distance(points[points.len() - 1]);
+    draw_preview_line(
+        dc,
+        transform.point(start),
+        transform.point(end),
+        color,
+        width.max(0.5),
+        transform,
+    );
 }
 
 fn colorref_from_css(value: &str) -> Option<COLORREF> {
