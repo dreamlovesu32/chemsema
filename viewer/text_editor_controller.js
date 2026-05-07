@@ -474,12 +474,12 @@ export function createTextEditorController(deps) {
     }
   }
 
-  function handleTextEditorPointerDown(event) {
+  async function handleTextEditorPointerDown(event) {
     const editor = getEditor();
     if (!editor?.root || event.button !== 0 || event.currentTarget !== editor.root) {
       return;
     }
-    if (deps.openHoveredTextEditTargetFromPointerEvent?.(event)) {
+    if (await deps.openHoveredTextEditTargetFromPointerEvent?.(event)) {
       return;
     }
     event.preventDefault();
@@ -628,8 +628,8 @@ export function createTextEditorController(deps) {
     input.addEventListener("keydown", (event) => {
       handleTextEditorKeyDown(event);
     });
-    root.addEventListener("pointerdown", (event) => {
-      handleTextEditorPointerDown(event);
+    root.addEventListener("pointerdown", async (event) => {
+      await handleTextEditorPointerDown(event);
     });
     root.addEventListener("pointermove", (event) => {
       handleTextEditorPointerMove(event);

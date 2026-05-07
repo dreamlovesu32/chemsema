@@ -1599,18 +1599,15 @@ body.browser-shell .document-tabbar {
   vector-effect: non-scaling-stroke;
 }
 
-.editor-selection-box,
-.editor-selection-text-box {
-  stroke-width: 1.2px;
-}
-
-.editor-selection-bond-box {
-  stroke-width: 1.1px;
-}
-
 .editor-selection-node-box {
   fill: rgba(47, 111, 237, 0.14);
-  stroke-width: 1.4px;
+}
+
+.editor-selection-box,
+.editor-selection-bond-box,
+.editor-selection-node-box,
+.editor-selection-text-box {
+  stroke-width: 1.2px;
 }
 
 .editor-selection-bond-dot {
@@ -1636,9 +1633,9 @@ body.browser-shell .document-tabbar {
 }
 
 .editor-selection-resize-handle {
-  fill: #ffffff;
-  stroke: rgba(47, 111, 237, 0.92);
-  stroke-width: 1.2px;
+  fill: rgba(47, 111, 237, 0.92);
+  stroke: none;
+  stroke-width: 0;
   vector-effect: non-scaling-stroke;
 }
 

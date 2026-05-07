@@ -81,6 +81,16 @@ export class WasmEngine {
         return ret !== 0;
     }
     /**
+     * @param {string} command
+     * @returns {boolean}
+     */
+    applySelectionOrderCommand(command) {
+        const ptr0 = passStringToWasm0(command, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmengine_applySelectionOrderCommand(this.__wbg_ptr, ptr0, len0);
+        return ret !== 0;
+    }
+    /**
      * @param {string} session_json
      * @returns {boolean}
      */
@@ -103,6 +113,23 @@ export class WasmEngine {
         let deferred1_1;
         try {
             const ret = wasm.wasmengine_beginHoverArrowEdit(this.__wbg_ptr, x, y);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @param {number} x
+     * @param {number} y
+     * @returns {string}
+     */
+    beginHoverShapeEdit(x, y) {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmengine_beginHoverShapeEdit(this.__wbg_ptr, x, y);
             deferred1_0 = ret[0];
             deferred1_1 = ret[1];
             return getStringFromWasm0(ret[0], ret[1]);
@@ -321,6 +348,16 @@ export class WasmEngine {
      * @param {boolean} alt_key
      * @returns {boolean}
      */
+    finishHoverShapeEdit(x, y, alt_key) {
+        const ret = wasm.wasmengine_finishHoverShapeEdit(this.__wbg_ptr, x, y, alt_key);
+        return ret !== 0;
+    }
+    /**
+     * @param {number} x
+     * @param {number} y
+     * @param {boolean} alt_key
+     * @returns {boolean}
+     */
     finishSelectionMove(x, y, alt_key) {
         const ret = wasm.wasmengine_finishSelectionMove(this.__wbg_ptr, x, y, alt_key);
         return ret !== 0;
@@ -345,6 +382,13 @@ export class WasmEngine {
         return ret !== 0;
     }
     /**
+     * @returns {boolean}
+     */
+    groupSelection() {
+        const ret = wasm.wasmengine_groupSelection(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
      * @param {number} x
      * @param {number} y
      * @returns {string}
@@ -354,6 +398,23 @@ export class WasmEngine {
         let deferred1_1;
         try {
             const ret = wasm.wasmengine_hoverArrowAction(this.__wbg_ptr, x, y);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @param {number} x
+     * @param {number} y
+     * @returns {string}
+     */
+    hoverShapeAction(x, y) {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmengine_hoverShapeAction(this.__wbg_ptr, x, y);
             deferred1_0 = ret[0];
             deferred1_1 = ret[1];
             return getStringFromWasm0(ret[0], ret[1]);
@@ -710,6 +771,13 @@ export class WasmEngine {
         return ret !== 0;
     }
     /**
+     * @returns {boolean}
+     */
+    ungroupSelection() {
+        const ret = wasm.wasmengine_ungroupSelection(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
      * @param {number} x
      * @param {number} y
      * @param {boolean} alt_key
@@ -717,6 +785,16 @@ export class WasmEngine {
      */
     updateHoverArrowEdit(x, y, alt_key) {
         const ret = wasm.wasmengine_updateHoverArrowEdit(this.__wbg_ptr, x, y, alt_key);
+        return ret !== 0;
+    }
+    /**
+     * @param {number} x
+     * @param {number} y
+     * @param {boolean} alt_key
+     * @returns {boolean}
+     */
+    updateHoverShapeEdit(x, y, alt_key) {
+        const ret = wasm.wasmengine_updateHoverShapeEdit(this.__wbg_ptr, x, y, alt_key);
         return ret !== 0;
     }
     /**

@@ -8,13 +8,7 @@ pub(super) fn selected_text_object_ids(engine: &Engine) -> BTreeSet<String> {
         .iter()
         .cloned()
         .collect();
-    for object in &engine.state.document.objects {
-        if matches!(object.object_type.as_str(), "bracket" | "symbol")
-            && engine.state.selection.arrow_objects.contains(&object.id)
-        {
-            ids.insert(object.id.clone());
-        }
-    }
+    ids.extend(engine.state.selection.arrow_objects.iter().cloned());
     ids
 }
 

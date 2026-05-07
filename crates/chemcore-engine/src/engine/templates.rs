@@ -1,5 +1,5 @@
 use super::text_edit::refresh_attached_node_label_geometry_for_all_nodes;
-use super::{EditorCommand, Engine};
+use super::{EditorCommand, Engine, PendingSelectTarget};
 use crate::{
     adjacent_directions, angle_between, direction_from_angle, hit_test_bond, hit_test_bond_center,
     hit_test_endpoint, nearest_angle, normalize_angle, Bond, BondAnchor, BondPreview,
@@ -61,6 +61,7 @@ impl Engine {
             }
             self.state.overlay.hover_endpoint = None;
             self.state.overlay.hover_bond_center = None;
+            self.state.overlay.hover_shape = None;
             self.state.overlay.hover_text_box = None;
             self.state.overlay.preview = None;
             if drag.has_dragged {
@@ -77,6 +78,7 @@ impl Engine {
 
         self.state.overlay.hover_endpoint = None;
         self.state.overlay.hover_bond_center = None;
+        self.state.overlay.hover_shape = None;
         self.state.overlay.hover_text_box = None;
         self.state.overlay.preview = None;
         if let Some(endpoint) = hit_test_endpoint(&self.state.document, point, ENDPOINT_HIT_RADIUS)
@@ -242,6 +244,15 @@ impl Engine {
         if changed {
             self.state.document = document;
             self.next_id = self.infer_next_id();
+            if let Some(bond_id) = self
+                .state
+                .document
+                .editable_fragment()
+                .and_then(|entry| entry.fragment.bonds.last())
+                .map(|bond| bond.id.clone())
+            {
+                self.note_pending_select_target(PendingSelectTarget::MoleculeBond(bond_id));
+            }
         }
         changed
     }

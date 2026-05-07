@@ -1,4 +1,6 @@
-use super::{EditorCommand, Engine, TextEditCommandTarget, TextEditLayoutRequest};
+use super::{
+    EditorCommand, Engine, PendingSelectTarget, TextEditCommandTarget, TextEditLayoutRequest,
+};
 use crate::{
     build_label_glyph_polygons, decide_label_layout, layout_label_text, round2, round6, Bond,
     BondLineWeight, DoubleBondPlacement, EndpointHit, LabelFlow, LabelRun, Point, WorldCm,
@@ -170,6 +172,7 @@ fn make_text_object(
         style_ref: None,
         meta: Value::Null,
         payload: make_text_payload(text, source_runs, display_runs, session, width, height),
+        children: Vec::new(),
     }
 }
 
@@ -570,6 +573,7 @@ impl Engine {
         self.drag = None;
         self.state.selection = crate::SelectionState::default();
         self.state.overlay.hover_bond_center = None;
+        self.state.overlay.hover_shape = None;
         self.state.overlay.preview = None;
         self.state.overlay.hover_endpoint = Some(EndpointHit {
             node_id: hovered_node_id,
@@ -835,6 +839,7 @@ impl Engine {
         let target_object_id = existing_object_id.or_else(|| object_id.map(ToString::to_string));
 
         self.push_undo_snapshot();
+        let mut changed_text_object_id = target_object_id.clone();
         let changed =
             if let Some(target_object_id) = target_object_id {
                 let Some(object) =
@@ -858,6 +863,7 @@ impl Engine {
                 )
             } else {
                 let next_id = self.next_id("obj_text");
+                changed_text_object_id = Some(next_id.clone());
                 let object = make_text_object(
                     &next_id,
                     x,
@@ -879,6 +885,9 @@ impl Engine {
         }
         self.state.selection = crate::SelectionState::default();
         self.clear_interaction();
+        if let Some(object_id) = changed_text_object_id {
+            self.note_pending_select_target(PendingSelectTarget::TextObject(object_id));
+        }
         true
     }
 
@@ -941,6 +950,7 @@ impl Engine {
         self.drag = None;
         self.state.selection = crate::SelectionState::default();
         self.state.overlay.hover_bond_center = None;
+        self.state.overlay.hover_shape = None;
         self.state.overlay.preview = None;
         self.state.overlay.hover_endpoint = Some(EndpointHit {
             node_id: node_id.to_string(),
@@ -948,6 +958,7 @@ impl Engine {
             distance: 0.0,
             label_anchor: None,
         });
+        self.note_pending_select_target(PendingSelectTarget::MoleculeNode(node_id.to_string()));
         true
     }
 

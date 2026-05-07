@@ -293,6 +293,36 @@ impl WasmEngine {
         )
     }
 
+    #[wasm_bindgen(js_name = hoverShapeAction)]
+    pub fn hover_shape_action(&self, x: f64, y: f64) -> String {
+        self.inner
+            .hover_shape_action_at_point(Point::from_world(WorldPoint::new(WorldCm(x), WorldCm(y))))
+            .to_string()
+    }
+
+    #[wasm_bindgen(js_name = beginHoverShapeEdit)]
+    pub fn begin_hover_shape_edit(&mut self, x: f64, y: f64) -> String {
+        self.inner
+            .begin_hover_shape_edit(Point::from_world(WorldPoint::new(WorldCm(x), WorldCm(y))))
+            .to_string()
+    }
+
+    #[wasm_bindgen(js_name = updateHoverShapeEdit)]
+    pub fn update_hover_shape_edit(&mut self, x: f64, y: f64, alt_key: bool) -> bool {
+        self.inner.update_hover_shape_edit(
+            Point::from_world(WorldPoint::new(WorldCm(x), WorldCm(y))),
+            alt_key,
+        )
+    }
+
+    #[wasm_bindgen(js_name = finishHoverShapeEdit)]
+    pub fn finish_hover_shape_edit(&mut self, x: f64, y: f64, alt_key: bool) -> bool {
+        self.inner.finish_hover_shape_edit(
+            Point::from_world(WorldPoint::new(WorldCm(x), WorldCm(y))),
+            alt_key,
+        )
+    }
+
     #[wasm_bindgen(js_name = activeArrowEditDegrees)]
     pub fn active_arrow_edit_degrees(&self) -> f64 {
         self.inner.active_arrow_edit_degrees()
@@ -368,6 +398,21 @@ impl WasmEngine {
     #[wasm_bindgen(js_name = applySelectionArrangeCommand)]
     pub fn apply_selection_arrange_command(&mut self, command: &str) -> bool {
         self.inner.apply_selection_arrange_command(command)
+    }
+
+    #[wasm_bindgen(js_name = applySelectionOrderCommand)]
+    pub fn apply_selection_order_command(&mut self, command: &str) -> bool {
+        self.inner.apply_selection_order_command(command)
+    }
+
+    #[wasm_bindgen(js_name = groupSelection)]
+    pub fn group_selection(&mut self) -> bool {
+        self.inner.group_selection()
+    }
+
+    #[wasm_bindgen(js_name = ungroupSelection)]
+    pub fn ungroup_selection(&mut self) -> bool {
+        self.inner.ungroup_selection()
     }
 
     #[wasm_bindgen(js_name = applyColorToSelection)]

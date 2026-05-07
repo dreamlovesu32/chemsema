@@ -150,8 +150,9 @@ if (typeof window !== "undefined") {
       }
       return true;
     },
-    syncDocument() {
-      syncDocumentFromEngine();
+    async syncDocument() {
+      await state.editorEngine?.ready?.();
+      await syncDocumentFromEngine();
       renderDocument();
       return state.currentDocument;
     },
@@ -180,7 +181,7 @@ const ZOOM_MAX_PERCENT = ZOOM_STEP_LEVELS[ZOOM_STEP_LEVELS.length - 1];
 const SELECTION_ROTATE_HANDLE_OFFSET_PX = 26;
 const SELECTION_ROTATE_HANDLE_RADIUS_PX = 6;
 const SELECTION_ROTATE_HANDLE_HIT_RADIUS_PX = 12;
-const SELECTION_RESIZE_HANDLE_SIZE_PX = 8;
+const SELECTION_RESIZE_HANDLE_SIZE_PX = 3;
 const SELECTION_RESIZE_HANDLE_HIT_RADIUS_PX = 14;
 const SELECTION_RESIZE_MIN_SCALE = 0.05;
 const DELETE_CURSOR_SVG = encodeURIComponent(
@@ -372,7 +373,7 @@ function saveActiveDocumentTabState() {
   tab.title = documentTitleFromState();
 }
 
-function restoreDocumentTabState(tab) {
+async function restoreDocumentTabState(tab) {
   for (const key of TAB_STATE_KEYS) {
     state[key] = tab[key];
   }
@@ -380,7 +381,7 @@ function restoreDocumentTabState(tab) {
   activeSelectionGesture = null;
   textEditorLayer.replaceChildren();
   activeTextEditor = null;
-  syncEngineToolState();
+  await syncEngineToolState();
   syncZoomControl();
   renderSecondaryToolbar();
   renderDocument();
@@ -469,10 +470,10 @@ async function activateDocumentTab(tabId) {
   if (!nextTab) {
     return;
   }
-  finishActiveTextEditor(true);
+  await finishActiveTextEditor(true);
   saveActiveDocumentTabState();
   activeDocumentTabId = nextTab.id;
-  restoreDocumentTabState(nextTab);
+  await restoreDocumentTabState(nextTab);
 }
 
 async function closeDocumentTab(tabId) {
@@ -483,18 +484,18 @@ async function closeDocumentTab(tabId) {
   const closing = documentTabs[index];
   const wasActive = closing.id === activeDocumentTabId;
   if (wasActive) {
-    finishActiveTextEditor(true);
+    await finishActiveTextEditor(true);
     saveActiveDocumentTabState();
   }
-  closing.editorEngine?.free?.();
-  closing.documentEngine?.free?.();
+  await closing.editorEngine?.free?.();
+  await closing.documentEngine?.free?.();
   documentTabs.splice(index, 1);
   if (!documentTabs.length) {
     const tab = createDocumentTab();
     documentTabs.push(tab);
     activeDocumentTabId = tab.id;
-    restoreDocumentTabState(tab);
-    resetEditorEngine();
+    await restoreDocumentTabState(tab);
+    await resetEditorEngine();
     renderDocument();
     fitView();
     saveActiveDocumentTabState();
@@ -504,7 +505,7 @@ async function closeDocumentTab(tabId) {
   if (wasActive) {
     const nextTab = documentTabs[Math.max(0, Math.min(index, documentTabs.length - 1))];
     activeDocumentTabId = nextTab.id;
-    restoreDocumentTabState(nextTab);
+    await restoreDocumentTabState(nextTab);
   } else {
     renderDocumentTabs();
   }
@@ -657,21 +658,22 @@ function isEditingRustDocument() {
   return !LABEL_DEBUG_MODE && !state.currentPath && state.editorEngine;
 }
 
-function syncEngineToolState() {
+async function syncEngineToolState() {
   if (!state.editorEngine) {
     return;
   }
-  state.editorEngine.setTool(editorState.activeTool, editorState.bondType);
-  state.editorEngine.setTemplate?.(editorState.template);
-  state.editorEngine.setShapeOptions?.(
+  await state.editorEngine.ready?.();
+  await state.editorEngine.setTool(editorState.activeTool, editorState.bondType);
+  await state.editorEngine.setTemplate?.(editorState.template);
+  await state.editorEngine.setShapeOptions?.(
     editorState.shapeKind,
     editorState.shapeStyle,
     editorState.shapeColor,
   );
-  state.editorEngine.setBracketOptions?.(editorState.bracketKind);
-  state.editorEngine.setSymbolOptions?.(editorState.symbolKind);
+  await state.editorEngine.setBracketOptions?.(editorState.bracketKind);
+  await state.editorEngine.setSymbolOptions?.(editorState.symbolKind);
   if (state.editorEngine.setArrowEndpointOptions) {
-    state.editorEngine.setArrowEndpointOptions(
+    await state.editorEngine.setArrowEndpointOptions(
       editorState.arrowType,
       editorState.arrowHeadSize,
       editorState.arrowCurve,
@@ -682,7 +684,7 @@ function syncEngineToolState() {
     );
     return;
   }
-  state.editorEngine.setArrowOptions?.(
+  await state.editorEngine.setArrowOptions?.(
     editorState.arrowType,
     editorState.arrowHeadSize,
     editorState.arrowHead,
@@ -1376,16 +1378,17 @@ function maybeAutoExpandEditorViewport(_primitives) {
   return true;
 }
 
-function syncCoreRenderListFromCurrentDocument() {
+async function syncCoreRenderListFromCurrentDocument() {
   state.coreRenderList = null;
   if (!state.currentDocument) {
     return;
   }
   if (state.currentPath) {
     if (!state.documentEngine) {
-      resetDocumentEngine();
+      await resetDocumentEngine();
     }
-    state.documentEngine.loadDocumentJson(JSON.stringify(state.currentDocument));
+    await state.documentEngine.ready?.();
+    await state.documentEngine.loadDocumentJson(JSON.stringify(state.currentDocument));
     state.coreRenderList = renderListFromEngine(state.documentEngine);
     return;
   }
@@ -1432,14 +1435,14 @@ function corePrimitiveRenderOptions() {
   };
 }
 
-function syncDocumentFromEngine() {
+async function syncDocumentFromEngine() {
   if (!state.editorEngine) {
     return;
   }
   const documentData = parseEngineJson(state.editorEngine.documentJson());
   if (documentData) {
     state.currentDocument = documentData;
-    syncCoreRenderListFromCurrentDocument();
+    await syncCoreRenderListFromCurrentDocument();
     maybeAutoExpandEditorViewport(state.coreRenderList || []);
   }
   refreshCommandAvailability();
@@ -1452,21 +1455,23 @@ function currentEditorEngineState() {
   return parseEngineJson(state.editorEngine.stateJson());
 }
 
-function resetEditorEngine() {
-  finishActiveTextEditor(false);
-  state.editorEngine?.free?.();
+async function resetEditorEngine() {
+  await finishActiveTextEditor(false);
+  await state.editorEngine?.free?.();
   state.editorEngine = engineHost.createEngineSession();
+  await state.editorEngine.ready?.();
   state.runtimeViewBox = defaultEditorViewBox();
   state.lastEditFocusPoint = null;
   clearZoomHandoffs();
   state.currentFileName = null;
-  syncEngineToolState();
-  syncDocumentFromEngine();
+  await syncEngineToolState();
+  await syncDocumentFromEngine();
 }
 
-function resetDocumentEngine() {
-  state.documentEngine?.free?.();
+async function resetDocumentEngine() {
+  await state.documentEngine?.free?.();
   state.documentEngine = engineHost.createEngineSession();
+  await state.documentEngine.ready?.();
 }
 
 function refreshCommandAvailability() {
@@ -1485,12 +1490,16 @@ async function writeNativeClipboardFromSelection(fragmentJson = null) {
     return;
   }
   try {
+    const resolvedFragmentJson = fragmentJson || await state.editorEngine.clipboardSelectionJson?.() || null;
+    const documentJson = state.editorEngine.documentJson?.() || null;
+    const cdxml = await state.editorEngine.documentCdxml?.() || null;
+    const svg = await state.editorEngine.documentSvg?.() || null;
     await desktopFileHost.writeClipboard({
-      chemcoreFragmentJson: fragmentJson || state.editorEngine.clipboardSelectionJson?.() || null,
-      chemcoreDocumentJson: state.editorEngine.documentJson?.() || null,
-      cdxml: state.editorEngine.documentCdxml?.() || null,
-      svg: state.editorEngine.documentSvg?.() || null,
-      text: state.editorEngine.documentCdxml?.() || null,
+      chemcoreFragmentJson: resolvedFragmentJson,
+      chemcoreDocumentJson: documentJson,
+      cdxml,
+      svg,
+      text: cdxml,
     });
   } catch (error) {
     console.warn("Failed to write native clipboard", error);
@@ -1504,7 +1513,7 @@ async function pasteFromNativeClipboard() {
   try {
     const payload = await desktopFileHost.readClipboard();
     if (payload?.chemcoreFragmentJson) {
-      return !!state.editorEngine.pasteClipboardJson(payload.chemcoreFragmentJson);
+      return !!(await state.editorEngine.pasteClipboardJson(payload.chemcoreFragmentJson));
     }
   } catch (error) {
     console.warn("Failed to read native clipboard", error);
@@ -1518,33 +1527,33 @@ async function runEditorCommand(command) {
   }
   let changed = false;
   if (command === "undo") {
-    changed = state.editorEngine.undo();
+    changed = await state.editorEngine.undo();
   } else if (command === "redo") {
-    changed = state.editorEngine.redo();
+    changed = await state.editorEngine.redo();
   } else if (command === "copy") {
-    const fragmentJson = state.editorEngine.clipboardSelectionJson?.() || null;
-    changed = !!state.editorEngine.copySelection?.();
+    const fragmentJson = await state.editorEngine.clipboardSelectionJson?.() || null;
+    changed = !!(await state.editorEngine.copySelection?.());
     if (changed) {
       await writeNativeClipboardFromSelection(fragmentJson);
     }
   } else if (command === "cut") {
-    const fragmentJson = state.editorEngine.clipboardSelectionJson?.() || null;
-    changed = !!state.editorEngine.cutSelection?.();
+    const fragmentJson = await state.editorEngine.clipboardSelectionJson?.() || null;
+    changed = !!(await state.editorEngine.cutSelection?.());
     if (changed) {
       await writeNativeClipboardFromSelection(fragmentJson);
     }
   } else if (command === "paste") {
     changed = await pasteFromNativeClipboard();
     if (!changed) {
-      changed = !!state.editorEngine.pasteClipboard?.();
+      changed = !!(await state.editorEngine.pasteClipboard?.());
     }
   } else if (command === "delete") {
-    changed = state.editorEngine.deleteSelection();
+    changed = await state.editorEngine.deleteSelection();
   } else {
     return false;
   }
   if (changed) {
-    syncDocumentFromEngine();
+    await syncDocumentFromEngine();
     renderDocument();
   } else {
     renderEditorOverlay();
@@ -1664,15 +1673,37 @@ function syncCanvasCursor() {
       : "crosshair";
 }
 
-function syncSelectCursorForPoint(point) {
+async function syncSelectCursorForPoint(point) {
   if (!viewerSvg || editorState.activeTool !== "select" || !isEditingRustDocument()) {
     syncCanvasCursor();
     return;
   }
-  syncArrowAwareCursorForPoint(point);
+  await syncArrowAwareCursorForPoint(point);
 }
 
-function syncArrowAwareCursorForPoint(point) {
+function cursorForShapeAction(action) {
+  if (action === "circle-radius") {
+    return "nwse-resize";
+  }
+  if (action === "ellipse-major-positive" || action === "ellipse-major-negative") {
+    return "ew-resize";
+  }
+  if (action === "ellipse-minor-positive" || action === "ellipse-minor-negative") {
+    return "ns-resize";
+  }
+  return {
+    n: "ns-resize",
+    s: "ns-resize",
+    e: "ew-resize",
+    w: "ew-resize",
+    ne: "nesw-resize",
+    sw: "nesw-resize",
+    nw: "nwse-resize",
+    se: "nwse-resize",
+  }[action] || "";
+}
+
+async function syncArrowAwareCursorForPoint(point) {
   if (!viewerSvg || !isEditingRustDocument()) {
     syncCanvasCursor();
     return;
@@ -1697,6 +1728,10 @@ function syncArrowAwareCursorForPoint(point) {
     viewerSvg.style.cursor = "nesw-resize";
     return;
   }
+  if (activeSelectionGesture?.kind === "shape-resize") {
+    viewerSvg.style.cursor = activeSelectionGesture.cursor || "nwse-resize";
+    return;
+  }
   if (editorState.activeTool === "select") {
     const resizeHandle = selectionResizeHandleHit(point);
     if (resizeHandle) {
@@ -1708,7 +1743,7 @@ function syncArrowAwareCursorForPoint(point) {
     viewerSvg.style.cursor = "grab";
     return;
   }
-  const arrowAction = state.editorEngine.hoverArrowAction?.(point.x, point.y) || "";
+  const arrowAction = await state.editorEngine.hoverArrowAction?.(point.x, point.y) || "";
   if (arrowAction === "head" || arrowAction === "tail") {
     viewerSvg.style.cursor = "move";
     return;
@@ -1717,11 +1752,25 @@ function syncArrowAwareCursorForPoint(point) {
     viewerSvg.style.cursor = "nesw-resize";
     return;
   }
+  const overSelection = !!state.editorEngine.selectionContainsPoint?.(point.x, point.y);
+  if (editorState.activeTool === "select" && overSelection) {
+    viewerSvg.style.cursor = "grab";
+    return;
+  }
+  const shapeAction = await state.editorEngine.hoverShapeAction?.(point.x, point.y) || "";
+  const shapeCursor = cursorForShapeAction(shapeAction);
+  if (shapeCursor) {
+    viewerSvg.style.cursor = shapeCursor;
+    return;
+  }
   if (editorState.activeTool === "arrow") {
     viewerSvg.style.cursor = "crosshair";
     return;
   }
-  const overSelection = !!state.editorEngine.selectionContainsPoint?.(point.x, point.y);
+  if (editorState.activeTool === "shape") {
+    viewerSvg.style.cursor = "crosshair";
+    return;
+  }
   viewerSvg.style.cursor = overSelection ? "grab" : "default";
 }
 
@@ -1795,9 +1844,10 @@ function focusActiveTextEditor() {
   textEditorController.focusActiveTextEditor();
 }
 
-function openTextEditorAt(point) {
-  finishActiveTextEditor(true);
-  const session = parseEngineJson(state.editorEngine?.beginTextEdit?.(point.x, point.y), null);
+async function openTextEditorAt(point) {
+  await finishActiveTextEditor(true);
+  const sessionJson = await state.editorEngine?.beginTextEdit?.(point.x, point.y);
+  const session = parseEngineJson(sessionJson, null);
   if (!session) {
     renderEditorOverlay(currentEditorRenderList());
     return;
@@ -1855,26 +1905,26 @@ function activeTextEditorTargetMatchesHoverPrimitive(primitive) {
   return false;
 }
 
-function updateTextToolHoverFromPointerEvent(event) {
+async function updateTextToolHoverFromPointerEvent(event) {
   if (!routeEditorPointerEvents() || editorState.activeTool !== "text" || !state.editorEngine?.pointerMove) {
     return null;
   }
   const point = svgPointFromEvent(event);
-  state.editorEngine.pointerMove(point.x, point.y, event.altKey);
+  await state.editorEngine.pointerMove(point.x, point.y, event.altKey);
   const renderList = currentEditorRenderList();
   renderEditorOverlay(renderList);
   positionActiveTextEditor();
   return textEditHoverPrimitiveFromRenderList(renderList);
 }
 
-function openHoveredTextEditTargetFromPointerEvent(event) {
-  const hoverPrimitive = updateTextToolHoverFromPointerEvent(event);
+async function openHoveredTextEditTargetFromPointerEvent(event) {
+  const hoverPrimitive = await updateTextToolHoverFromPointerEvent(event);
   if (!hoverPrimitive || activeTextEditorTargetMatchesHoverPrimitive(hoverPrimitive)) {
     return false;
   }
   event.preventDefault();
   event.stopPropagation();
-  openTextEditorAt(svgPointFromEvent(event));
+  await openTextEditorAt(svgPointFromEvent(event));
   return true;
 }
 
@@ -2211,7 +2261,7 @@ function handleTextEditorKeyDown(event) {
   textEditorController.handleTextEditorKeyDown(event);
 }
 
-function finishActiveTextEditor(commit = true) {
+async function finishActiveTextEditor(commit = true) {
   if (!activeTextEditor) {
     return false;
   }
@@ -2226,8 +2276,8 @@ function finishActiveTextEditor(commit = true) {
     renderDocument();
     return false;
   }
-  const changed = state.editorEngine?.applyTextEdit?.(JSON.stringify(editorSessionToEngineSession(nextSession)));
-  syncDocumentFromEngine();
+  const changed = await state.editorEngine?.applyTextEdit?.(JSON.stringify(editorSessionToEngineSession(nextSession)));
+  await syncDocumentFromEngine();
   renderDocument();
   return Boolean(changed);
 }
@@ -2279,7 +2329,7 @@ function cssColorToHex(color) {
   return `#${match.slice(0, 3).map((value) => Number(value).toString(16).padStart(2, "0")).join("")}`;
 }
 
-function applySelectionColor(color) {
+async function applySelectionColor(color) {
   const normalized = cssColorToHex(color);
   editorState.selectionColor = normalized;
   if (activeTextEditor) {
@@ -2289,11 +2339,11 @@ function applySelectionColor(color) {
   if (!isEditingRustDocument() || !state.editorEngine?.applyColorToSelection) {
     return false;
   }
-  const changed = !!state.editorEngine.applyColorToSelection(normalized);
+  const changed = !!(await state.editorEngine.applyColorToSelection(normalized));
   if (!changed) {
     return false;
   }
-  syncDocumentFromEngine();
+  await syncDocumentFromEngine();
   renderDocument();
   return true;
 }
@@ -2370,7 +2420,7 @@ function insertTextSymbol(character) {
   }
   state.pendingTextSymbol = symbol;
   editorState.activeTool = "text";
-  syncEngineToolState();
+  void syncEngineToolState();
   renderSecondaryToolbar();
   syncCanvasCursor();
 }
@@ -2470,14 +2520,14 @@ function takeBrowserPendingDocument() {
   }
 }
 
-function documentSnapshotFromTab(tab) {
+async function documentSnapshotFromTab(tab) {
   if (!tab) {
     return null;
   }
   if (tab.id === activeDocumentTabId) {
-    finishActiveTextEditor(true);
+    await finishActiveTextEditor(true);
     if (state.editorEngine) {
-      syncDocumentFromEngine();
+      await syncDocumentFromEngine();
     }
     saveActiveDocumentTabState();
   }
@@ -2499,7 +2549,7 @@ async function detachDocumentTab(tabId, screenX = null, screenY = null) {
     return false;
   }
   const tab = documentTabs.find((entry) => entry.id === tabId);
-  const snapshot = documentSnapshotFromTab(tab);
+  const snapshot = await documentSnapshotFromTab(tab);
   if (!snapshot) {
     return false;
   }
@@ -2508,12 +2558,12 @@ async function detachDocumentTab(tabId, screenX = null, screenY = null) {
   return true;
 }
 
-function loadDetachedDocumentPayload(payload) {
+async function loadDetachedDocumentPayload(payload) {
   if (!payload?.documentJson) {
     return false;
   }
   const documentData = JSON.parse(payload.documentJson);
-  loadJsonDocumentIntoEditor(documentData, payload.fileName || null, payload.filePath || null);
+  await loadJsonDocumentIntoEditor(documentData, payload.fileName || null, payload.filePath || null);
   if (Number.isFinite(Number(payload.zoomPercent))) {
     setZoomPercent(Number(payload.zoomPercent));
   }
@@ -2522,11 +2572,11 @@ function loadDetachedDocumentPayload(payload) {
   return true;
 }
 
-function loadBrowserPendingDocumentPayload(payload) {
+async function loadBrowserPendingDocumentPayload(payload) {
   if (!payload?.text) {
     return false;
   }
-  openDocumentText(payload.text, payload.fileName || null, payload.filePath || null, payload.format || null);
+  await openDocumentText(payload.text, payload.fileName || null, payload.filePath || null, payload.format || null);
   saveActiveDocumentTabState();
   renderDocumentTabs();
   return true;
@@ -2536,13 +2586,13 @@ async function newDocumentTab() {
   if (!isDesktopShell && openBrowserBlankDocumentTab()) {
     return;
   }
-  finishActiveTextEditor(true);
+  await finishActiveTextEditor(true);
   saveActiveDocumentTabState();
   const tab = createDocumentTab();
   documentTabs.push(tab);
   activeDocumentTabId = tab.id;
-  restoreDocumentTabState(tab);
-  resetEditorEngine();
+  await restoreDocumentTabState(tab);
+  await resetEditorEngine();
   renderDocument();
   fitView();
   saveActiveDocumentTabState();
@@ -2553,13 +2603,13 @@ async function openDocumentPathInTab(path) {
   if (!path) {
     return;
   }
-  finishActiveTextEditor(true);
+  await finishActiveTextEditor(true);
   saveActiveDocumentTabState();
   const previousTabId = activeDocumentTabId;
   const tab = createDocumentTab(fileNameFromPath(path) || "Loading...");
   documentTabs.push(tab);
   activeDocumentTabId = tab.id;
-  restoreDocumentTabState(tab);
+  await restoreDocumentTabState(tab);
   try {
     await openDocumentPath(path);
     saveActiveDocumentTabState();
@@ -2580,13 +2630,13 @@ async function openDocumentFileInTab(file) {
   if (!isDesktopShell && await openBrowserFileInNewTab(file)) {
     return;
   }
-  finishActiveTextEditor(true);
+  await finishActiveTextEditor(true);
   saveActiveDocumentTabState();
   const previousTabId = activeDocumentTabId;
   const tab = createDocumentTab(file.name || "Loading...");
   documentTabs.push(tab);
   activeDocumentTabId = tab.id;
-  restoreDocumentTabState(tab);
+  await restoreDocumentTabState(tab);
   try {
     await openDocumentFile(file);
     saveActiveDocumentTabState();
@@ -2924,25 +2974,25 @@ function formatRotationAngle(angle) {
   return `${rounded}${String.fromCharCode(176)}`;
 }
 
-function applySelectionArrangeCommand(command) {
+async function applySelectionArrangeCommand(command) {
   if (!isEditingRustDocument() || editorState.activeTool !== "select") {
     return false;
   }
-  const changed = !!state.editorEngine.applySelectionArrangeCommand?.(command);
+  const changed = !!(await state.editorEngine.applySelectionArrangeCommand?.(command));
   if (!changed) {
     return false;
   }
-  syncDocumentFromEngine();
+  await syncDocumentFromEngine();
   renderDocument();
   return true;
 }
 
-function applyArrowOptionsToSelection() {
+async function applyArrowOptionsToSelection() {
   if (!isEditingRustDocument()) {
     return false;
   }
   const changed = state.editorEngine.applyArrowEndpointOptionsToSelection
-    ? !!state.editorEngine.applyArrowEndpointOptionsToSelection(
+    ? !!(await state.editorEngine.applyArrowEndpointOptionsToSelection(
       editorState.arrowType,
       editorState.arrowHeadSize,
       editorState.arrowCurve,
@@ -2950,16 +3000,16 @@ function applyArrowOptionsToSelection() {
       editorState.arrowTailStyle,
       editorState.arrowNoGo,
       editorState.arrowBold,
-    )
-    : !!state.editorEngine.applyArrowOptionsToSelection?.(
+    ))
+    : !!(await state.editorEngine.applyArrowOptionsToSelection?.(
       editorState.arrowType,
       editorState.arrowHeadSize,
       editorState.arrowHead,
       editorState.arrowTail,
       editorState.arrowBold,
-    );
+    ));
   if (changed) {
-    syncDocumentFromEngine();
+    await syncDocumentFromEngine();
     renderDocument();
   }
   return changed;
@@ -2985,47 +3035,58 @@ function bracketLabelAnchorPoint(start, end, kind = editorState.bracketKind) {
   };
 }
 
-function handleEditorPointerMove(event) {
+async function handleEditorPointerMove(event) {
   const point = svgPointFromEvent(event);
-  if ((editorState.activeTool === "select" || editorState.activeTool === "arrow") && activeSelectionGesture) {
+  if ((editorState.activeTool === "select" || editorState.activeTool === "arrow" || editorState.activeTool === "shape") && activeSelectionGesture) {
     event.preventDefault();
     if (activeSelectionGesture.kind === "arrow-endpoint" || activeSelectionGesture.kind === "arrow-curve") {
       if (pointDistance(activeSelectionGesture.start, point) >= cssPxToCm(3)) {
         activeSelectionGesture.dragged = true;
       }
       activeSelectionGesture.current = point;
-      state.editorEngine.updateHoverArrowEdit?.(point.x, point.y, event.altKey);
+      await state.editorEngine.updateHoverArrowEdit?.(point.x, point.y, event.altKey);
       if (activeSelectionGesture.kind === "arrow-curve") {
         activeSelectionGesture.angle = state.editorEngine.activeArrowEditDegrees?.() || 0;
       }
-      syncDocumentFromEngine();
-      syncArrowAwareCursorForPoint(point);
+      await syncDocumentFromEngine();
+      await syncArrowAwareCursorForPoint(point);
+      renderDocument();
+      return;
+    }
+    if (activeSelectionGesture.kind === "shape-resize") {
+      if (pointDistance(activeSelectionGesture.start, point) >= cssPxToCm(3)) {
+        activeSelectionGesture.dragged = true;
+      }
+      activeSelectionGesture.current = point;
+      await state.editorEngine.updateHoverShapeEdit?.(point.x, point.y, event.altKey);
+      await syncDocumentFromEngine();
+      await syncArrowAwareCursorForPoint(point);
       renderDocument();
       return;
     }
     if (activeSelectionGesture.kind === "rotate") {
       activeSelectionGesture.current = point;
       activeSelectionGesture.angle = selectionRotateAngleForGesture(activeSelectionGesture, point, event.altKey);
-      state.editorEngine.updateSelectionRotate(point.x, point.y, event.altKey);
-      syncDocumentFromEngine();
-      syncSelectCursorForPoint(point);
+      await state.editorEngine.updateSelectionRotate(point.x, point.y, event.altKey);
+      await syncDocumentFromEngine();
+      await syncSelectCursorForPoint(point);
       renderDocument();
       return;
     }
     if (activeSelectionGesture.kind === "resize") {
       activeSelectionGesture.current = point;
       activeSelectionGesture.scale = selectionResizeGestureScale(activeSelectionGesture, point);
-      state.editorEngine.updateSelectionResize?.(point.x, point.y);
-      syncDocumentFromEngine();
-      syncSelectCursorForPoint(point);
+      await state.editorEngine.updateSelectionResize?.(point.x, point.y);
+      await syncDocumentFromEngine();
+      await syncSelectCursorForPoint(point);
       renderDocument();
       return;
     }
     if (activeSelectionGesture.kind === "move") {
       activeSelectionGesture.current = point;
-      state.editorEngine.updateSelectionMove(point.x, point.y, event.altKey);
-      syncDocumentFromEngine();
-      syncSelectCursorForPoint(point);
+      await state.editorEngine.updateSelectionMove(point.x, point.y, event.altKey);
+      await syncDocumentFromEngine();
+      await syncSelectCursorForPoint(point);
       renderDocument();
       return;
     }
@@ -3044,16 +3105,16 @@ function handleEditorPointerMove(event) {
   }
   if (!routeEditorPointerEvents()) {
     if (isEditingRustDocument()) {
-      state.editorEngine.clearInteraction();
+      await state.editorEngine.clearInteraction();
       renderEditorOverlay();
     }
     return;
   }
-  state.editorEngine.pointerMove(point.x, point.y, event.altKey);
+  await state.editorEngine.pointerMove(point.x, point.y, event.altKey);
   if (editorState.activeTool === "select") {
-    syncSelectCursorForPoint(point);
-  } else if (editorState.activeTool === "arrow") {
-    syncArrowAwareCursorForPoint(point);
+    await syncSelectCursorForPoint(point);
+  } else if (editorState.activeTool === "arrow" || editorState.activeTool === "shape") {
+    await syncArrowAwareCursorForPoint(point);
   }
   const renderList = currentEditorRenderList();
   maybeAutoExpandEditorViewport(renderList);
@@ -3061,7 +3122,7 @@ function handleEditorPointerMove(event) {
   positionActiveTextEditor();
 }
 
-function handleEditorPointerDown(event) {
+async function handleEditorPointerDown(event) {
   if (!routeEditorPointerEvents() || event.button !== 0) {
     return;
   }
@@ -3072,15 +3133,15 @@ function handleEditorPointerDown(event) {
   }
   if (editorState.activeTool === "text") {
     event.preventDefault();
-    openTextEditorAt(point);
+    await openTextEditorAt(point);
     return;
   }
   if (editorState.activeTool === "select") {
     event.preventDefault();
     viewerSvg.setPointerCapture?.(event.pointerId);
-    state.editorEngine.pointerMove(point.x, point.y, event.altKey);
+    await state.editorEngine.pointerMove(point.x, point.y, event.altKey);
     const resizeHandle = selectionResizeHandleHit(point);
-    if (resizeHandle && state.editorEngine.beginSelectionResize?.(resizeHandle.name, point.x, point.y)) {
+    if (resizeHandle && await state.editorEngine.beginSelectionResize?.(resizeHandle.name, point.x, point.y)) {
       activeSelectionGesture = {
         kind: "resize",
         handle: resizeHandle.name,
@@ -3090,11 +3151,29 @@ function handleEditorPointerDown(event) {
         current: point,
         scale: 1,
       };
-      syncSelectCursorForPoint(point);
+      await syncSelectCursorForPoint(point);
       renderDocument();
       return;
     }
-    const arrowEditAction = state.editorEngine.beginHoverArrowEdit?.(point.x, point.y) || "";
+    const overSelection = !!state.editorEngine.selectionContainsPoint?.(point.x, point.y);
+    const shapeEditAction = overSelection
+      ? ""
+      : await state.editorEngine.beginHoverShapeEdit?.(point.x, point.y) || "";
+    if (shapeEditAction) {
+      activeSelectionGesture = {
+        kind: "shape-resize",
+        action: shapeEditAction,
+        cursor: cursorForShapeAction(shapeEditAction) || "nwse-resize",
+        start: point,
+        current: point,
+        dragged: false,
+        additive: !!event.shiftKey,
+      };
+      await syncArrowAwareCursorForPoint(point);
+      renderEditorOverlay(currentEditorRenderList());
+      return;
+    }
+    const arrowEditAction = await state.editorEngine.beginHoverArrowEdit?.(point.x, point.y) || "";
     if (arrowEditAction) {
       activeSelectionGesture = {
         kind: arrowEditAction === "curve" ? "arrow-curve" : "arrow-endpoint",
@@ -3105,13 +3184,13 @@ function handleEditorPointerDown(event) {
         additive: !!event.shiftKey,
         angle: 0,
       };
-      syncArrowAwareCursorForPoint(point);
+      await syncArrowAwareCursorForPoint(point);
       renderEditorOverlay(currentEditorRenderList());
       return;
     }
     const rotateHandle = currentSelectionRotateHandle();
     if (rotateHandle && pointDistance(point, rotateHandle) <= rotateHandle.hitRadius) {
-      if (state.editorEngine.beginSelectionRotate?.(point.x, point.y)) {
+      if (await state.editorEngine.beginSelectionRotate?.(point.x, point.y)) {
         activeSelectionGesture = {
           kind: "rotate",
           center: {
@@ -3130,19 +3209,19 @@ function handleEditorPointerDown(event) {
           ),
           angle: 0,
         };
-        syncSelectCursorForPoint(point);
+        await syncSelectCursorForPoint(point);
         renderDocument();
         return;
       }
     }
-    if (state.editorEngine.beginSelectionMove?.(point.x, point.y, !!event.shiftKey, event.altKey)) {
+    if (await state.editorEngine.beginSelectionMove?.(point.x, point.y, !!event.shiftKey, event.altKey)) {
       activeSelectionGesture = {
         kind: "move",
         start: point,
         current: point,
         additive: !!event.shiftKey,
       };
-      syncSelectCursorForPoint(point);
+      await syncSelectCursorForPoint(point);
       renderDocument();
       return;
     }
@@ -3160,7 +3239,7 @@ function handleEditorPointerDown(event) {
   event.preventDefault();
   viewerSvg.setPointerCapture?.(event.pointerId);
   if (editorState.activeTool === "arrow") {
-    const arrowEditAction = state.editorEngine.beginHoverArrowEdit?.(point.x, point.y) || "";
+    const arrowEditAction = await state.editorEngine.beginHoverArrowEdit?.(point.x, point.y) || "";
     if (arrowEditAction) {
       activeSelectionGesture = {
         kind: arrowEditAction === "curve" ? "arrow-curve" : "arrow-endpoint",
@@ -3170,17 +3249,33 @@ function handleEditorPointerDown(event) {
         dragged: false,
         angle: 0,
       };
-      syncArrowAwareCursorForPoint(point);
+      await syncArrowAwareCursorForPoint(point);
       renderEditorOverlay(currentEditorRenderList());
       return;
     }
   }
-  state.editorEngine.pointerDown(point.x, point.y, event.altKey);
-  syncDocumentFromEngine();
+  if (editorState.activeTool === "shape") {
+    const shapeEditAction = await state.editorEngine.beginHoverShapeEdit?.(point.x, point.y) || "";
+    if (shapeEditAction) {
+      activeSelectionGesture = {
+        kind: "shape-resize",
+        action: shapeEditAction,
+        cursor: cursorForShapeAction(shapeEditAction) || "nwse-resize",
+        start: point,
+        current: point,
+        dragged: false,
+      };
+      await syncArrowAwareCursorForPoint(point);
+      renderEditorOverlay(currentEditorRenderList());
+      return;
+    }
+  }
+  await state.editorEngine.pointerDown(point.x, point.y, event.altKey);
+  await syncDocumentFromEngine();
   renderEditorOverlay(currentEditorRenderList());
 }
 
-function handleEditorPointerUp(event) {
+async function handleEditorPointerUp(event) {
   if (editorState.activeTool === "text") {
     return;
   }
@@ -3195,12 +3290,26 @@ function handleEditorPointerUp(event) {
     && (activeSelectionGesture?.kind === "arrow-endpoint" || activeSelectionGesture?.kind === "arrow-curve")) {
     const gesture = activeSelectionGesture;
     activeSelectionGesture = null;
-    state.editorEngine.finishHoverArrowEdit?.(point.x, point.y, event.altKey);
-    syncDocumentFromEngine();
+    await state.editorEngine.finishHoverArrowEdit?.(point.x, point.y, event.altKey);
+    await syncDocumentFromEngine();
     if (!gesture.dragged && editorState.activeTool === "select") {
-      state.editorEngine.selectAtPoint(point.x, point.y, gesture.additive);
+      await state.editorEngine.selectAtPoint(point.x, point.y, gesture.additive);
     }
-    syncArrowAwareCursorForPoint(point);
+    await syncArrowAwareCursorForPoint(point);
+    renderDocument();
+    return;
+  }
+  if ((editorState.activeTool === "select" || editorState.activeTool === "shape")
+    && activeSelectionGesture?.kind === "shape-resize") {
+    const gesture = activeSelectionGesture;
+    activeSelectionGesture = null;
+    await state.editorEngine.finishHoverShapeEdit?.(point.x, point.y, event.altKey);
+    await syncDocumentFromEngine();
+    if (!gesture.dragged && editorState.activeTool === "select") {
+      await state.editorEngine.selectAtPoint(point.x, point.y, gesture.additive);
+      await syncDocumentFromEngine();
+    }
+    await syncArrowAwareCursorForPoint(point);
     renderDocument();
     return;
   }
@@ -3211,34 +3320,34 @@ function handleEditorPointerUp(event) {
       return;
     }
     if (gesture.kind === "rotate") {
-      state.editorEngine.finishSelectionRotate(point.x, point.y, event.altKey);
-      syncDocumentFromEngine();
-      syncSelectCursorForPoint(point);
+      await state.editorEngine.finishSelectionRotate(point.x, point.y, event.altKey);
+      await syncDocumentFromEngine();
+      await syncSelectCursorForPoint(point);
       renderDocument();
       return;
     }
     if (gesture.kind === "resize") {
-      state.editorEngine.finishSelectionResize?.(point.x, point.y);
-      syncDocumentFromEngine();
-      syncSelectCursorForPoint(point);
+      await state.editorEngine.finishSelectionResize?.(point.x, point.y);
+      await syncDocumentFromEngine();
+      await syncSelectCursorForPoint(point);
       renderDocument();
       return;
     }
     if (gesture.kind === "move") {
       if (gesture.dragged) {
-        state.editorEngine.finishSelectionMove(point.x, point.y, event.altKey);
-        syncDocumentFromEngine();
+        await state.editorEngine.finishSelectionMove(point.x, point.y, event.altKey);
+        await syncDocumentFromEngine();
       } else {
-        state.editorEngine.selectAtPoint(point.x, point.y, gesture.additive);
+        await state.editorEngine.selectAtPoint(point.x, point.y, gesture.additive);
       }
-      syncSelectCursorForPoint(point);
+      await syncSelectCursorForPoint(point);
       renderDocument();
       return;
     }
     if (!gesture.dragged) {
-      state.editorEngine.selectAtPoint(point.x, point.y, gesture.additive);
+      await state.editorEngine.selectAtPoint(point.x, point.y, gesture.additive);
     } else if (editorState.selectMode === "box") {
-      state.editorEngine.selectInRect(
+      await state.editorEngine.selectInRect(
         gesture.start.x,
         gesture.start.y,
         point.x,
@@ -3247,25 +3356,25 @@ function handleEditorPointerUp(event) {
       );
     } else {
       const polygonPoints = [...gesture.points, point].map((candidate) => [candidate.x, candidate.y]);
-      state.editorEngine.selectInPolygon(JSON.stringify(polygonPoints), gesture.additive);
+      await state.editorEngine.selectInPolygon(JSON.stringify(polygonPoints), gesture.additive);
     }
-    syncSelectCursorForPoint(point);
+    await syncSelectCursorForPoint(point);
     renderDocument();
     return;
   }
-  state.editorEngine.pointerUp(point.x, point.y, event.altKey);
-  syncDocumentFromEngine();
+  await state.editorEngine.pointerUp(point.x, point.y, event.altKey);
+  await syncDocumentFromEngine();
   renderDocument();
   if (editorState.activeTool === "bracket") {
     const start = state.activeBracketDragStart;
     state.activeBracketDragStart = null;
     if (start && pointDistance(start, point) >= cssPxToCm(4)) {
-      openTextEditorAt(bracketLabelAnchorPoint(start, point));
+      await openTextEditorAt(bracketLabelAnchorPoint(start, point));
     }
   }
 }
 
-function handleEditorPointerLeave() {
+async function handleEditorPointerLeave() {
   if (!isEditingRustDocument()) {
     return;
   }
@@ -3273,24 +3382,24 @@ function handleEditorPointerLeave() {
     return;
   }
   if (editorState.activeTool !== "text") {
-    state.editorEngine.clearInteraction();
+    await state.editorEngine.clearInteraction();
     renderEditorOverlay();
   }
 }
 
-function handleEditorDoubleClick(event) {
+async function handleEditorDoubleClick(event) {
   if (!routeEditorPointerEvents() || editorState.activeTool !== "select") {
     return;
   }
   const point = svgPointFromEvent(event);
-  const changed = !!state.editorEngine.selectComponentAtPoint?.(point.x, point.y, event.shiftKey);
+  const changed = !!(await state.editorEngine.selectComponentAtPoint?.(point.x, point.y, event.shiftKey));
   if (!changed) {
     return;
   }
   event.preventDefault();
   activeSelectionGesture = null;
-  syncDocumentFromEngine();
-  syncSelectCursorForPoint(point);
+  await syncDocumentFromEngine();
+  await syncSelectCursorForPoint(point);
   renderDocument();
 }
 
@@ -3378,6 +3487,7 @@ function renderEditorOverlay(renderList = null) {
         "hover-bond-center": "editor-bond-center-halo",
         "hover-arrow-center": "editor-arrow-center-halo",
         "hover-arrow-handle": "editor-arrow-focus-handle",
+        "hover-shape-handle": "editor-arrow-focus-handle",
         "preview-end": "editor-preview-end",
         "selection-bond-dot": "editor-selection-bond-dot",
       };
@@ -3499,9 +3609,9 @@ viewerSvg?.addEventListener("pointermove", handleEditorPointerMove);
 viewerSvg?.addEventListener("pointerdown", handleEditorPointerDown);
 viewerSvg?.addEventListener("pointerup", handleEditorPointerUp);
 viewerSvg?.addEventListener("dblclick", handleEditorDoubleClick);
-viewerSvg?.addEventListener("pointercancel", () => {
+viewerSvg?.addEventListener("pointercancel", async () => {
   activeSelectionGesture = null;
-  state.editorEngine?.clearInteraction?.();
+  await state.editorEngine?.clearInteraction?.();
   syncCanvasCursor();
   renderEditorOverlay();
 });
@@ -3655,12 +3765,12 @@ async function loadInitialDocumentTabs() {
   renderDocumentTabs();
   const detachedDocument = await desktopFileHost?.takeDetachedDocument?.();
   if (detachedDocument) {
-    loadDetachedDocumentPayload(detachedDocument);
+    await loadDetachedDocumentPayload(detachedDocument);
     return;
   }
   const browserPendingDocument = takeBrowserPendingDocument();
   if (browserPendingDocument) {
-    loadBrowserPendingDocumentPayload(browserPendingDocument);
+    await loadBrowserPendingDocumentPayload(browserPendingDocument);
     return;
   }
   const pendingStartupPaths = await desktopFileHost?.takeStartupOpenPaths?.();

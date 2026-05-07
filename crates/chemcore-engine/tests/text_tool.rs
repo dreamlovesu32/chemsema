@@ -45,6 +45,14 @@ fn delete_tool_state() -> ToolState {
     }
 }
 
+fn select_tool_state() -> ToolState {
+    ToolState {
+        active_tool: Tool::Select,
+        bond_variant: BondVariant::Single,
+        ..ToolState::default()
+    }
+}
+
 fn free_anchor(point: Point) -> BondAnchor {
     BondAnchor {
         node_id: None,
@@ -456,6 +464,60 @@ fn begin_and_apply_text_object_edit_creates_text_scene_object() {
             .and_then(serde_json::Value::as_str),
         Some("reaction note")
     );
+}
+
+#[test]
+fn switching_to_select_selects_latest_text_object_or_edited_molecule_label() {
+    let mut text_object_engine = Engine::new();
+    text_object_engine.set_tool_state(ToolState {
+        active_tool: Tool::Text,
+        bond_variant: BondVariant::Single,
+        ..ToolState::default()
+    });
+    let session = text_object_engine
+        .begin_text_edit(px_point(120.0, 88.0))
+        .expect("text session should be created");
+    assert!(
+        text_object_engine.apply_text_edit(chemcore_engine::TextEditSession {
+            text: "reaction note".to_string(),
+            ..session
+        })
+    );
+    let text_object_id = text_object_engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "text")
+        .expect("text object should exist")
+        .id
+        .clone();
+    text_object_engine.set_tool_state(select_tool_state());
+    assert_eq!(
+        text_object_engine.state().selection.text_objects,
+        vec![text_object_id]
+    );
+
+    let mut label_engine = Engine::new();
+    label_engine.set_tool_state(tool_state(BondVariant::Single));
+    click(&mut label_engine, 300.0, 260.0);
+    label_engine.set_tool_state(ToolState {
+        active_tool: Tool::Text,
+        bond_variant: BondVariant::Single,
+        ..ToolState::default()
+    });
+    let session = label_engine
+        .begin_text_edit(px_point(300.0, 260.0))
+        .expect("endpoint text session should be created");
+    assert!(
+        label_engine.apply_text_edit(chemcore_engine::TextEditSession {
+            text: "NH3".to_string(),
+            ..session
+        })
+    );
+    label_engine.set_tool_state(select_tool_state());
+    assert_eq!(label_engine.state().selection.nodes.len(), 2);
+    assert_eq!(label_engine.state().selection.bonds.len(), 1);
 }
 
 #[test]

@@ -67,6 +67,7 @@ impl Engine {
         self.state.overlay.hover_endpoint = None;
         self.state.overlay.hover_text_box = None;
         self.state.overlay.hover_arrow = None;
+        self.state.overlay.hover_shape = None;
         self.state.overlay.preview = None;
         self.state.overlay.hover_bond_center =
             hit_test_bond_center(&self.state.document, point, BOND_CENTER_HIT_RADIUS);
@@ -103,6 +104,7 @@ impl Engine {
         let point = event.point();
         self.state.overlay.hover_bond_center = None;
         self.state.overlay.hover_arrow = None;
+        self.state.overlay.hover_shape = None;
         self.state.overlay.hover_endpoint = None;
         self.state.overlay.hover_text_box = None;
         self.state.overlay.preview = None;
@@ -156,21 +158,24 @@ impl Engine {
 
     pub(super) fn insert_bracket_from_drag(&mut self, drag: &BracketDragState) -> bool {
         let object_id = self.next_id("obj_bracket");
-        let Some(object) = self.bracket_scene_object(drag.start, drag.current, object_id) else {
+        let Some(object) = self.bracket_scene_object(drag.start, drag.current, object_id.clone())
+        else {
             return false;
         };
         self.push_undo_snapshot();
         self.state.document.objects.push(object);
         refresh_repeating_units(&mut self.state.document);
+        self.note_pending_select_target(PendingSelectTarget::GraphicObject(object_id));
         true
     }
 
     pub(super) fn insert_bracket_symbol(&mut self, point: Point) -> bool {
         let object_id = self.next_id("obj_symbol");
-        let object = self.bracket_symbol_scene_object(point, object_id);
+        let object = self.bracket_symbol_scene_object(point, object_id.clone());
         self.push_undo_snapshot();
         self.state.document.objects.push(object);
         self.refresh_symbol_chemistry();
+        self.note_pending_select_target(PendingSelectTarget::GraphicObject(object_id));
         true
     }
 
@@ -236,6 +241,7 @@ impl Engine {
                 bbox: Some([0.0, 0.0, width, height]),
                 extra,
             },
+            children: Vec::new(),
         })
     }
 
@@ -293,6 +299,7 @@ impl Engine {
                 bbox: Some([0.0, 0.0, width, height]),
                 extra,
             },
+            children: Vec::new(),
         }
     }
 

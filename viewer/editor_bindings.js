@@ -190,7 +190,7 @@ function bindKeyboard(options) {
     const target = event.target;
     if (options.getActiveTextEditor()?.root?.contains?.(target)) {
       if (event.key === "Escape") {
-        options.finishActiveTextEditor(false);
+        await options.finishActiveTextEditor(false);
         event.preventDefault();
       }
       return;
@@ -204,7 +204,7 @@ function bindKeyboard(options) {
       await options.runEditorCommand(command);
       return;
     }
-    if (runHoverEndpointShortcut(event, options)) {
+    if (await runHoverEndpointShortcut(event, options)) {
       event.preventDefault();
     }
   });
@@ -278,12 +278,12 @@ function hoverEndpointShortcutLabelForEvent(event, options) {
   return HOVER_ENDPOINT_SHORTCUT_LABELS[event.key] || null;
 }
 
-function runHoverEndpointShortcut(event, options) {
+async function runHoverEndpointShortcut(event, options) {
   const label = hoverEndpointShortcutLabelForEvent(event, options);
   if (!label) {
     return false;
   }
-  const changed = options.state.editorEngine?.replaceHoveredEndpointLabel?.(label);
+  const changed = await options.state.editorEngine?.replaceHoveredEndpointLabel?.(label);
   if (!changed) {
     return false;
   }
@@ -294,17 +294,17 @@ function runHoverEndpointShortcut(event, options) {
 
 function bindToolButtons(options) {
   document.querySelectorAll("[data-tool]").forEach((button) => {
-    button.addEventListener("click", () => {
-      setActiveTool(button, options);
+    button.addEventListener("click", async () => {
+      await setActiveTool(button, options);
     });
   });
 }
 
-function setActiveTool(toolButton, options) {
+async function setActiveTool(toolButton, options) {
   const { editorState, state } = options;
   const nextTool = toolButton?.dataset?.tool || editorState.activeTool;
   if (editorState.activeTool === "text" && nextTool !== "text") {
-    options.finishActiveTextEditor(true);
+    await options.finishActiveTextEditor(true);
   }
   if (editorState.activeTool === "select" && nextTool !== "select") {
     options.clearActiveSelectionGesture();
@@ -316,7 +316,7 @@ function setActiveTool(toolButton, options) {
   document.querySelectorAll("[data-tool]").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.tool === editorState.activeTool);
   });
-  options.syncEngineToolState();
+  await options.syncEngineToolState();
   options.renderSecondaryToolbar();
   options.syncCanvasCursor();
   if (options.isEditingRustDocument()) {
@@ -354,13 +354,13 @@ function bindDocumentStylePreset(options) {
     event.preventDefault();
     const preset = item.dataset.documentStylePreset || "default";
     closeMenu();
-    options.finishActiveTextEditor(true);
+    await options.finishActiveTextEditor(true);
     const confirmed = await options.confirmApplyDocumentStylePreset?.(preset);
     if (!confirmed) {
       return;
     }
-    options.state.editorEngine?.setDocumentStylePreset?.(preset);
-    options.syncEngineToolState();
+    await options.state.editorEngine?.setDocumentStylePreset?.(preset);
+    await options.syncEngineToolState();
     if (options.isEditingRustDocument()) {
       options.syncDocumentFromEngine();
       options.renderDocument();
@@ -384,15 +384,15 @@ function bindDocumentStylePreset(options) {
 function bindSecondaryToolbar(options) {
   bindToolbarColorPickers(options);
 
-  options.secondaryToolbar?.addEventListener("click", (event) => {
-    if (handleColorPickerClick(event, options)) {
+  options.secondaryToolbar?.addEventListener("click", async (event) => {
+    if (await handleColorPickerClick(event, options)) {
       return;
     }
     const button = event.target.closest("[data-secondary-value]");
     if (!button) {
       return;
     }
-    handleSecondaryToolbarValue(button.dataset.secondaryValue, options);
+    await handleSecondaryToolbarValue(button.dataset.secondaryValue, options);
   });
 
   options.secondaryToolbar?.addEventListener("change", (event) => {
@@ -457,7 +457,7 @@ function bindToolbarColorPickers(options) {
     updateDragHover(event);
     event.preventDefault();
   };
-  const finishDrag = (event) => {
+  const finishDrag = async (event) => {
     if (!drag || drag.pointerId !== event.pointerId) {
       return;
     }
@@ -472,10 +472,10 @@ function bindToolbarColorPickers(options) {
     const target = updateDragHover(event);
     clearHovered();
     if (target?.dataset?.colorSwatchValue) {
-      applyToolbarColor(activeDrag.picker?.dataset?.colorPrefix, target.dataset.colorSwatchValue, options);
+      await applyToolbarColor(activeDrag.picker?.dataset?.colorPrefix, target.dataset.colorSwatchValue, options);
     } else if (target?.hasAttribute?.("data-color-other")) {
-      openColorDialog(currentColorForPrefix(activeDrag.picker?.dataset?.colorPrefix, options), (color) => {
-        applyToolbarColor(activeDrag.picker?.dataset?.colorPrefix, color, options);
+      openColorDialog(currentColorForPrefix(activeDrag.picker?.dataset?.colorPrefix, options), async (color) => {
+        await applyToolbarColor(activeDrag.picker?.dataset?.colorPrefix, color, options);
       }, options);
     }
     closeColorPickers();
@@ -521,7 +521,7 @@ function bindToolbarColorPickers(options) {
   });
 }
 
-function handleColorPickerClick(event, options) {
+async function handleColorPickerClick(event, options) {
   if (performance.now() < suppressColorPickerClickUntil) {
     event.preventDefault();
     event.stopPropagation();
@@ -530,7 +530,7 @@ function handleColorPickerClick(event, options) {
   const swatch = event.target.closest("[data-color-swatch-value]");
   if (swatch) {
     const picker = swatch.closest(".color-picker");
-    applyToolbarColor(picker?.dataset?.colorPrefix, swatch.dataset.colorSwatchValue, options);
+    await applyToolbarColor(picker?.dataset?.colorPrefix, swatch.dataset.colorSwatchValue, options);
     closeColorPickers();
     event.preventDefault();
     return true;
@@ -538,8 +538,8 @@ function handleColorPickerClick(event, options) {
   const other = event.target.closest("[data-color-other]");
   if (other) {
     const picker = other.closest(".color-picker");
-    openColorDialog(currentColorForPrefix(picker?.dataset?.colorPrefix, options), (color) => {
-      applyToolbarColor(picker?.dataset?.colorPrefix, color, options);
+    openColorDialog(currentColorForPrefix(picker?.dataset?.colorPrefix, options), async (color) => {
+      await applyToolbarColor(picker?.dataset?.colorPrefix, color, options);
     }, options);
     closeColorPickers();
     event.preventDefault();
@@ -576,7 +576,7 @@ function closeColorPickers(except = null) {
   });
 }
 
-function handleSecondaryToolbarValue(value, options) {
+async function handleSecondaryToolbarValue(value, options) {
   const { editorState } = options;
   let arrowOptionChanged = false;
   if (value?.startsWith("text-align-")) {
@@ -606,23 +606,23 @@ function handleSecondaryToolbarValue(value, options) {
     editorState.textScript = "superscript";
     options.applyTextScript("superscript");
   } else if (value === "text-color-apply") {
-    applyToolbarColor("text-color", editorState.textColor, options);
+    await applyToolbarColor("text-color", editorState.textColor, options);
   } else if (value?.startsWith("text-color-")) {
     const color = colorFromToolbarValue(value, "text-color-");
     if (color) {
-      applyToolbarColor("text-color", color, options);
+      await applyToolbarColor("text-color", color, options);
     }
   } else if (value === "selection-color-apply") {
-    applyToolbarColor("selection-color", editorState.selectionColor || editorState.textColor, options);
+    await applyToolbarColor("selection-color", editorState.selectionColor || editorState.textColor, options);
   } else if (value?.startsWith("selection-color-")) {
     const color = colorFromToolbarValue(value, "selection-color-");
     if (color) {
-      applyToolbarColor("selection-color", color, options);
+      await applyToolbarColor("selection-color", color, options);
     }
   } else if (value === "select-free" || value === "select-box") {
     editorState.selectMode = value.replace("select-", "");
   } else if (/^(align-|distribute-|flip-)/.test(value || "")) {
-    options.applySelectionArrangeCommand(value);
+    await options.applySelectionArrangeCommand(value);
   } else if (value?.startsWith("bond-")) {
     editorState.bondType = value.replace("bond-", "");
   } else if (value?.startsWith("arrow-type-")) {
@@ -676,16 +676,16 @@ function handleSecondaryToolbarValue(value, options) {
   } else if (value?.startsWith("ring-") || value === "benzene") {
     editorState.template = value;
   } else if (value === "shape-color-apply") {
-    applyToolbarColor("shape-color", editorState.shapeColor, options);
+    await applyToolbarColor("shape-color", editorState.shapeColor, options);
   } else if (value?.startsWith("shape-color-")) {
     const color = colorFromToolbarValue(value, "shape-color-");
     if (color) {
-      applyToolbarColor("shape-color", color, options);
+      await applyToolbarColor("shape-color", color, options);
     }
   }
-  options.syncEngineToolState();
+  await options.syncEngineToolState();
   if (arrowOptionChanged) {
-    options.applyArrowOptionsToSelection();
+    await options.applyArrowOptionsToSelection();
   }
   options.renderSecondaryToolbar();
   options.focusActiveTextEditor();
@@ -701,24 +701,24 @@ function currentColorForPrefix(prefix, options) {
   return options.editorState.textColor;
 }
 
-function applyToolbarColor(prefix, color, options) {
+async function applyToolbarColor(prefix, color, options) {
   const normalized = normalizeHexColor(color) || "#000000";
   const { editorState } = options;
   if (prefix === "shape-color") {
     editorState.shapeColor = normalized;
-    options.syncEngineToolState();
-    options.applySelectionColor?.(normalized);
+    await options.syncEngineToolState();
+    await options.applySelectionColor?.(normalized);
   } else if (prefix === "selection-color") {
     editorState.selectionColor = normalized;
     editorState.textColor = normalized;
     editorState.shapeColor = normalized;
-    options.applySelectionColor?.(normalized);
+    await options.applySelectionColor?.(normalized);
   } else {
     editorState.textColor = normalized;
     if (options.getActiveTextEditor?.()) {
       options.applyTextInlineStyle({ color: normalized });
     } else {
-      options.applySelectionColor?.(normalized);
+      await options.applySelectionColor?.(normalized);
     }
   }
   options.renderSecondaryToolbar();

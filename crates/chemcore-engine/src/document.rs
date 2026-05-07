@@ -97,35 +97,119 @@ impl ChemcoreDocument {
                     bbox: Some([0.0, 0.0, DEFAULT_PAGE_WIDTH, DEFAULT_PAGE_HEIGHT]),
                     extra: BTreeMap::new(),
                 },
+                children: Vec::new(),
             }],
             resources,
         }
     }
 
     pub fn editable_fragment_mut(&mut self) -> Option<EditableFragmentMut<'_>> {
-        let object_index = self
-            .objects
-            .iter()
-            .position(|object| object.object_type == "molecule")?;
-        let resource_ref = self.objects[object_index].payload.resource_ref.clone()?;
+        let object = first_molecule_object_mut(&mut self.objects)?;
+        let resource_ref = object.payload.resource_ref.clone()?;
         let resource = self.resources.get_mut(&resource_ref)?;
         let fragment = resource.data.as_fragment_mut()?;
-        Some(EditableFragmentMut {
-            object: &mut self.objects[object_index],
-            fragment,
-        })
+        Some(EditableFragmentMut { object, fragment })
     }
 
     pub fn editable_fragment(&self) -> Option<EditableFragment<'_>> {
-        let object = self
-            .objects
-            .iter()
-            .find(|object| object.object_type == "molecule")?;
+        let object = first_molecule_object(&self.objects)?;
         let resource_ref = object.payload.resource_ref.as_ref()?;
         let resource = self.resources.get(resource_ref)?;
         let fragment = resource.data.as_fragment()?;
         Some(EditableFragment { object, fragment })
     }
+
+    pub fn scene_objects(&self) -> Vec<&SceneObject> {
+        let mut out = Vec::new();
+        collect_scene_objects(&self.objects, &mut out);
+        out
+    }
+
+    pub fn find_scene_object(&self, object_id: &str) -> Option<&SceneObject> {
+        find_scene_object(&self.objects, object_id)
+    }
+
+    pub fn find_scene_object_mut(&mut self, object_id: &str) -> Option<&mut SceneObject> {
+        find_scene_object_mut(&mut self.objects, object_id)
+    }
+
+    pub fn remove_scene_objects_by_id(
+        &mut self,
+        object_ids: &std::collections::BTreeSet<&str>,
+    ) -> usize {
+        remove_scene_objects_by_id(&mut self.objects, object_ids)
+    }
+}
+
+fn collect_scene_objects<'a>(objects: &'a [SceneObject], out: &mut Vec<&'a SceneObject>) {
+    for object in objects {
+        out.push(object);
+        collect_scene_objects(&object.children, out);
+    }
+}
+
+fn find_scene_object<'a>(objects: &'a [SceneObject], object_id: &str) -> Option<&'a SceneObject> {
+    for object in objects {
+        if object.id == object_id {
+            return Some(object);
+        }
+        if let Some(found) = find_scene_object(&object.children, object_id) {
+            return Some(found);
+        }
+    }
+    None
+}
+
+fn find_scene_object_mut<'a>(
+    objects: &'a mut [SceneObject],
+    object_id: &str,
+) -> Option<&'a mut SceneObject> {
+    for object in objects {
+        if object.id == object_id {
+            return Some(object);
+        }
+        if let Some(found) = find_scene_object_mut(&mut object.children, object_id) {
+            return Some(found);
+        }
+    }
+    None
+}
+
+fn first_molecule_object(objects: &[SceneObject]) -> Option<&SceneObject> {
+    for object in objects {
+        if object.object_type == "molecule" {
+            return Some(object);
+        }
+        if let Some(found) = first_molecule_object(&object.children) {
+            return Some(found);
+        }
+    }
+    None
+}
+
+fn first_molecule_object_mut(objects: &mut [SceneObject]) -> Option<&mut SceneObject> {
+    for object in objects {
+        if object.object_type == "molecule" {
+            return Some(object);
+        }
+        if let Some(found) = first_molecule_object_mut(&mut object.children) {
+            return Some(found);
+        }
+    }
+    None
+}
+
+fn remove_scene_objects_by_id(
+    objects: &mut Vec<SceneObject>,
+    object_ids: &std::collections::BTreeSet<&str>,
+) -> usize {
+    let before = objects.len();
+    objects.retain(|object| !object_ids.contains(object.id.as_str()));
+    let mut removed = before - objects.len();
+    for object in objects {
+        removed += remove_scene_objects_by_id(&mut object.children, object_ids);
+    }
+    removed
 }
 
 pub fn parse_document_json(json: &str) -> Result<ChemcoreDocument, String> {
@@ -781,6 +865,8 @@ pub struct SceneObject {
     pub meta: Value,
     #[serde(default)]
     pub payload: ObjectPayload,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub children: Vec<SceneObject>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -106,6 +106,7 @@ pub fn parse_cdxml_document(cdxml: &str, title: Option<&str>) -> Result<Chemcore
                 ]),
                 extra: BTreeMap::new(),
             },
+            children: Vec::new(),
         });
     }
     append_line_objects(&root, &mut objects, &mut styles, defaults, &colors);
@@ -120,6 +121,7 @@ pub fn parse_cdxml_document(cdxml: &str, title: Option<&str>) -> Result<Chemcore
         &display_fragment_ids,
         &bonded_node_ids,
     );
+    apply_cdxml_groups(&root, &mut objects);
     let mut document = ChemcoreDocument {
         format: FormatInfo {
             name: "chemcore".to_string(),
@@ -158,6 +160,128 @@ pub fn parse_cdxml_document(cdxml: &str, title: Option<&str>) -> Result<Chemcore
     crate::normalize_arrow_object_payloads(&mut document);
     crate::normalize_fragment_label_payloads(&mut document);
     Ok(document)
+}
+
+fn apply_cdxml_groups(root: &XmlNode, objects: &mut Vec<SceneObject>) {
+    let mut groups = Vec::new();
+    let mut index = 1;
+    collect_cdxml_groups(root, objects, &mut groups, &mut index);
+    objects.extend(groups);
+}
+
+fn collect_cdxml_groups(
+    node: &XmlNode,
+    objects: &mut Vec<SceneObject>,
+    groups: &mut Vec<SceneObject>,
+    index: &mut usize,
+) {
+    for child in &node.children {
+        if child.is("group") {
+            if let Some(group) = cdxml_group_object(child, objects, index) {
+                groups.push(group);
+            }
+        } else {
+            collect_cdxml_groups(child, objects, groups, index);
+        }
+    }
+}
+
+fn cdxml_group_object(
+    node: &XmlNode,
+    objects: &mut Vec<SceneObject>,
+    index: &mut usize,
+) -> Option<SceneObject> {
+    let group_number = *index;
+    *index += 1;
+    let mut children = Vec::new();
+    for child in &node.children {
+        if child.is("group") {
+            if let Some(group) = cdxml_group_object(child, objects, index) {
+                children.push(group);
+            }
+            continue;
+        }
+        children.extend(take_cdxml_child_objects(objects, child));
+    }
+    if children.is_empty() {
+        return None;
+    }
+    let z_index = parse_i32(node.attr("Z")).unwrap_or_else(|| {
+        children
+            .iter()
+            .map(|child| child.z_index)
+            .min()
+            .unwrap_or(0)
+    });
+    let payload_bbox = parse_bbox(node.attr("BoundingBox")).map(|bbox| {
+        [
+            round2(bbox[0]),
+            round2(bbox[1]),
+            round2(bbox[2] - bbox[0]),
+            round2(bbox[3] - bbox[1]),
+        ]
+    });
+    Some(SceneObject {
+        id: format!("obj_group_{group_number:03}"),
+        object_type: "group".to_string(),
+        name: format!("group {group_number}"),
+        visible: true,
+        locked: false,
+        z_index,
+        transform: Transform::identity(),
+        style_ref: None,
+        meta: json!({
+            "source": "cdxml",
+            "groupId": node.attr("id"),
+            "import": {
+                "cdxml": {
+                    "groupId": node.attr("id"),
+                    "boundingBox": node.attr("BoundingBox"),
+                }
+            },
+        }),
+        payload: ObjectPayload {
+            resource_ref: None,
+            bbox: payload_bbox,
+            extra: BTreeMap::new(),
+        },
+        children,
+    })
+}
+
+fn take_cdxml_child_objects(objects: &mut Vec<SceneObject>, node: &XmlNode) -> Vec<SceneObject> {
+    let Some(source_id) = node.attr("id") else {
+        return Vec::new();
+    };
+    let mut taken = Vec::new();
+    let mut index = 0;
+    while index < objects.len() {
+        if object_matches_cdxml_node(&objects[index], node, source_id) {
+            taken.push(objects.remove(index));
+        } else {
+            index += 1;
+        }
+    }
+    taken
+}
+
+fn object_matches_cdxml_node(object: &SceneObject, node: &XmlNode, source_id: &str) -> bool {
+    match node.name.as_str() {
+        "fragment" => object.meta.get("fragmentId").and_then(Value::as_str) == Some(source_id),
+        "graphic" | "arrow" => {
+            object.meta.get("graphicId").and_then(Value::as_str) == Some(source_id)
+                || object
+                    .meta
+                    .get("graphicIds")
+                    .and_then(Value::as_array)
+                    .is_some_and(|ids| {
+                        ids.iter()
+                            .any(|id| id.as_str().is_some_and(|id| id == source_id))
+                    })
+        }
+        "t" => object.meta.get("textId").and_then(Value::as_str) == Some(source_id),
+        _ => false,
+    }
 }
 
 pub(crate) fn normalize_cdxml_document_for_editing(document: &mut ChemcoreDocument) {
@@ -317,6 +441,7 @@ fn merge_molecule_objects_for_editing(
                     bbox: Some([0.0, 0.0, round2(max_x - min_x), round2(max_y - min_y)]),
                     extra: BTreeMap::new(),
                 },
+                children: Vec::new(),
             });
         }
     }

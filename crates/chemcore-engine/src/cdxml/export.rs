@@ -148,19 +148,66 @@ impl<'a> CdxmlDocumentWriter<'a> {
             .collect();
         objects.sort_by(|a, b| a.z_index.cmp(&b.z_index).then_with(|| a.id.cmp(&b.id)));
         for object in objects {
-            match object.object_type.as_str() {
-                "molecule" => self.write_molecule_object(&mut out, object),
-                "line" => self.write_line_object(&mut out, object),
-                "shape" => self.write_shape_object(&mut out, object),
-                "bracket" | "symbol" => self.write_bracket_object(&mut out, object),
-                "text" => self.write_text_object(&mut out, object),
-                _ => {}
-            }
+            self.write_scene_object(&mut out, object);
         }
 
         out.push_str("  </page>\n");
         out.push_str("</CDXML>\n");
         out
+    }
+
+    fn write_scene_object(&mut self, out: &mut String, object: &SceneObject) {
+        match object.object_type.as_str() {
+            "molecule" => self.write_molecule_object(out, object),
+            "line" => self.write_line_object(out, object),
+            "shape" => self.write_shape_object(out, object),
+            "bracket" | "symbol" => self.write_bracket_object(out, object),
+            "text" => self.write_text_object(out, object),
+            "group" => self.write_group_object(out, object),
+            _ => {}
+        }
+    }
+
+    fn write_group_object(&mut self, out: &mut String, object: &SceneObject) {
+        if object.children.is_empty() {
+            return;
+        }
+        let mut scratch = self.document.clone();
+        scratch.objects = object.children.clone();
+        let bbox = crate::render_primitives_bounds(crate::render_document(&scratch).iter())
+            .or(object.payload.bbox.map(|bbox| {
+                [
+                    object.transform.translate[0] + bbox[0],
+                    object.transform.translate[1] + bbox[1],
+                    object.transform.translate[0] + bbox[0] + bbox[2],
+                    object.transform.translate[1] + bbox[1] + bbox[3],
+                ]
+            }))
+            .unwrap_or([
+                object.transform.translate[0],
+                object.transform.translate[1],
+                object.transform.translate[0] + 1.0,
+                object.transform.translate[1] + 1.0,
+            ]);
+        writeln!(
+            out,
+            "    <group id=\"{}\" BoundingBox=\"{}\" Z=\"{}\">",
+            self.alloc_id(),
+            fmt_bbox(bbox),
+            object.z_index
+        )
+        .expect("writing group should not fail");
+
+        let mut children: Vec<&SceneObject> = object
+            .children
+            .iter()
+            .filter(|child| child.visible)
+            .collect();
+        children.sort_by(|a, b| a.z_index.cmp(&b.z_index).then_with(|| a.id.cmp(&b.id)));
+        for child in children {
+            self.write_scene_object(out, child);
+        }
+        out.push_str("    </group>\n");
     }
 
     fn write_color_table(&self, out: &mut String) {

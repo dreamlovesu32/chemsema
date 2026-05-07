@@ -1,7 +1,7 @@
 use chemcore_engine::{
     angular_distance, document_to_cdxml, document_to_svg, hit_test_bond_center,
-    parse_cdxml_document, parse_document_json, render_document, ChemcoreDocument, Engine, Point,
-    RenderPrimitive, RenderRole,
+    parse_cdxml_document, parse_document_json, render_document, render_primitives_bounds,
+    ChemcoreDocument, Engine, Point, RenderPrimitive, RenderRole,
 };
 use serde_json::json;
 use serde_json::Map;
@@ -50,6 +50,230 @@ fn fragment_document(nodes: serde_json::Value, bonds: serde_json::Value) -> Chem
         }
     }))
     .expect("document should deserialize")
+}
+
+#[test]
+fn cdxml_group_import_preserves_tree_and_z_order() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<CDXML BondLength="20" LineWidth="1" LabelSize="10" CaptionSize="10">
+  <page id="1" BoundingBox="0 0 200 160" Width="200" Height="160">
+    <group id="10" BoundingBox="10 10 80 50" Z="77">
+      <graphic id="11" GraphicType="Rectangle" RectangleType="Plain" BoundingBox="10 10 40 30" Z="12"/>
+      <graphic id="12" GraphicType="Rectangle" RectangleType="Plain" BoundingBox="50 20 80 50" Z="13"/>
+    </group>
+  </page>
+</CDXML>"#;
+    let document = parse_cdxml_document(cdxml, Some("group")).expect("cdxml should parse");
+    let group = document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "group")
+        .expect("group should import");
+    assert_eq!(group.z_index, 77);
+    assert_eq!(group.children.len(), 2);
+    assert!(document
+        .objects
+        .iter()
+        .all(|object| object.object_type != "shape"));
+
+    let exported = document_to_cdxml(&document);
+    assert!(exported.contains("<group "));
+    assert!(exported.contains("Z=\"77\""));
+    let reimported =
+        parse_cdxml_document(&exported, Some("group export")).expect("group export should parse");
+    assert_eq!(
+        reimported
+            .objects
+            .iter()
+            .find(|object| object.object_type == "group")
+            .map(|object| object.children.len()),
+        Some(2)
+    );
+}
+
+#[test]
+fn grouped_scene_objects_render_and_select_as_one_tight_box() {
+    let document: ChemcoreDocument = serde_json::from_value(json!({
+        "format": { "name": "chemcore", "version": "0.1", "unit": "pt" },
+        "document": {
+            "id": "doc_group",
+            "title": "group",
+            "page": { "width": 200.0, "height": 160.0, "background": "#ffffff" }
+        },
+        "styles": {
+            "style_shape": {
+                "kind": "shape",
+                "stroke": "#000000",
+                "strokeWidth": 1.0
+            }
+        },
+        "objects": [{
+            "id": "grp_1",
+            "type": "group",
+            "zIndex": 30,
+            "children": [
+                {
+                    "id": "shape_a",
+                    "type": "shape",
+                    "zIndex": 10,
+                    "transform": { "translate": [10.0, 10.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+                    "styleRef": "style_shape",
+                    "payload": { "bbox": [0.0, 0.0, 20.0, 10.0], "kind": "rect" }
+                },
+                {
+                    "id": "shape_b",
+                    "type": "shape",
+                    "zIndex": 20,
+                    "transform": { "translate": [50.0, 40.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+                    "styleRef": "style_shape",
+                    "payload": { "bbox": [0.0, 0.0, 30.0, 10.0], "kind": "rect" }
+                }
+            ]
+        }],
+        "resources": {}
+    }))
+    .expect("document should deserialize");
+    assert_eq!(render_document(&document).len(), 2);
+
+    let mut engine = Engine::new();
+    engine
+        .load_document_json(&serde_json::to_string(&document).unwrap())
+        .expect("document should load");
+    engine.select_at_point(Point::new(20.0, 15.0), false);
+    let selection_boxes: Vec<_> = engine
+        .render_list()
+        .into_iter()
+        .filter(|primitive| {
+            matches!(
+                primitive,
+                RenderPrimitive::Rect {
+                    role: RenderRole::SelectionBox,
+                    ..
+                }
+            )
+        })
+        .collect();
+    assert_eq!(selection_boxes.len(), 1);
+    match &selection_boxes[0] {
+        RenderPrimitive::Rect {
+            x,
+            y,
+            width,
+            height,
+            ..
+        } => {
+            assert!((*x - 9.5).abs() < 0.1);
+            assert!((*y - 9.5).abs() < 0.1);
+            assert!((*width - 71.0).abs() < 0.2);
+            assert!((*height - 41.0).abs() < 0.2);
+        }
+        _ => unreachable!(),
+    }
+}
+
+#[test]
+fn engine_groups_and_ungroups_selected_scene_objects_without_geometry_drift() {
+    let document: ChemcoreDocument = serde_json::from_value(json!({
+        "format": { "name": "chemcore", "version": "0.1", "unit": "pt" },
+        "document": {
+            "id": "doc_group_edit",
+            "title": "group edit",
+            "page": { "width": 200.0, "height": 160.0, "background": "#ffffff" }
+        },
+        "styles": {
+            "style_shape": {
+                "kind": "shape",
+                "stroke": "#000000",
+                "strokeWidth": 1.0
+            }
+        },
+        "objects": [
+            {
+                "id": "shape_a",
+                "type": "shape",
+                "zIndex": 10,
+                "transform": { "translate": [10.0, 10.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+                "styleRef": "style_shape",
+                "payload": { "bbox": [0.0, 0.0, 20.0, 10.0], "kind": "rect" }
+            },
+            {
+                "id": "shape_b",
+                "type": "shape",
+                "zIndex": 20,
+                "transform": { "translate": [50.0, 40.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+                "styleRef": "style_shape",
+                "payload": { "bbox": [0.0, 0.0, 30.0, 10.0], "kind": "rect" }
+            }
+        ],
+        "resources": {}
+    }))
+    .expect("document should deserialize");
+    let before = render_primitives_bounds(render_document(&document).iter()).unwrap();
+
+    let mut engine = Engine::new();
+    engine
+        .load_document_json(&serde_json::to_string(&document).unwrap())
+        .expect("document should load");
+    engine.select_in_rect(Point::new(0.0, 0.0), Point::new(90.0, 60.0), false);
+    assert!(engine.group_selection());
+    let group = engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "group")
+        .expect("group should be created");
+    assert_eq!(group.children.len(), 2);
+    assert_eq!(group.z_index, 20);
+    let grouped_bounds = render_primitives_bounds(render_document(&engine.state().document).iter())
+        .expect("grouped document should render");
+    assert_eq!(before, grouped_bounds);
+
+    assert!(engine.ungroup_selection());
+    assert!(engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .all(|object| object.object_type != "group"));
+    let ungrouped_bounds =
+        render_primitives_bounds(render_document(&engine.state().document).iter())
+            .expect("ungrouped document should render");
+    assert_eq!(before, ungrouped_bounds);
+}
+
+#[test]
+fn complete_molecule_selection_suppresses_internal_selection_dots() {
+    let mut engine = Engine::new();
+    engine
+        .load_document_json(
+            &serde_json::to_string(&fragment_document(
+                json!([
+                    { "id": "n1", "element": "C", "atomicNumber": 6, "position": [20.0, 20.0], "charge": 0, "numHydrogens": 0 },
+                    { "id": "n2", "element": "C", "atomicNumber": 6, "position": [50.0, 20.0], "charge": 0, "numHydrogens": 0 }
+                ]),
+                json!([
+                    { "id": "b1", "begin": "n1", "end": "n2", "order": 1, "strokeWidth": 0.85 }
+                ]),
+            ))
+            .unwrap(),
+        )
+        .expect("document should load");
+    assert!(engine.select_component_at_point(Point::new(20.0, 20.0), false));
+    let dot_count = engine
+        .render_list()
+        .into_iter()
+        .filter(|primitive| {
+            matches!(
+                primitive,
+                RenderPrimitive::Circle {
+                    role: RenderRole::SelectionBondDot,
+                    ..
+                }
+            )
+        })
+        .count();
+    assert_eq!(dot_count, 0);
 }
 
 #[test]
@@ -1736,8 +1960,8 @@ fn parse_cdxml_preserves_aligned_text_object_source_bbox() {
     let document =
         parse_cdxml_document(cdxml, Some("aligned text")).expect("text cdxml should parse");
     let text_objects: Vec<_> = document
-        .objects
-        .iter()
+        .scene_objects()
+        .into_iter()
         .filter(|object| object.object_type == "text")
         .collect();
 
@@ -2049,8 +2273,8 @@ fn parse_cdxml_imports_example_table_text_at_bbox_positions() {
     let document =
         parse_cdxml_document(&cdxml, Some("example")).expect("example cdxml should parse");
     let text_objects: Vec<_> = document
-        .objects
-        .iter()
+        .scene_objects()
+        .into_iter()
         .filter(|object| object.object_type == "text")
         .collect();
     assert_eq!(text_objects.len(), 80);

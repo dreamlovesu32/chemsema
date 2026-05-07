@@ -640,7 +640,13 @@ impl ShapeGeometry {
 
     fn bounds_points(&self) -> Vec<Point> {
         match *self {
-            Self::Oval { center, rx, ry, .. } => ellipse_bounds_points(center, rx, ry),
+            Self::Oval {
+                center,
+                rx,
+                ry,
+                rotate,
+                ..
+            } => ellipse_bounds_points(center, rx, ry, rotate),
             Self::Rect {
                 x,
                 y,
@@ -658,10 +664,17 @@ impl ShapeGeometry {
 
     fn shadow_bounds_points(&self, offset: f64) -> Vec<Point> {
         match *self {
-            Self::Oval { center, rx, ry, .. } => vec![
-                Point::new(center.x - rx, center.y - ry),
-                Point::new(center.x + rx + offset, center.y + ry + offset),
-            ],
+            Self::Oval {
+                center,
+                rx,
+                ry,
+                rotate,
+                ..
+            } => {
+                let mut points = ellipse_bounds_points(center, rx, ry, rotate);
+                points.push(Point::new(points[1].x + offset, points[1].y + offset));
+                points
+            }
             Self::Rect {
                 x,
                 y,
@@ -929,7 +942,7 @@ fn push_shape_ellipse_fill(
         role: RenderRole::DocumentGraphic,
         object_id: Some(object_id.to_string()),
         d: oval_path_d(center, rx, ry, rotate, use_cubic),
-        points: ellipse_bounds_points(center, rx, ry),
+        points: ellipse_bounds_points(center, rx, ry, rotate),
         fill,
         fill_rule: None,
         clip_path_d: None,
@@ -937,10 +950,15 @@ fn push_shape_ellipse_fill(
     });
 }
 
-fn ellipse_bounds_points(center: Point, rx: f64, ry: f64) -> Vec<Point> {
+fn ellipse_bounds_points(center: Point, rx: f64, ry: f64, rotate: f64) -> Vec<Point> {
+    let radians = rotate.to_radians();
+    let cos = radians.cos();
+    let sin = radians.sin();
+    let extent_x = ((rx * cos) * (rx * cos) + (ry * sin) * (ry * sin)).sqrt();
+    let extent_y = ((rx * sin) * (rx * sin) + (ry * cos) * (ry * cos)).sqrt();
     vec![
-        Point::new(center.x - rx, center.y - ry),
-        Point::new(center.x + rx, center.y + ry),
+        Point::new(center.x - extent_x, center.y - extent_y),
+        Point::new(center.x + extent_x, center.y + extent_y),
     ]
 }
 

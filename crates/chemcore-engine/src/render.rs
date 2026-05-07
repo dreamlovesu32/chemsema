@@ -48,7 +48,7 @@ pub use primitives::{RenderPrimitive, RenderRole};
 
 use bond_geometry::*;
 use bond_metrics::*;
-pub(crate) use bounds::fragment_bond_visual_bounds;
+pub(crate) use bounds::{fragment_bond_visual_bounds, shape_object_visual_bounds};
 use labels::{
     clip_point_out_of_label_geometry, label_box_world, label_polygons_world, render_fragment_line,
     render_fragment_line_with_profiles, world_point,
@@ -145,25 +145,38 @@ pub(crate) enum ArrowNoGoGeometry {
 
 pub fn render_document(document: &ChemcoreDocument) -> Vec<RenderPrimitive> {
     let mut out = Vec::new();
-    let mut objects: Vec<&SceneObject> = document
-        .objects
-        .iter()
-        .filter(|object| object.visible)
-        .collect();
-    objects.sort_by(|a, b| a.z_index.cmp(&b.z_index).then_with(|| a.id.cmp(&b.id)));
-
-    for object in objects {
-        match object.object_type.as_str() {
-            "molecule" => render_molecule_object(&mut out, document, object),
-            "line" => render_line_object(&mut out, document, object),
-            "text" => render_text_object(&mut out, document, object),
-            "shape" => render_shape_object(&mut out, document, object),
-            "bracket" | "symbol" => render_bracket_object(&mut out, document, object),
-            _ => {}
-        }
-    }
-
+    render_scene_objects(&mut out, document, &document.objects);
     out
+}
+
+fn render_scene_objects(
+    out: &mut Vec<RenderPrimitive>,
+    document: &ChemcoreDocument,
+    objects: &[SceneObject],
+) {
+    let mut visible_objects: Vec<&SceneObject> =
+        objects.iter().filter(|object| object.visible).collect();
+    visible_objects.sort_by(|a, b| a.z_index.cmp(&b.z_index).then_with(|| a.id.cmp(&b.id)));
+
+    for object in visible_objects {
+        render_scene_object(out, document, object);
+    }
+}
+
+fn render_scene_object(
+    out: &mut Vec<RenderPrimitive>,
+    document: &ChemcoreDocument,
+    object: &SceneObject,
+) {
+    match object.object_type.as_str() {
+        "molecule" => render_molecule_object(out, document, object),
+        "line" => render_line_object(out, document, object),
+        "text" => render_text_object(out, document, object),
+        "shape" => render_shape_object(out, document, object),
+        "bracket" | "symbol" => render_bracket_object(out, document, object),
+        "group" => render_scene_objects(out, document, &object.children),
+        _ => {}
+    }
 }
 
 #[cfg(test)]

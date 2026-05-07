@@ -36,12 +36,11 @@ impl Engine {
             self.push_undo_snapshot();
             let selected_graphics: BTreeSet<&str> =
                 selection.arrow_objects.iter().map(String::as_str).collect();
-            let original_len = self.state.document.objects.len();
-            self.state.document.objects.retain(|object| {
-                !matches!(object.object_type.as_str(), "line" | "bracket" | "symbol")
-                    || !selected_graphics.contains(object.id.as_str())
-            });
-            let arrow_changed = self.state.document.objects.len() != original_len;
+            let removed = self
+                .state
+                .document
+                .remove_scene_objects_by_id(&selected_graphics);
+            let arrow_changed = removed > 0;
             changed |= arrow_changed;
             if !arrow_changed {
                 self.undo_stack.pop();
@@ -211,6 +210,7 @@ impl Engine {
         self.drag = None;
         self.state.overlay.hover_text_box = None;
         self.state.overlay.hover_bond_center = None;
+        self.state.overlay.hover_shape = None;
         self.state.overlay.preview = None;
         self.state.overlay.hover_endpoint = Some(crate::EndpointHit {
             node_id: node_id.to_string(),

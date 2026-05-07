@@ -3,6 +3,7 @@ use super::*;
 pub(super) fn clear_select_hover_overlay(engine: &mut Engine) {
     engine.state.overlay.hover_bond_center = None;
     engine.state.overlay.hover_arrow = None;
+    engine.state.overlay.hover_shape = None;
     engine.state.overlay.hover_text_box = None;
     engine.state.overlay.hover_endpoint = None;
     engine.state.overlay.preview = None;
@@ -16,7 +17,7 @@ pub(super) fn render_selected_text_boxes(engine: &Engine, out: &mut Vec<RenderPr
         .iter()
         .map(String::as_str)
         .collect();
-    for object in &engine.state.document.objects {
+    for object in engine.state.document.scene_objects() {
         if !selected_text_objects.contains(object.id.as_str()) {
             continue;
         }
@@ -32,22 +33,49 @@ pub(super) fn render_selected_text_boxes(engine: &Engine, out: &mut Vec<RenderPr
 }
 
 pub(super) fn render_selected_arrow_handles(engine: &Engine, out: &mut Vec<RenderPrimitive>) {
-    for object in &engine.state.document.objects {
+    for object in engine.state.document.scene_objects() {
         if !engine.state.selection.arrow_objects.contains(&object.id) {
             continue;
         }
-        if let Some(bounds) = scene_object_selection_bounds(object) {
+        if let Some(bounds) = scene_object_selection_bounds(&engine.state.document, object) {
             push_selection_box(out, bounds, RenderRole::SelectionBox);
         }
     }
 }
 
-pub(super) fn scene_object_selection_bounds(object: &crate::SceneObject) -> Option<AxisBounds> {
-    if matches!(object.object_type.as_str(), "bracket" | "symbol" | "shape") {
-        return object_bbox_selection_bounds(object)
-            .map(|bounds| bounds.expanded(crate::px_to_cm(3.0)));
+pub(super) fn scene_object_selection_bounds(
+    document: &crate::ChemcoreDocument,
+    object: &crate::SceneObject,
+) -> Option<AxisBounds> {
+    if object.object_type == "shape" {
+        return shape_object_visual_bounds(document, object)
+            .map(AxisBounds::from_array)
+            .or_else(|| shape_object_selection_bounds(object))
+            .or_else(|| object_bbox_selection_bounds(object));
+    }
+    if object.object_type == "group" {
+        return group_object_selection_bounds(document, object);
+    }
+    if matches!(object.object_type.as_str(), "bracket" | "symbol") {
+        return object_bbox_selection_bounds(object);
     }
     arrow_object_selection_bounds(object)
+}
+
+fn group_object_selection_bounds(
+    document: &crate::ChemcoreDocument,
+    object: &crate::SceneObject,
+) -> Option<AxisBounds> {
+    let mut out = None;
+    for child in &object.children {
+        if !child.visible {
+            continue;
+        }
+        if let Some(bounds) = scene_object_selection_bounds(document, child) {
+            include_optional_bounds(&mut out, bounds);
+        }
+    }
+    out.or_else(|| object_bbox_selection_bounds(object))
 }
 
 pub(super) fn arrow_object_selection_bounds(object: &crate::SceneObject) -> Option<AxisBounds> {
@@ -61,7 +89,7 @@ pub(super) fn arrow_object_selection_bounds(object: &crate::SceneObject) -> Opti
     for handle in handles {
         bounds.include_point(handle);
     }
-    Some(bounds.expanded(crate::px_to_cm(4.0)))
+    Some(bounds)
 }
 
 pub(super) fn object_bbox_selection_bounds(object: &crate::SceneObject) -> Option<AxisBounds> {
@@ -79,6 +107,63 @@ pub(super) fn object_bbox_selection_bounds(object: &crate::SceneObject) -> Optio
     ))
 }
 
+fn shape_object_selection_bounds(object: &crate::SceneObject) -> Option<AxisBounds> {
+    let kind = object
+        .payload
+        .extra
+        .get("kind")
+        .and_then(JsonValue::as_str)
+        .unwrap_or("rect");
+    if kind == "circle" {
+        let center = shape_payload_point(object, "center")?;
+        let radius = center.distance(shape_payload_point(object, "majorAxisEnd")?);
+        if radius <= crate::EPSILON {
+            return None;
+        }
+        return Some(AxisBounds::new(
+            center.x - radius,
+            center.y - radius,
+            center.x + radius,
+            center.y + radius,
+        ));
+    }
+    if kind == "ellipse" {
+        let center = shape_payload_point(object, "center")?;
+        let major = shape_payload_point(object, "majorAxisEnd")?;
+        let minor = shape_payload_point(object, "minorAxisEnd")?;
+        let major_x = major.x - center.x;
+        let major_y = major.y - center.y;
+        let minor_x = minor.x - center.x;
+        let minor_y = minor.y - center.y;
+        let extent_x = (major_x * major_x + minor_x * minor_x).sqrt();
+        let extent_y = (major_y * major_y + minor_y * minor_y).sqrt();
+        if extent_x <= crate::EPSILON || extent_y <= crate::EPSILON {
+            return None;
+        }
+        return Some(AxisBounds::new(
+            center.x - extent_x,
+            center.y - extent_y,
+            center.x + extent_x,
+            center.y + extent_y,
+        ));
+    }
+    object_bbox_selection_bounds(object)
+}
+
+fn shape_payload_point(object: &crate::SceneObject, key: &str) -> Option<Point> {
+    object
+        .payload
+        .extra
+        .get(key)
+        .and_then(JsonValue::as_array)
+        .and_then(|coords| {
+            Some(Point::new(
+                coords.first()?.as_f64()?,
+                coords.get(1)?.as_f64()?,
+            ))
+        })
+}
+
 pub(super) fn render_selected_fragment_content(engine: &Engine, out: &mut Vec<RenderPrimitive>) {
     let Some(entry) = engine.state.document.editable_fragment() else {
         return;
@@ -87,6 +172,14 @@ pub(super) fn render_selected_fragment_content(engine: &Engine, out: &mut Vec<Re
     for component in selected_component_summaries(engine) {
         let items = component_selection_items(&engine.state.document, &entry, &component);
         if items.is_empty() {
+            continue;
+        }
+        if component.complete {
+            let group_bounds = items.iter().skip(1).fold(items[0].bounds, |mut acc, item| {
+                acc.include_bounds(item.bounds);
+                acc
+            });
+            push_selection_box(out, group_bounds, RenderRole::SelectionBox);
             continue;
         }
         if items.len() == 1 {
@@ -177,6 +270,12 @@ pub(super) fn selected_component_summaries(engine: &Engine) -> Vec<ComponentSele
             node_ids: component_selected_nodes,
             label_node_ids: component_selected_label_nodes,
             bond_ids: component_selected_bonds,
+            complete: component_node_ids
+                .iter()
+                .all(|node_id| selected_nodes.contains(node_id.as_str()))
+                && component_bond_ids
+                    .iter()
+                    .all(|bond_id| selected_bonds.contains(bond_id.as_str())),
         });
     }
     components

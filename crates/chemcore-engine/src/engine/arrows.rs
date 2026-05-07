@@ -132,6 +132,7 @@ impl Engine {
         self.state.overlay.hover_bond_center = None;
         self.state.overlay.hover_text_box = None;
         self.state.overlay.hover_arrow = None;
+        self.state.overlay.hover_shape = None;
         if let Some(mut drag) = self.arrow_drag.take() {
             if drag.start.distance(point) >= DRAG_START_THRESHOLD {
                 drag.has_dragged = true;
@@ -178,6 +179,7 @@ impl Engine {
         }
         if self.add_arrow_between(drag.start, end).is_some() {
             self.state.overlay.hover_arrow = None;
+            self.state.overlay.hover_shape = None;
         }
     }
 
@@ -219,6 +221,7 @@ impl Engine {
         let object_id = self.next_id("obj_line");
         let object = self.arrow_scene_object(start, end, object_id.clone(), style_id);
         self.state.document.objects.push(object);
+        self.note_pending_select_target(PendingSelectTarget::GraphicObject(object_id.clone()));
         Some(object_id)
     }
 
@@ -289,6 +292,7 @@ impl Engine {
                 bbox: None,
                 extra,
             },
+            children: Vec::new(),
         }
     }
 
@@ -421,6 +425,7 @@ impl Engine {
             }
         }
         self.state.overlay.hover_arrow = None;
+        self.state.overlay.hover_shape = None;
         true
     }
 }

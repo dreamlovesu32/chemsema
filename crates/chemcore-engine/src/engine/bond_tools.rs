@@ -149,6 +149,7 @@ impl Engine {
         entry.update_bounds();
         self.state.selection = SelectionState::default();
         self.clear_interaction();
+        self.note_pending_select_target(PendingSelectTarget::MoleculeBond(bond_id.to_string()));
         true
     }
 }

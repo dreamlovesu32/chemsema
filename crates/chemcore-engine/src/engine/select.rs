@@ -2,13 +2,13 @@ use super::text_edit::{
     endpoint_label_world_bounds, refresh_attached_node_label_geometry_for_all_nodes,
     text_object_world_bounds,
 };
-use super::{ArrowEditDragState, ArrowEditMode, EditorCommand, Engine};
+use super::{ArrowEditDragState, ArrowEditMode, EditorCommand, Engine, PendingSelectTarget};
 use crate::{
     angle_between, arrow_object_handle_points, direction_from_angle, fragment_bond_visual_bounds,
     hit_test_arrow_center, hit_test_bond_center, hit_test_endpoint, line_object_points,
-    nearest_angle, round2, HoverTextBox, Point, RenderPrimitive, RenderRole, SelectionState,
-    SceneObject, BOND_CENTER_HIT_RADIUS, DEFAULT_BOND_LENGTH, DRAG_START_THRESHOLD,
-    ENDPOINT_FOCUS_RADIUS, ENDPOINT_HIT_RADIUS, GLOBAL_SNAP_ANGLES,
+    nearest_angle, round2, shape_object_visual_bounds, HoverTextBox, Point, RenderPrimitive,
+    RenderRole, SceneObject, SelectionState, BOND_CENTER_HIT_RADIUS, DEFAULT_BOND_LENGTH,
+    DRAG_START_THRESHOLD, ENDPOINT_FOCUS_RADIUS, ENDPOINT_HIT_RADIUS, GLOBAL_SNAP_ANGLES,
 };
 use serde_json::{json, Value as JsonValue};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -118,6 +118,7 @@ struct ComponentSelection {
     node_ids: Vec<String>,
     label_node_ids: Vec<String>,
     bond_ids: Vec<String>,
+    complete: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -154,6 +155,7 @@ struct NodeMoveOriginal {
 struct TextMoveOriginal {
     object_id: String,
     translate: [f64; 2],
+    object: SceneObject,
 }
 
 #[derive(Clone)]
@@ -261,6 +263,7 @@ impl Engine {
             original_points: points,
             start_pointer: point,
             has_dragged: false,
+            changed: false,
             current_degrees: curve.abs().round(),
             undo_pushed: false,
         });
@@ -294,7 +297,7 @@ impl Engine {
             drag.has_dragged = true;
         }
         if drag.has_dragged {
-            self.apply_arrow_edit_drag(&mut drag, point, alt_key);
+            drag.changed |= self.apply_arrow_edit_drag(&mut drag, point, alt_key);
         }
         self.arrow_edit_drag = Some(drag);
         true
@@ -320,9 +323,14 @@ impl Engine {
             self.hover_select_target(point);
             return false;
         }
-        self.apply_arrow_edit_drag(&mut drag, point, alt_key);
+        let changed = self.apply_arrow_edit_drag(&mut drag, point, alt_key) || drag.changed;
+        if changed {
+            self.note_pending_select_target(PendingSelectTarget::GraphicObject(
+                drag.object_id.clone(),
+            ));
+        }
         self.hover_select_target(point);
-        true
+        changed
     }
 
     pub fn active_arrow_edit_degrees(&self) -> f64 {
@@ -656,6 +664,7 @@ impl Engine {
             return false;
         }
         self.state.overlay.hover_arrow = None;
+        self.state.overlay.hover_shape = None;
         self.state.overlay.hover_text_box = None;
         self.state.overlay.hover_endpoint = None;
         true
@@ -953,6 +962,7 @@ impl Engine {
         }
         self.state.overlay.hover_bond_center = None;
         self.state.overlay.hover_arrow = None;
+        self.state.overlay.hover_shape = None;
         self.state.overlay.hover_text_box = None;
         self.state.overlay.hover_endpoint = None;
         self.state.overlay.preview = None;
@@ -994,7 +1004,9 @@ impl Engine {
             {
                 self.state.overlay.hover_arrow = Some(arrow);
             }
+            return;
         }
+        self.state.overlay.hover_shape = self.shape_hover_at_point(point);
     }
 
     fn select_hit_at_point(&self, point: Point) -> Option<SelectHit> {
@@ -1017,19 +1029,32 @@ impl Engine {
                 bond_id: center.bond_id,
             });
         }
-        for object in self.state.document.objects.iter().rev() {
-            if !matches!(object.object_type.as_str(), "bracket" | "symbol" | "shape")
-                || !object.visible
+        let mut objects = self.state.document.scene_objects();
+        objects.sort_by(|a, b| b.z_index.cmp(&a.z_index).then_with(|| b.id.cmp(&a.id)));
+        for object in objects {
+            if !matches!(
+                object.object_type.as_str(),
+                "bracket" | "symbol" | "shape" | "group"
+            ) || !object.visible
             {
                 continue;
             }
-            let Some(bounds) = scene_object_selection_bounds(object) else {
-                continue;
-            };
-            if point_in_bounds(point, bounds.expanded(crate::px_to_cm(3.0))) {
-                return Some(SelectHit::ArrowObject {
-                    object_id: object.id.clone(),
-                });
+            if object.object_type == "shape" {
+                if self.shape_select_hit_at_point(point, object) {
+                    return Some(SelectHit::ArrowObject {
+                        object_id: object.id.clone(),
+                    });
+                }
+            } else {
+                let Some(bounds) = scene_object_selection_bounds(&self.state.document, object)
+                else {
+                    continue;
+                };
+                if point_in_bounds(point, bounds.expanded(crate::px_to_cm(3.0))) {
+                    return Some(SelectHit::ArrowObject {
+                        object_id: object.id.clone(),
+                    });
+                }
             }
         }
         hit_test_arrow_center(&self.state.document, point, BOND_CENTER_HIT_RADIUS).map(|arrow| {
@@ -1052,7 +1077,7 @@ impl Engine {
     {
         let mut selection = SelectionState::default();
         selection.region = true;
-        for object in &self.state.document.objects {
+        for object in self.state.document.scene_objects() {
             if object.object_type != "text" || !object.visible {
                 continue;
             }
@@ -1063,7 +1088,7 @@ impl Engine {
                 selection.text_objects.push(object.id.clone());
             }
         }
-        for object in &self.state.document.objects {
+        for object in self.state.document.scene_objects() {
             if object.object_type != "line" || !object.visible {
                 continue;
             }
@@ -1077,13 +1102,15 @@ impl Engine {
                 selection.arrow_objects.push(object.id.clone());
             }
         }
-        for object in &self.state.document.objects {
-            if !matches!(object.object_type.as_str(), "bracket" | "symbol" | "shape")
-                || !object.visible
+        for object in self.state.document.scene_objects() {
+            if !matches!(
+                object.object_type.as_str(),
+                "bracket" | "symbol" | "shape" | "group"
+            ) || !object.visible
             {
                 continue;
             }
-            let Some(bounds) = scene_object_selection_bounds(object) else {
+            let Some(bounds) = scene_object_selection_bounds(&self.state.document, object) else {
                 continue;
             };
             if bounds_selected(bounds) {
@@ -1132,7 +1159,7 @@ impl Engine {
 
     fn selection_hit_bounds(&self) -> Vec<AxisBounds> {
         let mut bounds = Vec::new();
-        for object in &self.state.document.objects {
+        for object in self.state.document.scene_objects() {
             if !self
                 .state
                 .selection
@@ -1146,11 +1173,12 @@ impl Engine {
                 bounds.push(AxisBounds::from_array(text_bounds));
             }
         }
-        for object in &self.state.document.objects {
+        for object in self.state.document.scene_objects() {
             if !self.state.selection.arrow_objects.contains(&object.id) {
                 continue;
             }
-            if let Some(arrow_bounds) = scene_object_selection_bounds(object) {
+            if let Some(arrow_bounds) = scene_object_selection_bounds(&self.state.document, object)
+            {
                 bounds.push(arrow_bounds);
             }
         }
@@ -1177,7 +1205,7 @@ impl Engine {
 
     fn selection_arrange_items(&self) -> Vec<SelectionArrangeItem> {
         let mut items = Vec::new();
-        for object in &self.state.document.objects {
+        for object in self.state.document.scene_objects() {
             if !self
                 .state
                 .selection
@@ -1271,11 +1299,12 @@ impl Engine {
         }
 
         let mut text_originals = Vec::new();
-        for object in &self.state.document.objects {
+        for object in self.state.document.scene_objects() {
             if text_ids.contains(&object.id) {
                 text_originals.push(TextMoveOriginal {
                     object_id: object.id.clone(),
                     translate: object.transform.translate,
+                    object: object.clone(),
                 });
             }
         }
@@ -1341,11 +1370,12 @@ impl Engine {
         }
 
         let mut text_originals = Vec::new();
-        for object in &self.state.document.objects {
+        for object in self.state.document.scene_objects() {
             if text_ids.contains(&object.id) {
                 text_originals.push(TextMoveOriginal {
                     object_id: object.id.clone(),
                     translate: object.transform.translate,
+                    object: object.clone(),
                 });
             }
         }
@@ -1416,8 +1446,8 @@ impl Engine {
         let object_originals = self
             .state
             .document
-            .objects
-            .iter()
+            .scene_objects()
+            .into_iter()
             .filter(|object| selected_objects.contains(&object.id))
             .cloned()
             .map(|object| ObjectResizeOriginal { object })
@@ -1442,8 +1472,8 @@ impl Engine {
             return;
         };
         let (scale_x, scale_y) = selection_resize_scale(&drag, point);
-        let changed = (scale_x - 1.0).abs() > crate::EPSILON
-            || (scale_y - 1.0).abs() > crate::EPSILON;
+        let changed =
+            (scale_x - 1.0).abs() > crate::EPSILON || (scale_y - 1.0).abs() > crate::EPSILON;
         if changed && !drag.undo_pushed {
             self.push_undo_snapshot();
             drag.undo_pushed = true;
@@ -1480,7 +1510,7 @@ impl Engine {
 
     fn selection_rotation_bounds(&self) -> Option<AxisBounds> {
         let mut out = None;
-        for object in &self.state.document.objects {
+        for object in self.state.document.scene_objects() {
             if !self.state.selection.text_objects.contains(&object.id) {
                 continue;
             }
@@ -1489,11 +1519,11 @@ impl Engine {
             };
             include_optional_bounds(&mut out, AxisBounds::from_array(bounds));
         }
-        for object in &self.state.document.objects {
+        for object in self.state.document.scene_objects() {
             if !self.state.selection.arrow_objects.contains(&object.id) {
                 continue;
             }
-            if let Some(bounds) = scene_object_selection_bounds(object) {
+            if let Some(bounds) = scene_object_selection_bounds(&self.state.document, object) {
                 include_optional_bounds(&mut out, bounds);
             }
         }

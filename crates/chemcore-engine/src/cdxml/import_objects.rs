@@ -161,6 +161,7 @@ pub(super) fn append_line_objects(
                 bbox: None,
                 extra,
             },
+            children: Vec::new(),
         });
         index += 1;
     }
@@ -360,6 +361,7 @@ pub(super) fn append_shape_objects(
             style_ref: Some(style_id),
             meta: json!({"source": "cdxml", "graphicId": node.attr("id")}),
             payload,
+            children: Vec::new(),
         });
         index += 1;
     }
@@ -454,6 +456,7 @@ pub(super) fn append_bracket_objects(
                         bbox: Some([0.0, 0.0, width, height]),
                         extra,
                     },
+                    children: Vec::new(),
                 });
                 symbol_index += 1;
             }
@@ -530,6 +533,7 @@ pub(super) fn append_bracket_objects(
                 bbox: Some([0.0, 0.0, round2(max_x - min_x), round2(max_y - min_y)]),
                 extra,
             },
+            children: Vec::new(),
         });
         object_index += 1;
     }
@@ -774,11 +778,12 @@ fn text_object(
             scale: [1.0, 1.0],
         },
         style_ref: Some(style_id),
-        meta: json!({"source": "cdxml", "role": "free_text"}),
+        meta: json!({"source": "cdxml", "role": "free_text", "textId": node.attr("id")}),
         payload: ObjectPayload {
             resource_ref: None,
             bbox: None,
             extra,
         },
+        children: Vec::new(),
     })
 }

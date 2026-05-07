@@ -476,6 +476,14 @@ pub struct HoverArrow {
     pub handles: Vec<Point>,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HoverShape {
+    pub object_id: String,
+    #[serde(default)]
+    pub handles: Vec<Point>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DragState {
@@ -494,6 +502,7 @@ pub struct OverlayState {
     pub hover_bond_center: Option<BondCenterHit>,
     pub hover_text_box: Option<HoverTextBox>,
     pub hover_arrow: Option<HoverArrow>,
+    pub hover_shape: Option<HoverShape>,
     pub preview: Option<BondPreview>,
 }
 

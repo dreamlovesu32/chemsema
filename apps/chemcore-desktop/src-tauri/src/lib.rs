@@ -183,6 +183,658 @@ fn desktop_engine_document_colors_json(
 }
 
 #[tauri::command]
+fn desktop_engine_set_tool(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    active_tool: String,
+    bond_variant: String,
+) -> Result<(), String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.set_tool(session_id, &active_tool, &bond_variant)
+}
+
+#[tauri::command]
+fn desktop_engine_set_shape_options(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    kind: String,
+    style: String,
+    color: String,
+) -> Result<(), String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.set_shape_options(session_id, &kind, &style, &color)
+}
+
+#[tauri::command]
+fn desktop_engine_set_template(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    template: String,
+) -> Result<(), String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.set_template(session_id, &template)
+}
+
+#[tauri::command]
+fn desktop_engine_set_bracket_options(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    kind: String,
+) -> Result<(), String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.set_bracket_options(session_id, &kind)
+}
+
+#[tauri::command]
+fn desktop_engine_set_symbol_options(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    kind: String,
+) -> Result<(), String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.set_symbol_options(session_id, &kind)
+}
+
+#[tauri::command]
+fn desktop_engine_set_document_style_preset(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    preset: String,
+) -> Result<(), String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.set_document_style_preset(session_id, &preset)
+}
+
+#[tauri::command]
+fn desktop_engine_document_style_preset(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+) -> Result<String, String> {
+    let service = state.service.lock().map_err(|error| error.to_string())?;
+    service.document_style_preset(session_id)
+}
+
+#[tauri::command]
+fn desktop_engine_set_arrow_options(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    variant: String,
+    head_size: String,
+    head: bool,
+    tail: bool,
+    bold: bool,
+) -> Result<(), String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.set_arrow_options(session_id, &variant, &head_size, head, tail, bold)
+}
+
+#[tauri::command]
+fn desktop_engine_set_arrow_endpoint_options(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    variant: String,
+    head_size: String,
+    curve: String,
+    head_style: String,
+    tail_style: String,
+    no_go: String,
+    bold: bool,
+) -> Result<(), String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.set_arrow_endpoint_options(
+        session_id,
+        &variant,
+        &head_size,
+        &curve,
+        &head_style,
+        &tail_style,
+        &no_go,
+        bold,
+    )
+}
+
+#[tauri::command]
+fn desktop_engine_apply_arrow_options_to_selection(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    variant: String,
+    head_size: String,
+    head: bool,
+    tail: bool,
+    bold: bool,
+) -> Result<bool, String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.apply_arrow_options_to_selection(session_id, &variant, &head_size, head, tail, bold)
+}
+
+#[tauri::command]
+fn desktop_engine_apply_arrow_endpoint_options_to_selection(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    variant: String,
+    head_size: String,
+    curve: String,
+    head_style: String,
+    tail_style: String,
+    no_go: String,
+    bold: bool,
+) -> Result<bool, String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.apply_arrow_endpoint_options_to_selection(
+        session_id,
+        &variant,
+        &head_size,
+        &curve,
+        &head_style,
+        &tail_style,
+        &no_go,
+        bold,
+    )
+}
+
+#[tauri::command]
+fn desktop_engine_pointer_move(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    x: f64,
+    y: f64,
+    alt_key: bool,
+) -> Result<(), String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.pointer_move(session_id, x, y, alt_key)
+}
+
+#[tauri::command]
+fn desktop_engine_pointer_down(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    x: f64,
+    y: f64,
+    alt_key: bool,
+) -> Result<(), String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.pointer_down(session_id, x, y, alt_key)
+}
+
+#[tauri::command]
+fn desktop_engine_pointer_up(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    x: f64,
+    y: f64,
+    alt_key: bool,
+) -> Result<(), String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.pointer_up(session_id, x, y, alt_key)
+}
+
+#[tauri::command]
+fn desktop_engine_select_at_point(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    x: f64,
+    y: f64,
+    additive: bool,
+) -> Result<(), String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.select_at_point(session_id, x, y, additive)
+}
+
+#[tauri::command]
+fn desktop_engine_select_component_at_point(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    x: f64,
+    y: f64,
+    additive: bool,
+) -> Result<bool, String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.select_component_at_point(session_id, x, y, additive)
+}
+
+#[tauri::command]
+fn desktop_engine_select_in_rect(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    x1: f64,
+    y1: f64,
+    x2: f64,
+    y2: f64,
+    additive: bool,
+) -> Result<(), String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.select_in_rect(session_id, x1, y1, x2, y2, additive)
+}
+
+#[tauri::command]
+fn desktop_engine_select_in_polygon(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    points_json: String,
+    additive: bool,
+) -> Result<(), String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.select_in_polygon_json(session_id, &points_json, additive)
+}
+
+#[tauri::command]
+fn desktop_engine_selection_contains_point(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    x: f64,
+    y: f64,
+) -> Result<bool, String> {
+    let service = state.service.lock().map_err(|error| error.to_string())?;
+    service.selection_contains_point(session_id, x, y)
+}
+
+#[tauri::command]
+fn desktop_engine_hover_arrow_action(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    x: f64,
+    y: f64,
+) -> Result<String, String> {
+    let service = state.service.lock().map_err(|error| error.to_string())?;
+    service.hover_arrow_action(session_id, x, y)
+}
+
+#[tauri::command]
+fn desktop_engine_begin_hover_arrow_edit(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    x: f64,
+    y: f64,
+) -> Result<String, String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.begin_hover_arrow_edit(session_id, x, y)
+}
+
+#[tauri::command]
+fn desktop_engine_update_hover_arrow_edit(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    x: f64,
+    y: f64,
+    alt_key: bool,
+) -> Result<bool, String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.update_hover_arrow_edit(session_id, x, y, alt_key)
+}
+
+#[tauri::command]
+fn desktop_engine_finish_hover_arrow_edit(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    x: f64,
+    y: f64,
+    alt_key: bool,
+) -> Result<bool, String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.finish_hover_arrow_edit(session_id, x, y, alt_key)
+}
+
+#[tauri::command]
+fn desktop_engine_hover_shape_action(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    x: f64,
+    y: f64,
+) -> Result<String, String> {
+    let service = state.service.lock().map_err(|error| error.to_string())?;
+    service.hover_shape_action(session_id, x, y)
+}
+
+#[tauri::command]
+fn desktop_engine_begin_hover_shape_edit(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    x: f64,
+    y: f64,
+) -> Result<String, String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.begin_hover_shape_edit(session_id, x, y)
+}
+
+#[tauri::command]
+fn desktop_engine_update_hover_shape_edit(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    x: f64,
+    y: f64,
+    alt_key: bool,
+) -> Result<bool, String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.update_hover_shape_edit(session_id, x, y, alt_key)
+}
+
+#[tauri::command]
+fn desktop_engine_finish_hover_shape_edit(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    x: f64,
+    y: f64,
+    alt_key: bool,
+) -> Result<bool, String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.finish_hover_shape_edit(session_id, x, y, alt_key)
+}
+
+#[tauri::command]
+fn desktop_engine_active_arrow_edit_degrees(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+) -> Result<f64, String> {
+    let service = state.service.lock().map_err(|error| error.to_string())?;
+    service.active_arrow_edit_degrees(session_id)
+}
+
+#[tauri::command]
+fn desktop_engine_begin_selection_move(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    x: f64,
+    y: f64,
+    additive: bool,
+    alt_key: bool,
+) -> Result<bool, String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.begin_selection_move(session_id, x, y, additive, alt_key)
+}
+
+#[tauri::command]
+fn desktop_engine_update_selection_move(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    x: f64,
+    y: f64,
+    alt_key: bool,
+) -> Result<bool, String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.update_selection_move(session_id, x, y, alt_key)
+}
+
+#[tauri::command]
+fn desktop_engine_finish_selection_move(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    x: f64,
+    y: f64,
+    alt_key: bool,
+) -> Result<bool, String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.finish_selection_move(session_id, x, y, alt_key)
+}
+
+#[tauri::command]
+fn desktop_engine_begin_selection_rotate(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    x: f64,
+    y: f64,
+) -> Result<bool, String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.begin_selection_rotate(session_id, x, y)
+}
+
+#[tauri::command]
+fn desktop_engine_update_selection_rotate(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    x: f64,
+    y: f64,
+    alt_key: bool,
+) -> Result<bool, String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.update_selection_rotate(session_id, x, y, alt_key)
+}
+
+#[tauri::command]
+fn desktop_engine_finish_selection_rotate(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    x: f64,
+    y: f64,
+    alt_key: bool,
+) -> Result<bool, String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.finish_selection_rotate(session_id, x, y, alt_key)
+}
+
+#[tauri::command]
+fn desktop_engine_begin_selection_resize(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    handle: String,
+    x: f64,
+    y: f64,
+) -> Result<bool, String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.begin_selection_resize(session_id, &handle, x, y)
+}
+
+#[tauri::command]
+fn desktop_engine_update_selection_resize(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    x: f64,
+    y: f64,
+) -> Result<bool, String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.update_selection_resize(session_id, x, y)
+}
+
+#[tauri::command]
+fn desktop_engine_finish_selection_resize(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    x: f64,
+    y: f64,
+) -> Result<bool, String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.finish_selection_resize(session_id, x, y)
+}
+
+#[tauri::command]
+fn desktop_engine_apply_selection_arrange_command(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    command: String,
+) -> Result<bool, String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.apply_selection_arrange_command(session_id, &command)
+}
+
+#[tauri::command]
+fn desktop_engine_apply_selection_order_command(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    command: String,
+) -> Result<bool, String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.apply_selection_order_command(session_id, &command)
+}
+
+#[tauri::command]
+fn desktop_engine_group_selection(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+) -> Result<bool, String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.group_selection(session_id)
+}
+
+#[tauri::command]
+fn desktop_engine_ungroup_selection(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+) -> Result<bool, String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.ungroup_selection(session_id)
+}
+
+#[tauri::command]
+fn desktop_engine_apply_color_to_selection(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    color: String,
+) -> Result<bool, String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.apply_color_to_selection(session_id, &color)
+}
+
+#[tauri::command]
+fn desktop_engine_clear_interaction(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+) -> Result<(), String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.clear_interaction(session_id)
+}
+
+#[tauri::command]
+fn desktop_engine_undo(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+) -> Result<bool, String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.undo(session_id)
+}
+
+#[tauri::command]
+fn desktop_engine_redo(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+) -> Result<bool, String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.redo(session_id)
+}
+
+#[tauri::command]
+fn desktop_engine_can_undo(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+) -> Result<bool, String> {
+    let service = state.service.lock().map_err(|error| error.to_string())?;
+    service.can_undo(session_id)
+}
+
+#[tauri::command]
+fn desktop_engine_can_redo(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+) -> Result<bool, String> {
+    let service = state.service.lock().map_err(|error| error.to_string())?;
+    service.can_redo(session_id)
+}
+
+#[tauri::command]
+fn desktop_engine_delete_selection(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+) -> Result<bool, String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.delete_selection(session_id)
+}
+
+#[tauri::command]
+fn desktop_engine_copy_selection(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+) -> Result<bool, String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.copy_selection(session_id)
+}
+
+#[tauri::command]
+fn desktop_engine_clipboard_selection_json(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+) -> Result<Option<String>, String> {
+    let service = state.service.lock().map_err(|error| error.to_string())?;
+    service.clipboard_selection_json(session_id)
+}
+
+#[tauri::command]
+fn desktop_engine_cut_selection(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+) -> Result<bool, String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.cut_selection(session_id)
+}
+
+#[tauri::command]
+fn desktop_engine_paste_clipboard(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+) -> Result<bool, String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.paste_clipboard(session_id)
+}
+
+#[tauri::command]
+fn desktop_engine_paste_clipboard_json(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    json: String,
+) -> Result<bool, String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.paste_clipboard_json(session_id, &json)
+}
+
+#[tauri::command]
+fn desktop_engine_replace_hovered_endpoint_label(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    label: String,
+) -> Result<bool, String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.replace_hovered_endpoint_label(session_id, &label)
+}
+
+#[tauri::command]
+fn desktop_engine_begin_text_edit(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    x: f64,
+    y: f64,
+) -> Result<Option<String>, String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.begin_text_edit(session_id, x, y)
+}
+
+#[tauri::command]
+fn desktop_engine_apply_text_edit(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    session_json: String,
+) -> Result<bool, String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.apply_text_edit(session_id, &session_json)
+}
+
+#[tauri::command]
+fn desktop_engine_preview_text_runs(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    session_json: String,
+) -> Result<String, String> {
+    let service = state.service.lock().map_err(|error| error.to_string())?;
+    service.preview_text_runs(session_id, &session_json)
+}
+
+#[tauri::command]
+fn desktop_engine_preview_text_edit_layout(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    request_json: String,
+) -> Result<String, String> {
+    let service = state.service.lock().map_err(|error| error.to_string())?;
+    service.preview_text_edit_layout(session_id, &request_json)
+}
+
+#[tauri::command]
 fn desktop_file_choose_open() -> Result<Option<String>, String> {
     Ok(document_file_dialog()
         .pick_file()
@@ -1539,6 +2191,64 @@ pub fn run() {
             desktop_engine_document_cdxml,
             desktop_engine_document_svg,
             desktop_engine_document_colors_json,
+            desktop_engine_set_tool,
+            desktop_engine_set_shape_options,
+            desktop_engine_set_template,
+            desktop_engine_set_bracket_options,
+            desktop_engine_set_symbol_options,
+            desktop_engine_set_document_style_preset,
+            desktop_engine_document_style_preset,
+            desktop_engine_set_arrow_options,
+            desktop_engine_set_arrow_endpoint_options,
+            desktop_engine_apply_arrow_options_to_selection,
+            desktop_engine_apply_arrow_endpoint_options_to_selection,
+            desktop_engine_pointer_move,
+            desktop_engine_pointer_down,
+            desktop_engine_pointer_up,
+            desktop_engine_select_at_point,
+            desktop_engine_select_component_at_point,
+            desktop_engine_select_in_rect,
+            desktop_engine_select_in_polygon,
+            desktop_engine_selection_contains_point,
+            desktop_engine_hover_arrow_action,
+            desktop_engine_begin_hover_arrow_edit,
+            desktop_engine_update_hover_arrow_edit,
+            desktop_engine_finish_hover_arrow_edit,
+            desktop_engine_hover_shape_action,
+            desktop_engine_begin_hover_shape_edit,
+            desktop_engine_update_hover_shape_edit,
+            desktop_engine_finish_hover_shape_edit,
+            desktop_engine_active_arrow_edit_degrees,
+            desktop_engine_begin_selection_move,
+            desktop_engine_update_selection_move,
+            desktop_engine_finish_selection_move,
+            desktop_engine_begin_selection_rotate,
+            desktop_engine_update_selection_rotate,
+            desktop_engine_finish_selection_rotate,
+            desktop_engine_begin_selection_resize,
+            desktop_engine_update_selection_resize,
+            desktop_engine_finish_selection_resize,
+            desktop_engine_apply_selection_arrange_command,
+            desktop_engine_apply_selection_order_command,
+            desktop_engine_group_selection,
+            desktop_engine_ungroup_selection,
+            desktop_engine_apply_color_to_selection,
+            desktop_engine_clear_interaction,
+            desktop_engine_undo,
+            desktop_engine_redo,
+            desktop_engine_can_undo,
+            desktop_engine_can_redo,
+            desktop_engine_delete_selection,
+            desktop_engine_copy_selection,
+            desktop_engine_clipboard_selection_json,
+            desktop_engine_cut_selection,
+            desktop_engine_paste_clipboard,
+            desktop_engine_paste_clipboard_json,
+            desktop_engine_replace_hovered_endpoint_label,
+            desktop_engine_begin_text_edit,
+            desktop_engine_apply_text_edit,
+            desktop_engine_preview_text_runs,
+            desktop_engine_preview_text_edit_layout,
             desktop_file_choose_open,
             desktop_dialog_confirm_style_preset,
             desktop_file_choose_save,

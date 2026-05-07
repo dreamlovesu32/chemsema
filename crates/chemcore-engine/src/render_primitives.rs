@@ -16,6 +16,7 @@ pub enum RenderRole {
     HoverBondCenter,
     HoverArrowCenter,
     HoverArrowHandle,
+    HoverShapeHandle,
     HoverTextBox,
     PreviewBond,
     PreviewEnd,

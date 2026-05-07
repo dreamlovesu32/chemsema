@@ -45,18 +45,19 @@ export function createDocumentFlow(options) {
     }
   }
 
-  function loadJsonDocumentIntoEditor(documentData, fileName = null, filePath = null) {
+  async function loadJsonDocumentIntoEditor(documentData, fileName = null, filePath = null) {
     validateChemcoreJsonDocument(documentData);
-    options.finishActiveTextEditor(false);
+    await options.finishActiveTextEditor(false);
     options.state.currentPath = null;
     options.state.currentFileName = fileName;
     options.state.currentFilePath = filePath;
-    options.state.editorEngine?.free?.();
+    await options.state.editorEngine?.free?.();
     options.state.editorEngine = options.engineHost.createEngineSession();
+    await options.state.editorEngine.ready?.();
     options.state.lastEditFocusPoint = null;
     options.clearZoomHandoffs();
-    options.state.editorEngine.loadDocumentJson(JSON.stringify(documentData));
-    options.syncEngineToolState();
+    await options.state.editorEngine.loadDocumentJson(JSON.stringify(documentData));
+    await options.syncEngineToolState();
     options.syncDocumentFromEngine();
     options.state.runtimeViewBox = options.state.currentDocument?.document?.page
       ? options.pageViewBox(options.state.currentDocument.document.page)
@@ -67,8 +68,8 @@ export function createDocumentFlow(options) {
     options.fitView();
   }
 
-  function currentDocumentJsonForSave() {
-    options.finishActiveTextEditor(true);
+  async function currentDocumentJsonForSave() {
+    await options.finishActiveTextEditor(true);
     if (options.state.editorEngine && !options.state.currentPath) {
       options.syncDocumentFromEngine();
     }
@@ -106,17 +107,17 @@ export function createDocumentFlow(options) {
   async function savePayloadForFormat(format) {
     if (format === "svg") {
       return {
-        content: currentDocumentSvgForSave(),
+        content: await currentDocumentSvgForSave(),
         mimeType: "image/svg+xml",
       };
     }
     if (format === "cdxml") {
       return {
-        content: currentDocumentCdxmlForSave(),
+        content: await currentDocumentCdxmlForSave(),
         mimeType: "chemical/x-cdxml",
       };
     }
-    const json = currentDocumentJsonForSave();
+    const json = await currentDocumentJsonForSave();
     if (format === "ccjs") {
       return {
         content: json,
@@ -163,16 +164,16 @@ export function createDocumentFlow(options) {
     downloadBinaryFile(payload.content, suggestedName, payload.mimeType);
   }
 
-  function currentDocumentCdxmlForSave() {
-    options.finishActiveTextEditor(true);
+  async function currentDocumentCdxmlForSave() {
+    await options.finishActiveTextEditor(true);
     if (!options.state.editorEngine) {
       throw new Error("CDXML export is unavailable.");
     }
     return options.state.editorEngine.documentCdxml();
   }
 
-  function currentDocumentSvgForSave() {
-    options.finishActiveTextEditor(true);
+  async function currentDocumentSvgForSave() {
+    await options.finishActiveTextEditor(true);
     if (!options.state.editorEngine?.documentSvg) {
       throw new Error("SVG export is unavailable.");
     }
@@ -194,7 +195,7 @@ export function createDocumentFlow(options) {
         suggestedName,
         types: [{ description: "ChemDraw CDXML", accept: { "chemical/x-cdxml": [".cdxml"], "text/xml": [".cdxml"] } }],
       });
-      const cdxml = currentDocumentCdxmlForSave();
+      const cdxml = await currentDocumentCdxmlForSave();
       const writable = await handle.createWritable();
       await writable.write(cdxml);
       await writable.close();
@@ -202,7 +203,7 @@ export function createDocumentFlow(options) {
       options.viewerTitle.textContent = options.state.currentDocument?.document?.title || options.state.currentFileName || "Untitled";
       return;
     }
-    const cdxml = currentDocumentCdxmlForSave();
+    const cdxml = await currentDocumentCdxmlForSave();
     downloadTextFile(cdxml, suggestedName, "chemical/x-cdxml");
   }
 
@@ -221,18 +222,18 @@ export function createDocumentFlow(options) {
         suggestedName,
         types: [{ description: "Scalable Vector Graphics", accept: { "image/svg+xml": [".svg"] } }],
       });
-      const svg = currentDocumentSvgForSave();
+      const svg = await currentDocumentSvgForSave();
       const writable = await handle.createWritable();
       await writable.write(svg);
       await writable.close();
       return;
     }
-    const svg = currentDocumentSvgForSave();
+    const svg = await currentDocumentSvgForSave();
     downloadTextFile(svg, suggestedName, "image/svg+xml");
   }
 
   async function currentDocumentPdfPreviewBase64ForSave() {
-    return pdfPreviewBase64FromSvg(currentDocumentSvgForSave());
+    return pdfPreviewBase64FromSvg(await currentDocumentSvgForSave());
   }
 
   async function saveCurrentDocumentPdf() {
@@ -260,7 +261,7 @@ export function createDocumentFlow(options) {
     if (!options.desktopFileHost?.available || !options.desktopFileHost.exportEmf) {
       throw new Error("EMF export is available only in the Windows desktop app.");
     }
-    options.finishActiveTextEditor(true);
+    await options.finishActiveTextEditor(true);
     if (!options.state.editorEngine?.renderListJson || !options.state.editorEngine?.renderBoundsJson) {
       throw new Error("EMF export is unavailable.");
     }
@@ -324,7 +325,7 @@ export function createDocumentFlow(options) {
     return fallbackFormat || saveFormatFromFileName(path);
   }
 
-  function desktopContentForFormat(format) {
+  async function desktopContentForFormat(format) {
     if (format === "svg") {
       return currentDocumentSvgForSave();
     }
@@ -336,7 +337,7 @@ export function createDocumentFlow(options) {
 
   async function saveCurrentDocumentToDesktopPath(path, forcedFormat = null) {
     const format = desktopFormatForPath(path, forcedFormat);
-    const saved = await options.desktopFileHost.writePath(path, desktopContentForFormat(format), format);
+    const saved = await options.desktopFileHost.writePath(path, await desktopContentForFormat(format), format);
     if (format !== "svg") {
       options.state.currentFilePath = saved.path || path;
       options.state.currentFileName = saved.fileName || fileNameFromPath(path);
@@ -352,16 +353,16 @@ export function createDocumentFlow(options) {
     const text = looksLikeCompressedChemcoreFile(file)
       ? await decompressChemcoreText(await file.arrayBuffer())
       : await file.text();
-    openDocumentText(text, file.name || null, null, looksLikeCdxmlFile(file, text) ? "cdxml" : saveFormatFromFileName(file.name));
+    await openDocumentText(text, file.name || null, null, looksLikeCdxmlFile(file, text) ? "cdxml" : saveFormatFromFileName(file.name));
   }
 
-  function openDocumentText(text, fileName = null, filePath = null, format = null) {
+  async function openDocumentText(text, fileName = null, filePath = null, format = null) {
     const resolvedFormat = format || saveFormatFromFileName(fileName);
     if (resolvedFormat === "cdxml" || looksLikeCdxmlFile({ name: fileName || "" }, text)) {
-      loadCdxmlDocumentIntoEditor(text, fileName, filePath);
+      await loadCdxmlDocumentIntoEditor(text, fileName, filePath);
       return;
     }
-    loadJsonDocumentIntoEditor(JSON.parse(text), fileName, filePath);
+    await loadJsonDocumentIntoEditor(JSON.parse(text), fileName, filePath);
   }
 
   async function openDocumentPath(path) {
@@ -370,23 +371,24 @@ export function createDocumentFlow(options) {
     }
     const opened = await options.desktopFileHost.readPath(path);
     if (opened.format === "cdxml") {
-      loadCdxmlDocumentIntoEditor(opened.text, opened.fileName || fileNameFromPath(path), opened.path || path);
+      await loadCdxmlDocumentIntoEditor(opened.text, opened.fileName || fileNameFromPath(path), opened.path || path);
       return;
     }
-    loadJsonDocumentIntoEditor(JSON.parse(opened.text), opened.fileName || fileNameFromPath(path), opened.path || path);
+    await loadJsonDocumentIntoEditor(JSON.parse(opened.text), opened.fileName || fileNameFromPath(path), opened.path || path);
   }
 
-  function loadCdxmlDocumentIntoEditor(cdxml, fileName = null, filePath = null) {
-    options.finishActiveTextEditor(false);
+  async function loadCdxmlDocumentIntoEditor(cdxml, fileName = null, filePath = null) {
+    await options.finishActiveTextEditor(false);
     options.state.currentPath = null;
     options.state.currentFileName = fileName;
     options.state.currentFilePath = filePath;
-    options.state.editorEngine?.free?.();
+    await options.state.editorEngine?.free?.();
     options.state.editorEngine = options.engineHost.createEngineSession();
+    await options.state.editorEngine.ready?.();
     options.state.lastEditFocusPoint = null;
     options.clearZoomHandoffs();
-    options.state.editorEngine.loadDocumentCdxml(cdxml);
-    options.syncEngineToolState();
+    await options.state.editorEngine.loadDocumentCdxml(cdxml);
+    await options.syncEngineToolState();
     options.syncDocumentFromEngine();
     options.state.runtimeViewBox = options.state.currentDocument?.document?.page
       ? options.pageViewBox(options.state.currentDocument.document.page)
@@ -449,7 +451,7 @@ export function createDocumentFlow(options) {
   }
 
   async function loadAndRender() {
-    options.finishActiveTextEditor(false);
+    await options.finishActiveTextEditor(false);
     options.clearZoomHandoffs();
     options.viewerTitle.textContent = "Loading...";
     try {
@@ -459,14 +461,14 @@ export function createDocumentFlow(options) {
         const documentData = await loadDocument(options.state.currentPath);
         options.state.currentDocument = documentData;
         options.state.runtimeViewBox = options.pageViewBox(documentData.document.page);
-        options.syncCoreRenderListFromCurrentDocument();
+        await options.syncCoreRenderListFromCurrentDocument();
       } else {
         options.state.coreRenderList = null;
         if (!options.state.editorEngine) {
-          options.resetEditorEngine();
+          await options.resetEditorEngine();
         } else {
-          options.state.editorEngine.clearInteraction();
-          options.syncEngineToolState();
+          await options.state.editorEngine.clearInteraction();
+          await options.syncEngineToolState();
           options.syncDocumentFromEngine();
         }
       }

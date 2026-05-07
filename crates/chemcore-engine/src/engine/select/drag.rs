@@ -72,17 +72,12 @@ pub(super) fn apply_selection_drag_to_document(
         let Some(object) = engine
             .state
             .document
-            .objects
-            .iter_mut()
-            .find(|object| object.id == original.object_id)
+            .find_scene_object_mut(&original.object_id)
         else {
             continue;
         };
         if matches!(drag.mode, SelectionMoveMode::Translate) {
-            object.transform.translate = [
-                round2(original.translate[0] + delta_x),
-                round2(original.translate[1] + delta_y),
-            ];
+            *object = translated_scene_object(&original.object, delta_x, delta_y);
         }
     }
 
@@ -177,9 +172,7 @@ pub(super) fn apply_selection_rotation_to_document(
         let Some(object) = engine
             .state
             .document
-            .objects
-            .iter_mut()
-            .find(|object| object.id == original.object_id)
+            .find_scene_object_mut(&original.object_id)
         else {
             continue;
         };
@@ -289,9 +282,7 @@ pub(super) fn apply_selection_resize_to_document(
         let Some(object) = engine
             .state
             .document
-            .objects
-            .iter_mut()
-            .find(|object| object.id == original.object.id)
+            .find_scene_object_mut(&original.object.id)
         else {
             continue;
         };
@@ -383,9 +374,30 @@ fn resized_scene_object(
     };
     object.transform.translate = [round2(next_translate.x), round2(next_translate.y)];
 
-    resize_payload_bbox(&mut object, original_translate, next_translate, pivot, scale_x, scale_y);
-    resize_payload_box(&mut object, original_translate, next_translate, pivot, scale_x, scale_y);
-    resize_payload_points(&mut object, original_translate, next_translate, pivot, scale_x, scale_y);
+    resize_payload_bbox(
+        &mut object,
+        original_translate,
+        next_translate,
+        pivot,
+        scale_x,
+        scale_y,
+    );
+    resize_payload_box(
+        &mut object,
+        original_translate,
+        next_translate,
+        pivot,
+        scale_x,
+        scale_y,
+    );
+    resize_payload_points(
+        &mut object,
+        original_translate,
+        next_translate,
+        pivot,
+        scale_x,
+        scale_y,
+    );
     resize_payload_named_points(
         &mut object,
         original_translate,
@@ -396,7 +408,48 @@ fn resized_scene_object(
     );
     resize_text_dimensions(&mut object, scale_x, scale_y);
     resize_graphic_dimensions(&mut object, scale_x, scale_y);
+    if original.object_type == "group" {
+        object.children = original
+            .children
+            .iter()
+            .map(|child| resized_scene_object(child, pivot, scale_x, scale_y))
+            .collect();
+    }
     object
+}
+
+fn translated_scene_object(original: &SceneObject, delta_x: f64, delta_y: f64) -> SceneObject {
+    let mut object = original.clone();
+    object.transform.translate = [
+        round2(original.transform.translate[0] + delta_x),
+        round2(original.transform.translate[1] + delta_y),
+    ];
+    if shape_uses_absolute_points(&object) {
+        translate_absolute_shape_points(&mut object, delta_x, delta_y);
+    }
+    if original.object_type == "group" {
+        object.children = original
+            .children
+            .iter()
+            .map(|child| translated_scene_object(child, delta_x, delta_y))
+            .collect();
+    }
+    object
+}
+
+fn translate_absolute_shape_points(object: &mut SceneObject, delta_x: f64, delta_y: f64) {
+    for key in ["center", "majorAxisEnd", "minorAxisEnd"] {
+        let Some(point) = object.payload.extra.get(key).and_then(json_array_to_point) else {
+            continue;
+        };
+        object.payload.extra.insert(
+            key.to_string(),
+            json!([round2(point.x + delta_x), round2(point.y + delta_y)]),
+        );
+    }
+    if let Some([x, y, width, height]) = object.payload.bbox {
+        object.payload.bbox = Some([round2(x + delta_x), round2(y + delta_y), width, height]);
+    }
 }
 
 fn object_transform_participates_in_render(object: &SceneObject) -> bool {
@@ -525,7 +578,10 @@ fn resize_payload_points(
                 Some(json!([round2(next.x), round2(next.y)]))
             })
             .collect::<Vec<_>>();
-        object.payload.extra.insert(key.to_string(), JsonValue::Array(next_points));
+        object
+            .payload
+            .extra
+            .insert(key.to_string(), JsonValue::Array(next_points));
     }
 }
 

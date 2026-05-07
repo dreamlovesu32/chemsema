@@ -5,6 +5,7 @@ mod brackets;
 mod clipboard;
 mod command;
 mod delete;
+mod groups;
 mod presets;
 mod select;
 mod shapes;
@@ -44,14 +45,15 @@ use crate::{
     render_primitives_bounds, snapped_angle_for_anchor, ArrowCurve, ArrowEndpointStyle,
     ArrowHeadSize, ArrowNoGo, ArrowVariant, Bond, BondAnchor, BondLinePattern, BondLineStyles,
     BondLineWeight, BondLineWeights, BondPreview, BondStereo, BondVariant, ChemcoreDocument,
-    DoubleBond, DoubleBondPlacement, DragState, EditorOptions, EndpointHit, HoverTextBox,
-    OverlayState, Point, PointerEvent, RenderPrimitive, RenderRole, SceneObject, SelectionState,
-    ShapeKind, ShapeStyle, Tool, ToolState, BOND_CENTER_FOCUS_WIDTH, BOND_CENTER_HIT_RADIUS,
-    DRAG_START_THRESHOLD, ENDPOINT_FOCUS_RADIUS, ENDPOINT_HIT_RADIUS, GLOBAL_SNAP_ANGLES,
+    DoubleBond, DoubleBondPlacement, DragState, EditorOptions, EndpointHit, HoverShape,
+    HoverTextBox, OverlayState, Point, PointerEvent, RenderPrimitive, RenderRole, SceneObject,
+    SelectionState, ShapeKind, ShapeStyle, Tool, ToolState, BOND_CENTER_FOCUS_WIDTH,
+    BOND_CENTER_HIT_RADIUS, DRAG_START_THRESHOLD, ENDPOINT_FOCUS_RADIUS, ENDPOINT_HIT_RADIUS,
+    GLOBAL_SNAP_ANGLES,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value as JsonValue};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 const HOVER_STROKE_WIDTH: f64 = crate::px_to_cm(1.1);
 const HOVER_LABEL_STROKE_WIDTH: f64 = crate::px_to_cm(1.1);
@@ -120,12 +122,41 @@ fn render_role_is_hover(role: RenderRole) -> bool {
             | RenderRole::HoverBondCenter
             | RenderRole::HoverArrowCenter
             | RenderRole::HoverArrowHandle
+            | RenderRole::HoverShapeHandle
             | RenderRole::HoverTextBox
     )
 }
 
 fn render_role_is_preview(role: RenderRole) -> bool {
     matches!(role, RenderRole::PreviewBond | RenderRole::PreviewEnd)
+}
+
+fn connected_component_node_ids_for_fragment(
+    fragment: &crate::MoleculeFragment,
+    start_node_id: &str,
+) -> Vec<String> {
+    let mut visited: BTreeSet<String> = BTreeSet::new();
+    let mut queue = std::collections::VecDeque::new();
+    visited.insert(start_node_id.to_string());
+    queue.push_back(start_node_id.to_string());
+    while let Some(current) = queue.pop_front() {
+        for bond in &fragment.bonds {
+            let neighbor = if bond.begin == current {
+                Some(bond.end.as_str())
+            } else if bond.end == current {
+                Some(bond.begin.as_str())
+            } else {
+                None
+            };
+            let Some(neighbor) = neighbor else {
+                continue;
+            };
+            if visited.insert(neighbor.to_string()) {
+                queue.push_back(neighbor.to_string());
+            }
+        }
+    }
+    visited.into_iter().collect()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -155,7 +186,9 @@ pub struct Engine {
     selection_resize_drag: Option<select::SelectionResizeDrag>,
     template_drag: Option<templates::TemplateDrag>,
     shape_drag: Option<ShapeDragState>,
+    shape_edit_drag: Option<ShapeEditDragState>,
     bracket_drag: Option<BracketDragState>,
+    pending_select_target: Option<PendingSelectTarget>,
     clipboard: Option<clipboard::ClipboardContent>,
     options: EditorOptions,
     document_style_preset: String,
@@ -187,6 +220,7 @@ struct ArrowEditDragState {
     original_points: Vec<Point>,
     start_pointer: Point,
     has_dragged: bool,
+    changed: bool,
     current_degrees: f64,
     undo_pushed: bool,
 }
@@ -197,6 +231,35 @@ struct ShapeDragState {
     start: Point,
     current: Point,
     has_dragged: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum ShapeEditHandle {
+    CircleRadius,
+    EllipseMajorPositive,
+    EllipseMajorNegative,
+    EllipseMinorPositive,
+    EllipseMinorNegative,
+    North,
+    South,
+    East,
+    West,
+    NorthEast,
+    NorthWest,
+    SouthEast,
+    SouthWest,
+}
+
+#[derive(Debug, Clone)]
+struct ShapeEditDragState {
+    object_id: String,
+    handle: ShapeEditHandle,
+    original_object: SceneObject,
+    start_pointer: Point,
+    has_dragged: bool,
+    undo_pushed: bool,
+    changed: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -222,6 +285,14 @@ enum SymbolOrbitMode {
     Label,
 }
 
+#[derive(Debug, Clone)]
+enum PendingSelectTarget {
+    GraphicObject(String),
+    TextObject(String),
+    MoleculeNode(String),
+    MoleculeBond(String),
+}
+
 impl Default for Engine {
     fn default() -> Self {
         Self::new()
@@ -245,7 +316,9 @@ impl Engine {
             selection_resize_drag: None,
             template_drag: None,
             shape_drag: None,
+            shape_edit_drag: None,
             bracket_drag: None,
+            pending_select_target: None,
             clipboard: None,
             options: EditorOptions::default(),
             document_style_preset: DEFAULT_DOCUMENT_STYLE_PRESET.to_string(),
@@ -376,6 +449,20 @@ impl Engine {
                 }
             }
         }
+        if let Some(hover) = &self.state.overlay.hover_shape {
+            for handle in &hover.handles {
+                out.push(RenderPrimitive::Circle {
+                    role: RenderRole::HoverShapeHandle,
+                    object_id: Some(hover.object_id.clone()),
+                    node_id: None,
+                    center: *handle,
+                    radius: crate::px_to_cm(2.0),
+                    fill: "#ffffff".to_string(),
+                    stroke: "rgba(47,111,237,0.82)".to_string(),
+                    stroke_width: HOVER_STROKE_WIDTH,
+                });
+            }
+        }
         if let Some(hover) = &self.state.overlay.hover_endpoint {
             if let Some(label_anchor) = &hover.label_anchor {
                 out.push(RenderPrimitive::Rect {
@@ -443,8 +530,16 @@ impl Engine {
     }
 
     pub fn set_tool_state(&mut self, tool: ToolState) {
+        let previous_tool = self.state.tool.active_tool;
+        let next_tool = tool.active_tool;
+        let changed_tool = previous_tool != next_tool;
         self.state.tool = tool;
         self.clear_interaction();
+        if changed_tool && next_tool == Tool::Select {
+            self.select_pending_target_for_select_tool();
+        } else if changed_tool {
+            self.pending_select_target = None;
+        }
     }
 
     pub fn pointer_move(&mut self, event: PointerEvent) {
@@ -477,6 +572,7 @@ impl Engine {
             self.drag = None;
             self.state.overlay.hover_bond_center = None;
             self.state.overlay.hover_arrow = None;
+            self.state.overlay.hover_shape = None;
             self.state.overlay.preview = None;
             self.state.overlay.hover_text_box = None;
             self.state.overlay.hover_endpoint = None;
@@ -505,6 +601,7 @@ impl Engine {
             self.drag = None;
             self.state.overlay.hover_bond_center = None;
             self.state.overlay.hover_arrow = None;
+            self.state.overlay.hover_shape = None;
             self.state.overlay.preview = None;
             self.state.overlay.hover_text_box = None;
             self.state.overlay.hover_endpoint = None;
@@ -598,6 +695,7 @@ impl Engine {
         self.state.overlay.hover_endpoint = None;
         self.state.overlay.hover_bond_center = None;
         self.state.overlay.hover_arrow = None;
+        self.state.overlay.hover_shape = None;
         self.state.overlay.hover_text_box = None;
         if let Some(endpoint) = hit_test_endpoint(&self.state.document, point, ENDPOINT_HIT_RADIUS)
         {
@@ -799,8 +897,93 @@ impl Engine {
         self.selection_resize_drag = None;
         self.template_drag = None;
         self.shape_drag = None;
+        self.shape_edit_drag = None;
         self.bracket_drag = None;
         self.state.overlay = OverlayState::default();
+    }
+
+    fn note_pending_select_target(&mut self, target: PendingSelectTarget) {
+        self.pending_select_target = Some(target);
+    }
+
+    fn select_pending_target_for_select_tool(&mut self) {
+        let Some(target) = self.pending_select_target.take() else {
+            return;
+        };
+        let Some(selection) = self.selection_for_pending_target(&target) else {
+            return;
+        };
+        self.state.selection = selection;
+    }
+
+    fn selection_for_pending_target(&self, target: &PendingSelectTarget) -> Option<SelectionState> {
+        match target {
+            PendingSelectTarget::GraphicObject(object_id) => self
+                .state
+                .document
+                .objects
+                .iter()
+                .any(|object| object.id == *object_id && object.object_type != "text")
+                .then(|| SelectionState {
+                    arrow_objects: vec![object_id.clone()],
+                    ..SelectionState::default()
+                }),
+            PendingSelectTarget::TextObject(object_id) => self
+                .state
+                .document
+                .objects
+                .iter()
+                .any(|object| object.id == *object_id && object.object_type == "text")
+                .then(|| SelectionState {
+                    text_objects: vec![object_id.clone()],
+                    ..SelectionState::default()
+                }),
+            PendingSelectTarget::MoleculeNode(node_id) => {
+                self.selection_for_molecule_component_containing_node(node_id)
+            }
+            PendingSelectTarget::MoleculeBond(bond_id) => {
+                self.selection_for_molecule_component_containing_bond(bond_id)
+            }
+        }
+    }
+
+    fn selection_for_molecule_component_containing_bond(
+        &self,
+        bond_id: &str,
+    ) -> Option<SelectionState> {
+        let entry = self.state.document.editable_fragment()?;
+        let bond = entry
+            .fragment
+            .bonds
+            .iter()
+            .find(|bond| bond.id == bond_id)?;
+        self.selection_for_molecule_component_containing_node(&bond.begin)
+    }
+
+    fn selection_for_molecule_component_containing_node(
+        &self,
+        node_id: &str,
+    ) -> Option<SelectionState> {
+        let entry = self.state.document.editable_fragment()?;
+        if !entry.fragment.nodes.iter().any(|node| node.id == node_id) {
+            return None;
+        }
+        let nodes = connected_component_node_ids_for_fragment(entry.fragment, node_id);
+        let node_set: BTreeSet<&str> = nodes.iter().map(String::as_str).collect();
+        let bonds = entry
+            .fragment
+            .bonds
+            .iter()
+            .filter(|bond| {
+                node_set.contains(bond.begin.as_str()) && node_set.contains(bond.end.as_str())
+            })
+            .map(|bond| bond.id.clone())
+            .collect();
+        Some(SelectionState {
+            nodes,
+            bonds,
+            ..SelectionState::default()
+        })
     }
 
     pub fn add_single_bond(&mut self, anchor: BondAnchor, end: Point) {
@@ -901,6 +1084,7 @@ impl Engine {
             self.options.bond_stroke_world_cm().value(),
         );
         entry.update_bounds();
+        self.note_pending_select_target(PendingSelectTarget::MoleculeBond(bond_id));
         true
     }
 
@@ -999,6 +1183,7 @@ impl Engine {
         self.state.overlay.hover_text_box = None;
         self.state.overlay.hover_bond_center = None;
         self.state.overlay.hover_arrow = None;
+        self.state.overlay.hover_shape = None;
         self.state.overlay.hover_endpoint =
             hit_test_endpoint(&self.state.document, point, ENDPOINT_HIT_RADIUS);
         if self.state.overlay.hover_endpoint.is_none() && can_focus_bond_center(&self.state.tool) {
@@ -1113,6 +1298,7 @@ impl Engine {
         self.state.document = document;
         self.state.selection = SelectionState::default();
         self.clear_interaction();
+        self.pending_select_target = None;
         self.next_id = self.infer_next_id();
     }
 

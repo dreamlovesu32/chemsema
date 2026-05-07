@@ -70,6 +70,15 @@ pub(crate) fn fragment_bond_visual_bounds(
     found.then_some([min_x, min_y, max_x, max_y])
 }
 
+pub(crate) fn shape_object_visual_bounds(
+    document: &ChemcoreDocument,
+    object: &SceneObject,
+) -> Option<[f64; 4]> {
+    let mut out = Vec::new();
+    render_shape_object(&mut out, document, object);
+    render_primitives_bounds(out.iter())
+}
+
 pub(crate) fn primitive_matches_bond(primitive: &RenderPrimitive, bond_id: &str) -> bool {
     match primitive {
         RenderPrimitive::Line {

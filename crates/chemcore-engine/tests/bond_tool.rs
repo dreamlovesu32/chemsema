@@ -399,6 +399,34 @@ fn selection_bond_rect(engine: &Engine) -> (f64, f64, f64, f64) {
         .expect("selection bond rect should exist")
 }
 
+fn selection_box_rect(engine: &Engine) -> (f64, f64, f64, f64) {
+    engine
+        .render_list()
+        .into_iter()
+        .find_map(|primitive| match primitive {
+            RenderPrimitive::Rect {
+                role: RenderRole::SelectionBox,
+                x,
+                y,
+                width,
+                height,
+                ..
+            } => Some((x, y, width, height)),
+            _ => None,
+        })
+        .expect("selection box rect should exist")
+}
+
+fn assert_rect_close(actual: (f64, f64, f64, f64), expected: (f64, f64, f64, f64)) {
+    assert!(
+        (actual.0 - expected.0).abs() < 1.0e-9
+            && (actual.1 - expected.1).abs() < 1.0e-9
+            && (actual.2 - expected.2).abs() < 1.0e-9
+            && (actual.3 - expected.3).abs() < 1.0e-9,
+        "expected rect {actual:?} to be close to {expected:?}"
+    );
+}
+
 fn click(engine: &mut Engine, x: f64, y: f64) {
     engine.pointer_down(PointerEvent {
         x,
@@ -4411,6 +4439,142 @@ fn shape_payload_point(engine: &Engine, key: &str) -> Point {
     )
 }
 
+fn shape_object_count(engine: &Engine) -> usize {
+    engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .filter(|object| object.object_type == "shape")
+        .count()
+}
+
+fn hover_shape_handle_count(engine: &Engine) -> usize {
+    engine
+        .render_list()
+        .iter()
+        .filter(|primitive| {
+            matches!(
+                primitive,
+                RenderPrimitive::Circle {
+                    role: RenderRole::HoverShapeHandle,
+                    ..
+                }
+            )
+        })
+        .count()
+}
+
+#[test]
+fn switching_to_select_selects_latest_changed_graphic_or_molecule_component() {
+    let mut shape_engine = Engine::new();
+    shape_engine.set_tool_state(shape_tool(ShapeKind::Rect, ShapeStyle::Solid));
+    shape_engine.pointer_down(PointerEvent {
+        x: 20.0,
+        y: 20.0,
+        button: Some(0),
+        alt_key: false,
+    });
+    shape_engine.pointer_move(PointerEvent {
+        x: 60.0,
+        y: 44.0,
+        button: None,
+        alt_key: false,
+    });
+    shape_engine.pointer_up(PointerEvent {
+        x: 60.0,
+        y: 44.0,
+        button: Some(0),
+        alt_key: false,
+    });
+    let shape_id = shape_engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "shape")
+        .expect("shape object should exist")
+        .id
+        .clone();
+    shape_engine.set_tool_state(select_tool());
+    assert_eq!(shape_engine.state().selection.arrow_objects, vec![shape_id]);
+
+    let mut arrow_engine = Engine::new();
+    arrow_engine.set_tool_state(ToolState {
+        active_tool: Tool::Arrow,
+        ..ToolState::default()
+    });
+    arrow_engine.pointer_down(PointerEvent {
+        x: 20.0,
+        y: 20.0,
+        button: Some(0),
+        alt_key: false,
+    });
+    arrow_engine.pointer_move(PointerEvent {
+        x: 70.0,
+        y: 20.0,
+        button: None,
+        alt_key: false,
+    });
+    arrow_engine.pointer_up(PointerEvent {
+        x: 70.0,
+        y: 20.0,
+        button: Some(0),
+        alt_key: false,
+    });
+    let arrow_id = arrow_engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "line")
+        .expect("arrow object should exist")
+        .id
+        .clone();
+    arrow_engine.set_tool_state(select_tool());
+    assert_eq!(arrow_engine.state().selection.arrow_objects, vec![arrow_id]);
+
+    let mut bond_engine = Engine::new();
+    bond_engine.set_tool_state(bond_tool());
+    click(&mut bond_engine, px(300.0), px(260.0));
+    bond_engine.set_tool_state(select_tool());
+    assert_eq!(bond_engine.state().selection.nodes.len(), 2);
+    assert_eq!(bond_engine.state().selection.bonds.len(), 1);
+}
+
+#[test]
+fn switching_to_select_without_tool_changes_does_not_restore_previous_latest_object() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(shape_tool(ShapeKind::Rect, ShapeStyle::Solid));
+    engine.pointer_down(PointerEvent {
+        x: 20.0,
+        y: 20.0,
+        button: Some(0),
+        alt_key: false,
+    });
+    engine.pointer_move(PointerEvent {
+        x: 60.0,
+        y: 44.0,
+        button: None,
+        alt_key: false,
+    });
+    engine.pointer_up(PointerEvent {
+        x: 60.0,
+        y: 44.0,
+        button: Some(0),
+        alt_key: false,
+    });
+    engine.set_tool_state(select_tool());
+    assert!(!engine.state().selection.arrow_objects.is_empty());
+
+    engine.select_at_point(Point::new(500.0, 500.0), false);
+    assert!(engine.state().selection.is_empty());
+
+    engine.set_tool_state(shape_tool(ShapeKind::Circle, ShapeStyle::Solid));
+    engine.set_tool_state(select_tool());
+    assert!(engine.state().selection.is_empty());
+}
+
 #[test]
 fn shape_tool_circle_uses_click_as_center_and_cursor_as_radius() {
     let mut engine = Engine::new();
@@ -4595,6 +4759,402 @@ fn select_tool_click_selects_loaded_shape_object() {
         engine.state().selection.arrow_objects,
         vec!["obj_shape_loaded".to_string()]
     );
+}
+
+#[test]
+fn select_tool_shape_hover_and_hit_testing_follow_shape_geometry() {
+    let mut engine = Engine::new();
+    let document = json!({
+        "format": { "name": "chemcore", "version": "0.1" },
+        "document": {
+            "id": "doc_shape_select",
+            "title": "shape select",
+            "page": { "width": 200.0, "height": 160.0, "background": "#ffffff" }
+        },
+        "styles": {
+            "style_shape": {
+                "kind": "shape",
+                "stroke": "#000000",
+                "strokeWidth": 0.6,
+                "fill": null
+            }
+        },
+        "objects": [{
+            "id": "obj_circle_loaded",
+            "type": "shape",
+            "visible": true,
+            "zIndex": 10,
+            "transform": { "translate": [0.0, 0.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+            "styleRef": "style_shape",
+            "payload": {
+                "kind": "circle",
+                "bbox": [20.0, 20.0, 40.0, 40.0],
+                "center": [40.0, 40.0],
+                "majorAxisEnd": [60.0, 40.0],
+                "minorAxisEnd": [40.0, 60.0]
+            }
+        }],
+        "resources": {}
+    });
+    engine
+        .load_document_json(&document.to_string())
+        .expect("shape document should load");
+    engine.set_tool_state(select_tool());
+
+    engine.pointer_move(PointerEvent {
+        x: 40.0,
+        y: 20.0,
+        button: None,
+        alt_key: false,
+    });
+    assert_eq!(
+        engine.hover_shape_action_at_point(Point::new(40.0, 20.0)),
+        "circle-radius"
+    );
+    assert_eq!(hover_shape_handle_count(&engine), 1);
+
+    engine.select_at_point(Point::new(40.0, 40.0), false);
+    assert_eq!(
+        engine.state().selection.arrow_objects,
+        vec!["obj_circle_loaded".to_string()]
+    );
+
+    engine.select_at_point(Point::new(63.5, 63.5), false);
+    assert!(engine.state().selection.arrow_objects.is_empty());
+}
+
+#[test]
+fn selected_shape_boxes_are_tight_axis_aligned_bounds() {
+    let mut engine = Engine::new();
+    let document = json!({
+        "format": { "name": "chemcore", "version": "0.1" },
+        "document": {
+            "id": "doc_shape_selection_boxes",
+            "title": "shape selection boxes",
+            "page": { "width": 260.0, "height": 180.0, "background": "#ffffff" }
+        },
+        "styles": {
+            "style_shape": {
+                "kind": "shape",
+                "stroke": "#000000",
+                "strokeWidth": 0.6,
+                "fill": null
+            }
+        },
+        "objects": [
+            {
+                "id": "shape_circle",
+                "type": "shape",
+                "visible": true,
+                "zIndex": 10,
+                "transform": { "translate": [0.0, 0.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+                "styleRef": "style_shape",
+                "payload": {
+                    "kind": "circle",
+                    "bbox": [20.0, 20.0, 40.0, 40.0],
+                    "center": [40.0, 40.0],
+                    "majorAxisEnd": [60.0, 40.0],
+                    "minorAxisEnd": [40.0, 60.0]
+                }
+            },
+            {
+                "id": "shape_ellipse",
+                "type": "shape",
+                "visible": true,
+                "zIndex": 11,
+                "transform": { "translate": [0.0, 0.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+                "styleRef": "style_shape",
+                "payload": {
+                    "kind": "ellipse",
+                    "bbox": [80.0, 60.0, 80.0, 80.0],
+                    "center": [120.0, 100.0],
+                    "majorAxisEnd": [160.0, 100.0],
+                    "minorAxisEnd": [120.0, 112.0]
+                }
+            },
+            {
+                "id": "shape_rect",
+                "type": "shape",
+                "visible": true,
+                "zIndex": 12,
+                "transform": { "translate": [170.0, 40.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+                "styleRef": "style_shape",
+                "payload": {
+                    "kind": "rect",
+                    "bbox": [0.0, 0.0, 48.0, 24.0]
+                }
+            },
+            {
+                "id": "shape_rotated_ellipse",
+                "type": "shape",
+                "visible": true,
+                "zIndex": 13,
+                "transform": { "translate": [0.0, 0.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+                "styleRef": "style_shape",
+                "payload": {
+                    "kind": "ellipse",
+                    "bbox": [10.0, 80.0, 100.0, 100.0],
+                    "center": [50.0, 130.0],
+                    "majorAxisEnd": [80.0, 170.0],
+                    "minorAxisEnd": [42.0, 136.0]
+                }
+            }
+        ],
+        "resources": {}
+    });
+    engine
+        .load_document_json(&document.to_string())
+        .expect("shape document should load");
+    engine.set_tool_state(select_tool());
+
+    engine.select_at_point(Point::new(40.0, 40.0), false);
+    assert_rect_close(selection_box_rect(&engine), (19.7, 19.7, 40.6, 40.6));
+
+    engine.select_at_point(Point::new(120.0, 100.0), false);
+    assert_rect_close(selection_box_rect(&engine), (79.7, 87.7, 80.6, 24.6));
+
+    engine.select_at_point(Point::new(190.0, 50.0), false);
+    assert_rect_close(selection_box_rect(&engine), (169.7, 39.7, 48.6, 24.6));
+
+    engine.select_at_point(Point::new(50.0, 130.0), false);
+    let rotated_extent_x = (30.0_f64 * 30.0 + (-8.0_f64) * (-8.0)).sqrt();
+    let rotated_extent_y = (40.0_f64 * 40.0 + 6.0 * 6.0).sqrt();
+    assert_rect_close(
+        selection_box_rect(&engine),
+        (
+            50.0 - rotated_extent_x - 0.3,
+            130.0 - rotated_extent_y - 0.3,
+            rotated_extent_x * 2.0 + 0.6,
+            rotated_extent_y * 2.0 + 0.6,
+        ),
+    );
+}
+
+#[test]
+fn shape_tool_circle_edge_handle_resizes_existing_circle_without_drawing_new_shape() {
+    let mut engine = Engine::new();
+    let center = Point::new(40.0, 40.0);
+    let edge = Point::new(60.0, 40.0);
+    engine.set_tool_state(shape_tool(ShapeKind::Circle, ShapeStyle::Solid));
+    engine.pointer_down(PointerEvent {
+        x: center.x,
+        y: center.y,
+        button: Some(0),
+        alt_key: false,
+    });
+    engine.pointer_move(PointerEvent {
+        x: edge.x,
+        y: edge.y,
+        button: None,
+        alt_key: false,
+    });
+    engine.pointer_up(PointerEvent {
+        x: edge.x,
+        y: edge.y,
+        button: Some(0),
+        alt_key: false,
+    });
+
+    assert_eq!(shape_object_count(&engine), 1);
+    engine.pointer_move(PointerEvent {
+        x: edge.x,
+        y: edge.y,
+        button: None,
+        alt_key: false,
+    });
+    assert_eq!(engine.hover_shape_action_at_point(edge), "circle-radius");
+    assert_eq!(hover_shape_handle_count(&engine), 1);
+
+    engine.pointer_down(PointerEvent {
+        x: edge.x,
+        y: edge.y,
+        button: Some(0),
+        alt_key: false,
+    });
+    engine.pointer_move(PointerEvent {
+        x: 80.0,
+        y: 40.0,
+        button: None,
+        alt_key: false,
+    });
+    engine.pointer_up(PointerEvent {
+        x: 80.0,
+        y: 40.0,
+        button: Some(0),
+        alt_key: false,
+    });
+
+    assert_eq!(shape_object_count(&engine), 1);
+    assert_point_close(
+        shape_payload_point(&engine, "majorAxisEnd"),
+        Point::new(80.0, 40.0),
+    );
+}
+
+#[test]
+fn shape_tool_ellipse_handles_resize_axes_and_non_handle_drag_draws_new_shape() {
+    let mut engine = Engine::new();
+    let center = Point::new(40.0, 40.0);
+    let major = Point::new(80.0, 40.0);
+    engine.set_tool_state(shape_tool(ShapeKind::Ellipse, ShapeStyle::Solid));
+    engine.pointer_down(PointerEvent {
+        x: center.x,
+        y: center.y,
+        button: Some(0),
+        alt_key: false,
+    });
+    engine.pointer_move(PointerEvent {
+        x: major.x,
+        y: major.y,
+        button: None,
+        alt_key: false,
+    });
+    engine.pointer_up(PointerEvent {
+        x: major.x,
+        y: major.y,
+        button: Some(0),
+        alt_key: false,
+    });
+
+    engine.pointer_move(PointerEvent {
+        x: major.x,
+        y: major.y,
+        button: None,
+        alt_key: false,
+    });
+    assert_eq!(
+        engine.hover_shape_action_at_point(major),
+        "ellipse-major-positive"
+    );
+    assert_eq!(hover_shape_handle_count(&engine), 4);
+
+    engine.pointer_down(PointerEvent {
+        x: major.x,
+        y: major.y,
+        button: Some(0),
+        alt_key: false,
+    });
+    engine.pointer_move(PointerEvent {
+        x: 100.0,
+        y: 40.0,
+        button: None,
+        alt_key: false,
+    });
+    engine.pointer_up(PointerEvent {
+        x: 100.0,
+        y: 40.0,
+        button: Some(0),
+        alt_key: false,
+    });
+    assert_eq!(shape_object_count(&engine), 1);
+    assert_point_close(
+        shape_payload_point(&engine, "majorAxisEnd"),
+        Point::new(100.0, 40.0),
+    );
+
+    engine.pointer_down(PointerEvent {
+        x: center.x,
+        y: center.y,
+        button: Some(0),
+        alt_key: false,
+    });
+    engine.pointer_move(PointerEvent {
+        x: 65.0,
+        y: 65.0,
+        button: None,
+        alt_key: false,
+    });
+    engine.pointer_up(PointerEvent {
+        x: 65.0,
+        y: 65.0,
+        button: Some(0),
+        alt_key: false,
+    });
+    assert_eq!(shape_object_count(&engine), 2);
+}
+
+#[test]
+fn shape_tool_rect_handles_resize_but_edge_non_handles_continue_drawing() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(shape_tool(ShapeKind::Rect, ShapeStyle::Solid));
+    engine.pointer_down(PointerEvent {
+        x: 20.0,
+        y: 20.0,
+        button: Some(0),
+        alt_key: false,
+    });
+    engine.pointer_move(PointerEvent {
+        x: 60.0,
+        y: 44.0,
+        button: None,
+        alt_key: false,
+    });
+    engine.pointer_up(PointerEvent {
+        x: 60.0,
+        y: 44.0,
+        button: Some(0),
+        alt_key: false,
+    });
+
+    engine.pointer_move(PointerEvent {
+        x: 60.0,
+        y: 32.0,
+        button: None,
+        alt_key: false,
+    });
+    assert_eq!(
+        engine.hover_shape_action_at_point(Point::new(60.0, 32.0)),
+        "e"
+    );
+    assert_eq!(hover_shape_handle_count(&engine), 8);
+    engine.pointer_down(PointerEvent {
+        x: 60.0,
+        y: 32.0,
+        button: Some(0),
+        alt_key: false,
+    });
+    engine.pointer_move(PointerEvent {
+        x: 80.0,
+        y: 32.0,
+        button: None,
+        alt_key: false,
+    });
+    engine.pointer_up(PointerEvent {
+        x: 80.0,
+        y: 32.0,
+        button: Some(0),
+        alt_key: false,
+    });
+
+    assert_eq!(shape_object_count(&engine), 1);
+    let object = engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "shape")
+        .expect("shape object should exist");
+    assert_eq!(object.payload.bbox, Some([0.0, 0.0, 60.0, 24.0]));
+
+    engine.pointer_down(PointerEvent {
+        x: 35.0,
+        y: 20.0,
+        button: Some(0),
+        alt_key: false,
+    });
+    engine.pointer_move(PointerEvent {
+        x: 90.0,
+        y: 55.0,
+        button: None,
+        alt_key: false,
+    });
+    engine.pointer_up(PointerEvent {
+        x: 90.0,
+        y: 55.0,
+        button: Some(0),
+        alt_key: false,
+    });
+    assert_eq!(shape_object_count(&engine), 2);
 }
 
 #[test]
@@ -5149,7 +5709,10 @@ fn select_tool_resizing_selected_bond_from_east_scales_selected_nodes() {
 
     let final_n2 = n2;
     assert!(engine.undo());
-    assert_eq!(node_world_point(&engine, "n_2"), Point::new(FIRST_END_X, FIRST_END_Y));
+    assert_eq!(
+        node_world_point(&engine, "n_2"),
+        Point::new(FIRST_END_X, FIRST_END_Y)
+    );
     assert!(engine.redo());
     assert_eq!(node_world_point(&engine, "n_2"), final_n2);
 }
@@ -5196,6 +5759,7 @@ fn select_tool_dragging_unselected_bond_focus_starts_move() {
     engine.set_tool_state(bond_tool());
     click(&mut engine, px(300.0), px(260.0));
     engine.set_tool_state(select_tool());
+    engine.select_at_point(Point::new(10000.0, 10000.0), false);
     let start = Point::new(FIRST_CENTER_X, FIRST_CENTER_Y);
     let end = Point::new(FIRST_CENTER_X + px(16.0), FIRST_CENTER_Y);
 
@@ -5281,6 +5845,7 @@ fn select_tool_dragging_single_terminal_endpoint_snaps_to_15_degrees() {
     engine.set_tool_state(bond_tool());
     click(&mut engine, px(300.0), px(260.0));
     engine.set_tool_state(select_tool());
+    engine.select_at_point(Point::new(10000.0, 10000.0), false);
     let start = Point::new(FIRST_END_X, FIRST_END_Y);
     let target = Point::new(FIRST_START_X, FIRST_START_Y)
         .translated(direction_from_angle(22.0).scaled(DEFAULT_BOND_LENGTH * 1.4));
@@ -5312,6 +5877,7 @@ fn select_tool_dragging_unselected_single_terminal_endpoint_clears_temporary_sel
     engine.set_tool_state(bond_tool());
     click(&mut engine, px(300.0), px(260.0));
     engine.set_tool_state(select_tool());
+    engine.select_at_point(Point::new(10000.0, 10000.0), false);
     let start = Point::new(FIRST_END_X, FIRST_END_Y);
     let target = Point::new(FIRST_START_X, FIRST_START_Y)
         .translated(direction_from_angle(22.0).scaled(DEFAULT_BOND_LENGTH * 1.4));
