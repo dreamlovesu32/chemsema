@@ -1082,13 +1082,8 @@ fn normalize_bond(
         stroke_width,
         stroke: bond.attr("color").map(|color| colors.resolve(Some(color))),
         bold_width: Some(bold_width),
-        wedge_width: Some(cdxml_template_wedge_width(stroke_width, bold_width)),
-        label_clip_margin: Some(cdxml_template_label_clip_margin(
-            stroke_width,
-            bold_width,
-            hash_spacing,
-            bond_spacing,
-        )),
+        wedge_width: Some(cdxml_import_wedge_width(stroke_width, bold_width)),
+        label_clip_margin: Some(cdxml_import_label_clip_margin(stroke_width)),
         hash_spacing: Some(hash_spacing),
         bond_spacing: Some(bond_spacing),
         margin_width: Some(margin_width),
@@ -1152,33 +1147,12 @@ fn cdxml_bond_has_imported_line_style(
         || line_weights.right != crate::BondLineWeight::Normal
 }
 
-fn cdxml_template_wedge_width(_stroke_width: f64, bold_width: f64) -> f64 {
+fn cdxml_import_wedge_width(_stroke_width: f64, bold_width: f64) -> f64 {
     (bold_width * 1.5).max(crate::DEFAULT_BOND_STROKE)
 }
 
-fn cdxml_template_label_clip_margin(
-    stroke_width: f64,
-    bold_width: f64,
-    hash_spacing: f64,
-    bond_spacing: f64,
-) -> f64 {
-    if is_acs_document_1996_bond_template(stroke_width, bold_width, hash_spacing, bond_spacing) {
-        crate::ACS_LABEL_GEOMETRY_CLIP_MARGIN_CM.value()
-    } else {
-        crate::LABEL_GEOMETRY_CLIP_MARGIN_CM.value()
-    }
-}
-
-fn is_acs_document_1996_bond_template(
-    stroke_width: f64,
-    bold_width: f64,
-    hash_spacing: f64,
-    bond_spacing: f64,
-) -> bool {
-    (stroke_width - 0.6).abs() <= 0.01
-        && (bold_width - 2.0).abs() <= 0.05
-        && (hash_spacing - 2.5).abs() <= 0.05
-        && (bond_spacing - 18.0).abs() <= 0.05
+pub(crate) fn cdxml_import_label_clip_margin(stroke_width: f64) -> f64 {
+    round2(0.65 + stroke_width.max(0.0) * 0.5)
 }
 
 fn cdxml_bond_order(value: Option<&str>) -> u8 {

@@ -1511,6 +1511,7 @@ fn load_cdxml_document_derives_wedge_width_from_imported_bold_width() {
     assert!((engine.options().bond_stroke_width - 2.64).abs() < 0.01);
     assert!((engine.options().bold_bond_width - 5.36).abs() < 0.01);
     assert!((engine.options().wedge_width - 8.04).abs() < 0.01);
+    assert!((engine.options().label_clip_margin - 3.07).abs() < 0.01);
     assert!((engine.options().margin_width - 4.53).abs() < 0.01);
 
     let bond = &engine
@@ -1521,6 +1522,7 @@ fn load_cdxml_document_derives_wedge_width_from_imported_bold_width() {
         .fragment
         .bonds[0];
     assert!((bond.wedge_width.unwrap_or_default() - 8.04).abs() < 0.01);
+    assert_eq!(bond.label_clip_margin, Some(3.07));
     assert_eq!(bond.margin_width, Some(4.53));
 }
 

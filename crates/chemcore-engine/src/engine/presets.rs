@@ -793,7 +793,11 @@ pub(super) fn editor_options_from_document(document: &ChemcoreDocument) -> Edito
         }
     }
     options.wedge_width = derived_wedge_width(options.bold_bond_width);
-    options.label_clip_margin = derived_label_clip_margin(options.bold_bond_width);
+    options.label_clip_margin = if has_cdxml_defaults {
+        crate::cdxml::cdxml_import_label_clip_margin(options.bond_stroke_width)
+    } else {
+        derived_label_clip_margin(options.bold_bond_width)
+    };
     options
 }
 
@@ -801,15 +805,6 @@ pub(super) fn editor_options_from_imported_cdxml_document(
     document: &ChemcoreDocument,
 ) -> EditorOptions {
     let mut options = editor_options_from_document(document);
-    let acs = document_style_preset_options(ACS_DOCUMENT_1996_PRESET);
-    if (options.bond_length - acs.bond_length).abs() <= 0.05
-        && (options.bold_bond_width - acs.bold_bond_width).abs() <= 0.05
-        && (options.hash_spacing - acs.hash_spacing).abs() <= 0.05
-        && (options.bond_spacing - acs.bond_spacing).abs() <= 0.05
-        && (options.margin_width - acs.margin_width).abs() <= 0.05
-    {
-        options.label_clip_margin = acs.label_clip_margin;
-    }
     let editing_scale = document
         .document
         .meta
