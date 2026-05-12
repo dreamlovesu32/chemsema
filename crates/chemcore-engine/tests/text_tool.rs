@@ -1784,7 +1784,7 @@ fn endpoint_label_anchor_tracks_terminal_double_status() {
     let bond = entry.fragment.bonds.first().expect("bond should exist");
     assert_eq!(
         bond.double.as_ref().map(|double| double.placement),
-        Some(chemcore_engine::DoubleBondPlacement::Right)
+        Some(chemcore_engine::DoubleBondPlacement::Center)
     );
     let terminal_node = entry
         .fragment
@@ -1804,18 +1804,12 @@ fn endpoint_label_anchor_tracks_terminal_double_status() {
         other => panic!("unexpected target: {other:?}"),
     };
     assert!(
-        (terminal_anchor.x - terminal_node.position[0]).abs() > 0.001
-            || (terminal_anchor.y - terminal_node.position[1]).abs() > 0.001,
-        "{terminal_anchor:?} vs {:?}",
-        terminal_node.position
-    );
-    assert!(
         (terminal_anchor.x - terminal_node.position[0]).abs() < 0.001,
         "{terminal_anchor:?} vs {:?}",
         terminal_node.position
     );
     assert!(
-        terminal_anchor.y < terminal_node.position[1],
+        (terminal_anchor.y - terminal_node.position[1]).abs() < 0.001,
         "{terminal_anchor:?} vs {:?}",
         terminal_node.position
     );

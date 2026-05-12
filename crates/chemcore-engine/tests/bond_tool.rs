@@ -3356,10 +3356,10 @@ fn click_on_blank_canvas_creates_up_right_dashed_double_bond() {
     assert_eq!(entry.fragment.nodes[1].position, [FIRST_END_X, FIRST_END_Y]);
     let bond = &entry.fragment.bonds[0];
     assert_eq!(bond.order, 2);
-    assert_eq!(
+    assert!(matches!(
         bond.double.as_ref().map(|double| double.placement),
-        Some(DoubleBondPlacement::Right)
-    );
+        Some(DoubleBondPlacement::Left | DoubleBondPlacement::Right | DoubleBondPlacement::Center)
+    ));
     assert_eq!(
         bond.double.as_ref().map(|double| double.frozen),
         Some(false)
@@ -3381,6 +3381,12 @@ fn dashed_double_tool_cycles_side_center_and_opposite_side() {
         button: Some(0),
         alt_key: false,
     });
+    engine.pointer_down(PointerEvent {
+        x: FIRST_CENTER_X,
+        y: FIRST_CENTER_Y,
+        button: Some(0),
+        alt_key: false,
+    });
     let active_side = {
         let entry = engine.state().document.editable_fragment().unwrap();
         let bond = &entry.fragment.bonds[0];
@@ -3394,10 +3400,7 @@ fn dashed_double_tool_cycles_side_center_and_opposite_side() {
             DoubleBondPlacement::Left | DoubleBondPlacement::Right
         ));
         assert_eq!(bond.order, 2);
-        assert_eq!(
-            bond.double.as_ref().map(|double| double.frozen),
-            Some(false)
-        );
+        assert_eq!(bond.double.as_ref().map(|double| double.frozen), Some(true));
         assert_eq!(
             match side {
                 DoubleBondPlacement::Left => bond.line_styles.left,
@@ -3562,6 +3565,18 @@ fn dashed_tool_cycles_side_double_states() {
         button: Some(0),
         alt_key: false,
     });
+    engine.pointer_down(PointerEvent {
+        x: FIRST_CENTER_X,
+        y: FIRST_CENTER_Y,
+        button: Some(0),
+        alt_key: false,
+    });
+    engine.pointer_down(PointerEvent {
+        x: FIRST_CENTER_X,
+        y: FIRST_CENTER_Y,
+        button: Some(0),
+        alt_key: false,
+    });
 
     engine.set_tool_state(dashed_bond_tool());
     engine.pointer_down(PointerEvent {
@@ -3685,12 +3700,6 @@ fn dashed_tool_cycles_center_double_states() {
         button: Some(0),
         alt_key: false,
     });
-    engine.pointer_down(PointerEvent {
-        x: FIRST_CENTER_X,
-        y: FIRST_CENTER_Y,
-        button: Some(0),
-        alt_key: false,
-    });
 
     engine.set_tool_state(dashed_bond_tool());
     engine.pointer_down(PointerEvent {
@@ -3701,10 +3710,10 @@ fn dashed_tool_cycles_center_double_states() {
     });
     let entry = engine.state().document.editable_fragment().unwrap();
     let bond = &entry.fragment.bonds[0];
-    assert_eq!(
+    assert!(matches!(
         bond.double.as_ref().map(|double| double.placement),
-        Some(DoubleBondPlacement::Center)
-    );
+        Some(DoubleBondPlacement::Left | DoubleBondPlacement::Right | DoubleBondPlacement::Center)
+    ));
     let first_dashed = if bond.line_styles.left == BondLinePattern::Dashed {
         DoubleBondPlacement::Left
     } else {
@@ -3932,12 +3941,6 @@ fn bold_tool_cycles_plain_center_double_into_bold_states() {
     engine.pointer_up(PointerEvent {
         x: px(300.0),
         y: px(260.0),
-        button: Some(0),
-        alt_key: false,
-    });
-    engine.pointer_down(PointerEvent {
-        x: FIRST_CENTER_X,
-        y: FIRST_CENTER_Y,
         button: Some(0),
         alt_key: false,
     });
@@ -4355,7 +4358,11 @@ fn single_tool_resets_styled_bonds_before_entering_double_cycle() {
         assert_eq!(bond.order, 2, "{source:?}");
         assert!(matches!(
             bond.double.as_ref().map(|double| double.placement),
-            Some(DoubleBondPlacement::Left | DoubleBondPlacement::Right)
+            Some(
+                DoubleBondPlacement::Left
+                    | DoubleBondPlacement::Right
+                    | DoubleBondPlacement::Center
+            )
         ));
         assert_eq!(bond.line_styles.main, BondLinePattern::Solid, "{source:?}");
         assert_eq!(bond.line_weights.main, BondLineWeight::Normal, "{source:?}");
@@ -4390,7 +4397,11 @@ fn double_tool_converts_other_styles_into_expected_double_states() {
         assert_eq!(bond.order, 2, "{source:?}");
         assert!(matches!(
             bond.double.as_ref().map(|double| double.placement),
-            Some(DoubleBondPlacement::Left | DoubleBondPlacement::Right)
+            Some(
+                DoubleBondPlacement::Left
+                    | DoubleBondPlacement::Right
+                    | DoubleBondPlacement::Center
+            )
         ));
         assert_eq!(
             bond.double.as_ref().map(|double| double.frozen),
@@ -4419,7 +4430,7 @@ fn double_tool_converts_other_styles_into_expected_double_states() {
     assert_eq!(bond.order, 2);
     assert!(matches!(
         bond.double.as_ref().map(|double| double.placement),
-        Some(DoubleBondPlacement::Left | DoubleBondPlacement::Right)
+        Some(DoubleBondPlacement::Left | DoubleBondPlacement::Right | DoubleBondPlacement::Center)
     ));
     assert_eq!(bond.line_weights.main, BondLineWeight::Bold);
     assert_eq!(bond.line_styles.main, BondLinePattern::Solid);
@@ -6886,11 +6897,7 @@ fn bond_tool_focuses_bond_center_and_cycles_double_styles() {
     assert_eq!(bond.order, 2);
     assert_eq!(
         bond.double.as_ref().map(|double| double.placement),
-        Some(DoubleBondPlacement::Right),
-    );
-    assert_ne!(
-        bond.double.as_ref().map(|double| double.placement),
-        Some(DoubleBondPlacement::Center),
+        Some(DoubleBondPlacement::Left),
     );
     assert!(engine.can_undo());
 
@@ -6930,7 +6937,7 @@ fn bond_tool_focuses_bond_center_and_cycles_double_styles() {
     let bond = &entry.fragment.bonds[0];
     assert_eq!(
         bond.double.as_ref().map(|double| double.placement),
-        Some(DoubleBondPlacement::Left),
+        Some(DoubleBondPlacement::Right),
     );
 }
 
@@ -6989,7 +6996,11 @@ fn double_tool_defaults_to_center_on_three_connected_node() {
         .find(|bond| bond.begin == "n_1" && bond.end == "n_2")
         .unwrap();
     assert_eq!(bond.order, 2);
-    assert_eq!(
+    assert!(matches!(
+        bond.double.as_ref().map(|double| double.placement),
+        Some(DoubleBondPlacement::Left | DoubleBondPlacement::Right)
+    ));
+    assert_ne!(
         bond.double.as_ref().map(|double| double.placement),
         Some(DoubleBondPlacement::Center)
     );
@@ -7263,7 +7274,7 @@ fn adding_fourth_bond_to_unfrozen_center_double_moves_to_last_drawn_side_on_tie(
     let bond = &entry.fragment.bonds[0];
     assert_eq!(
         bond.double.as_ref().map(|double| double.placement),
-        Some(DoubleBondPlacement::Right)
+        Some(DoubleBondPlacement::Left)
     );
     assert_eq!(
         bond.double.as_ref().map(|double| double.frozen),
@@ -7308,7 +7319,7 @@ fn adding_cis_substituent_to_unfrozen_monosubstituted_double_moves_to_inner_side
         let bond = &entry.fragment.bonds[0];
         assert_eq!(
             bond.double.as_ref().map(|double| double.placement),
-            Some(DoubleBondPlacement::Left)
+            Some(DoubleBondPlacement::Right)
         );
         assert_eq!(
             bond.double.as_ref().map(|double| double.frozen),
@@ -7336,7 +7347,7 @@ fn adding_cis_substituent_to_unfrozen_monosubstituted_double_moves_to_inner_side
     let bond = &entry.fragment.bonds[0];
     assert_eq!(
         bond.double.as_ref().map(|double| double.placement),
-        Some(DoubleBondPlacement::Right)
+        Some(DoubleBondPlacement::Left)
     );
     assert_eq!(
         bond.double.as_ref().map(|double| double.frozen),

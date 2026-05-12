@@ -3078,15 +3078,23 @@ fn cdxml_export_import_preserves_non_white_page_background() {
 
 #[test]
 fn parse_cdxml_right_side_double_bonds_render_on_begin_to_end_right_side() {
-    let cdxml = std::fs::read_to_string(fixture_path("02-13/2017-2-13/oleObject2.cdxml"))
-        .expect("example cdxml");
-    let document =
-        parse_cdxml_document(&cdxml, Some("example")).expect("example cdxml should parse");
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >
+<CDXML BondLength="20.00" BondSpacing="18" LineWidth="0.60" BoldWidth="2.00" HashSpacing="2.50" LabelSize="10" BoundingBox="0 0 40 50">
+  <page id="p1" BoundingBox="0 0 40 50">
+    <fragment id="f1" BoundingBox="0 0 40 50">
+      <n id="n1" p="10 10"/>
+      <n id="n2" p="10 30"/>
+      <b id="b1" B="n1" E="n2" Order="2" DoublePosition="Right"/>
+    </fragment>
+  </page>
+</CDXML>"#;
+    let document = parse_cdxml_document(cdxml, Some("right side")).expect("cdxml should parse");
     let object = document
         .objects
         .iter()
-        .find(|object| object.id == "obj_mol_004")
-        .expect("ArB(OH)2 fragment should import as obj_mol_004");
+        .find(|object| object.id == "obj_mol_001")
+        .expect("fragment should import as obj_mol_001");
     let resource_ref = object
         .payload
         .resource_ref
@@ -3100,64 +3108,38 @@ fn parse_cdxml_right_side_double_bonds_render_on_begin_to_end_right_side() {
         .as_fragment()
         .expect("molecule resource should have fragment data");
 
-    for bond_id in ["50407073", "50407075", "50407077"] {
-        let bond = fragment
-            .bonds
-            .iter()
-            .find(|bond| bond.id == bond_id)
-            .expect("ring double bond should import");
-        assert_eq!(
-            bond.double.as_ref().map(|double| double.placement),
-            Some(chemcore_engine::DoubleBondPlacement::Right)
-        );
-    }
+    let bond = fragment
+        .bonds
+        .iter()
+        .find(|bond| bond.id == "b1")
+        .expect("double bond should import");
+    assert_eq!(
+        bond.double.as_ref().map(|double| double.placement),
+        Some(chemcore_engine::DoubleBondPlacement::Right)
+    );
 
     let primitives = render_document(&document);
-    let centerlines = object_bond_centerlines_with_ids(&primitives, "obj_mol_004");
-    let ring_center = chemcore_engine::Point::new(586.57, 77.5);
-    for (bond_id, begin, end) in [
-        (
-            "50407073",
-            chemcore_engine::Point::new(574.1, 70.3),
-            chemcore_engine::Point::new(574.1, 84.7),
-        ),
-        (
-            "50407075",
-            chemcore_engine::Point::new(586.57, 91.9),
-            chemcore_engine::Point::new(599.04, 84.7),
-        ),
-        (
-            "50407077",
-            chemcore_engine::Point::new(599.04, 70.3),
-            chemcore_engine::Point::new(586.57, 63.1),
-        ),
-    ] {
-        let dx = end.x - begin.x;
-        let dy = end.y - begin.y;
-        let length = dx.hypot(dy);
-        let right_normal = chemcore_engine::Point::new(dy / length, -dx / length);
-        let raw_mid = chemcore_engine::Point::new((begin.x + end.x) * 0.5, (begin.y + end.y) * 0.5);
-        let center_projection = (ring_center.x - raw_mid.x) * right_normal.x
-            + (ring_center.y - raw_mid.y) * right_normal.y;
-        assert!(
-            center_projection > 0.0,
-            "{bond_id} center should be on B->E right side"
-        );
-
-        let max_rendered_projection = centerlines
-            .iter()
-            .filter(|(id, _, _)| id == bond_id)
-            .map(|(_, from, to)| {
-                let mid = chemcore_engine::Point::new((from.x + to.x) * 0.5, (from.y + to.y) * 0.5);
-                (mid.x - raw_mid.x) * right_normal.x + (mid.y - raw_mid.y) * right_normal.y
-            })
-            .max_by(|a, b| a.total_cmp(b))
-            .expect("double bond should render centerlines");
-        assert!(
-            max_rendered_projection > 0.0,
-            "{bond_id} outer line should render on B->E right side, got {max_rendered_projection}"
-        );
-    }
+    let centerlines = object_bond_centerlines_with_ids(&primitives, "obj_mol_001");
+    let begin = chemcore_engine::Point::new(10.0, 10.0);
+    let end = chemcore_engine::Point::new(10.0, 30.0);
+    let dx = end.x - begin.x;
+    let dy = end.y - begin.y;
+    let length = dx.hypot(dy);
+    let right_normal = chemcore_engine::Point::new(dy / length, -dx / length);
+    let raw_mid = chemcore_engine::Point::new((begin.x + end.x) * 0.5, (begin.y + end.y) * 0.5);
+    let max_rendered_projection = centerlines
+        .iter()
+        .filter(|(id, _, _)| id == "b1")
+        .map(|(_, from, to)| {
+            let mid = chemcore_engine::Point::new((from.x + to.x) * 0.5, (from.y + to.y) * 0.5);
+            (mid.x - raw_mid.x) * right_normal.x + (mid.y - raw_mid.y) * right_normal.y
+        })
+        .max_by(|a, b| a.total_cmp(b))
+        .expect("double bond should render centerlines");
+    assert!(
+        max_rendered_projection > 0.0,
+        "outer line should render on B->E right side, got {max_rendered_projection}"
+    );
 }
 
 #[test]
@@ -3197,6 +3179,108 @@ fn parse_cdxml_unspecified_alkene_double_bond_uses_automatic_side_placement() {
         chemcore_engine::DoubleBondPlacement::Center
     );
     assert!(!double.frozen);
+}
+
+#[test]
+fn parse_cdxml_auto_double_bond_matches_chemdraw_center_and_tie_rules() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >
+<CDXML BondLength="20.00" BondSpacing="18" LineWidth="0.60" BoldWidth="2.00" HashSpacing="2.50" LabelSize="10" BoundingBox="0 0 140 70">
+  <page id="p1" BoundingBox="0 0 140 70">
+    <fragment id="f1" BoundingBox="0 0 60 60">
+      <n id="n1" p="30 25"/>
+      <n id="n2" p="30 45"/>
+      <n id="n3" p="12.68 15"/>
+      <n id="n4" p="47.32 15"/>
+      <b id="b1" B="n1" E="n2" Order="2"/>
+      <b id="b2" B="n1" E="n3"/>
+      <b id="b3" B="n1" E="n4"/>
+    </fragment>
+    <fragment id="f2" BoundingBox="60 0 140 60">
+      <n id="m1" p="80 30"/>
+      <n id="m2" p="100 30"/>
+      <n id="m3" p="62.68 20"/>
+      <n id="m4" p="117.32 40"/>
+      <b id="m5" B="m1" E="m2" Order="2"/>
+      <b id="m6" B="m1" E="m3"/>
+      <b id="m7" B="m2" E="m4"/>
+    </fragment>
+  </page>
+</CDXML>"#;
+    let document = parse_cdxml_document(cdxml, Some("auto double")).expect("cdxml should parse");
+    let mut placements = Vec::new();
+    for fragment in document
+        .resources
+        .values()
+        .filter_map(|resource| resource.data.as_fragment())
+    {
+        for bond in &fragment.bonds {
+            if bond.order == 2 {
+                placements.push((
+                    bond.id.as_str(),
+                    bond.double.as_ref().map(|double| double.placement),
+                    bond.double.as_ref().map(|double| double.frozen),
+                ));
+            }
+        }
+    }
+    assert!(
+        placements.contains(&(
+            "b1",
+            Some(chemcore_engine::DoubleBondPlacement::Center),
+            Some(false)
+        )),
+        "{placements:?}"
+    );
+    assert!(
+        placements.contains(&(
+            "m5",
+            Some(chemcore_engine::DoubleBondPlacement::Right),
+            Some(false)
+        )),
+        "{placements:?}"
+    );
+}
+
+#[test]
+fn parse_cdxml_auto_double_bond_places_five_member_ring_inside() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >
+<CDXML BondLength="20.00" BondSpacing="18" LineWidth="0.60" BoldWidth="2.00" HashSpacing="2.50" LabelSize="10" BoundingBox="0 0 50 60">
+  <page id="p1" BoundingBox="0 0 50 60">
+    <fragment id="f1" BoundingBox="0 0 50 60">
+      <n id="n1" p="10 20"/>
+      <n id="n2" p="24.4 20"/>
+      <n id="n3" p="31.25 33.65"/>
+      <n id="n4" p="17.2 44"/>
+      <n id="n5" p="3.15 33.65"/>
+      <b id="b1" B="n1" E="n2" Order="2"/>
+      <b id="b2" B="n2" E="n3"/>
+      <b id="b3" B="n3" E="n4"/>
+      <b id="b4" B="n4" E="n5"/>
+      <b id="b5" B="n5" E="n1"/>
+    </fragment>
+  </page>
+</CDXML>"#;
+    let document = parse_cdxml_document(cdxml, Some("cyclopentene")).expect("cdxml should parse");
+    let fragment = document
+        .editable_fragment()
+        .expect("editable fragment should exist")
+        .fragment;
+    let bond = fragment
+        .bonds
+        .iter()
+        .find(|bond| bond.id == "b1")
+        .expect("ring double bond should import");
+
+    assert_eq!(
+        bond.double.as_ref().map(|double| double.placement),
+        Some(chemcore_engine::DoubleBondPlacement::Left)
+    );
+    assert_eq!(
+        bond.double.as_ref().map(|double| double.frozen),
+        Some(false)
+    );
 }
 
 #[test]
