@@ -15,19 +15,21 @@ use windows_sys::Win32::Graphics::GdiPlus::{
     GdipDeleteFontFamily, GdipDeleteGraphics, GdipDeletePath, GdipDeletePen,
     GdipDeleteStringFormat, GdipDisposeImage, GdipDrawEllipse, GdipDrawLine, GdipDrawLines,
     GdipDrawPath, GdipDrawPolygon, GdipDrawRectangle, GdipDrawString, GdipFillEllipse,
-    GdipFillPath, GdipFillPolygon, GdipFillRectangle, GdipGetHemfFromMetafile,
-    GdipGetImageGraphicsContext, GdipRecordMetafile, GdipSetPenDashArray, GdipSetPenDashStyle,
-    GdipSetPenEndCap, GdipSetPenLineJoin, GdipSetPenMiterLimit, GdipSetPenStartCap,
-    GdipSetSmoothingMode, GdipSetStringFormatAlign, GdipSetStringFormatLineAlign,
-    GdipSetTextRenderingHint, GdipStartPathFigure, GdiplusStartup, GdiplusStartupInput, GpBrush,
-    GpFont, GpFontFamily, GpGraphics, GpImage, GpMetafile, GpPath, GpPen, GpStringFormat,
-    LineCapFlat, LineCapRound, LineCapSquare, LineJoinBevel, LineJoinMiter, LineJoinRound,
-    MetafileFrameUnitGdi, Ok as GDI_PLUS_OK, PointF, RectF, SmoothingModeAntiAlias,
-    StringAlignmentNear, TextRenderingHintAntiAliasGridFit, UnitPixel,
+    GdipFillPath, GdipFillPolygon, GdipFillRectangle, GdipGetDC, GdipGetHemfFromMetafile,
+    GdipGetImageGraphicsContext, GdipRecordMetafile, GdipReleaseDC, GdipSetPenDashArray,
+    GdipSetPenDashStyle, GdipSetPenEndCap, GdipSetPenLineJoin, GdipSetPenMiterLimit,
+    GdipSetPenStartCap, GdipSetSmoothingMode, GdipSetStringFormatAlign, GdipSetStringFormatFlags,
+    GdipSetStringFormatLineAlign, GdipSetTextRenderingHint, GdipStartPathFigure, GdiplusStartup,
+    GdiplusStartupInput, GpBrush, GpFont, GpFontFamily, GpGraphics, GpImage, GpMetafile, GpPath,
+    GpPen, GpStringFormat, LineCapFlat, LineCapRound, LineCapSquare, LineJoinBevel, LineJoinMiter,
+    LineJoinRound, MetafileFrameUnitGdi, Ok as GDI_PLUS_OK, PointF, RectF, SmoothingModeAntiAlias,
+    StringAlignmentNear, StringFormatFlagsMeasureTrailingSpaces, StringFormatFlagsNoClip,
+    StringFormatFlagsNoWrap, TextRenderingHintAntiAliasGridFit, UnitPixel,
 };
 
 const EMF_VECTOR_RECORD_SCALE: f64 = 16.0;
 const EMF_ARROW_RECORD_SCALE: f64 = EMF_VECTOR_RECORD_SCALE;
+const USE_GDIPLUS_TEXT_PREVIEW: bool = true;
 
 #[derive(Clone, Copy)]
 struct PreviewTransform {
@@ -195,13 +197,26 @@ pub(super) unsafe fn enhanced_metafile_gdiplus_dual_preview(
     }
     GdipSetSmoothingMode(graphics, SmoothingModeAntiAlias);
     GdipSetTextRenderingHint(graphics, TextRenderingHintAntiAliasGridFit);
+    let use_gdiplus_text = gdiplus_text_preview_enabled();
+    let mut gdi_cache = PreviewGdiCache::default();
     let mut ok = true;
     for primitive in visible {
-        if !draw_gdiplus_primitive(graphics, primitive, &transform) {
-            ok = false;
-            break;
+        if matches!(primitive, RenderPrimitive::Text { .. }) {
+            let drawn = use_gdiplus_text && draw_gdiplus_primitive(graphics, primitive, &transform);
+            if !drawn
+                && !draw_gdi_primitive_in_gdiplus(graphics, primitive, &transform, &mut gdi_cache)
+            {
+                ok = false;
+                break;
+            }
+        } else if !draw_gdiplus_primitive(graphics, primitive, &transform) {
+            if !draw_gdi_primitive_in_gdiplus(graphics, primitive, &transform, &mut gdi_cache) {
+                ok = false;
+                break;
+            }
         }
     }
+    gdi_cache.delete_objects();
     GdipDeleteGraphics(graphics);
     if !ok {
         GdipDisposeImage(metafile as *mut GpImage);
@@ -216,19 +231,23 @@ pub(super) unsafe fn enhanced_metafile_gdiplus_dual_preview(
     Some(hemf)
 }
 
-pub(super) fn payload_contains_text(payload: &OleObjectPayload) -> bool {
-    let primitives = if let Some(primitives) = payload_render_primitives(payload) {
-        primitives
-    } else {
-        let Ok(document) = parse_document_json(&payload.chemcore_document_json) else {
-            return false;
-        };
-        render_document(&document)
-    };
-    primitives
-        .iter()
-        .filter(|primitive| office_preview_primitive_visible(primitive))
-        .any(|primitive| matches!(primitive, RenderPrimitive::Text { .. }))
+fn gdiplus_text_preview_enabled() -> bool {
+    (USE_GDIPLUS_TEXT_PREVIEW || std::env::var_os("CHEMCORE_OFFICE_GDIPLUS_TEXT").is_some())
+        && std::env::var_os("CHEMCORE_OFFICE_DISABLE_GDIPLUS_TEXT").is_none()
+}
+
+unsafe fn draw_gdi_primitive_in_gdiplus(
+    graphics: *mut GpGraphics,
+    primitive: &RenderPrimitive,
+    transform: &PreviewTransform,
+    cache: &mut PreviewGdiCache,
+) -> bool {
+    let mut dc: HDC = null_mut();
+    if GdipGetDC(graphics, &mut dc) != GDI_PLUS_OK || dc.is_null() {
+        return false;
+    }
+    draw_preview_primitive(dc, primitive, transform, cache);
+    GdipReleaseDC(graphics, dc) == GDI_PLUS_OK
 }
 
 fn ensure_gdiplus_started() -> bool {
@@ -490,7 +509,10 @@ pub(super) fn office_preview_primitive_visible(primitive: &RenderPrimitive) -> b
     };
     matches!(
         role,
-        RenderRole::DocumentBond | RenderRole::DocumentGraphic | RenderRole::DocumentText
+        RenderRole::DocumentBond
+            | RenderRole::DocumentGraphic
+            | RenderRole::DocumentKnockout
+            | RenderRole::DocumentText
     )
 }
 
@@ -502,7 +524,6 @@ unsafe fn draw_preview_primitive(
 ) {
     match primitive {
         RenderPrimitive::Line {
-            role,
             from,
             to,
             stroke,
@@ -515,11 +536,7 @@ unsafe fn draw_preview_primitive(
             transform.point(*to),
             stroke,
             *stroke_width,
-            if *role == RenderRole::DocumentBond {
-                Some("round")
-            } else {
-                Some("butt")
-            },
+            Some("butt"),
             Some("miter"),
             transform,
             dash_array,
@@ -813,17 +830,12 @@ unsafe fn draw_gdiplus_primitive(
             stroke,
             stroke_width,
             dash_array,
-            role,
             ..
         } => {
             let Some(pen) = create_gdiplus_pen(
                 stroke,
                 transform.length(*stroke_width) as f32,
-                if *role == RenderRole::DocumentBond {
-                    Some("round")
-                } else {
-                    Some("butt")
-                },
+                Some("butt"),
                 Some("miter"),
                 dash_array,
                 transform,
@@ -1308,6 +1320,7 @@ unsafe fn draw_gdiplus_text(
 ) -> bool {
     let line_step_world = line_height.unwrap_or(font_size * 1.2).max(0.01);
     let lines = preview_text_lines(text, runs);
+    let layouts = gdiplus_text_layout(&lines, font_size, font_family, transform);
     let mut ok = true;
     for (index, line_runs) in lines.iter().enumerate() {
         if line_runs.is_empty() {
@@ -1317,30 +1330,99 @@ unsafe fn draw_gdiplus_text(
             x,
             y: y + index as f64 * line_step_world,
         });
-        let width = preview_line_width_f32(line_runs, font_size, transform);
+        let Some(line_layout) = layouts.get(index) else {
+            continue;
+        };
+        let width = line_layout.width;
         let mut cursor_x = match text_anchor {
             Some("middle") => origin.X - width / 2.0,
             Some("end") => origin.X - width,
             _ => origin.X,
         };
-        for run in line_runs {
-            let advance = preview_text_run_advance_estimate_f32(run, font_size, transform);
-            let dx = preview_script_dx_f32(run, font_size, transform);
+        for (run, run_layout) in line_runs.iter().zip(&line_layout.runs) {
             ok &= draw_gdiplus_text_run(
                 graphics,
-                cursor_x + dx,
+                cursor_x + run_layout.dx,
                 origin.Y,
-                advance,
+                run_layout.advance,
                 run,
                 font_size,
                 font_family,
                 fill,
                 transform,
             );
-            cursor_x += dx + advance;
+            cursor_x += run_layout.dx + run_layout.advance;
         }
     }
     ok
+}
+
+struct GdiplusTextLineLayout {
+    width: f32,
+    runs: Vec<GdiplusTextRunLayout>,
+}
+
+struct GdiplusTextRunLayout {
+    dx: f32,
+    advance: f32,
+}
+
+unsafe fn gdiplus_text_layout(
+    lines: &[Vec<PreviewTextRun>],
+    fallback_font_size: f64,
+    fallback_family: Option<&str>,
+    transform: &PreviewTransform,
+) -> Vec<GdiplusTextLineLayout> {
+    let dc = CreateCompatibleDC(null_mut());
+    if dc.is_null() {
+        return lines
+            .iter()
+            .map(|runs| GdiplusTextLineLayout {
+                width: preview_line_width_f32(runs, fallback_font_size, transform),
+                runs: runs
+                    .iter()
+                    .map(|run| GdiplusTextRunLayout {
+                        dx: preview_script_dx_f32(run, fallback_font_size, transform),
+                        advance: preview_text_run_advance_estimate_f32(
+                            run,
+                            fallback_font_size,
+                            transform,
+                        ),
+                    })
+                    .collect(),
+            })
+            .collect();
+    }
+    let mut cache = PreviewGdiCache::default();
+    let layouts = lines
+        .iter()
+        .map(|runs| {
+            let mut width = 0.0f32;
+            let run_layouts = runs
+                .iter()
+                .map(|run| {
+                    let dx = preview_script_dx_f32(run, fallback_font_size, transform);
+                    let advance = preview_text_run_extent(
+                        dc,
+                        run,
+                        fallback_font_size,
+                        fallback_family,
+                        transform,
+                        &mut cache,
+                    ) as f32;
+                    width += advance;
+                    GdiplusTextRunLayout { dx, advance }
+                })
+                .collect();
+            GdiplusTextLineLayout {
+                width,
+                runs: run_layouts,
+            }
+        })
+        .collect();
+    cache.delete_objects();
+    DeleteDC(dc);
+    layouts
 }
 
 unsafe fn draw_gdiplus_text_run(
@@ -1357,7 +1439,8 @@ unsafe fn draw_gdiplus_text_run(
     if run.text.is_empty() {
         return true;
     }
-    let Some(font) = create_gdiplus_font(run, fallback_font_size, fallback_family) else {
+    let Some(font) = create_gdiplus_font(run, fallback_font_size, fallback_family, transform)
+    else {
         return false;
     };
     let fill = run.fill.as_deref().or(fallback_fill).unwrap_or("#000000");
@@ -1401,6 +1484,7 @@ unsafe fn create_gdiplus_font(
     run: &PreviewTextRun,
     fallback_font_size: f64,
     fallback_family: Option<&str>,
+    transform: &PreviewTransform,
 ) -> Option<*mut GpFont> {
     let family_name = run
         .font_family
@@ -1425,7 +1509,8 @@ unsafe fn create_gdiplus_font(
         style |= FontStyleUnderline;
     }
     let script_scale = preview_script_scale(run.script.as_deref());
-    let em_size = (run.font_size.unwrap_or(fallback_font_size) * script_scale).max(0.1) as f32;
+    let em_size = (run.font_size.unwrap_or(fallback_font_size) * script_scale * transform.scale)
+        .max(0.1) as f32;
     let mut font: *mut GpFont = null_mut();
     let ok = GdipCreateFont(family, em_size, style, UnitPixel, &mut font) == GDI_PLUS_OK
         && !font.is_null();
@@ -1438,6 +1523,10 @@ unsafe fn create_gdiplus_string_format() -> Option<*mut GpStringFormat> {
     if GdipCreateStringFormat(0, 0, &mut format) != GDI_PLUS_OK || format.is_null() {
         return None;
     }
+    GdipSetStringFormatFlags(
+        format,
+        StringFormatFlagsNoWrap | StringFormatFlagsNoClip | StringFormatFlagsMeasureTrailingSpaces,
+    );
     GdipSetStringFormatAlign(format, StringAlignmentNear);
     GdipSetStringFormatLineAlign(format, StringAlignmentNear);
     Some(format)
@@ -1843,8 +1932,8 @@ fn preview_script_baseline_shift_f32(
 ) -> f32 {
     let base_height = run.font_size.unwrap_or(fallback_font_size) * transform.scale;
     match run.script.as_deref() {
-        Some("subscript") => (base_height * 0.22) as f32,
-        Some("superscript") => -(base_height * 0.38) as f32,
+        Some("subscript") => (base_height * 0.30) as f32,
+        Some("superscript") => -(base_height * 0.28) as f32,
         _ => 0.0,
     }
 }
@@ -1971,14 +2060,6 @@ fn preview_dash_style(dash_array: &[f64], transform: &PreviewTransform) -> Vec<u
         .collect()
 }
 
-fn preview_builtin_dash_pattern(style: &[u32]) -> bool {
-    match style {
-        [_] => true,
-        [dash, gap] => dash.abs_diff(*gap) <= 1,
-        _ => false,
-    }
-}
-
 unsafe fn create_preview_pen(
     color: COLORREF,
     width: i32,
@@ -1993,9 +2074,6 @@ unsafe fn create_preview_pen(
     let mut dash_style = preview_dash_style(dash_array, transform);
     let pen_style = if dash_style.is_empty() {
         PS_SOLID
-    } else if preview_builtin_dash_pattern(&dash_style) {
-        dash_style.clear();
-        PS_DASH
     } else {
         if dash_style.len() % 2 == 1 {
             dash_style.extend_from_within(..);

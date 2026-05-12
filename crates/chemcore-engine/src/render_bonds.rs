@@ -555,7 +555,7 @@ fn render_stereo_bond(
             push_bond_polygon(out, &bond.id, points, stroke, stroke, 0.0, object_id);
         }
         BondStereoKind::HashedWedgeEnd => {
-            let (points, pattern_points) = compute_fragment_hashed_wedge_points(
+            let points = compute_fragment_hashed_wedge_points(
                 bonds,
                 bond,
                 &bond.begin,
@@ -571,23 +571,13 @@ fn render_stereo_bond(
                 },
                 stroke_width,
             );
-            push_bond_polygon(
-                out,
-                &bond.id,
-                points.clone(),
-                stroke,
-                stroke,
-                0.0,
-                object_id.clone(),
-            );
-            for knockout in
-                compute_fragment_hashed_wedge_knockout_polygons(&pattern_points, stroke_width, bond)
+            for stripe in compute_fragment_hashed_wedge_stripe_polygons(&points, stroke_width, bond)
             {
-                push_knockout_polygon(out, knockout, object_id.clone());
+                push_bond_filled_path(out, &bond.id, stripe, stroke, object_id.clone());
             }
         }
         BondStereoKind::HashedWedgeBegin => {
-            let (points, pattern_points) = compute_fragment_hashed_wedge_points(
+            let points = compute_fragment_hashed_wedge_points(
                 bonds,
                 bond,
                 &bond.end,
@@ -603,19 +593,9 @@ fn render_stereo_bond(
                 },
                 stroke_width,
             );
-            push_bond_polygon(
-                out,
-                &bond.id,
-                points.clone(),
-                stroke,
-                stroke,
-                0.0,
-                object_id.clone(),
-            );
-            for knockout in
-                compute_fragment_hashed_wedge_knockout_polygons(&pattern_points, stroke_width, bond)
+            for stripe in compute_fragment_hashed_wedge_stripe_polygons(&points, stroke_width, bond)
             {
-                push_knockout_polygon(out, knockout, object_id.clone());
+                push_bond_filled_path(out, &bond.id, stripe, stroke, object_id.clone());
             }
         }
     }
@@ -834,17 +814,8 @@ fn compute_fragment_hashed_wedge_points(
     end: Point,
     end_inset: f64,
     stroke_width: f64,
-) -> (Vec<Point>, Vec<Point>) {
+) -> Vec<Point> {
     let wide_half_width = solid_wedge_half_width_for_bond(bond, stroke_width);
-    let pattern_points = compute_plain_wedge_trapezoid(
-        start,
-        end,
-        0.0,
-        0.0,
-        end_inset,
-        stroke_width,
-        wide_half_width,
-    );
     let retreat = hash_contact_retreat_distance_for_bond(bond, stroke_width);
     let start_retreat = if !start_has_label && endpoint_has_other_bond(bonds, bond, start_node_id) {
         retreat
@@ -856,7 +827,7 @@ fn compute_fragment_hashed_wedge_points(
     } else {
         0.0
     };
-    let outline_points = compute_plain_wedge_trapezoid(
+    compute_plain_wedge_trapezoid(
         start,
         end,
         start_retreat,
@@ -864,8 +835,7 @@ fn compute_fragment_hashed_wedge_points(
         end_inset,
         stroke_width,
         wide_half_width,
-    );
-    (outline_points, pattern_points)
+    )
 }
 
 fn compute_plain_wedge_trapezoid(
@@ -907,7 +877,7 @@ fn compute_plain_wedge_trapezoid(
     vec![tip_plus, cap_plus, cap_minus, tip_minus]
 }
 
-fn compute_fragment_hashed_wedge_knockout_polygons(
+fn compute_fragment_hashed_wedge_stripe_polygons(
     polygon: &[Point],
     stroke_width: f64,
     bond: &Bond,
@@ -927,33 +897,72 @@ fn compute_fragment_hashed_wedge_knockout_polygons(
         return Vec::new();
     }
 
-    let mut knockouts = Vec::new();
+    let mut stripes = Vec::new();
+    let mut cursor = 0.0;
     for (gap_start, gap_end) in hashed_wedge_gap_intervals(length, stroke_width, bond) {
-        let t0 = (gap_start / length).clamp(0.0, 1.0);
-        let t1 = (gap_end / length).clamp(0.0, 1.0);
-        let mut top_start = lerp_point(tip_plus, cap_plus, t0);
-        let mut top_end = lerp_point(tip_plus, cap_plus, t1);
-        let mut bottom_end = lerp_point(tip_minus, cap_minus, t1);
-        let mut bottom_start = lerp_point(tip_minus, cap_minus, t0);
-        let overdraw = HASH_WEDGE_EDGE_OVERDRAW * (stroke_width / VIEWER_BOND_STROKE);
-        for (upper, lower) in [
-            (&mut top_start, &mut bottom_start),
-            (&mut top_end, &mut bottom_end),
-        ] {
-            let mid = Point::new((upper.x + lower.x) * 0.5, (upper.y + lower.y) * 0.5);
-            let upper_out = Vector::new(upper.x - mid.x, upper.y - mid.y).normalized();
-            let lower_out = Vector::new(lower.x - mid.x, lower.y - mid.y).normalized();
-            upper.x += upper_out.x * overdraw;
-            upper.y += upper_out.y * overdraw;
-            lower.x += lower_out.x * overdraw;
-            lower.y += lower_out.y * overdraw;
-        }
-        knockouts.push(compact_polygon_points(vec![
-            top_start,
-            top_end,
-            bottom_end,
-            bottom_start,
-        ]));
+        push_hashed_wedge_stripe(&mut stripes, polygon, cursor, gap_start, length);
+        cursor = gap_end;
     }
-    knockouts
+    push_hashed_wedge_stripe(&mut stripes, polygon, cursor, length, length);
+    stripes
+}
+
+fn push_hashed_wedge_stripe(
+    stripes: &mut Vec<Vec<Point>>,
+    polygon: &[Point],
+    start: f64,
+    end: f64,
+    length: f64,
+) {
+    if end <= start + EPSILON || length <= EPSILON {
+        return;
+    }
+    let t0 = (start / length).clamp(0.0, 1.0);
+    let t1 = (end / length).clamp(0.0, 1.0);
+    if t1 <= t0 + EPSILON {
+        return;
+    }
+    let tip_plus = polygon[0];
+    let cap_plus = polygon[1];
+    let cap_minus = polygon[2];
+    let tip_minus = polygon[3];
+    stripes.push(compact_polygon_points(vec![
+        lerp_point(tip_plus, cap_plus, t0),
+        lerp_point(tip_plus, cap_plus, t1),
+        lerp_point(tip_minus, cap_minus, t1),
+        lerp_point(tip_minus, cap_minus, t0),
+    ]));
+}
+
+fn push_bond_filled_path(
+    out: &mut Vec<RenderPrimitive>,
+    bond_id: &str,
+    points: Vec<Point>,
+    fill: &str,
+    object_id: Option<String>,
+) {
+    let points = compact_polygon_points(points);
+    if points.len() < 3 || polygon_area_signed(&points).abs() <= 1.0e-4 {
+        return;
+    }
+
+    let mut d = format!("M {:.4} {:.4}", points[0].x, points[0].y);
+    for point in points.iter().skip(1) {
+        d.push_str(&format!(" L {:.4} {:.4}", point.x, point.y));
+    }
+    d.push_str(" Z");
+
+    out.push(RenderPrimitive::FilledPath {
+        role: RenderRole::DocumentBond,
+        object_id,
+        bond_id: Some(bond_id.to_string()),
+        d,
+        points,
+        fill: fill.to_string(),
+        fill_rule: None,
+        clip_path_d: None,
+        clip_rule: None,
+        rotate: 0.0,
+        rotate_center: None,
+    });
 }

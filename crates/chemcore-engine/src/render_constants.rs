@@ -13,7 +13,6 @@ pub const HASH_BLACK_SEGMENT_LENGTH_CM: WorldCm = world_cm(1.0);
 pub const HASH_TARGET_GAP_LENGTH_CM: WorldCm = world_cm(1.9);
 pub const DEFAULT_HASH_SPACING_CM: WorldCm =
     world_cm(HASH_BLACK_SEGMENT_LENGTH_CM.value() + HASH_TARGET_GAP_LENGTH_CM.value());
-pub const HASH_WEDGE_EDGE_OVERDRAW_CM: WorldCm = world_cm(0.21);
 pub const SOLID_WEDGE_END_INSET_CM: WorldCm = world_cm(0.0);
 pub const BOLD_BOND_WIDTH_CM: WorldCm = world_cm(4.0);
 pub const SOLID_WEDGE_WIDTH_CM: WorldCm = world_cm(6.0);

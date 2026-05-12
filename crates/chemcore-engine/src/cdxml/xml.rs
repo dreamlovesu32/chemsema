@@ -1,3 +1,4 @@
+use quick_xml::escape::unescape;
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::Reader;
 use std::collections::BTreeMap;
@@ -27,8 +28,19 @@ pub(super) fn parse_xml_tree(xml: &str) -> Result<XmlNode, String> {
             }
             Event::Text(text) => {
                 if let Some(node) = stack.last_mut() {
-                    node.text
-                        .push_str(&text.xml_content().map_err(|error| error.to_string())?);
+                    let decoded = text.xml_content().map_err(|error| error.to_string())?;
+                    let unescaped = unescape(&decoded).map_err(|error| error.to_string())?;
+                    node.text.push_str(&unescaped);
+                }
+            }
+            Event::GeneralRef(reference) => {
+                if let Some(node) = stack.last_mut() {
+                    let name = reference.decode().map_err(|error| error.to_string())?;
+                    let escaped = format!("&{name};");
+                    match unescape(&escaped) {
+                        Ok(unescaped) => node.text.push_str(&unescaped),
+                        Err(_) => node.text.push_str(&escaped),
+                    }
                 }
             }
             Event::CData(text) => {

@@ -537,9 +537,9 @@ fn write_text_run(out: &mut String, run: &LabelRun, fallback_font_size: f64) {
             run.underline.filter(|value| *value).map(|_| "underline")
         ),
         if is_sub {
-            r#" baseline-shift="-0.22em""#.to_string()
+            r#" baseline-shift="-0.30em""#.to_string()
         } else if is_super {
-            r#" baseline-shift="0.38em""#.to_string()
+            r#" baseline-shift="0.28em""#.to_string()
         } else {
             String::new()
         },

@@ -631,6 +631,12 @@ fn centered_bond_polygons(
                 object_id,
                 points,
                 ..
+            }
+            | RenderPrimitive::FilledPath {
+                role,
+                object_id,
+                points,
+                ..
             } if *role == RenderRole::DocumentBond
                 && object_id.as_deref() == Some("obj_molecule_001")
                 && points.iter().any(|point| point.distance(center) <= 4.0) =>
@@ -647,6 +653,12 @@ fn object_bond_polygons(primitives: &[RenderPrimitive]) -> Vec<Vec<chemcore_engi
         .iter()
         .filter_map(|primitive| match primitive {
             RenderPrimitive::Polygon {
+                role,
+                object_id,
+                points,
+                ..
+            }
+            | RenderPrimitive::FilledPath {
                 role,
                 object_id,
                 points,
@@ -969,6 +981,13 @@ fn object_bond_polygons_with_ids(
                 bond_id,
                 points,
                 ..
+            }
+            | RenderPrimitive::FilledPath {
+                role,
+                object_id,
+                bond_id,
+                points,
+                ..
             } if *role == RenderRole::DocumentBond
                 && object_id.as_deref() == Some("obj_molecule_001") =>
             {
@@ -976,6 +995,17 @@ fn object_bond_polygons_with_ids(
             }
             _ => None,
         })
+        .collect()
+}
+
+fn object_bond_points_for_id(
+    primitives: &[RenderPrimitive],
+    target_bond_id: &str,
+) -> Vec<chemcore_engine::Point> {
+    object_bond_polygons_with_ids(primitives)
+        .into_iter()
+        .filter(|(bond_id, _)| bond_id == target_bond_id)
+        .flat_map(|(_, points)| points)
         .collect()
 }
 
@@ -2232,6 +2262,33 @@ fn parse_cdxml_imports_free_text_object() {
             ..
         } if text == "H2O" || runs.iter().any(|run| run.text == "H2O")
     )));
+}
+
+#[test]
+fn parse_cdxml_unescapes_text_entities() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML BondLength="14.40" LineWidth="0.60" BoldWidth="2" HashSpacing="2.50">
+  <page id="1">
+    <t id="2" p="10 20" BoundingBox="10 20 120 52" Justification="Left">
+      <s font="3" size="12" face="0" color="0">d.r. &gt; 20:1 &amp; clean</s>
+    </t>
+  </page>
+</CDXML>"##;
+    let document = parse_cdxml_document(cdxml, Some("entities")).expect("text cdxml should parse");
+    let text_object = document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "text")
+        .expect("text should import");
+
+    assert_eq!(
+        text_object
+            .payload
+            .extra
+            .get("text")
+            .and_then(|value| value.as_str()),
+        Some("d.r. > 20:1 & clean")
+    );
 }
 
 #[test]
@@ -3569,6 +3626,12 @@ fn object_bond_centerlines(
                 Some((*from, *to))
             }
             RenderPrimitive::Polygon {
+                role,
+                object_id,
+                points,
+                ..
+            }
+            | RenderPrimitive::FilledPath {
                 role,
                 object_id,
                 points,
@@ -5129,6 +5192,12 @@ fn render_document_emits_two_way_main_contact_patches_for_plain_singles() {
                 object_id,
                 points,
                 ..
+            }
+            | RenderPrimitive::FilledPath {
+                role,
+                object_id,
+                points,
+                ..
             } if *role == RenderRole::DocumentBond
                 && object_id.as_deref() == Some("obj_molecule_001") =>
             {
@@ -5302,6 +5371,12 @@ fn render_document_emits_primitives_for_wedge_and_hashed_wedge() {
                 object_id,
                 points,
                 ..
+            }
+            | RenderPrimitive::FilledPath {
+                role,
+                object_id,
+                points,
+                ..
             } if *role == RenderRole::DocumentBond
                 && object_id.as_deref() == Some("obj_molecule_001") =>
             {
@@ -5310,14 +5385,12 @@ fn render_document_emits_primitives_for_wedge_and_hashed_wedge() {
             _ => None,
         })
         .collect();
-    let knockout_polygons = object_knockout_polygons(&primitives);
 
     assert!(
         bond_polygons.iter().all(|count| *count == 4),
         "{bond_polygons:?}"
     );
     assert!(bond_polygons.len() >= 2);
-    assert!(knockout_polygons.len() >= 1);
 }
 
 #[test]
@@ -5416,10 +5489,8 @@ fn render_document_retreats_hashed_wedge_against_connected_single_bond() {
     );
     let connected_primitives = render_document(&connected);
     let connected_polygons = object_bond_polygons_with_ids(&connected_primitives);
-    let hashed_wedge = connected_polygons
-        .iter()
-        .find_map(|(bond_id, points)| (bond_id == "b1").then_some(points.clone()))
-        .expect("hashed wedge polygon");
+    let hashed_wedge = object_bond_points_for_id(&connected_primitives, "b1");
+    assert!(!hashed_wedge.is_empty(), "hashed wedge polygons");
     let branch = connected_polygons
         .iter()
         .find_map(|(bond_id, points)| (bond_id == "b2").then_some(points.clone()))
@@ -5427,7 +5498,6 @@ fn render_document_retreats_hashed_wedge_against_connected_single_bond() {
     let connected_end =
         closest_points_to_target(&hashed_wedge, chemcore_engine::Point::new(56.0, 40.0), 2);
 
-    assert_eq!(hashed_wedge.len(), 4);
     assert!(
         connected_end.iter().all(|point| point.x < 55.0),
         "{hashed_wedge:?}"
@@ -5436,12 +5506,6 @@ fn render_document_retreats_hashed_wedge_against_connected_single_bond() {
         average_closest_distance_to_point(&branch, chemcore_engine::Point::new(56.0, 40.0), 2)
             < 0.6,
         "{branch:?}"
-    );
-    let knockouts = object_knockout_polygons(&connected_primitives);
-    assert!(knockouts.len() >= 1);
-    assert!(
-        knockouts.iter().flatten().any(|point| point.x > 55.0),
-        "{knockouts:?}"
     );
 }
 
@@ -5472,16 +5536,13 @@ fn render_document_retreats_hashed_wedge_at_both_connected_endpoints() {
     );
 
     let primitives = render_document(&document);
-    let hashed_wedge = object_bond_polygons_with_ids(&primitives)
-        .into_iter()
-        .find_map(|(bond_id, points)| (bond_id == "b1").then_some(points))
-        .expect("hashed wedge polygon");
+    let hashed_wedge = object_bond_points_for_id(&primitives, "b1");
+    assert!(!hashed_wedge.is_empty(), "hashed wedge polygons");
     let begin_end =
         closest_points_to_target(&hashed_wedge, chemcore_engine::Point::new(20.0, 40.0), 2);
     let wide_end =
         closest_points_to_target(&hashed_wedge, chemcore_engine::Point::new(56.0, 40.0), 2);
 
-    assert_eq!(hashed_wedge.len(), 4);
     assert!(
         begin_end.iter().all(|point| point.x > 21.0),
         "{hashed_wedge:?}"
@@ -5490,7 +5551,6 @@ fn render_document_retreats_hashed_wedge_at_both_connected_endpoints() {
         wide_end.iter().all(|point| point.x < 55.0),
         "{hashed_wedge:?}"
     );
-    assert!(object_knockout_polygons(&primitives).len() >= 1);
 }
 
 #[test]
@@ -5745,7 +5805,7 @@ fn render_document_retreats_hash_bond_mother_polygon_against_center_double_outer
 }
 
 #[test]
-fn render_document_retreats_hashed_wedge_mother_polygon_against_center_double_outer_line() {
+fn render_document_retreats_hashed_wedge_stripes_against_center_double_outer_line() {
     let document = fragment_document(
         json!([
             { "id": "n1", "element": "C", "atomicNumber": 6, "position": [20.0, 40.0], "charge": 0, "numHydrogens": 0 },
@@ -5776,10 +5836,8 @@ fn render_document_retreats_hashed_wedge_mother_polygon_against_center_double_ou
     );
 
     let primitives = render_document(&document);
-    let hashed_wedge = object_bond_polygons_with_ids(&primitives)
-        .into_iter()
-        .find_map(|(bond_id, points)| (bond_id == "b2").then_some(points))
-        .expect("hashed wedge polygon");
+    let hashed_wedge = object_bond_points_for_id(&primitives, "b2");
+    assert!(!hashed_wedge.is_empty(), "hashed wedge polygons");
     let connected_end =
         closest_points_to_target(&hashed_wedge, chemcore_engine::Point::new(56.0, 40.0), 2);
     let unit = chemcore_engine::Point::new(18.0, -28.0);
@@ -5800,7 +5858,6 @@ fn render_document_retreats_hashed_wedge_mother_polygon_against_center_double_ou
         projections.iter().all(|projection| *projection > 0.05),
         "{hashed_wedge:?} {projections:?}"
     );
-    assert!(object_knockout_polygons(&primitives).len() >= 1);
 }
 
 #[test]
@@ -5876,13 +5933,9 @@ fn render_document_retreats_hashed_wedge_and_ignores_it_for_other_bond_contacts(
     );
 
     let primitives = render_document(&document);
-    let polygons = object_bond_polygons_with_ids(&primitives);
-    let hashed_wedge = polygons
-        .iter()
-        .find_map(|(bond_id, points)| (bond_id == "b1").then_some(points.clone()))
-        .expect("hashed wedge polygon");
+    let hashed_wedge = object_bond_points_for_id(&primitives, "b1");
+    assert!(!hashed_wedge.is_empty(), "hashed wedge polygons");
 
-    assert_eq!(hashed_wedge.len(), 4);
     assert!(
         average_closest_distance_to_point(
             &hashed_wedge,
@@ -5891,7 +5944,6 @@ fn render_document_retreats_hashed_wedge_and_ignores_it_for_other_bond_contacts(
         ) > 1.0,
         "{hashed_wedge:?}"
     );
-    assert!(object_knockout_polygons(&primitives).len() >= 1);
 }
 
 #[test]
@@ -5999,10 +6051,8 @@ fn render_document_retreats_hashed_wedge_against_double_dashed_center_double_out
     );
 
     let primitives = render_document(&document);
-    let hashed_wedge = object_bond_polygons_with_ids(&primitives)
-        .into_iter()
-        .find_map(|(bond_id, points)| (bond_id == "b2").then_some(points))
-        .expect("hashed wedge polygon");
+    let hashed_wedge = object_bond_points_for_id(&primitives, "b2");
+    assert!(!hashed_wedge.is_empty(), "hashed wedge polygons");
     let connected_end =
         closest_points_to_target(&hashed_wedge, chemcore_engine::Point::new(56.0, 40.0), 2);
     let unit = chemcore_engine::Point::new(18.0, -28.0);
@@ -6023,7 +6073,6 @@ fn render_document_retreats_hashed_wedge_against_double_dashed_center_double_out
         projections.iter().all(|projection| *projection > 0.05),
         "{hashed_wedge:?} {projections:?}"
     );
-    assert!(object_knockout_polygons(&primitives).len() >= 1);
 }
 
 #[test]

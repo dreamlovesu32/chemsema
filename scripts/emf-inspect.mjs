@@ -188,19 +188,30 @@ function decodeGdiComment(buffer, offset, size) {
     offset + 16 <= buffer.length ? buffer.toString("latin1", offset + 12, offset + 16) : "";
   const comment = { dataSize, identifier, identifierText };
   if (identifier === EMFPLUS_COMMENT_IDENTIFIER && offset + 28 <= offset + size) {
-    const recordType = buffer.readUInt16LE(offset + 16);
-    const flags = buffer.readUInt16LE(offset + 18);
-    const emfPlusSize = u32(buffer, offset + 20);
-    const emfPlusDataSize = u32(buffer, offset + 24);
-    Object.assign(comment, {
-      emfPlus: {
+    const emfPlusRecords = [];
+    const end = Math.min(offset + size, offset + 12 + dataSize);
+    let cursor = offset + 16;
+    while (cursor + 12 <= end) {
+      const recordType = buffer.readUInt16LE(cursor);
+      const flags = buffer.readUInt16LE(cursor + 2);
+      const emfPlusSize = u32(buffer, cursor + 4);
+      const emfPlusDataSize = u32(buffer, cursor + 8);
+      if (!emfPlusSize || emfPlusSize < 12 || cursor + emfPlusSize > end) break;
+      emfPlusRecords.push({
         type: recordType,
         name: EMFPLUS_RECORD_NAMES.get(recordType) ?? `EmfPlus_0x${recordType.toString(16)}`,
         flags,
         size: emfPlusSize,
         dataSize: emfPlusDataSize,
-      },
-    });
+      });
+      cursor += emfPlusSize;
+    }
+    if (emfPlusRecords.length) {
+      Object.assign(comment, {
+        emfPlus: emfPlusRecords[0],
+        emfPlusRecords,
+      });
+    }
   }
   return comment;
 }
@@ -313,6 +324,7 @@ export async function inspectEmf(inputPath, options = {}) {
   const buffer = await fs.readFile(inputPath);
   const records = [];
   const typeCounts = {};
+  const emfPlusCounts = {};
   let offset = 0;
   while (offset + 8 <= buffer.length) {
     const type = u32(buffer, offset);
@@ -325,6 +337,9 @@ export async function inspectEmf(inputPath, options = {}) {
     record.index = records.length;
     records.push(record);
     typeCounts[record.name] = (typeCounts[record.name] ?? 0) + 1;
+    for (const emfPlusRecord of record.emfPlusRecords ?? []) {
+      emfPlusCounts[emfPlusRecord.name] = (emfPlusCounts[emfPlusRecord.name] ?? 0) + 1;
+    }
     offset += size;
     if (type === 14) break;
   }
@@ -342,6 +357,7 @@ export async function inspectEmf(inputPath, options = {}) {
     header,
     recordCount: records.length,
     typeCounts,
+    emfPlusCounts,
     interesting: interesting.slice(0, options.maxInteresting ?? 200),
     records: includeRecords ? records : undefined,
   };
@@ -364,6 +380,14 @@ export function inspectionMarkdown(inspection) {
   lines.push("");
   for (const [name, count] of Object.entries(inspection.typeCounts).sort((a, b) => b[1] - a[1])) {
     lines.push(`- ${name}: ${count}`);
+  }
+  if (Object.keys(inspection.emfPlusCounts ?? {}).length) {
+    lines.push("");
+    lines.push(`## EMF+ Record Counts`);
+    lines.push("");
+    for (const [name, count] of Object.entries(inspection.emfPlusCounts).sort((a, b) => b[1] - a[1])) {
+      lines.push(`- ${name}: ${count}`);
+    }
   }
   lines.push("");
   lines.push(`## Interesting Records`);

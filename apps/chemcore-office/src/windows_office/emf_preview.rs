@@ -25,9 +25,9 @@ use windows_sys::Win32::Graphics::Gdi::{
     SetViewportExtEx, SetWindowExtEx, SetWorldTransform, StretchDIBits, StrokePath, TextOutA,
     TextOutW, ALTERNATE, ANTIALIASED_QUALITY, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, BS_SOLID,
     DIB_RGB_COLORS, GM_ADVANCED, HDC, HGDIOBJ, LOGBRUSH, MM_ANISOTROPIC, NULL_BRUSH, NULL_PEN,
-    PS_DASH, PS_ENDCAP_FLAT, PS_ENDCAP_ROUND, PS_ENDCAP_SQUARE, PS_GEOMETRIC, PS_JOIN_BEVEL,
-    PS_JOIN_MITER, PS_JOIN_ROUND, PS_SOLID, PS_USERSTYLE, RGN_AND, SRCCOPY, TA_BASELINE, TA_LEFT,
-    TRANSPARENT, XFORM,
+    PS_ENDCAP_FLAT, PS_ENDCAP_ROUND, PS_ENDCAP_SQUARE, PS_GEOMETRIC, PS_JOIN_BEVEL, PS_JOIN_MITER,
+    PS_JOIN_ROUND, PS_SOLID, PS_USERSTYLE, RGN_AND, SRCCOPY, TA_BASELINE, TA_LEFT, TRANSPARENT,
+    XFORM,
 };
 use windows_sys::Win32::System::Com::DVASPECT_CONTENT;
 use windows_sys::Win32::System::DataExchange::METAFILEPICT;
@@ -44,11 +44,12 @@ mod renderer;
 
 use renderer::{
     draw_payload_emf_vector_preview_with_source_bounds, draw_payload_vector_preview,
-    office_preview_primitive_visible, payload_contains_text,
+    office_preview_primitive_visible,
 };
 
 const CHEMDRAW_HIMETRIC_PER_SVG_PX: f64 = 2540.0 / 240.0;
 const CHEMDRAW_EMF_LOGICAL_UNITS_PER_SVG_PX: f64 = 1.0;
+const USE_GDIPLUS_DUAL_PREVIEW: bool = true;
 
 pub(super) unsafe fn draw_payload_preview(
     dc: HDC,
@@ -317,7 +318,16 @@ pub(super) fn enhanced_metafile_for_payload(
                 };
                 (bounds, bounds, None, false)
             };
-        if use_logical_preview_coords && !payload_contains_text(payload) {
+        // ChemDraw-style Office previews use EMF+ dual records with antialiasing.
+        // The renderer keeps text and unsupported primitives on GDI fallback records
+        // while recording bond geometry through GDI+ so Word gets smoother edges.
+        let force_gdiplus_dual = std::env::var_os("CHEMCORE_OFFICE_GDIPLUS_DUAL").is_some();
+        let disable_gdiplus_dual =
+            std::env::var_os("CHEMCORE_OFFICE_DISABLE_GDIPLUS_DUAL").is_some();
+        if (USE_GDIPLUS_DUAL_PREVIEW || force_gdiplus_dual)
+            && !disable_gdiplus_dual
+            && use_logical_preview_coords
+        {
             if let Some(metafile) = renderer::enhanced_metafile_gdiplus_dual_preview(
                 &frame_bounds,
                 &draw_bounds,

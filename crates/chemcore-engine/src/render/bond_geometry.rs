@@ -691,25 +691,17 @@ pub(super) fn compute_hashed_wedge_segments(
         } else {
             crate::HASH_WEDGE_SEGMENT_WIDTH_CM.value()
         } * scale;
-        if index == 0 {
-            segments.push((
-                Point::new(center.x, center.y - half_width),
-                Point::new(center.x, center.y + half_width),
-                segment_width,
-            ));
-        } else {
-            segments.push((
-                Point::new(
-                    center.x - normal.x * half_width,
-                    center.y - normal.y * half_width,
-                ),
-                Point::new(
-                    center.x + normal.x * half_width,
-                    center.y + normal.y * half_width,
-                ),
-                segment_width,
-            ));
-        }
+        segments.push((
+            Point::new(
+                center.x - normal.x * half_width,
+                center.y - normal.y * half_width,
+            ),
+            Point::new(
+                center.x + normal.x * half_width,
+                center.y + normal.y * half_width,
+            ),
+            segment_width,
+        ));
     }
     segments
 }

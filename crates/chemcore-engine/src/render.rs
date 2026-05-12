@@ -65,7 +65,6 @@ const HASH_WEDGE_START_OFFSET: f64 = crate::HASH_WEDGE_START_OFFSET_CM.value();
 const HASH_WEDGE_END_INSET: f64 = crate::HASH_WEDGE_END_INSET_CM.value();
 const HASH_BLACK_SEGMENT_LENGTH: f64 = crate::HASH_BLACK_SEGMENT_LENGTH_CM.value();
 const HASH_TARGET_GAP_LENGTH: f64 = crate::HASH_TARGET_GAP_LENGTH_CM.value();
-const HASH_WEDGE_EDGE_OVERDRAW: f64 = crate::HASH_WEDGE_EDGE_OVERDRAW_CM.value();
 const SOLID_WEDGE_END_INSET: f64 = crate::SOLID_WEDGE_END_INSET_CM.value();
 const CENTER_DOUBLE_NO_EXTENSION_ANGLE_DEGREES: f64 = 162.0;
 const CHEMCORE_INK: &str = "#000000";
@@ -270,6 +269,25 @@ mod tests {
         let black_lengths = black_segment_lengths(18.0, start_offset, end_inset, &gaps);
         for length in &black_lengths {
             approx_eq(*length, black_lengths[0]);
+        }
+    }
+
+    #[test]
+    fn hashed_wedge_segments_follow_bond_normal_for_diagonal_bonds() {
+        let start = Point::new(10.0, 20.0);
+        let end = Point::new(50.0, 60.0);
+        let axis = Vector::new(end.x - start.x, end.y - start.y).normalized();
+        let segments = compute_hashed_wedge_segments(start, end, VIEWER_BOND_STROKE);
+
+        assert!(segments.len() >= 2);
+        for (segment_start, segment_end, _) in segments {
+            let segment_axis = Vector::new(
+                segment_end.x - segment_start.x,
+                segment_end.y - segment_start.y,
+            )
+            .normalized();
+            let dot = axis.x * segment_axis.x + axis.y * segment_axis.y;
+            assert!(dot.abs() <= 1.0e-6, "{segment_start:?} {segment_end:?}");
         }
     }
 

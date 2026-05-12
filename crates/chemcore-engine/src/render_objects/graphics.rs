@@ -455,6 +455,7 @@ fn push_symbol_filled_path(
     out.push(RenderPrimitive::FilledPath {
         role: RenderRole::DocumentGraphic,
         object_id,
+        bond_id: None,
         d,
         points: bounds,
         fill: fill.to_string(),
@@ -890,6 +891,7 @@ fn push_shape_fill(
     out.push(RenderPrimitive::FilledPath {
         role: RenderRole::DocumentGraphic,
         object_id: Some(object_id.to_string()),
+        bond_id: None,
         d: geometry.fill_path_d(),
         points: geometry.bounds_points(),
         fill,
@@ -1048,6 +1050,7 @@ fn push_shape_shadow_path(
     out.push(RenderPrimitive::FilledPath {
         role: RenderRole::DocumentGraphic,
         object_id: Some(object_id.to_string()),
+        bond_id: None,
         d: shifted_shape_path,
         points,
         fill,
@@ -1072,6 +1075,7 @@ fn push_shape_ellipse_fill(
     out.push(RenderPrimitive::FilledPath {
         role: RenderRole::DocumentGraphic,
         object_id: Some(object_id.to_string()),
+        bond_id: None,
         d: oval_path_d(center, rx, ry, rotate, use_cubic),
         points: ellipse_bounds_points(center, rx, ry, rotate),
         fill,
@@ -1141,6 +1145,7 @@ fn push_shape_rect_fill(
     out.push(RenderPrimitive::FilledPath {
         role: RenderRole::DocumentGraphic,
         object_id: Some(object_id.to_string()),
+        bond_id: None,
         d,
         points: vec![Point::new(x, y), Point::new(x + width, y + height)],
         fill,

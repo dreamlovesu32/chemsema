@@ -172,6 +172,8 @@ pub enum RenderPrimitive {
         role: RenderRole,
         #[serde(rename = "objectId", default, skip_serializing_if = "Option::is_none")]
         object_id: Option<String>,
+        #[serde(rename = "bondId", default, skip_serializing_if = "Option::is_none")]
+        bond_id: Option<String>,
         d: String,
         #[serde(default)]
         points: Vec<Point>,
