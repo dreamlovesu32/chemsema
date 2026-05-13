@@ -41,9 +41,8 @@ use object_render::{
     render_text_object,
 };
 use primitives::{
-    push_bond_line, push_bond_polygon, push_knockout_polygon, push_label_knockout_polygon,
-    push_line, push_path, push_polygon, push_polyline, push_text, push_text_for_node,
-    push_text_rotated,
+    push_bond_polygon, push_knockout_polygon, push_label_knockout_polygon, push_line, push_path,
+    push_polygon, push_polyline, push_text, push_text_for_node, push_text_rotated,
 };
 pub use primitives::{RenderPrimitive, RenderRole};
 
@@ -289,6 +288,19 @@ mod tests {
             let dot = axis.x * segment_axis.x + axis.y * segment_axis.y;
             assert!(dot.abs() <= 1.0e-6, "{segment_start:?} {segment_end:?}");
         }
+    }
+
+    #[test]
+    fn simple_main_line_polygon_points_returns_constant_width_shaft() {
+        let points = simple_main_line_polygon_points(
+            Point::new(10.0, 20.0),
+            Point::new(30.0, 20.0),
+            VIEWER_BOND_STROKE,
+        )
+        .expect("simple shaft polygon");
+        assert_eq!(points.len(), 4);
+        approx_eq(points[0].distance(points[3]), VIEWER_BOND_STROKE);
+        approx_eq(points[1].distance(points[2]), VIEWER_BOND_STROKE);
     }
 
     #[test]

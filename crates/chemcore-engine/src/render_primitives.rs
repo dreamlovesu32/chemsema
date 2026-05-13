@@ -267,28 +267,6 @@ pub(super) fn push_line(
     });
 }
 
-pub(super) fn push_bond_line(
-    out: &mut Vec<RenderPrimitive>,
-    bond_id: &str,
-    from: Point,
-    to: Point,
-    stroke: &str,
-    stroke_width: f64,
-    dash_array: Vec<f64>,
-    object_id: Option<String>,
-) {
-    out.push(RenderPrimitive::Line {
-        role: RenderRole::DocumentBond,
-        object_id,
-        bond_id: Some(bond_id.to_string()),
-        from,
-        to,
-        stroke: stroke.to_string(),
-        stroke_width,
-        dash_array,
-    });
-}
-
 #[allow(clippy::too_many_arguments)]
 pub(super) fn push_polygon(
     out: &mut Vec<RenderPrimitive>,

@@ -485,14 +485,11 @@ pub(super) fn render_fragment_line_with_profiles(
         );
         return;
     }
-    push_bond_line(
-        out,
-        &bond.id,
+    if let Some(points) = simple_main_line_polygon_points(
         clipped_start,
         clipped_end,
-        stroke,
         line_weight_stroke_width_for_bond(bond, stroke_width, line_weight),
-        dash_array,
-        object_id,
-    );
+    ) {
+        push_bond_polygon(out, &bond.id, points, stroke, stroke, 0.0, object_id);
+    }
 }

@@ -5,6 +5,11 @@
 // ChemDraw-style EMF record strategy.
 
 use super::*;
+use chemcore_engine::{
+    Bond, BondLinePattern, BondLineWeight, ChemcoreDocument, DoubleBondPlacement, MoleculeFragment,
+    SceneObject,
+};
+use std::collections::BTreeMap;
 use std::sync::OnceLock;
 use windows_sys::Win32::Graphics::Gdi::{CreateCompatibleDC, DeleteDC, HENHMETAFILE};
 use windows_sys::Win32::Graphics::GdiPlus::{
@@ -204,19 +209,33 @@ pub(super) unsafe fn enhanced_metafile_gdiplus_dual_preview(
     GdipSetSmoothingMode(graphics, SmoothingModeAntiAlias);
     GdipSetTextRenderingHint(graphics, TextRenderingHintAntiAliasGridFit);
     let use_gdiplus_text = gdiplus_text_preview_enabled();
+    let bond_context = preview_bond_context(payload);
     let mut gdi_cache = PreviewGdiCache::default();
     let mut ok = true;
     for primitive in visible {
         if matches!(primitive, RenderPrimitive::Text { .. }) {
-            let drawn = use_gdiplus_text && draw_gdiplus_primitive(graphics, primitive, &transform);
+            let drawn = use_gdiplus_text
+                && draw_gdiplus_primitive(graphics, primitive, &transform, bond_context.as_ref());
             if !drawn
-                && !draw_gdi_primitive_in_gdiplus(graphics, primitive, &transform, &mut gdi_cache)
+                && !draw_gdi_primitive_in_gdiplus(
+                    graphics,
+                    primitive,
+                    &transform,
+                    &mut gdi_cache,
+                    bond_context.as_ref(),
+                )
             {
                 ok = false;
                 break;
             }
-        } else if !draw_gdiplus_primitive(graphics, primitive, &transform) {
-            if !draw_gdi_primitive_in_gdiplus(graphics, primitive, &transform, &mut gdi_cache) {
+        } else if !draw_gdiplus_primitive(graphics, primitive, &transform, bond_context.as_ref()) {
+            if !draw_gdi_primitive_in_gdiplus(
+                graphics,
+                primitive,
+                &transform,
+                &mut gdi_cache,
+                bond_context.as_ref(),
+            ) {
                 ok = false;
                 break;
             }
@@ -247,12 +266,13 @@ unsafe fn draw_gdi_primitive_in_gdiplus(
     primitive: &RenderPrimitive,
     transform: &PreviewTransform,
     cache: &mut PreviewGdiCache,
+    bond_context: Option<&PreviewBondContext>,
 ) -> bool {
     let mut dc: HDC = null_mut();
     if GdipGetDC(graphics, &mut dc) != GDI_PLUS_OK || dc.is_null() {
         return false;
     }
-    draw_preview_primitive(dc, primitive, transform, cache);
+    draw_preview_primitive(dc, primitive, transform, cache, bond_context);
     GdipReleaseDC(graphics, dc) == GDI_PLUS_OK
 }
 
@@ -305,6 +325,7 @@ unsafe fn draw_payload_vector_preview_internal(
     };
 
     let mut cache = PreviewGdiCache::default();
+    let bond_context = preview_bond_context(payload);
     let mut vector_scope = 0;
     let mut active_record_scale = 1.0;
     let mut high_resolution_available = high_resolution_vectors;
@@ -329,14 +350,20 @@ unsafe fn draw_payload_vector_preview_internal(
             }
             if high_resolution_available {
                 let vector_transform = transform.with_record_scale(record_scale);
-                draw_preview_primitive(dc, primitive, &vector_transform, &mut cache);
+                draw_preview_primitive(
+                    dc,
+                    primitive,
+                    &vector_transform,
+                    &mut cache,
+                    bond_context.as_ref(),
+                );
                 continue;
             }
         } else if vector_scope != 0 {
             RestoreDC(dc, vector_scope);
             vector_scope = 0;
         }
-        draw_preview_primitive(dc, primitive, &transform, &mut cache);
+        draw_preview_primitive(dc, primitive, &transform, &mut cache, bond_context.as_ref());
     }
     if vector_scope != 0 {
         RestoreDC(dc, vector_scope);
@@ -527,6 +554,7 @@ unsafe fn draw_preview_primitive(
     primitive: &RenderPrimitive,
     transform: &PreviewTransform,
     cache: &mut PreviewGdiCache,
+    bond_context: Option<&PreviewBondContext>,
 ) {
     match primitive {
         RenderPrimitive::Line {
@@ -549,6 +577,7 @@ unsafe fn draw_preview_primitive(
         ),
         RenderPrimitive::Polygon {
             role,
+            bond_id,
             points,
             fill,
             stroke,
@@ -557,12 +586,14 @@ unsafe fn draw_preview_primitive(
         } => draw_preview_polygon(
             dc,
             *role,
+            bond_id.as_deref(),
             points,
             fill,
             stroke,
             *stroke_width,
             transform,
             cache,
+            bond_context,
         ),
         RenderPrimitive::FilledPath {
             d,
@@ -604,12 +635,14 @@ unsafe fn draw_preview_primitive(
                 draw_preview_polygon(
                     dc,
                     RenderRole::DocumentGraphic,
+                    None,
                     points,
                     fill,
                     fill,
                     0.0,
                     transform,
                     cache,
+                    None,
                 );
             }
             end_preview_clip(dc, saved_clip);
@@ -828,6 +861,7 @@ unsafe fn draw_gdiplus_primitive(
     graphics: *mut GpGraphics,
     primitive: &RenderPrimitive,
     transform: &PreviewTransform,
+    bond_context: Option<&PreviewBondContext>,
 ) -> bool {
     match primitive {
         RenderPrimitive::Line {
@@ -873,12 +907,24 @@ unsafe fn draw_gdiplus_primitive(
             dash_array,
         ),
         RenderPrimitive::Polygon {
+            role,
+            bond_id,
             points,
             fill,
             stroke,
             stroke_width,
             ..
-        } => draw_gdiplus_polygon(graphics, points, fill, stroke, *stroke_width, transform),
+        } => draw_gdiplus_polygon(
+            graphics,
+            *role,
+            bond_id.as_deref(),
+            points,
+            fill,
+            stroke,
+            *stroke_width,
+            transform,
+            bond_context,
+        ),
         RenderPrimitive::FilledPath {
             d,
             fill,
@@ -1042,19 +1088,34 @@ unsafe fn draw_gdiplus_polyline(
 
 unsafe fn draw_gdiplus_polygon(
     graphics: *mut GpGraphics,
+    role: RenderRole,
+    bond_id: Option<&str>,
     points: &[CorePoint],
     fill: &str,
     stroke: &str,
     stroke_width: f64,
     transform: &PreviewTransform,
+    bond_context: Option<&PreviewBondContext>,
 ) -> bool {
     if points.len() < 3 {
         return true;
     }
-    let mapped: Vec<PointF> = points
-        .iter()
-        .map(|point| transform.gdip_point(*point))
-        .collect();
+    if role == RenderRole::DocumentBond {
+        if let Some(stroke_line) = preview_bond_stroke_line(points, bond_id, bond_context) {
+            let line_points = [stroke_line.start, stroke_line.end];
+            return draw_gdiplus_polyline(
+                graphics,
+                &line_points,
+                fill,
+                stroke_line.width,
+                Some("round"),
+                Some("round"),
+                transform,
+                &[],
+            );
+        }
+    }
+    let mapped: Vec<PointF> = points.iter().map(|point| transform.gdip_point(*point)).collect();
     let mut ok = true;
     if let Some(brush) = create_gdiplus_solid_brush(fill) {
         ok &= GdipFillPolygon(
@@ -2113,6 +2174,14 @@ fn ansi_metafile_text_bytes(text: &str) -> Vec<u8> {
 }
 
 const PREVIEW_MITER_LIMIT: f32 = 10.0;
+const PREVIEW_BOND_STROKE_MAX_ASPECT_RATIO: f64 = 0.24;
+const PREVIEW_BOND_STROKE_MAX_WIDTH: f64 = 4.25;
+const PREVIEW_BOND_STROKE_TOLERANCE_WIDTH_FACTOR: f64 = 0.45;
+const PREVIEW_BOND_STROKE_COLLINEAR_TOLERANCE_WIDTH_FACTOR: f64 = 0.18;
+const PREVIEW_BOND_STROKE_EDGE_WIDTH_MIN_RATIO: f64 = 0.55;
+const PREVIEW_BOND_STROKE_EDGE_WIDTH_MAX_RATIO: f64 = 1.45;
+const PREVIEW_BOND_STROKE_EDGE_AXIS_MAX_RATIO: f64 = 0.25;
+const PREVIEW_BOND_STROKE_OPTICAL_WIDTH_SCALE: f64 = 1.83;
 
 fn preview_pen_style(line_cap: Option<&str>, line_join: Option<&str>, style: i32) -> u32 {
     let cap = match line_cap {
@@ -3030,16 +3099,34 @@ unsafe fn draw_preview_oval_bounds(
 
 unsafe fn draw_preview_polygon(
     dc: HDC,
-    _role: RenderRole,
+    role: RenderRole,
+    bond_id: Option<&str>,
     points: &[CorePoint],
     fill: &str,
     stroke: &str,
     stroke_width: f64,
     transform: &PreviewTransform,
     cache: &mut PreviewGdiCache,
+    bond_context: Option<&PreviewBondContext>,
 ) {
     if points.len() < 2 {
         return;
+    }
+    if role == RenderRole::DocumentBond {
+        if let Some(stroke_line) = preview_bond_stroke_line(points, bond_id, bond_context) {
+            let line_points = [stroke_line.start, stroke_line.end];
+            draw_preview_polyline(
+                dc,
+                &line_points,
+                fill,
+                stroke_line.width,
+                Some("round"),
+                Some("round"),
+                transform,
+                &[],
+            );
+            return;
+        }
     }
     let mapped: Vec<POINT> = points.iter().map(|point| transform.point(*point)).collect();
     let fill_color = colorref_from_css(fill);
@@ -3061,6 +3148,631 @@ unsafe fn draw_preview_polygon(
     SelectObject(dc, old_pen);
     SelectObject(dc, old_brush);
     delete_preview_pen(pen);
+}
+
+#[derive(Debug, Clone, Copy)]
+struct PreviewBondInfo {
+    axis: CorePoint,
+    allow_pen: bool,
+    start_projection: f64,
+    end_projection: f64,
+    axis_normal_projection: f64,
+    side_double: bool,
+    start_has_label: bool,
+    end_has_label: bool,
+}
+
+#[derive(Debug, Default)]
+struct PreviewBondContext {
+    infos: BTreeMap<String, PreviewBondInfo>,
+}
+
+fn preview_bond_context(payload: &OleObjectPayload) -> Option<PreviewBondContext> {
+    let document = parse_document_json(&payload.chemcore_document_json).ok()?;
+    Some(preview_bond_context_from_document(&document))
+}
+
+fn preview_bond_context_from_document(document: &ChemcoreDocument) -> PreviewBondContext {
+    let mut infos = BTreeMap::new();
+    for object in document
+        .scene_objects()
+        .into_iter()
+        .filter(|object| object.visible && object.object_type == "molecule")
+    {
+        let Some(fragment) = preview_molecule_fragment(document, object) else {
+            continue;
+        };
+        let node_map: BTreeMap<&str, &chemcore_engine::Node> = fragment
+            .nodes
+            .iter()
+            .map(|node| (node.id.as_str(), node))
+            .collect();
+        let mut incident: BTreeMap<&str, Vec<&Bond>> = BTreeMap::new();
+        for bond in &fragment.bonds {
+            incident.entry(bond.begin.as_str()).or_default().push(bond);
+            incident.entry(bond.end.as_str()).or_default().push(bond);
+        }
+        for bond in &fragment.bonds {
+            let Some(begin) = node_map.get(bond.begin.as_str()).copied() else {
+                continue;
+            };
+            let Some(end) = node_map.get(bond.end.as_str()).copied() else {
+                continue;
+            };
+            let axis = preview_bond_axis_from_nodes(object, begin.point(), end.point());
+            let Some(axis) = axis else {
+                continue;
+            };
+            let begin_world = CorePoint {
+                x: begin.position[0] + object.transform.translate[0],
+                y: begin.position[1] + object.transform.translate[1],
+            };
+            let end_world = CorePoint {
+                x: end.position[0] + object.transform.translate[0],
+                y: end.position[1] + object.transform.translate[1],
+            };
+            let allow_pen = preview_bond_is_pen_family(bond)
+                && preview_endpoint_allows_pen(bond, &incident, &bond.begin)
+                && preview_endpoint_allows_pen(bond, &incident, &bond.end);
+            let start_has_label = begin
+                .label
+                .as_ref()
+                .is_some_and(|label| label.has_visible_text());
+            let end_has_label = end
+                .label
+                .as_ref()
+                .is_some_and(|label| label.has_visible_text());
+            infos.insert(
+                bond.id.clone(),
+                PreviewBondInfo {
+                    axis,
+                    allow_pen,
+                    start_projection: begin_world.x * axis.x + begin_world.y * axis.y,
+                    end_projection: end_world.x * axis.x + end_world.y * axis.y,
+                    axis_normal_projection: begin_world.x * -axis.y + begin_world.y * axis.x,
+                    side_double: preview_bond_is_side_double(bond),
+                    start_has_label,
+                    end_has_label,
+                },
+            );
+        }
+    }
+    PreviewBondContext { infos }
+}
+
+fn preview_molecule_fragment<'a>(
+    document: &'a ChemcoreDocument,
+    object: &SceneObject,
+) -> Option<&'a MoleculeFragment> {
+    let resource_ref = object.payload.resource_ref.as_ref()?;
+    document.resources.get(resource_ref)?.data.as_fragment()
+}
+
+fn preview_bond_axis_from_nodes(
+    object: &SceneObject,
+    begin: CorePoint,
+    end: CorePoint,
+) -> Option<CorePoint> {
+    let start = CorePoint {
+        x: begin.x + object.transform.translate[0],
+        y: begin.y + object.transform.translate[1],
+    };
+    let finish = CorePoint {
+        x: end.x + object.transform.translate[0],
+        y: end.y + object.transform.translate[1],
+    };
+    preview_normalize_axis(CorePoint {
+        x: finish.x - start.x,
+        y: finish.y - start.y,
+    })
+}
+
+fn preview_bond_is_pen_family(bond: &Bond) -> bool {
+    if bond.stereo.is_some() || bond.line_styles.main != BondLinePattern::Solid {
+        return false;
+    }
+    match bond.order {
+        0 => false,
+        1 => bond.line_weights.main == BondLineWeight::Normal,
+        2 => {
+            bond.line_weights.main == BondLineWeight::Normal
+                && bond.line_styles.left == BondLinePattern::Solid
+                && bond.line_styles.right == BondLinePattern::Solid
+                && bond.line_weights.left == BondLineWeight::Normal
+                && bond.line_weights.right == BondLineWeight::Normal
+        }
+        _ => {
+            bond.line_weights.main == BondLineWeight::Normal
+                && bond.line_styles.left == BondLinePattern::Solid
+                && bond.line_styles.right == BondLinePattern::Solid
+                && bond.line_weights.left == BondLineWeight::Normal
+                && bond.line_weights.right == BondLineWeight::Normal
+        }
+    }
+}
+
+fn preview_bond_is_side_double(bond: &Bond) -> bool {
+    matches!(
+        bond.double.as_ref().map(|double| double.placement),
+        Some(DoubleBondPlacement::Left | DoubleBondPlacement::Right)
+    )
+}
+
+fn preview_endpoint_allows_pen<'a>(
+    bond: &Bond,
+    incident: &BTreeMap<&'a str, Vec<&'a Bond>>,
+    node_id: &str,
+) -> bool {
+    incident
+        .get(node_id)
+        .into_iter()
+        .flatten()
+        .filter(|other| other.id != bond.id)
+        .all(|other| {
+            (other.stroke_width - bond.stroke_width).abs() <= 1.0e-6
+                && (preview_bond_is_pen_family(other) || preview_bond_is_pen_safe_obstacle(other))
+        })
+}
+
+fn preview_bond_is_pen_safe_obstacle(bond: &Bond) -> bool {
+    preview_bond_is_hash_bond(bond)
+        || bond
+            .stereo
+            .as_ref()
+            .is_some_and(|stereo| stereo.kind.contains("hashed"))
+}
+
+fn preview_bond_is_hash_bond(bond: &Bond) -> bool {
+    bond.order == 1
+        && ((bond.line_styles.main == BondLinePattern::Dashed
+            && bond.line_weights.main == BondLineWeight::Bold)
+            || bond
+                .meta
+                .get("contextMenuBondStyle")
+                .and_then(|value| value.as_str())
+                == Some("single-hashed"))
+}
+
+fn preview_normalize_axis(axis: CorePoint) -> Option<CorePoint> {
+    let length = axis.distance(CorePoint { x: 0.0, y: 0.0 });
+    if length <= 1.0e-9 {
+        return None;
+    }
+    Some(CorePoint {
+        x: axis.x / length,
+        y: axis.y / length,
+    })
+}
+
+#[derive(Debug, Clone, Copy)]
+struct PreviewBondStrokeLine {
+    start: CorePoint,
+    end: CorePoint,
+    width: f64,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct PreviewBondTerminalEdge {
+    center: CorePoint,
+    length: f64,
+}
+
+fn preview_bond_stroke_line(
+    points: &[CorePoint],
+    bond_id: Option<&str>,
+    bond_context: Option<&PreviewBondContext>,
+) -> Option<PreviewBondStrokeLine> {
+    if points.len() < 4 || points.len() > 6 {
+        return None;
+    }
+    let bond_info = bond_id.and_then(|id| bond_context.and_then(|context| context.infos.get(id)));
+    if bond_info.is_some_and(|info| !info.allow_pen) {
+        return None;
+    }
+    let preferred_axis = bond_info.map(|info| info.axis);
+    let axis = preferred_axis.or_else(|| preview_polygon_principal_axis(points))?;
+    let normal = CorePoint {
+        x: -axis.y,
+        y: axis.x,
+    };
+    let projections: Vec<f64> = points
+        .iter()
+        .map(|point| point.x * axis.x + point.y * axis.y)
+        .collect();
+    let normal_projections: Vec<f64> = points
+        .iter()
+        .map(|point| point.x * normal.x + point.y * normal.y)
+        .collect();
+    let min_projection = projections.iter().copied().fold(f64::INFINITY, f64::min);
+    let max_projection = projections
+        .iter()
+        .copied()
+        .fold(f64::NEG_INFINITY, f64::max);
+    let length = max_projection - min_projection;
+    let width = normal_projections
+        .iter()
+        .copied()
+        .fold(f64::NEG_INFINITY, f64::max)
+        - normal_projections
+            .iter()
+            .copied()
+            .fold(f64::INFINITY, f64::min);
+    if !length.is_finite()
+        || !width.is_finite()
+        || length <= 0.0
+        || width <= 0.0
+        || width > PREVIEW_BOND_STROKE_MAX_WIDTH
+        || width / length > PREVIEW_BOND_STROKE_MAX_ASPECT_RATIO
+    {
+        return None;
+    }
+    let simplified =
+        preview_simplify_bond_polygon(points, axis, width * PREVIEW_BOND_STROKE_COLLINEAR_TOLERANCE_WIDTH_FACTOR)?;
+    if simplified.len() < 4 || simplified.len() > 6 {
+        return None;
+    }
+    let axis = preferred_axis.or_else(|| preview_polygon_principal_axis(&simplified))?;
+    let normal = CorePoint {
+        x: -axis.y,
+        y: axis.x,
+    };
+    let projections: Vec<f64> = simplified
+        .iter()
+        .map(|point| point.x * axis.x + point.y * axis.y)
+        .collect();
+    let normal_projections: Vec<f64> = simplified
+        .iter()
+        .map(|point| point.x * normal.x + point.y * normal.y)
+        .collect();
+    let min_projection = projections.iter().copied().fold(f64::INFINITY, f64::min);
+    let max_projection = projections
+        .iter()
+        .copied()
+        .fold(f64::NEG_INFINITY, f64::max);
+    let length = max_projection - min_projection;
+    let width = normal_projections
+        .iter()
+        .copied()
+        .fold(f64::NEG_INFINITY, f64::max)
+        - normal_projections
+            .iter()
+            .copied()
+            .fold(f64::INFINITY, f64::min);
+    if !length.is_finite()
+        || !width.is_finite()
+        || length <= 0.0
+        || width <= 0.0
+        || width > PREVIEW_BOND_STROKE_MAX_WIDTH
+        || width / length > PREVIEW_BOND_STROKE_MAX_ASPECT_RATIO
+    {
+        return None;
+    }
+    if preferred_axis.is_some() {
+        let stroke_width = width * PREVIEW_BOND_STROKE_OPTICAL_WIDTH_SCALE;
+        if !stroke_width.is_finite() || stroke_width <= 0.0 {
+            return None;
+        }
+        let min_normal = normal_projections
+            .iter()
+            .copied()
+            .fold(f64::INFINITY, f64::min);
+        let max_normal = normal_projections
+            .iter()
+            .copied()
+            .fold(f64::NEG_INFINITY, f64::max);
+        let normal_mid = (min_normal + max_normal) * 0.5;
+        let tolerance = (width * PREVIEW_BOND_STROKE_TOLERANCE_WIDTH_FACTOR)
+            .max(length * 0.01)
+            .max(0.05);
+        let start_edge =
+            preview_bond_terminal_edge(&simplified, &projections, axis, min_projection, tolerance, width);
+        let end_edge =
+            preview_bond_terminal_edge(&simplified, &projections, axis, max_projection, tolerance, width);
+        let mut start_axis_projection = bond_info
+            .map(|info| info.start_projection)
+            .unwrap_or(min_projection);
+        let mut end_axis_projection = bond_info
+            .map(|info| info.end_projection)
+            .unwrap_or(max_projection);
+        if let Some(info) = bond_info {
+            if info.start_has_label {
+                if let Some(edge) = start_edge {
+                    start_axis_projection = edge.center.x * axis.x + edge.center.y * axis.y;
+                }
+            }
+            if info.end_has_label {
+                if let Some(edge) = end_edge {
+                    end_axis_projection = edge.center.x * axis.x + edge.center.y * axis.y;
+                }
+            }
+            let cap_radius = stroke_width * 0.5;
+            if info.side_double
+                && (normal_mid - info.axis_normal_projection).abs() > width * 0.35
+            {
+                start_axis_projection = min_projection + cap_radius;
+                end_axis_projection = max_projection - cap_radius;
+            }
+        }
+        return Some(PreviewBondStrokeLine {
+            start: preview_point_from_axis_coordinates(
+                axis,
+                normal,
+                start_axis_projection,
+                normal_mid,
+            ),
+            end: preview_point_from_axis_coordinates(axis, normal, end_axis_projection, normal_mid),
+            width: stroke_width,
+        });
+    }
+    let tolerance = (width * PREVIEW_BOND_STROKE_TOLERANCE_WIDTH_FACTOR)
+        .max(length * 0.01)
+        .max(0.05);
+    let start_edge =
+        preview_bond_terminal_edge(&simplified, &projections, axis, min_projection, tolerance, width)?;
+    let end_edge =
+        preview_bond_terminal_edge(&simplified, &projections, axis, max_projection, tolerance, width)?;
+    let stroke_width =
+        (start_edge.length + end_edge.length) * 0.5 * PREVIEW_BOND_STROKE_OPTICAL_WIDTH_SCALE;
+    if !stroke_width.is_finite() || stroke_width <= 0.0 {
+        return None;
+    }
+    Some(PreviewBondStrokeLine {
+        start: start_edge.center,
+        end: end_edge.center,
+        width: stroke_width,
+    })
+}
+
+fn preview_point_from_axis_coordinates(
+    axis: CorePoint,
+    normal: CorePoint,
+    axis_projection: f64,
+    normal_projection: f64,
+) -> CorePoint {
+    CorePoint {
+        x: axis.x * axis_projection + normal.x * normal_projection,
+        y: axis.y * axis_projection + normal.y * normal_projection,
+    }
+}
+
+fn preview_simplify_bond_polygon(
+    points: &[CorePoint],
+    axis: CorePoint,
+    tolerance: f64,
+) -> Option<Vec<CorePoint>> {
+    if points.len() < 4 {
+        return None;
+    }
+    let mut simplified = points.to_vec();
+    loop {
+        if simplified.len() <= 4 {
+            break;
+        }
+        let mut removed = false;
+        let len = simplified.len();
+        for index in 0..len {
+            let prev = simplified[(index + len - 1) % len];
+            let point = simplified[index];
+            let next = simplified[(index + 1) % len];
+            if preview_point_is_collinear(prev, point, next, axis, tolerance) {
+                simplified.remove(index);
+                removed = true;
+                break;
+            }
+        }
+        if !removed {
+            break;
+        }
+    }
+    Some(simplified)
+}
+
+fn preview_point_is_collinear(
+    prev: CorePoint,
+    point: CorePoint,
+    next: CorePoint,
+    axis: CorePoint,
+    tolerance: f64,
+) -> bool {
+    let segment = CorePoint {
+        x: next.x - prev.x,
+        y: next.y - prev.y,
+    };
+    let segment_length = segment.distance(CorePoint { x: 0.0, y: 0.0 });
+    if segment_length <= 1.0e-9 {
+        return point.distance(prev) <= tolerance;
+    }
+    let prev_to_point = CorePoint {
+        x: point.x - prev.x,
+        y: point.y - prev.y,
+    };
+    let distance = ((prev_to_point.x * segment.y) - (prev_to_point.y * segment.x)).abs() / segment_length;
+    if distance > tolerance.max(0.05) {
+        return false;
+    }
+    let dot = prev_to_point.x * segment.x + prev_to_point.y * segment.y;
+    let projection = dot / (segment_length * segment_length);
+    if !(0.0..=1.0).contains(&projection) {
+        return false;
+    }
+    let segment_axis_ratio = ((segment.x * axis.x + segment.y * axis.y).abs()) / segment_length;
+    segment_axis_ratio >= 1.0 - PREVIEW_BOND_STROKE_EDGE_AXIS_MAX_RATIO
+}
+
+fn preview_polygon_principal_axis(points: &[CorePoint]) -> Option<CorePoint> {
+    if points.len() < 2 {
+        return None;
+    }
+    let mut mean = CorePoint { x: 0.0, y: 0.0 };
+    for point in points {
+        mean.x += point.x;
+        mean.y += point.y;
+    }
+    let point_count = points.len() as f64;
+    mean.x /= point_count;
+    mean.y /= point_count;
+
+    let mut sxx = 0.0;
+    let mut syy = 0.0;
+    let mut sxy = 0.0;
+    for point in points {
+        let dx = point.x - mean.x;
+        let dy = point.y - mean.y;
+        sxx += dx * dx;
+        syy += dy * dy;
+        sxy += dx * dy;
+    }
+    let trace = sxx + syy;
+    let root = (sxx - syy).hypot(2.0 * sxy);
+    let lambda = (trace + root) * 0.5;
+    let mut axis = CorePoint {
+        x: sxy,
+        y: lambda - sxx,
+    };
+    if axis.distance(CorePoint { x: 0.0, y: 0.0 }) <= 1.0e-9 {
+        axis = CorePoint {
+            x: lambda - syy,
+            y: sxy,
+        };
+    }
+    let length = axis.distance(CorePoint { x: 0.0, y: 0.0 });
+    if length <= 1.0e-9 {
+        return None;
+    }
+    Some(CorePoint {
+        x: axis.x / length,
+        y: axis.y / length,
+    })
+}
+
+fn preview_bond_terminal_edge(
+    points: &[CorePoint],
+    projections: &[f64],
+    axis: CorePoint,
+    target: f64,
+    tolerance: f64,
+    width: f64,
+) -> Option<PreviewBondTerminalEdge> {
+    let indices: Vec<usize> = projections
+        .iter()
+        .enumerate()
+        .filter_map(|(index, projection)| {
+            if (*projection - target).abs() <= tolerance {
+                Some(index)
+            } else {
+                None
+            }
+        })
+        .collect();
+    if indices.is_empty() || indices.len() > 3 {
+        return None;
+    }
+    let ordered = preview_polygon_terminal_chain(points.len(), &indices)?;
+    let normal_projection = |index: usize| points[index].x * -axis.y + points[index].y * axis.x;
+    let center = match ordered.len() {
+        1 => points[ordered[0]],
+        2 => {
+            let first = ordered[0];
+            let last = ordered[1];
+            let edge = CorePoint {
+                x: points[last].x - points[first].x,
+                y: points[last].y - points[first].y,
+            };
+            let edge_length = points[first].distance(points[last]).max(1.0e-9);
+            let along_axis = (edge.x * axis.x + edge.y * axis.y).abs() / edge_length;
+            if along_axis <= PREVIEW_BOND_STROKE_EDGE_AXIS_MAX_RATIO {
+                CorePoint {
+                    x: (points[first].x + points[last].x) * 0.5,
+                    y: (points[first].y + points[last].y) * 0.5,
+                }
+            } else {
+                let apex = ordered
+                    .iter()
+                    .copied()
+                    .min_by(|left, right| {
+                        (projections[*left] - target)
+                            .abs()
+                            .total_cmp(&(projections[*right] - target).abs())
+                    })
+                    .unwrap_or(first);
+                points[apex]
+            }
+        }
+        3 => {
+            let apex = ordered
+                .iter()
+                .copied()
+                .min_by(|left, right| {
+                    (projections[*left] - target)
+                        .abs()
+                        .total_cmp(&(projections[*right] - target).abs())
+                })
+                .unwrap_or(ordered[1]);
+            points[apex]
+        }
+        _ => return None,
+    };
+    let edge_length = if ordered.len() == 1 {
+        width
+    } else {
+        let first = ordered[0];
+        let last = *ordered.last().unwrap_or(&ordered[0]);
+        let span = (normal_projection(first) - normal_projection(last)).abs();
+        let edge = CorePoint {
+            x: points[last].x - points[first].x,
+            y: points[last].y - points[first].y,
+        };
+        let along_axis = edge.x * axis.x + edge.y * axis.y;
+        let edge_length = span.max(points[first].distance(points[last]));
+        if edge_length <= 0.0 {
+            return None;
+        }
+        if ordered.len() == 2 && along_axis.abs() / edge_length > PREVIEW_BOND_STROKE_EDGE_AXIS_MAX_RATIO {
+            width
+        } else {
+            if along_axis.abs() / edge_length > PREVIEW_BOND_STROKE_EDGE_AXIS_MAX_RATIO {
+                return None;
+            }
+            edge_length
+        }
+    };
+    if edge_length < width * PREVIEW_BOND_STROKE_EDGE_WIDTH_MIN_RATIO
+        || edge_length > width * PREVIEW_BOND_STROKE_EDGE_WIDTH_MAX_RATIO
+    {
+        return None;
+    }
+    Some(PreviewBondTerminalEdge {
+        center,
+        length: edge_length,
+    })
+}
+
+fn preview_polygon_terminal_chain(len: usize, indices: &[usize]) -> Option<Vec<usize>> {
+    if indices.is_empty() || indices.len() > 3 {
+        return None;
+    }
+    if indices.len() == 1 {
+        return Some(indices.to_vec());
+    }
+    let mut ordered = indices.to_vec();
+    ordered.sort_unstable();
+    for &start in &ordered {
+        let mut chain = vec![start];
+        let mut current = start;
+        while chain.len() < ordered.len() {
+            let next = (current + 1) % len;
+            if ordered.contains(&next) {
+                chain.push(next);
+                current = next;
+            } else {
+                break;
+            }
+        }
+        if chain.len() == ordered.len() {
+            return Some(chain);
+        }
+    }
+    None
 }
 
 fn polygon_area(points: &[CorePoint]) -> f64 {
@@ -3185,4 +3897,285 @@ pub(super) unsafe fn draw_placeholder_preview(dc: HDC, bounds: &RECT) {
     SelectObject(dc, old_pen);
     SelectObject(dc, old_brush);
     delete_preview_pen(pen as HGDIOBJ);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn point(x: f64, y: f64) -> CorePoint {
+        CorePoint { x, y }
+    }
+
+    fn test_bond(id: &str, begin: &str, end: &str) -> Bond {
+        Bond {
+            id: id.to_string(),
+            begin: begin.to_string(),
+            end: end.to_string(),
+            order: 1,
+            double: None,
+            stereo: None,
+            stroke_width: 0.85,
+            stroke: None,
+            bold_width: None,
+            wedge_width: None,
+            label_clip_margin: None,
+            hash_spacing: None,
+            bond_spacing: None,
+            margin_width: None,
+            line_styles: Default::default(),
+            line_weights: Default::default(),
+            meta: serde_json::Value::Null,
+        }
+    }
+
+    fn context_with_bond(
+        bond_id: &str,
+        axis: CorePoint,
+        allow_pen: bool,
+        start_projection: f64,
+        end_projection: f64,
+    ) -> PreviewBondContext {
+        let mut infos = BTreeMap::new();
+        infos.insert(
+            bond_id.to_string(),
+            PreviewBondInfo {
+                axis,
+                allow_pen,
+                start_projection,
+                end_projection,
+                axis_normal_projection: 0.0,
+                side_double: false,
+                start_has_label: false,
+                end_has_label: false,
+            },
+        );
+        PreviewBondContext { infos }
+    }
+
+    #[test]
+    fn preview_bond_stroke_line_converts_simple_rectangle() {
+        let stroke_line = preview_bond_stroke_line(&[
+            point(0.0, 0.0),
+            point(20.0, 0.0),
+            point(20.0, 2.64),
+            point(0.0, 2.64),
+        ], None, None)
+        .expect("simple bond shaft should convert to a centerline stroke");
+        assert!((stroke_line.start.x - 0.0).abs() < 1.0e-6);
+        assert!((stroke_line.start.y - 1.32).abs() < 1.0e-6);
+        assert!((stroke_line.end.x - 20.0).abs() < 1.0e-6);
+        assert!((stroke_line.end.y - 1.32).abs() < 1.0e-6);
+        assert!(
+            (stroke_line.width - 2.64 * PREVIEW_BOND_STROKE_OPTICAL_WIDTH_SCALE).abs() < 1.0e-6
+        );
+    }
+
+    #[test]
+    fn preview_bond_stroke_line_converts_pentagon_join() {
+        let stroke_line = preview_bond_stroke_line(&[
+            point(0.0, 0.0),
+            point(10.0, 0.0),
+            point(20.0, 0.0),
+            point(20.0, 2.64),
+            point(0.0, 2.64),
+        ], None, None)
+        .expect("pentagon with a collinear shoulder should still convert to a pen stroke");
+        assert!(stroke_line.width > 0.0);
+        assert!((stroke_line.start.x - 0.0).abs() < 1.0e-6);
+        assert!((stroke_line.end.x - 20.0).abs() < 1.0e-6);
+    }
+
+    #[test]
+    fn preview_bond_stroke_line_converts_complex_junction_hexagon() {
+        let axis = preview_normalize_axis(point(392.077488 - 370.689708, 662.127888 - 696.293739))
+            .expect("axis");
+        let start_projection = 370.689708 * axis.x + 696.293739 * axis.y;
+        let end_projection = 392.077488 * axis.x + 662.127888 * axis.y;
+        let context = context_with_bond("b1", axis, true, start_projection, end_projection);
+        let stroke_line = preview_bond_stroke_line(&[
+            point(370.689708, 696.293739),
+            point(392.077488, 662.127888),
+            point(390.45, 662.24),
+            point(388.822512, 662.352112),
+            point(369.470292, 693.266261),
+            point(370.08, 694.78),
+        ], Some("b1"), Some(&context))
+        .expect("plain same-width junction hexagon should convert when bond axis is known");
+        assert!(stroke_line.width > 0.0);
+        let direction = preview_normalize_axis(point(
+            stroke_line.end.x - stroke_line.start.x,
+            stroke_line.end.y - stroke_line.start.y,
+        ))
+        .expect("stroke direction");
+        let dot = (direction.x * axis.x + direction.y * axis.y).abs();
+        assert!(dot > 0.995, "stroke should stay parallel to the bond axis");
+    }
+
+    #[test]
+    fn preview_bond_stroke_line_accepts_short_thin_horizontal_bond() {
+        let stroke_line = preview_bond_stroke_line(&[
+            point(714.35, 707.54),
+            point(727.33, 707.54),
+            point(727.33, 704.9),
+            point(714.35, 704.9),
+        ], None, None)
+        .expect("short thin N-O bond should still convert to a stroke");
+        assert!(
+            (stroke_line.width - 2.64 * PREVIEW_BOND_STROKE_OPTICAL_WIDTH_SCALE).abs() < 1.0e-6
+        );
+    }
+
+    #[test]
+    fn preview_bond_stroke_line_accepts_apex_terminal_with_axis_hint() {
+        let axis = preview_normalize_axis(point(0.0, -1.0)).expect("axis");
+        let context = context_with_bond("b1", axis, true, -421.402155, -382.24);
+        let stroke_line = preview_bond_stroke_line(&[
+            point(285.27, 421.402155),
+            point(285.27, 383.002041),
+            point(283.95, 382.24),
+            point(282.63, 383.002155),
+            point(282.63, 419.877845),
+        ], Some("b1"), Some(&context));
+        assert!(stroke_line.is_some(), "axis hint should keep plain apex terminals on pen");
+    }
+
+    #[test]
+    fn preview_bond_stroke_line_uses_shared_cap_center_projection_on_joined_end() {
+        let axis = preview_normalize_axis(point(1.0, 0.0)).expect("axis");
+        let mut context = context_with_bond("b1", axis, true, -3.0, 20.0);
+        context.infos.insert(
+            "b1".to_string(),
+            PreviewBondInfo {
+                axis,
+                allow_pen: true,
+                start_projection: -3.0,
+                end_projection: 20.0,
+                axis_normal_projection: 0.0,
+                side_double: false,
+                start_has_label: false,
+                end_has_label: false,
+            },
+        );
+        let stroke_line = preview_bond_stroke_line(&[
+            point(0.0, 0.0),
+            point(20.0, 0.0),
+            point(20.0, 2.64),
+            point(0.0, 2.64),
+        ], Some("b1"), Some(&context))
+        .expect("joined end should still convert");
+        assert!((stroke_line.start.x + 3.0).abs() < 1.0e-6);
+        assert!((stroke_line.end.x - 20.0).abs() < 1.0e-6);
+    }
+
+    #[test]
+    fn preview_bond_stroke_line_rejects_wedge_like_junction_hexagon() {
+        let axis = preview_normalize_axis(point(392.077488 - 370.689708, 662.127888 - 696.293739))
+            .expect("axis");
+        let start_projection = 370.689708 * axis.x + 696.293739 * axis.y;
+        let end_projection = 392.077488 * axis.x + 662.127888 * axis.y;
+        let context = context_with_bond("b1", axis, false, start_projection, end_projection);
+        let stroke_line = preview_bond_stroke_line(&[
+            point(370.689708, 696.293739),
+            point(392.077488, 662.127888),
+            point(390.45, 662.24),
+            point(388.822512, 662.352112),
+            point(369.470292, 693.266261),
+            point(370.08, 694.78),
+        ], Some("b1"), Some(&context));
+        assert!(stroke_line.is_none(), "junction hexagon should stay as polygon");
+    }
+
+    #[test]
+    fn preview_bond_stroke_line_keeps_side_double_outer_line_inset_length() {
+        let axis = preview_normalize_axis(point(1.0, 0.0)).expect("axis");
+        let mut infos = BTreeMap::new();
+        infos.insert(
+            "b1".to_string(),
+            PreviewBondInfo {
+                axis,
+                allow_pen: true,
+                start_projection: 0.0,
+                end_projection: 20.0,
+                axis_normal_projection: 0.0,
+                side_double: true,
+                start_has_label: false,
+                end_has_label: false,
+            },
+        );
+        let context = PreviewBondContext { infos };
+        let stroke_line = preview_bond_stroke_line(
+            &[
+                point(2.0, 8.68),
+                point(18.0, 8.68),
+                point(18.0, 11.32),
+                point(2.0, 11.32),
+            ],
+            Some("b1"),
+            Some(&context),
+        )
+        .expect("side-double outer line should still convert to a stroke");
+        let radius = stroke_line.width * 0.5;
+        assert!(((stroke_line.start.x - radius) - 2.0).abs() < 1.0e-6);
+        assert!(((stroke_line.end.x + radius) - 18.0).abs() < 1.0e-6);
+    }
+
+    #[test]
+    fn preview_bond_stroke_line_uses_visible_endpoint_center_for_labeled_end() {
+        let axis = preview_normalize_axis(point(1.0, 0.0)).expect("axis");
+        let mut infos = BTreeMap::new();
+        infos.insert(
+            "b1".to_string(),
+            PreviewBondInfo {
+                axis,
+                allow_pen: true,
+                start_projection: 0.0,
+                end_projection: 12.0,
+                axis_normal_projection: 0.0,
+                side_double: false,
+                start_has_label: false,
+                end_has_label: true,
+            },
+        );
+        let context = PreviewBondContext { infos };
+        let stroke_line = preview_bond_stroke_line(
+            &[
+                point(0.0, 1.0),
+                point(10.0, 1.0),
+                point(10.0, 0.0),
+                point(0.5, 0.0),
+                point(0.0, 0.5),
+            ],
+            Some("b1"),
+            Some(&context),
+        )
+        .expect("labeled end shaft should still convert");
+        assert!((stroke_line.end.x - 10.0).abs() < 1.0e-6);
+    }
+
+    #[test]
+    fn preview_endpoint_allows_pen_next_to_single_hashed_bond() {
+        let bond = test_bond("b1", "n1", "n2");
+        let mut hashed = test_bond("b2", "n1", "n3");
+        hashed.line_styles.main = BondLinePattern::Dashed;
+        hashed.meta = serde_json::json!({ "contextMenuBondStyle": "single-hashed" });
+        let mut incident = BTreeMap::new();
+        incident.insert("n1", vec![&bond, &hashed]);
+
+        assert!(preview_endpoint_allows_pen(&bond, &incident, "n1"));
+    }
+
+    #[test]
+    fn preview_endpoint_allows_pen_next_to_hashed_wedge_bond() {
+        let bond = test_bond("b1", "n1", "n2");
+        let mut hashed_wedge = test_bond("b2", "n1", "n3");
+        hashed_wedge.stereo = Some(chemcore_engine::BondStereo {
+            kind: "hashed-wedge".to_string(),
+            wide_end: "end".to_string(),
+        });
+        let mut incident = BTreeMap::new();
+        incident.insert("n1", vec![&bond, &hashed_wedge]);
+
+        assert!(preview_endpoint_allows_pen(&bond, &incident, "n1"));
+    }
 }

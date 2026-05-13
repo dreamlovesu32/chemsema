@@ -404,8 +404,8 @@ fn render_outer_bond_lines(
     end: Point,
     begin_box: Option<RectBox>,
     end_box: Option<RectBox>,
-    actual_start: Point,
-    actual_end: Point,
+    _actual_start: Point,
+    _actual_end: Point,
     begin_has_label: bool,
     end_has_label: bool,
     stroke: &str,
@@ -414,7 +414,7 @@ fn render_outer_bond_lines(
     sides: &[f64],
     offset_distance: f64,
 ) {
-    let length = actual_start.distance(actual_end);
+    let length = _actual_start.distance(_actual_end);
     let is_side_double = side_double_placement(bond).is_some();
     let side_inset = if is_side_double {
         offset_distance * (3.0f64).sqrt() / 3.0

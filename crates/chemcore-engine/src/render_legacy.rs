@@ -404,7 +404,6 @@ fn render_legacy_double_bond(
 ) {
     let degree_a = legacy_atom_degree(parsed, bond.begin);
     let degree_b = legacy_atom_degree(parsed, bond.end);
-    let scale = stroke_width / VIEWER_BOND_STROKE;
     let double_offset = double_bond_offset_distance(start, end, stroke_width);
     if degree_a == 1 || degree_b == 1 {
         let (normal_x, normal_y) = unit_normal(start, end);
@@ -426,7 +425,8 @@ fn render_legacy_double_bond(
     let side = legacy_choose_double_bond_side(parsed, bond);
     let (normal_x, normal_y) = unit_normal(start, end);
     let length = start.distance(end);
-    let side_inset = (DOUBLE_BOND_SIDE_INSET * scale).max(length * DOUBLE_BOND_SIDE_INSET_RATIO);
+    let side_inset = (DOUBLE_BOND_SIDE_INSET * (stroke_width / VIEWER_BOND_STROKE))
+        .max(length * DOUBLE_BOND_SIDE_INSET_RATIO);
     push_line(
         out,
         start,

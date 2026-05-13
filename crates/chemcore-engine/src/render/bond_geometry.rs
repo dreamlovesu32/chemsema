@@ -1219,6 +1219,37 @@ pub(super) fn main_line_polygon_points(
     ))
 }
 
+pub(super) fn simple_main_line_polygon_points(
+    start: Point,
+    end: Point,
+    stroke_width: f64,
+) -> Option<Vec<Point>> {
+    let direction = Vector::new(end.x - start.x, end.y - start.y);
+    let length = direction.length();
+    if length <= EPSILON {
+        return None;
+    }
+    let unit = direction.normalized();
+    let normal = Vector::new(-unit.y, unit.x);
+    let half_width = stroke_width * 0.5;
+    Some(bond_polygon_from_endpoint_profiles(
+        vec![
+            Point::new(
+                start.x + normal.x * half_width,
+                start.y + normal.y * half_width,
+            ),
+            Point::new(
+                start.x - normal.x * half_width,
+                start.y - normal.y * half_width,
+            ),
+        ],
+        vec![
+            Point::new(end.x - normal.x * half_width, end.y - normal.y * half_width),
+            Point::new(end.x + normal.x * half_width, end.y + normal.y * half_width),
+        ],
+    ))
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) fn main_bond_center_line_for_endpoint(
     object: &SceneObject,

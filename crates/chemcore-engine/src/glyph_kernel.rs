@@ -8,6 +8,8 @@ use std::sync::OnceLock;
 const RECT_CHAMFER_RATIO: f64 = 0.18;
 const SPECIAL_CORNER_CUT_RATIO: f64 = 0.42;
 const ELLIPSE_STEPS: usize = 20;
+const PETAL_SAMPLE_STEPS: usize = 20;
+const PETAL_RADIUS_HEIGHT_RATIO: f64 = 0.31;
 const CHEMDRAW_BOLD_SUBSCRIPT_SHIFT_DOWN_EM: f64 = 0.215;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -18,6 +20,19 @@ enum ShapeKind {
     RectCutBottomRight,
     RectCutTopLeft,
     RectCutBottomLeft,
+    PetalNEHKXZ,
+    PetalA,
+    PetalV,
+    PetalI,
+    PetalJ,
+    PetalL,
+    PetalF,
+    PetalR,
+    PetalT,
+    PetalU,
+    PetalY,
+    PetalBDP,
+    PetalQ,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -651,7 +666,14 @@ fn shape_polygon(placement: &GlyphPlacement) -> Option<Vec<[f64; 2]>> {
     }
     Some(match placement.shape_kind {
         ShapeKind::Ellipse => ellipse_polygon(placement.background_box_px),
-        _ => chamfer_polygon(placement.background_box_px, placement.shape_kind),
+        ShapeKind::Rect
+        | ShapeKind::RectCutTopRight
+        | ShapeKind::RectCutBottomRight
+        | ShapeKind::RectCutTopLeft
+        | ShapeKind::RectCutBottomLeft => {
+            chamfer_polygon(placement.background_box_px, placement.shape_kind)
+        }
+        _ => petal_polygon(placement.background_box_px, placement.shape_kind),
     })
 }
 
@@ -695,6 +717,143 @@ fn chamfer_polygon(background_box: [f64; 4], shape_kind: ShapeKind) -> Vec<[f64;
         [x1, y2 - bl],
         [x1, y1 + tl],
     ]
+}
+
+fn petal_polygon(background_box: [f64; 4], shape_kind: ShapeKind) -> Vec<[f64; 2]> {
+    let mut points = petal_base_polygon(background_box, shape_kind);
+    let [x1, y1, x2, y2] = background_box;
+    let width = (x2 - x1).max(0.1);
+    let height = (y2 - y1).max(0.1);
+    let radius = height * PETAL_RADIUS_HEIGHT_RATIO;
+    for [cx_norm, cy_norm] in petal_centers(shape_kind) {
+        let center = [x1 + width * cx_norm, y1 + height * cy_norm];
+        points.extend(circle_points(center, radius, PETAL_SAMPLE_STEPS));
+    }
+    convex_hull(points)
+}
+
+fn petal_base_polygon(background_box: [f64; 4], shape_kind: ShapeKind) -> Vec<[f64; 2]> {
+    match shape_kind {
+        ShapeKind::PetalF => chamfer_polygon(background_box, ShapeKind::RectCutBottomRight),
+        ShapeKind::PetalL => chamfer_polygon(background_box, ShapeKind::RectCutTopRight),
+        ShapeKind::PetalQ => ellipse_polygon(background_box),
+        ShapeKind::PetalNEHKXZ
+        | ShapeKind::PetalA
+        | ShapeKind::PetalV
+        | ShapeKind::PetalI
+        | ShapeKind::PetalJ
+        | ShapeKind::PetalR
+        | ShapeKind::PetalT
+        | ShapeKind::PetalU
+        | ShapeKind::PetalY
+        | ShapeKind::PetalBDP => chamfer_polygon(background_box, ShapeKind::Rect),
+        ShapeKind::Rect
+        | ShapeKind::Ellipse
+        | ShapeKind::RectCutTopRight
+        | ShapeKind::RectCutBottomRight
+        | ShapeKind::RectCutTopLeft
+        | ShapeKind::RectCutBottomLeft => chamfer_polygon(background_box, ShapeKind::Rect),
+    }
+}
+
+fn petal_centers(shape_kind: ShapeKind) -> &'static [[f64; 2]] {
+    const FOUR_CORNER: &[[f64; 2]] = &[[0.31, 0.30], [0.69, 0.30], [0.69, 0.70], [0.31, 0.70]];
+    const THREE_A: &[[f64; 2]] = &[[0.50, 0.33], [0.31, 0.70], [0.69, 0.70]];
+    const THREE_V: &[[f64; 2]] = &[[0.31, 0.30], [0.69, 0.30], [0.50, 0.67]];
+    const TWO_VERTICAL: &[[f64; 2]] = &[[0.50, 0.30], [0.50, 0.70]];
+    const ONE_TOP: &[[f64; 2]] = &[[0.50, 0.30]];
+    const THREE_L: &[[f64; 2]] = &[[0.31, 0.30], [0.69, 0.70], [0.31, 0.70]];
+    const THREE_F: &[[f64; 2]] = &[[0.31, 0.30], [0.69, 0.30], [0.31, 0.70]];
+    const THREE_T: &[[f64; 2]] = &[[0.31, 0.30], [0.50, 0.30], [0.69, 0.30]];
+    const TWO_U: &[[f64; 2]] = &[[0.31, 0.30], [0.69, 0.30]];
+    const THREE_Y: &[[f64; 2]] = &[[0.31, 0.30], [0.69, 0.30], [0.50, 0.70]];
+    const LEFT_PAIR: &[[f64; 2]] = &[[0.31, 0.30], [0.31, 0.70]];
+    const Q_TAIL: &[[f64; 2]] = &[[0.72, 0.72]];
+    match shape_kind {
+        ShapeKind::PetalNEHKXZ => FOUR_CORNER,
+        ShapeKind::PetalA => THREE_A,
+        ShapeKind::PetalV => THREE_V,
+        ShapeKind::PetalI => TWO_VERTICAL,
+        ShapeKind::PetalJ => ONE_TOP,
+        ShapeKind::PetalL => THREE_L,
+        ShapeKind::PetalF => THREE_F,
+        ShapeKind::PetalR => THREE_L,
+        ShapeKind::PetalT => THREE_T,
+        ShapeKind::PetalU => TWO_U,
+        ShapeKind::PetalY => THREE_Y,
+        ShapeKind::PetalBDP => LEFT_PAIR,
+        ShapeKind::PetalQ => Q_TAIL,
+        ShapeKind::Rect
+        | ShapeKind::Ellipse
+        | ShapeKind::RectCutTopRight
+        | ShapeKind::RectCutBottomRight
+        | ShapeKind::RectCutTopLeft
+        | ShapeKind::RectCutBottomLeft => &[],
+    }
+}
+
+fn circle_points(center: [f64; 2], radius: f64, steps: usize) -> Vec<[f64; 2]> {
+    (0..steps)
+        .map(|index| {
+            let theta = TAU * index as f64 / steps as f64;
+            [
+                center[0] + radius * theta.cos(),
+                center[1] + radius * theta.sin(),
+            ]
+        })
+        .collect()
+}
+
+fn convex_hull(mut points: Vec<[f64; 2]>) -> Vec<[f64; 2]> {
+    if points.len() <= 3 {
+        return points;
+    }
+    points.sort_by(|a, b| {
+        a[0]
+            .total_cmp(&b[0])
+            .then_with(|| a[1].total_cmp(&b[1]))
+    });
+    points.dedup_by(|a, b| (a[0] - b[0]).abs() < 1e-9 && (a[1] - b[1]).abs() < 1e-9);
+    if points.len() <= 3 {
+        return points;
+    }
+
+    let mut lower = Vec::new();
+    for point in &points {
+        while lower.len() >= 2
+            && cross(
+                lower[lower.len() - 2],
+                lower[lower.len() - 1],
+                *point,
+            ) <= 0.0
+        {
+            lower.pop();
+        }
+        lower.push(*point);
+    }
+
+    let mut upper = Vec::new();
+    for point in points.iter().rev() {
+        while upper.len() >= 2
+            && cross(
+                upper[upper.len() - 2],
+                upper[upper.len() - 1],
+                *point,
+            ) <= 0.0
+        {
+            upper.pop();
+        }
+        upper.push(*point);
+    }
+
+    lower.pop();
+    upper.pop();
+    lower.extend(upper);
+    lower
+}
+
+fn cross(a: [f64; 2], b: [f64; 2], c: [f64; 2]) -> f64 {
+    (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
 }
 
 fn clamp_corner_cut(value: f64, width: f64, height: f64) -> f64 {
@@ -842,6 +1001,19 @@ fn shape_name(shape: ShapeKind) -> &'static str {
         ShapeKind::RectCutBottomRight => "rect-cut-bottom-right",
         ShapeKind::RectCutTopLeft => "rect-cut-top-left",
         ShapeKind::RectCutBottomLeft => "rect-cut-bottom-left",
+        ShapeKind::PetalNEHKXZ => "petal-nehkxz",
+        ShapeKind::PetalA => "petal-a",
+        ShapeKind::PetalV => "petal-v",
+        ShapeKind::PetalI => "petal-i",
+        ShapeKind::PetalJ => "petal-j",
+        ShapeKind::PetalL => "petal-l",
+        ShapeKind::PetalF => "petal-f",
+        ShapeKind::PetalR => "petal-r",
+        ShapeKind::PetalT => "petal-t",
+        ShapeKind::PetalU => "petal-u",
+        ShapeKind::PetalY => "petal-y",
+        ShapeKind::PetalBDP => "petal-bdp",
+        ShapeKind::PetalQ => "petal-q",
     }
 }
 
@@ -1004,6 +1176,19 @@ fn shape_kind_from_name(shape: &str) -> ShapeKind {
         "rect-cut-bottom-right" => ShapeKind::RectCutBottomRight,
         "rect-cut-top-left" => ShapeKind::RectCutTopLeft,
         "rect-cut-bottom-left" => ShapeKind::RectCutBottomLeft,
+        "petal-nehkxz" => ShapeKind::PetalNEHKXZ,
+        "petal-a" => ShapeKind::PetalA,
+        "petal-v" => ShapeKind::PetalV,
+        "petal-i" => ShapeKind::PetalI,
+        "petal-j" => ShapeKind::PetalJ,
+        "petal-l" => ShapeKind::PetalL,
+        "petal-f" => ShapeKind::PetalF,
+        "petal-r" => ShapeKind::PetalR,
+        "petal-t" => ShapeKind::PetalT,
+        "petal-u" => ShapeKind::PetalU,
+        "petal-y" => ShapeKind::PetalY,
+        "petal-bdp" => ShapeKind::PetalBDP,
+        "petal-q" => ShapeKind::PetalQ,
         _ => panic!("unknown glyph profile shape: {shape}"),
     }
 }
@@ -1174,5 +1359,44 @@ mod tests {
             "uppercase S should generate ellipse-like clip geometry: {:?}",
             polygons[0]
         );
+    }
+
+    #[test]
+    fn nitrogen_uses_petal_family_profile() {
+        let profile = lookup_glyph_profile('N');
+        assert_eq!(profile.shape_kind, ShapeKind::PetalNEHKXZ);
+
+        let placement = layout_glyph('N', ScriptKind::Normal, LayoutConfig::default(), 0.0, 0.0);
+        let polygon = shape_polygon(&placement).expect("N should have clip geometry");
+        assert!(polygon.len() >= 12, "{polygon:?}");
+        let min_x = polygon
+            .iter()
+            .map(|point| point[0])
+            .fold(f64::INFINITY, f64::min);
+        let max_x = polygon
+            .iter()
+            .map(|point| point[0])
+            .fold(f64::NEG_INFINITY, f64::max);
+        assert!(min_x < placement.background_box_px[0], "{polygon:?}");
+        assert!(max_x > placement.background_box_px[2], "{polygon:?}");
+    }
+
+    #[test]
+    fn iodine_uses_vertical_two_lobe_profile() {
+        let profile = lookup_glyph_profile('I');
+        assert_eq!(profile.shape_kind, ShapeKind::PetalI);
+
+        let placement = layout_glyph('I', ScriptKind::Normal, LayoutConfig::default(), 0.0, 0.0);
+        let polygon = shape_polygon(&placement).expect("I should have clip geometry");
+        let min_x = polygon
+            .iter()
+            .map(|point| point[0])
+            .fold(f64::INFINITY, f64::min);
+        let max_x = polygon
+            .iter()
+            .map(|point| point[0])
+            .fold(f64::NEG_INFINITY, f64::max);
+        assert!(min_x < placement.background_box_px[0], "{polygon:?}");
+        assert!(max_x > placement.background_box_px[2], "{polygon:?}");
     }
 }
