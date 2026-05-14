@@ -6703,7 +6703,7 @@ fn render_document_keeps_terminal_side_double_outer_line_equal_length() {
 }
 
 #[test]
-fn render_document_shortens_non_terminal_side_double_by_offset_times_sqrt3_over_3() {
+fn render_document_keeps_side_double_outer_line_full_length_when_only_opposite_side_single_is_attached() {
     let document = fragment_document(
         json!([
             { "id": "n1", "element": "C", "atomicNumber": 6, "position": [20.0, 40.0], "charge": 0, "numHydrogens": 0 },
@@ -6749,14 +6749,17 @@ fn render_document_shortens_non_terminal_side_double_by_offset_times_sqrt3_over_
     let (long_index, long_length) = indexed_lengths[1];
     let short_axis = bond_axis_from_points(&polygons[short_index]).expect("short axis");
     let long_axis = bond_axis_from_points(&polygons[long_index]).expect("long axis");
-    let short_mid_y = (short_axis.0.y + short_axis.1.y) * 0.5;
-    let long_mid_y = (long_axis.0.y + long_axis.1.y) * 0.5;
-    let offset_distance = (short_mid_y - long_mid_y).abs();
-    let expected_short_length = long_length - offset_distance * (3.0f64).sqrt() / 3.0;
-
     assert!(
-        (short_length - expected_short_length).abs() < 0.05,
-        "short={short_length} expected={expected_short_length} long={long_length} offset={offset_distance}"
+        (short_length - long_length).abs() < 0.05,
+        "short={short_length} long={long_length}"
+    );
+    assert!(
+        (short_axis.0.x - 20.0).abs() < 0.05 && (short_axis.1.x - 56.0).abs() < 0.05,
+        "{short_axis:?}"
+    );
+    assert!(
+        (long_axis.0.x - 20.0).abs() < 0.05 && (long_axis.1.x - 56.0).abs() < 0.05,
+        "{long_axis:?}"
     );
 }
 

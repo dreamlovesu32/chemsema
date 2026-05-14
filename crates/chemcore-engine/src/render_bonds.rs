@@ -455,15 +455,43 @@ fn render_outer_bond_lines(
             *side,
             stroke_width,
         );
+        let start_can_match_main_length = is_side_double
+            && side_double_outer_endpoint_can_match_main_length(
+                object,
+                bonds,
+                node_map,
+                bond,
+                &bond.begin,
+                *side,
+                stroke_width,
+            );
+        let end_can_match_main_length = is_side_double
+            && side_double_outer_endpoint_can_match_main_length(
+                object,
+                bonds,
+                node_map,
+                bond,
+                &bond.end,
+                *side,
+                stroke_width,
+            );
         let (short_start, short_end) = inset_bond_segment(
             offset_start,
             offset_end,
-            if start_endpoint_profile.is_some() || begin_has_label || begin_terminal {
+            if start_endpoint_profile.is_some()
+                || begin_has_label
+                || begin_terminal
+                || start_can_match_main_length
+            {
                 0.0
             } else {
                 side_inset
             },
-            if end_endpoint_profile.is_some() || end_has_label || end_terminal {
+            if end_endpoint_profile.is_some()
+                || end_has_label
+                || end_terminal
+                || end_can_match_main_length
+            {
                 0.0
             } else {
                 side_inset

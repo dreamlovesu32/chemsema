@@ -825,6 +825,57 @@ pub(super) fn outer_bond_endpoint_profile_for_side(
     None
 }
 
+pub(super) fn side_double_outer_endpoint_can_match_main_length(
+    object: &SceneObject,
+    bonds: &[Bond],
+    node_map: &BTreeMap<&str, &Node>,
+    bond: &Bond,
+    shared_node_id: &str,
+    side: f64,
+    stroke_width: f64,
+) -> bool {
+    if side_double_placement(bond).is_none() || outer_line_pattern(bond, side) != BondLinePattern::Solid {
+        return false;
+    }
+    let current_stroke_width = stroke_width.max(bond.stroke_width);
+    let Some((_, current_center)) = outer_bond_boundary_line_pair_for_endpoint(
+        object,
+        node_map,
+        bond,
+        shared_node_id,
+        side,
+        current_stroke_width,
+    ) else {
+        return false;
+    };
+    let Some(current_local_side) = line_geometry_local_side(current_center) else {
+        return false;
+    };
+
+    for other_bond in bonds {
+        if other_bond.id == bond.id {
+            continue;
+        }
+        if other_bond.begin != shared_node_id && other_bond.end != shared_node_id {
+            continue;
+        }
+        if other_bond.order >= 2 {
+            return false;
+        }
+        if side_double_outer_line_requires_acute_retreat(
+            object,
+            node_map,
+            other_bond,
+            shared_node_id,
+            current_center,
+            current_local_side,
+        ) {
+            return false;
+        }
+    }
+    true
+}
+
 pub(super) fn line_geometry_local_side(line: LineGeometry) -> Option<f64> {
     let normal = Vector::new(-line.direction.y, line.direction.x);
     let offset = Vector::new(line.point.x - line.shared.x, line.point.y - line.shared.y);
