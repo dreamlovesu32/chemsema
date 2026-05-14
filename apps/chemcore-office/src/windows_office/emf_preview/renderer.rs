@@ -2221,7 +2221,7 @@ const PREVIEW_BOND_STROKE_COLLINEAR_TOLERANCE_WIDTH_FACTOR: f64 = 0.18;
 const PREVIEW_BOND_STROKE_EDGE_WIDTH_MIN_RATIO: f64 = 0.55;
 const PREVIEW_BOND_STROKE_EDGE_WIDTH_MAX_RATIO: f64 = 1.45;
 const PREVIEW_BOND_STROKE_EDGE_AXIS_MAX_RATIO: f64 = 0.25;
-const PREVIEW_BOND_STROKE_OPTICAL_WIDTH_SCALE: f64 = 1.83;
+const PREVIEW_BOND_STROKE_OPTICAL_WIDTH_SCALE: f64 = 1.0;
 
 fn preview_pen_style(line_cap: Option<&str>, line_join: Option<&str>, style: i32) -> u32 {
     let cap = match line_cap {
