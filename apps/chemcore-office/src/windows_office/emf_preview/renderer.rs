@@ -126,7 +126,7 @@ impl PreviewTransform {
 
     fn gdip_length(&self, value: f64) -> f32 {
         if self.emf_recording {
-            value.abs().max(0.01) as f32
+            (value.abs() as f32 / CHEMDRAW_EMF_PAGE_SCALE).max(0.01)
         } else {
             (value.abs() * self.scale).max(0.01) as f32
         }
