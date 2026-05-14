@@ -2257,7 +2257,10 @@ const PREVIEW_BOND_STROKE_COLLINEAR_TOLERANCE_WIDTH_FACTOR: f64 = 0.18;
 const PREVIEW_BOND_STROKE_EDGE_WIDTH_MIN_RATIO: f64 = 0.55;
 const PREVIEW_BOND_STROKE_EDGE_WIDTH_MAX_RATIO: f64 = 1.45;
 const PREVIEW_BOND_STROKE_EDGE_AXIS_MAX_RATIO: f64 = 0.25;
-const PREVIEW_BOND_STROKE_OPTICAL_WIDTH_SCALE: f64 = 1.83;
+// Keep pen-converted bond polygons aligned with the kernel/document strokeWidth.
+// The document payload already carries the intended bond width (for this file: 2.64),
+// so the Office preview should not apply an extra optical inflation here.
+const PREVIEW_BOND_STROKE_OPTICAL_WIDTH_SCALE: f64 = 1.0;
 
 fn preview_pen_style(line_cap: Option<&str>, line_join: Option<&str>, style: i32) -> u32 {
     let cap = match line_cap {
@@ -4005,9 +4008,7 @@ mod tests {
         assert!((stroke_line.start.y - 1.32).abs() < 1.0e-6);
         assert!((stroke_line.end.x - 20.0).abs() < 1.0e-6);
         assert!((stroke_line.end.y - 1.32).abs() < 1.0e-6);
-        assert!(
-            (stroke_line.width - 2.64 * PREVIEW_BOND_STROKE_OPTICAL_WIDTH_SCALE).abs() < 1.0e-6
-        );
+        assert!((stroke_line.width - 2.64).abs() < 1.0e-6);
     }
 
     #[test]
@@ -4060,9 +4061,7 @@ mod tests {
             point(714.35, 704.9),
         ], None, None)
         .expect("short thin N-O bond should still convert to a stroke");
-        assert!(
-            (stroke_line.width - 2.64 * PREVIEW_BOND_STROKE_OPTICAL_WIDTH_SCALE).abs() < 1.0e-6
-        );
+        assert!((stroke_line.width - 2.64).abs() < 1.0e-6);
     }
 
     #[test]
