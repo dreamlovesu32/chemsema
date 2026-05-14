@@ -3237,6 +3237,7 @@ struct PreviewBondInfo {
     end_projection: f64,
     axis_normal_projection: f64,
     side_double: bool,
+    center_double: bool,
     start_has_label: bool,
     end_has_label: bool,
 }
@@ -3308,6 +3309,7 @@ fn preview_bond_context_from_document(document: &ChemcoreDocument) -> PreviewBon
                     end_projection: end_world.x * axis.x + end_world.y * axis.y,
                     axis_normal_projection: begin_world.x * -axis.y + begin_world.y * axis.x,
                     side_double: preview_bond_is_side_double(bond),
+                    center_double: bond.order == 2 && !preview_bond_is_side_double(bond),
                     start_has_label,
                     end_has_label,
                 },
@@ -3517,6 +3519,14 @@ fn preview_bond_stroke_line(
             .map(|info| info.end_projection)
             .unwrap_or(max_projection);
         if let Some(info) = bond_info {
+            if info.center_double {
+                if let Some(edge) = start_edge {
+                    start_axis_projection = edge.center.x * axis.x + edge.center.y * axis.y;
+                }
+                if let Some(edge) = end_edge {
+                    end_axis_projection = edge.center.x * axis.x + edge.center.y * axis.y;
+                }
+            }
             if info.start_has_label {
                 if let Some(edge) = start_edge {
                     start_axis_projection = edge.center.x * axis.x + edge.center.y * axis.y;
@@ -3988,6 +3998,7 @@ mod tests {
                 end_projection,
                 axis_normal_projection: 0.0,
                 side_double: false,
+                center_double: false,
                 start_has_label: false,
                 end_has_label: false,
             },
@@ -4091,6 +4102,7 @@ mod tests {
                 end_projection: 20.0,
                 axis_normal_projection: 0.0,
                 side_double: false,
+                center_double: false,
                 start_has_label: false,
                 end_has_label: false,
             },
@@ -4103,6 +4115,40 @@ mod tests {
         ], Some("b1"), Some(&context))
         .expect("joined end should still convert");
         assert!((stroke_line.start.x + 3.0).abs() < 1.0e-6);
+        assert!((stroke_line.end.x - 20.0).abs() < 1.0e-6);
+    }
+
+    #[test]
+    fn preview_bond_stroke_line_uses_terminal_edge_center_for_center_double_projection() {
+        let axis = preview_normalize_axis(point(1.0, 0.0)).expect("axis");
+        let mut context = context_with_bond("b1", axis, true, 0.0, 18.0);
+        context.infos.insert(
+            "b1".to_string(),
+            PreviewBondInfo {
+                axis,
+                allow_pen: true,
+                start_projection: 0.0,
+                end_projection: 18.0,
+                axis_normal_projection: 0.0,
+                side_double: false,
+                center_double: true,
+                start_has_label: false,
+                end_has_label: false,
+            },
+        );
+        let stroke_line = preview_bond_stroke_line(
+            &[
+                point(0.0, 0.0),
+                point(18.0, 0.0),
+                point(20.0, 1.32),
+                point(18.0, 2.64),
+                point(0.0, 2.64),
+            ],
+            Some("b1"),
+            Some(&context),
+        )
+        .expect("center-double joined end should convert");
+        assert!((stroke_line.start.x - 0.0).abs() < 1.0e-6);
         assert!((stroke_line.end.x - 20.0).abs() < 1.0e-6);
     }
 
@@ -4137,6 +4183,7 @@ mod tests {
                 end_projection: 20.0,
                 axis_normal_projection: 0.0,
                 side_double: true,
+                center_double: false,
                 start_has_label: false,
                 end_has_label: false,
             },
@@ -4171,6 +4218,7 @@ mod tests {
                 end_projection: 12.0,
                 axis_normal_projection: 0.0,
                 side_double: false,
+                center_double: false,
                 start_has_label: false,
                 end_has_label: true,
             },
