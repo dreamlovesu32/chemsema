@@ -3520,11 +3520,22 @@ fn preview_bond_stroke_line(
             .unwrap_or(max_projection);
         if let Some(info) = bond_info {
             if info.center_double {
+                let cap_radius = stroke_width * 0.5;
                 if let Some(edge) = start_edge {
-                    start_axis_projection = edge.center.x * axis.x + edge.center.y * axis.y;
+                    let edge_projection = edge.center.x * axis.x + edge.center.y * axis.y;
+                    start_axis_projection = if edge_projection < info.start_projection - 1.0e-6 {
+                        edge_projection + cap_radius
+                    } else {
+                        info.start_projection
+                    };
                 }
                 if let Some(edge) = end_edge {
-                    end_axis_projection = edge.center.x * axis.x + edge.center.y * axis.y;
+                    let edge_projection = edge.center.x * axis.x + edge.center.y * axis.y;
+                    end_axis_projection = if edge_projection > info.end_projection + 1.0e-6 {
+                        edge_projection - cap_radius
+                    } else {
+                        info.end_projection
+                    };
                 }
             }
             if info.start_has_label {
@@ -4149,7 +4160,7 @@ mod tests {
         )
         .expect("center-double joined end should convert");
         assert!((stroke_line.start.x - 0.0).abs() < 1.0e-6);
-        assert!((stroke_line.end.x - 20.0).abs() < 1.0e-6);
+        assert!((stroke_line.end.x - 18.68).abs() < 1.0e-6);
     }
 
     #[test]
