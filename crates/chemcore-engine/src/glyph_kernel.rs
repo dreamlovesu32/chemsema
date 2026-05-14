@@ -673,7 +673,7 @@ fn shape_polygon(placement: &GlyphPlacement) -> Option<Vec<[f64; 2]>> {
         | ShapeKind::RectCutBottomLeft => {
             chamfer_polygon(placement.background_box_px, placement.shape_kind)
         }
-        _ => petal_polygon(placement.background_box_px, placement.shape_kind),
+        _ => petal_polygon(placement),
     })
 }
 
@@ -705,7 +705,21 @@ fn chamfer_polygon(background_box: [f64; 4], shape_kind: ShapeKind) -> Vec<[f64;
         ShapeKind::RectCutBottomRight => br = special,
         ShapeKind::RectCutTopLeft => tl = special,
         ShapeKind::RectCutBottomLeft => bl = special,
-        ShapeKind::Rect | ShapeKind::Ellipse => {}
+        ShapeKind::Rect
+        | ShapeKind::Ellipse
+        | ShapeKind::PetalNEHKXZ
+        | ShapeKind::PetalA
+        | ShapeKind::PetalV
+        | ShapeKind::PetalI
+        | ShapeKind::PetalJ
+        | ShapeKind::PetalL
+        | ShapeKind::PetalF
+        | ShapeKind::PetalR
+        | ShapeKind::PetalT
+        | ShapeKind::PetalU
+        | ShapeKind::PetalY
+        | ShapeKind::PetalBDP
+        | ShapeKind::PetalQ => {}
     }
     vec![
         [x1 + tl, y1],
@@ -719,13 +733,16 @@ fn chamfer_polygon(background_box: [f64; 4], shape_kind: ShapeKind) -> Vec<[f64;
     ]
 }
 
-fn petal_polygon(background_box: [f64; 4], shape_kind: ShapeKind) -> Vec<[f64; 2]> {
-    let mut points = petal_base_polygon(background_box, shape_kind);
-    let [x1, y1, x2, y2] = background_box;
+fn petal_polygon(placement: &GlyphPlacement) -> Vec<[f64; 2]> {
+    let mut points = petal_base_polygon(placement.background_box_px, placement.shape_kind);
+    if !placement.codepoint.is_ascii_uppercase() {
+        return points;
+    }
+    let [x1, y1, x2, y2] = placement.background_box_px;
     let width = (x2 - x1).max(0.1);
     let height = (y2 - y1).max(0.1);
     let radius = height * PETAL_RADIUS_HEIGHT_RATIO;
-    for [cx_norm, cy_norm] in petal_centers(shape_kind) {
+    for [cx_norm, cy_norm] in petal_centers(placement.shape_kind) {
         let center = [x1 + width * cx_norm, y1 + height * cy_norm];
         points.extend(circle_points(center, radius, PETAL_SAMPLE_STEPS));
     }
@@ -1398,5 +1415,50 @@ mod tests {
             .fold(f64::NEG_INFINITY, f64::max);
         assert!(min_x < placement.background_box_px[0], "{polygon:?}");
         assert!(max_x > placement.background_box_px[2], "{polygon:?}");
+    }
+
+    #[test]
+    fn lowercase_petal_shapes_do_not_add_circle_lobes() {
+        let upper = GlyphPlacement {
+            codepoint: 'N',
+            script: ScriptKind::Normal,
+            visible: true,
+            font_size_px: 11.0,
+            origin_x_px: 0.0,
+            baseline_y_px: 0.0,
+            advance_px: 0.0,
+            background_box_px: [0.0, 0.0, 10.0, 10.0],
+            shape_kind: ShapeKind::PetalNEHKXZ,
+        };
+        let lower = GlyphPlacement {
+            codepoint: 'n',
+            ..upper.clone()
+        };
+
+        let upper_polygon = shape_polygon(&upper).expect("uppercase petal polygon");
+        let lower_polygon = shape_polygon(&lower).expect("lowercase petal polygon");
+        let lower_base = petal_base_polygon(lower.background_box_px, lower.shape_kind);
+
+        let lower_min_x = lower_polygon
+            .iter()
+            .map(|point| point[0])
+            .fold(f64::INFINITY, f64::min);
+        let lower_max_x = lower_polygon
+            .iter()
+            .map(|point| point[0])
+            .fold(f64::NEG_INFINITY, f64::max);
+        let lower_base_min_x = lower_base
+            .iter()
+            .map(|point| point[0])
+            .fold(f64::INFINITY, f64::min);
+        let lower_base_max_x = lower_base
+            .iter()
+            .map(|point| point[0])
+            .fold(f64::NEG_INFINITY, f64::max);
+
+        assert!(upper_polygon.len() > lower_base.len(), "{upper_polygon:?}");
+        assert!((lower_min_x - lower_base_min_x).abs() < 1e-9, "{lower_polygon:?}");
+        assert!((lower_max_x - lower_base_max_x).abs() < 1e-9, "{lower_polygon:?}");
+        assert_eq!(lower_polygon, lower_base);
     }
 }
