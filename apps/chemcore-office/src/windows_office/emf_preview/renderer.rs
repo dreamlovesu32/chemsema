@@ -1706,8 +1706,14 @@ unsafe fn draw_gdiplus_text_run(
         (run.font_size.unwrap_or(fallback_font_size) * script_scale * gdiplus_text_scale(transform))
         .max(1.0) as f32;
     let baseline_top_factor = if transform.emf_recording { 0.88 } else { 0.86 };
+    // Packaged dual-EMF text is sensitive to small vertical threshold shifts in
+    // the DrawString rect. A tiny positive bias here keeps packaged fallback
+    // tokenization aligned with ChemDraw on mixed-script lines without changing
+    // the GDI fallback x positions.
+    let packaged_top_bias = if transform.emf_recording { 0.3 } else { 0.0 };
     let top = baseline_y - (font_px * baseline_top_factor)
-        + preview_script_baseline_shift_f32(run, fallback_font_size, transform);
+        + preview_script_baseline_shift_f32(run, fallback_font_size, transform)
+        + packaged_top_bias;
     let rect = RectF {
         X: x,
         Y: top,
