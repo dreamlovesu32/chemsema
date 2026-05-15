@@ -1089,3 +1089,30 @@ ChemDraw 的 fallback 记录是：
   - 这进一步支持上一条结论：
     - 问题由 `source/top -> scale -> emSize` 的极小切换触发
     - 而不是笼统的上下文或对象种类污染
+
+### Experiment: zero-layout DrawString for standalone whitespace (packaged EMF)
+- Hypothesis:
+  - If dual fallback is dropping standalone `" "` because its nonzero layout rectangle is treated as a clipped/no-op trailing-space case, then forcing whitespace-only runs to use a point-style / zero-layout `DrawString` should restore the fallback `EMR_EXTTEXTOUTW " "`.
+- Code path touched:
+  - `apps/chemcore-office/src/windows_office/emf_preview/renderer.rs`
+  - `draw_gdiplus_text_run()`
+  - For `transform.emf_recording && run.text.chars().all(char::is_whitespace)`, use `RectF { X: x, Y: top, Width: 0.0, Height: 0.0 }`.
+- Validation sample:
+  - bad threshold case: `tmp/fixed-selection/free-x-y-sweep/y-266_67.payload.json`
+  - regenerated output: `y-266_67.zero-space.emf`
+- Actual result:
+  - The reagent-line standalone space still exists at the EMF+ layer as `DrawString text=" "`.
+  - But fallback still skips the corresponding `EMR_EXTTEXTOUTW " "` on the bad threshold case.
+  - The title-line standalone space still behaves normally.
+  - The regenerated trace still shows reagent sequence as:
+    - `Ph`
+    - `DrawString " "` present
+    - no fallback `EXTTEXTOUTW " "`
+    - `"(3 "`
+- Conclusion:
+  - The presence/absence of the fallback space is **not controlled simply by the standalone whitespace token's layout-rect width/height**.
+  - This weakens the “standalone space is dropped only because its own layoutRect is nonzero” hypothesis.
+  - The remaining root cause is more likely tied to the broader packaged dual-fallback threshold behavior (font scale / context / fallback conversion), not the whitespace token's own rectangle alone.
+- Status:
+  - Experiment failed.
+  - Product code should be reverted; keep only the finding.
