@@ -1484,6 +1484,13 @@ unsafe fn draw_gdiplus_text(
     runs: &[chemcore_engine::LabelRun],
     transform: &PreviewTransform,
 ) -> bool {
+    if transform.emf_recording {
+        GdipSetPageUnit(graphics, UnitPixel);
+        GdipSetPageScale(graphics, 1.0);
+        GdipSetPageScale(graphics, CHEMDRAW_EMF_PAGE_SCALE);
+        GdipSetSmoothingMode(graphics, SmoothingModeAntiAlias);
+        GdipSetTextRenderingHint(graphics, TextRenderingHintAntiAlias);
+    }
     let line_step_world = line_height.unwrap_or(font_size * 1.2).max(0.01);
     let lines = preview_text_lines(text, runs);
     let layouts = gdiplus_text_layout(graphics, &lines, font_size, font_family, transform);
