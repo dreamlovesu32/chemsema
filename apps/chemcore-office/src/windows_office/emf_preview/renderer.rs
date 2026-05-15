@@ -260,18 +260,11 @@ pub(super) unsafe fn enhanced_metafile_gdiplus_dual_preview(
     let use_gdiplus_text = gdiplus_text_preview_enabled();
     let bond_context = preview_bond_context(payload);
     let mut gdi_cache = PreviewGdiCache::default();
-    let mut gdiplus_text_cache = PreviewGdiplusTextCache::default();
     let mut ok = true;
     for primitive in visible {
         if matches!(primitive, RenderPrimitive::Text { .. }) {
             let drawn = use_gdiplus_text
-                && draw_gdiplus_primitive(
-                    graphics,
-                    primitive,
-                    &transform,
-                    bond_context.as_ref(),
-                    &mut gdiplus_text_cache,
-                );
+                && draw_gdiplus_primitive(graphics, primitive, &transform, bond_context.as_ref());
             if !drawn
                 && !draw_gdi_primitive_in_gdiplus(
                     graphics,
@@ -284,13 +277,7 @@ pub(super) unsafe fn enhanced_metafile_gdiplus_dual_preview(
                 ok = false;
                 break;
             }
-        } else if !draw_gdiplus_primitive(
-            graphics,
-            primitive,
-            &transform,
-            bond_context.as_ref(),
-            &mut gdiplus_text_cache,
-        ) {
+        } else if !draw_gdiplus_primitive(graphics, primitive, &transform, bond_context.as_ref()) {
             if !draw_gdi_primitive_in_gdiplus(
                 graphics,
                 primitive,
@@ -304,7 +291,6 @@ pub(super) unsafe fn enhanced_metafile_gdiplus_dual_preview(
         }
     }
     gdi_cache.delete_objects();
-    gdiplus_text_cache.delete_objects();
     GdipDeleteGraphics(graphics);
     if !ok {
         GdipDisposeImage(metafile as *mut GpImage);
@@ -395,7 +381,7 @@ unsafe fn draw_payload_vector_preview_internal(
         return false;
     };
 
-    let mut gdi_cache = PreviewGdiCache::default();
+    let mut cache = PreviewGdiCache::default();
     let bond_context = preview_bond_context(payload);
     let mut vector_scope = 0;
     let mut active_record_scale = 1.0;
@@ -425,7 +411,7 @@ unsafe fn draw_payload_vector_preview_internal(
                     dc,
                     primitive,
                     &vector_transform,
-                    &mut gdi_cache,
+                    &mut cache,
                     bond_context.as_ref(),
                 );
                 continue;
@@ -434,18 +420,12 @@ unsafe fn draw_payload_vector_preview_internal(
             RestoreDC(dc, vector_scope);
             vector_scope = 0;
         }
-        draw_preview_primitive(
-            dc,
-            primitive,
-            &transform,
-            &mut gdi_cache,
-            bond_context.as_ref(),
-        );
+        draw_preview_primitive(dc, primitive, &transform, &mut cache, bond_context.as_ref());
     }
     if vector_scope != 0 {
         RestoreDC(dc, vector_scope);
     }
-    gdi_cache.delete_objects();
+    cache.delete_objects();
     true
 }
 
@@ -939,7 +919,6 @@ unsafe fn draw_gdiplus_primitive(
     primitive: &RenderPrimitive,
     transform: &PreviewTransform,
     bond_context: Option<&PreviewBondContext>,
-    text_cache: &mut PreviewGdiplusTextCache,
 ) -> bool {
     let save_restore = transform.emf_recording
         && matches!(
@@ -1141,7 +1120,6 @@ unsafe fn draw_gdiplus_primitive(
             *line_height,
             runs,
             transform,
-            text_cache,
         ),
     };
     if save_restore {
@@ -1505,11 +1483,10 @@ unsafe fn draw_gdiplus_text(
     line_height: Option<f64>,
     runs: &[chemcore_engine::LabelRun],
     transform: &PreviewTransform,
-    cache: &mut PreviewGdiplusTextCache,
 ) -> bool {
     let line_step_world = line_height.unwrap_or(font_size * 1.2).max(0.01);
     let lines = preview_text_lines(text, runs);
-    let layouts = gdiplus_text_layout(graphics, &lines, font_size, font_family, transform, cache);
+    let layouts = gdiplus_text_layout(graphics, &lines, font_size, font_family, transform);
     let mut ok = true;
     for (index, line_runs) in lines.iter().enumerate() {
         if line_runs.is_empty() {
@@ -1539,7 +1516,6 @@ unsafe fn draw_gdiplus_text(
                 font_family,
                 fill,
                 transform,
-                cache,
             );
             cursor_x += run_layout.dx + run_layout.advance;
         }
@@ -1557,41 +1533,12 @@ struct GdiplusTextRunLayout {
     advance: f32,
 }
 
-#[derive(Clone, PartialEq, Eq)]
-struct GdiplusFontKey {
-    family: String,
-    style: i32,
-    em_bits: u32,
-}
-
-#[derive(Default)]
-struct PreviewGdiplusTextCache {
-    fonts: Vec<(GdiplusFontKey, *mut GpFont)>,
-    string_format: Option<*mut GpStringFormat>,
-}
-
-impl PreviewGdiplusTextCache {
-    unsafe fn delete_objects(&mut self) {
-        for (_, font) in self.fonts.drain(..) {
-            if !font.is_null() {
-                GdipDeleteFont(font);
-            }
-        }
-        if let Some(format) = self.string_format.take() {
-            if !format.is_null() {
-                GdipDeleteStringFormat(format);
-            }
-        }
-    }
-}
-
 unsafe fn gdiplus_text_layout(
     graphics: *mut GpGraphics,
     lines: &[Vec<PreviewTextRun>],
     fallback_font_size: f64,
     fallback_family: Option<&str>,
     transform: &PreviewTransform,
-    cache: &mut PreviewGdiplusTextCache,
 ) -> Vec<GdiplusTextLineLayout> {
     let dc = CreateCompatibleDC(null_mut());
     if dc.is_null() {
@@ -1613,7 +1560,7 @@ unsafe fn gdiplus_text_layout(
             })
             .collect();
     }
-    let mut gdi_cache = PreviewGdiCache::default();
+    let mut cache = PreviewGdiCache::default();
     let layouts = lines
         .iter()
         .map(|runs| {
@@ -1628,7 +1575,6 @@ unsafe fn gdiplus_text_layout(
                         fallback_font_size,
                         fallback_family,
                         transform,
-                        cache,
                     )
                     .unwrap_or_else(|| {
                         preview_text_run_extent(
@@ -1637,7 +1583,7 @@ unsafe fn gdiplus_text_layout(
                             fallback_font_size,
                             fallback_family,
                             transform,
-                            &mut gdi_cache,
+                            &mut cache,
                         ) as f32
                     });
                     width += dx + advance;
@@ -1650,7 +1596,7 @@ unsafe fn gdiplus_text_layout(
             }
         })
         .collect();
-    gdi_cache.delete_objects();
+    cache.delete_objects();
     DeleteDC(dc);
     layouts
 }
@@ -1661,13 +1607,15 @@ unsafe fn gdiplus_text_run_advance(
     fallback_font_size: f64,
     fallback_family: Option<&str>,
     transform: &PreviewTransform,
-    cache: &mut PreviewGdiplusTextCache,
 ) -> Option<f32> {
     if run.text.is_empty() {
         return Some(0.0);
     }
-    let font = gdiplus_font_from_cache(cache, run, fallback_font_size, fallback_family, transform)?;
-    let format = gdiplus_string_format_from_cache(cache)?;
+    let font = create_gdiplus_font(run, fallback_font_size, fallback_family, transform)?;
+    let Some(format) = create_gdiplus_string_format() else {
+        GdipDeleteFont(font);
+        return None;
+    };
     let wide: Vec<u16> = run.text.encode_utf16().collect();
     let width = gdiplus_measure_text_width(
         graphics,
@@ -1678,6 +1626,8 @@ unsafe fn gdiplus_text_run_advance(
         fallback_font_size,
         transform,
     );
+    GdipDeleteStringFormat(format);
+    GdipDeleteFont(font);
     width
 }
 
@@ -1733,21 +1683,22 @@ unsafe fn draw_gdiplus_text_run(
     fallback_family: Option<&str>,
     fallback_fill: Option<&str>,
     transform: &PreviewTransform,
-    cache: &mut PreviewGdiplusTextCache,
 ) -> bool {
     if run.text.is_empty() {
         return true;
     }
-    let Some(font) = gdiplus_font_from_cache(cache, run, fallback_font_size, fallback_family, transform)
+    let Some(font) = create_gdiplus_font(run, fallback_font_size, fallback_family, transform)
     else {
         return false;
     };
     let fill = run.fill.as_deref().or(fallback_fill).unwrap_or("#000000");
     let Some(brush) = create_gdiplus_solid_brush(fill) else {
+        GdipDeleteFont(font);
         return false;
     };
-    let Some(format) = gdiplus_string_format_from_cache(cache) else {
+    let Some(format) = create_gdiplus_string_format() else {
         GdipDeleteBrush(brush);
+        GdipDeleteFont(font);
         return false;
     };
     let script_scale = preview_script_scale(run.script.as_deref());
@@ -1757,20 +1708,11 @@ unsafe fn draw_gdiplus_text_run(
     let baseline_top_factor = if transform.emf_recording { 0.88 } else { 0.86 };
     let top = baseline_y - (font_px * baseline_top_factor)
         + preview_script_baseline_shift_f32(run, fallback_font_size, transform);
-    let rect = if transform.emf_recording {
-        RectF {
-            X: x,
-            Y: top,
-            Width: 0.0,
-            Height: 0.0,
-        }
-    } else {
-        RectF {
-            X: x,
-            Y: top,
-            Width: (advance * 1.8).max(font_px * 0.5),
-            Height: (font_px * 1.45).max(1.0),
-        }
+    let rect = RectF {
+        X: x,
+        Y: top,
+        Width: (advance * 1.8).max(font_px * 0.5),
+        Height: (font_px * 1.45).max(1.0),
     };
     let wide: Vec<u16> = run.text.encode_utf16().collect();
     let ok = GdipDrawString(
@@ -1782,68 +1724,10 @@ unsafe fn draw_gdiplus_text_run(
         format,
         brush,
     ) == GDI_PLUS_OK;
+    GdipDeleteStringFormat(format);
     GdipDeleteBrush(brush);
+    GdipDeleteFont(font);
     ok
-}
-
-fn gdiplus_font_key(
-    run: &PreviewTextRun,
-    fallback_font_size: f64,
-    fallback_family: Option<&str>,
-    transform: &PreviewTransform,
-) -> GdiplusFontKey {
-    let family = run
-        .font_family
-        .as_deref()
-        .or(fallback_family)
-        .unwrap_or("Arial")
-        .to_string();
-    let mut style = FontStyleRegular;
-    if run.font_weight.unwrap_or(400) >= 600 {
-        style |= FontStyleBold;
-    }
-    if run.font_style.as_deref() == Some("italic") {
-        style |= FontStyleItalic;
-    }
-    if run.underline.unwrap_or(false) {
-        style |= FontStyleUnderline;
-    }
-    let script_scale = preview_script_scale(run.script.as_deref());
-    let em_size =
-        (run.font_size.unwrap_or(fallback_font_size) * script_scale * gdiplus_text_scale(transform))
-            .max(0.1) as f32;
-    GdiplusFontKey {
-        family,
-        style,
-        em_bits: em_size.to_bits(),
-    }
-}
-
-unsafe fn gdiplus_font_from_cache(
-    cache: &mut PreviewGdiplusTextCache,
-    run: &PreviewTextRun,
-    fallback_font_size: f64,
-    fallback_family: Option<&str>,
-    transform: &PreviewTransform,
-) -> Option<*mut GpFont> {
-    let key = gdiplus_font_key(run, fallback_font_size, fallback_family, transform);
-    if let Some((_, font)) = cache.fonts.iter().find(|(candidate, _)| *candidate == key) {
-        return Some(*font);
-    }
-    let font = create_gdiplus_font(run, fallback_font_size, fallback_family, transform)?;
-    cache.fonts.push((key, font));
-    Some(font)
-}
-
-unsafe fn gdiplus_string_format_from_cache(
-    cache: &mut PreviewGdiplusTextCache,
-) -> Option<*mut GpStringFormat> {
-    if let Some(format) = cache.string_format {
-        return Some(format);
-    }
-    let format = create_gdiplus_string_format()?;
-    cache.string_format = Some(format);
-    Some(format)
 }
 
 unsafe fn create_gdiplus_font(
