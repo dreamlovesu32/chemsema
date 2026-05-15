@@ -1328,3 +1328,50 @@ ChemDraw 的 fallback 记录是：
 - Status:
   - Experiment failed as a production path.
   - Revert the code change and return to token-level analysis on the real document.
+
+### Production fallback token baseline (v62 vs ChemDraw)
+- Goal:
+  - Stop overfitting to the synthetic `standalone " "` threshold case.
+  - Re-anchor the investigation on the real packaged production file:
+    - `tmp/thiocyanation-source.v62.emf.records.json`
+    - `tmp/thiocyanation-source.chemdraw.emf.records.json`
+- New reusable tool:
+  - `scripts/emf-text-compare.mjs`
+  - Purpose:
+    - compare `EMR_EXTTEXTOUTW` token sequences between two `.records.json`
+    - region-filtered
+    - LCS-aligned, so missing standalone spaces stay visible instead of shifting every later row
+- Generated reports:
+  - title / conditions / reagent / `CH3CN` block:
+    - `tmp/v62-chemdraw-title-conditions.md`
+  - catalyst lower-right labels:
+    - `tmp/v62-chemdraw-catalyst.md`
+  - yield / `d.r.` block:
+    - `tmp/v62-chemdraw-yield.md`
+- Hard findings from the real production file:
+  - Title / conditions / reagent block is **systematically low by `+2 px`** in our packaged fallback text.
+  - Representative rows:
+    - `4DPAIPN<sp>`: `(652,316)` vs `(650,314)` => `dx=+2`, `dy=+2`
+    - `Cu(MeCN)`: `(541,347)` vs `(541,345)` => `dx=0`, `dy=+2`
+    - `PF`: `(681,347)` vs `(681,345)` => `dx=0`, `dy=+2`
+    - missing fallback space after `6`: ChemDraw has standalone `<sp>` at `(726,345)`; ours has no matching `EMR_EXTTEXTOUTW`
+    - reagent line `PhthNCO / SCH / Ph / <sp> / (3<sp>` is also uniformly `dy=+2`
+  - `CH3CN` line is a special case:
+    - `CH`: `(670,457)` vs `(677,455)` => `dx=-7`, `dy=+2`
+    - `CN<sp>`: `(720,457)` vs `(727,455)` => `dx=-7`, `dy=+2`
+    - `(0.2<sp>)`: `(766,457)` vs `(773,455)` => `dx=-7`, `dy=+2`
+    - following standalone `<sp>`: `(857,457)` vs `(864,455)` => `dx=-7`, `dy=+2`
+  - Yield block is much closer:
+    - first line mostly `dy=+1`
+    - second line mostly `dy=+2`, `dx` near `0`
+  - Catalyst lower-right structure labels are already very close:
+    - average `dx ≈ 0.1`
+    - average `dy ≈ 0.2`
+- Interpretation:
+  - The current dominant production mismatch is **not** the synthetic standalone-space threshold alone.
+  - In the real packaged document, the remaining production error is primarily:
+    - a broad fallback text baseline shift (`dy ≈ +2 px`) on the central title / reagent block
+    - plus a line-specific anchor shift on `CH3CN` (`dx ≈ -7 px`)
+  - Therefore the next production experiments should target:
+    - packaged fallback baseline / anchor positioning on the real document
+    - not more synthetic top-bounds-only fixes
