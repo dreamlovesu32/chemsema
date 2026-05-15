@@ -1184,3 +1184,63 @@ ChemDraw 的 fallback 记录是：
 - Status:
   - Experiment failed as a fix.
   - Keep the finding, revert the temporary point-style hook.
+
+### Experiment: packaged text top-nudge threshold
+- Hypothesis:
+  - Since the bad free-text-top case already correlates with a `source_bounds.top` lift and a `scale`-axis switch, maybe the real trigger is not `emSize` alone but the packaged text run's **vertical placement** (`RectF.Y` / top) crossing a fallback threshold.
+- Code path touched:
+  - `apps/chemcore-office/src/windows_office/emf_preview/renderer.rs`
+  - `draw_gdiplus_text_run()`
+  - Add experiment-only env var:
+    - `CHEMCORE_OFFICE_EXPERIMENT_TEXT_TOP_NUDGE`
+    - when `transform.emf_recording`, add a positive delta to the packaged text `top`
+- Validation sample:
+  - bad threshold case:
+    - `tmp/fixed-selection/free-x-y-sweep/y-266_67.payload.json`
+  - generated outputs:
+    - `y-266_67.top-0_05.emf`
+    - `y-266_67.top-0_1.emf`
+    - `y-266_67.top-0_2.emf`
+    - `y-266_67.top-0_3.emf`
+    - `y-266_67.top-0_4.emf`
+    - `y-266_67.top-0_5.emf`
+    - `y-266_67.top-1.emf`
+    - `y-266_67.top-1_03.emf`
+    - `y-266_67.top-1_1.emf`
+    - `y-266_67.top-1_5.emf`
+- Actual result:
+  - The title-line standalone space (`PF₆` boundary) exists for every nudge value and is not the discriminator.
+  - The reagent-line standalone space shows a **sharp threshold**:
+    - `top_nudge = 0.05 / 0.1 / 0.2`
+      - fallback remains bad:
+        - `Ph`
+        - **no fallback `EMR_EXTTEXTOUTW " "`**
+        - `"(3 "`
+    - `top_nudge = 0.3` and above
+      - fallback becomes good:
+        - `Ph`
+        - `" "`
+        - `"(3 "`
+  - Summary table:
+    - `0.05 -> bad`
+    - `0.10 -> bad`
+    - `0.20 -> bad`
+    - `0.30 -> good`
+    - `0.40 -> good`
+    - `0.50 -> good`
+    - `1.00 -> good`
+    - `1.03 -> good`
+    - `1.10 -> good`
+    - `1.50 -> good`
+- Conclusion:
+  - The fallback-space bug is controlled by a **vertical-placement threshold** in packaged dual EMF.
+  - This is stronger than the earlier `emSize` correlation:
+    - clamping `EmfPlusFont emSize` back into the "good" bucket is **not sufficient**
+    - forcing zero-layout rects is **not sufficient**
+    - but nudging packaged text `top` by about `+0.3` page-space units **is sufficient**
+  - The most accurate current statement is:
+    - `source_bounds.top` / scale-axis switching matters because it perturbs packaged text `RectF.Y`
+    - and the dual fallback converter has a sharp Y-threshold around that location
+- Status:
+  - Experiment produced a real narrowing result.
+  - Product code should still be reverted; keep only the threshold finding.
