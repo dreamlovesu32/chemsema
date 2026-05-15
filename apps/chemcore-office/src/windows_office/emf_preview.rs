@@ -344,10 +344,11 @@ pub(super) fn enhanced_metafile_for_payload(
         let use_chemdraw_units = payload_uses_cdxml_editing_scale(payload);
         let (frame_bounds, draw_bounds, source_bounds, use_logical_preview_coords) =
             if let Some(visible_bounds) = visible_payload_bounds(payload) {
+                let canvas_bounds = preview_source_bounds(payload).unwrap_or(visible_bounds);
                 (
-                    office_preview_frame_bounds(visible_bounds, use_chemdraw_units),
-                    office_preview_logical_bounds(visible_bounds, use_chemdraw_units),
-                    preview_source_bounds(payload).or(Some(visible_bounds)),
+                    office_preview_frame_bounds(canvas_bounds, use_chemdraw_units),
+                    office_preview_logical_bounds(canvas_bounds, use_chemdraw_units),
+                    Some(canvas_bounds),
                     true,
                 )
             } else {

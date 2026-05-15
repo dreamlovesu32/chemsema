@@ -2144,28 +2144,13 @@ unsafe fn draw_preview_text_run(
             );
         }
     } else {
-        if let Some(dx) =
-            preview_structure_label_dx_array(dc, run, fallback_font_size, fallback_family, transform)
-        {
-            ExtTextOutW(
-                dc,
-                x,
-                baseline_y + script_shift,
-                0,
-                null(),
-                label.as_ptr(),
-                label.len() as u32,
-                dx.as_ptr(),
-            );
-        } else {
-            TextOutW(
-                dc,
-                x,
-                baseline_y + script_shift,
-                label.as_ptr(),
-                label.len() as i32,
-            );
-        }
+        TextOutW(
+            dc,
+            x,
+            baseline_y + script_shift,
+            label.as_ptr(),
+            label.len() as i32,
+        );
     }
     restore_preview_font(dc, old_font);
     advance
