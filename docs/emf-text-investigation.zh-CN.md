@@ -576,3 +576,40 @@ ChemDraw 的 fallback 记录是：
 - Conclusion:
   - `MeasureString` 使用 recording metafile graphics 不是这颗 fallback 空格丢失的主因
   - 问题仍然更像在 packaged dual fallback 的文本输出阶段，而不是测量阶段
+
+### Experiment: 每个 text object 前重放 fresh-file GDI+ 初始化状态
+
+- Hypothesis:
+  - `title-only` 作为 fresh file 的第一组文本时，开头会有：
+    - `EmfPlusSetPageTransform`
+    - `EmfPlusSetAntiAliasMode`
+    - `EmfPlusSetTextRenderingHint`
+  - `subset-9` 中标题块位于文件中部，这组初始化状态不会在标题前重放。
+  - 也许问题不是普通 Save/Restore，而是前置对象污染了这几个更高层的 graphics state。
+- Code path touched:
+  - `apps/chemcore-office/src/windows_office/emf_preview/renderer.rs`
+  - `draw_gdiplus_text()`
+  - 当 `transform.emf_recording` 时，在每个 text object 开始前显式重放：
+    - `GdipSetPageUnit(UnitPixel)`
+    - `GdipSetPageScale(1.0)`
+    - `GdipSetPageScale(CHEMDRAW_EMF_PAGE_SCALE)`
+    - `GdipSetSmoothingMode(SmoothingModeAntiAlias)`
+    - `GdipSetTextRenderingHint(TextRenderingHintAntiAlias)`
+- Fixtures used:
+  - `tmp/word-text-fixtures/mixed-center-two-line.cdxml`
+- Expected result:
+  - `6 -> " " -> "(5 "` 之间的独立 fallback 空格恢复
+- Actual result:
+  - 空格对应的 `EmfPlusDrawString " "` 仍然存在
+  - 但 fallback 依然没有 `EMR_EXTTEXTOUTW " "`
+  - 记录链仍然是：
+    - `EMR_EXTTEXTOUTW "6"`
+    - `EMR_GDICOMMENT DrawString " "`
+    - `EMR_GDICOMMENT DrawString "(5 "`
+    - `EMR_EXTTEXTOUTW "(5 "`
+- Kept or reverted:
+  - 计划回退产品代码
+  - 文档保留
+- Conclusion:
+  - 仅仅重放 page transform / antialias / text rendering hint，不足以复现 fresh-file 行为
+  - 说明问题不是简单的“少了一组初始化 graphics state”
