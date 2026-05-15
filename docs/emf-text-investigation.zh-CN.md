@@ -1482,3 +1482,70 @@ ChemDraw 的 fallback 记录是：
   - So the next investigation target remains:
     - packaged `DrawString` anchor / baseline placement for the centered title block
     - not the `CH3CN` line anymore
+
+### Experiment: carry primitive baselineOffset directly into packaged DrawString top (all runs)
+- Hypothesis:
+  - Since `RenderPrimitive::Text.y` is generated as a baseline (`ty + baselineOffset + index * lineHeight`), packaged `GDI+ DrawString` should use the original text-object `baselineOffset` instead of a hard-coded `0.88` ascent factor.
+- Code path touched:
+  - `RenderPrimitive::Text` gains optional `baselineOffset`
+  - text-object renderers populate it from payload (`baselineOffset` or `fontSize * 0.82`)
+  - packaged `draw_gdiplus_text_run()` uses that value for `top`
+- Result:
+  - normal text runs became much closer to ChemDraw
+  - but subscript runs were pushed too far upward
+  - representative failures:
+    - `4` in `PF6`: `dy = +3.063` vs ChemDraw when compared at `DrawString` level
+    - `6` in `PF6`: `dy = +3.063`
+    - reagent subscript `2`: `dy = +2.813`
+    - `CH3CN` subscript `3`: `dy = +2.693`
+  - naive whole-image top-left-crop IoU collapsed, so this is not an acceptable product path by itself
+- Conclusion:
+  - primitive `baselineOffset` is valuable for normal runs
+  - but applying the same top reconstruction to sub/superscript runs is wrong
+  - sub/superscript still need their own smaller-font ascent model
+
+### Experiment: hybrid packaged DrawString top = normal uses primitive baselineOffset, sub/superscript uses font ascent
+- Hypothesis:
+  - The previous experiment suggests the right split is:
+    - normal runs: use primitive `baselineOffset`
+    - sub/superscript runs: use run-local font ascent (smaller font) + existing script baseline shift
+- Code path touched:
+  - keep `RenderPrimitive::Text.baselineOffset`
+  - packaged `draw_gdiplus_text_run()`:
+    - normal runs use `baselineOffset * gdiplus_text_scale(transform)`
+    - sub/superscript runs use `font_px * ascent_ratio`
+    - ascent ratio comes from `GdipGetFamily + GdipGetCellAscent + GdipGetEmHeight`
+- Validation samples:
+  - packaged production payload:
+    - `tmp/thiocyanation-source.chemcore.v62.payload.json`
+  - outputs:
+    - `tmp/thiocyanation-source.v71.emf`
+    - `tmp/thiocyanation-source.chemcore.v71.docx`
+    - `tmp/thiocyanation-source.v71.emf.records.json`
+  - reports:
+    - `tmp/v71-chemdraw-title-conditions.md`
+    - `tmp/v71-chemdraw-drawstring-title-conditions.md`
+    - `tmp/v71-chemdraw-direct-compare/metrics.json`
+- Actual result:
+  - packaged `DrawString` title/reagent normal runs improve substantially:
+    - `4DPAIPN<sp>`: `dy` from `+6.119` -> `+1.622`
+    - `Cu(MeCN)`: `dy` from `+5.994` -> `+1.497`
+    - `PF`: `dy` from `+5.994` -> `+1.497`
+    - reagent `PhthNCO`: `dy` from `+5.743` -> `+1.246`
+  - subscript runs are no longer wildly wrong:
+    - `4` in `PF6`: `dy` from `-21.521` (failed all-run baselineOffset variant) -> `+3.063`
+    - `6` in `PF6`: `dy` from `-21.521` -> `+3.063`
+    - reagent `2`: `dy` from `-21.772` -> `+2.813`
+    - `CH3CN` subscript `3`: `dy` from `-21.892` -> `+2.693`
+  - `CH3CN` line keeps the earlier horizontal centering fix.
+  - Important metric nuance:
+    - top-left-cropped IoU is misleading here because changing topmost text also changes the crop anchor
+    - on fixed-canvas whole-page compare, `v71` is better than `v69`:
+      - `v69` canvas IoU = `0.27131386629888554`
+      - `v71` canvas IoU = `0.2831567292741713`
+- Conclusion:
+  - carrying primitive `baselineOffset` is directionally correct, but only for normal runs
+  - hybrid normal-baselineOffset + subscript-ascent is materially better than both:
+    - the old constant-`0.88` packaged path
+    - the failed all-run baselineOffset path
+  - remaining main gap is still the centered title/conditions block, but the vertical error band is now much smaller and more structured

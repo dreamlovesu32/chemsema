@@ -20,7 +20,7 @@ use windows_sys::Win32::Graphics::GdiPlus::{
     GdipDeleteFont, GdipDeleteFontFamily, GdipDeleteGraphics, GdipDeletePath, GdipDeletePen,
     GdipDeleteStringFormat, GdipDisposeImage, GdipDrawEllipse, GdipDrawLine, GdipDrawLines,
     GdipDrawPath, GdipDrawPolygon, GdipDrawRectangle, GdipDrawString, GdipFillEllipse,
-    GdipFillPath, GdipFillPolygon, GdipFillRectangle, GdipGetDC, GdipGetHemfFromMetafile,
+    GdipFillPath, GdipFillPolygon, GdipFillRectangle, GdipGetCellAscent, GdipGetDC, GdipGetEmHeight, GdipGetFamily, GdipGetHemfFromMetafile,
     GdipGetImageGraphicsContext, GdipMeasureString, GdipRecordMetafile, GdipReleaseDC,
     GdipSetPageScale, GdipSetPageUnit, GdipSetPenDashArray, GdipSetPenDashStyle,
     GdipSetPenEndCap, GdipSetPenLineJoin, GdipSetPenMiterLimit, GdipSetPenStartCap,
@@ -887,6 +887,7 @@ unsafe fn draw_preview_primitive(
         RenderPrimitive::Text {
             x,
             y,
+            baseline_offset,
             text,
             font_size,
             font_family,
@@ -900,6 +901,7 @@ unsafe fn draw_preview_primitive(
                 dc,
                 *x,
                 *y,
+                *baseline_offset,
                 text,
                 *font_size,
                 font_family.as_deref(),
@@ -1100,6 +1102,7 @@ unsafe fn draw_gdiplus_primitive(
         RenderPrimitive::Text {
             x,
             y,
+            baseline_offset,
             text,
             font_size,
             font_family,
@@ -1112,6 +1115,7 @@ unsafe fn draw_gdiplus_primitive(
             graphics,
             *x,
             *y,
+            *baseline_offset,
             text,
             *font_size,
             font_family.as_deref(),
@@ -1475,6 +1479,7 @@ unsafe fn draw_gdiplus_text(
     graphics: *mut GpGraphics,
     x: f64,
     y: f64,
+    baseline_offset: Option<f64>,
     text: &str,
     font_size: f64,
     font_family: Option<&str>,
@@ -1524,6 +1529,7 @@ unsafe fn draw_gdiplus_text(
                 graphics,
                 cursor_x + run_layout.dx,
                 origin.Y,
+                baseline_offset,
                 run_layout.advance,
                 run,
                 font_size,
@@ -1757,6 +1763,7 @@ unsafe fn draw_gdiplus_text_run(
     graphics: *mut GpGraphics,
     x: f32,
     baseline_y: f32,
+    baseline_offset: Option<f64>,
     advance: f32,
     run: &PreviewTextRun,
     fallback_font_size: f64,
@@ -1785,8 +1792,22 @@ unsafe fn draw_gdiplus_text_run(
     let font_px =
         (run.font_size.unwrap_or(fallback_font_size) * script_scale * gdiplus_text_scale(transform))
         .max(1.0) as f32;
-    let baseline_top_factor = if transform.emf_recording { 0.88 } else { 0.86 };
-    let top = baseline_y - (font_px * baseline_top_factor)
+    let ascent_ratio = gdiplus_font_ascent_ratio(font, run).unwrap_or(if transform.emf_recording {
+        0.905_273_44
+    } else {
+        0.86
+    });
+    let baseline_top = if transform.emf_recording {
+        match run.script.as_deref() {
+            Some("subscript" | "superscript") => font_px * ascent_ratio,
+            _ => baseline_offset
+                .map(|value| (value * gdiplus_text_scale(transform)) as f32)
+                .unwrap_or(font_px * ascent_ratio),
+        }
+    } else {
+        font_px * 0.86
+    };
+    let top = baseline_y - baseline_top
         + preview_script_baseline_shift_f32(run, fallback_font_size, transform);
     let rect = RectF {
         X: x,
@@ -1810,6 +1831,21 @@ unsafe fn draw_gdiplus_text_run(
     ok
 }
 
+unsafe fn gdiplus_font_ascent_ratio(font: *mut GpFont, run: &PreviewTextRun) -> Option<f32> {
+    let mut family: *mut GpFontFamily = null_mut();
+    if GdipGetFamily(font, &mut family) != GDI_PLUS_OK || family.is_null() {
+        return None;
+    }
+    let style = gdiplus_font_style(run);
+    let mut ascent = 0u16;
+    let mut em_height = 0u16;
+    let ok = GdipGetCellAscent(family, style, &mut ascent) == GDI_PLUS_OK
+        && GdipGetEmHeight(family, style, &mut em_height) == GDI_PLUS_OK
+        && em_height > 0;
+    GdipDeleteFontFamily(family);
+    ok.then_some(ascent as f32 / em_height as f32)
+}
+
 unsafe fn create_gdiplus_font(
     run: &PreviewTextRun,
     fallback_font_size: f64,
@@ -1828,6 +1864,19 @@ unsafe fn create_gdiplus_font(
     {
         return None;
     }
+    let style = gdiplus_font_style(run);
+    let script_scale = preview_script_scale(run.script.as_deref());
+    let em_size =
+        (run.font_size.unwrap_or(fallback_font_size) * script_scale * gdiplus_text_scale(transform))
+        .max(0.1) as f32;
+    let mut font: *mut GpFont = null_mut();
+    let ok = GdipCreateFont(family, em_size, style, UnitPixel, &mut font) == GDI_PLUS_OK
+        && !font.is_null();
+    GdipDeleteFontFamily(family);
+    ok.then_some(font)
+}
+
+fn gdiplus_font_style(run: &PreviewTextRun) -> i32 {
     let mut style = FontStyleRegular;
     if run.font_weight.unwrap_or(400) >= 600 {
         style |= FontStyleBold;
@@ -1838,15 +1887,7 @@ unsafe fn create_gdiplus_font(
     if run.underline.unwrap_or(false) {
         style |= FontStyleUnderline;
     }
-    let script_scale = preview_script_scale(run.script.as_deref());
-    let em_size =
-        (run.font_size.unwrap_or(fallback_font_size) * script_scale * gdiplus_text_scale(transform))
-        .max(0.1) as f32;
-    let mut font: *mut GpFont = null_mut();
-    let ok = GdipCreateFont(family, em_size, style, UnitPixel, &mut font) == GDI_PLUS_OK
-        && !font.is_null();
-    GdipDeleteFontFamily(family);
-    ok.then_some(font)
+    style
 }
 
 unsafe fn create_gdiplus_string_format() -> Option<*mut GpStringFormat> {
@@ -1914,6 +1955,7 @@ unsafe fn draw_preview_text(
     dc: HDC,
     x: f64,
     y: f64,
+    _baseline_offset: Option<f64>,
     text: &str,
     font_size: f64,
     font_family: Option<&str>,
