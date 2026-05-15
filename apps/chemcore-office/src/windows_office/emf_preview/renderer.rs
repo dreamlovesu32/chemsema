@@ -31,7 +31,7 @@ use windows_sys::Win32::Graphics::GdiPlus::{
     GpPen, GpStringFormat, LineCapFlat, LineCapRound, LineCapSquare, LineJoinBevel,
     LineJoinMiter, LineJoinRound, MetafileFrameUnitGdi, Ok as GDI_PLUS_OK, PointF, RectF,
     SmoothingModeAntiAlias, StringAlignmentNear, StringFormatFlagsMeasureTrailingSpaces,
-    StringFormatFlagsNoClip, StringFormatFlagsNoFitBlackBox, StringFormatFlagsNoWrap,
+    StringFormatFlagsNoClip, StringFormatFlagsNoFitBlackBox,
     TextRenderingHintAntiAliasGridFit, UnitPixel, UnitWorld,
 };
 
@@ -1698,7 +1698,8 @@ unsafe fn draw_gdiplus_text_run(
     let font_px =
         (run.font_size.unwrap_or(fallback_font_size) * script_scale * gdiplus_text_scale(transform))
         .max(1.0) as f32;
-    let top = baseline_y - (font_px * 0.86)
+    let baseline_top_factor = if transform.emf_recording { 0.88 } else { 0.86 };
+    let top = baseline_y - (font_px * baseline_top_factor)
         + preview_script_baseline_shift_f32(run, fallback_font_size, transform);
     let rect = RectF {
         X: x,
@@ -1776,7 +1777,7 @@ unsafe fn create_gdiplus_string_format() -> Option<*mut GpStringFormat> {
     }
     GdipSetStringFormatFlags(
         format,
-        StringFormatFlagsNoWrap
+        0x2000
             | StringFormatFlagsNoClip
             | StringFormatFlagsNoFitBlackBox
             | StringFormatFlagsMeasureTrailingSpaces,
