@@ -868,3 +868,83 @@ ChemDraw 的 fallback 记录是：
     - `mixed-center-two-line`
     - 大文件标题第二行
     双样本共同验收
+
+### Experiment: 用固定 `selectionBounds` 重新验证 subset 上下文问题
+
+- Hypothesis:
+  - 早先 `subset-8` / `subset-8-plus-*` 的一些“状态泄漏”结论，可能混入了 `EMF frame` 不同导致的整体缩放差。
+  - 如果强制所有 subset payload 使用相同的 `svg viewBox` 作为 `clipboard.selectionBounds`，再重新导出 `EMF`，就能把“上下文导致的文字问题”和“frame/source bounds 差异”拆开。
+- Code path touched:
+  - 无产品代码改动
+  - 仅对 `tmp/fixed-selection/*.payload.json` 做分析性补丁：
+    - `document.meta.clipboard.selectionBounds = svg viewBox`
+  - 重新生成 `tmp/fixed-selection/*.emf`
+- Fixtures used:
+  - `subset-8`
+  - `subset-8-plus-free-x`
+  - `subset-8-plus-line`
+  - `subset-8-plus-unlabeled-molecule`
+  - `subset-8-plus-unlabeled-molecule-free-x`
+- Expected result:
+  - 如果标题第二行空格缺失真的是上下文状态泄漏，那么即使 `selectionBounds` 固定，它也应继续稳定复现。
+- Actual result:
+  - 固定 `selectionBounds` 以后：
+    - **标题第二行 `PF₆` 后空格不再是稳复现问题**
+    - `subset-8-plus-unlabeled-molecule` 中标题空格恢复
+    - `subset-8-plus-line` 标题空格也正常
+  - 但 **试剂行 `Ph -> " " -> "(3 "` 的空格缺失仍能在 `subset-8-plus-free-x` 稳定复现**
+- Kept or reverted:
+  - 仅保留分析产物与文档
+  - 无产品代码改动
+- Conclusion:
+  - 早先“标题第二行是主问题”的判断被证伪，至少不是稳健结论。
+  - 当前最干净、最稳定的 packaged `EMF` 文字坏例，是：
+    - `subset-8-plus-free-x`
+    - 试剂行 `Ph -> " " -> "(3 "`
+
+### Finding: 当前稳复现坏例是“试剂行空格丢失”，不是标题第二行
+
+- Observation:
+  - 在固定 `selectionBounds` 后：
+    - `subset-8`
+      - `Ph @ (806,409)`
+      - `" " @ (840,409)`
+      - `"(3 " @ (848,409)`
+    - `subset-8-plus-free-x`
+      - `Ph @ (806,409)`
+      - **没有独立 fallback `" "`**
+      - `"(3 " @ (848,409)`
+    - `subset-8-plus-line`
+      - `Ph @ (806,409)`
+      - `" " @ (840,409)`
+      - `"(3 " @ (848,409)`
+    - `subset-8-plus-unlabeled-molecule`
+      - `Ph @ (806,409)`
+      - `" " @ (840,409)`
+      - `"(3 " @ (848,409)`
+- Conclusion:
+  - 当前 packaged `EMF` 文字问题最应该围绕：
+    - **前置 free text**
+    - **后续试剂行 fallback `" "` 缺失**
+    这条链继续往下查。
+  - `line` 和 `unlabeled molecule` 并不会触发同样的问题，因此“任意前置对象都会污染后续文本”这个说法也不成立。
+
+### Finding: free text 样本会把后续普通文本切到更大的 `EmfPlusFont emSize`
+
+- Observation:
+  - `subset-8`（好例）里，普通文字对象常见 `EmfPlusFont emSize`：
+    - normal: `99.96807098388672`
+    - subscript: `74.9760513305664`
+  - `subset-8-plus-line`（好例）也沿用这组：
+    - normal: `99.96807098388672`
+    - subscript: `74.9760513305664`
+  - `subset-8-plus-unlabeled-molecule`（好例）则是另一组很接近但仍正常的口径：
+    - normal: `99.97856903076172`
+    - subscript: `74.98392486572266`
+  - `subset-8-plus-free-x`（坏例）会把后续普通文字切到更大的口径：
+    - normal: `100.00094604492188`
+    - subscript: `74.9760513305664`
+- Conclusion:
+  - 当前最像根因的量之一，是：
+    - **前置 free text 会把后续 packaged plain text 切到一组更大的 normal-font emSize**
+  - 这还不能单独解释全部现象（因为标题第二行在同一组字号下仍然正常），但它已经是当前最有力的“可量化差异”之一。
