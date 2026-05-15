@@ -272,6 +272,39 @@ ChemDraw 的 fallback 记录是：
 - 用 GDI+ 布局得到 token 位置
 - 自己写 GDI 文本记录
 
+### 5. 引入独立 `GDI+ / EMF+ dual` harness，隔离产品路径
+
+原因：
+
+- 之前直接在产品代码里试 packaged 文本路径，很多实验会同时受：
+  - payload 上下文
+  - 预览坐标变换
+  - 录制器对象复用
+  - 现有 text chunking
+  影响
+- 需要一个完全脱离产品代码的最小实验台，专门验证：
+  - `DrawString` 调用形式
+  - 字体大小
+  - rect-style vs point-style
+  - dual fallback 是否会吐出独立 `" "` 记录
+
+现有 harness：
+
+- `scripts/gdiplus-text-fallback-harness.ps1`
+
+能力：
+
+- 直接用 `System.Drawing` 生成 standalone `EMF+ dual`
+- 可以单独切换：
+  - `DrawString` 用 point-style 还是 rect-style
+  - normal / subscript 字体大小
+  - 前置 GDI/GDI+ 对象
+  - token 序列
+
+意义：
+
+- 后续只要 packaged 文本有新猜测，先在 harness 里证真/证伪，再决定要不要动产品代码
+
 ## 实验记录模板
 
 ```md
@@ -613,3 +646,76 @@ ChemDraw 的 fallback 记录是：
 - Conclusion:
   - 仅仅重放 page transform / antialias / text rendering hint，不足以复现 fresh-file 行为
   - 说明问题不是简单的“少了一组初始化 graphics state”
+
+### Experiment: standalone harness（小字号）对比 rect-style vs point-style
+
+- Hypothesis:
+  - 如果 dual fallback 的差异主要来自 `DrawString` 调用形式，那么脱离产品路径后也应该能复现：
+    - rect-style 更容易丢独立空格
+    - point-style 更像 ChemDraw
+- Code path touched:
+  - 无产品代码改动
+  - 仅新增/使用 `scripts/gdiplus-text-fallback-harness.ps1`
+- Fixtures used:
+  - `tmp/gdiplus-harness-test.emf`
+  - `tmp/gdiplus-harness-rect.emf`
+- Expected result:
+  - 至少在 standalone harness 中观察到 rect / point 差异
+- Actual result:
+  - 小字号（近似 27 / 20）下：
+    - point-style 会丢 fallback `" "`
+    - rect-style 反而能保住 fallback `" "`
+- Kept or reverted:
+  - 保留 harness
+  - 无产品代码改动
+- Conclusion:
+  - “point-style 一定比 rect-style 更像 ChemDraw”在小字号条件下不成立
+  - 问题还依赖别的量
+
+### Experiment: standalone harness（产品级大字号）对比 rect-style vs point-style
+
+- Hypothesis:
+  - packaged `EMF` 与 standalone harness 的关键差异之一，可能是产品链使用了更大的 `EmfPlusFont emSize`（约 normal=99.9 / subscript=74.9）
+  - 只有把字号口径抬到产品级，才能复现 packaged fallback 行为
+- Code path touched:
+  - 无产品代码改动
+  - 仅使用 harness 生成不同组合：
+    - rect-style + 产品级字号
+    - point-style + 产品级字号
+- Fixtures used:
+  - `tmp/harness/rect-fresh-product-fontsize.emf`
+  - `tmp/harness/point-product-fontsize.emf`
+- Expected result:
+  - 找到最接近 packaged / ChemDraw 差异的最小条件组合
+- Actual result:
+  - `rect-style + 产品级字号`：
+    - `Cu(MeCN)` `4` `PF` `6` 后
+    - fallback `EMR_EXTTEXTOUTW " "` **消失**
+    - 与 packaged 坏例一致
+  - `point-style + 产品级字号`：
+    - fallback `EMR_EXTTEXTOUTW " "` **重新出现**
+    - token 序列接近 ChemDraw：
+      - `Cu(MeCN)` `4` `PF` `6` `" "` `"(5 "`
+- Kept or reverted:
+  - 保留 harness 产物与分析
+  - 无产品代码改动
+- Conclusion:
+  - 当前最有力证据是：
+    - **large font + rect-style** 会稳定复现 packaged 坏例
+    - **large font + point-style** 会稳定恢复 ChemDraw 风格的 fallback 空格
+  - 因此 point-style 需要重新回到产品路径里验证，但必须是“产品级字号 + 窄命中”的前提下
+
+### Finding: `mixed-center-two-line` 的 packaged 问题与 harness 结果一致
+
+- Observation:
+  - `mixed-center-two-line` 是当前最小坏例
+  - 它的问题形态与 `rect-style + 产品级字号` harness 完全同构：
+    - `6`
+    - `"(5 "`
+    - 中间缺独立 fallback `" "`
+- Conclusion:
+  - harness 已经不只是旁证，而是能真实复现 packaged 坏例的最小实验台
+  - 后续如果做 point-style 产品实验，应优先以：
+    - `mixed-center-two-line`
+    - 大文件标题第二行
+    双样本共同验收
