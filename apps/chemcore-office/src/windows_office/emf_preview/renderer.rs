@@ -1736,6 +1736,7 @@ unsafe fn create_gdiplus_font(
     fallback_family: Option<&str>,
     transform: &PreviewTransform,
 ) -> Option<*mut GpFont> {
+    static EXPERIMENT_EMSIZE_CLAMP: OnceLock<Option<f32>> = OnceLock::new();
     let family_name = run
         .font_family
         .as_deref()
@@ -1759,9 +1760,18 @@ unsafe fn create_gdiplus_font(
         style |= FontStyleUnderline;
     }
     let script_scale = preview_script_scale(run.script.as_deref());
-    let em_size =
+    let mut em_size =
         (run.font_size.unwrap_or(fallback_font_size) * script_scale * gdiplus_text_scale(transform))
         .max(0.1) as f32;
+    if transform.emf_recording {
+        if let Some(clamp) = *EXPERIMENT_EMSIZE_CLAMP.get_or_init(|| {
+            std::env::var("CHEMCORE_OFFICE_EXPERIMENT_EMSIZE_CLAMP")
+                .ok()
+                .and_then(|value| value.parse::<f32>().ok())
+        }) {
+            em_size = em_size.min(clamp);
+        }
+    }
     let mut font: *mut GpFont = null_mut();
     let ok = GdipCreateFont(family, em_size, style, UnitPixel, &mut font) == GDI_PLUS_OK
         && !font.is_null();
