@@ -1287,3 +1287,44 @@ ChemDraw 的 fallback 记录是：
 - Status:
   - Experiment is informative but not acceptable as the final product path.
   - Revert the code change; keep only the finding.
+
+### Experiment: targeted packaged-text top bias for centered mixed-script lines
+- Hypothesis:
+  - Since the global packaged top bias fixed the synthetic bad case but hurt the full document slightly, maybe the right scope is narrower:
+    - only packaged `EMF`
+    - only `text_anchor == middle`
+    - only lines that actually mix normal and sub/superscript runs
+- Code path touched:
+  - `apps/chemcore-office/src/windows_office/emf_preview/renderer.rs`
+  - Add `preview_line_has_mixed_script(line_runs)`
+  - In packaged `draw_gdiplus_text_run()`, apply `+0.3` top bias only when the enclosing line is both centered and mixed-script
+- Validation samples:
+  - synthetic bad threshold case:
+    - `tmp/fixed-selection/free-x-y-sweep/y-266_67.payload.json`
+    - output: `y-266_67.targeted.emf`
+  - full thiocyanation packaged output:
+    - payload: `tmp/thiocyanation-source.chemcore.v62.payload.json`
+    - output: `tmp/thiocyanation-source.targeted.emf`
+    - docx: `tmp/thiocyanation-source.targeted.docx`
+- Actual result:
+  - The synthetic bad threshold case becomes good:
+    - reagent sequence becomes
+      - `Ph`
+      - `" "`
+      - `"(3 "`
+  - But the real document still does **not** improve in the area we actually care about.
+  - Whole-document direct overlay against ChemDraw:
+    - targeted: `ink_iou = 0.6213436096613667`
+    - current baseline (`v62`): better than targeted
+  - Local title/conditions region (`x=480..1450`, `y=220..560`) also does not improve:
+    - `v62`: `iou = 0.2918534206767473`
+    - targeted: `iou = 0.29002007737133345`
+- Conclusion:
+  - The synthetic top-threshold phenomenon is real, but it is **not** the dominant remaining production difference in the real thiocyanation packaged EMF.
+  - Narrowing the top bias to centered mixed-script lines still does not improve the real title/conditions block.
+  - Therefore the top-threshold path should be treated as:
+    - a valid **mechanistic clue**
+    - but **not** a final or even locally correct production fix
+- Status:
+  - Experiment failed as a production path.
+  - Revert the code change and return to token-level analysis on the real document.
