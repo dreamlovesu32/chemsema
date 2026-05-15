@@ -341,3 +341,65 @@ ChemDraw 的 fallback 记录是：
   - 保留
 - Conclusion:
   - 后续所有关键比较都应优先走这个脚本，不再靠一次性命令拼接
+
+### Experiment: 增加 `EmfPlusObject` 历史追踪脚本
+
+- Hypothesis:
+  - 需要稳定看到同一个 `DrawString` 在触发时依赖了哪些 `font / string-format / brush` 对象定义，才能判断是否是 object history 影响了 dual fallback。
+- Code path touched:
+  - 无产品代码改动
+  - 新增 `scripts/emf-object-history.mjs`
+- Fixtures used:
+  - `tmp/title-only.emf`
+  - `tmp/subset-8.emf`
+  - `tmp/subset-9.emf`
+  - `tmp/thiocyanation-source.chemdraw.emf`
+- Expected result:
+  - 直接打印：
+    - `DrawString` 的 `fontId / formatId / brushId`
+    - 对应 `EmfPlusObject` 的最近定义历史
+    - 对应 fallback `EMR_EXTTEXTOUTW`
+- Actual result:
+  - 已能稳定打印关键对象链
+  - 证明了：
+    - `subset-9` / 坏样本里，`EMF+ DrawString " "` 其实存在
+    - 真正缺的是 fallback `EMR_EXTTEXTOUTW " "`
+    - 这不是单纯“没切出空格 token”
+- Relevant files:
+  - `scripts/emf-object-history.mjs`
+  - 本文档
+- Kept or reverted:
+  - 保留
+- Conclusion:
+  - 后续分析要把“可见 `DrawString`”和“fallback `EXTTEXTOUTW`”明确分开看
+
+### Experiment: 重新导出当前代码基线，避免被旧 `v62` 误导
+
+- Hypothesis:
+  - 之前长期参考的 `v62` 可能已经不是当前代码状态；如果继续拿它做推理，会把已经修掉的问题当成现状。
+- Code path touched:
+  - 无产品代码改动
+  - 仅重新导出：
+    - `tmp/thiocyanation-source.analysis.payload.json`
+    - `tmp/thiocyanation-source.analysis.emf`
+- Fixtures used:
+  - `tmp/thiocyanation-source.cdxml`
+  - `tmp/thiocyanation-source.chemdraw.emf`
+- Expected result:
+  - 得到一份严格对应“当前代码”的 packaged `EMF`，再与 ChemDraw 做同口径比较
+- Actual result:
+  - 当前导出的 `analysis.emf` 与旧 `v62` 有实质差异：
+    - 当前代码标题块 `StringFormat` 原始 flags 为 `0x6804`
+    - 旧 `v62` 为 `0x5804`
+  - 当前 `analysis.emf` 中标题第二行 fallback 空格已经存在：
+    - `EMR_EXTTEXTOUTW " "` at `ref=(857,457)`
+  - 说明“空格缺失”在当前基线已经不是主矛盾
+- Relevant files:
+  - `tmp/thiocyanation-source.analysis.emf`
+  - `tmp/thiocyanation-source.analysis.emf.records.json`
+  - `tmp/thiocyanation-source.chemdraw.emf`
+- Kept or reverted:
+  - 保留产物作为当前分析基线
+- Conclusion:
+  - 后续推理必须以 `analysis.emf` 为准
+  - 旧 `v62` 只能当历史样本，不能再当当前代码基线
