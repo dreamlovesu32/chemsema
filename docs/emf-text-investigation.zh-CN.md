@@ -1148,3 +1148,39 @@ ChemDraw 的 fallback 记录是：
 - Status:
   - Experiment failed as a fix.
   - Keep the finding, revert the temporary clamp hook.
+
+### Experiment: packaged `DrawString` point-style / zero-layout for all text runs
+- Hypothesis:
+  - If ChemDraw is effectively using a point-anchored `DrawString` path, then forcing packaged GDI+ text to use `RectF { width=0, height=0 }` for every run might make the dual fallback preserve the standalone reagent-line space.
+- Code path touched:
+  - `apps/chemcore-office/src/windows_office/emf_preview/renderer.rs`
+  - `draw_gdiplus_text_run()`
+  - Add experiment-only env var:
+    - `CHEMCORE_OFFICE_EXPERIMENT_POINT_STYLE_TEXT`
+    - when `transform.emf_recording`, force `RectF { X: x, Y: top, Width: 0.0, Height: 0.0 }`
+- Validation samples:
+  - bad threshold case:
+    - `tmp/fixed-selection/free-x-y-sweep/y-266_67.payload.json`
+    - output: `y-266_67.point.emf`
+  - good threshold case:
+    - `tmp/fixed-selection/free-x-y-sweep/y-268_00.payload.json`
+    - output: `y-268_00.point.emf`
+- Actual result:
+  - The standalone reagent-line space still exists at the EMF+ layer in both files.
+  - Good case still emits fallback:
+    - `Ph`
+    - `" "`
+    - `"(3 "`
+  - Bad case still drops fallback:
+    - `Ph`
+    - **no fallback `EMR_EXTTEXTOUTW " "`**
+    - `"(3 "`
+  - This is true even though the standalone space `DrawString` now uses a literal zero-layout rect:
+    - bad: `rect=(3151.2849...,1443.3918...,0,0)`
+    - good: `rect=(3151.1689...,1444.4235...,0,0)`
+- Conclusion:
+  - “Point-style / zero-layout rect” by itself is **not sufficient** to make the dual fallback keep the standalone reagent-line space.
+  - This further narrows the problem: it is not just layout-rect width/height, and not just `emSize`; some broader packaged fallback state is still controlling the drop.
+- Status:
+  - Experiment failed as a fix.
+  - Keep the finding, revert the temporary point-style hook.
