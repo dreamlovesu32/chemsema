@@ -948,3 +948,58 @@ ChemDraw 的 fallback 记录是：
   - 当前最像根因的量之一，是：
     - **前置 free text 会把后续 packaged plain text 切到一组更大的 normal-font emSize**
   - 这还不能单独解释全部现象（因为标题第二行在同一组字号下仍然正常），但它已经是当前最有力的“可量化差异”之一。
+
+### Experiment: 只移动 free text `X` 的位置，区分 top 扩展和 right 扩展
+
+- Hypothesis:
+  - `subset-8-plus-free-x` 的坏例，也许不是因为 “free text 身份” 本身，而是因为它把整体 `EMF header bounds` 往上或往右撑开后，间接改变了 packaged GDI+ 文本的口径。
+  - 如果只改 `X` 的位置、不改内容和样式，就能分离：
+    - top 扩展
+    - right 扩展
+    哪一个才是真正触发量。
+- Code path touched:
+  - 无产品代码改动
+  - 仅在 `tmp/fixed-selection/free-x-variants/*.payload.json` 中修改：
+    - `root.objects[2].transform.translate`
+- Fixtures used:
+  - 基线坏例：`subset-8-plus-free-x`
+  - 变体：
+    - `move-left`: 只把 `X` 左移到原有内容框内，保留顶部外扩
+    - `move-down`: 只把 `X` 下移回原有顶部以下，保留右侧外扩
+    - `move-inside`: 同时移回原有顶部和右侧范围内
+- Actual result:
+  - `move-left`
+    - `header bounds = {left:163, top:268, right:994, bottom:602}`
+    - 试剂行仍然是：
+      - `Ph`
+      - **没有独立 fallback `" "`**
+      - `"(3 "`
+    - reagent normal font 仍为：
+      - `emSize = 100.00094604492188`
+  - `move-down`
+    - `header bounds = {left:163, top:290, right:1253, bottom:602}`
+    - 试剂行恢复为：
+      - `Ph`
+      - `" "`
+      - `"(3 "`
+    - reagent normal font 恢复为：
+      - `emSize = 99.96807098388672`
+  - `move-inside`
+    - `header bounds = {left:163, top:290, right:994, bottom:602}`
+    - 试剂行同样恢复：
+      - `Ph`
+      - `" "`
+      - `"(3 "`
+    - reagent normal font 同样恢复为：
+      - `emSize = 99.96807098388672`
+- Kept or reverted:
+  - 仅保留分析产物与文档
+  - 无产品代码改动
+- Conclusion:
+  - **触发问题的是顶部外扩（top bounds 变化），不是右侧外扩。**
+  - right 扩展单独存在时（`move-down`），试剂行空格不会丢。
+  - 只要 top 恢复正常，normal font `emSize` 也会从 `100.000946` 回落到 `99.968071`，同时试剂行 fallback 空格恢复。
+  - 这说明当前最值得继续追的是：
+    - `header bounds.top / frame.top`
+    - packaged GDI+ font 口径（`EmfPlusFont emSize`）
+    - 以及它们如何影响 dual fallback 是否落出独立 `" "`
