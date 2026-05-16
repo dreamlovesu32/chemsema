@@ -2,7 +2,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$Scenario,
     [string]$OutEmf = "tmp/gdiplus-harness.emf",
-    [ValidateSet("rect", "point")]
+    [ValidateSet("rect", "point", "driver")]
     [string]$Mode = "rect"
 )
 
@@ -10,6 +10,40 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 Add-Type -AssemblyName System.Drawing
+
+if (-not ("Harness.GdiPlusNative" -as [type])) {
+    Add-Type -ReferencedAssemblies System.Drawing -TypeDefinition @"
+using System;
+using System.Drawing;
+using System.Reflection;
+using System.Runtime.InteropServices;
+
+namespace Harness {
+    public static class GdiPlusNative {
+        [DllImport("gdiplus.dll", ExactSpelling = true)]
+        public static extern int GdipDrawDriverString(
+            IntPtr graphics,
+            ushort[] text,
+            int length,
+            IntPtr font,
+            IntPtr brush,
+            PointF[] positions,
+            int flags,
+            IntPtr matrix
+        );
+
+        public static IntPtr NativeGraphics(Graphics graphics) =>
+            (IntPtr)typeof(Graphics).GetField("nativeGraphics", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(graphics);
+
+        public static IntPtr NativeFont(Font font) =>
+            (IntPtr)typeof(Font).GetField("nativeFont", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(font);
+
+        public static IntPtr NativeBrush(Brush brush) =>
+            (IntPtr)typeof(Brush).GetField("nativeBrush", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(brush);
+    }
+}
+"@
+}
 
 function New-Run {
     param(
@@ -78,6 +112,69 @@ function Get-ScenarioRuns {
     }
 }
 
+function Get-RunBaselineY {
+    param(
+        [System.Drawing.Font]$Font,
+        [float]$TopY
+    )
+    $family = $Font.FontFamily
+    $style = $Font.Style
+    $ascent = $family.GetCellAscent($style)
+    $em = $family.GetEmHeight($style)
+    if ($em -le 0) {
+        return $TopY
+    }
+    return $TopY + ($Font.Size * ($ascent / [float]$em))
+}
+
+function Measure-PrefixWidth {
+    param(
+        [System.Drawing.Graphics]$Graphics,
+        [System.Drawing.Font]$Font,
+        [System.Drawing.StringFormat]$Format,
+        [string]$Text
+    )
+    if ([string]::IsNullOrEmpty($Text)) {
+        return 0.0
+    }
+    $size = $Graphics.MeasureString($Text, $Font, [System.Int32]::MaxValue, $Format)
+    return [float]$size.Width
+}
+
+function Draw-DriverStringRun {
+    param(
+        [System.Drawing.Graphics]$Graphics,
+        [pscustomobject]$Run,
+        [System.Drawing.Font]$Font,
+        [System.Drawing.Brush]$Brush,
+        [System.Drawing.StringFormat]$Format
+    )
+    $chars = $Run.Text.ToCharArray()
+    $positions = New-Object System.Drawing.PointF[] ($chars.Length)
+    $baselineY = Get-RunBaselineY -Font $Font -TopY ([float]$Run.Y)
+    for ($i = 0; $i -lt $chars.Length; $i++) {
+        $prefix = if ($i -eq 0) { "" } else { $Run.Text.Substring(0, $i) }
+        $x = [float]$Run.X + (Measure-PrefixWidth -Graphics $Graphics -Font $Font -Format $Format -Text $prefix)
+        $positions[$i] = [System.Drawing.PointF]::new($x, $baselineY)
+    }
+    $utf16 = [System.Text.Encoding]::Unicode.GetBytes($Run.Text)
+    $codeUnits = New-Object 'System.UInt16[]' ($utf16.Length / 2)
+    [System.Buffer]::BlockCopy($utf16, 0, $codeUnits, 0, $utf16.Length)
+    $status = [Harness.GdiPlusNative]::GdipDrawDriverString(
+        [Harness.GdiPlusNative]::NativeGraphics($Graphics),
+        $codeUnits,
+        $codeUnits.Length,
+        [Harness.GdiPlusNative]::NativeFont($Font),
+        [Harness.GdiPlusNative]::NativeBrush($Brush),
+        $positions,
+        0,
+        [System.IntPtr]::Zero
+    )
+    if ($status -ne 0) {
+        throw "GdipDrawDriverString failed: $status"
+    }
+}
+
 $runs = Get-ScenarioRuns $Scenario
 
 $directory = Split-Path -Parent $OutEmf
@@ -133,7 +230,10 @@ try {
             "Orange" { [System.Drawing.Brushes]::Orange }
             default { [System.Drawing.Brushes]::Black }
         }
-        if ($Mode -eq "point") {
+        if ($Mode -eq "driver") {
+            Draw-DriverStringRun -Graphics $graphics -Run $run -Font $font -Brush $brush -Format $format
+        }
+        elseif ($Mode -eq "point") {
             $point = [System.Drawing.PointF]::new($run.X, $run.Y)
             $graphics.DrawString($run.Text, $font, $brush, $point, $format)
         }
