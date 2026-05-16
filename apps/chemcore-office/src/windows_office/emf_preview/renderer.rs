@@ -54,6 +54,8 @@ const ENV_DISABLE_PACKAGED_NOFITBLACKBOX: &str =
 const ENV_PACKAGED_TEXT_GRIDFIT: &str = "CHEMCORE_EMF_PACKAGED_TEXT_GRIDFIT";
 const ENV_PACKAGED_PIXEL_OFFSET_HIGHQUALITY: &str =
     "CHEMCORE_EMF_PACKAGED_PIXEL_OFFSET_HIGHQUALITY";
+const ENV_PACKAGED_PIXEL_OFFSET_MODE_VALUE: &str =
+    "CHEMCORE_EMF_PACKAGED_PIXEL_OFFSET_MODE_VALUE";
 const ENV_PACKAGED_CENTERED_PLAIN_GDI_WIDTH: &str =
     "CHEMCORE_EMF_PACKAGED_CENTERED_PLAIN_GDI_WIDTH";
 const ENV_PACKAGED_SMOOTHING_MODE_VALUE: &str =
@@ -268,7 +270,9 @@ pub(super) unsafe fn enhanced_metafile_gdiplus_dual_preview(
         GdipSetPageUnit(graphics, UnitPixel);
         GdipSetPageScale(graphics, 1.0);
         GdipSetPageScale(graphics, CHEMDRAW_EMF_PAGE_SCALE);
-        if preview_env_enabled(ENV_PACKAGED_PIXEL_OFFSET_HIGHQUALITY) {
+        if let Some(pixel_offset_mode) = preview_env_i32(ENV_PACKAGED_PIXEL_OFFSET_MODE_VALUE) {
+            GdipSetPixelOffsetMode(graphics, pixel_offset_mode);
+        } else if preview_env_enabled(ENV_PACKAGED_PIXEL_OFFSET_HIGHQUALITY) {
             GdipSetPixelOffsetMode(graphics, PixelOffsetModeHighQuality);
         }
     }
