@@ -47,6 +47,14 @@ const CHEMDRAW_PACKAGED_CENTERED_TEXT_TOP_BIAS_EM: f32 = 0.012;
 const CHEMDRAW_PACKAGED_CENTERED_SCRIPT_EXTRA_TOP_BIAS_EM: f32 = 0.02;
 const OUT_TT_ONLY_PRECIS_VALUE: u32 = 7;
 const CHEMDRAW_GDI_TEXT_ADVANCE_TIGHTEN: f64 = 0.965;
+const ENV_DISABLE_PACKAGED_TRAILING_TRIM: &str =
+    "CHEMCORE_EMF_PACKAGED_TEXT_DISABLE_TRAILING_TRIM";
+const ENV_DISABLE_PACKAGED_NOFITBLACKBOX: &str =
+    "CHEMCORE_EMF_PACKAGED_TEXT_DISABLE_NOFITBLACKBOX";
+
+fn preview_env_enabled(name: &str) -> bool {
+    std::env::var_os(name).is_some()
+}
 
 #[derive(Clone, Copy)]
 struct PreviewTransform {
@@ -1507,6 +1515,7 @@ unsafe fn draw_gdiplus_text(
             continue;
         };
         let trailing_trim = if transform.emf_recording
+            && !preview_env_enabled(ENV_DISABLE_PACKAGED_TRAILING_TRIM)
             && matches!(text_anchor, Some("middle" | "end"))
         {
             gdiplus_line_trailing_space_trim(
@@ -1918,13 +1927,12 @@ unsafe fn create_gdiplus_string_format() -> Option<*mut GpStringFormat> {
     } else if GdipCreateStringFormat(0, 0, &mut format) != GDI_PLUS_OK || format.is_null() {
         return None;
     }
-    GdipSetStringFormatFlags(
-        format,
-        0x2000
-            | StringFormatFlagsNoClip
-            | StringFormatFlagsNoFitBlackBox
-            | StringFormatFlagsMeasureTrailingSpaces,
-    );
+    let mut flags =
+        0x2000 | StringFormatFlagsNoClip | StringFormatFlagsMeasureTrailingSpaces;
+    if !preview_env_enabled(ENV_DISABLE_PACKAGED_NOFITBLACKBOX) {
+        flags |= StringFormatFlagsNoFitBlackBox;
+    }
+    GdipSetStringFormatFlags(format, flags);
     GdipSetStringFormatAlign(format, StringAlignmentNear);
     GdipSetStringFormatLineAlign(format, StringAlignmentNear);
     Some(format)
