@@ -1735,3 +1735,118 @@ ChemDraw 的 fallback 记录是：
   - `DrawDriverString` can restore the desired fallback token chain, but the visible EMF+ rendering it produces is substantially worse than the current `DrawString` baseline.
   - Therefore this is **not** a shippable product path in its current form.
   - Keep the investigation tooling and harness support, but revert the packaged product experiment.
+
+### Follow-up tooling: line-level fallback comparison
+- Added:
+  - `scripts/emf-text-line-compare.mjs`
+- Reason:
+  - token-level `dx/dy` summaries had become misleading;
+  - we needed a metric closer to what the user actually sees, namely:
+    - per-line `left`
+    - per-line `right`
+    - per-line `width`
+    - per-line `center`
+- For the title/conditions block in the current baseline, the line-level picture is:
+  - `4DPAIPN (2 mol%)`:
+    - `left +2`, `right +0`, `width -2`, `center +1`
+  - `Cu(MeCN)₄PF₆ (5 mol%), L (7 mol%)`:
+    - effectively aligned
+  - `CH₃CN (0.2 M)`:
+    - `left +1`, `right -7`, `width -8`, `center -3`
+  - `420 nm 3W, 10 °C, 24 h`:
+    - `left +2`, `right +0`, `width -2`, `center +1`
+- This shows the remaining packaged residual is no longer “all centered text is wrong”.
+- It is concentrated in a few centered **plain-text** lines, while the mixed normal/subscript lines are already much closer.
+
+### Follow-up analysis: local rendered text still prefers a small translation
+- On rendered PNGs from the current baseline, local text-only crops still get a visibly better IoU after a small translation:
+  - `title_text_only`: best around `(dx=+5, dy=-2)` in the scale-2 rendered PNG
+  - `yield_text_only`: best around `(dx=+6, dy=-1)`
+  - `catalyst_text_only`: best around `(dx=+6, dy=-1)`
+  - `ligand_label_only`: best around `(dx=+4, dy=-2)`
+- Important interpretation:
+  - this is **not** a remaining global scaling problem;
+  - it is a packaged text placement / ink-placement residual that survives after the larger size and OLE sizing fixes.
+
+### Experiment platform additions
+- Added investigation-only toggles so we can run narrow A/B tests without repeatedly rewriting product logic:
+  - `CHEMCORE_EMF_PACKAGED_TEXT_DISABLE_TRAILING_TRIM`
+  - `CHEMCORE_EMF_PACKAGED_TEXT_DISABLE_NOFITBLACKBOX`
+  - `CHEMCORE_EMF_PACKAGED_TEXT_GRIDFIT`
+  - `CHEMCORE_EMF_PACKAGED_PIXEL_OFFSET_HIGHQUALITY`
+  - `CHEMCORE_EMF_PACKAGED_CENTERED_PLAIN_GDI_WIDTH`
+- These do not change default behavior.
+
+### Experiment: disable packaged `NoFitBlackBox`
+- Variant:
+  - `tmp/thiocyanation-source.v81-nofitoff.emf`
+- Hypothesis:
+  - the remaining title drift might come from our glyph ink extending further outside the fallback/layout bounds than ChemDraw’s.
+- Result:
+  - no measurable change in the title/yield text-only crops
+  - no measurable change in the line-level fallback metrics
+- Conclusion:
+  - `NoFitBlackBox` is **not** the active lever for the current packaged residual.
+
+### Experiment: disable packaged centered trailing-trim
+- Variant:
+  - `tmp/thiocyanation-source.v82-trimoff.emf`
+- Hypothesis:
+  - the centered-layout trailing-space trim might be responsible for the apparent centered drift.
+- Result:
+  - the problematic title/yield crops did not improve
+  - `CH₃CN (0.2 M)` became dramatically worse at fallback line level:
+    - `left -7`, `right -14`, `center -10.5`
+- Conclusion:
+  - centered trailing-trim is **not** the source of the current visible drift;
+  - disabling it actively damages the `CH₃CN` line.
+
+### Experiment: packaged `TextRenderingHintAntiAliasGridFit`
+- Variant:
+  - `tmp/thiocyanation-source.v84-gridfit.emf`
+- Hypothesis:
+  - the remaining difference might be primarily a packaged ink rasterization / hinting issue.
+- Result:
+  - title and yield crops both got worse
+  - the title second-line standalone space regressed again
+- Conclusion:
+  - packaged `AntiAliasGridFit` is **not** ChemDraw’s winning path for this problem.
+
+### Experiment: packaged `PixelOffsetModeHighQuality`
+- Variant:
+  - `tmp/thiocyanation-source.v85-pixeloffset.emf`
+- Hypothesis:
+  - ChemDraw emits `EmfPlusSetPixelOffsetMode flags=2`; perhaps our packaged text drift is caused by not recording the same state.
+- Result:
+  - title and yield crops both got worse
+  - the best local shifts moved from roughly `(5,-2)/(6,-1)` to `(6,-1)/(7,0)`
+- Conclusion:
+  - simply copying ChemDraw’s global pixel-offset mode into our packaged recording path does **not** solve the remaining text mismatch.
+
+### Experiment: centered plain-text lines use GDI widths
+- Variant:
+  - `tmp/thiocyanation-source.v86-plaingdi.emf`
+- Hypothesis:
+  - since the remaining line-level errors are concentrated in centered **plain-text** lines, a narrow version of the old `v74` idea might help:
+    - packaged only
+    - centered only
+    - only lines whose runs are all plain (no script)
+    - use GDI run widths there
+- Result:
+  - in the current code structure, this variant produced **no measurable change** in:
+    - title/yield/catalyst text-only crops
+    - title line-level fallback metrics
+- Conclusion:
+  - the historical `v74` effect cannot be recovered by simply reapplying “plain-line GDI widths” inside the current packaged path.
+
+### Current interpretation after these follow-up experiments
+- We have now ruled out several obvious visible-path levers:
+  - `NoFitBlackBox`
+  - packaged centered trailing-trim
+  - packaged `AntiAliasGridFit`
+  - packaged `PixelOffsetModeHighQuality`
+  - a narrow “plain centered line uses GDI widths” replay
+- The strongest remaining interpretation is:
+  - the residual is concentrated in a few centered plain-text lines;
+  - mixed normal/subscript lines are already close enough that broad fixes tend to over-correct them;
+  - the next worthwhile step is to keep targeting those centered plain lines, rather than re-opening all packaged text behavior.
