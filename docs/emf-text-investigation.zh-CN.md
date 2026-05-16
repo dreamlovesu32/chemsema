@@ -2309,3 +2309,114 @@ What this suggests structurally:
   - “do not crop away the SVG frame on left/top/bottom”
 - rather than:
   - “crop tightly to visible bounds and then re-add a large constant on the right”.
+## Post-`svgpad + pad=0` re-check on the new default baseline
+
+After switching the product default to:
+- `sourceBoundsMode = svgpad`
+- `rightPaddingPt = 0`
+
+the most important old text findings need to be re-evaluated rather than assumed to still hold.
+
+### Fallback `EMR_EXTTEXTOUTW` on the title / conditions block is now very close
+- Region:
+  - `650,120,1850,560`
+- Comparison:
+  - `tmp/default-svgpad-analysis/title-fallback.md`
+
+Key rows:
+- `4DPAIPN (2 mol%)`
+  - `dleft = +2`
+  - `dwidth = -2`
+- `PF (5 mol%), L (7 mol%)`
+  - `dleft = 0`
+  - `dwidth = 0`
+- `TMSCN (4 eq.)`
+  - `dleft = 0`
+  - `dwidth = +1`
+- `SCHPh (3 eq.)`
+  - `dleft = +1`
+  - `dwidth = 0`
+- `CH3CN (0.2 M)`
+  - this line is still the loosest in the central block:
+    - `dleft = +1`
+    - `dright = -7`
+    - `dwidth = -8`
+- `420 nm 3W, 10 °C, 24 h`
+  - `dleft = +2`
+  - `dwidth = -2`
+
+Interpretation:
+- On the new default baseline, the old `PF6 -> " " -> "(5 "` fallback-space issue is no longer the dominant residual.
+- The packaged fallback text for the main title / conditions block is now mostly within `0..2 px` of ChemDraw.
+
+### Yield / `d.r.` fallback is also near-aligned
+- Region:
+  - `1070,440,1335,525`
+- Comparison:
+  - `tmp/default-svgpad-analysis/yield-fallback.md`
+
+Key rows:
+- `76% yield, 94% ee`
+  - `dy = 0`
+  - `dleft = 0`
+  - `dright = +1`
+  - `dwidth = +1`
+- `d.r. > 20:1`
+  - `dy = +1`
+  - `dleft = +1`
+  - `dright = 0`
+  - `dwidth = -1`
+
+Interpretation:
+- The upper-right plain-text block is also no longer the primary problem.
+
+### Rendered-ink region checks now point more strongly at a global placement residual
+- Region-level rendered bbox report:
+  - `tmp/default-svgpad-analysis/region-bbox-shift.json`
+
+Observed best shifts:
+- `title_text`
+  - `dx = 10`
+  - `dy = 20`
+- `product_top_right`
+  - `dx = 10`
+  - `dy = 20`
+- `ligand_lower_left`
+  - `dx = 11`
+  - `dy = 20`
+- `catalyst_lower_right`
+  - `dx = 10`
+  - `dy = 20`
+
+Observed bbox deltas:
+- `title_text`
+  - `left +10`
+  - `top +15`
+  - `width -10`
+  - `height -26`
+- `product_top_right`
+  - `top +29`
+  - `height -29`
+- `ligand_lower_left`
+  - `left +11`
+  - `top +25`
+  - `width -11`
+  - `height -21`
+
+Interpretation:
+- Once the default is changed to `svgpad + pad=0`, the remaining large visible mismatch is much less text-specific.
+- Across title, product, and ligand regions, the rendered result still behaves like:
+  - the whole visible ink is slightly too far right
+  - and consistently too low
+- This pattern is much more consistent with:
+  - frame/source placement,
+  - replay anchoring,
+  - or a packaged preview canvas offset
+  than with local fallback tokenization.
+
+### Updated working hypothesis
+- Before the `svgpad + pad=0` switch, text-token and fallback behavior dominated the investigation.
+- After the switch, the packaged fallback text is already close enough that it no longer explains the bulk of the visible delta.
+- The new primary target should be reclassified as:
+  - **global packaged preview placement / top-left anchoring**
+  - not the old `PF6 -> " " -> "(5 "` fallback-space issue.
