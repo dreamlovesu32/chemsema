@@ -13,22 +13,22 @@ use chemcore_engine::{
     parse_document_json, render_document, render_primitives_bounds, Point as CorePoint,
     RenderPrimitive, RenderRole, PT_PER_CM,
 };
+use serde_json::json;
 use windows_sys::Win32::Foundation::{GlobalFree, COLORREF, HGLOBAL, POINT, RECT, SIZE};
 use windows_sys::Win32::Globalization::WideCharToMultiByte;
 use windows_sys::Win32::Graphics::Gdi::{
     BeginPath, CloseEnhMetaFile, CloseFigure, CloseMetaFile, CreateEnhMetaFileW, CreateFontW,
     CreateMetaFileW, CreatePen, CreateSolidBrush, DeleteEnhMetaFile, DeleteMetaFile, DeleteObject,
-    Ellipse, EndPath, ExtCreatePen, ExtTextOutW, FillPath, GetEnhMetaFileBits,
-    GetMetaFileBitsEx, GetStockObject, GetTextExtentExPointW, GetTextExtentPoint32W, LineTo,
-    MoveToEx, PolyBezier, PolyBezierTo, Polygon, Polyline, Rectangle, RestoreDC, SaveDC,
-    SelectClipPath, SelectObject, SetBkMode, SetGraphicsMode, SetMapMode, SetMiterLimit,
-    SetPolyFillMode, SetTextAlign, SetTextColor, SetViewportExtEx, SetWindowExtEx,
-    SetWorldTransform, StretchDIBits, StrokePath, TextOutA, TextOutW, ALTERNATE,
-    ANTIALIASED_QUALITY, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, BS_SOLID, DIB_RGB_COLORS,
-    GM_ADVANCED, HDC, HGDIOBJ, LOGBRUSH, MM_ANISOTROPIC, NULL_BRUSH, NULL_PEN,
-    PS_ENDCAP_FLAT, PS_ENDCAP_ROUND, PS_ENDCAP_SQUARE, PS_GEOMETRIC, PS_JOIN_BEVEL,
-    PS_JOIN_MITER, PS_JOIN_ROUND, PS_SOLID, PS_USERSTYLE, RGN_AND, SRCCOPY, TA_BASELINE,
-    TA_LEFT, TRANSPARENT, XFORM,
+    Ellipse, EndPath, ExtCreatePen, ExtTextOutW, FillPath, GetEnhMetaFileBits, GetMetaFileBitsEx,
+    GetStockObject, GetTextExtentExPointW, GetTextExtentPoint32W, LineTo, MoveToEx, PolyBezier,
+    PolyBezierTo, Polygon, Polyline, Rectangle, RestoreDC, SaveDC, SelectClipPath, SelectObject,
+    SetBkMode, SetGraphicsMode, SetMapMode, SetMiterLimit, SetPolyFillMode, SetTextAlign,
+    SetTextColor, SetViewportExtEx, SetWindowExtEx, SetWorldTransform, StretchDIBits, StrokePath,
+    TextOutA, TextOutW, ALTERNATE, ANTIALIASED_QUALITY, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
+    BS_SOLID, DIB_RGB_COLORS, GM_ADVANCED, HDC, HGDIOBJ, LOGBRUSH, MM_ANISOTROPIC, NULL_BRUSH,
+    NULL_PEN, PS_ENDCAP_FLAT, PS_ENDCAP_ROUND, PS_ENDCAP_SQUARE, PS_GEOMETRIC, PS_JOIN_BEVEL,
+    PS_JOIN_MITER, PS_JOIN_ROUND, PS_SOLID, PS_USERSTYLE, RGN_AND, SRCCOPY, TA_BASELINE, TA_LEFT,
+    TRANSPARENT, XFORM,
 };
 use windows_sys::Win32::System::Com::DVASPECT_CONTENT;
 use windows_sys::Win32::System::DataExchange::METAFILEPICT;
@@ -176,7 +176,10 @@ pub(super) fn preview_source_bounds(payload: &OleObjectPayload) -> Option<[f64; 
         .ok()
         .and_then(|value| value.trim().parse::<f64>().ok())
         .unwrap_or(PREVIEW_SOURCE_RIGHT_PADDING_PT);
-    match (visible_payload_bounds(payload), svg_viewbox_bounds(&payload.svg)) {
+    match (
+        visible_payload_bounds(payload),
+        svg_viewbox_bounds(&payload.svg),
+    ) {
         (Some(visible), Some(svg)) => Some([
             visible[0],
             visible[1],
@@ -192,6 +195,51 @@ pub(super) fn preview_source_bounds(payload: &OleObjectPayload) -> Option<[f64; 
         (None, Some(svg)) => Some([svg[0], svg[1], svg[2] + right_padding, svg[3]]),
         (None, None) => None,
     }
+}
+
+pub(super) fn preview_bounds_debug_report(
+    payload: &OleObjectPayload,
+    extent: SIZE,
+) -> serde_json::Value {
+    let use_chemdraw_units = payload_uses_cdxml_editing_scale(payload);
+    let visible_bounds = visible_payload_bounds(payload);
+    let svg_bounds = svg_viewbox_bounds(&payload.svg);
+    let source_bounds = preview_source_bounds(payload);
+    let right_padding = std::env::var(ENV_PREVIEW_SOURCE_RIGHT_PADDING_PT)
+        .ok()
+        .and_then(|value| value.trim().parse::<f64>().ok())
+        .unwrap_or(PREVIEW_SOURCE_RIGHT_PADDING_PT);
+    let (frame_bounds, draw_bounds, use_logical_preview_coords) =
+        if let Some(visible) = visible_bounds {
+            let canvas_bounds = source_bounds.unwrap_or(visible);
+            (
+                office_preview_frame_bounds(canvas_bounds, use_chemdraw_units),
+                office_preview_logical_bounds(canvas_bounds, use_chemdraw_units),
+                true,
+            )
+        } else {
+            let bounds = RECT {
+                left: 0,
+                top: 0,
+                right: extent.cx.max(1),
+                bottom: extent.cy.max(1),
+            };
+            (bounds, bounds, false)
+        };
+    json!({
+        "useCdxmlEditingScale": use_chemdraw_units,
+        "extentHimetric": {
+            "width": extent.cx,
+            "height": extent.cy,
+        },
+        "rightPaddingPt": right_padding,
+        "visibleBoundsSvgPx": visible_bounds,
+        "svgViewBoxBoundsSvgPx": svg_bounds,
+        "sourceBoundsSvgPx": source_bounds,
+        "useLogicalPreviewCoords": use_logical_preview_coords,
+        "frameBoundsHimetric": rect_debug_json(frame_bounds),
+        "drawBoundsLogical": rect_debug_json(draw_bounds),
+    })
 }
 
 fn payload_render_primitives(payload: &OleObjectPayload) -> Option<Vec<RenderPrimitive>> {
@@ -440,6 +488,17 @@ fn office_preview_logical_bounds(bounds: [f64; 4], use_chemdraw_units: bool) -> 
 
 fn scaled_to_i32(value: f64, scale: f64) -> i32 {
     (value * scale).round() as i32
+}
+
+fn rect_debug_json(rect: RECT) -> serde_json::Value {
+    json!({
+        "left": rect.left,
+        "top": rect.top,
+        "right": rect.right,
+        "bottom": rect.bottom,
+        "width": rect.right - rect.left,
+        "height": rect.bottom - rect.top,
+    })
 }
 
 pub(super) fn ole_presentation_stream_for_payload(

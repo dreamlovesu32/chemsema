@@ -47,7 +47,7 @@ mod emf_preview;
 use emf_preview::{
     draw_payload_preview, draw_placeholder_preview, enhanced_metafile_bits_for_payload,
     enhanced_metafile_for_payload, extent_himetric_for_payload, hglobal_for_metafile_pict,
-    ole_presentation_stream_for_payload,
+    ole_presentation_stream_for_payload, preview_bounds_debug_report,
 };
 
 const APP_NAME: &str = "Chemcore";
@@ -198,6 +198,15 @@ pub fn run() -> Result<(), String> {
                 .next()
                 .ok_or_else(|| "--write-emf-payload requires an output .emf path.".to_string())?;
             write_emf_payload(PathBuf::from(payload_path), PathBuf::from(output_path))
+        }
+        "--write-preview-bounds-payload" => {
+            let payload_path = args.next().ok_or_else(|| {
+                "--write-preview-bounds-payload requires a JSON payload path.".to_string()
+            })?;
+            let output_path = args.next().ok_or_else(|| {
+                "--write-preview-bounds-payload requires an output .json path.".to_string()
+            })?;
+            write_preview_bounds_payload(PathBuf::from(payload_path), PathBuf::from(output_path))
         }
         "--serve" | "-Embedding" | "/Embedding" | "--embedding" => {
             unsafe {
@@ -473,6 +482,25 @@ fn write_emf_payload(payload_path: PathBuf, output_path: PathBuf) -> Result<(), 
     })?;
     println!(
         "{DOCUMENT_DISPLAY_NAME} EMF preview written to {}.",
+        output_path.display()
+    );
+    Ok(())
+}
+
+fn write_preview_bounds_payload(payload_path: PathBuf, output_path: PathBuf) -> Result<(), String> {
+    let payload = read_ole_object_payload(&payload_path)?;
+    let extent = payload.extent_himetric();
+    let report = preview_bounds_debug_report(&payload, extent);
+    let json = serde_json::to_string_pretty(&report)
+        .map_err(|error| format!("Failed to serialize preview bounds report: {error}"))?;
+    std::fs::write(&output_path, json).map_err(|error| {
+        format!(
+            "Failed to write preview bounds report {}: {error}",
+            output_path.display()
+        )
+    })?;
+    println!(
+        "{DOCUMENT_DISPLAY_NAME} preview bounds report written to {}.",
         output_path.display()
     );
     Ok(())
@@ -3108,6 +3136,7 @@ fn print_help() {
     println!("  chemcore-office.exe --copy-clipboard-payload <payload.json>");
     println!("  chemcore-office.exe --write-word-docx-payload <payload.json> <output.docx>");
     println!("  chemcore-office.exe --write-emf-payload <payload.json> <output.emf>");
+    println!("  chemcore-office.exe --write-preview-bounds-payload <payload.json> <output.json>");
     println!("  chemcore-office.exe --serve");
     println!();
     println!("COM may launch this executable with -Embedding or /Embedding.");

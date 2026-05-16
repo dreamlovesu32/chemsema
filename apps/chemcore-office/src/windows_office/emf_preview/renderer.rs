@@ -16,21 +16,22 @@ use windows_sys::Win32::Graphics::GdiPlus::{
     DashStyleDash, EmfTypeEmfPlusDual, FillModeAlternate, FontStyleBold, FontStyleItalic,
     FontStyleRegular, FontStyleUnderline, GdipAddPathBezier, GdipAddPathLine,
     GdipCloneStringFormat, GdipClosePathFigure, GdipCreateFont, GdipCreateFontFamilyFromName,
-    GdipCreateFromHDC, GdipCreatePath, GdipCreatePen1, GdipCreateSolidFill, GdipCreateStringFormat, GdipDeleteBrush,
-    GdipDeleteFont, GdipDeleteFontFamily, GdipDeleteGraphics, GdipDeletePath, GdipDeletePen,
-    GdipDeleteStringFormat, GdipDisposeImage, GdipDrawEllipse, GdipDrawLine, GdipDrawLines,
-    GdipDrawPath, GdipDrawPolygon, GdipDrawRectangle, GdipDrawString, GdipFillEllipse,
-    GdipFillPath, GdipFillPolygon, GdipFillRectangle, GdipGetCellAscent, GdipGetDC, GdipGetEmHeight, GdipGetFamily, GdipGetHemfFromMetafile,
+    GdipCreateFromHDC, GdipCreatePath, GdipCreatePen1, GdipCreateSolidFill, GdipCreateStringFormat,
+    GdipDeleteBrush, GdipDeleteFont, GdipDeleteFontFamily, GdipDeleteGraphics, GdipDeletePath,
+    GdipDeletePen, GdipDeleteStringFormat, GdipDisposeImage, GdipDrawEllipse, GdipDrawLine,
+    GdipDrawLines, GdipDrawPath, GdipDrawPolygon, GdipDrawRectangle, GdipDrawString,
+    GdipFillEllipse, GdipFillPath, GdipFillPolygon, GdipFillRectangle, GdipGetCellAscent,
+    GdipGetDC, GdipGetEmHeight, GdipGetFamily, GdipGetHemfFromMetafile,
     GdipGetImageGraphicsContext, GdipMeasureString, GdipRecordMetafile, GdipReleaseDC,
-    GdipSetPageScale, GdipSetPageUnit, GdipSetPenDashArray, GdipSetPenDashStyle,
-    GdipSetPenEndCap, GdipSetPenLineJoin, GdipSetPenMiterLimit, GdipSetPenStartCap,
-    GdipSetPixelOffsetMode, GdipSetSmoothingMode, GdipSetStringFormatAlign, GdipSetStringFormatFlags,
-    GdipSetStringFormatLineAlign, GdipSetTextRenderingHint, GdipStartPathFigure,
-    GdipStringFormatGetGenericTypographic, GdipSaveGraphics, GdipRestoreGraphics, GdiplusStartup,
+    GdipRestoreGraphics, GdipSaveGraphics, GdipSetPageScale, GdipSetPageUnit, GdipSetPenDashArray,
+    GdipSetPenDashStyle, GdipSetPenEndCap, GdipSetPenLineJoin, GdipSetPenMiterLimit,
+    GdipSetPenStartCap, GdipSetPixelOffsetMode, GdipSetSmoothingMode, GdipSetStringFormatAlign,
+    GdipSetStringFormatFlags, GdipSetStringFormatLineAlign, GdipSetTextRenderingHint,
+    GdipStartPathFigure, GdipStringFormatGetGenericTypographic, GdiplusStartup,
     GdiplusStartupInput, GpBrush, GpFont, GpFontFamily, GpGraphics, GpImage, GpMetafile, GpPath,
-    GpPen, GpStringFormat, LineCapFlat, LineCapRound, LineCapSquare, LineJoinBevel,
-    LineJoinMiter, LineJoinRound, MetafileFrameUnitGdi, Ok as GDI_PLUS_OK, PixelOffsetModeHighQuality, PointF, RectF,
-    SmoothingModeAntiAlias, StringAlignmentNear, StringFormatFlagsMeasureTrailingSpaces,
+    GpPen, GpStringFormat, LineCapFlat, LineCapRound, LineCapSquare, LineJoinBevel, LineJoinMiter,
+    LineJoinRound, MetafileFrameUnitGdi, Ok as GDI_PLUS_OK, PixelOffsetModeHighQuality, PointF,
+    RectF, SmoothingModeAntiAlias, StringAlignmentNear, StringFormatFlagsMeasureTrailingSpaces,
     StringFormatFlagsNoClip, StringFormatFlagsNoFitBlackBox, TextRenderingHintAntiAlias,
     TextRenderingHintAntiAliasGridFit, UnitPixel, UnitWorld,
 };
@@ -47,21 +48,17 @@ const CHEMDRAW_PACKAGED_CENTERED_TEXT_TOP_BIAS_EM: f32 = 0.012;
 const CHEMDRAW_PACKAGED_CENTERED_SCRIPT_EXTRA_TOP_BIAS_EM: f32 = 0.02;
 const OUT_TT_ONLY_PRECIS_VALUE: u32 = 7;
 const CHEMDRAW_GDI_TEXT_ADVANCE_TIGHTEN: f64 = 0.965;
-const ENV_DISABLE_PACKAGED_TRAILING_TRIM: &str =
-    "CHEMCORE_EMF_PACKAGED_TEXT_DISABLE_TRAILING_TRIM";
-const ENV_DISABLE_PACKAGED_NOFITBLACKBOX: &str =
-    "CHEMCORE_EMF_PACKAGED_TEXT_DISABLE_NOFITBLACKBOX";
+const ENV_DISABLE_PACKAGED_TRAILING_TRIM: &str = "CHEMCORE_EMF_PACKAGED_TEXT_DISABLE_TRAILING_TRIM";
+const ENV_DISABLE_PACKAGED_NOFITBLACKBOX: &str = "CHEMCORE_EMF_PACKAGED_TEXT_DISABLE_NOFITBLACKBOX";
 const ENV_PACKAGED_TEXT_GRIDFIT: &str = "CHEMCORE_EMF_PACKAGED_TEXT_GRIDFIT";
 const ENV_PACKAGED_PIXEL_OFFSET_HIGHQUALITY: &str =
     "CHEMCORE_EMF_PACKAGED_PIXEL_OFFSET_HIGHQUALITY";
-const ENV_PACKAGED_PIXEL_OFFSET_MODE_VALUE: &str =
-    "CHEMCORE_EMF_PACKAGED_PIXEL_OFFSET_MODE_VALUE";
+const ENV_PACKAGED_PIXEL_OFFSET_MODE_VALUE: &str = "CHEMCORE_EMF_PACKAGED_PIXEL_OFFSET_MODE_VALUE";
 const ENV_PACKAGED_CENTERED_PLAIN_GDI_WIDTH: &str =
     "CHEMCORE_EMF_PACKAGED_CENTERED_PLAIN_GDI_WIDTH";
 const ENV_PACKAGED_CENTERED_PLAIN_ZERO_LAYOUT: &str =
     "CHEMCORE_EMF_PACKAGED_CENTERED_PLAIN_ZERO_LAYOUT";
-const ENV_PACKAGED_SMOOTHING_MODE_VALUE: &str =
-    "CHEMCORE_EMF_PACKAGED_SMOOTHING_MODE_VALUE";
+const ENV_PACKAGED_SMOOTHING_MODE_VALUE: &str = "CHEMCORE_EMF_PACKAGED_SMOOTHING_MODE_VALUE";
 
 fn preview_env_enabled(name: &str) -> bool {
     std::env::var_os(name).is_some()
@@ -964,11 +961,7 @@ unsafe fn draw_gdiplus_primitive(
     let save_restore = transform.emf_recording
         && matches!(
             primitive,
-            RenderPrimitive::Line {
-                ..
-            } | RenderPrimitive::Polyline {
-                ..
-            }
+            RenderPrimitive::Line { .. } | RenderPrimitive::Polyline { .. }
         );
     let mut state = 0u32;
     if save_restore && GdipSaveGraphics(graphics, &mut state) != GDI_PLUS_OK {
@@ -1250,7 +1243,10 @@ unsafe fn draw_gdiplus_polygon(
             );
         }
     }
-    let mapped: Vec<PointF> = points.iter().map(|point| transform.gdip_point(*point)).collect();
+    let mapped: Vec<PointF> = points
+        .iter()
+        .map(|point| transform.gdip_point(*point))
+        .collect();
     let mut ok = true;
     if let Some(brush) = create_gdiplus_solid_brush(fill) {
         ok &= GdipFillPolygon(
@@ -1554,14 +1550,8 @@ unsafe fn draw_gdiplus_text(
             && !preview_env_enabled(ENV_DISABLE_PACKAGED_TRAILING_TRIM)
             && matches!(text_anchor, Some("middle" | "end"))
         {
-            gdiplus_line_trailing_space_trim(
-                graphics,
-                line_runs,
-                font_size,
-                font_family,
-                transform,
-            )
-            .unwrap_or(0.0)
+            gdiplus_line_trailing_space_trim(graphics, line_runs, font_size, font_family, transform)
+                .unwrap_or(0.0)
         } else {
             0.0
         };
@@ -1793,9 +1783,10 @@ unsafe fn gdiplus_measure_text_width(
         return Some(0.0);
     }
     let script_scale = preview_script_scale(run.script.as_deref());
-    let font_px =
-        (run.font_size.unwrap_or(fallback_font_size) * script_scale * gdiplus_text_scale(transform))
-        .max(1.0) as f32;
+    let font_px = (run.font_size.unwrap_or(fallback_font_size)
+        * script_scale
+        * gdiplus_text_scale(transform))
+    .max(1.0) as f32;
     let layout = RectF {
         X: 0.0,
         Y: 0.0,
@@ -1853,9 +1844,10 @@ unsafe fn draw_gdiplus_text_run(
         return false;
     };
     let script_scale = preview_script_scale(run.script.as_deref());
-    let font_px =
-        (run.font_size.unwrap_or(fallback_font_size) * script_scale * gdiplus_text_scale(transform))
-        .max(1.0) as f32;
+    let font_px = (run.font_size.unwrap_or(fallback_font_size)
+        * script_scale
+        * gdiplus_text_scale(transform))
+    .max(1.0) as f32;
     let ascent_ratio = gdiplus_font_ascent_ratio(font, run).unwrap_or(if transform.emf_recording {
         0.905_273_44
     } else {
@@ -1954,9 +1946,10 @@ unsafe fn create_gdiplus_font(
     }
     let style = gdiplus_font_style(run);
     let script_scale = preview_script_scale(run.script.as_deref());
-    let em_size =
-        (run.font_size.unwrap_or(fallback_font_size) * script_scale * gdiplus_text_scale(transform))
-        .max(0.1) as f32;
+    let em_size = (run.font_size.unwrap_or(fallback_font_size)
+        * script_scale
+        * gdiplus_text_scale(transform))
+    .max(0.1) as f32;
     let mut font: *mut GpFont = null_mut();
     let ok = GdipCreateFont(family, em_size, style, UnitPixel, &mut font) == GDI_PLUS_OK
         && !font.is_null();
@@ -1991,8 +1984,7 @@ unsafe fn create_gdiplus_string_format() -> Option<*mut GpStringFormat> {
     } else if GdipCreateStringFormat(0, 0, &mut format) != GDI_PLUS_OK || format.is_null() {
         return None;
     }
-    let mut flags =
-        0x2000 | StringFormatFlagsNoClip | StringFormatFlagsMeasureTrailingSpaces;
+    let mut flags = 0x2000 | StringFormatFlagsNoClip | StringFormatFlagsMeasureTrailingSpaces;
     if !preview_env_enabled(ENV_DISABLE_PACKAGED_NOFITBLACKBOX) {
         flags |= StringFormatFlagsNoFitBlackBox;
     }
@@ -2425,11 +2417,7 @@ unsafe fn preview_text_extent(dc: HDC, label: &[u16], tighten_advance: bool) -> 
     }
 }
 
-unsafe fn preview_text_dx_array(
-    dc: HDC,
-    label: &[u16],
-    tighten_advance: bool,
-) -> Option<Vec<i32>> {
+unsafe fn preview_text_dx_array(dc: HDC, label: &[u16], tighten_advance: bool) -> Option<Vec<i32>> {
     if label.is_empty() {
         return Some(Vec::new());
     }
@@ -2513,9 +2501,15 @@ unsafe fn preview_structure_label_dx_array(
     let mut dx = Vec::with_capacity(wide.len());
     let mut previous = 0i32;
     for end in 1..=wide.len() {
-        let Some(width) =
-            gdiplus_measure_text_width(graphics, font, format, &wide[..end], run, fallback_font_size, transform)
-        else {
+        let Some(width) = gdiplus_measure_text_width(
+            graphics,
+            font,
+            format,
+            &wide[..end],
+            run,
+            fallback_font_size,
+            transform,
+        ) else {
             GdipDeleteGraphics(graphics);
             DeleteDC(measure_dc);
             GdipDeleteStringFormat(format);
@@ -3933,8 +3927,11 @@ fn preview_bond_stroke_line(
     {
         return None;
     }
-    let simplified =
-        preview_simplify_bond_polygon(points, axis, width * PREVIEW_BOND_STROKE_COLLINEAR_TOLERANCE_WIDTH_FACTOR)?;
+    let simplified = preview_simplify_bond_polygon(
+        points,
+        axis,
+        width * PREVIEW_BOND_STROKE_COLLINEAR_TOLERANCE_WIDTH_FACTOR,
+    )?;
     if simplified.len() < 4 || simplified.len() > 6 {
         return None;
     }
@@ -3991,10 +3988,22 @@ fn preview_bond_stroke_line(
         let tolerance = (width * PREVIEW_BOND_STROKE_TOLERANCE_WIDTH_FACTOR)
             .max(length * 0.01)
             .max(0.05);
-        let start_edge =
-            preview_bond_terminal_edge(&simplified, &projections, axis, min_projection, tolerance, width);
-        let end_edge =
-            preview_bond_terminal_edge(&simplified, &projections, axis, max_projection, tolerance, width);
+        let start_edge = preview_bond_terminal_edge(
+            &simplified,
+            &projections,
+            axis,
+            min_projection,
+            tolerance,
+            width,
+        );
+        let end_edge = preview_bond_terminal_edge(
+            &simplified,
+            &projections,
+            axis,
+            max_projection,
+            tolerance,
+            width,
+        );
         let mut start_axis_projection = bond_info
             .map(|info| info.start_projection)
             .unwrap_or(min_projection);
@@ -4032,9 +4041,7 @@ fn preview_bond_stroke_line(
                 }
             }
             let cap_radius = stroke_width * 0.5;
-            if info.side_double
-                && (normal_mid - info.axis_normal_projection).abs() > width * 0.35
-            {
+            if info.side_double && (normal_mid - info.axis_normal_projection).abs() > width * 0.35 {
                 start_axis_projection = min_projection + cap_radius;
                 end_axis_projection = max_projection - cap_radius;
             }
@@ -4053,10 +4060,22 @@ fn preview_bond_stroke_line(
     let tolerance = (width * PREVIEW_BOND_STROKE_TOLERANCE_WIDTH_FACTOR)
         .max(length * 0.01)
         .max(0.05);
-    let start_edge =
-        preview_bond_terminal_edge(&simplified, &projections, axis, min_projection, tolerance, width)?;
-    let end_edge =
-        preview_bond_terminal_edge(&simplified, &projections, axis, max_projection, tolerance, width)?;
+    let start_edge = preview_bond_terminal_edge(
+        &simplified,
+        &projections,
+        axis,
+        min_projection,
+        tolerance,
+        width,
+    )?;
+    let end_edge = preview_bond_terminal_edge(
+        &simplified,
+        &projections,
+        axis,
+        max_projection,
+        tolerance,
+        width,
+    )?;
     let stroke_width =
         (start_edge.length + end_edge.length) * 0.5 * PREVIEW_BOND_STROKE_OPTICAL_WIDTH_SCALE;
     if !stroke_width.is_finite() || stroke_width <= 0.0 {
@@ -4132,7 +4151,8 @@ fn preview_point_is_collinear(
         x: point.x - prev.x,
         y: point.y - prev.y,
     };
-    let distance = ((prev_to_point.x * segment.y) - (prev_to_point.y * segment.x)).abs() / segment_length;
+    let distance =
+        ((prev_to_point.x * segment.y) - (prev_to_point.y * segment.x)).abs() / segment_length;
     if distance > tolerance.max(0.05) {
         return false;
     }
@@ -4273,7 +4293,9 @@ fn preview_bond_terminal_edge(
         if edge_length <= 0.0 {
             return None;
         }
-        if ordered.len() == 2 && along_axis.abs() / edge_length > PREVIEW_BOND_STROKE_EDGE_AXIS_MAX_RATIO {
+        if ordered.len() == 2
+            && along_axis.abs() / edge_length > PREVIEW_BOND_STROKE_EDGE_AXIS_MAX_RATIO
+        {
             width
         } else {
             if along_axis.abs() / edge_length > PREVIEW_BOND_STROKE_EDGE_AXIS_MAX_RATIO {
@@ -4502,12 +4524,16 @@ mod tests {
 
     #[test]
     fn preview_bond_stroke_line_converts_simple_rectangle() {
-        let stroke_line = preview_bond_stroke_line(&[
-            point(0.0, 0.0),
-            point(20.0, 0.0),
-            point(20.0, 2.64),
-            point(0.0, 2.64),
-        ], None, None)
+        let stroke_line = preview_bond_stroke_line(
+            &[
+                point(0.0, 0.0),
+                point(20.0, 0.0),
+                point(20.0, 2.64),
+                point(0.0, 2.64),
+            ],
+            None,
+            None,
+        )
         .expect("simple bond shaft should convert to a centerline stroke");
         assert!((stroke_line.start.x - 0.0).abs() < 1.0e-6);
         assert!((stroke_line.start.y - 1.32).abs() < 1.0e-6);
@@ -4518,13 +4544,17 @@ mod tests {
 
     #[test]
     fn preview_bond_stroke_line_converts_pentagon_join() {
-        let stroke_line = preview_bond_stroke_line(&[
-            point(0.0, 0.0),
-            point(10.0, 0.0),
-            point(20.0, 0.0),
-            point(20.0, 2.64),
-            point(0.0, 2.64),
-        ], None, None)
+        let stroke_line = preview_bond_stroke_line(
+            &[
+                point(0.0, 0.0),
+                point(10.0, 0.0),
+                point(20.0, 0.0),
+                point(20.0, 2.64),
+                point(0.0, 2.64),
+            ],
+            None,
+            None,
+        )
         .expect("pentagon with a collinear shoulder should still convert to a pen stroke");
         assert!(stroke_line.width > 0.0);
         assert!((stroke_line.start.x - 0.0).abs() < 1.0e-6);
@@ -4538,14 +4568,18 @@ mod tests {
         let start_projection = 370.689708 * axis.x + 696.293739 * axis.y;
         let end_projection = 392.077488 * axis.x + 662.127888 * axis.y;
         let context = context_with_bond("b1", axis, true, start_projection, end_projection);
-        let stroke_line = preview_bond_stroke_line(&[
-            point(370.689708, 696.293739),
-            point(392.077488, 662.127888),
-            point(390.45, 662.24),
-            point(388.822512, 662.352112),
-            point(369.470292, 693.266261),
-            point(370.08, 694.78),
-        ], Some("b1"), Some(&context))
+        let stroke_line = preview_bond_stroke_line(
+            &[
+                point(370.689708, 696.293739),
+                point(392.077488, 662.127888),
+                point(390.45, 662.24),
+                point(388.822512, 662.352112),
+                point(369.470292, 693.266261),
+                point(370.08, 694.78),
+            ],
+            Some("b1"),
+            Some(&context),
+        )
         .expect("plain same-width junction hexagon should convert when bond axis is known");
         assert!(stroke_line.width > 0.0);
         let direction = preview_normalize_axis(point(
@@ -4559,12 +4593,16 @@ mod tests {
 
     #[test]
     fn preview_bond_stroke_line_accepts_short_thin_horizontal_bond() {
-        let stroke_line = preview_bond_stroke_line(&[
-            point(714.35, 707.54),
-            point(727.33, 707.54),
-            point(727.33, 704.9),
-            point(714.35, 704.9),
-        ], None, None)
+        let stroke_line = preview_bond_stroke_line(
+            &[
+                point(714.35, 707.54),
+                point(727.33, 707.54),
+                point(727.33, 704.9),
+                point(714.35, 704.9),
+            ],
+            None,
+            None,
+        )
         .expect("short thin N-O bond should still convert to a stroke");
         assert!((stroke_line.width - 2.64).abs() < 1.0e-6);
     }
@@ -4573,14 +4611,21 @@ mod tests {
     fn preview_bond_stroke_line_accepts_apex_terminal_with_axis_hint() {
         let axis = preview_normalize_axis(point(0.0, -1.0)).expect("axis");
         let context = context_with_bond("b1", axis, true, -421.402155, -382.24);
-        let stroke_line = preview_bond_stroke_line(&[
-            point(285.27, 421.402155),
-            point(285.27, 383.002041),
-            point(283.95, 382.24),
-            point(282.63, 383.002155),
-            point(282.63, 419.877845),
-        ], Some("b1"), Some(&context));
-        assert!(stroke_line.is_some(), "axis hint should keep plain apex terminals on pen");
+        let stroke_line = preview_bond_stroke_line(
+            &[
+                point(285.27, 421.402155),
+                point(285.27, 383.002041),
+                point(283.95, 382.24),
+                point(282.63, 383.002155),
+                point(282.63, 419.877845),
+            ],
+            Some("b1"),
+            Some(&context),
+        );
+        assert!(
+            stroke_line.is_some(),
+            "axis hint should keep plain apex terminals on pen"
+        );
     }
 
     #[test]
@@ -4601,12 +4646,16 @@ mod tests {
                 end_has_label: false,
             },
         );
-        let stroke_line = preview_bond_stroke_line(&[
-            point(0.0, 0.0),
-            point(20.0, 0.0),
-            point(20.0, 2.64),
-            point(0.0, 2.64),
-        ], Some("b1"), Some(&context))
+        let stroke_line = preview_bond_stroke_line(
+            &[
+                point(0.0, 0.0),
+                point(20.0, 0.0),
+                point(20.0, 2.64),
+                point(0.0, 2.64),
+            ],
+            Some("b1"),
+            Some(&context),
+        )
         .expect("joined end should still convert");
         assert!((stroke_line.start.x + 3.0).abs() < 1.0e-6);
         assert!((stroke_line.end.x - 20.0).abs() < 1.0e-6);
@@ -4653,15 +4702,22 @@ mod tests {
         let start_projection = 370.689708 * axis.x + 696.293739 * axis.y;
         let end_projection = 392.077488 * axis.x + 662.127888 * axis.y;
         let context = context_with_bond("b1", axis, false, start_projection, end_projection);
-        let stroke_line = preview_bond_stroke_line(&[
-            point(370.689708, 696.293739),
-            point(392.077488, 662.127888),
-            point(390.45, 662.24),
-            point(388.822512, 662.352112),
-            point(369.470292, 693.266261),
-            point(370.08, 694.78),
-        ], Some("b1"), Some(&context));
-        assert!(stroke_line.is_none(), "junction hexagon should stay as polygon");
+        let stroke_line = preview_bond_stroke_line(
+            &[
+                point(370.689708, 696.293739),
+                point(392.077488, 662.127888),
+                point(390.45, 662.24),
+                point(388.822512, 662.352112),
+                point(369.470292, 693.266261),
+                point(370.08, 694.78),
+            ],
+            Some("b1"),
+            Some(&context),
+        );
+        assert!(
+            stroke_line.is_none(),
+            "junction hexagon should stay as polygon"
+        );
     }
 
     #[test]
