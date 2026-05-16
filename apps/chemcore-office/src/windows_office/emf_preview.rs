@@ -53,6 +53,7 @@ const CHEMDRAW_EMF_LOGICAL_UNITS_PER_SVG_PX: f64 = 1.0;
 const USE_GDIPLUS_DUAL_PREVIEW: bool = true;
 const PREVIEW_SOURCE_RIGHT_PADDING_PT: f64 = 0.0;
 const ENV_PREVIEW_SOURCE_RIGHT_PADDING_PT: &str = "CHEMCORE_PREVIEW_SOURCE_RIGHT_PADDING_PT";
+const ENV_PREVIEW_SOURCE_BOUNDS_SIDES: &str = "CHEMCORE_PREVIEW_SOURCE_BOUNDS_SIDES";
 const ENV_PREVIEW_SOURCE_BOUNDS_MODE: &str = "CHEMCORE_PREVIEW_SOURCE_BOUNDS_MODE";
 
 #[derive(Clone, Copy, Debug)]
@@ -63,6 +64,14 @@ enum PreviewSourceBoundsMode {
     SvgPadRight,
     Union,
     UnionPadRight,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct PreviewSourceBoundsSides {
+    left_from_svg: bool,
+    top_from_svg: bool,
+    right_from_svg: bool,
+    bottom_from_svg: bool,
 }
 
 pub(super) unsafe fn draw_payload_preview(
@@ -189,6 +198,28 @@ pub(super) fn preview_source_bounds(payload: &OleObjectPayload) -> Option<[f64; 
         .unwrap_or(PREVIEW_SOURCE_RIGHT_PADDING_PT);
     let visible = visible_payload_bounds(payload);
     let svg = svg_viewbox_bounds(&payload.svg);
+    if let Some(sides) = preview_source_bounds_sides_override() {
+        return match (visible, svg) {
+            (Some(visible), Some(svg)) => Some([
+                if sides.left_from_svg { svg[0] } else { visible[0] },
+                if sides.top_from_svg { svg[1] } else { visible[1] },
+                if sides.right_from_svg {
+                    svg[2] + right_padding
+                } else {
+                    visible[2] + right_padding
+                },
+                if sides.bottom_from_svg { svg[3] } else { visible[3] },
+            ]),
+            (Some(visible), None) => Some([
+                visible[0],
+                visible[1],
+                visible[2] + right_padding,
+                visible[3],
+            ]),
+            (None, Some(svg)) => Some([svg[0], svg[1], svg[2] + right_padding, svg[3]]),
+            (None, None) => None,
+        };
+    }
     match preview_source_bounds_mode() {
         PreviewSourceBoundsMode::Current => match (visible, svg) {
             (Some(visible), Some(svg)) => Some([
@@ -243,6 +274,8 @@ pub(super) fn preview_bounds_debug_report(
     let svg_bounds = svg_viewbox_bounds(&payload.svg);
     let source_bounds = preview_source_bounds(payload);
     let source_bounds_mode = preview_source_bounds_mode();
+    let source_bounds_sides_override =
+        std::env::var(ENV_PREVIEW_SOURCE_BOUNDS_SIDES).ok();
     let right_padding = std::env::var(ENV_PREVIEW_SOURCE_RIGHT_PADDING_PT)
         .ok()
         .and_then(|value| value.trim().parse::<f64>().ok())
@@ -267,6 +300,7 @@ pub(super) fn preview_bounds_debug_report(
     json!({
         "useCdxmlEditingScale": use_chemdraw_units,
         "sourceBoundsMode": format!("{source_bounds_mode:?}"),
+        "sourceBoundsSidesOverride": source_bounds_sides_override,
         "extentHimetric": {
             "width": extent.cx,
             "height": extent.cy,
@@ -554,6 +588,24 @@ fn preview_source_bounds_mode() -> PreviewSourceBoundsMode {
         Some("unionpad") => PreviewSourceBoundsMode::UnionPadRight,
         _ => PreviewSourceBoundsMode::SvgPadRight,
     }
+}
+
+fn preview_source_bounds_sides_override() -> Option<PreviewSourceBoundsSides> {
+    let raw = std::env::var(ENV_PREVIEW_SOURCE_BOUNDS_SIDES).ok()?;
+    let parts: Vec<&str> = raw
+        .split(',')
+        .map(|part| part.trim())
+        .filter(|part| !part.is_empty())
+        .collect();
+    let [left, top, right, bottom] = parts.as_slice() else {
+        return None;
+    };
+    Some(PreviewSourceBoundsSides {
+        left_from_svg: matches!((*left).to_ascii_lowercase().as_str(), "svg" | "s"),
+        top_from_svg: matches!((*top).to_ascii_lowercase().as_str(), "svg" | "s"),
+        right_from_svg: matches!((*right).to_ascii_lowercase().as_str(), "svg" | "s"),
+        bottom_from_svg: matches!((*bottom).to_ascii_lowercase().as_str(), "svg" | "s"),
+    })
 }
 
 pub(super) fn ole_presentation_stream_for_payload(
