@@ -51,7 +51,7 @@ use renderer::{
 const CHEMDRAW_HIMETRIC_PER_SVG_PX: f64 = 2540.0 / 240.0;
 const CHEMDRAW_EMF_LOGICAL_UNITS_PER_SVG_PX: f64 = 1.0;
 const USE_GDIPLUS_DUAL_PREVIEW: bool = true;
-const PREVIEW_SOURCE_RIGHT_PADDING_PT: f64 = 16.0;
+const PREVIEW_SOURCE_RIGHT_PADDING_PT: f64 = 0.0;
 const ENV_PREVIEW_SOURCE_RIGHT_PADDING_PT: &str = "CHEMCORE_PREVIEW_SOURCE_RIGHT_PADDING_PT";
 const ENV_PREVIEW_SOURCE_BOUNDS_MODE: &str = "CHEMCORE_PREVIEW_SOURCE_BOUNDS_MODE";
 
@@ -546,12 +546,13 @@ fn preview_source_bounds_mode() -> PreviewSourceBoundsMode {
         .map(|value| value.trim().to_ascii_lowercase())
         .as_deref()
     {
+        Some("current") => PreviewSourceBoundsMode::Current,
         Some("visible") => PreviewSourceBoundsMode::Visible,
         Some("svg") => PreviewSourceBoundsMode::Svg,
         Some("svgpad") => PreviewSourceBoundsMode::SvgPadRight,
         Some("union") => PreviewSourceBoundsMode::Union,
         Some("unionpad") => PreviewSourceBoundsMode::UnionPadRight,
-        _ => PreviewSourceBoundsMode::Current,
+        _ => PreviewSourceBoundsMode::SvgPadRight,
     }
 }
 
