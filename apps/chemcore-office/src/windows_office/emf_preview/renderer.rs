@@ -51,6 +51,7 @@ const ENV_DISABLE_PACKAGED_TRAILING_TRIM: &str =
     "CHEMCORE_EMF_PACKAGED_TEXT_DISABLE_TRAILING_TRIM";
 const ENV_DISABLE_PACKAGED_NOFITBLACKBOX: &str =
     "CHEMCORE_EMF_PACKAGED_TEXT_DISABLE_NOFITBLACKBOX";
+const ENV_PACKAGED_TEXT_GRIDFIT: &str = "CHEMCORE_EMF_PACKAGED_TEXT_GRIDFIT";
 
 fn preview_env_enabled(name: &str) -> bool {
     std::env::var_os(name).is_some()
@@ -262,7 +263,11 @@ pub(super) unsafe fn enhanced_metafile_gdiplus_dual_preview(
     GdipSetTextRenderingHint(
         graphics,
         if transform.emf_recording {
-            TextRenderingHintAntiAlias
+            if preview_env_enabled(ENV_PACKAGED_TEXT_GRIDFIT) {
+                TextRenderingHintAntiAliasGridFit
+            } else {
+                TextRenderingHintAntiAlias
+            }
         } else {
             TextRenderingHintAntiAliasGridFit
         },
