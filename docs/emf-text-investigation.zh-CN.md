@@ -3243,3 +3243,104 @@ against
 2. 再单独研究 ChemDraw 的 shell 语义
 
 而不是再把两层混着看。
+## 2026-05-16：`CopyAsPicture` 口径确认与 shell/EMF 交互更新
+
+### 1. `CopyAsPicture` 确实吃 packaged preview image，不是 live OLE
+
+之前一个潜在风险是：
+
+- 如果 Word `CopyAsPicture` 走的是 live OLE 渲染
+- 那么只替换 `word/media/image1.emf`
+- 理论上不该显著改变复制出来的像素结果
+
+这轮做了一个极端替换实验：
+
+- 基底：`tmp/frame-word-ab/current.docx`
+- 不动 `oleObject1.bin`
+- 只把 `word/media/image1.emf` 换成一个完全不同的 fixture：
+  - `mixed-center-line.chemref` 的 `image1.emf`
+- 得到：
+  - `tmp/frame-word-ab/current-swapfixturepreview.docx`
+
+Word `CopyAsPicture` 后的结果立刻完全变样：
+
+- `current.wordcopy.png`
+  - bbox = `[5, 8, 552, 232]`
+  - ink = `11938`
+- `current-swapfixturepreview.wordcopy.png`
+  - bbox = `[7, 54, 543, 200]`
+  - ink = `26890`
+
+结论：
+
+- `CopyAsPicture` 这条研究口径，确实主要吃的是 packaged preview image
+- 不是 live OLE object 的实时渲染
+
+这条非常重要，因为它说明：
+
+- 现在围绕 `image1.emf / frame / shell` 做的实验是有意义的
+- 没有被 live OLE 路径污染
+
+### 2. exact `v28` shell 对 chemcore 自己的 EMF 几乎没有额外影响
+
+我又做了一个对称性检查：
+
+- `current-shellchem.wordcopy` vs `current-in-v28shell.shape2`
+- `frame-chem-shellchem.wordcopy` vs `frame-chem-in-v28shell.shape2`
+- `frame-origin-height-shellchem.wordcopy` vs `frame-origin-height-in-v28shell.shape2`
+
+结果：
+
+- `current-shellchem` vs `current-in-v28shell`
+  - `iou = 1.0`
+  - `dx = 0`
+  - `dy = 0`
+- `frame-chem-shellchem` vs `frame-chem-in-v28shell`
+  - `iou = 1.0`
+  - `dx = 0`
+  - `dy = 0`
+- `frame-origin-height-shellchem` vs `frame-origin-height-in-v28shell`
+  - `iou = 0.999915`
+  - `dx = 0`
+  - `dy = 0`
+
+也就是说：
+
+- 对 **chemcore 自己生成的这些 EMF** 而言
+- 一旦 `dxaOrig + style width/height` patch 到 ChemDraw 那组值
+- 剩下那些 `v28` shell 细节（额外 rels、styles/theme、第二段结构、复杂 root 命名空间等）
+- 对 `CopyAsPicture` 结果几乎没有可见影响
+
+### 3. 但 exact ChemDraw image 对 shell 仍然敏感
+
+对 exact `v28 image2.emf`：
+
+- `chemref-v28embed-shellchem.wordcopy` vs `v28-shape2`
+  - `iou = 0.639602`
+  - `dx = 1`
+  - `dy = 1`
+
+所以：
+
+- 对 ChemDraw 自己那张 preview image
+- current shell 只 patch `dxaOrig + width/height` 还不够
+
+### 这轮的更新结论
+
+到这一步，比较准确的判断是：
+
+1. `CopyAsPicture` 研究的是 preview image，不是 live OLE。
+2. 对 chemcore 当前生成的 EMF：
+   - shell 的主效应几乎已经收敛到
+     - `dxaOrig / dyaOrig`
+     - `v:shape width/height`
+3. 对 ChemDraw 自己那张 image：
+   - shell 还有额外影响量
+   - 说明 shell 与 preview image 之间存在交互，不是单一常数项
+
+因此下一步更合理的方向是：
+
+- 不再抽象地说“shell 还有很多神秘差异”
+- 而是更精确地说：
+  - **shell 对 ChemDraw 风格紧 frame / 紧内容的 image 更敏感**
+  - 对 chemcore 当前这类 preview image，额外 shell 细节基本已经不重要
