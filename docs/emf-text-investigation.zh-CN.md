@@ -4192,3 +4192,138 @@ Word `CopyAsPicture` 结果：
    - full mixed graphic/text
 2. 分别研究每类家族的最优 `frame` 规则
 3. 再看 full doc 更像哪种组合，而不是强行套 centered 或 right-edge 的单一规则
+
+## 2026-05-16：full doc 的 `frame-best` 不是折中误伤，而是在所有主区域都更优
+
+为了判断 full doc 的 `frame-best` 是否只是“牺牲一部分区域、换来全局 IoU 更高”的折中，我补了一个区域级 IoU 工具：
+
+- `scripts/png-region-iou.py`
+
+并用同一个 oracle：
+
+- `tmp/v28-wrapper-ablate10/v28-rerun.shape2.png`
+
+对三份 full doc 候选做了同口径比较：
+
+- `tmp/frame-word-ab/current-shellchem.wordcopy.png`
+- `tmp/frame-word-ab/frame-chem-shellchem.wordcopy.png`
+- `tmp/frame-word-ab/frame-best-shellchem.wordcopy.png`
+
+区域定义：
+
+- `top_left_substrate = (20,25,165,85)`
+- `title_block = (170,0,360,55)`
+- `conditions_block = (165,45,360,112)`
+- `arrow = (150,50,430,80)`
+- `top_right_product = (420,0,555,105)`
+- `bottom_left_ligand = (0,120,175,242)`
+- `bottom_center_reagent = (185,120,385,235)`
+- `bottom_right_catalyst = (380,120,555,242)`
+
+区域报告：
+
+- `tmp/frame-word-ab/current-shellchem.regions.json`
+- `tmp/frame-word-ab/frame-chem-shellchem.regions.json`
+- `tmp/frame-word-ab/frame-best-shellchem.regions.json`
+
+结果：
+
+- `current`
+  - global best：`dx=4, dy=3, IoU=0.342309`
+- `frame-chem`
+  - global best：`dx=0, dy=0, IoU=0.744865`
+- `frame-best`
+  - global best：`dx=-1, dy=0, IoU=0.841267`
+
+更重要的是，`frame-best` 并不是靠牺牲某几块换来的，而是在所有主区域里都优于 `frame-chem`：
+
+- `top_left_substrate`
+  - `frame-chem = 0.760`
+  - `frame-best = 0.872`
+- `title_block`
+  - `0.811 -> 0.865`
+- `conditions_block`
+  - `0.782 -> 0.925`
+- `arrow`
+  - `0.763 -> 0.972`
+- `top_right_product`
+  - `0.764 -> 0.830`
+- `bottom_left_ligand`
+  - `0.762 -> 0.850`
+- `bottom_center_reagent`
+  - `0.750 -> 0.858`
+- `bottom_right_catalyst`
+  - `0.635 -> 0.721`
+
+结论：
+
+- full doc 的 `frame-best` 不是“对某个局部家族偏心”的偶然折中
+- 它在当前 full doc 上，确实统一改善了主要区域
+- 所以下一步不能再简单假设“full doc 只是 centered 家族和 right-edge 家族的加权平均”
+
+## 2026-05-16：centered 家族内部还要再细分，至少分成 mixed-script 和 plain 两个亚类
+
+为了判断 full doc 的最优微偏移：
+
+- `left +33`
+- `top +3`
+- `right +27`
+- `bottom +0`
+
+是不是 centered 家族的通用修正，我在 same-shell fixture 上做了一个很小的 targeted 检查。
+
+基线仍然是：
+
+- `mixed-center-line.chemref`
+- `plain-center-line.chemref`
+
+在 `frame-chem` 基础上只试 4 个点：
+
+- `chem = (+0,+0,+0,+0)`
+- `quarter = (+8,+1,+7,+0)`
+- `half = (+16,+1,+13,+0)`
+- `full = (+33,+3,+27,+0)`
+
+结果：
+
+### `mixed-center-line`
+
+- `chem`：`IoU = 0.904823`
+- `quarter`：`0.894295`
+- `half`：`0.902575`
+- `full`：`0.872650`
+
+结论：
+
+- mixed-script centered line 明显更喜欢原始 `frame-chem`
+- full doc 那套微偏移会把它带坏
+
+### `plain-center-line`
+
+- `chem`：`IoU = 0.680583`
+- `quarter`：`0.681116`
+- `half`：`0.695755`
+- `full`：`0.719335`
+
+结论：
+
+- plain centered line 则反过来，更吃 full-doc 风格的正向微偏移
+- 而且偏移越大越好（至少在这 4 个点上如此）
+
+这说明：
+
+- centered 家族本身也不是单一家族
+- 至少还要分成：
+  1. `mixed-script centered`：更像 `frame-chem`
+  2. `plain centered`：更像 `frame-chem` 再加一层正向微偏移
+
+因此当前最稳的判断是：
+
+- `right-edge narrow label` 是一类
+- `mixed-script centered` 是一类
+- `plain centered` 是另一类
+
+也就是说，已经不适合继续用“一个统一 frame 规则”去解释所有样本。下一步更像应该做：
+
+- full doc 的对象分族
+- 再研究这些亚类在同一 Word replay 口径下如何组合成最终最优 frame
