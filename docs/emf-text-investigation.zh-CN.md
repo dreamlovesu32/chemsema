@@ -2420,3 +2420,203 @@ Interpretation:
 - The new primary target should be reclassified as:
   - **global packaged preview placement / top-left anchoring**
   - not the old `PF6 -> " " -> "(5 "` fallback-space issue.
+
+### `sourceBounds` side-sweep v2：full SVG 四边仍然最好
+
+为了验证“剩下的 `(10,25)` 级别统一位移，是否只是因为 `sourceBounds` 左/上取错了”，做了一轮**四边分别从 `visible/svg` 取值**的 sweep。
+
+有效结果在：
+- `tmp/source-side-sweep-v2/summary.json`
+
+结论：
+- 最好的一组仍然是：
+  - `left=svg, top=svg, right=svg, bottom=svg`
+  - `best_iou = 0.8083659744`
+  - `dx = 10`
+  - `dy = 25`
+- 把 `top` 改成 `visible` 以后，`dy` 会从 `25` 掉到 `1` 左右，但整体 IoU 明显变差
+- 也就是说：
+  - **不能把当前主残差解释成“只要把 top/left 改成 visible 就好了”**
+
+这一步非常重要，因为它基本排除了：
+- 继续在 `sourceBounds` 左/上/下的裁切策略上内耗
+
+接下来的研究重点应该从：
+- `what source bounds to draw from`
+转向：
+- `what frame to advertise around that source`
+
+## 2026-05-16：`frame-only patch` 把主残差从 `(10,25)` 级别压到 `(1,1)`
+
+在当前默认基线：
+- `sourceBoundsMode = svgpad`
+- `rightPaddingPt = 0`
+
+之上，做了一组**不改任何绘制记录，只 patch `EMR_HEADER.frame`** 的对照实验。
+
+实验方法：
+- 基线文件：
+  - `tmp/default-svgpad-check/thiocyanation-source.default.emf`
+- ChemDraw 参考：
+  - `tmp/thiocyanation-source.chemdraw.emf`
+- patch 版本：
+  - 只把 chemcore `EMF` 头里的 `frame` 改成 ChemDraw 的 `frame`
+  - `bounds`、所有 `EMF+/GDI` 绘制记录都保持不变
+
+产物目录：
+- `tmp/frame-patch-tests`
+
+### Full document 结果
+
+原始基线：
+- `best_iou = 0.8083659744`
+- `dx = 10`
+- `dy = 25`
+
+只改 `frame`：
+- `best_iou = 0.8364475215`
+- `dx = 1`
+- `dy = 1`
+
+只改 `bounds`：
+- 与原始基线完全相同
+  - `best_iou = 0.8083659744`
+  - `dx = 10`
+  - `dy = 25`
+
+`frame + bounds`：
+- 与“只改 frame”几乎完全相同
+  - `best_iou = 0.8364532814`
+  - `dx = 1`
+  - `dy = 1`
+
+结论非常强：
+- **当前主残差几乎肯定主要来自 `EMR_HEADER.frame` 这一层**
+- `header.bounds` 基本不影响当前离线渲染对比结果
+- 也就是说，先前看到的 `(10,25)` 级别统一位移，并不是绘制记录本身错了，而是 preview frame/origin 语义错了
+
+### `frame` 与当前 chemcore / ChemDraw 的量级差异
+
+chemcore 当前默认：
+- `frame = { left: 1364, top: 2868, right: 14267, bottom: 8712 }`
+- 换回 `svg px`：
+  - `[128.882, 270.992, 1348.063, 823.181]`
+
+ChemDraw：
+- `frame = { left: 1413, top: 2993, right: 14403, bottom: 8649 }`
+- 换回 `svg px`：
+  - `[133.512, 282.803, 1360.913, 817.228]`
+
+对应差异：
+- left：`+4.63 px`
+- top：`+11.81 px`
+- right：`+12.85 px`
+- bottom：`-5.95 px`
+
+注意：
+- 这不是简单的“全体平移”
+- 也不是单纯 `visible/svg` 二选一能表达出来的东西
+- 它同时包含：
+  - 左/上裁掉一部分
+  - 右侧再放出更多余量
+  - 底部略收回
+
+### 最小样本上的 `frame-only` 复查
+
+为了判断这是不是 full document 偶然命中，还对最小样本做了同样的“只改 frame”实验：
+- `tmp/frame-patch-fixtures`
+
+结果：
+- `mixed-center-line`
+  - 原始：`iou = 0.847609`, `dx = 8`, `dy = -3`
+  - frame-only：`iou = 0.855361`, `dx = 1`, `dy = 3`
+- `plain-center-line`
+  - 原始：`0.682499`, `dx = 13`, `dy = -3`
+  - frame-only：`0.694272`, `dx = 0`, `dy = 3`
+- `mixed-center-block`
+  - 原始：`0.784522`, `dx = 8`, `dy = -2`
+  - frame-only：`0.855769`, `dx = 1`, `dy = 3`
+
+但也不是所有样本都单调变好：
+- `mixed-center-two-line`
+  - 原始：`0.883024`
+  - frame-only：`0.867768`
+- `right-edge-ph`
+  - 原始：`0.226190`
+  - frame-only：`0.138632`
+
+所以当前能下的最稳结论是：
+- **`frame` 的确是一个一级因素**
+- 它能解释 full 文档里那种统一位移级别的大残差
+- 但它还不是“改了就所有 fixture 都更好”的万能公式
+
+### 由此得到的新假设
+
+这组结果把问题进一步收窄成了两个层次：
+
+1. `sourceBounds` 选择
+- `svgpad + 0` 仍然是当前最好的 source 口径
+- side-sweep-v2 已经证伪了“只要把 left/top 改成 visible 就会更好”
+
+2. `frame` 语义
+- 现在更像是：
+  - `source` 口径基本已经对了
+  - 但 **preview `frame` 应该独立于 `source` 再做一次 ChemDraw 风格的重映射**
+- 换句话说：
+  - 主问题不再是 “what to draw from”
+  - 而更像 “what frame to advertise around what we draw”
+
+当前最值得继续打的方向：
+- 不再继续在 `sourceBounds` 上内耗
+- 转而做 **frame-only research path**
+- 看能不能在真实导出路径里引入一个分析用 `frame override`，
+  验证“只改 frame 不改 draw”是否就能稳定吃到这波提升
+
+### analysis hook：只改 frame，不改 source/draw
+
+为了在**真实导出路径**里复现这件事，而不是每次手工 patch 二进制，现在增加了一个分析用环境变量：
+
+- `CHEMCORE_PREVIEW_FRAME_OFFSETS_SVG_PX=left,top,right,bottom`
+
+语义：
+- 它只影响 `office_preview_frame_bounds(...)`
+- 不改 `sourceBounds`
+- 不改 `drawBounds`
+- 不改任何 `EMF+/GDI` 图元记录的几何
+
+这让后续可以在产品路径里直接做：
+- `source` 保持当前最佳 `svgpad + 0`
+- 只研究 `frame` 偏移到底是不是根因
+
+### 重要副结论：record-time frame override 和 post-hoc header patch 不是同一回事
+
+拿 full 文档做了一个对照：
+
+1. **post-hoc binary patch**
+- 先正常导出 chemcore `EMF`
+- 再把 header `frame` 改成 ChemDraw 那组值
+- 结果：
+  - `best_iou ≈ 0.83645`
+  - `dx ≈ 1`
+  - `dy ≈ 1`
+  - `System.Drawing.Metafile` 可正常打开
+
+2. **record-time frame override**
+- 用上面的 `CHEMCORE_PREVIEW_FRAME_OFFSETS_SVG_PX`
+- 直接在生成时带着同一组 target frame 去录制
+- 结果：
+  - `EMF inspect` 能正常读 header
+  - 但 `System.Drawing.Metafile` 会报 `A generic error occurred in GDI+`
+
+这说明：
+- “最终 header 数值” 和 “录制路径是否被 GDI+/replay 接受”
+- 是两件不同的事
+
+所以当前不能直接把：
+- “binary patch 成功”
+等价成：
+- “产品代码只要把 frame 设成那组数就一定成立”
+
+这反而进一步支持：
+- 后续要么继续研究 ChemDraw 的**真实 frame 生成逻辑**
+- 要么接受“post-process 修 frame”是一条单独的工程路径

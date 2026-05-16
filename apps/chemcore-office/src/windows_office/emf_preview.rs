@@ -55,6 +55,7 @@ const PREVIEW_SOURCE_RIGHT_PADDING_PT: f64 = 0.0;
 const ENV_PREVIEW_SOURCE_RIGHT_PADDING_PT: &str = "CHEMCORE_PREVIEW_SOURCE_RIGHT_PADDING_PT";
 const ENV_PREVIEW_SOURCE_BOUNDS_SIDES: &str = "CHEMCORE_PREVIEW_SOURCE_BOUNDS_SIDES";
 const ENV_PREVIEW_SOURCE_BOUNDS_MODE: &str = "CHEMCORE_PREVIEW_SOURCE_BOUNDS_MODE";
+const ENV_PREVIEW_FRAME_OFFSETS_SVG_PX: &str = "CHEMCORE_PREVIEW_FRAME_OFFSETS_SVG_PX";
 
 #[derive(Clone, Copy, Debug)]
 enum PreviewSourceBoundsMode {
@@ -72,6 +73,14 @@ struct PreviewSourceBoundsSides {
     top_from_svg: bool,
     right_from_svg: bool,
     bottom_from_svg: bool,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct PreviewFrameOffsetsSvgPx {
+    left: f64,
+    top: f64,
+    right: f64,
+    bottom: f64,
 }
 
 pub(super) unsafe fn draw_payload_preview(
@@ -301,6 +310,12 @@ pub(super) fn preview_bounds_debug_report(
         "useCdxmlEditingScale": use_chemdraw_units,
         "sourceBoundsMode": format!("{source_bounds_mode:?}"),
         "sourceBoundsSidesOverride": source_bounds_sides_override,
+        "frameOffsetsSvgPx": preview_frame_offsets_svg_px().map(|offsets| json!({
+            "left": offsets.left,
+            "top": offsets.top,
+            "right": offsets.right,
+            "bottom": offsets.bottom,
+        })),
         "extentHimetric": {
             "width": extent.cx,
             "height": extent.cy,
@@ -532,6 +547,16 @@ pub(super) fn enhanced_metafile_for_payload(
 }
 
 fn office_preview_frame_bounds(bounds: [f64; 4], use_chemdraw_units: bool) -> RECT {
+    let bounds = if let Some(offsets) = preview_frame_offsets_svg_px() {
+        [
+            bounds[0] + offsets.left,
+            bounds[1] + offsets.top,
+            bounds[2] + offsets.right,
+            bounds[3] + offsets.bottom,
+        ]
+    } else {
+        bounds
+    };
     let scale = if use_chemdraw_units {
         CHEMDRAW_HIMETRIC_PER_SVG_PX
     } else {
@@ -605,6 +630,24 @@ fn preview_source_bounds_sides_override() -> Option<PreviewSourceBoundsSides> {
         top_from_svg: matches!((*top).to_ascii_lowercase().as_str(), "svg" | "s"),
         right_from_svg: matches!((*right).to_ascii_lowercase().as_str(), "svg" | "s"),
         bottom_from_svg: matches!((*bottom).to_ascii_lowercase().as_str(), "svg" | "s"),
+    })
+}
+
+fn preview_frame_offsets_svg_px() -> Option<PreviewFrameOffsetsSvgPx> {
+    let raw = std::env::var(ENV_PREVIEW_FRAME_OFFSETS_SVG_PX).ok()?;
+    let parts: Vec<&str> = raw
+        .split(',')
+        .map(|part| part.trim())
+        .filter(|part| !part.is_empty())
+        .collect();
+    let [left, top, right, bottom] = parts.as_slice() else {
+        return None;
+    };
+    Some(PreviewFrameOffsetsSvgPx {
+        left: left.parse::<f64>().ok()?,
+        top: top.parse::<f64>().ok()?,
+        right: right.parse::<f64>().ok()?,
+        bottom: bottom.parse::<f64>().ok()?,
     })
 }
 
