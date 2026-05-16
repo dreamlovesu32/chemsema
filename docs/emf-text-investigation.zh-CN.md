@@ -2620,3 +2620,97 @@ ChemDraw：
 这反而进一步支持：
 - 后续要么继续研究 ChemDraw 的**真实 frame 生成逻辑**
 - 要么接受“post-process 修 frame”是一条单独的工程路径
+
+### `frame` 分解实验：`x-origin`、`y-origin`、`height` 才是主分量
+
+为了继续把 `frame` 从黑箱拆开，full document 又做了一组二进制 patch 分解实验：
+- `tmp/frame-decompose-tests`
+- 结果汇总：
+  - `tmp/frame-decompose-tests/summary.json`
+
+实验项：
+- `origin-only`
+- `size-only`
+- `x-only`
+- `y-only`
+- `width-only`
+- `height-only`
+- `x-plus-height`
+- `x-plus-size`
+- `origin-x-y-plus-height`
+- `origin-x-y-plus-width`
+
+关键结果：
+
+基线：
+- `original`
+  - `iou = 0.808366`
+  - `dx = 10`
+  - `dy = 25`
+
+完整 ChemDraw frame：
+- `chem`
+  - `iou = 0.836453`
+  - `dx = 1`
+  - `dy = 1`
+
+单分量：
+- `x-only`
+  - `iou = 0.810327`
+  - `dx = 1`
+  - `dy = 25`
+- `y-only`
+  - `iou = 0.803123`
+  - `dx = 10`
+  - `dy = 1`
+- `width-only`
+  - `iou = 0.805905`
+  - `dx = 10`
+  - `dy = 25`
+- `height-only`
+  - `iou = 0.823427`
+  - `dx = 10`
+  - `dy = 24`
+
+组合：
+- `origin-only`
+  - `iou = 0.794240`
+  - `dx = 1`
+  - `dy = 2`
+- `size-only`
+  - `iou = 0.805467`
+  - `dx = 10`
+  - `dy = 24`
+- `x-plus-height`
+  - `iou = 0.810632`
+  - `dx = 1`
+  - `dy = 24`
+- `x-plus-size`
+  - `iou = 0.831902`
+  - `dx = 1`
+  - `dy = 24`
+- `origin-x-y-plus-height`
+  - `iou = 0.828944`
+  - `dx = 1`
+  - `dy = 1`
+- `origin-x-y-plus-width`
+  - `iou = 0.809180`
+  - `dx = 1`
+  - `dy = 1`
+
+从这组结果可以非常清楚地看出：
+
+1. `x-origin` 单独负责把 `dx` 从 `10` 压到 `1`
+2. `y-origin` 单独负责把 `dy` 从 `25` 压到 `1`
+3. 真正最值钱的单个尺寸分量是：
+   - **`height`**
+4. `width` 单独几乎没有贡献
+5. 最接近完整 ChemDraw patch 的“最小解释集合”目前是：
+   - **`origin(x+y) + height`**
+
+这意味着：
+- 下一步如果要找一条更可解释的 frame 规则，
+- 应该优先研究：
+  - 为什么 ChemDraw 的 preview frame 在 `x/y origin` 上会换到那组值
+  - 以及为什么 `height` 会显著更短
+- 而不是先盯 `width`
