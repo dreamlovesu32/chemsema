@@ -58,6 +58,8 @@ const ENV_PACKAGED_PIXEL_OFFSET_MODE_VALUE: &str =
     "CHEMCORE_EMF_PACKAGED_PIXEL_OFFSET_MODE_VALUE";
 const ENV_PACKAGED_CENTERED_PLAIN_GDI_WIDTH: &str =
     "CHEMCORE_EMF_PACKAGED_CENTERED_PLAIN_GDI_WIDTH";
+const ENV_PACKAGED_CENTERED_PLAIN_ZERO_LAYOUT: &str =
+    "CHEMCORE_EMF_PACKAGED_CENTERED_PLAIN_ZERO_LAYOUT";
 const ENV_PACKAGED_SMOOTHING_MODE_VALUE: &str =
     "CHEMCORE_EMF_PACKAGED_SMOOTHING_MODE_VALUE";
 
@@ -1882,11 +1884,24 @@ unsafe fn draw_gdiplus_text_run(
     let top = baseline_y - baseline_top
         + preview_script_baseline_shift_f32(run, fallback_font_size, transform)
         - packaged_centered_bias;
-    let rect = RectF {
-        X: x,
-        Y: top,
-        Width: (advance * 1.8).max(font_px * 0.5),
-        Height: (font_px * 1.45).max(1.0),
+    let zero_layout = transform.emf_recording
+        && matches!(text_anchor, Some("middle"))
+        && run.script.is_none()
+        && preview_env_enabled(ENV_PACKAGED_CENTERED_PLAIN_ZERO_LAYOUT);
+    let rect = if zero_layout {
+        RectF {
+            X: x,
+            Y: top,
+            Width: 0.0,
+            Height: 0.0,
+        }
+    } else {
+        RectF {
+            X: x,
+            Y: top,
+            Width: (advance * 1.8).max(font_px * 0.5),
+            Height: (font_px * 1.45).max(1.0),
+        }
     };
     let wide: Vec<u16> = run.text.encode_utf16().collect();
     let ok = GdipDrawString(
