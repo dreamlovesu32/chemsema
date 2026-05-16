@@ -5189,3 +5189,130 @@ full-doc 的这组增量是（HIMETRIC）：
 - 继续研究 `quarter -> best` 这一层 residual
 - 把它和 `arrow / conditions / bottom catalyst/reagent` 的几何量联系起来
 - 看它能否被表述成第二套、仅在 full-doc 这类混合图上启用的修正规则
+
+## 2026-05-16 新进展：`quarter -> best` 只是一组 ~2px 级别的微修正
+
+我把 full doc 的几组关键 frame 放到同一口径里重新换算了一次。基于：
+
+- `tmp/default-svgpad-analysis/thiocyanation.preview-bounds.json`
+
+得到 full doc 当前可见宽度口径下的 `HIMETRIC -> visible px` 换算后：
+
+- `quarter -> best`
+  - HIMETRIC: `[+22, +2, +20, +2]`
+  - 约等于像素: `[+2.051, +0.187, +1.865, +0.187]`
+- `chem -> best`
+  - HIMETRIC: `[+30, +3, +27, +2]`
+  - 约等于像素: `[+2.797, +0.280, +2.518, +0.187]`
+
+这说明一个很关键的事实：
+
+- `frame-quarter -> frame-best` 不是大尺度重排
+- 而是一组 **2px 左右的水平微修正 + 0.2px 左右的垂直微修正**
+
+也就是说，full doc 剩下的大部分同壳差异，其实是 Word replay 对 `EMR_HEADER.frame` 的一个很敏感的、近阈值级别的解释差。
+
+## 2026-05-16 新进展：`quarter -> best` 可以拆成水平项和垂直项，而且垂直项更值钱
+
+为了把这组微修正继续分解，我做了两个中间点：
+
+- `frame-quarter-lr-shellchem`
+  - 只加水平项：`left +22, right +20`
+- `frame-quarter-tb-shellchem`
+  - 只加垂直项：`top +2, bottom +2`
+
+并分别和 `frame-quarter-shellchem`、`frame-best-shellchem` 做区域增益对比。  
+新增通用脚本：
+
+- `scripts/compare-region-reports.py`
+
+产物：
+
+- `tmp/frame-word-ab/quarter-to-lr.delta.json`
+- `tmp/frame-word-ab/quarter-to-tb.delta.json`
+- `tmp/frame-word-ab/tb-to-best.delta.json`
+
+### 1. `quarter -> lr-only`
+
+全局：
+
+- `0.770339 -> 0.793335`
+- `+0.022996`
+
+增益最大的区域：
+
+1. `bottom_right_catalyst`: `+0.057831`
+2. `arrow`: `+0.037147`
+3. `ch3cn`: `+0.034409`
+4. `conditions_block`: `+0.033385`
+5. `top_right_product`: `+0.021985`
+
+解释：
+
+- **水平微修正** 对 `catalyst / ch3cn / top-right product` 这类区域最值钱
+- 对标题块本身帮助很小
+
+### 2. `quarter -> tb-only`
+
+全局：
+
+- `0.770339 -> 0.815914`
+- `+0.045576`
+
+增益最大的区域：
+
+1. `arrow`: `+0.141665`
+2. `conditions_block`: `+0.084225`
+3. `top_left_substrate`: `+0.058574`
+4. `bottom_center_reagent`: `+0.051423`
+5. `bottom_left_ligand`: `+0.040417`
+
+解释：
+
+- **垂直微修正** 带来的收益明显大于水平项
+- 它主要在修：
+  - `arrow`
+  - `conditions_block`
+  - 左侧和中部的非文本骨架区
+
+### 3. `tb-only -> best`
+
+全局：
+
+- `0.815914 -> 0.841267`
+- `+0.025353`
+
+剩余增益最大的区域：
+
+1. `bottom_right_catalyst`: `+0.070883`
+2. `ch3cn`: `+0.029388`
+3. `bottom_center_reagent`: `+0.026775`
+4. `arrow`: `+0.023627`
+5. `top_right_product`: `+0.023448`
+
+解释：
+
+- 在垂直项补完后，**剩下最值得水平项继续修的**，是：
+  - `bottom_right_catalyst`
+  - `ch3cn`
+  - `top_right_product`
+
+### 这一步带来的结构化结论
+
+现在 `quarter -> best` 已经可以拆成两个近乎正交的分量：
+
+1. **垂直微修正（主增益项）**
+   - 只需要大约 `top/bottom +0.19 px`
+   - 但对 `arrow + conditions_block` 非常值钱
+2. **水平微修正（次增益项）**
+   - 大约 `left +2.05 px`, `right +1.86 px`
+   - 更偏向 `catalyst / ch3cn / top-right product`
+
+也就是说，第二家族不应该再被笼统叫成“full-doc residual correction”，而更像：
+
+- `vertical residual family`
+  - 主修 `arrow / conditions / left-middle non-text`
+- `horizontal residual family`
+  - 主修 `catalyst / ch3cn / right-side product`
+
+这比之前“centered 基准 + 一团 residual”更进一步，因为 residual 自己也能继续拆。
