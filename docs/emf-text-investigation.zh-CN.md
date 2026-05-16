@@ -1598,3 +1598,31 @@ ChemDraw 的 fallback 记录是：
   - The residual `v71` gap was indeed dominated by a packaged centered top-bias problem.
   - A narrow packaged-only `font_px`-scaled correction improves the real image more than it harms it.
   - This is a valid new baseline, but the fallback token side effect means the next step should be a follow-up cleanup, not the final stop.
+
+### Experiment: packaged centered DrawString zero-layout / point-style on top of v72
+- Hypothesis:
+  - Since ChemDraw's packaged title/conditions `EmfPlusDrawString` records use `layoutRect = 0 x 0`, applying the same zero-layout shape to our already-improved `v72` centered packaged text might further reduce the residual difference.
+- Code path touched:
+  - `apps/chemcore-office/src/windows_office/emf_preview/renderer.rs`
+  - Only for `transform.emf_recording && text_anchor == middle`, set `RectF.Width = 0` and `RectF.Height = 0` in `draw_gdiplus_text_run()`.
+- Validation samples:
+  - outputs:
+    - `tmp/thiocyanation-source.v73.emf`
+    - `tmp/thiocyanation-source.v73.emf.records.json`
+    - `tmp/v73-chemdraw-title-conditions.md`
+    - `tmp/v73-chemdraw-drawstring-title-conditions.md`
+- Actual result:
+  - Record shape changes as expected:
+    - `v72` title `DrawString` records have nonzero `layoutRect` (`w ~= 816`, `h ~= 144` for `4DPAIPN `)
+    - `v73` corresponding records become `layoutRect = 0 x 0`
+  - But geometry does **not** change:
+    - `DrawString` `x/y` for compared title / reagent / `CH3CN` runs remain identical to `v72`
+    - fixed-canvas image IoU is identical to `v72`
+      - full page: `0.287132406025894`
+      - title region: `0.43884717849358196`
+      - yield region: `0.24883540372670807`
+  - Therefore this experiment only changes record shape, not visible placement.
+- Conclusion:
+  - Matching ChemDraw's `layoutRect = 0 x 0` is **not sufficient** once our own `x/y` anchor computation is already fixed to the current packaged path.
+  - The remaining gap is not in rect size anymore; it is in the computed anchor positions / fallback behavior.
+  - Revert the code change and keep only the finding.
