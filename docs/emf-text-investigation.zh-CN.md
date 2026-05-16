@@ -1667,3 +1667,37 @@ ChemDraw 的 fallback 记录是：
   - GDI extents are useful as a diagnostic: they prove the centered packaged horizontal residual is tied to a few under-measured trailing-space tokens.
   - But even a narrow trailing-space blend does not outperform the `v72` packaged baseline in real pixels.
   - Therefore the remaining issue is not solved by simply switching the width source from GDI+ to GDI; this line should stay reverted and be treated as measurement evidence rather than product logic.
+
+### Experiment: packaged trailing-space width via GDI+ MeasureCharacterRanges (v76)
+- Hypothesis:
+  - The remaining centered packaged horizontal residual is concentrated in tokens that end with visible glyphs plus trailing spaces.
+  - Replacing the packaged trailing-space width path with `GDI+ MeasureCharacterRanges`, while staying on the GDI+ path rather than switching to GDI extents, may preserve ChemDraw-like geometry and improve the record chain at the same time.
+- Code paths touched (experiment only, reverted):
+  - `apps/chemcore-office/src/windows_office/emf_preview/renderer.rs`
+  - Added a packaged-only branch inside `gdiplus_text_run_advance()`:
+    - for tokens ending with whitespace and containing visible glyphs, first try `gdiplus_measure_text_width_ranges(...)`
+    - otherwise fall back to the existing `gdiplus_measure_text_width(...)`
+  - Added `GdipMeasureCharacterRanges` / `GdipSetStringFormatMeasurableCharacterRanges` / region-bound helper code
+- Validation samples:
+  - outputs:
+    - `tmp/thiocyanation-source.v76.emf`
+    - `tmp/thiocyanation-source.v76.emf.records.json`
+  - reports:
+    - `tmp/v76-chemdraw-drawstring-title-conditions.md`
+    - `tmp/v76-chemdraw-title-conditions.md`
+- Actual result:
+  - Record-chain level comparisons become much tighter:
+    - packaged `DrawString` title/conditions average residual shrinks to roughly `avg dx = 0.091`, `avg dy = 0.139`
+    - fallback `EMR_EXTTEXTOUTW` title/conditions average residual shrinks to roughly `avg dx = 0.552`, `avg dy = 0.103`
+    - `PF6 -> " " -> "(5 "` sequence is present and nearly aligned:
+      - `" "` at `727` vs ChemDraw `726`
+      - `"(5 "` at `734` vs ChemDraw `733`
+  - But the visible pixels do **not** improve at all:
+    - fixed-canvas whole-page IoU stays exactly the same as `v72`: `0.287132406025894`
+    - title region IoU stays `0.359989856843173`
+    - yield region IoU stays `0.24729616386350595`
+    - catalyst / ligand regions also remain unchanged
+- Conclusion:
+  - `MeasureCharacterRanges` can change packaged text record geometry so that it *looks* much closer to ChemDraw at the `DrawString` / `EXTTEXTOUTW` level.
+  - However, those record-level improvements do **not** translate into any visible pixel improvement in the rendered EMF.
+  - Therefore this path is not a winning product fix; keep it reverted and treat it as another negative result that separates record-chain similarity from actual image similarity.
