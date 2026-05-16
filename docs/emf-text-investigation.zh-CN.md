@@ -3071,3 +3071,175 @@ ChemDraw 参照口径：
 4. 这也解释了为什么 `right-edge-ph` 和 centered fixtures 在 Word 口径下会显得更不稳定：
    - 它们不仅受 `frame` 影响
    - 也明显受 shell 显示尺寸和最终采样口径影响
+## 2026-05-16：same-shell full-doc 对照把 `origin+height` 假象拆掉
+
+这轮补了一个很关键的 full-doc 对照：
+
+- 以前 full 文档是拿 current docx 去对真实 `v28` ChemDraw 对象
+- 那个 target 同时包含：
+  - ChemDraw 的 `image1.emf`
+  - ChemDraw 自己的 `document.xml` shell
+
+这会把两层问题混在一起：
+
+1. `EMF frame`
+2. `docx` 外层 shell（`dxaOrig` / `style width-height`）
+
+于是此前才会出现一个误导现象：
+
+- full doc 看起来 `origin+height` 比 `frame-chem` 更优
+
+### 这轮做法
+
+直接用 current shell 造一个 **same-shell chemref**：
+
+- 基底：`tmp/frame-word-ab/current.docx`
+- 只替换 `word/media/image1.emf` 为 `tmp/thiocyanation-source.chemdraw.emf`
+- 得到：`tmp/frame-word-ab/chemref-sameshell.docx`
+
+然后再用 Word `CopyAsPicture` 比较：
+
+- `current.wordcopy.png`
+- `frame-chem.wordcopy.png`
+- `frame-origin-height.wordcopy.png`
+
+against
+
+- `chemref-sameshell.wordcopy.png`
+
+### 结果
+
+- `current`
+  - `iou = 0.355754`
+  - `dx = -4`
+  - `dy = -4`
+- `frame-chem`
+  - `iou = 0.724490`
+  - `dx = 0`
+  - `dy = 0`
+- `origin-height`
+  - `iou = 0.447824`
+  - `dx = -3`
+  - `dy = 0`
+
+### 结论
+
+这条结果非常关键：
+
+- **同一个 shell** 下，full doc 也明确是 `frame-chem` 更对
+- 之前 full doc 上“`origin+height` 更优”的现象，主要是因为 target 还混进了 ChemDraw 自己的 shell 语义
+
+也就是说，现在可以把问题正式拆成两层：
+
+1. **EMF frame 语义**
+   - 在 same-shell 对照里，ChemDraw 风格完整 frame 是明显正确方向
+
+2. **docx shell 语义**
+   - `dxaOrig`
+   - `v:shape width/height`
+   - 这层会改变 Word `CopyAsPicture` 的像素结果
+   - 但它不该再反过来误导我们判断 `frame` 本身
+
+### 当前解释更新
+
+之前那句：
+
+- “full doc 更像 `origin+height`，centered fixtures 更像 `frame-chem`”
+
+现在应该更新成：
+
+- **在 same-shell 口径下，full doc 和 centered fixtures 都更支持 `frame-chem`**
+- `origin+height` 更像是“current shell 去对真实 ChemDraw shell”时出现的折中假象
+
+因此后续研究应继续坚持：
+
+- 先固定 shell
+- 再判断 frame
+
+而不是把两层继续混在一起。
+
+## 2026-05-16：`v28` 内嵌 ChemDraw `image2.emf` 与 shell 影响量级
+
+这轮又核了一个容易混淆的前提：
+
+- `tmp/thiocyanation-source.chemdraw.emf`
+- `tmp/thiocyanation-source.chemcore.v28.docx` 里真正嵌入的 `word/media/image2.emf`
+
+它们不是同一份字节：
+
+- oracle `tmp/thiocyanation-source.chemdraw.emf`
+  - `sha256 = e251be78...`
+  - `size = 101100`
+- `v28` 内嵌 `image2.emf`
+  - `sha256 = d22b974f...`
+  - `size = 100964`
+
+但它们的几何非常接近：
+
+- oracle frame = `(1413, 2993, 14403, 8649)`
+- `v28 image2` frame = `(1410, 2993, 14403, 8651)`
+- bounds 也一样：`(133, 280, 1334, 806)`
+
+### 同一张 ChemDraw `EMF`，只换 shell，会掉多少
+
+为了量 shell 的纯影响，我做了：
+
+1. 从 `v28.docx` 里抽出真正嵌入的 `image2.emf`
+2. 用 current shell 重新组一个 same-shell chemref：
+   - `tmp/frame-word-ab/chemref-v28embed-sameshell.docx`
+3. 再和真实 `v28` shape2 的 Word `CopyAsPicture` 对比
+
+结果：
+
+- `chemref-v28embed-sameshell.wordcopy` vs `v28-shape2`
+  - `iou = 0.410894`
+  - `dx = 2`
+  - `dy = 2`
+
+这个值非常关键，因为它说明：
+
+- **就算 EMF 本身已经和 v28 里嵌入的那张完全一致**
+- 只要 shell 还用 current 这套
+- Word 回放出来的像素结果仍然会掉到 `~0.41`
+
+也就是说，shell 本身就是一个非常强的一阶因素。
+
+### 在 same-shell 口径下重新比较 full doc frame
+
+以 `chemref-v28embed-sameshell.wordcopy` 为参考：
+
+- `current`
+  - `iou = 0.355815`
+  - `dx = -4`
+  - `dy = -4`
+- `frame-chem`
+  - `iou = 0.743112`
+  - `dx = 0`
+  - `dy = 0`
+- `origin-height`
+  - `iou = 0.442946`
+  - `dx = -3`
+  - `dy = 0`
+
+这进一步强化了上一节的结论：
+
+- **在 shell 固定后，full doc 的正确 frame 方向明显是 `frame-chem`**
+- `origin+height` 只是“拿 current shell 去对真实 ChemDraw shell”时，被 shell 差异污染出来的折中解
+
+### 当前总判断
+
+到这一步可以比较有把握地把问题正式拆成两层：
+
+1. `EMF frame`
+   - same-shell 口径下，ChemDraw 完整 frame 明显更对
+
+2. `docx shell`
+   - 就算 EMF 自己对了
+   - shell 不同也会把 Word 回放结果拉到很低的 IoU
+
+所以后续研究顺序应该是：
+
+1. 先在 same-shell 口径下把 `frame` 搞对
+2. 再单独研究 ChemDraw 的 shell 语义
+
+而不是再把两层混着看。
