@@ -52,6 +52,7 @@ const CHEMDRAW_HIMETRIC_PER_SVG_PX: f64 = 2540.0 / 240.0;
 const CHEMDRAW_EMF_LOGICAL_UNITS_PER_SVG_PX: f64 = 1.0;
 const USE_GDIPLUS_DUAL_PREVIEW: bool = true;
 const PREVIEW_SOURCE_RIGHT_PADDING_PT: f64 = 16.0;
+const ENV_PREVIEW_SOURCE_RIGHT_PADDING_PT: &str = "CHEMCORE_PREVIEW_SOURCE_RIGHT_PADDING_PT";
 
 pub(super) unsafe fn draw_payload_preview(
     dc: HDC,
@@ -171,20 +172,24 @@ fn visible_payload_bounds(payload: &OleObjectPayload) -> Option<[f64; 4]> {
 }
 
 pub(super) fn preview_source_bounds(payload: &OleObjectPayload) -> Option<[f64; 4]> {
+    let right_padding = std::env::var(ENV_PREVIEW_SOURCE_RIGHT_PADDING_PT)
+        .ok()
+        .and_then(|value| value.trim().parse::<f64>().ok())
+        .unwrap_or(PREVIEW_SOURCE_RIGHT_PADDING_PT);
     match (visible_payload_bounds(payload), svg_viewbox_bounds(&payload.svg)) {
         (Some(visible), Some(svg)) => Some([
             visible[0],
             visible[1],
-            visible[2].max(svg[2]) + PREVIEW_SOURCE_RIGHT_PADDING_PT,
+            visible[2].max(svg[2]) + right_padding,
             visible[3],
         ]),
         (Some(visible), None) => Some([
             visible[0],
             visible[1],
-            visible[2] + PREVIEW_SOURCE_RIGHT_PADDING_PT,
+            visible[2] + right_padding,
             visible[3],
         ]),
-        (None, Some(svg)) => Some([svg[0], svg[1], svg[2] + PREVIEW_SOURCE_RIGHT_PADDING_PT, svg[3]]),
+        (None, Some(svg)) => Some([svg[0], svg[1], svg[2] + right_padding, svg[3]]),
         (None, None) => None,
     }
 }
