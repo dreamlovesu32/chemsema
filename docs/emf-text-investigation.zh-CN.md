@@ -2042,3 +2042,131 @@ ChemDraw 的 fallback 记录是：
   - the right-padding workaround is **not** the primary cause of the pure-vector residual;
   - on `molecule` it actually makes the horizontal mismatch worse,
   - and on `arrows-acs` it changes essentially nothing.
+
+### Added direct packaged-preview geometry introspection
+- Added a debug command in `chemcore-office`:
+  - `--write-preview-bounds-payload <payload.json> <output.json>`
+- Purpose:
+  - dump the packaged preview geometry chain directly from product code instead of inferring it from EMF headers.
+- Report fields:
+  - `visibleBoundsSvgPx`
+  - `svgViewBoxBoundsSvgPx`
+  - `sourceBoundsSvgPx`
+  - `frameBoundsHimetric`
+  - `drawBoundsLogical`
+  - `sourceBoundsMode`
+  - `rightPaddingPt`
+
+### Finding: `preview_source_bounds()` is asymmetric relative to the SVG viewBox
+- On all three pure-vector fixtures (`molecule`, `arrows-acs`, `assets-acs`), the packaged source bounds are **not** the same as the SVG viewBox.
+- Example (`molecule`):
+  - `visibleBoundsSvgPx = [266.84, 806.46, 721.13, 962.99]`
+  - `svgViewBoxBoundsSvgPx = [258.84, 798.46, 729.13, 970.99]`
+  - `sourceBoundsSvgPx = [266.84, 806.46, 745.13, 962.99]`
+- This means the default packaged source bounds are:
+  - cropped on the left by about `8 px`
+  - cropped on the top by about `8 px`
+  - extended on the right by the padding workaround
+  - cropped on the bottom by about `8 px`
+- So the packaged preview is **not** replaying the same source rectangle as the current chemcore SVG.
+
+### Source-bounds mode matrix (`current / visible / svg / union`)
+- Added investigation-only env override:
+  - `CHEMCORE_PREVIEW_SOURCE_BOUNDS_MODE`
+  - values:
+    - `current`
+    - `visible`
+    - `svg`
+    - `union`
+- Goal:
+  - test whether the packaged EMF residual is mainly caused by the source-bounds rectangle choice.
+
+#### Pure-vector fixtures against current chemcore SVG
+- `molecule`
+  - `current`: `best_iou = 0.841335`
+  - `visible`: `best_iou = 0.880177`
+  - `svg`: `best_iou = 0.853187`
+  - `union`: `best_iou = 0.853187`
+- `arrows-acs`
+  - `current`: `best_iou = 0.950161`
+  - `visible`: `best_iou = 0.949947`
+  - `svg`: `best_iou = 0.917337`
+  - `union`: `best_iou = 0.917337`
+- `assets-acs`
+  - `current`: `best_iou = 0.870225`
+  - `visible`: `best_iou = 0.894418`
+  - `svg`: `best_iou = 0.874157`
+  - `union`: `best_iou = 0.874157`
+
+Interpretation:
+- `svg` / `union` do **not** magically restore alignment with current chemcore SVG.
+- `visible` is often slightly better than `current`, but not consistently enough to call it the final answer.
+- So `source_bounds` choice matters, but it is **not the only layer** creating the visible residual.
+
+### Word real replay vs `System.Drawing` EMF replay
+- A direct Word COM `CopyAsPicture` path was re-established for simple fixtures.
+- For `molecule`:
+  - the copied Word image is much smaller in raw pixels than the `System.Drawing`-rendered EMF PNG,
+  - but after scaling to match content width, it aligns **much better with the packaged EMF** than with the current chemcore SVG.
+- Approximate normalized comparison:
+  - `word-copy` vs packaged EMF:
+    - `best_iou ≈ 0.531`
+  - `word-copy` vs current chemcore SVG:
+    - `best_iou ≈ 0.510`
+
+Interpretation:
+- `render-emf-preview.mjs` is not a perfect stand-in for Word,
+- but for simple packaged-preview geometry it is still a **useful proxy**;
+- the packaged EMF and Word replay seem to share the same class of residual more than either matches the current SVG.
+
+### `right-edge-ph` minimal sample: current mode is over-padding
+- A new mode matrix was run on the minimal `right-edge-ph` fixture.
+- Packaged EMF raster results:
+  - `current`: right margin `22 px`
+  - `visible`: right margin `3 px`
+  - `svg`: right margin `0 px`
+  - `union`: right margin `0 px`
+- Then the same fixture was replayed through **Word COM CopyAsPicture**:
+  - `visible` mode still kept the right-side `Ph` visible in the minimal sample.
+
+Interpretation:
+- `current` is **not** the minimal safe source-bounds policy for this right-edge text case.
+- It leaves substantially more right breathing room than the minimal sample needs.
+
+### Full `thiocyanation-source`: visible mode is still too aggressive
+- The same mode experiment was then lifted back to the full production document.
+- Result:
+  - `visible` mode still reintroduced the right-side clipping in Word live replay / `CopyAsPicture`.
+- So:
+  - `visible` is good enough for the tiny `right-edge-ph` sample,
+  - but **not** good enough for the full mixed-content document.
+
+### Full `thiocyanation-source`: right-padding sweep (`4 / 8 / 12 / 16`)
+- We then held `sourceBoundsMode = current` and only swept:
+  - `CHEMCORE_PREVIEW_SOURCE_RIGHT_PADDING_PT = 4 / 8 / 12 / 16`
+- Comparing packaged EMF against the existing ChemDraw EMF:
+  - `pad=4`: `best_iou = 0.779106`
+  - `pad=8`: `best_iou = 0.763541`
+  - `pad=12`: `best_iou = 0.785945`
+  - `pad=16`: `best_iou = 0.773699`
+
+Interpretation:
+- `16 pt` is **not** obviously optimal.
+- In this experiment, `12 pt` gave the best packaged-EMF overlap against ChemDraw.
+- `4 pt` was also competitive.
+- So the current `16 pt` workaround likely contains some real over-padding.
+
+### Current synthesis
+- Two things now look simultaneously true:
+  1. the packaged preview chain does **not** use the same source rectangle as the current chemcore SVG;
+  2. the current right-side padding workaround is **larger than necessary**, at least in some cases.
+- But the experiments also show:
+  - simply switching to `svg`/`union` source bounds is not enough;
+  - simply switching to `visible` source bounds breaks the full production document.
+- So the next search should not be “pick one global rectangle and hope”.
+- The more promising direction is:
+  - keep investigating the packaged preview geometry,
+  - but separate:
+    - the **base source rectangle policy**
+    - from the **text-overhang compensation policy**,
+  - instead of baking both into one global `current` rule.
