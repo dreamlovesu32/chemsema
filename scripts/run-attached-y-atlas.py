@@ -136,6 +136,8 @@ def main() -> None:
     ap.add_argument("--phase-policy", default="phase3band")
     ap.add_argument("--x-nudge", type=float, default=1.0)
     ap.add_argument("--x-filter", required=True)
+    ap.add_argument("--baseline-x2-nudge", type=float, default=0.0)
+    ap.add_argument("--baseline-x2-filter", default="")
     ap.add_argument("--font-scale", type=float, default=0.97)
     ap.add_argument("--font-scale-filter", default="")
     ap.add_argument("--y-nudge", type=float, required=True)
@@ -168,6 +170,13 @@ def main() -> None:
     common_env["CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_PHASE_POLICY_EXPERIMENT"] = args.phase_policy
     common_env["CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_NUDGE_EXPERIMENT"] = str(args.x_nudge)
     common_env["CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_NUDGE_NODE_FILTER_EXPERIMENT"] = args.x_filter
+    if args.baseline_x2_filter.strip():
+        common_env["CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_NUDGE_EXPERIMENT_2"] = str(
+            args.baseline_x2_nudge
+        )
+        common_env["CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_NUDGE_NODE_FILTER_EXPERIMENT_2"] = (
+            args.baseline_x2_filter
+        )
     if args.font_scale_filter.strip():
         common_env["CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_FONT_SCALE_EXPERIMENT"] = str(args.font_scale)
         common_env["CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_FONT_SCALE_NODE_FILTER_EXPERIMENT"] = (

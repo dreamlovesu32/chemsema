@@ -9342,3 +9342,131 @@ Interpretation:
   - primary positive `x = +1` family
   - one narrow negative `x = -1` singleton carry-on
   - saturated `phase3band` on `y`
+
+### 2026-05-17 true-best baseline saturation of x / y / font-scale microfamilies
+
+Context correction:
+- The earlier `x/y/font-scale` atlases were not all evaluated on the *true* current best stacked baseline.
+- Once we fixed the baseline to include both:
+  - primary `x = +1` family on:
+    - `f4_32327`
+    - `f4_32333`
+    - `f4_32347`
+  - secondary `x = -1` singleton on:
+    - `f1_28331`
+  - plus `font-scale = 0.97` on:
+    - `f4_32333`
+    - `f4_32343`
+    - `f4_32347`
+- the same-shell full-doc baseline became:
+  - `IoU = 0.8785754573`
+
+Tooling refinement:
+- `renderer.rs`
+  - added a third experimental `x` replay channel:
+    - `CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_NUDGE_EXPERIMENT_3`
+    - `CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_NUDGE_NODE_FILTER_EXPERIMENT_3`
+- `scripts/run-attached-fs-atlas.py`
+  - now supports:
+    - `--baseline-x2-filter`
+    - `--baseline-x2-nudge`
+- `scripts/run-attached-y-atlas.py`
+  - now supports:
+    - `--baseline-x2-filter`
+    - `--baseline-x2-nudge`
+- `scripts/run-attached-x-atlas.py`
+  - now supports:
+    - baseline `x-family #1`
+    - baseline `x-family #2`
+    - candidate `x-family #3`
+
+#### font-scale atlas on the true best baseline
+
+Experiment:
+- output:
+  - `tmp/frame-word-ab/xtriplet-xneg1-fsplus097-atlas-20260517`
+
+Result:
+- `positive_count = 0`
+- No node produced a positive global delta beyond the current best stacked baseline.
+
+Interpretation:
+- The existing `font-scale = 0.97` family has saturated the profitable `font-scale` microfamily space under the true current best baseline.
+
+#### y-atlas on the true best baseline
+
+Experiment:
+- output:
+  - `tmp/frame-word-ab/xtriplet-xneg1-fs-gapfamily-yneg1-atlas-20260517`
+
+Result:
+- `positive_count = 0`
+- No node produced a positive global delta beyond the current best stacked baseline.
+
+Interpretation:
+- The existing `phase3band` has saturated the profitable local `y` replay space under the true current best baseline.
+
+#### third x-family atlas on the true best baseline
+
+Experiments:
+- candidate `x = +1`
+  - `tmp/frame-word-ab/xtriplet-xneg1-fs-gapfamily-xplus1-third-atlas-20260517`
+- candidate `x = -1`
+  - `tmp/frame-word-ab/xtriplet-xneg1-fs-gapfamily-xneg1-third-atlas-20260517`
+  - tail rerun:
+    - `tmp/frame-word-ab/xtriplet-xneg1-fs-gapfamily-xneg1-third-tail-20260517`
+- candidate `x = +2`
+  - `tmp/frame-word-ab/xtriplet-xneg1-fs-gapfamily-xplus2-third-atlas-20260517`
+- candidate `x = -2`
+  - `tmp/frame-word-ab/xtriplet-xneg1-fs-gapfamily-xneg2-third-atlas-20260517`
+
+Result:
+- All four third-family atlases produced:
+  - `positive_count = 0`
+- No additional profitable third `x` family exists at `+1`, `-1`, `+2`, or `-2` under the current best stacked baseline.
+
+#### magnitude check for the current x families
+
+One-off variants tested:
+- `best_current`
+  - `xtriplet = +1`
+  - `xsingleton = -1`
+  - `font-scale = 0.97`
+- `xtriplet_plus2`
+- `xsingleton_neg2`
+- `xsingleton_neg3`
+- `xtriplet0`
+
+Result:
+- `best_current`: `0.8785754572556603`
+- `xtriplet_plus2`: `0.8752413127413128`
+- `xsingleton_neg2`: `0.8772749234981478`
+- `xsingleton_neg3`: `0.8761567554518387`
+- `xtriplet0`: `0.8758248833091904`
+
+Interpretation:
+- The current magnitudes are locally better than these simple alternatives.
+- At this point the attached-label replay stack is effectively saturated along the three microfamily axes already explored:
+  - `x`
+  - `y`
+  - `font-scale`
+
+Current best stacked policy remains:
+- `phase3band`
+- `x = +1` on:
+  - `f4_32327`
+  - `f4_32333`
+  - `f4_32347`
+- `x = -1` on:
+  - `f1_28331`
+- `font-scale = 0.97` on:
+  - `f4_32333`
+  - `f4_32343`
+  - `f4_32347`
+- same-shell full-doc result:
+  - `IoU = 0.8785754573`
+
+Takeaway:
+- Further gains are unlikely to come from more local `x/y/font-scale` microfamily mining.
+- The next profitable direction should switch to a different replay knob or a different family decomposition.
+
