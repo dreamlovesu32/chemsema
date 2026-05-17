@@ -8854,3 +8854,49 @@ Interpretation:
   - main family: `y = -2 px`
   - boundary phase bucket around `topPagePhase ~= 0.247`: `y = -1 px`
 - This is the first evidence that attached-label replay can be improved with a small multi-lane local y policy, not just one broad family constant.
+
+
+### 2026-05-17 expanded attached-label y lanes
+
+Question:
+- After proving the first `-2 px` and `-1 px` attached-label y subfamilies, do the remaining high-residual catalyst black `Ph` labels form another local y lane?
+
+Individual local y scans (`-2/-1/+1/+2/+3`) for remaining black `Ph` labels:
+- `f4_32339`: best `-2/-1` tie, strongest local gain at `-2` (`+0.0530`)
+- `f4_32343`: best `-1` (`+0.0553`)
+- `f4_32345`: best `-1` (`+0.0152`)
+- `f4_32347`: best `-1` (`+0.0022`)
+- `f4_32337`: best `-1` (`+0.0139`)
+- `f4_32341`: best `-1` (`+0.0153`)
+
+Important correction:
+- Even labels with negative same-shell `frame_dy1DeltaIou` can still improve under local packaged negative y.
+- So whole-frame dy sensitivity and local packaged y sensitivity are related but not equivalent.
+
+Combined two-lane packaged replay test:
+- Lane A (`-2 px`):
+  - `f2_41,f4_32325,f5_2784,f4_32335,f4_32333,f5_2788,f5_2794,f4_32339`
+- Lane B (`-1 px`):
+  - `f2_34461,f2_37,f4_32343,f4_32345,f4_32347,f4_32337,f4_32341`
+
+Same-shell global result:
+- previous two-lane best: `0.8708744881`
+- expanded two-lane result: `0.8724993974`
+
+New/updated improvements in the expanded run:
+- `f4_32339` `Ph`: `0.752066 -> 0.805085`
+- `f4_32343` `Ph`: `0.705882 -> 0.755556`
+- `f4_32345` `Ph`: `0.696970 -> 0.712121`
+- `f4_32347` `Ph`: `0.625731 -> 0.643275`
+- `f4_32337` `Ph`: `0.709677 -> 0.723577`
+- `f4_32341` `Ph`: `0.707965 -> 0.723214`
+- plus all previously improved labels remain positive.
+
+Current interpretation:
+- Attached-label local packaged replay is now provably at least a two-lane y policy.
+- Lane A (`-2 px`) covers the earlier positive family plus `f4_32339`.
+- Lane B (`-1 px`) covers the phase-boundary pair (`f2_34461`,`f2_37`) and most of the remaining catalyst black `Ph` cluster.
+- This is no longer a one-off per-node fix; it behaves like a real, if still narrow, family decomposition.
+
+Open question:
+- Can the current lane split be reduced from explicit node filters to a smaller geometry/phase rule using features such as `topPagePhase`, `componentQuadrant`, `primaryNeighborBucket`, `fill`, and `text`?
