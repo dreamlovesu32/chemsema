@@ -6532,3 +6532,143 @@ Word `CopyAsPicture` 后：
 - `attached-group/start/short-label` replay family
 - 少量非该家族的标签
 - 极少量纯骨架几何 residual
+
+### 20. 节点级单标签对照：dominant label family 不是单一“胖/瘦”规律，而是至少分成几种局部 replay 形态
+
+为了继续验证上一节的 dominant family，我补了一个小脚本：
+
+- `scripts/compare-single-label-wordcopy.py`
+
+它做的事是：
+
+1. 从 `frame-global3-label-attribution.json` 里取某个 `nodeId` 的 `pixelBox`
+2. 在 full-doc ChemDraw 参考图里，用该 `pixelBox` 量真实 label ink bbox
+3. 再把同一个 `nodeId` 用 `CHEMCORE_EMF_INCLUDE_NODE_IDS` 单独导成 Word docx
+4. 量它在 `CopyAsPicture` 里的单标签 ink bbox
+5. 比较：
+   - `with knockout`
+   - `text-only`
+
+这里一个关键修正是：  
+**对单标签对照，不能再用带大 padding 的局部 crop；应该直接以 full-doc 里该 label 自己的 `pixelBox` 为参考口径。**  
+否则会把周边骨架或别的标签一起卷进来，误判成单标签 replay 差异。
+
+本轮重点看了这些节点：
+
+- `f4_32333` 黑色 `Ph`
+- `f4_32321` 黑色 `NC`
+- `f5_2784` 蓝色 `CN`
+- `f5_2794` 橙色 `Ph`
+- `f5_2788` 橙色 `S`
+- 控制样本：
+  - `f4_32347` 另一处黑色 `Ph`
+  - `f4_32323` 黑色 `CN`
+
+用 `pixelBox` 口径量出的结论很有价值：
+
+#### A. 黑色催化剂标签：`Ph/NC` 往往靠 knockout 才接近 ChemDraw，但也不是完全一致
+
+`f4_32333` 黑色 `Ph`
+
+- ChemDraw：`17 x 10`
+- with knockout：`17 x 11`
+- text-only：`14 x 10`
+
+`f4_32321` 黑色 `NC`
+
+- ChemDraw：`20 x 10`
+- with knockout：`19 x 11`
+- text-only：`17 x 10`
+
+这两条说明：
+
+- 对这组催化剂黑色短标签来说，knockout 不是纯副作用
+- 它反而在宽度上帮我们补回了一部分 text-only 的“过瘦”问题
+
+但它们也不是完全对齐：
+
+- `with knockout` 版本普遍仍会多出 `+1 px` 的高度
+- 说明同一标签里同时存在：
+  - 文本本体偏瘦
+  - knockout 外壳偏胖
+
+#### B. 蓝色/橙色产物标签是另一类
+
+`f5_2784` 蓝色 `CN`
+
+- ChemDraw：`16 x 10`
+- with knockout：`19 x 10`
+- text-only：`17 x 9`
+
+它和上面的黑色 `Ph/NC` 不一样：
+
+- text-only 已经接近参考
+- knockout 反而把宽度推得更宽
+
+`f5_2794` 橙色 `Ph`
+
+- ChemDraw：`20 x 12`
+- with knockout：`17 x 10`
+- text-only：`14 x 10`
+
+`f5_2788` 橙色 `S`
+
+- ChemDraw：`10 x 15`
+- with knockout：`9 x 10`
+- text-only：`6 x 10`
+
+这两条说明：
+
+- 橙色产物标签的问题不是单纯横向胖/瘦
+- 而是**高度明显不足**
+- knockout 只能略微补宽，补不了缺掉的竖向 ink
+
+#### C. 同是黑色 `Ph` 也不全是一种错法
+
+控制样本 `f4_32347` 黑色 `Ph`：
+
+- ChemDraw：`23 x 16`
+- with knockout：`17 x 10`
+- text-only：`14 x 9`
+
+它和 `f4_32333` 完全不是同一个量级。  
+这说明即使限制到：
+
+- `layout = attached-group`
+- `anchor = start`
+- `fill = #000000`
+- `text = Ph`
+
+也还不能把它们视为同一个完全统一的 replay 子类。
+
+#### D. 当前最准确的节点级结论
+
+dominant family `attached-group/start/short-label` 仍然成立，但它内部至少已经能看出三种局部 replay 形态：
+
+1. **黑色催化剂短标签**
+   - 典型如 `Ph / NC`
+   - text-only 偏瘦
+   - knockout 会把宽度补回来一些，但同时略带额外厚度
+
+2. **蓝色 `CN`**
+   - text-only 已经接近
+   - knockout 会把宽度推过头
+
+3. **橙色 `Ph / S`**
+   - 即使带 knockout 也明显偏矮
+   - 主问题更像竖向 ink / replay 缺失，而不是单纯外壳宽窄
+
+所以现在不能再把 molecule 内部标签问题粗略概括成：
+
+- “所有标签都被 knockout 壳圈胖了”
+
+更准确的表述应该是：
+
+- `DocumentKnockout` 泄漏是独立 bug
+- 但 dominant label family 内部，至少还混着多种 label-text replay 子问题
+- 后面如果继续死磕 molecule 主线，应该按：
+  - 黑色催化剂标签
+  - 蓝色 `CN`
+  - 橙色 `Ph/S`
+  
+  三组分别研究，而不是再假设一条统一修正规则
