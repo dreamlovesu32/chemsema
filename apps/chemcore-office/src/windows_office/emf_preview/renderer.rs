@@ -59,6 +59,8 @@ const ENV_PACKAGED_CENTERED_PLAIN_GDI_WIDTH: &str =
 const ENV_PACKAGED_CENTERED_PLAIN_ZERO_LAYOUT: &str =
     "CHEMCORE_EMF_PACKAGED_CENTERED_PLAIN_ZERO_LAYOUT";
 const ENV_PACKAGED_SMOOTHING_MODE_VALUE: &str = "CHEMCORE_EMF_PACKAGED_SMOOTHING_MODE_VALUE";
+const ENV_ATTACHED_LABEL_REPLAY_NUDGE_EXPERIMENT: &str =
+    "CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_NUDGE_EXPERIMENT";
 const ENV_HIDE_DOCUMENT_KNOCKOUT: &str = "CHEMCORE_EMF_HIDE_DOCUMENT_KNOCKOUT";
 const ENV_HIDE_DOCUMENT_TEXT: &str = "CHEMCORE_EMF_HIDE_DOCUMENT_TEXT";
 const ENV_HIDE_DOCUMENT_BOND: &str = "CHEMCORE_EMF_HIDE_DOCUMENT_BOND";
@@ -128,6 +130,10 @@ fn preview_env_i32(name: &str) -> Option<i32> {
     std::env::var(name).ok()?.trim().parse::<i32>().ok()
 }
 
+fn preview_env_f64(name: &str) -> Option<f64> {
+    std::env::var(name).ok()?.trim().parse::<f64>().ok()
+}
+
 #[derive(Clone, Copy)]
 struct PreviewTransform {
     min_x: f64,
@@ -137,6 +143,34 @@ struct PreviewTransform {
     offset_y: f64,
     record_scale: f64,
     emf_recording: bool,
+}
+
+#[derive(Debug, Clone)]
+struct PreviewLabelContext {
+    infos: BTreeMap<String, PreviewLabelInfo>,
+}
+
+#[derive(Debug, Clone)]
+struct PreviewLabelInfo {
+    layout: Option<String>,
+    label_justification: Option<String>,
+    component_half_x: PreviewComponentHalfX,
+    primary_neighbor_bucket: Option<PreviewNeighborBucket>,
+    gap_right: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PreviewComponentHalfX {
+    Left,
+    Right,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PreviewNeighborBucket {
+    East,
+    South,
+    West,
+    North,
 }
 
 impl PreviewTransform {
@@ -355,12 +389,19 @@ pub(super) unsafe fn enhanced_metafile_gdiplus_dual_preview(
     );
     let use_gdiplus_text = gdiplus_text_preview_enabled();
     let bond_context = preview_bond_context(payload);
+    let label_context = preview_label_context(payload);
     let mut gdi_cache = PreviewGdiCache::default();
     let mut ok = true;
     for primitive in visible {
         if matches!(primitive, RenderPrimitive::Text { .. }) {
             let drawn = use_gdiplus_text
-                && draw_gdiplus_primitive(graphics, primitive, &transform, bond_context.as_ref());
+                && draw_gdiplus_primitive(
+                    graphics,
+                    primitive,
+                    &transform,
+                    bond_context.as_ref(),
+                    label_context.as_ref(),
+                );
             if !drawn
                 && !draw_gdi_primitive_in_gdiplus(
                     graphics,
@@ -368,18 +409,26 @@ pub(super) unsafe fn enhanced_metafile_gdiplus_dual_preview(
                     &transform,
                     &mut gdi_cache,
                     bond_context.as_ref(),
+                    label_context.as_ref(),
                 )
             {
                 ok = false;
                 break;
             }
-        } else if !draw_gdiplus_primitive(graphics, primitive, &transform, bond_context.as_ref()) {
+        } else if !draw_gdiplus_primitive(
+            graphics,
+            primitive,
+            &transform,
+            bond_context.as_ref(),
+            label_context.as_ref(),
+        ) {
             if !draw_gdi_primitive_in_gdiplus(
                 graphics,
                 primitive,
                 &transform,
                 &mut gdi_cache,
                 bond_context.as_ref(),
+                label_context.as_ref(),
             ) {
                 ok = false;
                 break;
@@ -420,12 +469,13 @@ unsafe fn draw_gdi_primitive_in_gdiplus(
     transform: &PreviewTransform,
     cache: &mut PreviewGdiCache,
     bond_context: Option<&PreviewBondContext>,
+    label_context: Option<&PreviewLabelContext>,
 ) -> bool {
     let mut dc: HDC = null_mut();
     if GdipGetDC(graphics, &mut dc) != GDI_PLUS_OK || dc.is_null() {
         return false;
     }
-    draw_preview_primitive(dc, primitive, transform, cache, bond_context);
+    draw_preview_primitive(dc, primitive, transform, cache, bond_context, label_context);
     GdipReleaseDC(graphics, dc) == GDI_PLUS_OK
 }
 
@@ -479,6 +529,7 @@ unsafe fn draw_payload_vector_preview_internal(
 
     let mut cache = PreviewGdiCache::default();
     let bond_context = preview_bond_context(payload);
+    let label_context = preview_label_context(payload);
     let mut vector_scope = 0;
     let mut active_record_scale = 1.0;
     let mut high_resolution_available = high_resolution_vectors;
@@ -509,6 +560,7 @@ unsafe fn draw_payload_vector_preview_internal(
                     &vector_transform,
                     &mut cache,
                     bond_context.as_ref(),
+                    label_context.as_ref(),
                 );
                 continue;
             }
@@ -516,7 +568,14 @@ unsafe fn draw_payload_vector_preview_internal(
             RestoreDC(dc, vector_scope);
             vector_scope = 0;
         }
-        draw_preview_primitive(dc, primitive, &transform, &mut cache, bond_context.as_ref());
+        draw_preview_primitive(
+            dc,
+            primitive,
+            &transform,
+            &mut cache,
+            bond_context.as_ref(),
+            label_context.as_ref(),
+        );
     }
     if vector_scope != 0 {
         RestoreDC(dc, vector_scope);
@@ -735,6 +794,7 @@ unsafe fn draw_preview_primitive(
     transform: &PreviewTransform,
     cache: &mut PreviewGdiCache,
     bond_context: Option<&PreviewBondContext>,
+    label_context: Option<&PreviewLabelContext>,
 ) {
     match primitive {
         RenderPrimitive::Line {
@@ -1018,6 +1078,7 @@ unsafe fn draw_preview_primitive(
             text_anchor,
             line_height,
             runs,
+            node_id,
             ..
         } => {
             draw_preview_text(
@@ -1034,6 +1095,8 @@ unsafe fn draw_preview_primitive(
                 runs,
                 transform,
                 cache,
+                node_id.as_deref(),
+                label_context,
             );
         }
     }
@@ -1044,6 +1107,7 @@ unsafe fn draw_gdiplus_primitive(
     primitive: &RenderPrimitive,
     transform: &PreviewTransform,
     bond_context: Option<&PreviewBondContext>,
+    label_context: Option<&PreviewLabelContext>,
 ) -> bool {
     let save_restore = transform.emf_recording
         && matches!(
@@ -1229,6 +1293,7 @@ unsafe fn draw_gdiplus_primitive(
             text_anchor,
             line_height,
             runs,
+            node_id,
             ..
         } => draw_gdiplus_text(
             graphics,
@@ -1243,6 +1308,8 @@ unsafe fn draw_gdiplus_primitive(
             *line_height,
             runs,
             transform,
+            node_id.as_deref(),
+            label_context,
         ),
     };
     if save_restore {
@@ -1610,7 +1677,17 @@ unsafe fn draw_gdiplus_text(
     line_height: Option<f64>,
     runs: &[chemcore_engine::LabelRun],
     transform: &PreviewTransform,
+    node_id: Option<&str>,
+    label_context: Option<&PreviewLabelContext>,
 ) -> bool {
+    let x_nudge_px = preview_attached_label_replay_nudge_px(
+        node_id,
+        runs,
+        fill,
+        text_anchor,
+        label_context,
+    );
+    let x = x + x_nudge_px / (transform.scale * transform.record_scale.max(1.0));
     let line_step_world = line_height.unwrap_or(font_size * 1.2).max(0.01);
     let lines = preview_text_lines(text, runs);
     let layouts = gdiplus_text_layout(
@@ -2131,7 +2208,17 @@ unsafe fn draw_preview_text(
     runs: &[chemcore_engine::LabelRun],
     transform: &PreviewTransform,
     cache: &mut PreviewGdiCache,
+    node_id: Option<&str>,
+    label_context: Option<&PreviewLabelContext>,
 ) {
+    let x_nudge_px = preview_attached_label_replay_nudge_px(
+        node_id,
+        runs,
+        fill,
+        text_anchor,
+        label_context,
+    );
+    let x = x + x_nudge_px / (transform.scale * transform.record_scale.max(1.0));
     let old_align = SetTextAlign(dc, TA_LEFT | TA_BASELINE);
     SetBkMode(dc, TRANSPARENT as i32);
     SetTextColor(dc, fill.and_then(colorref_from_css).unwrap_or(0x000000));
@@ -2167,6 +2254,51 @@ unsafe fn draw_preview_text(
     }
 
     SetTextAlign(dc, old_align);
+}
+
+fn preview_attached_label_replay_nudge_px(
+    node_id: Option<&str>,
+    runs: &[chemcore_engine::LabelRun],
+    fallback_fill: Option<&str>,
+    text_anchor: Option<&str>,
+    label_context: Option<&PreviewLabelContext>,
+) -> f64 {
+    let Some(nudge_px) = preview_env_f64(ENV_ATTACHED_LABEL_REPLAY_NUDGE_EXPERIMENT) else {
+        return 0.0;
+    };
+    if !matches!(text_anchor, Some("start")) {
+        return 0.0;
+    }
+    let Some(node_id) = node_id else {
+        return 0.0;
+    };
+    let Some(info) = label_context.and_then(|context| context.infos.get(node_id)) else {
+        return 0.0;
+    };
+    if info.layout.as_deref() != Some("attached-group") {
+        return 0.0;
+    }
+    if info.label_justification.as_deref() != Some("Left") {
+        return 0.0;
+    }
+    if info.component_half_x != PreviewComponentHalfX::Right {
+        return 0.0;
+    }
+    if info.primary_neighbor_bucket != Some(PreviewNeighborBucket::North) {
+        return 0.0;
+    }
+    if info.gap_right > 40.44 {
+        return 0.0;
+    }
+    let fill = runs
+        .iter()
+        .find_map(|run| run.fill.as_deref())
+        .or(fallback_fill)
+        .unwrap_or("#000000");
+    if !fill.eq_ignore_ascii_case("#000000") {
+        return 0.0;
+    }
+    nudge_px
 }
 
 #[derive(Clone)]
@@ -3816,6 +3948,110 @@ fn preview_bond_context(payload: &OleObjectPayload) -> Option<PreviewBondContext
     Some(preview_bond_context_from_document(&document))
 }
 
+#[derive(Debug, Clone, Copy)]
+struct PreviewLabelBBox {
+    left: f64,
+    top: f64,
+    right: f64,
+    bottom: f64,
+}
+
+impl PreviewLabelBBox {
+    fn center_x(&self) -> f64 {
+        (self.left + self.right) * 0.5
+    }
+
+    fn expand_to_include(self, other: Self) -> Self {
+        Self {
+            left: self.left.min(other.left),
+            top: self.top.min(other.top),
+            right: self.right.max(other.right),
+            bottom: self.bottom.max(other.bottom),
+        }
+    }
+}
+
+fn preview_label_context(payload: &OleObjectPayload) -> Option<PreviewLabelContext> {
+    let document = parse_document_json(&payload.chemcore_document_json).ok()?;
+    Some(preview_label_context_from_document(&document))
+}
+
+fn preview_label_context_from_document(document: &ChemcoreDocument) -> PreviewLabelContext {
+    let mut infos = BTreeMap::new();
+    for object in document
+        .scene_objects()
+        .into_iter()
+        .filter(|object| object.visible && object.object_type == "molecule")
+    {
+        let Some(fragment) = preview_molecule_fragment(document, object) else {
+            continue;
+        };
+        let node_map: BTreeMap<&str, &chemcore_engine::Node> = fragment
+            .nodes
+            .iter()
+            .map(|node| (node.id.as_str(), node))
+            .collect();
+        let mut adjacency: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+        for bond in &fragment.bonds {
+            adjacency
+                .entry(bond.begin.as_str())
+                .or_default()
+                .push(bond.end.as_str());
+            adjacency
+                .entry(bond.end.as_str())
+                .or_default()
+                .push(bond.begin.as_str());
+        }
+        let components = preview_fragment_components(&node_map, &adjacency);
+        for component in components {
+            let component_box = preview_component_world_box(object, &node_map, &component);
+            for node_id in &component {
+                let Some(node) = node_map.get(node_id.as_str()).copied() else {
+                    continue;
+                };
+                let Some(label) = node.label.as_ref().filter(|label| label.has_visible_text()) else {
+                    continue;
+                };
+                let Some(label_box) = preview_label_world_box(object, label) else {
+                    continue;
+                };
+                let label_justification = label
+                    .meta
+                    .pointer("/import/cdxml/labelJustification")
+                    .and_then(|value| value.as_str())
+                    .map(ToOwned::to_owned)
+                    .or_else(|| {
+                        label
+                            .meta
+                            .pointer("/import/cdxml/labelAlignment")
+                            .and_then(|value| value.as_str())
+                            .map(ToOwned::to_owned)
+                    })
+                    .or_else(|| label.align.clone());
+                infos.insert(
+                    (*node_id).to_string(),
+                    PreviewLabelInfo {
+                        layout: label.layout.clone(),
+                        label_justification,
+                        component_half_x: if label_box.center_x() < component_box.center_x() {
+                            PreviewComponentHalfX::Left
+                        } else {
+                            PreviewComponentHalfX::Right
+                        },
+                        primary_neighbor_bucket: preview_primary_neighbor_bucket(
+                            node,
+                            &node_map,
+                            &adjacency,
+                        ),
+                        gap_right: component_box.right - label_box.right,
+                    },
+                );
+            }
+        }
+    }
+    PreviewLabelContext { infos }
+}
+
 fn preview_bond_context_from_document(document: &ChemcoreDocument) -> PreviewBondContext {
     let mut infos = BTreeMap::new();
     for object in document
@@ -3881,6 +4117,190 @@ fn preview_bond_context_from_document(document: &ChemcoreDocument) -> PreviewBon
         }
     }
     PreviewBondContext { infos }
+}
+
+fn preview_fragment_components(
+    node_map: &BTreeMap<&str, &chemcore_engine::Node>,
+    adjacency: &BTreeMap<&str, Vec<&str>>,
+) -> Vec<Vec<String>> {
+    let mut visited = std::collections::BTreeSet::new();
+    let mut components = Vec::new();
+    for node_id in node_map.keys().copied() {
+        if visited.contains(node_id) {
+            continue;
+        }
+        let mut queue = std::collections::VecDeque::from([node_id]);
+        visited.insert(node_id);
+        let mut component = Vec::new();
+        while let Some(current) = queue.pop_front() {
+            component.push(current.to_string());
+            for neighbor in adjacency.get(current).into_iter().flatten().copied() {
+                if visited.insert(neighbor) {
+                    queue.push_back(neighbor);
+                }
+            }
+        }
+        components.push(component);
+    }
+    components
+}
+
+fn preview_component_world_box(
+    object: &SceneObject,
+    node_map: &BTreeMap<&str, &chemcore_engine::Node>,
+    component: &[String],
+) -> PreviewLabelBBox {
+    let mut boxes = Vec::new();
+    for node_id in component {
+        let Some(node) = node_map.get(node_id.as_str()).copied() else {
+            continue;
+        };
+        boxes.push(preview_point_bbox(preview_transform_scene_point(
+            object,
+            node.position[0],
+            node.position[1],
+        )));
+        if let Some(label) = node.label.as_ref().filter(|label| label.has_visible_text()) {
+            if let Some(label_box) = preview_label_world_box(object, label) {
+                boxes.push(label_box);
+            }
+        }
+    }
+    preview_union_boxes(&boxes).unwrap_or(PreviewLabelBBox {
+        left: 0.0,
+        top: 0.0,
+        right: 0.0,
+        bottom: 0.0,
+    })
+}
+
+fn preview_label_world_box(object: &SceneObject, label: &chemcore_engine::NodeLabel) -> Option<PreviewLabelBBox> {
+    let mut candidates = Vec::new();
+    if let Some(bbox) = label.bbox() {
+        candidates.push(preview_transform_scene_bbox(
+            object,
+            PreviewLabelBBox {
+                left: bbox[0],
+                top: bbox[1],
+                right: bbox[2],
+                bottom: bbox[3],
+            },
+        ));
+    }
+    let glyph_points: Vec<CorePoint> = label
+        .glyph_polygons()
+        .into_iter()
+        .flat_map(|polygon| polygon.into_iter())
+        .map(|point| preview_transform_scene_point(object, point.x, point.y))
+        .collect();
+    if let Some(glyph_box) = preview_bbox_from_points(&glyph_points) {
+        candidates.push(glyph_box);
+    }
+    preview_union_boxes(&candidates)
+}
+
+fn preview_primary_neighbor_bucket(
+    node: &chemcore_engine::Node,
+    node_map: &BTreeMap<&str, &chemcore_engine::Node>,
+    adjacency: &BTreeMap<&str, Vec<&str>>,
+) -> Option<PreviewNeighborBucket> {
+    let mut best: Option<(f64, PreviewNeighborBucket)> = None;
+    for neighbor_id in adjacency
+        .get(node.id.as_str())
+        .into_iter()
+        .flatten()
+        .copied()
+    {
+        let Some(neighbor) = node_map.get(neighbor_id).copied() else {
+            continue;
+        };
+        let dx = neighbor.position[0] - node.position[0];
+        let dy = neighbor.position[1] - node.position[1];
+        let dist2 = dx * dx + dy * dy;
+        let bucket = preview_neighbor_bucket(dx, dy);
+        match best {
+            Some((best_dist2, _)) if dist2 <= best_dist2 => {}
+            _ => best = Some((dist2, bucket)),
+        }
+    }
+    best.map(|(_, bucket)| bucket)
+}
+
+fn preview_neighbor_bucket(dx: f64, dy: f64) -> PreviewNeighborBucket {
+    let deg = dy.atan2(dx).to_degrees();
+    if (-45.0..45.0).contains(&deg) {
+        PreviewNeighborBucket::East
+    } else if (45.0..135.0).contains(&deg) {
+        PreviewNeighborBucket::South
+    } else if deg >= 135.0 || deg < -135.0 {
+        PreviewNeighborBucket::West
+    } else {
+        PreviewNeighborBucket::North
+    }
+}
+
+fn preview_transform_scene_point(object: &SceneObject, x: f64, y: f64) -> CorePoint {
+    let mut x = x * object.transform.scale[0];
+    let mut y = y * object.transform.scale[1];
+    if object.transform.rotate.abs() > f64::EPSILON {
+        let theta = object.transform.rotate.to_radians();
+        let cos_t = theta.cos();
+        let sin_t = theta.sin();
+        let rotated_x = x * cos_t - y * sin_t;
+        let rotated_y = x * sin_t + y * cos_t;
+        x = rotated_x;
+        y = rotated_y;
+    }
+    CorePoint {
+        x: x + object.transform.translate[0],
+        y: y + object.transform.translate[1],
+    }
+}
+
+fn preview_transform_scene_bbox(object: &SceneObject, bbox: PreviewLabelBBox) -> PreviewLabelBBox {
+    let corners = [
+        preview_transform_scene_point(object, bbox.left, bbox.top),
+        preview_transform_scene_point(object, bbox.right, bbox.top),
+        preview_transform_scene_point(object, bbox.right, bbox.bottom),
+        preview_transform_scene_point(object, bbox.left, bbox.bottom),
+    ];
+    preview_bbox_from_points(&corners).unwrap_or(bbox)
+}
+
+fn preview_bbox_from_points(points: &[CorePoint]) -> Option<PreviewLabelBBox> {
+    let mut iter = points.iter();
+    let first = iter.next()?;
+    let mut bbox = PreviewLabelBBox {
+        left: first.x,
+        top: first.y,
+        right: first.x,
+        bottom: first.y,
+    };
+    for point in iter {
+        bbox.left = bbox.left.min(point.x);
+        bbox.top = bbox.top.min(point.y);
+        bbox.right = bbox.right.max(point.x);
+        bbox.bottom = bbox.bottom.max(point.y);
+    }
+    Some(bbox)
+}
+
+fn preview_union_boxes(boxes: &[PreviewLabelBBox]) -> Option<PreviewLabelBBox> {
+    let mut iter = boxes.iter().copied();
+    let mut bbox = iter.next()?;
+    for next in iter {
+        bbox = bbox.expand_to_include(next);
+    }
+    Some(bbox)
+}
+
+fn preview_point_bbox(point: CorePoint) -> PreviewLabelBBox {
+    PreviewLabelBBox {
+        left: point.x,
+        top: point.y,
+        right: point.x,
+        bottom: point.y,
+    }
 }
 
 fn preview_molecule_fragment<'a>(

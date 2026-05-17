@@ -8221,3 +8221,50 @@ replay ??????????
 ????????
 - ?????? Office-only ??????? metadata ???? label ???????
 - ??????? renderer ??? `gapRight` ? `primaryNeighborBucket` ?????????
+
+
+## 2026-05-17 attached-label replay anchor sensitivity matrix
+
+### Goal
+Verify whether the dominant replay outlier `f4_32339` is mainly an x-anchor placement issue, by applying an Office-only replay nudge to the narrow family:
+- `layout = attached-group`
+- `labelJustification = Left`
+- `componentHalfX = right`
+- `primaryNeighborBucket = north`
+- `gapRight <= 40.44`
+- `fill = #000000`
+
+### Implementation
+- Added env-gated experiment hook in `renderer.rs`:
+  - `CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_NUDGE_EXPERIMENT=<float px>`
+- Same-shell comparison used the fixed `frame-global3` header frame `(1441,2994,14431,8656)`.
+
+### Matrix
+Reference summary:
+- [tmp/frame-word-ab/attached-nudge-matrix.json](d:/Projects/chemcore/tmp/frame-word-ab/attached-nudge-matrix.json)
+
+Key rows:
+- `-12 px`: global `IoU = 0.856209`, `f4_32339 deltaDims = [7,1]`, `deltaTopLeft = [-6,0]`
+- `-6 px`: global `IoU = 0.856209`, `f4_32339 deltaDims = [7,1]`, `deltaTopLeft = [-6,0]`
+- `-3 px`: global `IoU = 0.857074`, `f4_32339 deltaDims = [7,1]`, `deltaTopLeft = [-6,0]`
+- `0 px` baseline: global `IoU = 0.861882`, `f4_32339 deltaDims = [7,1]`, `deltaTopLeft = [-6,0]`
+- `+3 px`: global `IoU = 0.858294`, `f4_32339 deltaDims = [7,1]`, `deltaTopLeft = [-6,0]`
+- `+6 px`: global `IoU = 0.856437`, `f4_32339 deltaDims = [8,1]`, `deltaTopLeft = [-6,0]`
+- `+12 px`: global `IoU = 0.847765`, `f4_32339 deltaDims = [9,1]`, `deltaTopLeft = [-6,0]`
+
+### Findings
+- Across `[-12, +3] px`, the dominant outlier `f4_32339` is pixel-stable.
+- `deltaTopLeft` stays exactly `[-6, 0]`.
+- `deltaDims` stays exactly `[7, 1]`.
+- Positive nudges do not move the left edge back toward ChemDraw.
+- Once the positive nudge is large enough, the local ink box only gets wider:
+  - `+6 px` -> width residual `7 -> 8`
+  - `+12 px` -> width residual `7 -> 9`
+- Global same-shell IoU is best at the baseline `0 px` case.
+
+### Conclusion
+This family is not anchor-placement dominated.
+A straightforward replay x-anchor correction does not repair the characteristic `[-6, 0]` left shift; it only fattens the local ink box once the positive nudge is large enough. The dominant cause must lie deeper in replay width / ink generation rather than ordinary anchor placement.
+
+### Next step
+Treat `f4_32339` and its narrow family as a replay-width / ink-generation problem, not as a text-anchor problem. Avoid spending more time on simple x-anchor nudges.
