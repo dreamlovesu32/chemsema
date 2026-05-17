@@ -10462,3 +10462,89 @@ Takeaway:
   - one compact negative-`y` oxygen family
   - one tiny negative-`y` `N` carry-on
   - no durable positive-`y` north family at the full-document same-shell level
+
+## 2026-05-18 residual `y-delta` predicates verified against the full attached-label set
+
+Question:
+- Can the two surviving residual `y` microfamilies be written as exact predicates on the current full attached-label set, instead of remaining as node lists?
+
+Backfilled attached-label set:
+- Source tables:
+  - `tmp/frame-word-ab/frame-global3-attached-replay-geometry.json`
+  - `tmp/frame-word-ab/attached-page-phase.full.json`
+  - `tmp/all-text-primitives.json`
+- Purpose:
+  - restore missing metadata for the ligand `O` labels
+  - verify whether the residual `y` families uniquely map to a reusable predicate
+
+Exact predicate verification:
+
+1. Negative-`y` black oxygen family
+- Predicate:
+  - `text == O`
+  - `fill == #000000`
+  - `layout == attached-group-above`
+- Matches in the current full attached-label set:
+  - `f1_28325`
+  - `f1_28328`
+- This is now an **exact family**, not a loose heuristic.
+
+2. Weak negative-`y` east-facing black `N` family
+- Predicate:
+  - `text == N`
+  - `fill == #000000`
+  - `primaryNeighborBucket == east`
+  - `110 <= gapRight <= 120`
+  - `0.34 <= topPagePhase <= 0.40`
+- Matches in the current full attached-label set:
+  - `f1_28322`
+  - `f4_32331`
+- This is also an **exact family** on the current document, not just a remembered pair.
+
+Same-shell bundled validation:
+- Harness:
+  - `tmp/frame-word-ab/y-policy-eval/summary.json`
+- Baseline:
+  - `IoU = 0.8751508326`
+
+Validated bundles:
+- `negO_only`
+  - `y = -2` on the exact black-`O` `attached-group-above` family
+  - `IoU = 0.8758348757`
+  - `delta = +0.0006840431`
+- `eastN_only`
+  - `y = -1` on the exact east-facing black-`N` family
+  - `IoU = 0.8753117207`
+  - `delta = +0.0001608881`
+- `negO_plus_eastN`
+  - combine both exact predicates
+  - `IoU = 0.8759958156`
+  - `delta = +0.0008449830`
+
+Counterexample bundle:
+- `northMixed_only`
+  - `y = +1` on `f2_34461,f4_32339`
+  - `IoU = 0.8745476478`
+  - `delta = -0.0006031848`
+- So the old north-oriented positive-`y` interpretation is no longer viable at the full-doc same-shell level.
+
+Interpretation:
+- The residual `y` axis has now stabilized into two exact subfamilies:
+  1. **primary**
+     - black `O`
+     - `layout = attached-group-above`
+     - `y = -2`
+  2. **secondary**
+     - black `N`
+     - east-facing
+     - `gapRight ≈ 114..117`
+     - `topPagePhase ≈ 0.34..0.40`
+     - `y = -1`
+- The positive-`y` branch does not survive whole-document validation and should be treated as a misleading local artifact.
+
+Takeaway:
+- Residual `y` replay is no longer an open-ended search space.
+- On the current document, it can already be expressed as:
+  - one exact `attached-group-above` black-`O` family
+  - plus one exact east-facing black-`N` carry-on family
+- This means future replay work should stop treating `y` as a broad generic knob and instead keep it as a tiny residual rule layer.
