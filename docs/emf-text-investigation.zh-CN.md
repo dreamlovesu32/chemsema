@@ -9118,3 +9118,55 @@ Interpretation:
 Open questions:
 - Can the two `gapRight` interval rules be made more interpretable by combining them with `topPagePhase` or local attachment geometry?
 - Do these rules survive on other fixtures beyond the current `thiocyanation` full-doc oracle?
+### 2026-05-17 x-family safe third-node extension on top of gapfamily baseline
+
+Question:
+- Once the best stacked replay policy became
+  - `phase3band`
+  - `x = +1` on `f4_32333,f4_32347`
+  - `font-scale = 0.97` on `f4_32333,f4_32343,f4_32347`
+  can the `x` family be extended by one more safe node without hurting the existing gains?
+
+Experiment:
+- Added `f4_32327` into the `x = +1` filter while keeping the same `font-scale` gapfamily unchanged.
+- Same-shell template:
+  - `tmp/frame-word-ab/frame-global3-shellchem.docx`
+- Fixed frame:
+  - `(1441,2994,14431,8656)`
+
+Result:
+- Previous best stacked result:
+  - `IoU = 0.8782118405`
+- New `xtriplet + gapfamily-fs` result:
+  - `IoU = 0.8783631384`
+- Absolute gain:
+  - `+0.0001512979`
+
+Local effect:
+- `f4_32327` improved from:
+  - `0.662921348`
+  to:
+  - `0.681818182`
+  (`+0.018896834`)
+- `f4_32333`, `f4_32343`, `f4_32347` stayed unchanged at their already-improved values.
+
+Interpretation:
+- `f4_32327` is a real positive carry-on node on top of the previous best stacked baseline.
+- The earlier x-only predicate search already hinted at a stronger 3-node rule than the exact pair-only rule.
+- This same-shell validation confirms that the `x` replay family is not strictly a 2-node pair anymore.
+
+Current best verified stacked policy:
+- `phase3band`
+- `x = +1` on:
+  - `f4_32327`
+  - `f4_32333`
+  - `f4_32347`
+- `font-scale = 0.97` on:
+  - `f4_32333`
+  - `f4_32343`
+  - `f4_32347`
+- same-shell full-doc result:
+  - `IoU = 0.8783631384`
+
+Open question:
+- Can the 3-node `x` family be promoted to a stable predicate such as a `gapRight + xPagePhase` band, rather than remaining an explicit node set?
