@@ -8629,3 +8629,50 @@ Interpretation:
 Next step:
 - keep using `topPagePhase` as the primary axis
 - compare this safe two-band replay family against the worst catalyst-top black `Ph` and nearby control labels before introducing any packaged replay experiment hook
+
+
+## 2026-05-17 attached-label packaged phase-band replay experiment
+
+Status: negative result, reverted.
+
+Goal:
+- apply the safe same-shell `topPagePhase` policy directly inside packaged replay.
+- candidate policy:
+  - `[0.0, 0.3241855029598355) -> dy+1`
+  - `[0.5640732919537186, 0.6313786402477035) -> dy+1`
+
+What happened:
+1. First attempt showed zero visible change.
+2. Trace revealed the helper never matched because attached labels use `PreviewTextRun.script = "normal"`, not `None`.
+3. After fixing that gate, the helper did hit real nodes during packaged EMF generation:
+   - `f2_34461`, `f2_37`, `f2_41`
+   - `f4_32325`, `f4_32333`, `f4_32335`, `f4_32345`, `f4_32347`
+   - `f5_2784`, `f5_2788`, `f5_2794`
+4. Same-shell Word replay still got worse:
+   - baseline `frame-global3`: `best_iou = 0.8618815442410679`
+   - phase-band replay: `best_iou = 0.8604985618408437`
+
+Local label outcome:
+- changed labels: `5 / 27`
+- all changed labels got worse:
+  - `f4_32345` `Ph` `0.69697 -> 0.64925`
+  - `f4_32347` `Ph` `0.62573 -> 0.58721`
+  - `f2_37` `O` `0.70588 -> 0.67816`
+  - `f4_32343` `Ph` `0.70588 -> 0.68382`
+  - `f2_34461` `N` `0.69072 -> 0.68041`
+- the high-value target labels stayed unchanged:
+  - `f4_32333`, `f4_32335`
+  - `f5_2784`, `f5_2788`, `f5_2794`
+
+Interpretation:
+- the same-shell `frame-dy` sensitivity buckets do not transfer directly into a packaged replay `origin.Y += 1px` rule.
+- a record-time y nudge is not equivalent to replaying the same EMF under a shifted `EMR_HEADER.frame`.
+- this path should stay documented as a failed direct-productization attempt.
+
+Artifacts:
+- trace log: `tmp/frame-word-ab/attached-phasebands-trace.log`
+- EMF: `tmp/frame-word-ab/attached-phasebands-trace.emf`
+- same-shell docx: `tmp/frame-word-ab/attached-phasebands-hit-fg3.docx`
+- replay PNG: `tmp/frame-word-ab/attached-phasebands-hit-fg3.wordcopy.png`
+- compare JSON: `tmp/frame-word-ab/attached-phasebands-hit-fg3.bestshift.json`
+- label IoU: `tmp/frame-word-ab/attached-phasebands-hit-fg3-label-iou.json`
