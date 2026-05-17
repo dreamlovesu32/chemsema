@@ -14,6 +14,12 @@ def load_rgba(path: Path) -> Image.Image:
 
 def mask_bbox(img: Image.Image, box, threshold: int = 740):
     x0, y0, x1, y1 = box
+    x0 = max(0, x0)
+    y0 = max(0, y0)
+    x1 = min(img.width - 1, x1)
+    y1 = min(img.height - 1, y1)
+    if x1 < x0 or y1 < y0:
+        return None
     px = img.load()
     xs = []
     ys = []
