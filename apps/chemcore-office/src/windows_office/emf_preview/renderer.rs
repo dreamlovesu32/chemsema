@@ -65,6 +65,10 @@ const ENV_ATTACHED_LABEL_REPLAY_Y_NUDGE_EXPERIMENT: &str =
     "CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_Y_NUDGE_EXPERIMENT";
 const ENV_ATTACHED_LABEL_REPLAY_NODE_FILTER_EXPERIMENT: &str =
     "CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_NODE_FILTER_EXPERIMENT";
+const ENV_ATTACHED_LABEL_REPLAY_Y_NUDGE_EXPERIMENT_2: &str =
+    "CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_Y_NUDGE_EXPERIMENT_2";
+const ENV_ATTACHED_LABEL_REPLAY_NODE_FILTER_EXPERIMENT_2: &str =
+    "CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_NODE_FILTER_EXPERIMENT_2";
 const ENV_ATTACHED_LABEL_REPLAY_FONT_SCALE_EXPERIMENT: &str =
     "CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_FONT_SCALE_EXPERIMENT";
 const ENV_ATTACHED_LABEL_REPLAY_TEXT_HINT_EXPERIMENT: &str =
@@ -2348,23 +2352,35 @@ fn preview_attached_label_replay_y_nudge_px(
     text_anchor: Option<&str>,
     label_context: Option<&PreviewLabelContext>,
 ) -> f64 {
-    let Some(nudge_px) = preview_env_f64(ENV_ATTACHED_LABEL_REPLAY_Y_NUDGE_EXPERIMENT) else {
-        return 0.0;
-    };
-    if std::env::var_os(ENV_ATTACHED_LABEL_REPLAY_NODE_FILTER_EXPERIMENT).is_some() {
-        if !preview_attached_label_replay_node_filter_matches(node_id) {
-            return 0.0;
+    for (nudge_env, filter_env) in [
+        (
+            ENV_ATTACHED_LABEL_REPLAY_Y_NUDGE_EXPERIMENT,
+            ENV_ATTACHED_LABEL_REPLAY_NODE_FILTER_EXPERIMENT,
+        ),
+        (
+            ENV_ATTACHED_LABEL_REPLAY_Y_NUDGE_EXPERIMENT_2,
+            ENV_ATTACHED_LABEL_REPLAY_NODE_FILTER_EXPERIMENT_2,
+        ),
+    ] {
+        let Some(nudge_px) = preview_env_f64(nudge_env) else {
+            continue;
+        };
+        if std::env::var_os(filter_env).is_some() {
+            if !preview_attached_label_replay_node_filter_matches_with_env(node_id, filter_env) {
+                continue;
+            }
+        } else if !preview_attached_label_replay_matches(
+            node_id,
+            runs,
+            fallback_fill,
+            text_anchor,
+            label_context,
+        ) {
+            continue;
         }
-    } else if !preview_attached_label_replay_matches(
-        node_id,
-        runs,
-        fallback_fill,
-        text_anchor,
-        label_context,
-    ) {
-        return 0.0;
+        return nudge_px;
     }
-    nudge_px
+    0.0
 }
 
 fn preview_attached_label_replay_font_scale(
@@ -2448,8 +2464,11 @@ fn preview_attached_label_replay_matches(
     fill.eq_ignore_ascii_case("#000000")
 }
 
-fn preview_attached_label_replay_node_filter_matches(node_id: Option<&str>) -> bool {
-    let Some(filter) = std::env::var_os(ENV_ATTACHED_LABEL_REPLAY_NODE_FILTER_EXPERIMENT) else {
+fn preview_attached_label_replay_node_filter_matches_with_env(
+    node_id: Option<&str>,
+    env_name: &str,
+) -> bool {
+    let Some(filter) = std::env::var_os(env_name) else {
         return true;
     };
     let Some(node_id) = node_id else {

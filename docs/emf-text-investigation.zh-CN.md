@@ -8805,3 +8805,52 @@ Interpretation:
 - Local packaged replay y placement is now a proven lever, not just a theoretical same-shell frame proxy.
 - The winning family is broader than the original two catalyst top-half black `Ph` labels, but it is still selective; it does not cover all attached labels.
 - The next step is to understand why `f2_34461` stayed inert and whether the same positive-dy family can be characterized more directly than an explicit node-id list.
+
+
+### 2026-05-17 attached-label local y subfamilies
+
+Follow-up question:
+- Are the positive attached-label replay candidates all explained by one local packaged `y` nudge, or do they split into subfamilies?
+
+First boundary-bucket test (`topPagePhase ~= 0.247`):
+- `f2_34461` (`N`, black) and `f2_37` (`O`, black) were tested individually.
+- Results:
+  - `f2_34461`
+    - `y=-1`: `0.690722 -> 0.697917`, global `0.86195044`
+    - `y=-2`: no change
+    - `y<=-3`: degrades strongly
+  - `f2_37`
+    - `y=-1`: `0.705882 -> 0.738095`, global `0.86211031`
+    - `y=-2`: very small gain
+    - `y=-3`: degrades strongly
+- Conclusion: this phase bucket behaves like a `-1 px` family, not the earlier `-2 px` family.
+
+Two-lane packaged replay experiment:
+- Lane A (`-2 px`):
+  - `f2_41,f4_32325,f5_2784,f4_32335,f4_32333,f5_2788,f5_2794`
+- Lane B (`-1 px`):
+  - `f2_34461,f2_37`
+
+Same-shell global result:
+- previous single-lane best: `0.8705740666`
+- two-lane combined best: `0.8708744881`
+
+Changed labels under the combined run:
+- Lane A:
+  - `f2_41` `S`: `0.616279 -> 0.719512`
+  - `f4_32325` `N`: `0.693182 -> 0.802469`
+  - `f5_2784` `CN`: `0.528571 -> 0.646154`
+  - `f4_32335` `Ph`: `0.595420 -> 0.710744`
+  - `f4_32333` `Ph`: `0.492647 -> 0.582677`
+  - `f5_2788` `S`: `0.521739 -> 0.674419`
+  - `f5_2794` `Ph`: `0.573427 -> 0.729323`
+- Lane B:
+  - `f2_34461` `N`: `0.690722 -> 0.697917`
+  - `f2_37` `O`: `0.705882 -> 0.738095`
+
+Interpretation:
+- The earlier positive attached-label family is real, but it is not monolithic.
+- At least two local packaged replay y-subfamilies now exist:
+  - main family: `y = -2 px`
+  - boundary phase bucket around `topPagePhase ~= 0.247`: `y = -1 px`
+- This is the first evidence that attached-label replay can be improved with a small multi-lane local y policy, not just one broad family constant.
