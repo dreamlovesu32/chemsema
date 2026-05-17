@@ -9170,3 +9170,58 @@ Current best verified stacked policy:
 
 Open question:
 - Can the 3-node `x` family be promoted to a stable predicate such as a `gapRight + xPagePhase` band, rather than remaining an explicit node set?
+### 2026-05-17 x-family extension atlas on top of gapfamily baseline
+
+Question:
+- After promoting the `font-scale` branch to the 3-node `gapRight` family, can the `x = +1` branch safely grow beyond the original pair `f4_32333,f4_32347`?
+
+New tooling:
+- `scripts/run-attached-x-atlas.py`
+  - Runs a same-shell atlas over single-node `x = +1` additions on top of a fixed stacked baseline.
+
+Baseline stack for this atlas:
+- `phase3band`
+- `x = +1` on `f4_32333,f4_32347`
+- `font-scale = 0.97` on `f4_32333,f4_32343,f4_32347`
+- same-shell full-doc baseline:
+  - `IoU = 0.8782118405`
+
+Atlas result:
+- Output dir:
+  - `tmp/frame-word-ab/xtriplet-fs-gapfamily-xatlas-20260517`
+- The only additional positive node is:
+  - `f4_32327`
+    - global `+0.0001512979`
+    - local label `+0.018896834`
+- `f4_32333` and `f4_32347` remain neutral because they are already in the baseline x-family.
+- All remaining nodes are negative.
+
+New best stacked result:
+- `phase3band`
+- `x = +1` on:
+  - `f4_32327`
+  - `f4_32333`
+  - `f4_32347`
+- `font-scale = 0.97` on:
+  - `f4_32333`
+  - `f4_32343`
+  - `f4_32347`
+- same-shell full-doc result:
+  - `IoU = 0.8783631384`
+
+Interpretation:
+- The `x` replay family can be extended by one more node beyond the original pair, but only narrowly.
+- Once `f4_32327` is included, the single-node x atlas shows no other profitable additions.
+- So the current evidence says the x-family has effectively saturated at a 3-node set.
+
+Updated practical rule set:
+- `x-family` current best node set:
+  - `f4_32327`
+  - `f4_32333`
+  - `f4_32347`
+- `font-scale family` current best rule:
+  - `137.245 <= gapRight <= 166.240`
+  - which matches `f4_32333,f4_32343,f4_32347`
+
+Open question:
+- Can the 3-node x-family itself be promoted to a clean geometric predicate (for example a `gapRight + xPagePhase` band), or is `f4_32327` still an isolated carry-on case?
