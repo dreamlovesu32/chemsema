@@ -9957,3 +9957,123 @@ Takeaway:
 - The profitable next step is either:
   - compressing the remaining `x = -1` singleton further,
   - or switching to the next unsolved replay family outside the current `x/y/font-scale/top` stack.
+
+## 2026-05-18 replay stack is now almost fully expressible as predicates
+
+Question:
+- After re-running the `x` atlases on top of the current best `top` stack, can the attached-label replay stack be rewritten mostly as rules rather than hand-picked node sets?
+
+New atlas runs:
+- `tmp/frame-word-ab/x-atlas-on-topstack-plus1-20260517`
+- `tmp/frame-word-ab/x-atlas-on-topstack-neg1-20260518`
+
+### `x = +1` is now an exact safe predicate
+
+Under the current best `top` stack + `font-scale` baseline, the positive `x = +1` atlas gives only three strictly positive nodes:
+- `f4_32347`
+- `f4_32333`
+- `f4_32327`
+
+Best safe predicate search result:
+- `gapRight >= 121.165`
+- `gapRight <= 180.670`
+- `xPagePhase >= 0.209741`
+
+This matches exactly:
+- `f4_32327`
+- `f4_32333`
+- `f4_32347`
+
+with:
+- `totalDeltaIou = 0.0028385143`
+- `neg = 0`
+
+Interpretation:
+- The positive `x` family is no longer just a 3-node tuning set.
+- It has crossed into a compact reusable rule.
+
+### `x = -1` is still a singleton carry-on
+
+The negative `x = -1` atlas remains sharply peaked:
+- only `f1_28331` is positive
+  - `globalDelta = +0.0002126957`
+- every other candidate is negative
+
+Best safe compact predicate search result:
+- `text == N`
+- `componentQuadrant == LT`
+
+This matches exactly:
+- `f1_28331`
+
+Interpretation:
+- The negative `x` branch is still a singleton microfamily.
+- It is compact enough to describe by rule, but not yet a broader reusable family.
+
+### Revisiting `top = +2`: there is also an exact compact rule
+
+Earlier notes emphasized the broader safe predicate:
+- `gapRight <= 180.990`
+- `topPagePhase >= 0.605638`
+
+which also pulled in `f2_43`.
+
+Rechecking the same atlas shows an exact safe 3-node variant already exists:
+- `gapRight <= 149.630`
+- `topPagePhase >= 0.605638`
+
+This matches exactly:
+- `f2_41`
+- `f4_32333`
+- `f4_32335`
+
+and excludes:
+- `f2_43`
+
+So the `top = +2` family is cleaner than previously stated.
+
+### Current best stack in rule form
+
+The current best attached-label replay stack can now be written almost entirely as predicates:
+
+- `font-scale = 0.97`
+  - `137.245 <= gapRight <= 166.240`
+
+- `x = +1`
+  - `121.165 <= gapRight <= 180.670`
+  - `xPagePhase >= 0.209741`
+
+- `x = -1`
+  - `text == N`
+  - `componentQuadrant == LT`
+
+- `top = +1`
+  - `text == O`
+  - `gapRight <= 180.990`
+
+- `top = +2`
+  - `gapRight <= 149.630`
+  - `topPagePhase >= 0.605638`
+
+- `top = -2`
+  - predicate A:
+    - `gapRight <= 149.630`
+    - `topPagePhase <= 0.532088`
+    - `xPagePhase <= 0.636529`
+  - predicate B:
+    - `gapRight <= 180.750`
+    - `topPagePhase <= 0.532088`
+    - `xPagePhase >= 0.716492`
+  - singleton patch:
+    - `componentQuadrant == LB`
+    - `gapRight >= 225.110`
+
+Interpretation:
+- The replay stack is no longer dominated by ad-hoc node lists.
+- What still remains node-like is mainly the semantic role of the `x = -1` singleton, not its ability to be described compactly.
+
+Takeaway:
+- A large part of the current best same-shell replay policy has now crossed from “node tuning” into “rule stack”.
+- The next profitable direction is not more atlas brute force on these same axes, but either:
+  - compressing the remaining semantic singleton(s) further,
+  - or switching to the next unsolved family outside the current attached-label microfamily stack.
