@@ -59,6 +59,7 @@ const ENV_PACKAGED_CENTERED_PLAIN_GDI_WIDTH: &str =
 const ENV_PACKAGED_CENTERED_PLAIN_ZERO_LAYOUT: &str =
     "CHEMCORE_EMF_PACKAGED_CENTERED_PLAIN_ZERO_LAYOUT";
 const ENV_PACKAGED_SMOOTHING_MODE_VALUE: &str = "CHEMCORE_EMF_PACKAGED_SMOOTHING_MODE_VALUE";
+const ENV_HIDE_DOCUMENT_KNOCKOUT: &str = "CHEMCORE_EMF_HIDE_DOCUMENT_KNOCKOUT";
 
 fn preview_env_enabled(name: &str) -> bool {
     std::env::var_os(name).is_some()
@@ -633,6 +634,9 @@ pub(super) fn office_preview_primitive_visible(primitive: &RenderPrimitive) -> b
         | RenderPrimitive::FilledPath { role, .. }
         | RenderPrimitive::Text { role, .. } => role,
     };
+    if *role == RenderRole::DocumentKnockout && preview_env_enabled(ENV_HIDE_DOCUMENT_KNOCKOUT) {
+        return false;
+    }
     matches!(
         role,
         RenderRole::DocumentBond

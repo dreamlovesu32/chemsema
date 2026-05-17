@@ -5703,3 +5703,150 @@ right-family ?????
    - ??????????? left/title/reagent residual
 
 ??? `frame-best-shellchem` ????????? full-doc ????????????????
+
+
+## 2026-05-17 DocumentKnockout 可见性与“标签被圈出来”现象
+
+这轮先不继续调 `frame`，而是把用户指出的另一类现象单独拆开：
+
+- 我们的标签在对比图里像被一圈 halo/clip 壳包住
+- 这看起来不像单纯的 `frame` 或全局位移问题
+- 需要先判断：是不是内部 label knockout 几何被错误地显示出来了
+
+### 1. 代码语义确认：SVG 隐藏 node-specific knockout，但 Office preview 目前会显示
+
+代码层面对比：
+
+- `crates/chemcore-engine/src/render_svg.rs`
+  - `visible_in_document_svg()` 会隐藏
+    - `RenderPrimitive::Rect { role: DocumentKnockout, .. }`
+    - `RenderPrimitive::Polygon { role: DocumentKnockout, node_id: Some(_), .. }`
+- `apps/chemcore-office/src/windows_office/emf_preview/renderer.rs`
+  - `office_preview_primitive_visible()` 当前会把 `RenderRole::DocumentKnockout` 当成可见 primitive
+
+这说明：
+
+- 文档 SVG 语义：`DocumentKnockout` 是内部退让/遮挡几何，不应该被看见
+- Office preview 语义：当前会把这层内部几何 replay 到可见结果里
+
+这本身就是一个明确的语义不一致。
+
+### 2. full doc 里所有 knockout 都是 node-specific label knockout
+
+新增分析例子：
+
+- `crates/chemcore-engine/examples/render_role_report.rs`
+
+运行：
+
+- `cargo run -q -p chemcore-engine --example render_role_report -- tmp/thiocyanation-source.payload.json > tmp/thiocyanation-source.render-roles.json`
+
+结果：
+
+- `primitiveCount = 217`
+- `roleCounts`
+  - `DocumentBond = 138`
+  - `DocumentGraphic = 2`
+  - `DocumentKnockout = 39`
+  - `DocumentText = 38`
+- `knockout.nodeSpecificCount = 39`
+- `knockout.plainCount = 0`
+
+所以当前 full doc 里：
+
+- 所有 knockout 都是节点级的 label knockout
+- 没有“整对象背景框”那种 plain knockout
+
+同时：
+
+- `visibleBoundsWithKnockout == visibleBoundsNoKnockout`
+
+也就是说，在这份 full doc 里：
+
+- knockout 会影响像素可见结果
+- 但不会影响 `visible bounds / source bounds / frame`
+
+### 3. direct generated docx：隐藏 knockout 后，Word 结果变化很大
+
+我加了一个分析用环境变量：
+
+- `CHEMCORE_EMF_HIDE_DOCUMENT_KNOCKOUT`
+
+用 built `chemcore-office.exe` 生成两份 docx：
+
+- 默认：
+  - `tmp/thiocyanation-source.current-docx.docx`
+- 隐藏 knockout：
+  - `tmp/thiocyanation-source.no-knockout.docx`
+
+再用 Word `CopyAsPicture` 导出 PNG：
+
+- `tmp/thiocyanation-source.current-docx.png`
+- `tmp/thiocyanation-source.no-knockout.png`
+
+二者直接像素对比：
+
+- `intersection = 8984`
+- `only_current = 4824`
+- `only_no_knockout = 4838`
+- `IoU = 0.481819`
+
+说明：
+
+- 在 direct generated docx 这条路径里，隐藏 knockout 会显著改变 Word 可见结果
+- 所以“标签像被圈出来”不是错觉，`DocumentKnockout` 这层确实在干扰可见 replay
+
+### 4. 但在 same-shell patched replay 里，它不是当前主矛盾
+
+我把两份 raw EMF 都 patch 进同一个 shell：
+
+- `tmp/frame-word-ab/frame-global3-shellchem.docx`
+
+得到：
+
+- `frame-global3-currentknockout.docx`
+- `frame-global3-noknockout.docx`
+
+Word `CopyAsPicture` 后：
+
+- `tmp/frame-word-ab/frame-global3-currentknockout.wordcopy.png`
+- `tmp/frame-word-ab/frame-global3-noknockout.wordcopy.png`
+
+这两张图之间：
+
+- 只有 `9` 个像素不同
+
+而且分别与 same-shell ChemDraw 参考图对齐后：
+
+- `currentknockout` 与参考的 best-shift IoU：`0.345603`
+- `noknockout` 与参考的 best-shift IoU：`0.345603`
+
+数值完全一样。
+
+所以这轮可以得出一个比较强的结论：
+
+- `DocumentKnockout` 被错误显示出来，确实是一个真实语义问题
+- 但在当前 `same-shell patched replay` 主线里，它并不是剩余 ChemDraw 差异的主驱动项
+
+换句话说：
+
+- 它解释了“为什么看起来像每个标签被圈出来”
+- 但还不能解释我们现在 same-shell 主线的剩余像素差
+
+### 5. 当前判断
+
+现在可以把问题更清楚地拆成两层：
+
+1. `DocumentKnockout` 可见性泄漏
+   - 是明确 bug
+   - direct generated docx 上影响很大
+
+2. same-shell ChemDraw 对齐残差
+   - 当前主因仍更像 `EMR_HEADER.frame / Word replay` 语义
+   - knockout 在这条主线上不是 dominant factor
+
+下一步更合适的研究方向是：
+
+- 继续做“文本本体 vs knockout”隔离
+- 但 same-shell 主线不应因为这条发现而完全转向 `glyph clipping`
+- 更像是把它作为一条并行 bug 线索保留
