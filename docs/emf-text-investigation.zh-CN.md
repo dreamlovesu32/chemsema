@@ -8933,3 +8933,63 @@ Conclusion:
 - Attached-label local x and local font-scale are real live knobs in packaged EMF replay.
 - The earlier no-op result was caused by testing labels that did not satisfy the old match predicate.
 - These axes should now be treated as valid for future attached-label family experiments.
+
+### 2026-05-17 narrow x/font-scale attached-label subfamily on top of phase3band
+
+Question:
+- After proving the `phase3band` y-policy, can the newly validated attached-label `x` and `font-scale` axes add a further same-shell gain without hurting the whole family?
+
+Setup:
+- Base replay policy: `CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_PHASE_POLICY_EXPERIMENT=phase3band`
+- Same-shell template: `tmp/frame-word-ab/frame-global3-shellchem.docx`
+- Fixed frame: `(1441,2994,14431,8656)`
+- Reference: `tmp/v28-wrapper-ablate10/v28-rerun.shape2.png`
+- New experiments were run in:
+  - `tmp/frame-word-ab/phase3-xfs-narrow-20260517`
+  - `tmp/frame-word-ab/phase3-xfs-finetune-20260517`
+  - `tmp/frame-word-ab/phase3-xfs-combos-20260517`
+  - `tmp/frame-word-ab/phase3-xfs-finetune2-20260517`
+
+Baseline:
+- `phase3band`: `IoU = 0.8751508326`
+
+Broad attached-label family matrix (all current positive-y family labels):
+- `x = +1`: `0.8630814649`
+- `x = +2`: `0.8462634579`
+- `x = +3`: `0.8298641112`
+- `x = -1`: `0.8584657141`
+- `font-scale = 0.97`: `0.8731319299`
+- `font-scale = 0.94`: `0.8499721138`
+- `font-scale = 1.03`: `0.8544288768`
+
+Conclusion:
+- Once the node-filter-aware hooks were wired correctly, `x` and `font-scale` are real live axes.
+- But when applied to the whole positive attached-label family, both axes hurt the global same-shell replay.
+
+Narrow subfamily search:
+- The first profitable narrow rule was:
+  - `x = +1 px` on `f4_32333,f4_32347`
+  - same-shell result: `0.8765799855`
+- Adding a light font shrink to the same pair improved further:
+  - `x = +1 px` on `f4_32333,f4_32347`
+  - `font-scale = 0.96 ~ 0.98` on the same pair
+  - same-shell result: `0.8777482484`
+
+Local label-box effects for the best narrow variant (`xpair_fs0p96`):
+- `f4_32333` `Ph`: `0.582677 -> 0.694215` (`+0.111538`)
+- `f4_32347` `Ph`: `0.643275 -> 0.736196` (`+0.092921`)
+- incidental neighbor gain:
+  - `f4_32343` `Ph`: `0.755556 -> 0.761194` (`+0.005638`)
+
+Interpretation:
+- The profitable `x/font-scale` rule is not a broad attached-label family property.
+- It is currently a very narrow top-half catalyst black-`Ph` replay subfamily.
+- This rule is real but small: it adds about `+0.00260` global IoU on top of the already-strong `phase3band` baseline.
+- The rest of the positive-y family should not inherit this x/font-scale tweak.
+
+Current best layered policy stack:
+1. packaged attached-label `phase3band` y-policy
+2. plus narrow local `x/font-scale` rule for `f4_32333,f4_32347`
+
+Open question:
+- Can this narrow `x/font-scale` rule be promoted from an explicit node list to a stable geometric/phase predicate, or is it genuinely a tiny replay micro-family?
