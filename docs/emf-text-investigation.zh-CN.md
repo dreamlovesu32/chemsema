@@ -8312,3 +8312,81 @@ Even when explicit per-run font sizes are scaled before packaged replay, the loc
 
 ### Next step
 Keep treating this narrow family as a replay-width / ink-generation problem. The next experiments should target how the replay path generates visible ink for attached-group labels, not how it places or sizes the text anchor.
+
+
+## 2026-05-17 attached-label TextRenderingHint matrix
+
+### Goal
+Probe whether the narrow replay-dominant attached-label family is primarily controlled by packaged GDI+ text hinting rather than anchor placement or font size.
+
+Target family:
+- `text = Ph`
+- `fill = #000000`
+- `layout = attached-group`
+- `labelJustification = Left`
+- `componentHalfX = right`
+- `primaryNeighborBucket = north`
+- `gapRight <= 40.44`
+
+### Implementation
+- Added env-gated experiment hook in `renderer.rs`:
+  - `CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_TEXT_HINT_EXPERIMENT=<int>`
+- The hook only overrides `GdipSetTextRenderingHint` for the narrow family during packaged replay.
+- Same-shell comparison again used the fixed `frame-global3` header frame `(1441,2994,14431,8656)`.
+
+### Matrix
+Artifacts:
+- `tmp/frame-word-ab/hint-matrix/hint-*.metrics.json`
+- `tmp/frame-word-ab/hint-matrix/hint-*.labels.json`
+
+Key rows:
+- `baseline`: global `IoU = 0.861882`, `f4_32339 deltaDims = [7,1]`, `deltaTopLeft = [-6,0]`
+- `0`: global `IoU = 0.858124`, `f4_32339 deltaDims = [7,1]`, `deltaTopLeft = [-6,0]`
+- `1`: global `IoU = 0.858124`, `f4_32339 deltaDims = [7,1]`, `deltaTopLeft = [-6,0]`
+- `2`: global `IoU = 0.859541`, `f4_32339 deltaDims = [7,1]`, `deltaTopLeft = [-6,0]`
+- `3`: global `IoU = 0.858670`, `f4_32339 deltaDims = [7,1]`, `deltaTopLeft = [-6,0]`
+- `4`: global `IoU = 0.861882`, `f4_32339 deltaDims = [7,1]`, `deltaTopLeft = [-6,0]`
+- `5`: global `IoU = 0.859114`, `f4_32339 deltaDims = [7,1]`, `deltaTopLeft = [-6,0]`
+
+### Findings
+- The narrow family is completely insensitive to packaged `TextRenderingHint` changes in the tested range.
+- `f4_32339` stays pixel-identical for all tested hint values.
+- Baseline / explicit hint `4` are identical, and every other hint only worsens global IoU slightly.
+
+### Conclusion
+This family is not text-hint dominated either. Together with the earlier x-anchor and run-scale experiments, the replay problem is now clearly deeper than ordinary text placement / size / hint controls.
+
+## 2026-05-17 label local shape-IoU versus bbox metrics
+
+### Motivation
+The earlier attached-label work relied heavily on local bbox deltas (`deltaDims`, `deltaTopLeft`). That turned out to be too coarse for tightly packed catalyst labels: some labels keep the same bbox while still showing obvious red/blue shape residual inside the box.
+
+### Tooling
+Added:
+- [scripts/compare-full-label-iou.py](d:/Projects/chemcore/scripts/compare-full-label-iou.py)
+
+This computes local ink-shape IoU inside each label box under the same-shell best-shift alignment, instead of only comparing the outer bbox.
+
+### Key findings
+For black catalyst `Ph` labels under `frame-global3 + same-shell`:
+- `f4_32333`: `IoU = 0.4926`, `oursOnly = 52`, `refOnly = 17`, `residual = 69`
+- `f4_32335`: `IoU = 0.5954`, `oursOnly = 45`, `refOnly = 8`, `residual = 53`
+- `f4_32347`: `IoU = 0.6257`, `oursOnly = 46`, `refOnly = 18`, `residual = 64`
+- `f4_32345`: `IoU = 0.6970`, `oursOnly = 37`, `refOnly = 3`, `residual = 40`
+- `f4_32337`: `IoU = 0.7097`, `oursOnly = 35`, `refOnly = 1`, `residual = 36`
+- `f4_32339`: `IoU = 0.7521`, `oursOnly = 26`, `refOnly = 4`, `residual = 30`
+
+This is the opposite of the earlier bbox-centric focus: `f4_32339` is still abnormal, but it is not the worst black `Ph` once local shape overlap is measured directly.
+
+Grouped by catalyst half:
+- top-half black `Ph`: `avgIoU = 0.5440`, `sumResidual = 122`
+- bottom-half black `Ph`: `avgIoU = 0.6997`, `sumResidual = 243`
+
+### Interpretation
+- Local shape overlap is a better discriminator than bbox deltas for this family.
+- The dominant catalyst replay problem is broader than the single `f4_32339` outlier.
+- In shape-IoU terms, the top-half catalyst `Ph` labels are currently the worst subgroup.
+- `f4_32339` remains useful because its bbox anomaly is large and stable, but it should no longer be treated as the sole representative of the family.
+
+### Next step
+Continue on the replay path, but pivot the main family from ?single-node `f4_32339`? to ?top-half catalyst black `Ph` labels under same-shell shape-IoU?. That is the sharper target for the next round.

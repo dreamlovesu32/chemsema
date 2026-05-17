@@ -63,6 +63,8 @@ const ENV_ATTACHED_LABEL_REPLAY_NUDGE_EXPERIMENT: &str =
     "CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_NUDGE_EXPERIMENT";
 const ENV_ATTACHED_LABEL_REPLAY_FONT_SCALE_EXPERIMENT: &str =
     "CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_FONT_SCALE_EXPERIMENT";
+const ENV_ATTACHED_LABEL_REPLAY_TEXT_HINT_EXPERIMENT: &str =
+    "CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_TEXT_HINT_EXPERIMENT";
 const ENV_HIDE_DOCUMENT_KNOCKOUT: &str = "CHEMCORE_EMF_HIDE_DOCUMENT_KNOCKOUT";
 const ENV_HIDE_DOCUMENT_TEXT: &str = "CHEMCORE_EMF_HIDE_DOCUMENT_TEXT";
 const ENV_HIDE_DOCUMENT_BOND: &str = "CHEMCORE_EMF_HIDE_DOCUMENT_BOND";
@@ -377,18 +379,7 @@ pub(super) unsafe fn enhanced_metafile_gdiplus_dual_preview(
         SmoothingModeAntiAlias
     };
     GdipSetSmoothingMode(graphics, smoothing_mode);
-    GdipSetTextRenderingHint(
-        graphics,
-        if transform.emf_recording {
-            if preview_env_enabled(ENV_PACKAGED_TEXT_GRIDFIT) {
-                TextRenderingHintAntiAliasGridFit
-            } else {
-                TextRenderingHintAntiAlias
-            }
-        } else {
-            TextRenderingHintAntiAliasGridFit
-        },
-    );
+    GdipSetTextRenderingHint(graphics, preview_default_gdiplus_text_rendering_hint(&transform));
     let use_gdiplus_text = gdiplus_text_preview_enabled();
     let bond_context = preview_bond_context(payload);
     let label_context = preview_label_context(payload);
@@ -1696,6 +1687,18 @@ unsafe fn draw_gdiplus_text(
         text_anchor,
         label_context,
     );
+    let default_text_hint = preview_default_gdiplus_text_rendering_hint(transform);
+    let effective_text_hint = preview_attached_label_replay_text_hint(
+        node_id,
+        runs,
+        fill,
+        text_anchor,
+        label_context,
+    )
+    .unwrap_or(default_text_hint);
+    if effective_text_hint != default_text_hint {
+        GdipSetTextRenderingHint(graphics, effective_text_hint);
+    }
     let effective_font_size = font_size * effective_font_scale;
     let x = x + x_nudge_px / (transform.scale * transform.record_scale.max(1.0));
     let line_step_world = line_height.unwrap_or(effective_font_size * 1.2).max(0.01);
@@ -1758,6 +1761,9 @@ unsafe fn draw_gdiplus_text(
             );
             cursor_x += run_layout.dx + run_layout.advance;
         }
+    }
+    if effective_text_hint != default_text_hint {
+        GdipSetTextRenderingHint(graphics, default_text_hint);
     }
     ok
 }
@@ -2333,6 +2339,26 @@ fn preview_attached_label_replay_font_scale(
     scale
 }
 
+fn preview_attached_label_replay_text_hint(
+    node_id: Option<&str>,
+    runs: &[chemcore_engine::LabelRun],
+    fallback_fill: Option<&str>,
+    text_anchor: Option<&str>,
+    label_context: Option<&PreviewLabelContext>,
+) -> Option<i32> {
+    let hint = preview_env_i32(ENV_ATTACHED_LABEL_REPLAY_TEXT_HINT_EXPERIMENT)?;
+    if !preview_attached_label_replay_matches(
+        node_id,
+        runs,
+        fallback_fill,
+        text_anchor,
+        label_context,
+    ) {
+        return None;
+    }
+    Some(hint)
+}
+
 fn preview_attached_label_replay_matches(
     node_id: Option<&str>,
     runs: &[chemcore_engine::LabelRun],
@@ -2382,6 +2408,18 @@ fn preview_scale_text_run_font_sizes(lines: &mut [Vec<PreviewTextRun>], scale: f
                 *font_size *= scale;
             }
         }
+    }
+}
+
+fn preview_default_gdiplus_text_rendering_hint(transform: &PreviewTransform) -> i32 {
+    if transform.emf_recording {
+        if preview_env_enabled(ENV_PACKAGED_TEXT_GRIDFIT) {
+            TextRenderingHintAntiAliasGridFit
+        } else {
+            TextRenderingHintAntiAlias
+        }
+    } else {
+        TextRenderingHintAntiAliasGridFit
     }
 }
 
