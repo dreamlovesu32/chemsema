@@ -8756,3 +8756,52 @@ Conclusion:
 - The family is not purely a whole-frame phenomenon; for `f4_32333/f4_32335`, record-time local vertical placement is sufficient to move Word replay in the expected direction.
 - Best tested local value is currently `-2 px`.
 - This does NOT generalize automatically to the other catalyst black `Ph` labels (`f4_32339`, `f4_32343`, `f4_32345`, `f4_32347`), which remained unchanged under this node-filtered run.
+
+
+### 2026-05-17 safe positive-dy attached-label family
+
+After the narrow two-node experiment succeeded, I tested a broader node-filtered family built from labels with clearly positive same-shell `frame_dy1DeltaIou`.
+
+Candidate node set:
+- `f2_41`
+- `f4_32325`
+- `f5_2784`
+- `f2_34461`
+- `f4_32335`
+- `f4_32333`
+- `f5_2788`
+- `f5_2794`
+
+Record-time packaged replay experiment:
+- env: `CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_Y_NUDGE_EXPERIMENT`
+- env: `CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_NODE_FILTER_EXPERIMENT`
+- same-shell template: `frame-global3-shellchem.docx`
+- patched frame remains `frame-global3 = (1441,2994,14431,8656)`
+
+Global same-shell Word replay results:
+- baseline `frame-global3`: `0.8618815442`
+- family `y = -1 px`: `0.8659826868`
+- family `y = -2 px`: `0.8705740666`
+- family `y = -3 px`: `0.8668643796`
+
+Current best is therefore the family rule:
+- `safe-positive-dy family -> local packaged y nudge = -2 px`
+
+Changed labels under the best `-2 px` run:
+- `f4_32333` `Ph`: `0.492647 -> 0.582677`
+- `f4_32335` `Ph`: `0.595420 -> 0.710744`
+- `f2_41` `S`: `0.616279 -> 0.719512`
+- `f4_32325` `N`: `0.693182 -> 0.802469`
+- `f5_2784` `CN`: `0.528571 -> 0.646154`
+- `f5_2788` `S`: `0.521739 -> 0.674419`
+- `f5_2794` `Ph`: `0.573427 -> 0.729323`
+
+Notes:
+- `f2_34461` was part of the node filter candidate list but did not move in the packaged replay output.
+- No label got worse in the measured same-shell label IoU diff for the `-2 px` family run.
+- This is the first broad attached-label packaged replay rule that improves both local labels and the full same-shell global IoU.
+
+Interpretation:
+- Local packaged replay y placement is now a proven lever, not just a theoretical same-shell frame proxy.
+- The winning family is broader than the original two catalyst top-half black `Ph` labels, but it is still selective; it does not cover all attached labels.
+- The next step is to understand why `f2_34461` stayed inert and whether the same positive-dy family can be characterized more directly than an explicit node-id list.
