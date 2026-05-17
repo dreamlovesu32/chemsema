@@ -9690,3 +9690,168 @@ Current best verified stacked policy on the branch:
   - `f2_37`
 - same-shell full-doc result:
   - `IoU = 0.8821962051`
+
+## 2026-05-17 richer top-family predicates can now reproduce the explicit node stack
+
+Question:
+- Can the current best attached-label `top` families be expressed as a small set of reusable predicates, instead of an explicit node list?
+
+New tooling:
+- `scripts/search-attached-top-microfamilies.py`
+  - action-aware microfamily search over:
+    - categorical:
+      - `text`
+      - `fill`
+      - `componentQuadrant`
+      - `cdxmlLabelJustification`
+      - `primaryNeighborBucket`
+    - numeric:
+      - `gapRight`
+      - `topPagePhase`
+      - `xPagePhase`
+      - `baselineTopPxPhase`
+
+Outputs:
+- `tmp/frame-word-ab/top-microfamily-m2.json`
+- `tmp/frame-word-ab/top-microfamily-p2.json`
+- `tmp/frame-word-ab/top-microfamily-p1.json`
+
+### Best safe microfamilies per action (atlas space)
+
+`top = -2`
+- strongest safe predicate:
+  - `gapRight >= 40.445`
+  - `gapRight <= 149.630`
+  - `topPagePhase <= 0.404148`
+- atlas total delta:
+  - `0.0017751908`
+- matched nodes:
+  - `f1_28322`
+  - `f4_32329`
+  - `f4_32331`
+  - `f4_32345`
+  - `f4_32347`
+  - `f5_2784`
+  - `f5_2788`
+
+This is not yet the full explicit `-2` family, but it captures the dominant core.
+
+`top = +2`
+- best safe predicate:
+  - `gapRight <= 180.990`
+  - `topPagePhase >= 0.605638`
+- atlas total delta:
+  - `0.0007789475`
+- matched nodes:
+  - `f2_41`
+  - `f2_43`
+  - `f4_32333`
+  - `f4_32335`
+
+Because this pulls in `f2_43`, it is useful but not yet identical to the explicit `+2` stack.
+
+`top = +1`
+- best safe compact predicate:
+  - `text == O`
+  - `gapRight <= 180.990`
+- atlas total delta:
+  - `0.0002123987`
+- matched nodes:
+  - `f2_37`
+  - `f2_43`
+
+This exactly matches the previously validated explicit `+1` family.
+
+### Two-predicate recovery for `top = -2`
+
+The next step was to search whether the missing `-2` nodes can be recovered by a second safe predicate.
+
+Best two-predicate `-2` union found in atlas space:
+
+- predicate A:
+  - `gapRight <= 149.630`
+  - `topPagePhase <= 0.532088`
+  - `xPagePhase <= 0.636529`
+- predicate B:
+  - `gapRight <= 180.750`
+  - `topPagePhase <= 0.532088`
+  - `xPagePhase >= 0.716492`
+
+Union nodes:
+- `f1_28322`
+- `f4_32321`
+- `f4_32323`
+- `f4_32329`
+- `f4_32331`
+- `f4_32337`
+- `f4_32345`
+- `f4_32347`
+- `f5_2784`
+- `f5_2788`
+- `f5_2794`
+
+This still misses only:
+- `f2_34464`
+
+### Singleton补丁：把 `f2_34464` 规则化
+
+继续对剩余 `f2_34464` 做最小 safe predicate 搜索，得到：
+
+- `componentQuadrant == LB`
+- `gapRight >= 225.110`
+
+This picks exactly:
+- `f2_34464`
+
+and no extra safe positives.
+
+### Same-shell validation
+
+With these predicate-derived node sets, same-shell validation on the full document gives:
+
+1. Broad predicate stack:
+- `top=-2`: 11-node union above
+- `top=+2`: `f2_41,f2_43,f4_32333,f4_32335`
+- `top=+1`: `f2_37,f2_43`
+- result:
+  - `IoU = 0.8812040997`
+
+2. Predicate stack with singleton `f2_34464`补齐 + explicit-safe `+2/+1`
+- `top=-2`:
+  - `f1_28322`
+  - `f2_34464`
+  - `f4_32321`
+  - `f4_32323`
+  - `f4_32329`
+  - `f4_32331`
+  - `f4_32337`
+  - `f4_32345`
+  - `f4_32347`
+  - `f5_2784`
+  - `f5_2788`
+  - `f5_2794`
+- `top=+2`:
+  - `f2_41`
+  - `f4_32333`
+  - `f4_32335`
+- `top=+1`:
+  - `f2_37`
+  - `f2_43`
+- result:
+  - `IoU = 0.8821962051`
+
+This is exactly the same as the previous explicit-node optimum.
+
+Interpretation:
+- The current best attached-label `top` policy is no longer just a hand-picked node list.
+- It can now be reproduced by:
+  - one compact `+1` predicate
+  - one compact `+2` predicate
+  - one 2-piece `-2` family plus one singleton patch
+- In other words, `top` has crossed from “node tuning” into “rule family”.
+
+Takeaway:
+- The `top` axis is now largely understood.
+- The next profitable direction is not more brute-force top-nudge search, but either:
+  - compressing the remaining singleton patch further, or
+  - moving to the next unsolved replay axis (`x` family / non-text residual).
