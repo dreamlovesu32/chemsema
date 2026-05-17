@@ -6397,3 +6397,138 @@ Word `CopyAsPicture` 后：
 - 分子内部标签 replay（当前最重）
 - 少量分子骨架 replay（尤其 `top_left_substrate`）
 - 少量 line/arrow replay
+
+### 16. 新增 `node_id` 过滤：可以把同一 merged molecule 里的单个标签节点单独回放
+
+为了把“分子内部标签 replay”继续拆细，我在 Office preview 的分析开关里又补了一个：
+
+- `CHEMCORE_EMF_INCLUDE_NODE_IDS`
+
+语义是：
+
+- 只回放指定 `node_id` 的 primitive
+- 和现有 `CHEMCORE_EMF_INCLUDE_OBJECT_IDS` 可叠加使用
+
+典型用法：
+
+- `CHEMCORE_EMF_INCLUDE_OBJECT_IDS=obj_cdxml_merged_molecule`
+- `CHEMCORE_EMF_INCLUDE_NODE_IDS=f4_32333`
+
+这样可以在不改 payload 的前提下，把 merged molecule 里的某一个标签单独抽出来生成 Word docx / `CopyAsPicture`，适合做：
+
+- 单标签 vs ChemDraw 的局部 crop 对照
+- `text-only / knockout + text` 的对照
+- 同一家族标签（`Ph/CN/NC/S`）之间的 replay 形状归一化
+
+### 17. 单标签 `f4_32333`（黑色 `Ph`）局部对照：knockout 不是唯一来源，标签回放本身就不对
+
+我用新加的 `node_id` 过滤，单独抽了催化剂区最高残差的黑色 `Ph`：
+
+- `node_id = f4_32333`
+
+生成了：
+
+- `tmp/frame-word-ab/label-f4_32333.docx`
+- `tmp/frame-word-ab/label-f4_32333.wordcopy.png`
+- `tmp/frame-word-ab/label-f4_32333-text-only.docx`
+- `tmp/frame-word-ab/label-f4_32333-text-only.wordcopy.png`
+- `tmp/frame-word-ab/label-f4_32333.preview-bounds.json`
+
+以及对应的局部对照：
+
+- `tmp/frame-word-ab/label-f4_32333-compare/overlay-ours-vs-chemdraw.png`
+- `tmp/frame-word-ab/label-f4_32333-compare/overlay-text-only-vs-chemdraw.png`
+- `tmp/frame-word-ab/label-f4_32333-compare/metrics.json`
+
+关键数值：
+
+- `ours_vs_chemdraw.iou = 0.20879`
+- `text_only_vs_chemdraw.iou = 0.17021`
+- `ours_vs_text_only.iou = 0.37815`
+
+这一步说明两件事：
+
+1. 这条高残差黑色 `Ph` 的局部错位/形状偏差是真的存在，不是 full-doc 聚合假象。
+2. 把 `DocumentKnockout` 去掉后局部结果并没有自动变对；相反，`with-knockout` 版本还略好一点。
+
+因此对这类标签来说：
+
+- knockout 泄漏是一个真实 bug
+- 但当前 same-shell 主线里，**标签文本/标签 replay 本身也在错**
+
+### 18. patch `image1.emf` 生成的 same-shell layer-doc 不能当 role partition oracle
+
+我尝试过把不同 role-layer 的 EMF（例如：
+
+- `molecule-text-only.emf`
+- `molecule-knockout-only.emf`
+- `molecule-nontext-only.emf`
+
+）分别 patch 到同一个 `frame-global3` 壳里，再让 Word `CopyAsPicture`。
+
+结果很反直觉：
+
+- 三份输出的 `wordcopy.png` 哈希完全一致
+- bbox 也完全一致
+
+同时我又做了一个 `blank-preview.emf` 的对照：
+
+- 把 `text / knockout / bond / graphic` 全部隐藏
+- patch 进同一个壳里后，Word 输出确实会变
+
+这说明：
+
+- `image1.emf` 本身并不是完全不起作用
+- 但“只靠 patch `image1.emf` 再让 Word 回放”这条路，不足以稳定地做 role-layer same-shell partition
+
+因此，后面的 role 分层归因不能把这类 patched layer-doc 当成权威 oracle。
+
+### 19. 当前 dominant label family：`attached-group + start + 短标签`
+
+为了继续收紧 label 主线，我把 `label attribution` 结果又做了一层聚合，新增：
+
+- `scripts/summarize-label-attribution.py`
+- 输出：`tmp/frame-word-ab/frame-global3-label-summary.json`
+
+聚合后最强的规律是：
+
+- `layout = attached-group`
+- `anchor = start`
+- 高残差短标签：
+  - `Ph`
+  - `CN`
+  - `NC`
+  - `S`
+
+关键汇总：
+
+- `attached-group`: `count = 25`, `residual = 950`, `avgResidual = 38.0`
+- `attached-group-above`: `count = 2`, `residual = 58`, `avgResidual = 29.0`
+- `Ph`: `count = 9`, `residual = 426`, `avgResidual = 47.33`
+- `CN`: `count = 2`, `residual = 104`, `avgResidual = 52.0`
+- `NC`: `count = 1`, `residual = 51`
+- `S`: `count = 2`, `residual = 77`, `avgResidual = 38.5`
+
+按填充色再拆：
+
+- `Ph|#000000`: `8 / 365 / 45.625`
+- `CN|#0000ff`: `1 / 66`
+- `Ph|#ff8000`: `1 / 61`
+- `NC|#000000`: `1 / 51`
+- `S|#ff8000`: `1 / 44`
+- `CN|#000000`: `1 / 38`
+- `S|#000000`: `1 / 33`
+
+所以目前最值得继续做节点级局部对照的，不是任意标签，而是这组 dominant family：
+
+- 黑色 `Ph`
+- 蓝色 `CN`
+- 黑色 `NC`
+- 橙色 `Ph`
+- 橙色 `S`
+
+这也意味着后面的 same-shell 主线，已经可以从“分子内部标签 replay”进一步细化成：
+
+- `attached-group/start/short-label` replay family
+- 少量非该家族的标签
+- 极少量纯骨架几何 residual

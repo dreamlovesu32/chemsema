@@ -64,6 +64,7 @@ const ENV_HIDE_DOCUMENT_TEXT: &str = "CHEMCORE_EMF_HIDE_DOCUMENT_TEXT";
 const ENV_HIDE_DOCUMENT_BOND: &str = "CHEMCORE_EMF_HIDE_DOCUMENT_BOND";
 const ENV_HIDE_DOCUMENT_GRAPHIC: &str = "CHEMCORE_EMF_HIDE_DOCUMENT_GRAPHIC";
 const ENV_INCLUDE_OBJECT_IDS: &str = "CHEMCORE_EMF_INCLUDE_OBJECT_IDS";
+const ENV_INCLUDE_NODE_IDS: &str = "CHEMCORE_EMF_INCLUDE_NODE_IDS";
 
 fn preview_env_enabled(name: &str) -> bool {
     std::env::var_os(name).is_some()
@@ -71,6 +72,21 @@ fn preview_env_enabled(name: &str) -> bool {
 
 fn preview_env_object_id_filter() -> Option<std::collections::BTreeSet<String>> {
     let raw = std::env::var(ENV_INCLUDE_OBJECT_IDS).ok()?;
+    let ids = raw
+        .split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .collect::<std::collections::BTreeSet<_>>();
+    if ids.is_empty() {
+        None
+    } else {
+        Some(ids)
+    }
+}
+
+fn preview_env_node_id_filter() -> Option<std::collections::BTreeSet<String>> {
+    let raw = std::env::var(ENV_INCLUDE_NODE_IDS).ok()?;
     let ids = raw
         .split(',')
         .map(str::trim)
@@ -95,6 +111,16 @@ fn preview_primitive_object_id(primitive: &RenderPrimitive) -> Option<&str> {
         | RenderPrimitive::Path { object_id, .. }
         | RenderPrimitive::FilledPath { object_id, .. }
         | RenderPrimitive::Text { object_id, .. } => object_id.as_deref(),
+    }
+}
+
+fn preview_primitive_node_id(primitive: &RenderPrimitive) -> Option<&str> {
+    match primitive {
+        RenderPrimitive::Circle { node_id, .. }
+        | RenderPrimitive::Polygon { node_id, .. }
+        | RenderPrimitive::Rect { node_id, .. }
+        | RenderPrimitive::Text { node_id, .. } => node_id.as_deref(),
+        _ => None,
     }
 }
 
@@ -661,6 +687,14 @@ pub(super) fn office_preview_primitive_visible(primitive: &RenderPrimitive) -> b
             return false;
         };
         if !allow_ids.contains(object_id) {
+            return false;
+        }
+    }
+    if let Some(allow_node_ids) = preview_env_node_id_filter() {
+        let Some(node_id) = preview_primitive_node_id(primitive) else {
+            return false;
+        };
+        if !allow_node_ids.contains(node_id) {
             return false;
         }
     }
