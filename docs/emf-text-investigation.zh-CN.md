@@ -9224,4 +9224,121 @@ Updated practical rule set:
   - which matches `f4_32333,f4_32343,f4_32347`
 
 Open question:
-- Can the 3-node x-family itself be promoted to a clean geometric predicate (for example a `gapRight + xPagePhase` band), or is `f4_32327` still an isolated carry-on case?
+- Can the 3-node x-family itself be promoted to a clean geometric predicate (for example a `gapRight + xPagePhase` band), or is `f4_32327` still an isolated carry-on case?### 2026-05-17 y-atlas on top of the current best stacked baseline
+
+Question:
+- After fixing the current best stacked baseline (`phase3band + xtriplet + gapfamily-fs`), do any additional local `y` nudge families still exist outside the built-in `phase3band` policy?
+
+New tooling:
+- `scripts/run-attached-y-atlas.py`
+  - Runs a same-shell atlas of single-node packaged `y` nudges on top of a stacked replay baseline.
+  - Supports the same baseline stack as the x/font-scale atlases:
+    - `phase-policy`
+    - baseline `x-family`
+    - baseline `font-scale family`
+
+Experiments:
+- `y = -1 px`
+  - output dir:
+    - `tmp/frame-word-ab/xtriplet-fs-gapfamily-yneg1-atlas-20260517`
+- `y = -2 px`
+  - output dir:
+    - `tmp/frame-word-ab/xtriplet-fs-gapfamily-yneg2-atlas-20260517`
+
+Baseline stack:
+- `phase3band`
+- `x = +1` on:
+  - `f4_32327`
+  - `f4_32333`
+  - `f4_32347`
+- `font-scale = 0.97` on:
+  - `f4_32333`
+  - `f4_32343`
+  - `f4_32347`
+- same-shell full-doc baseline:
+  - `IoU = 0.8783631384`
+
+Results:
+- For both `y = -1` and `y = -2` atlases:
+  - `positive_count = 0`
+  - `max_delta = 0.0`
+- No node produced a positive global delta beyond the current baseline.
+
+Interpretation:
+- Under the current best stacked policy, the existing `phase3band` has already saturated the remaining profitable local `y` replay space.
+- The attached-label replay problem no longer looks like an unmodeled `y`-family problem.
+- Further gains are more likely to come from:
+  - secondary `x` families
+  - additional font-scale microfamilies
+  - or a different replay knob altogether
+
+### 2026-05-17 dual-x atlas on top of the current best stacked baseline
+
+Question:
+- Does a second `x` replay family still exist if we keep the current best `x = +1` family as the baseline and search for an additional candidate family independently?
+
+Tooling refinement:
+- `renderer.rs`
+  - added a second experimental `x` replay channel, symmetric to the existing dual `y` channels:
+    - `CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_NUDGE_EXPERIMENT_2`
+    - `CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_NUDGE_NODE_FILTER_EXPERIMENT_2`
+- `scripts/run-attached-x-atlas.py`
+  - now supports:
+    - `--baseline-x-nudge`
+    - baseline `x-family` + candidate `x-family` as two independent channels
+
+Experiment:
+- baseline stack:
+  - `phase3band`
+  - baseline `x = +1` on:
+    - `f4_32327`
+    - `f4_32333`
+    - `f4_32347`
+  - `font-scale = 0.97` on:
+    - `f4_32333`
+    - `f4_32343`
+    - `f4_32347`
+- candidate atlas:
+  - `x = -1 px`
+- output dir:
+  - `tmp/frame-word-ab/xtriplet-fs-gapfamily-xdualneg1-atlas-20260517`
+
+Result:
+- One positive singleton remains:
+  - `f1_28331`
+    - `globalIou = 0.8785754573`
+    - `globalDelta = +0.0002123189`
+    - `labelDelta = +0.0214324968`
+- All other nodes are non-positive.
+
+Current best stacked policy therefore becomes:
+- `phase3band`
+- `x = +1` on:
+  - `f4_32327`
+  - `f4_32333`
+  - `f4_32347`
+- `x = -1` on:
+  - `f1_28331`
+- `font-scale = 0.97` on:
+  - `f4_32333`
+  - `f4_32343`
+  - `f4_32347`
+- same-shell full-doc result:
+  - `IoU = 0.8785754573`
+
+Microfamily search on the dual-x atlas:
+- output:
+  - `tmp/frame-word-ab/xtriplet-fs-gapfamily-xdualneg1-atlas-20260517/microfamily-search.json`
+- best safe minimum rule is still effectively singleton:
+  - `text == N`
+  - `componentQuadrant == LT`
+  - matches exactly:
+    - `f1_28331`
+
+Interpretation:
+- The old belief that the `x-family` had fully saturated at three `x = +1` nodes was incomplete.
+- There is a second, much narrower `x = -1` microfamily, but it is currently only supported by one profitable node.
+- So the replay stack is now better described as:
+  - primary positive `x = +1` family
+  - one narrow negative `x = -1` singleton carry-on
+  - saturated `phase3band` on `y`

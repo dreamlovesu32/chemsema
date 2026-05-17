@@ -152,7 +152,8 @@ def main() -> None:
     ap.add_argument("--frame", required=True, help="left,top,right,bottom")
     ap.add_argument("--phase-policy", default="phase3band")
     ap.add_argument("--baseline-x-filter", required=True)
-    ap.add_argument("--x-nudge", type=float, default=1.0)
+    ap.add_argument("--baseline-x-nudge", type=float, default=1.0)
+    ap.add_argument("--x-nudge", type=float, default=1.0, help="candidate x nudge")
     ap.add_argument("--font-scale", type=float, default=0.97)
     ap.add_argument("--font-scale-filter", default="")
     ap.add_argument("--output-dir", required=True)
@@ -182,7 +183,7 @@ def main() -> None:
 
     common_env = os.environ.copy()
     common_env["CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_PHASE_POLICY_EXPERIMENT"] = args.phase_policy
-    common_env["CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_NUDGE_EXPERIMENT"] = str(args.x_nudge)
+    common_env["CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_NUDGE_EXPERIMENT"] = str(args.baseline_x_nudge)
     common_env["CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_NUDGE_NODE_FILTER_EXPERIMENT"] = args.baseline_x_filter
     if args.font_scale_filter.strip():
         common_env["CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_FONT_SCALE_EXPERIMENT"] = str(args.font_scale)
@@ -263,14 +264,9 @@ def main() -> None:
 
     summary: list[dict[str, object]] = []
     for node_id in nodes:
-        variant_filter = args.baseline_x_filter
-        parts = [part for part in variant_filter.split(",") if part]
-        if node_id not in parts:
-            parts.append(node_id)
-        variant_filter = ",".join(parts)
-
         variant_env = dict(common_env)
-        variant_env["CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_NUDGE_NODE_FILTER_EXPERIMENT"] = variant_filter
+        variant_env["CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_NUDGE_EXPERIMENT_2"] = str(args.x_nudge)
+        variant_env["CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_NUDGE_NODE_FILTER_EXPERIMENT_2"] = node_id
 
         raw_docx = out_dir / f"{node_id}.raw.docx"
         raw_emf = out_dir / f"{node_id}.raw.image1.emf"

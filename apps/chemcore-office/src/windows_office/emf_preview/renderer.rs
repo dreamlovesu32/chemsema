@@ -61,6 +61,12 @@ const ENV_PACKAGED_CENTERED_PLAIN_ZERO_LAYOUT: &str =
 const ENV_PACKAGED_SMOOTHING_MODE_VALUE: &str = "CHEMCORE_EMF_PACKAGED_SMOOTHING_MODE_VALUE";
 const ENV_ATTACHED_LABEL_REPLAY_NUDGE_EXPERIMENT: &str =
     "CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_NUDGE_EXPERIMENT";
+const ENV_ATTACHED_LABEL_REPLAY_NUDGE_NODE_FILTER_EXPERIMENT: &str =
+    "CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_NUDGE_NODE_FILTER_EXPERIMENT";
+const ENV_ATTACHED_LABEL_REPLAY_NUDGE_EXPERIMENT_2: &str =
+    "CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_NUDGE_EXPERIMENT_2";
+const ENV_ATTACHED_LABEL_REPLAY_NUDGE_NODE_FILTER_EXPERIMENT_2: &str =
+    "CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_NUDGE_NODE_FILTER_EXPERIMENT_2";
 const ENV_ATTACHED_LABEL_REPLAY_Y_NUDGE_EXPERIMENT: &str =
     "CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_Y_NUDGE_EXPERIMENT";
 const ENV_ATTACHED_LABEL_REPLAY_NODE_FILTER_EXPERIMENT: &str =
@@ -71,6 +77,8 @@ const ENV_ATTACHED_LABEL_REPLAY_NODE_FILTER_EXPERIMENT_2: &str =
     "CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_NODE_FILTER_EXPERIMENT_2";
 const ENV_ATTACHED_LABEL_REPLAY_FONT_SCALE_EXPERIMENT: &str =
     "CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_FONT_SCALE_EXPERIMENT";
+const ENV_ATTACHED_LABEL_REPLAY_FONT_SCALE_NODE_FILTER_EXPERIMENT: &str =
+    "CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_FONT_SCALE_NODE_FILTER_EXPERIMENT";
 const ENV_ATTACHED_LABEL_REPLAY_TEXT_HINT_EXPERIMENT: &str =
     "CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_TEXT_HINT_EXPERIMENT";
 const ENV_ATTACHED_LABEL_REPLAY_PHASE_POLICY_EXPERIMENT: &str =
@@ -2342,19 +2350,32 @@ fn preview_attached_label_replay_nudge_px(
     text_anchor: Option<&str>,
     label_context: Option<&PreviewLabelContext>,
 ) -> f64 {
-    let Some(nudge_px) = preview_env_f64(ENV_ATTACHED_LABEL_REPLAY_NUDGE_EXPERIMENT) else {
-        return 0.0;
-    };
-    if !preview_attached_label_replay_experiment_matches(
-        node_id,
-        runs,
-        fallback_fill,
-        text_anchor,
-        label_context,
-    ) {
-        return 0.0;
+    for (nudge_env, filter_env) in [
+        (
+            ENV_ATTACHED_LABEL_REPLAY_NUDGE_EXPERIMENT,
+            ENV_ATTACHED_LABEL_REPLAY_NUDGE_NODE_FILTER_EXPERIMENT,
+        ),
+        (
+            ENV_ATTACHED_LABEL_REPLAY_NUDGE_EXPERIMENT_2,
+            ENV_ATTACHED_LABEL_REPLAY_NUDGE_NODE_FILTER_EXPERIMENT_2,
+        ),
+    ] {
+        let Some(nudge_px) = preview_env_f64(nudge_env) else {
+            continue;
+        };
+        if !preview_attached_label_replay_experiment_matches_with_filter_env(
+            node_id,
+            runs,
+            fallback_fill,
+            text_anchor,
+            label_context,
+            filter_env,
+        ) {
+            continue;
+        }
+        return nudge_px;
     }
-    nudge_px
+    0.0
 }
 
 fn preview_attached_label_replay_y_nudge_px(
@@ -2505,12 +2526,13 @@ fn preview_attached_label_replay_font_scale(
     let Some(scale) = preview_env_f64(ENV_ATTACHED_LABEL_REPLAY_FONT_SCALE_EXPERIMENT) else {
         return 1.0;
     };
-    if !preview_attached_label_replay_experiment_matches(
+    if !preview_attached_label_replay_experiment_matches_with_filter_env(
         node_id,
         runs,
         fallback_fill,
         text_anchor,
         label_context,
+        ENV_ATTACHED_LABEL_REPLAY_FONT_SCALE_NODE_FILTER_EXPERIMENT,
     ) {
         return 1.0;
     }
@@ -2544,10 +2566,28 @@ fn preview_attached_label_replay_experiment_matches(
     text_anchor: Option<&str>,
     label_context: Option<&PreviewLabelContext>,
 ) -> bool {
-    if std::env::var_os(ENV_ATTACHED_LABEL_REPLAY_NODE_FILTER_EXPERIMENT).is_some() {
+    preview_attached_label_replay_experiment_matches_with_filter_env(
+        node_id,
+        runs,
+        fallback_fill,
+        text_anchor,
+        label_context,
+        ENV_ATTACHED_LABEL_REPLAY_NODE_FILTER_EXPERIMENT,
+    )
+}
+
+fn preview_attached_label_replay_experiment_matches_with_filter_env(
+    node_id: Option<&str>,
+    runs: &[chemcore_engine::LabelRun],
+    fallback_fill: Option<&str>,
+    text_anchor: Option<&str>,
+    label_context: Option<&PreviewLabelContext>,
+    filter_env_name: &str,
+) -> bool {
+    if std::env::var_os(filter_env_name).is_some() {
         return preview_attached_label_replay_node_filter_matches_with_env(
             node_id,
-            ENV_ATTACHED_LABEL_REPLAY_NODE_FILTER_EXPERIMENT,
+            filter_env_name,
         );
     }
     preview_attached_label_replay_matches(

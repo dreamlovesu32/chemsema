@@ -66,84 +66,67 @@ def best_shift(ours: np.ndarray, reference: np.ndarray, limit: int = 4) -> dict[
     return best_data
 
 
-def mask_box_counts(
-    ours: np.ndarray,
-    reference: np.ndarray,
-    box: list[int],
-    dx: int,
-    dy: int,
-) -> dict[str, int | float]:
-    x0, y0, x1, y1 = box
-    x0 = max(0, x0)
-    y0 = max(0, y0)
-    x1 = min(reference.shape[1] - 1, x1)
-    y1 = min(reference.shape[0] - 1, y1)
-    inter = ours_only = ref_only = 0
-    for ry in range(y0, y1 + 1):
-        oy = ry + dy
-        if oy < 0 or oy >= ours.shape[0]:
-            continue
-        for rx in range(x0, x1 + 1):
-            ox = rx + dx
-            if ox < 0 or ox >= ours.shape[1]:
-                continue
-            rv = bool(reference[ry, rx])
-            ov = bool(ours[oy, ox])
-            if ov and rv:
-                inter += 1
-            elif ov:
-                ours_only += 1
-            elif rv:
-                ref_only += 1
-    union = inter + ours_only + ref_only
-    return {
-        "intersection": inter,
-        "oursOnly": ours_only,
-        "refOnly": ref_only,
-        "union": union,
-        "iou": 1.0 if union == 0 else inter / union,
-    }
-
-
-def extract_image1(docx_path: Path, output_emf: Path) -> None:
-    with zipfile.ZipFile(docx_path, "r") as zf:
-        output_emf.write_bytes(zf.read("word/media/image1.emf"))
-
-
 def label_iou_rows(
     label_json: Path,
     ours_png: Path,
     ref_png: Path,
     dx: int,
     dy: int,
-    pad: int = 0,
-) -> dict[str, dict[str, int | float | str | list[int] | None]]:
-    labels = json.loads(label_json.read_text(encoding="utf-8"))["labels"]
+) -> dict[str, dict[str, object]]:
+    label_payload = json.loads(label_json.read_text(encoding="utf-8"))
     ours = load_mask(ours_png)
-    ref = load_mask(ref_png)
-    rows: dict[str, dict[str, int | float | str | list[int] | None]] = {}
-    for row in labels:
-        x0, y0, x1, y1 = row["pixelBox"]
-        stats = mask_box_counts(
-            ours=ours,
-            reference=ref,
-            box=[x0 - pad, y0 - pad, x1 + pad, y1 + pad],
-            dx=dx,
-            dy=dy,
-        )
-        rows[row["nodeId"]] = {
-            "nodeId": row["nodeId"],
-            "text": row.get("text", ""),
-            "fill": row.get("fill"),
-            "layout": row.get("layout"),
-            "pixelBox": row["pixelBox"],
-            **stats,
+    reference = load_mask(ref_png)
+    rows: dict[str, dict[str, object]] = {}
+    for item in label_payload["labels"]:
+        node_id = item["nodeId"]
+        x0, y0, x1, y1 = item["pixelBox"]
+        x0 = max(0, int(x0))
+        y0 = max(0, int(y0))
+        x1 = min(reference.shape[1] - 1, int(x1))
+        y1 = min(reference.shape[0] - 1, int(y1))
+        inter = ours_only = ref_only = 0
+        for ry in range(y0, y1 + 1):
+            oy = ry + dy
+            if oy < 0 or oy >= ours.shape[0]:
+                continue
+            for rx in range(x0, x1 + 1):
+                ox = rx + dx
+                if ox < 0 or ox >= ours.shape[1]:
+                    continue
+                rv = bool(reference[ry, rx])
+                ov = bool(ours[oy, ox])
+                if ov and rv:
+                    inter += 1
+                elif ov:
+                    ours_only += 1
+                elif rv:
+                    ref_only += 1
+        union = inter + ours_only + ref_only
+        iou = 1.0 if union == 0 else inter / union
+        rows[node_id] = {
+            "nodeId": node_id,
+            "text": item.get("text", ""),
+            "fill": item.get("fill", ""),
+            "layout": item.get("layout"),
+            "pixelBox": item.get("pixelBox"),
+            "iou": iou,
+            "intersection": inter,
+            "oursOnly": ours_only,
+            "refOnly": ref_only,
         }
     return rows
 
 
+def extract_image1(docx: Path, out_emf: Path) -> None:
+    with zipfile.ZipFile(docx, "r") as zf:
+        with zf.open("word/media/image1.emf") as src:
+            out_emf.write_bytes(src.read())
+
+
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Run same-shell attached-label font-scale atlas on top of an xpair baseline.")
+    ap = argparse.ArgumentParser(
+        description="Run same-shell attached-label y atlas on top of a stacked replay baseline."
+    )
     ap.add_argument("--payload-json", required=True)
     ap.add_argument("--phase-json", required=True)
     ap.add_argument("--template-docx", required=True)
@@ -154,11 +137,8 @@ def main() -> None:
     ap.add_argument("--x-nudge", type=float, default=1.0)
     ap.add_argument("--x-filter", required=True)
     ap.add_argument("--font-scale", type=float, default=0.97)
-    ap.add_argument(
-        "--baseline-font-scale-filter",
-        default="",
-        help="optional comma-separated baseline font-scale node filter",
-    )
+    ap.add_argument("--font-scale-filter", default="")
+    ap.add_argument("--y-nudge", type=float, required=True)
     ap.add_argument("--output-dir", required=True)
     ap.add_argument("--nodes", default="", help="optional comma-separated subset")
     args = ap.parse_args()
@@ -178,20 +158,20 @@ def main() -> None:
         allowed = {part.strip() for part in args.nodes.split(",") if part.strip()}
         nodes = [node for node in nodes if node in allowed]
 
-    baseline_png = out_dir / "xpair_only.wordcopy.png"
-    baseline_docx = out_dir / "xpair_only.fg3.docx"
-    baseline_emf = out_dir / "xpair_only.raw.image1.emf"
-    baseline_best_path = out_dir / "xpair_only.bestshift.json"
-    baseline_label_path = out_dir / "xpair_only.label-iou.json"
+    baseline_png = out_dir / "baseline.wordcopy.png"
+    baseline_docx = out_dir / "baseline.fg3.docx"
+    baseline_emf = out_dir / "baseline.raw.image1.emf"
+    baseline_best_path = out_dir / "baseline.bestshift.json"
+    baseline_label_path = out_dir / "baseline.label-iou.json"
 
     common_env = os.environ.copy()
     common_env["CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_PHASE_POLICY_EXPERIMENT"] = args.phase_policy
     common_env["CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_NUDGE_EXPERIMENT"] = str(args.x_nudge)
     common_env["CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_NUDGE_NODE_FILTER_EXPERIMENT"] = args.x_filter
-    if args.baseline_font_scale_filter.strip():
+    if args.font_scale_filter.strip():
         common_env["CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_FONT_SCALE_EXPERIMENT"] = str(args.font_scale)
         common_env["CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_FONT_SCALE_NODE_FILTER_EXPERIMENT"] = (
-            args.baseline_font_scale_filter
+            args.font_scale_filter
         )
 
     baseline_ready = (
@@ -199,9 +179,8 @@ def main() -> None:
         and baseline_best_path.exists()
         and baseline_label_path.exists()
     )
-
     if not baseline_ready:
-        with tempfile.TemporaryDirectory(prefix="attached_fs_baseline_", dir=str(out_dir)) as td:
+        with tempfile.TemporaryDirectory(prefix="attached_y_baseline_", dir=str(out_dir)) as td:
             td_path = Path(td)
             raw_docx = td_path / "baseline.raw.docx"
             run(
@@ -221,18 +200,18 @@ def main() -> None:
             extract_image1(raw_docx, baseline_emf)
         run(
             [
-                str(ROOT / "D:\\anaconda3\\python.exe") if False else "D:\\anaconda3\\python.exe",
+                "D:\\anaconda3\\python.exe",
                 str(ROOT / "scripts" / "patch-docx-image1.py"),
                 str(template_docx),
                 str(baseline_emf),
-                str(out_dir / "xpair_only.shell.docx"),
+                str(out_dir / "baseline.shell.docx"),
             ]
         )
         run(
             [
                 "D:\\anaconda3\\python.exe",
                 str(ROOT / "scripts" / "patch-docx-image1-frame.py"),
-                str(out_dir / "xpair_only.shell.docx"),
+                str(out_dir / "baseline.shell.docx"),
                 str(baseline_docx),
                 "--frame",
                 frame,
@@ -271,28 +250,19 @@ def main() -> None:
     summary = []
     for node_id in nodes:
         env = common_env.copy()
-        env["CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_FONT_SCALE_EXPERIMENT"] = str(args.font_scale)
-        baseline_filter = [
-            part.strip()
-            for part in args.baseline_font_scale_filter.split(",")
-            if part.strip()
-        ]
-        if node_id not in baseline_filter:
-            baseline_filter.append(node_id)
-        env["CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_FONT_SCALE_NODE_FILTER_EXPERIMENT"] = ",".join(
-            baseline_filter
-        )
-        with tempfile.TemporaryDirectory(prefix=f"attached_fs_{node_id}_", dir=str(out_dir)) as td:
-            td_path = Path(td)
-            raw_docx = td_path / f"{node_id}.raw.docx"
-            raw_emf = out_dir / f"{node_id}.raw.image1.emf"
-            shell_docx = out_dir / f"{node_id}.shell.docx"
-            fg3_docx = out_dir / f"{node_id}.fg3.docx"
-            out_png = out_dir / f"{node_id}.fg3.wordcopy.png"
-            best_json = out_dir / f"{node_id}.bestshift.json"
-            label_json_out = out_dir / f"{node_id}.label-iou.json"
-
-            run(
+        env["CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_Y_NUDGE_EXPERIMENT"] = str(args.y_nudge)
+        env["CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_NODE_FILTER_EXPERIMENT"] = node_id
+        png_out = out_dir / f"{node_id}.fg3.wordcopy.png"
+        best_out = out_dir / f"{node_id}.bestshift.json"
+        label_json_out = out_dir / f"{node_id}.label-iou.json"
+        if not (png_out.exists() and best_out.exists() and label_json_out.exists()):
+            with tempfile.TemporaryDirectory(prefix=f"attached_y_{node_id}_", dir=str(out_dir)) as td:
+                td_path = Path(td)
+                raw_docx = td_path / f"{node_id}.raw.docx"
+                raw_emf = td_path / f"{node_id}.raw.image1.emf"
+                shell_docx = td_path / f"{node_id}.shell.docx"
+                fg3_docx = td_path / f"{node_id}.fg3.docx"
+                run(
                 [
                     "cargo",
                     "run",
@@ -304,66 +274,71 @@ def main() -> None:
                     str(payload_json),
                     str(raw_docx),
                 ],
-                env=env,
-            )
-            extract_image1(raw_docx, raw_emf)
-            run(
-                [
-                    "D:\\anaconda3\\python.exe",
-                    str(ROOT / "scripts" / "patch-docx-image1.py"),
-                    str(template_docx),
-                    str(raw_emf),
-                    str(shell_docx),
-                ]
-            )
-            run(
-                [
-                    "D:\\anaconda3\\python.exe",
-                    str(ROOT / "scripts" / "patch-docx-image1-frame.py"),
-                    str(shell_docx),
-                    str(fg3_docx),
-                    "--frame",
-                    frame,
-                ]
-            )
-            run(
-                [
-                    "powershell",
-                    "-ExecutionPolicy",
-                    "Bypass",
-                    "-File",
-                    str(ROOT / "scripts" / "word-copy-inline-shape.ps1"),
-                    "-InputDocx",
-                    str(fg3_docx),
-                    "-OutputPng",
-                    str(out_png),
-                ]
-            )
-            best = best_shift(load_mask(out_png), load_mask(reference_png))
-            best_json.write_text(json.dumps(best, indent=2), encoding="utf-8")
+                    env=env,
+                )
+                extract_image1(raw_docx, raw_emf)
+                run(
+                    [
+                        "D:\\anaconda3\\python.exe",
+                        str(ROOT / "scripts" / "patch-docx-image1.py"),
+                        str(template_docx),
+                        str(raw_emf),
+                        str(shell_docx),
+                    ]
+                )
+                run(
+                    [
+                        "D:\\anaconda3\\python.exe",
+                        str(ROOT / "scripts" / "patch-docx-image1-frame.py"),
+                        str(shell_docx),
+                        str(fg3_docx),
+                        "--frame",
+                        frame,
+                    ]
+                )
+                run(
+                    [
+                        "powershell",
+                        "-ExecutionPolicy",
+                        "Bypass",
+                        "-File",
+                        str(ROOT / "scripts" / "word-copy-inline-shape.ps1"),
+                        "-InputDocx",
+                        str(fg3_docx),
+                        "-OutputPng",
+                        str(png_out),
+                    ]
+                )
+            best = best_shift(load_mask(png_out), load_mask(reference_png))
+            best_out.write_text(json.dumps(best, indent=2), encoding="utf-8")
             rows = label_iou_rows(
                 label_json=label_json,
-                ours_png=out_png,
+                ours_png=png_out,
                 ref_png=reference_png,
                 dx=int(best["dx"]),
                 dy=int(best["dy"]),
             )
             label_json_out.write_text(json.dumps({"rows": list(rows.values())}, indent=2), encoding="utf-8")
-            base_row = baseline_rows[node_id]
-            row = rows[node_id]
-            summary.append(
-                {
-                    "nodeId": node_id,
-                    "globalIou": best["iou"],
-                    "globalDelta": float(best["iou"]) - float(baseline_best["iou"]),
-                    "labelIou": row["iou"],
-                    "labelDelta": float(row["iou"]) - float(base_row["iou"]),
-                    "text": row.get("text", ""),
-                    "fill": row.get("fill"),
-                }
-            )
+        else:
+            best = json.loads(best_out.read_text(encoding="utf-8"))
+            rows = {
+                row["nodeId"]: row
+                for row in json.loads(label_json_out.read_text(encoding="utf-8"))["rows"]
+            }
+        base_row = baseline_rows[node_id]
+        row = rows[node_id]
+        summary.append(
+            {
+                "nodeId": node_id,
+                "globalIou": best["iou"],
+                "globalDelta": float(best["iou"]) - float(baseline_best["iou"]),
+                "labelIou": row["iou"],
+                "labelDelta": float(row["iou"]) - float(base_row["iou"]),
+                "text": row.get("text", ""),
+                "fill": row.get("fill", ""),
+            }
+        )
 
-    summary.sort(key=lambda item: item["globalDelta"], reverse=True)
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
 
 
