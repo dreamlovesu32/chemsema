@@ -117,6 +117,7 @@ const ENV_ATTACHED_LABEL_REPLAY_GENERAL_POLICY_EXPERIMENT: &str =
     "CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_GENERAL_POLICY_EXPERIMENT";
 const ENV_HIDE_DOCUMENT_KNOCKOUT: &str = "CHEMCORE_EMF_HIDE_DOCUMENT_KNOCKOUT";
 const ENV_SHOW_DOCUMENT_KNOCKOUT: &str = "CHEMCORE_EMF_SHOW_DOCUMENT_KNOCKOUT";
+const ENV_SHOW_INVALID_MARKERS: &str = "CHEMCORE_EMF_SHOW_INVALID_MARKERS";
 const ENV_HIDE_DOCUMENT_TEXT: &str = "CHEMCORE_EMF_HIDE_DOCUMENT_TEXT";
 const ENV_HIDE_DOCUMENT_BOND: &str = "CHEMCORE_EMF_HIDE_DOCUMENT_BOND";
 const ENV_HIDE_DOCUMENT_GRAPHIC: &str = "CHEMCORE_EMF_HIDE_DOCUMENT_GRAPHIC";
@@ -178,6 +179,42 @@ fn preview_primitive_node_id(primitive: &RenderPrimitive) -> Option<&str> {
         | RenderPrimitive::Rect { node_id, .. }
         | RenderPrimitive::Text { node_id, .. } => node_id.as_deref(),
         _ => None,
+    }
+}
+
+fn preview_is_invalid_marker_primitive(primitive: &RenderPrimitive) -> bool {
+    match primitive {
+        RenderPrimitive::Rect {
+            role,
+            fill,
+            stroke,
+            stroke_width,
+            node_id,
+            dash_array,
+            ..
+        } => {
+            *role == RenderRole::DocumentGraphic
+                && node_id.is_some()
+                && dash_array.is_empty()
+                && fill.as_deref() == Some("none")
+                && stroke.as_deref() == Some("#d32f2f")
+                && (*stroke_width - 1.0).abs() < f64::EPSILON
+        }
+        RenderPrimitive::Circle {
+            role,
+            fill,
+            stroke,
+            stroke_width,
+            node_id,
+            ..
+        } => {
+            *role == RenderRole::DocumentGraphic
+                && node_id.is_some()
+                && fill == "none"
+                && stroke == "#d32f2f"
+                && (*stroke_width - 1.0).abs() < f64::EPSILON
+        }
+        _ => false,
     }
 }
 
@@ -786,6 +823,10 @@ unsafe fn draw_svg_preview(dc: HDC, bounds: &RECT, payload: &OleObjectPayload) -
 }
 
 pub(super) fn office_preview_primitive_visible(primitive: &RenderPrimitive) -> bool {
+    if preview_is_invalid_marker_primitive(primitive) && !preview_env_enabled(ENV_SHOW_INVALID_MARKERS)
+    {
+        return false;
+    }
     if let Some(allow_ids) = preview_env_object_id_filter() {
         let Some(object_id) = preview_primitive_object_id(primitive) else {
             return false;
@@ -6005,5 +6046,49 @@ mod tests {
         let lines = preview_text_lines("4DPAIPN (2 mol%)", &[]);
         let chunks: Vec<_> = lines[0].iter().map(|run| run.text.as_str()).collect();
         assert_eq!(chunks, vec!["4DPAIPN ", "(2 ", "mol%)"]);
+    }
+
+    #[test]
+    fn preview_invalid_marker_rect_is_hidden_by_default() {
+        let primitive = RenderPrimitive::Rect {
+            role: RenderRole::DocumentGraphic,
+            object_id: Some("o1".to_string()),
+            node_id: Some("n1".to_string()),
+            x: 1.0,
+            y: 2.0,
+            width: 3.0,
+            height: 4.0,
+            fill: Some("none".to_string()),
+            stroke: Some("#d32f2f".to_string()),
+            stroke_width: 1.0,
+            rx: None,
+            ry: None,
+            dash_array: Vec::new(),
+            fill_gradient: None,
+        };
+        assert!(preview_is_invalid_marker_primitive(&primitive));
+        assert!(!office_preview_primitive_visible(&primitive));
+    }
+
+    #[test]
+    fn preview_non_invalid_document_graphic_stays_visible() {
+        let primitive = RenderPrimitive::Rect {
+            role: RenderRole::DocumentGraphic,
+            object_id: Some("o1".to_string()),
+            node_id: Some("n1".to_string()),
+            x: 1.0,
+            y: 2.0,
+            width: 3.0,
+            height: 4.0,
+            fill: Some("none".to_string()),
+            stroke: Some("#000000".to_string()),
+            stroke_width: 1.0,
+            rx: None,
+            ry: None,
+            dash_array: Vec::new(),
+            fill_gradient: None,
+        };
+        assert!(!preview_is_invalid_marker_primitive(&primitive));
+        assert!(office_preview_primitive_visible(&primitive));
     }
 }
