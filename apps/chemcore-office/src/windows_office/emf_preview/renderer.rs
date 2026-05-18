@@ -2597,6 +2597,15 @@ fn preview_attached_label_replay_y_nudge_px(
     transform: &PreviewTransform,
 ) -> f64 {
     let mut total = 0.0;
+    if let Some(nudge_px) = preview_attached_label_replay_default_family_y_nudge_px(
+        node_id,
+        runs,
+        fallback_fill,
+        text_anchor,
+        label_context,
+    ) {
+        total += nudge_px;
+    }
     if let Some(nudge_px) = preview_attached_label_replay_general_policy_y_nudge_px(
         node_id,
         runs,
@@ -2681,6 +2690,32 @@ fn preview_attached_label_replay_y_nudge_px(
         break;
     }
     total
+}
+
+fn preview_attached_label_replay_default_family_y_nudge_px(
+    node_id: Option<&str>,
+    runs: &[chemcore_engine::LabelRun],
+    fallback_fill: Option<&str>,
+    text_anchor: Option<&str>,
+    label_context: Option<&PreviewLabelContext>,
+) -> Option<f64> {
+    if !matches!(text_anchor, Some("start")) {
+        return None;
+    }
+    let node_id = node_id?;
+    let info = label_context.and_then(|context| context.infos.get(node_id))?;
+    let fill = runs
+        .iter()
+        .find_map(|run| run.fill.as_deref())
+        .or(fallback_fill)
+        .unwrap_or("#000000");
+    if !fill.eq_ignore_ascii_case("#000000") {
+        return None;
+    }
+    match info.layout.as_deref() {
+        Some("attached-group-above" | "attached-group") if info.line_count > 1 => Some(-3.0),
+        _ => None,
+    }
 }
 
 fn preview_attached_label_replay_general_policy_y_nudge_px(
@@ -6090,5 +6125,37 @@ mod tests {
         };
         assert!(!preview_is_invalid_marker_primitive(&primitive));
         assert!(office_preview_primitive_visible(&primitive));
+    }
+
+    #[test]
+    fn preview_default_multiline_black_attached_labels_nudge_up() {
+        let mut infos = BTreeMap::new();
+        infos.insert(
+            "n1".to_string(),
+            PreviewLabelInfo {
+                layout: Some("attached-group-above".to_string()),
+                label_justification: Some("Left".to_string()),
+                component_half_x: PreviewComponentHalfX::Right,
+                primary_neighbor_bucket: Some(PreviewNeighborBucket::North),
+                gap_right: 120.0,
+                line_count: 2,
+            },
+        );
+        let context = PreviewLabelContext { infos };
+        let runs = vec![chemcore_engine::LabelRun {
+            text: "O2".to_string(),
+            fill: Some("#000000".to_string()),
+            ..Default::default()
+        }];
+        assert_eq!(
+            preview_attached_label_replay_default_family_y_nudge_px(
+                Some("n1"),
+                &runs,
+                Some("#000000"),
+                Some("start"),
+                Some(&context),
+            ),
+            Some(-3.0)
+        );
     }
 }
