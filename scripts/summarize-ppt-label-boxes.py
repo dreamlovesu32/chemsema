@@ -107,6 +107,14 @@ def main() -> None:
         default="tmp/ppt-generalization-label-boxes.json",
         help="Output JSON path.",
     )
+    parser.add_argument(
+        "--bestshift-parent",
+        default=None,
+        help=(
+            "Optional parent under repo root from which to read fixed bestshift files "
+            "at <parent>/<sample>/same-shell-compare/<stem>.bestshift.json."
+        ),
+    )
     parser.add_argument("--threshold", type=int, default=740)
     parser.add_argument("--pad-px", type=int, default=0)
     args = parser.parse_args()
@@ -128,6 +136,15 @@ def main() -> None:
         ours_png = compare_dir / f"{base_no_payload}.chemcore.wordcopy.png"
         ref_png = compare_dir / f"{base_no_payload}.chemdraw.wordcopy.png"
         bestshift = compare_dir / f"{base_no_payload}.bestshift.json"
+        sample_name = compare_dir.parent.name
+        if args.bestshift_parent:
+            bestshift = (
+                repo_root
+                / args.bestshift_parent
+                / sample_name
+                / "same-shell-compare"
+                / f"{base_no_payload}.bestshift.json"
+            )
 
         if not ours_png.exists() or not ref_png.exists() or not bestshift.exists():
             skipped.append({"payload": str(payload_path), "reason": "missing compare asset"})
@@ -162,7 +179,6 @@ def main() -> None:
                 if ours_value ^ ref_value:
                     residual_points.append((x, y))
 
-        sample_name = compare_dir.parent.name
         sample_stem = f"{sample_name}/{base_no_payload}"
         label_count = 0
 
