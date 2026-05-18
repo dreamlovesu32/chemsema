@@ -10548,3 +10548,120 @@ Takeaway:
   - one exact `attached-group-above` black-`O` family
   - plus one exact east-facing black-`N` carry-on family
 - This means future replay work should stop treating `y` as a broad generic knob and instead keep it as a tiny residual rule layer.
+
+## 2026-05-18 泛化抽样验证：PPT 历史报告里的 ChemDraw OLE 对象
+
+目标：
+- 不再只盯 `thiocyanation-source`
+- 改为从 `tmp/Group past reports` 里的历史 `pptx` 抽出真实 ChemDraw OLE 对象
+- 用这些历史对象验证当前 `same-shell Word replay` 规则是否能泛化
+
+新增工具：
+- `scripts/extract-ppt-chemdraw.py`
+  - Windows 原生提取 `ppt/pptx -> embedded .bin -> .cdx -> .cdxml`
+  - 同时抽出 PowerPoint 中 fallback 预览图（优先 `EMF`）
+  - 现在已修掉同一个 `slide + rid + target` 的重复记录；会优先保留带 preview 的条目
+- `scripts/compare-ppt-extract-sameshell.py`
+  - 对抽出的每个 `cdxml`
+  - 生成 chemcore payload / docx
+  - 再把同一个 `docx` 壳里的 `word/media/image1.emf` 替换成 PPT 内嵌的 ChemDraw 预览 `EMF`
+  - 最后对两边都用 Word `CopyAsPicture`，得到真正 same-shell 的回放图做逐像素比较
+
+流程口径：
+1. `pptx` 内嵌 OLE `bin` -> `cdx`
+2. `cdx -> cdxml`
+3. `cdxml -> chemcore payload -> chemcore docx`
+4. `patch-docx-image1.py` 把同一壳里的 `image1.emf` 换成 PPT 里的 ChemDraw preview emf
+5. 对两份 `docx` 都走 `word-copy-inline-shape.ps1`
+6. 用 `png-best-shift.py` 算 best-shift IoU
+
+### 样本 A：`CCH-20181022-working report.pptx`
+
+提取输出：
+- `tmp/ppt-sample-cch`
+- `entryCount = 4`
+
+same-shell 比较输出：
+- `tmp/ppt-sample-cch/same-shell-compare/summary.json`
+
+结果：
+- `slide2.oleObject1`: `IoU = 0.376683`, `dx = 4`, `dy = 6`
+- `slide3.oleObject2`: `0.334622`, `dx = 7`, `dy = 2`
+- `slide4.oleObject3`: `0.382603`, `dx = 4`, `dy = 3`
+- `slide5.oleObject4`: `0.374624`, `dx = 4`, `dy = 1`
+
+汇总：
+- `avg IoU = 0.367133`
+- `avg dx = 4.75`
+- `avg dy = 3.00`
+
+### 样本 B：`工作汇报-李家圆-2017-1-19.pptx`
+
+提取输出：
+- `tmp/ppt-sample-ljy8`
+- `entryCount = 8`
+
+same-shell 比较输出：
+- `tmp/ppt-sample-ljy8/same-shell-compare/summary.json`
+
+结果范围：
+- `IoU = 0.305593 ~ 0.339142`
+- `dx = 3 ~ 6`
+- `dy = 2 ~ 12`
+
+汇总：
+- `avg IoU = 0.328405`
+- `avg dx = 4.625`
+- `avg dy = 7.00`
+
+### 样本 C：`WJG-lit.-2021-04-15.pptx`
+
+提取输出：
+- `tmp/ppt-sample-wjg4`
+- `entryCount = 4`
+
+same-shell 比较输出：
+- `tmp/ppt-sample-wjg4/same-shell-compare/summary.json`
+
+结果：
+- `slide11.oleObject1`: `IoU = 0.363680`, `dx = 3`, `dy = 9`
+- `slide12.oleObject2`: `0.418695`, `dx = 6`, `dy = 8`
+- `slide13.oleObject3`: `0.369069`, `dx = 9`, `dy = 8`
+- `slide15.oleObject4`: `0.523464`, `dx = 11`, `dy = 13`
+
+汇总：
+- `avg IoU = 0.418727`
+- `avg dx = 7.25`
+- `avg dy = 9.50`
+
+### 跨样本结论
+
+1. 当前围绕 `thiocyanation-source` 打出来的规则，**没有泛化**到旧报告对象
+- 历史样本的 same-shell `best_iou` 普遍只有 `0.30 ~ 0.52`
+- 与当前主线文档里 `0.88+` 的水平差距极大
+
+2. 失配不是偶然单点，而是跨样本稳定存在
+- 三组样本的平均值分别是：
+  - `0.367`
+  - `0.328`
+  - `0.419`
+- 三组都明显偏低
+
+3. 平移偏差也表现出稳定模式
+- `dx` 多在正方向 `+3 ~ +11`
+- `dy` 多在正方向 `+1 ~ +13`
+- 说明当前问题不只是局部文字家族，而是更高层的 replay / frame / placement 语义没有泛化
+
+4. 所以从这一步开始，主线判断要调整：
+- 不能再把 `thiocyanation-source` 的高 IoU 当成“系统已经基本对了”
+- 更合理的说法是：
+  - **我们在一个特定文档上已经过拟合得很好**
+  - 但在真实历史 PPT ChemDraw 对象上，还没有形成可泛化规律
+
+后续优先级：
+1. 继续扩大真实 PPT 样本池，但保持每份 `4~12` 个对象，避免一次性把问题淹没
+2. 优先分析这些历史样本里稳定出现的：
+   - `dx > 0`
+   - `dy > 0`
+   偏差模式
+3. 不再只围绕 `thiocyanation-source` 的局部标签 microfamily 做推理，而要回到更高层的 replay / frame / shell 语义
