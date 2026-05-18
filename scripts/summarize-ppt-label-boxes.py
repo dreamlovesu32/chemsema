@@ -162,7 +162,7 @@ def main() -> None:
                 if ours_value ^ ref_value:
                     residual_points.append((x, y))
 
-        sample_name = compare_dir.parent.parent.name
+        sample_name = compare_dir.parent.name
         sample_stem = f"{sample_name}/{base_no_payload}"
         label_count = 0
 
