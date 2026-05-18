@@ -134,9 +134,8 @@ fn main() {
         }
         if role == RenderRole::DocumentKnockout {
             let node_id = match primitive {
-                RenderPrimitive::Polygon { node_id, .. } | RenderPrimitive::Rect { node_id, .. } => {
-                    node_id.as_deref()
-                }
+                RenderPrimitive::Polygon { node_id, .. }
+                | RenderPrimitive::Rect { node_id, .. } => node_id.as_deref(),
                 _ => None,
             };
             if node_id.is_some() {
@@ -185,7 +184,8 @@ fn main() {
         }
     }
 
-    let visible_with_knockout_bounds = render_primitives_bounds(visible_with_knockout.iter().copied());
+    let visible_with_knockout_bounds =
+        render_primitives_bounds(visible_with_knockout.iter().copied());
     let visible_no_knockout_bounds = render_primitives_bounds(visible_no_knockout.iter().copied());
 
     let report = serde_json::json!({
@@ -202,5 +202,8 @@ fn main() {
         },
         "textSamples": text_samples,
     });
-    println!("{}", serde_json::to_string_pretty(&report).expect("report json"));
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&report).expect("report json")
+    );
 }

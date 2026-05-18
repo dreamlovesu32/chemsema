@@ -210,14 +210,26 @@ pub(super) fn preview_source_bounds(payload: &OleObjectPayload) -> Option<[f64; 
     if let Some(sides) = preview_source_bounds_sides_override() {
         return match (visible, svg) {
             (Some(visible), Some(svg)) => Some([
-                if sides.left_from_svg { svg[0] } else { visible[0] },
-                if sides.top_from_svg { svg[1] } else { visible[1] },
+                if sides.left_from_svg {
+                    svg[0]
+                } else {
+                    visible[0]
+                },
+                if sides.top_from_svg {
+                    svg[1]
+                } else {
+                    visible[1]
+                },
                 if sides.right_from_svg {
                     svg[2] + right_padding
                 } else {
                     visible[2] + right_padding
                 },
-                if sides.bottom_from_svg { svg[3] } else { visible[3] },
+                if sides.bottom_from_svg {
+                    svg[3]
+                } else {
+                    visible[3]
+                },
             ]),
             (Some(visible), None) => Some([
                 visible[0],
@@ -283,8 +295,7 @@ pub(super) fn preview_bounds_debug_report(
     let svg_bounds = svg_viewbox_bounds(&payload.svg);
     let source_bounds = preview_source_bounds(payload);
     let source_bounds_mode = preview_source_bounds_mode();
-    let source_bounds_sides_override =
-        std::env::var(ENV_PREVIEW_SOURCE_BOUNDS_SIDES).ok();
+    let source_bounds_sides_override = std::env::var(ENV_PREVIEW_SOURCE_BOUNDS_SIDES).ok();
     let right_padding = std::env::var(ENV_PREVIEW_SOURCE_RIGHT_PADDING_PT)
         .ok()
         .and_then(|value| value.trim().parse::<f64>().ok())

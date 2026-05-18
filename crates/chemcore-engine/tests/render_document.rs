@@ -3609,7 +3609,10 @@ fn parse_cdxml_attached_sulfur_label_uses_elliptical_clip_geometry() {
         "sulfur label should populate glyph polygons"
     );
     assert!(
-        label.glyph_polygons.iter().any(|polygon| polygon.len() >= 16),
+        label
+            .glyph_polygons
+            .iter()
+            .any(|polygon| polygon.len() >= 16),
         "sulfur clipping should include an ellipse-like polygon for S; text={:?}, polygons={:?}",
         label.text,
         label.glyph_polygons
@@ -6703,7 +6706,8 @@ fn render_document_keeps_terminal_side_double_outer_line_equal_length() {
 }
 
 #[test]
-fn render_document_keeps_side_double_outer_line_full_length_when_only_opposite_side_single_is_attached() {
+fn render_document_keeps_side_double_outer_line_full_length_when_only_opposite_side_single_is_attached(
+) {
     let document = fragment_document(
         json!([
             { "id": "n1", "element": "C", "atomicNumber": 6, "position": [20.0, 40.0], "charge": 0, "numHydrogens": 0 },
@@ -6808,7 +6812,10 @@ fn render_document_keeps_same_side_single_attached_side_double_outer_line_shorte
 
     let short_length = indexed_lengths[0].1;
     let long_length = indexed_lengths[1].1;
-    assert!(short_length < long_length - 0.05, "{short_length} {long_length}");
+    assert!(
+        short_length < long_length - 0.05,
+        "{short_length} {long_length}"
+    );
 }
 
 #[test]

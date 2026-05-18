@@ -834,7 +834,9 @@ pub(super) fn side_double_outer_endpoint_can_match_main_length(
     side: f64,
     stroke_width: f64,
 ) -> bool {
-    if side_double_placement(bond).is_none() || outer_line_pattern(bond, side) != BondLinePattern::Solid {
+    if side_double_placement(bond).is_none()
+        || outer_line_pattern(bond, side) != BondLinePattern::Solid
+    {
         return false;
     }
     let current_stroke_width = stroke_width.max(bond.stroke_width);

@@ -825,11 +825,7 @@ fn convex_hull(mut points: Vec<[f64; 2]>) -> Vec<[f64; 2]> {
     if points.len() <= 3 {
         return points;
     }
-    points.sort_by(|a, b| {
-        a[0]
-            .total_cmp(&b[0])
-            .then_with(|| a[1].total_cmp(&b[1]))
-    });
+    points.sort_by(|a, b| a[0].total_cmp(&b[0]).then_with(|| a[1].total_cmp(&b[1])));
     points.dedup_by(|a, b| (a[0] - b[0]).abs() < 1e-9 && (a[1] - b[1]).abs() < 1e-9);
     if points.len() <= 3 {
         return points;
@@ -838,11 +834,7 @@ fn convex_hull(mut points: Vec<[f64; 2]>) -> Vec<[f64; 2]> {
     let mut lower = Vec::new();
     for point in &points {
         while lower.len() >= 2
-            && cross(
-                lower[lower.len() - 2],
-                lower[lower.len() - 1],
-                *point,
-            ) <= 0.0
+            && cross(lower[lower.len() - 2], lower[lower.len() - 1], *point) <= 0.0
         {
             lower.pop();
         }
@@ -852,11 +844,7 @@ fn convex_hull(mut points: Vec<[f64; 2]>) -> Vec<[f64; 2]> {
     let mut upper = Vec::new();
     for point in points.iter().rev() {
         while upper.len() >= 2
-            && cross(
-                upper[upper.len() - 2],
-                upper[upper.len() - 1],
-                *point,
-            ) <= 0.0
+            && cross(upper[upper.len() - 2], upper[upper.len() - 1], *point) <= 0.0
         {
             upper.pop();
         }
@@ -1457,8 +1445,14 @@ mod tests {
             .fold(f64::NEG_INFINITY, f64::max);
 
         assert!(upper_polygon.len() > lower_base.len(), "{upper_polygon:?}");
-        assert!((lower_min_x - lower_base_min_x).abs() < 1e-9, "{lower_polygon:?}");
-        assert!((lower_max_x - lower_base_max_x).abs() < 1e-9, "{lower_polygon:?}");
+        assert!(
+            (lower_min_x - lower_base_min_x).abs() < 1e-9,
+            "{lower_polygon:?}"
+        );
+        assert!(
+            (lower_max_x - lower_base_max_x).abs() < 1e-9,
+            "{lower_polygon:?}"
+        );
         assert_eq!(lower_polygon, lower_base);
     }
 }
