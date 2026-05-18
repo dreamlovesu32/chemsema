@@ -10742,3 +10742,76 @@ Takeaway：
 - 后续泛化主线应该转去研究：
   - **real PPT ChemDraw object 的 packaged replay 语义差**
   - 而不是继续把单文档 frame 调优当成系统解。
+
+## 2026-05-18 第三轮泛化抽样：跨 19 对象的 EMF 记录结构差异
+
+为了判断历史样本上的 same-shell 偏差到底更像 rame 还是更像 replay 结构差，我又补了一层工具：
+- scripts/summarize-ppt-emf-record-counts.py
+
+它直接对每个 same-shell-compare 目录里的：
+- *.chemcore.docx -> word/media/image1.emf
+- *.chemdraw-shell.docx -> word/media/image1.emf
+
+跑 scripts/emf-inspect.mjs，然后聚合 ours/ref 的记录计数差异。
+
+产物：
+- 	mp/ppt-generalization-record-counts.json
+
+当前 19 个历史对象的聚合结果：
+
+- EMR_EXTTEXTOUTW
+  - ours 77.79
+  - ref 78.00
+  - vgDelta = -0.21
+- EmfPlusDrawString
+  - ours 78.95
+  - ref 79.53
+  - vgDelta = -0.58
+- EmfPlusSetPageTransform
+  - ours 2.0
+  - ref 2.0
+  - 完全一致
+
+也就是说：
+- **文本对象数量本身并没有大偏差**
+- 历史样本上的泛化问题，不像是“我们少画/多画了一堆文字”
+
+但结构性差异非常大：
+
+- EMR_EXTCREATEFONTINDIRECTW
+  - ours 26.32
+  - ref 59.21
+- EMR_POLYGON16
+  - ours 60.00
+  - ref 3.63
+- EMR_MODIFYWORLDTRANSFORM
+  - ours 361.79
+  - ref 258.95
+- EmfPlusObject
+  - ours 287.63
+  - ref 208.21
+- EmfPlusFillPolygon
+  - ours 51.37
+  - ref 1.21
+- EmfPlusSave / Restore
+  - ours 119.26 / 119.26
+  - ref   / 0
+
+Interpretation：
+
+1. 历史样本里，ChemDraw preview 的 replay 结构和我们不是“小差一点”，而是**系统性不同**。
+2. 这批对象里，ChemDraw 不是靠大量 Save/Restore + FillPolygon + Polygon16 在回放；我们却明显更依赖这组结构。
+3. 结合前面的 same-shell IoU 结果，可以比较有把握地说：
+   - **历史 OLE 对象上的泛化主问题，已经不像单文档那样主要由 EMR_HEADER.frame 驱动**
+   - 更像是 packaged preview 的**记录结构 / replay 语义家族根本不同**
+
+这也能解释前面那个看起来反直觉的结果：
+- 即使把 EMR_HEADER.frame 直接抄成 ChemDraw preview 的 frame，same-shell 平均 IoU 仍会从  .377750 掉到  .104478
+- 因为两边的内容 replay 结构本来就不是同一家族，单独改 frame 只会把错位放大
+
+Takeaway：
+- 到这一步，泛化主线要正式从“找通用 frame 规则”转向“找通用 replay 家族差”。
+- 更值得继续打的方向变成：
+  1. 为什么历史 ChemDraw preview 普遍几乎不用 Save/Restore，而我们大量使用
+  2. 为什么历史 ChemDraw preview 基本不用 FillPolygon/Polygon16，而我们大量使用
+  3. 这些差异与 dx > 0 / dy > 0 / 低 IoU 的相关性到底有多强
