@@ -11202,3 +11202,133 @@ Takeaway?
 - `above-multi-black-y-3 > none`
 
 ???????????? runner ?????????????????????????
+
+## 2026-05-18 补充：PPT 泛化样本里的“标签框”与多行标签垂直偏移
+
+### 现象复核
+
+对 `tmp/ppt-generalization-review-19/` 里的泛化样本重新逐张查看后，两个现象都可以稳定复现：
+
+- 一部分标签周围会出现明显红色矩形框
+- 一部分多行 attached label 会有明显的上下偏移
+
+代表样本：
+
+- `ppt-sample-wjg4/slide12.oleObject2`
+  - `Ni`
+  - `DIPP`
+- `ppt-sample-cch/slide2.oleObject1`
+- `ppt-sample-cch/slide4.oleObject3`
+
+### 标签框来源：不是 knockout，也不是 DocumentText
+
+以 `tmp/ppt-sample-wjg4/same-shell-compare/slide12.oleObject2` 为例，用当前代码重新导出并做分层：
+
+- `chemcore.wordcopy.png`
+- `text-only.png`
+- `no-text.png`
+- `bond-only.png`
+- `graphic-only.png`
+
+结果：
+
+- `text-only`：没有红框
+- `bond-only`：没有红框
+- `graphic-only`：红框完整保留
+
+因此这些“标签框”来源于：
+
+- **`DocumentGraphic`**
+
+而不是：
+
+- `DocumentText`
+- bond replay
+- 之前怀疑的 `DocumentKnockout`
+
+### 更根本的来源：invalid marker 被带进 Office 预览
+
+新增调试工具：
+
+- `crates/chemcore-engine/examples/dump_graphic_primitives.rs`
+
+对 `slide12.oleObject2` dump `DocumentGraphic` 后可以直接看到：
+
+- 红框对应的是 `RenderPrimitive::Rect`
+- `stroke = #d32f2f`
+- `strokeWidth = 1.0`
+- 带 `nodeId`
+
+再回查 payload，节点确实带有：
+
+- `label.meta.labelRecognition.status = "invalid"`
+  或
+- `node.meta.labelRecognition.status = "invalid"`
+
+例如 `Ni` 节点 `275935`：
+
+- `label.text = "Ni"`
+- `label.layout = "attached-group-center"`
+- `label.meta.labelRecognition.status = "invalid"`
+
+所以现在可以明确：
+
+- 这批“框”不是 replay halo
+- 它们是 **label recognition / chemical check invalid marker**
+- 只是被 Office 预览直接画出来了
+
+### 跨 19 个 PPT 样本的 invalid 标签分布
+
+我补扫了全部 same-shell payload，产物在：
+
+- `tmp/ppt-invalid-label-summary.json`
+
+统计结果：
+
+- 总计 `21` 个 invalid 标签
+- 分布最重的是：
+  - `ppt-sample-cch/slide4.oleObject3`：`9`
+  - `ppt-sample-wjg4/slide13.oleObject3`：`4`
+  - `ppt-sample-cch/slide2.oleObject1`：`3`
+  - `ppt-sample-zww4/slide5.oleObject4`：`2`
+
+这和 review 图里“有框最明显”的样本基本一致。
+
+### 对研究主线的影响
+
+这个发现修正了一个重要误判：
+
+- 之前把不少“红框”误混进了 knockout / replay 残差主线
+- 现在可以把它们单独归类成：
+  - **invalid marker 可见性问题**
+
+所以后续主线应拆成：
+
+1. invalid marker 可见性  
+   - 属于 `DocumentGraphic`
+   - 不应在最终 Office 预览里显眼出现
+
+2. 真正的文字/标签 replay 残差  
+   - 继续由 attached label family、multiline family、centered text family 分析
+
+### 多行标签的上下偏移判断
+
+对“上下位移严重”的问题，这次复查没有推翻原判断，反而更确认：
+
+- 最可疑的仍然是 **baseline / line-step / multi-line stacking semantics**
+- 不是单字 bbox，也不是 invalid marker 自身
+
+尤其是两类：
+
+- `attached-group-above + multiline + black`
+- `attached-group + multiline + black`
+
+它们在 19 个 PPT 对象的 generalized baseline 下，仍然表现为：
+
+- `dy` 主导
+- `dx` 不是主驱动项
+
+所以目前更准确的分工是：
+
+- “有框”先按 invalid marker 线单独收口
+- “上下偏移”继续沿 multiline attached-label 的 baseline / line-step 语义研究
