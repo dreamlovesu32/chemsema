@@ -1895,13 +1895,9 @@ body.browser-shell .document-tabbar {
 .editor-selection-bond-box,
 .editor-selection-node-box,
 .editor-selection-text-box {
-  fill: rgba(47, 111, 237, 0.08);
+  fill: none;
   stroke: rgba(47, 111, 237, 0.86);
   vector-effect: non-scaling-stroke;
-}
-
-.editor-selection-node-box {
-  fill: rgba(47, 111, 237, 0.14);
 }
 
 .editor-selection-box,

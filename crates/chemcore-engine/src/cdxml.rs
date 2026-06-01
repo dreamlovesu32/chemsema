@@ -910,7 +910,7 @@ fn node_label(
             .find_map(|run| parse_f64(run.attr("size")))
             .unwrap_or(10.0)
     });
-    let runs: Vec<LabelRun> = text_el
+    let source_runs: Vec<LabelRun> = text_el
         .direct_children("s")
         .filter_map(|run| {
             let run_text = run.full_text();
@@ -925,6 +925,25 @@ fn node_label(
                     fonts,
                 )
             })
+        })
+        .collect();
+    let runs: Vec<LabelRun> = text_el
+        .direct_children("s")
+        .flat_map(|run| {
+            let run_text = run.full_text();
+            if run_text.is_empty() {
+                Vec::new()
+            } else {
+                label_display_runs(
+                    &run_text,
+                    parse_u32(run.attr("face")).unwrap_or(0),
+                    run.attr("font").unwrap_or(parent_font),
+                    run.attr("color").unwrap_or(parent_color),
+                    parse_f64(run.attr("size")).unwrap_or(parent_size),
+                    colors,
+                    fonts,
+                )
+            }
         })
         .collect();
     let text_position = parse_xy(text_el.attr("p")).or_else(|| parse_xy(node.attr("p")));
@@ -942,10 +961,16 @@ fn node_label(
     let label_justification = text_el
         .attr("Justification")
         .or_else(|| text_el.attr("LabelJustification"));
-    let is_centered = attr_eq_ignore_ascii_case(label_display, "Center")
-        || attr_eq_ignore_ascii_case(label_justification, "Center");
+    let inferred_align = infer_cdxml_label_align(
+        text_position,
+        bbox,
+        label_display,
+        label_justification,
+        text_el.attr("LabelAlignment"),
+    );
+    let is_centered = inferred_align == "center";
     let glyph_polygons = if let Some(position) = local_position {
-        if is_centered {
+        if inferred_align == "center" {
             let width = local_bbox
                 .map(|bbox| (bbox[2] - bbox[0]).abs())
                 .filter(|width| *width > EPSILON)
@@ -956,6 +981,20 @@ fn node_label(
                 &runs,
                 &[],
                 [round2(position[0] - width * 0.5), position[1]],
+                local_bbox,
+                parent_size,
+            )
+        } else if inferred_align == "right" {
+            let width = local_bbox
+                .map(|bbox| (bbox[2] - bbox[0]).abs())
+                .filter(|width| *width > EPSILON)
+                .unwrap_or_else(|| {
+                    (text.chars().count() as f64 * parent_size * 0.55).max(parent_size)
+                });
+            crate::build_label_glyph_polygons(
+                &runs,
+                &[],
+                [round2(position[0] - width), position[1]],
                 local_bbox,
                 parent_size,
             )
@@ -980,10 +1019,17 @@ fn node_label(
         } else {
             Vec::new()
         },
-        align: Some(if is_centered { "center" } else { "left" }.to_string()),
+        align: Some(inferred_align.to_string()),
         layout: is_centered.then(|| "attached-group-center".to_string()),
         attachment: Some("node".to_string()),
-        anchor: Some(if is_centered { "middle" } else { "start" }.to_string()),
+        anchor: Some(
+            match inferred_align {
+                "center" => "middle",
+                "right" => "end",
+                _ => "start",
+            }
+            .to_string(),
+        ),
         font_family: Some(
             fonts
                 .get(parent_font)
@@ -1006,13 +1052,47 @@ fn node_label(
                     "labelJustification": empty_as_null(text_el.attr("LabelJustification")),
                     "justification": empty_as_null(text_el.attr("Justification")),
                 }
-            }
+            },
+            "sourceRuns": source_runs,
         }),
     })
 }
 
 fn attr_eq_ignore_ascii_case(value: Option<&str>, expected: &str) -> bool {
     value.is_some_and(|value| value.eq_ignore_ascii_case(expected))
+}
+
+fn infer_cdxml_label_align(
+    text_position: Option<[f64; 2]>,
+    bbox: Option<[f64; 4]>,
+    label_display: Option<&str>,
+    label_justification: Option<&str>,
+    label_alignment: Option<&str>,
+) -> &'static str {
+    if let (Some([x, _]), Some([left, _, right, _])) = (text_position, bbox) {
+        let center = (left + right) * 0.5;
+        let tolerance = ((right - left).abs() * 0.2).clamp(0.5, 2.0);
+        if (x - center).abs() <= tolerance {
+            return "center";
+        }
+        if (x - right).abs() <= tolerance {
+            return "right";
+        }
+        if (x - left).abs() <= tolerance {
+            return "left";
+        }
+    }
+    if attr_eq_ignore_ascii_case(label_justification, "Center")
+        || attr_eq_ignore_ascii_case(label_display, "Center")
+    {
+        "center"
+    } else if attr_eq_ignore_ascii_case(label_justification, "Right")
+        || attr_eq_ignore_ascii_case(label_alignment, "Right")
+    {
+        "right"
+    } else {
+        "left"
+    }
 }
 
 fn normalize_bond(

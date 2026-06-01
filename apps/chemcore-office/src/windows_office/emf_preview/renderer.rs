@@ -20,8 +20,8 @@ use windows_sys::Win32::Graphics::GdiPlus::{
     GdipDeleteBrush, GdipDeleteFont, GdipDeleteFontFamily, GdipDeleteGraphics, GdipDeletePath,
     GdipDeletePen, GdipDeleteStringFormat, GdipDisposeImage, GdipDrawEllipse, GdipDrawLine,
     GdipDrawLines, GdipDrawPath, GdipDrawPolygon, GdipDrawRectangle, GdipDrawString,
-    GdipFillEllipse, GdipFillPath, GdipFillPolygon, GdipFillRectangle, GdipGetCellAscent,
-    GdipGetDC, GdipGetEmHeight, GdipGetFamily, GdipGetHemfFromMetafile,
+    GdipFillEllipse, GdipFillPath, GdipFillPolygon, GdipFillRectangle, GdipGetDC,
+    GdipGetHemfFromMetafile,
     GdipGetImageGraphicsContext, GdipMeasureString, GdipRecordMetafile, GdipReleaseDC,
     GdipRestoreGraphics, GdipSaveGraphics, GdipSetPageScale, GdipSetPageUnit, GdipSetPenDashArray,
     GdipSetPenDashStyle, GdipSetPenEndCap, GdipSetPenLineJoin, GdipSetPenMiterLimit,
@@ -46,6 +46,7 @@ const CHEMDRAW_BOLD_SUBSCRIPT_SHIFT_DOWN_EM: f64 = 0.215;
 const CHEMDRAW_SUPERSCRIPT_SHIFT_UP_EM: f64 = 0.392;
 const CHEMDRAW_PACKAGED_CENTERED_TEXT_TOP_BIAS_EM: f32 = 0.012;
 const CHEMDRAW_PACKAGED_CENTERED_SCRIPT_EXTRA_TOP_BIAS_EM: f32 = 0.02;
+const CHEMDRAW_DEFAULT_MULTILINE_BLACK_LABEL_Y_NUDGE_PX: f64 = -3.0;
 const OUT_TT_ONLY_PRECIS_VALUE: u32 = 7;
 const CHEMDRAW_GDI_TEXT_ADVANCE_TIGHTEN: f64 = 0.965;
 const ENV_DISABLE_PACKAGED_TRAILING_TRIM: &str = "CHEMCORE_EMF_PACKAGED_TEXT_DISABLE_TRAILING_TRIM";
@@ -62,6 +63,14 @@ const ENV_PACKAGED_ATTACHED_START_ZERO_LAYOUT: &str =
     "CHEMCORE_EMF_PACKAGED_ATTACHED_START_ZERO_LAYOUT";
 const ENV_PACKAGED_ATTACHED_START_TIGHT_RECT: &str =
     "CHEMCORE_EMF_PACKAGED_ATTACHED_START_TIGHT_RECT";
+const ENV_PACKAGED_NODE_LABEL_LAYOUT_EXPERIMENT: &str =
+    "CHEMCORE_EMF_PACKAGED_NODE_LABEL_LAYOUT_EXPERIMENT";
+const ENV_PACKAGED_CENTERED_TEXT_TOP_BIAS_EM: &str =
+    "CHEMCORE_EMF_PACKAGED_CENTERED_TEXT_TOP_BIAS_EM";
+const ENV_PACKAGED_CENTERED_SCRIPT_EXTRA_TOP_BIAS_EM: &str =
+    "CHEMCORE_EMF_PACKAGED_CENTERED_SCRIPT_EXTRA_TOP_BIAS_EM";
+const ENV_DEFAULT_MULTILINE_BLACK_LABEL_Y_NUDGE_PX: &str =
+    "CHEMCORE_EMF_DEFAULT_MULTILINE_BLACK_LABEL_Y_NUDGE_PX";
 const ENV_PACKAGED_SMOOTHING_MODE_VALUE: &str = "CHEMCORE_EMF_PACKAGED_SMOOTHING_MODE_VALUE";
 const ENV_ATTACHED_LABEL_REPLAY_NUDGE_EXPERIMENT: &str =
     "CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_NUDGE_EXPERIMENT";
@@ -115,17 +124,130 @@ const ENV_ATTACHED_LABEL_REPLAY_PHASE_POLICY_EXPERIMENT: &str =
     "CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_PHASE_POLICY_EXPERIMENT";
 const ENV_ATTACHED_LABEL_REPLAY_GENERAL_POLICY_EXPERIMENT: &str =
     "CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_GENERAL_POLICY_EXPERIMENT";
+const ENV_ATTACHED_LABEL_REPLAY_STACK_POLICY_EXPERIMENT: &str =
+    "CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_STACK_POLICY_EXPERIMENT";
 const ENV_HIDE_DOCUMENT_KNOCKOUT: &str = "CHEMCORE_EMF_HIDE_DOCUMENT_KNOCKOUT";
 const ENV_SHOW_DOCUMENT_KNOCKOUT: &str = "CHEMCORE_EMF_SHOW_DOCUMENT_KNOCKOUT";
 const ENV_SHOW_INVALID_MARKERS: &str = "CHEMCORE_EMF_SHOW_INVALID_MARKERS";
 const ENV_HIDE_DOCUMENT_TEXT: &str = "CHEMCORE_EMF_HIDE_DOCUMENT_TEXT";
 const ENV_HIDE_DOCUMENT_BOND: &str = "CHEMCORE_EMF_HIDE_DOCUMENT_BOND";
 const ENV_HIDE_DOCUMENT_GRAPHIC: &str = "CHEMCORE_EMF_HIDE_DOCUMENT_GRAPHIC";
+const ENV_BOND_PEN_CONVERSION_EXPERIMENT: &str = "CHEMCORE_EMF_BOND_PEN_CONVERSION_EXPERIMENT";
 const ENV_INCLUDE_OBJECT_IDS: &str = "CHEMCORE_EMF_INCLUDE_OBJECT_IDS";
 const ENV_INCLUDE_NODE_IDS: &str = "CHEMCORE_EMF_INCLUDE_NODE_IDS";
 
 fn preview_env_enabled(name: &str) -> bool {
     std::env::var_os(name).is_some()
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PreviewBondPenConversionMode {
+    All,
+    Off,
+    LabeledOnly,
+    LabeledOrCenterDouble,
+    NoSideDouble,
+    LabeledOrNonSideDouble,
+    LabeledComplex,
+    LabeledOrder2OrBothJunction,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PreviewPackagedNodeLabelLayoutMode {
+    PayloadSize,
+    PayloadBox,
+    AttachedPayloadSize,
+    AttachedPayloadBox,
+    SimplePayloadSize,
+    SimplePayloadBox,
+}
+
+fn preview_packaged_node_label_layout_mode() -> Option<PreviewPackagedNodeLabelLayoutMode> {
+    let raw = std::env::var_os(ENV_PACKAGED_NODE_LABEL_LAYOUT_EXPERIMENT)?;
+    let value = raw.to_string_lossy();
+    match value.trim().to_ascii_lowercase().as_str() {
+        "" | "0" | "false" | "off" | "none" | "disabled" => None,
+        "payload-box" | "box" | "bbox" => Some(PreviewPackagedNodeLabelLayoutMode::PayloadBox),
+        "payload-size" | "size" => Some(PreviewPackagedNodeLabelLayoutMode::PayloadSize),
+        "attached-payload-box" | "attached-box" | "attached-bbox" => {
+            Some(PreviewPackagedNodeLabelLayoutMode::AttachedPayloadBox)
+        }
+        "attached-payload-size" | "attached-size" => {
+            Some(PreviewPackagedNodeLabelLayoutMode::AttachedPayloadSize)
+        }
+        "simple-payload-box" | "simple-box" | "simple-bbox" => {
+            Some(PreviewPackagedNodeLabelLayoutMode::SimplePayloadBox)
+        }
+        "simple-payload-size" | "simple-size" => {
+            Some(PreviewPackagedNodeLabelLayoutMode::SimplePayloadSize)
+        }
+        _ => None,
+    }
+}
+
+fn preview_bond_pen_conversion_mode() -> PreviewBondPenConversionMode {
+    std::env::var(ENV_BOND_PEN_CONVERSION_EXPERIMENT)
+        .map(|value| {
+            match value.trim().to_ascii_lowercase().as_str() {
+                "0" | "false" | "off" | "none" | "disabled" => {
+                    PreviewBondPenConversionMode::Off
+                }
+                "labeled-only" | "label-only" | "labeled" | "label" => {
+                    PreviewBondPenConversionMode::LabeledOnly
+                }
+                "labeled-or-center-double" | "label-or-center-double" | "labeled-center-double" => {
+                    PreviewBondPenConversionMode::LabeledOrCenterDouble
+                }
+                "no-side-double" | "except-side-double" | "disable-side-double" => {
+                    PreviewBondPenConversionMode::NoSideDouble
+                }
+                "labeled-or-non-side-double" | "label-or-non-side-double" => {
+                    PreviewBondPenConversionMode::LabeledOrNonSideDouble
+                }
+                "labeled-complex" | "label-complex" => {
+                    PreviewBondPenConversionMode::LabeledComplex
+                }
+                "labeled-order2-or-both-junction"
+                | "label-order2-or-both-junction"
+                | "labeled-order2-both-junction" => {
+                    PreviewBondPenConversionMode::LabeledOrder2OrBothJunction
+                }
+                _ => PreviewBondPenConversionMode::All,
+            }
+        })
+        .unwrap_or(PreviewBondPenConversionMode::All)
+}
+
+fn preview_bond_pen_conversion_allowed(
+    mode: PreviewBondPenConversionMode,
+    bond_info: Option<&PreviewBondInfo>,
+) -> bool {
+    match mode {
+        PreviewBondPenConversionMode::All => true,
+        PreviewBondPenConversionMode::Off => false,
+        PreviewBondPenConversionMode::LabeledOnly => bond_info.is_some_and(|info| {
+            info.start_has_label || info.end_has_label
+        }),
+        PreviewBondPenConversionMode::LabeledOrCenterDouble => bond_info.is_some_and(|info| {
+            info.start_has_label || info.end_has_label || info.center_double
+        }),
+        PreviewBondPenConversionMode::NoSideDouble => {
+            bond_info.is_some_and(|info| !info.side_double)
+        }
+        PreviewBondPenConversionMode::LabeledOrNonSideDouble => bond_info.is_some_and(|info| {
+            info.start_has_label || info.end_has_label || !info.side_double
+        }),
+        PreviewBondPenConversionMode::LabeledComplex => bond_info.is_some_and(|info| {
+            (info.start_has_label || info.end_has_label)
+                && (info.both_junction || info.side_double || info.center_double)
+        }),
+        PreviewBondPenConversionMode::LabeledOrder2OrBothJunction => {
+            bond_info.is_some_and(|info| {
+                (info.start_has_label || info.end_has_label)
+                    && (info.order >= 2 || info.both_junction)
+            })
+        }
+    }
 }
 
 fn preview_env_object_id_filter() -> Option<std::collections::BTreeSet<String>> {
@@ -226,6 +348,10 @@ fn preview_env_f64(name: &str) -> Option<f64> {
     std::env::var(name).ok()?.trim().parse::<f64>().ok()
 }
 
+fn preview_env_f64_or(name: &str, default: f64) -> f64 {
+    preview_env_f64(name).unwrap_or(default)
+}
+
 #[derive(Clone, Copy)]
 struct PreviewTransform {
     min_x: f64,
@@ -246,7 +372,10 @@ struct PreviewLabelContext {
 struct PreviewLabelInfo {
     layout: Option<String>,
     label_justification: Option<String>,
+    world_box: Option<PreviewLabelBBox>,
+    simple_single_run: bool,
     component_half_x: PreviewComponentHalfX,
+    component_half_y: PreviewComponentHalfY,
     primary_neighbor_bucket: Option<PreviewNeighborBucket>,
     gap_right: f64,
     line_count: usize,
@@ -259,11 +388,51 @@ enum PreviewComponentHalfX {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PreviewComponentHalfY {
+    Top,
+    Bottom,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PreviewNeighborBucket {
     East,
     South,
     West,
     North,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PreviewComponentQuadrant {
+    LT,
+    LB,
+    RT,
+    RB,
+}
+
+impl PreviewLabelInfo {
+    fn component_quadrant(&self) -> PreviewComponentQuadrant {
+        match (self.component_half_x, self.component_half_y) {
+            (PreviewComponentHalfX::Left, PreviewComponentHalfY::Top) => {
+                PreviewComponentQuadrant::LT
+            }
+            (PreviewComponentHalfX::Left, PreviewComponentHalfY::Bottom) => {
+                PreviewComponentQuadrant::LB
+            }
+            (PreviewComponentHalfX::Right, PreviewComponentHalfY::Top) => {
+                PreviewComponentQuadrant::RT
+            }
+            (PreviewComponentHalfX::Right, PreviewComponentHalfY::Bottom) => {
+                PreviewComponentQuadrant::RB
+            }
+        }
+    }
+
+    fn is_attached_group_layout(&self) -> bool {
+        matches!(
+            self.layout.as_deref(),
+            Some("attached-group" | "attached-group-above")
+        )
+    }
 }
 
 impl PreviewTransform {
@@ -468,7 +637,10 @@ pub(super) unsafe fn enhanced_metafile_gdiplus_dual_preview(
         SmoothingModeAntiAlias
     };
     GdipSetSmoothingMode(graphics, smoothing_mode);
-    GdipSetTextRenderingHint(graphics, preview_default_gdiplus_text_rendering_hint(&transform));
+    GdipSetTextRenderingHint(
+        graphics,
+        preview_default_gdiplus_text_rendering_hint(&transform),
+    );
     let use_gdiplus_text = gdiplus_text_preview_enabled();
     let bond_context = preview_bond_context(payload);
     let label_context = preview_label_context(payload);
@@ -823,7 +995,8 @@ unsafe fn draw_svg_preview(dc: HDC, bounds: &RECT, payload: &OleObjectPayload) -
 }
 
 pub(super) fn office_preview_primitive_visible(primitive: &RenderPrimitive) -> bool {
-    if preview_is_invalid_marker_primitive(primitive) && !preview_env_enabled(ENV_SHOW_INVALID_MARKERS)
+    if preview_is_invalid_marker_primitive(primitive)
+        && !preview_env_enabled(ENV_SHOW_INVALID_MARKERS)
     {
         return false;
     }
@@ -871,9 +1044,7 @@ pub(super) fn office_preview_primitive_visible(primitive: &RenderPrimitive) -> b
     }
     matches!(
         role,
-        RenderRole::DocumentBond
-            | RenderRole::DocumentGraphic
-            | RenderRole::DocumentText
+        RenderRole::DocumentBond | RenderRole::DocumentGraphic | RenderRole::DocumentText
     )
 }
 
@@ -1775,23 +1946,18 @@ unsafe fn draw_gdiplus_text(
         fill,
         text_anchor,
         label_context,
+        x,
+        y,
+        baseline_offset,
+        font_size,
+        transform,
     );
-    let effective_font_scale = preview_attached_label_replay_font_scale(
-        node_id,
-        runs,
-        fill,
-        text_anchor,
-        label_context,
-    );
+    let effective_font_scale =
+        preview_attached_label_replay_font_scale(node_id, runs, fill, text_anchor, label_context);
     let default_text_hint = preview_default_gdiplus_text_rendering_hint(transform);
-    let effective_text_hint = preview_attached_label_replay_text_hint(
-        node_id,
-        runs,
-        fill,
-        text_anchor,
-        label_context,
-    )
-    .unwrap_or(default_text_hint);
+    let effective_text_hint =
+        preview_attached_label_replay_text_hint(node_id, runs, fill, text_anchor, label_context)
+            .unwrap_or(default_text_hint);
     if effective_text_hint != default_text_hint {
         GdipSetTextRenderingHint(graphics, effective_text_hint);
     }
@@ -1815,6 +1981,11 @@ unsafe fn draw_gdiplus_text(
         fill,
         text_anchor,
         label_context,
+        x,
+        y,
+        baseline_offset,
+        effective_font_size,
+        transform,
     );
     let line_step_world = line_height.unwrap_or(effective_font_size * 1.2).max(0.01);
     let mut lines = preview_text_lines(text, runs);
@@ -1834,8 +2005,7 @@ unsafe fn draw_gdiplus_text(
         }
         let origin = transform.gdip_point(CorePoint {
             x,
-            y: y
-                + y_nudge_px / (transform.scale * transform.record_scale.max(1.0))
+            y: y + y_nudge_px / (transform.scale * transform.record_scale.max(1.0))
                 + index as f64 * line_step_world,
         });
         let Some(line_layout) = layouts.get(index) else {
@@ -1862,7 +2032,36 @@ unsafe fn draw_gdiplus_text(
             Some("end") => origin.X - width,
             _ => origin.X,
         };
+        let line_top = preview_gdiplus_text_top(
+            origin.Y,
+            baseline_offset,
+            text_anchor,
+            top_nudge_px,
+            line_runs.first(),
+            effective_font_size,
+            transform,
+        );
+        let line_rect_override = preview_packaged_node_label_line_rect(
+            node_id,
+            text_anchor,
+            label_context,
+            transform,
+            index,
+            lines.len(),
+            cursor_x,
+            line_top,
+        );
+        let line_scale_x = line_rect_override
+            .map(|rect| rect.Width / width.max(0.01))
+            .unwrap_or(1.0);
+        let mut logical_cursor = 0.0f32;
         for (run, run_layout) in line_runs.iter().zip(&line_layout.runs) {
+            let run_rect_override = line_rect_override.map(|line_rect| RectF {
+                X: line_rect.X + (logical_cursor + run_layout.dx) * line_scale_x,
+                Y: line_rect.Y,
+                Width: (run_layout.advance * line_scale_x).max(0.0),
+                Height: line_rect.Height,
+            });
             ok &= draw_gdiplus_text_run(
                 graphics,
                 cursor_x + run_layout.dx,
@@ -1873,12 +2072,14 @@ unsafe fn draw_gdiplus_text(
                 label_context,
                 run_layout.advance,
                 top_nudge_px,
+                run_rect_override,
                 run,
                 effective_font_size,
                 font_family,
                 fill,
                 transform,
             );
+            logical_cursor += run_layout.dx + run_layout.advance;
             cursor_x += run_layout.dx + run_layout.advance;
         }
     }
@@ -2130,6 +2331,7 @@ unsafe fn draw_gdiplus_text_run(
     label_context: Option<&PreviewLabelContext>,
     advance: f32,
     top_nudge_px: f64,
+    layout_rect_override: Option<RectF>,
     run: &PreviewTextRun,
     fallback_font_size: f64,
     fallback_family: Option<&str>,
@@ -2158,35 +2360,15 @@ unsafe fn draw_gdiplus_text_run(
         * script_scale
         * gdiplus_text_scale(transform))
     .max(1.0) as f32;
-    let ascent_ratio = gdiplus_font_ascent_ratio(font, run).unwrap_or(if transform.emf_recording {
-        0.905_273_44
-    } else {
-        0.86
-    });
-    let baseline_top = if transform.emf_recording {
-        match run.script.as_deref() {
-            Some("subscript" | "superscript") => font_px * ascent_ratio,
-            _ => baseline_offset
-                .map(|value| (value * gdiplus_text_scale(transform)) as f32)
-                .unwrap_or(font_px * ascent_ratio),
-        }
-    } else {
-        font_px * 0.86
-    };
-    let packaged_centered_bias = if transform.emf_recording && matches!(text_anchor, Some("middle"))
-    {
-        let mut bias = font_px * CHEMDRAW_PACKAGED_CENTERED_TEXT_TOP_BIAS_EM;
-        if matches!(run.script.as_deref(), Some("subscript" | "superscript")) {
-            bias += font_px * CHEMDRAW_PACKAGED_CENTERED_SCRIPT_EXTRA_TOP_BIAS_EM;
-        }
-        bias
-    } else {
-        0.0
-    };
-    let top = baseline_y - baseline_top
-        + preview_script_baseline_shift_f32(run, fallback_font_size, transform)
-        - packaged_centered_bias
-        + (top_nudge_px / (transform.scale * transform.record_scale.max(1.0))) as f32;
+    let top = preview_gdiplus_text_top(
+        baseline_y,
+        baseline_offset,
+        text_anchor,
+        top_nudge_px,
+        Some(run),
+        fallback_font_size,
+        transform,
+    );
     let attached_start_layout = preview_packaged_attached_start_layout_mode(
         node_id,
         fill,
@@ -2199,7 +2381,11 @@ unsafe fn draw_gdiplus_text_run(
             && matches!(text_anchor, Some("middle"))
             && run.script.is_none()
             && preview_env_enabled(ENV_PACKAGED_CENTERED_PLAIN_ZERO_LAYOUT));
-    let rect = if zero_layout {
+    let rect = if let Some(mut rect) = layout_rect_override {
+        rect.Width = rect.Width.max(font_px * 0.5);
+        rect.Height = rect.Height.max(1.0);
+        rect
+    } else if zero_layout {
         RectF {
             X: x,
             Y: top,
@@ -2236,19 +2422,123 @@ unsafe fn draw_gdiplus_text_run(
     ok
 }
 
-unsafe fn gdiplus_font_ascent_ratio(font: *mut GpFont, run: &PreviewTextRun) -> Option<f32> {
-    let mut family: *mut GpFontFamily = null_mut();
-    if GdipGetFamily(font, &mut family) != GDI_PLUS_OK || family.is_null() {
+fn preview_gdiplus_text_top(
+    baseline_y: f32,
+    baseline_offset: Option<f64>,
+    text_anchor: Option<&str>,
+    top_nudge_px: f64,
+    run: Option<&PreviewTextRun>,
+    fallback_font_size: f64,
+    transform: &PreviewTransform,
+) -> f32 {
+    let script = run.and_then(|run| run.script.as_deref());
+    let font_px = (run
+        .and_then(|run| run.font_size)
+        .unwrap_or(fallback_font_size)
+        * preview_script_scale(script)
+        * gdiplus_text_scale(transform))
+    .max(1.0) as f32;
+    let baseline_top = if transform.emf_recording {
+        match script {
+            Some("subscript" | "superscript") => font_px * 0.905_273_44,
+            _ => baseline_offset
+                .map(|value| (value * gdiplus_text_scale(transform)) as f32)
+                .unwrap_or(font_px * 0.905_273_44),
+        }
+    } else {
+        font_px * 0.86
+    };
+    let packaged_centered_bias = if transform.emf_recording && matches!(text_anchor, Some("middle"))
+    {
+        let mut bias = font_px
+            * preview_env_f64_or(
+                ENV_PACKAGED_CENTERED_TEXT_TOP_BIAS_EM,
+                CHEMDRAW_PACKAGED_CENTERED_TEXT_TOP_BIAS_EM as f64,
+            ) as f32;
+        if matches!(script, Some("subscript" | "superscript")) {
+            bias += font_px
+                * preview_env_f64_or(
+                    ENV_PACKAGED_CENTERED_SCRIPT_EXTRA_TOP_BIAS_EM,
+                    CHEMDRAW_PACKAGED_CENTERED_SCRIPT_EXTRA_TOP_BIAS_EM as f64,
+                ) as f32;
+        }
+        bias
+    } else {
+        0.0
+    };
+    baseline_y - baseline_top
+        + run
+            .map(|run| preview_script_baseline_shift_f32(run, fallback_font_size, transform))
+            .unwrap_or(0.0)
+        - packaged_centered_bias
+        + (top_nudge_px / (transform.scale * transform.record_scale.max(1.0))) as f32
+}
+
+fn preview_packaged_node_label_line_rect(
+    node_id: Option<&str>,
+    _text_anchor: Option<&str>,
+    label_context: Option<&PreviewLabelContext>,
+    transform: &PreviewTransform,
+    line_index: usize,
+    line_count: usize,
+    line_start_x: f32,
+    line_top: f32,
+) -> Option<RectF> {
+    if !transform.emf_recording {
         return None;
     }
-    let style = gdiplus_font_style(run);
-    let mut ascent = 0u16;
-    let mut em_height = 0u16;
-    let ok = GdipGetCellAscent(family, style, &mut ascent) == GDI_PLUS_OK
-        && GdipGetEmHeight(family, style, &mut em_height) == GDI_PLUS_OK
-        && em_height > 0;
-    GdipDeleteFontFamily(family);
-    ok.then_some(ascent as f32 / em_height as f32)
+    let mode = preview_packaged_node_label_layout_mode()?;
+    let info = label_context
+        .and_then(|context| node_id.and_then(|id| context.infos.get(id)))?;
+    let attached_only = matches!(
+        mode,
+        PreviewPackagedNodeLabelLayoutMode::AttachedPayloadSize
+            | PreviewPackagedNodeLabelLayoutMode::AttachedPayloadBox
+    );
+    let simple_only = matches!(
+        mode,
+        PreviewPackagedNodeLabelLayoutMode::SimplePayloadSize
+            | PreviewPackagedNodeLabelLayoutMode::SimplePayloadBox
+    );
+    if attached_only && (!info.is_attached_group_layout() || info.line_count != 1) {
+        return None;
+    }
+    if simple_only && !info.simple_single_run {
+        return None;
+    }
+    let world_box = info.world_box?;
+    let segments = line_count.max(1) as f64;
+    let world_top = world_box.top + (world_box.bottom - world_box.top) * line_index as f64 / segments;
+    let world_bottom =
+        world_box.top + (world_box.bottom - world_box.top) * (line_index + 1) as f64 / segments;
+    let top_left = transform.gdip_point(CorePoint {
+        x: world_box.left,
+        y: world_top,
+    });
+    let bottom_right = transform.gdip_point(CorePoint {
+        x: world_box.right,
+        y: world_bottom,
+    });
+    let width = (bottom_right.X - top_left.X).abs().max(0.0);
+    let height = (bottom_right.Y - top_left.Y).abs().max(1.0);
+    Some(match mode {
+        PreviewPackagedNodeLabelLayoutMode::PayloadSize
+        | PreviewPackagedNodeLabelLayoutMode::AttachedPayloadSize
+        | PreviewPackagedNodeLabelLayoutMode::SimplePayloadSize => RectF {
+            X: line_start_x,
+            Y: line_top,
+            Width: width,
+            Height: height,
+        },
+        PreviewPackagedNodeLabelLayoutMode::PayloadBox
+        | PreviewPackagedNodeLabelLayoutMode::AttachedPayloadBox
+        | PreviewPackagedNodeLabelLayoutMode::SimplePayloadBox => RectF {
+            X: top_left.X,
+            Y: top_left.Y,
+            Width: width,
+            Height: height,
+        },
+    })
 }
 
 unsafe fn create_gdiplus_font(
@@ -2378,14 +2668,14 @@ unsafe fn draw_preview_text(
         fill,
         text_anchor,
         label_context,
+        x,
+        y,
+        baseline_offset,
+        font_size,
+        transform,
     );
-    let effective_font_scale = preview_attached_label_replay_font_scale(
-        node_id,
-        runs,
-        fill,
-        text_anchor,
-        label_context,
-    );
+    let effective_font_scale =
+        preview_attached_label_replay_font_scale(node_id, runs, fill, text_anchor, label_context);
     let effective_font_size = font_size * effective_font_scale;
     let x = x + x_nudge_px / (transform.scale * transform.record_scale.max(1.0));
     let y_nudge_px = preview_attached_label_replay_y_nudge_px(
@@ -2416,15 +2706,14 @@ unsafe fn draw_preview_text(
             y + y_nudge_px / (transform.scale * transform.record_scale.max(1.0))
                 + index as f64 * line_step_world,
         );
-        let width =
-            preview_line_width_measured(
-                dc,
-                line_runs,
-                effective_font_size,
-                font_family,
-                transform,
-                cache,
-            );
+        let width = preview_line_width_measured(
+            dc,
+            line_runs,
+            effective_font_size,
+            font_family,
+            transform,
+            cache,
+        );
         let mut cursor_x = match text_anchor {
             Some("middle") => origin.x - width / 2,
             Some("end") => origin.x - width,
@@ -2508,7 +2797,25 @@ fn preview_attached_label_replay_nudge_px(
     fallback_fill: Option<&str>,
     text_anchor: Option<&str>,
     label_context: Option<&PreviewLabelContext>,
+    x: f64,
+    y: f64,
+    baseline_offset: Option<f64>,
+    fallback_font_size: f64,
+    transform: &PreviewTransform,
 ) -> f64 {
+    if let Some(nudge_px) = preview_attached_label_replay_stack_policy_x_nudge_px(
+        node_id,
+        runs,
+        text_anchor,
+        label_context,
+        x,
+        y,
+        baseline_offset,
+        fallback_font_size,
+        transform,
+    ) {
+        return nudge_px;
+    }
     if let Some(nudge_px) = preview_attached_label_replay_general_policy_x_nudge_px(
         node_id,
         runs,
@@ -2548,6 +2855,113 @@ fn preview_attached_label_replay_nudge_px(
         return nudge_px;
     }
     0.0
+}
+
+fn preview_attached_label_replay_stack_policy_name() -> Option<String> {
+    let raw = std::env::var_os(ENV_ATTACHED_LABEL_REPLAY_STACK_POLICY_EXPERIMENT)?;
+    let value = raw.to_string_lossy();
+    let value = value.trim();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value.to_string())
+    }
+}
+
+fn preview_attached_label_replay_stack_policy_is_current_best(policy: &str) -> bool {
+    policy.eq_ignore_ascii_case("current-best-v1") || policy.eq_ignore_ascii_case("best-20260518")
+}
+
+fn preview_attached_label_replay_phase_policy_name() -> Option<String> {
+    let raw = std::env::var_os(ENV_ATTACHED_LABEL_REPLAY_PHASE_POLICY_EXPERIMENT);
+    let value = raw.as_ref().map(|token| token.to_string_lossy());
+    let value = value.as_deref().map(str::trim);
+    match value {
+        Some(value) => {
+            let lowered = value.to_ascii_lowercase();
+            if value.is_empty()
+                || matches!(
+                    lowered.as_str(),
+                    "0" | "false" | "off" | "none" | "disabled"
+                )
+            {
+                None
+            } else {
+                Some(value.to_string())
+            }
+        }
+        None => Some("phase3band".to_string()),
+    }
+}
+
+fn preview_attached_group_label_info<'a>(
+    node_id: Option<&str>,
+    text_anchor: Option<&str>,
+    label_context: Option<&'a PreviewLabelContext>,
+) -> Option<&'a PreviewLabelInfo> {
+    if !matches!(text_anchor, Some("start")) {
+        return None;
+    }
+    let node_id = node_id?;
+    let info = label_context.and_then(|context| context.infos.get(node_id))?;
+    (info.layout.as_deref() == Some("attached-group")).then_some(info)
+}
+
+fn preview_attached_label_text(runs: &[chemcore_engine::LabelRun]) -> String {
+    runs.iter().map(|run| run.text.as_str()).collect::<String>()
+}
+
+fn preview_attached_label_stack_policy_phases(
+    x: f64,
+    y: f64,
+    baseline_offset: Option<f64>,
+    fallback_font_size: f64,
+    transform: &PreviewTransform,
+) -> (f64, f64) {
+    let font_px = (fallback_font_size * gdiplus_text_scale(transform)).max(1.0) as f32;
+    let baseline_top = baseline_offset
+        .map(|value| (value * gdiplus_text_scale(transform)) as f32)
+        .unwrap_or(font_px * 0.905_273_44);
+    let origin = transform.gdip_point(CorePoint { x, y });
+    (
+        origin.X.rem_euclid(1.0) as f64,
+        (origin.Y - baseline_top).rem_euclid(1.0) as f64,
+    )
+}
+
+fn preview_attached_label_replay_stack_policy_x_nudge_px(
+    node_id: Option<&str>,
+    runs: &[chemcore_engine::LabelRun],
+    text_anchor: Option<&str>,
+    label_context: Option<&PreviewLabelContext>,
+    x: f64,
+    y: f64,
+    baseline_offset: Option<f64>,
+    fallback_font_size: f64,
+    transform: &PreviewTransform,
+) -> Option<f64> {
+    let policy = preview_attached_label_replay_stack_policy_name()?;
+    if !preview_attached_label_replay_stack_policy_is_current_best(&policy)
+        || !transform.emf_recording
+    {
+        return None;
+    }
+    let info = preview_attached_group_label_info(node_id, text_anchor, label_context)?;
+    let text = preview_attached_label_text(runs);
+    let (x_page_phase, _) = preview_attached_label_stack_policy_phases(
+        x,
+        y,
+        baseline_offset,
+        fallback_font_size,
+        transform,
+    );
+    if (121.165..=180.670).contains(&info.gap_right) && x_page_phase >= 0.209_741 {
+        return Some(1.0);
+    }
+    if text.eq_ignore_ascii_case("N") && info.component_quadrant() == PreviewComponentQuadrant::LT {
+        return Some(-1.0);
+    }
+    None
 }
 
 fn preview_attached_label_replay_general_policy_x_nudge_px(
@@ -2713,7 +3127,12 @@ fn preview_attached_label_replay_default_family_y_nudge_px(
         return None;
     }
     match info.layout.as_deref() {
-        Some("attached-group-above" | "attached-group") if info.line_count > 1 => Some(-3.0),
+        Some("attached-group-above" | "attached-group") if info.line_count > 1 => {
+            Some(preview_env_f64_or(
+                ENV_DEFAULT_MULTILINE_BLACK_LABEL_Y_NUDGE_PX,
+                CHEMDRAW_DEFAULT_MULTILINE_BLACK_LABEL_Y_NUDGE_PX,
+            ))
+        }
         _ => None,
     }
 }
@@ -2745,6 +3164,7 @@ fn preview_attached_label_replay_general_policy_y_nudge_px(
             preview_general_policy_lookup_y_nudge(
                 policy.as_ref(),
                 &[
+                    ("ppt-box-v1", -2.0),
                     ("ppt-family-v1", -2.0),
                     ("above-multi-black-y-1", -1.0),
                     ("above-multi-black-y-2", -2.0),
@@ -2756,6 +3176,7 @@ fn preview_attached_label_replay_general_policy_y_nudge_px(
         Some("attached-group") if info.line_count > 1 => preview_general_policy_lookup_y_nudge(
             policy.as_ref(),
             &[
+                ("ppt-box-v1", -3.0),
                 ("ppt-family-v1", -3.0),
                 ("lateral-multi-black-y-1", -1.0),
                 ("lateral-multi-black-y-2", -2.0),
@@ -2768,10 +3189,11 @@ fn preview_attached_label_replay_general_policy_y_nudge_px(
 }
 
 fn preview_general_policy_has_token(policy: &str, tokens: &[&str]) -> bool {
-    policy
-        .split(',')
-        .map(str::trim)
-        .any(|token| tokens.iter().any(|candidate| token.eq_ignore_ascii_case(candidate)))
+    policy.split(',').map(str::trim).any(|token| {
+        tokens
+            .iter()
+            .any(|candidate| token.eq_ignore_ascii_case(candidate))
+    })
 }
 
 fn preview_general_policy_lookup_y_nudge(policy: &str, tokens: &[(&str, f64)]) -> Option<f64> {
@@ -2797,11 +3219,7 @@ fn preview_attached_label_replay_phase_policy_y_nudge_px(
     fallback_font_size: f64,
     transform: &PreviewTransform,
 ) -> Option<f64> {
-    let policy = std::env::var_os(ENV_ATTACHED_LABEL_REPLAY_PHASE_POLICY_EXPERIMENT)?;
-    let policy = policy.to_string_lossy();
-    if policy.trim().is_empty() {
-        return None;
-    }
+    let policy = preview_attached_label_replay_phase_policy_name()?;
     if !transform.emf_recording || !matches!(text_anchor, Some("start")) {
         return None;
     }
@@ -2821,7 +3239,7 @@ fn preview_attached_label_replay_phase_policy_y_nudge_px(
         .unwrap_or(font_px * 0.905_273_44);
     let origin = transform.gdip_point(CorePoint { x, y });
     let top_page_phase = (origin.Y - baseline_top).rem_euclid(1.0);
-    match policy.trim() {
+    match policy.as_str() {
         "fillonly" => {
             if fill.eq_ignore_ascii_case("#000000") {
                 Some(-1.0)
@@ -2873,6 +3291,11 @@ fn preview_attached_label_replay_font_scale(
     text_anchor: Option<&str>,
     label_context: Option<&PreviewLabelContext>,
 ) -> f64 {
+    if let Some(scale) =
+        preview_attached_label_replay_stack_policy_font_scale(node_id, text_anchor, label_context)
+    {
+        return scale;
+    }
     let Some(scale) = preview_env_f64(ENV_ATTACHED_LABEL_REPLAY_FONT_SCALE_EXPERIMENT) else {
         return 1.0;
     };
@@ -2887,6 +3310,19 @@ fn preview_attached_label_replay_font_scale(
         return 1.0;
     }
     scale
+}
+
+fn preview_attached_label_replay_stack_policy_font_scale(
+    node_id: Option<&str>,
+    text_anchor: Option<&str>,
+    label_context: Option<&PreviewLabelContext>,
+) -> Option<f64> {
+    let policy = preview_attached_label_replay_stack_policy_name()?;
+    if !preview_attached_label_replay_stack_policy_is_current_best(&policy) {
+        return None;
+    }
+    let info = preview_attached_group_label_info(node_id, text_anchor, label_context)?;
+    ((137.245..=166.240).contains(&info.gap_right)).then_some(0.97)
 }
 
 fn preview_attached_label_replay_text_hint(
@@ -2916,7 +3352,24 @@ fn preview_attached_label_replay_top_nudge_px(
     fallback_fill: Option<&str>,
     text_anchor: Option<&str>,
     label_context: Option<&PreviewLabelContext>,
+    x: f64,
+    y: f64,
+    baseline_offset: Option<f64>,
+    fallback_font_size: f64,
+    transform: &PreviewTransform,
 ) -> f64 {
+    let mut total = preview_attached_label_replay_stack_policy_top_nudge_px(
+        node_id,
+        runs,
+        text_anchor,
+        label_context,
+        x,
+        y,
+        baseline_offset,
+        fallback_font_size,
+        transform,
+    )
+    .unwrap_or(0.0);
     for (nudge_env, filter_env) in [
         (
             ENV_ATTACHED_LABEL_REPLAY_TOP_NUDGE_EXPERIMENT,
@@ -2944,9 +3397,52 @@ fn preview_attached_label_replay_top_nudge_px(
         ) {
             continue;
         }
-        return nudge_px;
+        total += nudge_px;
+        break;
     }
-    0.0
+    total
+}
+
+fn preview_attached_label_replay_stack_policy_top_nudge_px(
+    node_id: Option<&str>,
+    runs: &[chemcore_engine::LabelRun],
+    text_anchor: Option<&str>,
+    label_context: Option<&PreviewLabelContext>,
+    x: f64,
+    y: f64,
+    baseline_offset: Option<f64>,
+    fallback_font_size: f64,
+    transform: &PreviewTransform,
+) -> Option<f64> {
+    let policy = preview_attached_label_replay_stack_policy_name()?;
+    if !preview_attached_label_replay_stack_policy_is_current_best(&policy)
+        || !transform.emf_recording
+    {
+        return None;
+    }
+    let info = preview_attached_group_label_info(node_id, text_anchor, label_context)?;
+    let text = preview_attached_label_text(runs);
+    let (x_page_phase, top_page_phase) = preview_attached_label_stack_policy_phases(
+        x,
+        y,
+        baseline_offset,
+        fallback_font_size,
+        transform,
+    );
+
+    if (info.gap_right <= 149.630 && top_page_phase <= 0.532_088 && x_page_phase <= 0.636_529)
+        || (info.gap_right <= 180.750 && top_page_phase <= 0.532_088 && x_page_phase >= 0.716_492)
+        || (info.component_quadrant() == PreviewComponentQuadrant::LB && info.gap_right >= 225.110)
+    {
+        return Some(-2.0);
+    }
+    if info.gap_right <= 149.630 && top_page_phase >= 0.605_638 {
+        return Some(2.0);
+    }
+    if text.eq_ignore_ascii_case("O") && info.gap_right <= 180.990 {
+        return Some(1.0);
+    }
+    None
 }
 
 fn preview_attached_label_replay_experiment_matches_with_filter_env(
@@ -2963,13 +3459,7 @@ fn preview_attached_label_replay_experiment_matches_with_filter_env(
             filter_env_name,
         );
     }
-    preview_attached_label_replay_matches(
-        node_id,
-        runs,
-        fallback_fill,
-        text_anchor,
-        label_context,
-    )
+    preview_attached_label_replay_matches(node_id, runs, fallback_fill, text_anchor, label_context)
 }
 
 fn preview_attached_label_replay_matches(
@@ -4682,9 +5172,11 @@ unsafe fn draw_preview_polygon(
 struct PreviewBondInfo {
     axis: CorePoint,
     allow_pen: bool,
+    order: u8,
     start_projection: f64,
     end_projection: f64,
     axis_normal_projection: f64,
+    both_junction: bool,
     side_double: bool,
     center_double: bool,
     start_has_label: bool,
@@ -4712,6 +5204,10 @@ struct PreviewLabelBBox {
 impl PreviewLabelBBox {
     fn center_x(&self) -> f64 {
         (self.left + self.right) * 0.5
+    }
+
+    fn center_y(&self) -> f64 {
+        (self.top + self.bottom) * 0.5
     }
 
     fn expand_to_include(self, other: Self) -> Self {
@@ -4762,7 +5258,8 @@ fn preview_label_context_from_document(document: &ChemcoreDocument) -> PreviewLa
                 let Some(node) = node_map.get(node_id.as_str()).copied() else {
                     continue;
                 };
-                let Some(label) = node.label.as_ref().filter(|label| label.has_visible_text()) else {
+                let Some(label) = node.label.as_ref().filter(|label| label.has_visible_text())
+                else {
                     continue;
                 };
                 let Some(label_box) = preview_label_world_box(object, label) else {
@@ -4786,15 +5283,20 @@ fn preview_label_context_from_document(document: &ChemcoreDocument) -> PreviewLa
                     PreviewLabelInfo {
                         layout: label.layout.clone(),
                         label_justification,
+                        world_box: Some(label_box),
+                        simple_single_run: preview_label_is_simple_single_run(label),
                         component_half_x: if label_box.center_x() < component_box.center_x() {
                             PreviewComponentHalfX::Left
                         } else {
                             PreviewComponentHalfX::Right
                         },
+                        component_half_y: if label_box.center_y() < component_box.center_y() {
+                            PreviewComponentHalfY::Top
+                        } else {
+                            PreviewComponentHalfY::Bottom
+                        },
                         primary_neighbor_bucket: preview_primary_neighbor_bucket(
-                            node,
-                            &node_map,
-                            &adjacency,
+                            node, &node_map, &adjacency,
                         ),
                         gap_right: component_box.right - label_box.right,
                         line_count: if !label.line_runs.is_empty() {
@@ -4863,9 +5365,16 @@ fn preview_bond_context_from_document(document: &ChemcoreDocument) -> PreviewBon
                 PreviewBondInfo {
                     axis,
                     allow_pen,
+                    order: bond.order as u8,
                     start_projection: begin_world.x * axis.x + begin_world.y * axis.y,
                     end_projection: end_world.x * axis.x + end_world.y * axis.y,
                     axis_normal_projection: begin_world.x * -axis.y + begin_world.y * axis.x,
+                    both_junction: incident
+                        .get(bond.begin.as_str())
+                        .is_some_and(|bonds| bonds.len() > 1)
+                        && incident
+                            .get(bond.end.as_str())
+                            .is_some_and(|bonds| bonds.len() > 1),
                     side_double: preview_bond_is_side_double(bond),
                     center_double: bond.order == 2 && !preview_bond_is_side_double(bond),
                     start_has_label,
@@ -4932,7 +5441,10 @@ fn preview_component_world_box(
     })
 }
 
-fn preview_label_world_box(object: &SceneObject, label: &chemcore_engine::NodeLabel) -> Option<PreviewLabelBBox> {
+fn preview_label_world_box(
+    object: &SceneObject,
+    label: &chemcore_engine::NodeLabel,
+) -> Option<PreviewLabelBBox> {
     let mut candidates = Vec::new();
     if let Some(bbox) = label.bbox() {
         candidates.push(preview_transform_scene_bbox(
@@ -4982,6 +5494,25 @@ fn preview_primary_neighbor_bucket(
         }
     }
     best.map(|(_, bucket)| bucket)
+}
+
+fn preview_label_is_simple_single_run(label: &chemcore_engine::NodeLabel) -> bool {
+    if label.text.contains('\n') || !label.has_visible_text() {
+        return false;
+    }
+    let runs = if !label.line_runs.is_empty() {
+        if label.line_runs.len() != 1 {
+            return false;
+        }
+        label.line_runs.first().map(Vec::as_slice).unwrap_or(&[])
+    } else {
+        label.runs.as_slice()
+    };
+    if runs.len() != 1 {
+        return false;
+    }
+    let run = &runs[0];
+    !matches!(run.script.as_deref(), Some("subscript" | "superscript"))
 }
 
 fn preview_neighbor_bucket(dx: f64, dy: f64) -> PreviewNeighborBucket {
@@ -5148,11 +5679,18 @@ fn preview_bond_stroke_line(
     bond_id: Option<&str>,
     bond_context: Option<&PreviewBondContext>,
 ) -> Option<PreviewBondStrokeLine> {
+    let pen_mode = preview_bond_pen_conversion_mode();
+    if pen_mode == PreviewBondPenConversionMode::Off {
+        return None;
+    }
     if points.len() < 4 || points.len() > 6 {
         return None;
     }
     let bond_info = bond_id.and_then(|id| bond_context.and_then(|context| context.infos.get(id)));
     if bond_info.is_some_and(|info| !info.allow_pen) {
+        return None;
+    }
+    if !preview_bond_pen_conversion_allowed(pen_mode, bond_info) {
         return None;
     }
     let preferred_axis = bond_info.map(|info| info.axis);
@@ -5775,9 +6313,11 @@ mod tests {
             PreviewBondInfo {
                 axis,
                 allow_pen,
+                order: 1,
                 start_projection,
                 end_projection,
                 axis_normal_projection: 0.0,
+                both_junction: false,
                 side_double: false,
                 center_double: false,
                 start_has_label: false,
@@ -5902,9 +6442,11 @@ mod tests {
             PreviewBondInfo {
                 axis,
                 allow_pen: true,
+                order: 1,
                 start_projection: -3.0,
                 end_projection: 20.0,
                 axis_normal_projection: 0.0,
+                both_junction: false,
                 side_double: false,
                 center_double: false,
                 start_has_label: false,
@@ -5935,9 +6477,11 @@ mod tests {
             PreviewBondInfo {
                 axis,
                 allow_pen: true,
+                order: 2,
                 start_projection: 0.0,
                 end_projection: 18.0,
                 axis_normal_projection: 0.0,
+                both_junction: false,
                 side_double: false,
                 center_double: true,
                 start_has_label: false,
@@ -5994,9 +6538,11 @@ mod tests {
             PreviewBondInfo {
                 axis,
                 allow_pen: true,
+                order: 2,
                 start_projection: 0.0,
                 end_projection: 20.0,
                 axis_normal_projection: 0.0,
+                both_junction: false,
                 side_double: true,
                 center_double: false,
                 start_has_label: false,
@@ -6029,9 +6575,11 @@ mod tests {
             PreviewBondInfo {
                 axis,
                 allow_pen: true,
+                order: 1,
                 start_projection: 0.0,
                 end_projection: 12.0,
                 axis_normal_projection: 0.0,
+                both_junction: false,
                 side_double: false,
                 center_double: false,
                 start_has_label: false,
@@ -6135,7 +6683,10 @@ mod tests {
             PreviewLabelInfo {
                 layout: Some("attached-group-above".to_string()),
                 label_justification: Some("Left".to_string()),
+                world_box: None,
+                simple_single_run: false,
                 component_half_x: PreviewComponentHalfX::Right,
+                component_half_y: PreviewComponentHalfY::Top,
                 primary_neighbor_bucket: Some(PreviewNeighborBucket::North),
                 gap_right: 120.0,
                 line_count: 2,

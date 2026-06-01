@@ -26,7 +26,7 @@ use windows_sys::Win32::System::Com::{
 };
 use windows_sys::Win32::System::Console::FreeConsole;
 use windows_sys::Win32::System::DataExchange::RegisterClipboardFormatW;
-use windows_sys::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock};
+use windows_sys::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock};
 use windows_sys::Win32::System::Ole::{
     CreateOleAdviseHolder, OleCreateFromData, OleFlushClipboard, OleInitialize, OleRegEnumVerbs,
     OleRegGetMiscStatus, OleRegGetUserType, OleSave, OleSetClipboard, OleUninitialize,
@@ -66,6 +66,11 @@ const CLIPBOARD_FORMAT_EMBED_SOURCE: &str = "Embed Source";
 const CLIPBOARD_FORMAT_OBJECT_DESCRIPTOR: &str = "Object Descriptor";
 const FORMAT_CHEMCORE_FRAGMENT: &str = "Chemcore Clipboard Fragment";
 const FORMAT_CHEMCORE_DOCUMENT_JSON: &str = "Chemcore Document JSON";
+const FORMAT_CHEMDRAW_INTERCHANGE: &str = "ChemDraw Interchange Format";
+const FORMAT_CDXML_MIME: &str = "chemical/x-cdxml";
+const FORMAT_SVG_MIME: &str = "image/svg+xml";
+const FORMAT_SVG: &str = "SVG";
+const CF_UNICODETEXT_FORMAT: u16 = 13;
 const GMEM_MOVEABLE_FLAG: u32 = 0x0002;
 const DEFAULT_OBJECT_WIDTH_HIMETRIC: i32 = 6000;
 const DEFAULT_OBJECT_HEIGHT_HIMETRIC: i32 = 3000;
@@ -347,6 +352,7 @@ struct ClipboardPayload {
     render_list_json: Option<String>,
     cdxml: Option<String>,
     svg: Option<String>,
+    text: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -356,6 +362,7 @@ struct OleObjectPayload {
     render_list_json: Option<String>,
     cdxml: Option<String>,
     svg: String,
+    text: Option<String>,
 }
 
 impl OleObjectPayload {
@@ -369,26 +376,37 @@ impl OleObjectPayload {
             render_list_json: None,
             cdxml: None,
             svg: String::from_utf8(ole_preview_svg_stream_payload()).unwrap_or_default(),
+            text: None,
         }
     }
 
     fn from_clipboard(payload: ClipboardPayload) -> Self {
         let fallback = Self::blank();
+        let cdxml = payload.cdxml.filter(|value| !value.trim().is_empty());
         let document_json = payload
             .chemcore_document_json
             .filter(|value| !value.trim().is_empty())
             .unwrap_or(fallback.chemcore_document_json);
+        let generated_svg = chemcore_engine::parse_document_json(&document_json)
+            .ok()
+            .map(|document| chemcore_engine::document_to_svg(&document))
+            .filter(|value| !value.trim().is_empty());
         Self {
             chemcore_fragment_json: payload.chemcore_fragment_json,
             chemcore_document_json: document_json,
             render_list_json: payload
                 .render_list_json
                 .filter(|value| !value.trim().is_empty()),
-            cdxml: payload.cdxml.filter(|value| !value.trim().is_empty()),
+            cdxml: cdxml.clone(),
             svg: payload
                 .svg
                 .filter(|value| !value.trim().is_empty())
+                .or(generated_svg)
                 .unwrap_or(fallback.svg),
+            text: payload
+                .text
+                .filter(|value| !value.trim().is_empty())
+                .or(cdxml),
         }
     }
 
@@ -2197,6 +2215,16 @@ fn known_clipboard_format_name(format: u16) -> &'static str {
         FORMAT_CHEMCORE_FRAGMENT
     } else if format == clipboard_format(FORMAT_CHEMCORE_DOCUMENT_JSON) {
         FORMAT_CHEMCORE_DOCUMENT_JSON
+    } else if format == clipboard_format(FORMAT_CHEMDRAW_INTERCHANGE) {
+        FORMAT_CHEMDRAW_INTERCHANGE
+    } else if format == clipboard_format(FORMAT_CDXML_MIME) {
+        FORMAT_CDXML_MIME
+    } else if format == clipboard_format(FORMAT_SVG_MIME) {
+        FORMAT_SVG_MIME
+    } else if format == clipboard_format(FORMAT_SVG) {
+        FORMAT_SVG
+    } else if format == CF_UNICODETEXT_FORMAT {
+        "CF_UNICODETEXT"
     } else {
         "unknown"
     }
@@ -2250,6 +2278,33 @@ fn ole_clipboard_formats(payload: &OleObjectPayload, _extent: SIZE) -> Vec<FORMA
         clipboard_format(FORMAT_CHEMCORE_DOCUMENT_JSON),
         TYMED_HGLOBAL as u32,
     );
+    if payload.cdxml.is_some() {
+        push_format(
+            &mut formats,
+            clipboard_format(FORMAT_CHEMDRAW_INTERCHANGE),
+            TYMED_HGLOBAL as u32,
+        );
+        push_format(
+            &mut formats,
+            clipboard_format(FORMAT_CDXML_MIME),
+            TYMED_HGLOBAL as u32,
+        );
+    }
+    if !payload.svg.trim().is_empty() {
+        push_format(
+            &mut formats,
+            clipboard_format(FORMAT_SVG_MIME),
+            TYMED_HGLOBAL as u32,
+        );
+        push_format(
+            &mut formats,
+            clipboard_format(FORMAT_SVG),
+            TYMED_HGLOBAL as u32,
+        );
+    }
+    if payload.text.is_some() {
+        push_format(&mut formats, CF_UNICODETEXT_FORMAT, TYMED_HGLOBAL as u32);
+    }
     push_format(&mut formats, CF_ENHMETAFILE, TYMED_ENHMF as u32);
 
     formats.retain(|format| format.cfFormat != 0);
@@ -2338,7 +2393,81 @@ unsafe fn write_clipboard_format_to_medium(
     if format.cfFormat == clipboard_format(FORMAT_CHEMCORE_DOCUMENT_JSON) {
         return hglobal_text_medium(&payload.chemcore_document_json, false, medium);
     }
+    if format.cfFormat == clipboard_format(FORMAT_CHEMDRAW_INTERCHANGE)
+        || format.cfFormat == clipboard_format(FORMAT_CDXML_MIME)
+    {
+        return payload
+            .cdxml
+            .as_deref()
+            .map(|value| hglobal_text_medium(value, false, medium))
+            .unwrap_or(DV_E_FORMATETC);
+    }
+    if format.cfFormat == clipboard_format(FORMAT_SVG_MIME)
+        || format.cfFormat == clipboard_format(FORMAT_SVG)
+    {
+        return hglobal_text_medium(&payload.svg, false, medium);
+    }
+    if format.cfFormat == CF_UNICODETEXT_FORMAT {
+        return payload
+            .text
+            .as_deref()
+            .map(|value| hglobal_text_medium(value, true, medium))
+            .unwrap_or(DV_E_FORMATETC);
+    }
     DV_E_FORMATETC
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeSet;
+
+    #[test]
+    fn ole_clipboard_formats_include_textual_fallbacks() {
+        let payload = OleObjectPayload {
+            chemcore_fragment_json: Some("{\"nodes\":[],\"bonds\":[]}".to_string()),
+            chemcore_document_json:
+                "{\"document\":{\"name\":\"chemcore\"},\"objects\":[],\"resources\":{}}"
+                    .to_string(),
+            render_list_json: None,
+            cdxml: Some("<CDXML></CDXML>".to_string()),
+            svg: "<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>".to_string(),
+            text: Some("<CDXML></CDXML>".to_string()),
+        };
+        let format_names: BTreeSet<_> = ole_clipboard_formats(&payload, SIZE::default())
+            .into_iter()
+            .map(|format| known_clipboard_format_name(format.cfFormat))
+            .collect();
+        assert!(format_names.contains(CLIPBOARD_FORMAT_EMBEDDED_OBJECT));
+        assert!(format_names.contains(CLIPBOARD_FORMAT_EMBED_SOURCE));
+        assert!(format_names.contains(CLIPBOARD_FORMAT_OBJECT_DESCRIPTOR));
+        assert!(format_names.contains(FORMAT_CHEMCORE_DOCUMENT_JSON));
+        assert!(format_names.contains(FORMAT_CHEMDRAW_INTERCHANGE));
+        assert!(format_names.contains(FORMAT_CDXML_MIME));
+        assert!(format_names.contains(FORMAT_SVG_MIME));
+        assert!(format_names.contains(FORMAT_SVG));
+        assert!(format_names.contains("CF_UNICODETEXT"));
+        assert!(format_names.contains("CF_ENHMETAFILE"));
+    }
+
+    #[test]
+    fn clipboard_payload_without_svg_generates_preview_svg_from_document() {
+        let document_json = serde_json::to_string(&chemcore_engine::ChemcoreDocument::blank())
+            .expect("blank document should serialize");
+        let payload = OleObjectPayload::from_clipboard(ClipboardPayload {
+            chemcore_fragment_json: None,
+            chemcore_document_json: Some(document_json),
+            render_list_json: None,
+            cdxml: None,
+            svg: None,
+            text: None,
+        });
+        assert!(payload.svg.contains("<svg"));
+        assert!(
+            !payload.svg.contains(DOCUMENT_DISPLAY_NAME),
+            "generated preview should not fall back to the placeholder svg"
+        );
+    }
 }
 
 fn ole_preview_svg_stream_payload() -> Vec<u8> {
@@ -2614,12 +2743,26 @@ unsafe extern "system" fn ole_object_get_moniker(
 }
 
 unsafe extern "system" fn ole_object_init_from_data(
-    _this: *mut c_void,
-    _data_object: *mut c_void,
+    this: *mut c_void,
+    data_object: *mut c_void,
     _creation: i32,
     _reserved: u32,
 ) -> i32 {
-    E_NOTIMPL
+    let object = owner_from_part::<OleObjectVtbl>(this);
+    if object.is_null() || data_object.is_null() {
+        return E_POINTER;
+    }
+    match payload_from_data_object(data_object) {
+        Ok(payload) => {
+            (*object).payload = payload;
+            (*object).extent_himetric = (*object).payload.extent_himetric();
+            S_OK
+        }
+        Err(error) => {
+            log_ole_event(&format!("IOleObject::InitFromData failed: {error}"));
+            E_FAIL
+        }
+    }
 }
 
 unsafe extern "system" fn ole_object_get_clipboard_data(
@@ -2631,6 +2774,203 @@ unsafe extern "system" fn ole_object_get_clipboard_data(
         *data_object = null_mut();
     }
     E_NOTIMPL
+}
+
+unsafe fn payload_from_data_object(data_object: *mut c_void) -> Result<OleObjectPayload, String> {
+    if data_object.is_null() {
+        return Err("IDataObject pointer was null.".to_string());
+    }
+    let get_data = (*(*(data_object.cast::<*const DataObjectVtbl>()))).get_data;
+
+    for format_name in [
+        CLIPBOARD_FORMAT_EMBEDDED_OBJECT,
+        CLIPBOARD_FORMAT_EMBED_SOURCE,
+    ] {
+        let format = FORMATETC {
+            cfFormat: clipboard_format(format_name),
+            ptd: null_mut(),
+            dwAspect: DVASPECT_CONTENT,
+            lindex: -1,
+            tymed: TYMED_ISTORAGE as u32,
+        };
+        let mut medium = STGMEDIUM::default();
+        let hr = get_data(data_object, &format, &mut medium);
+        if !hresult_succeeded(hr) {
+            continue;
+        }
+        let result = if medium.tymed == TYMED_ISTORAGE as u32 && !medium.u.pstg.is_null() {
+            payload_from_storage(medium.u.pstg)
+        } else {
+            Err(format!(
+                "IDataObject::GetData({format_name}) returned unexpected medium."
+            ))
+        };
+        ReleaseStgMedium(&mut medium);
+        if result.is_ok() {
+            return result;
+        }
+    }
+
+    let mut payload = OleObjectPayload::blank();
+    let mut populated = false;
+
+    if let Some(document) = text_payload_from_data_object(
+        data_object,
+        FORMAT_CHEMCORE_DOCUMENT_JSON,
+        false,
+    )? {
+        payload.chemcore_document_json = document;
+        populated = true;
+    }
+    if let Some(fragment) = text_payload_from_data_object(
+        data_object,
+        FORMAT_CHEMCORE_FRAGMENT,
+        false,
+    )? {
+        payload.chemcore_fragment_json = Some(fragment);
+        populated = true;
+    }
+    if let Some(cdxml) = text_payload_from_data_object(
+        data_object,
+        FORMAT_CHEMDRAW_INTERCHANGE,
+        false,
+    )?
+    .or(text_payload_from_data_object(
+        data_object,
+        FORMAT_CDXML_MIME,
+        false,
+    )?) {
+        if payload.text.is_none() {
+            payload.text = Some(cdxml.clone());
+        }
+        payload.cdxml = Some(cdxml);
+        populated = true;
+    }
+    if let Some(svg) = text_payload_from_data_object(data_object, FORMAT_SVG_MIME, false)?
+        .or(text_payload_from_data_object(data_object, FORMAT_SVG, false)?)
+    {
+        payload.svg = svg;
+        populated = true;
+    }
+    if let Some(text) = text_payload_from_data_object_by_id(
+        data_object,
+        CF_UNICODETEXT_FORMAT,
+        true,
+    )? {
+        payload.text = Some(text);
+        populated = true;
+    }
+
+    if populated {
+        Ok(payload)
+    } else {
+        Err("Chemcore payload was not available from IDataObject.".to_string())
+    }
+}
+
+unsafe fn payload_from_storage(storage: *mut c_void) -> Result<OleObjectPayload, String> {
+    if storage.is_null() {
+        return Err("IStorage pointer was null.".to_string());
+    }
+    let mut payload = OleObjectPayload::blank();
+    let mut populated = false;
+
+    if let Ok(document) = storage_read_stream(storage, OLE_STREAM_DOCUMENT).and_then(|bytes| {
+        String::from_utf8(bytes)
+            .map_err(|error| format!("ChemcoreDocument stream is not UTF-8: {error}"))
+    }) {
+        payload.chemcore_document_json = document;
+        populated = true;
+    }
+    if let Ok(svg) = storage_read_stream(storage, OLE_STREAM_PREVIEW_SVG).and_then(|bytes| {
+        String::from_utf8(bytes)
+            .map_err(|error| format!("ChemcorePreviewSvg stream is not UTF-8: {error}"))
+    }) {
+        payload.svg = svg;
+        populated = true;
+    }
+    if let Ok(cdxml) = storage_read_stream(storage, OLE_STREAM_SOURCE_CDXML).and_then(|bytes| {
+        String::from_utf8(bytes)
+            .map_err(|error| format!("ChemcoreSourceCdxml stream is not UTF-8: {error}"))
+    }) {
+        payload.text = Some(cdxml.clone());
+        payload.cdxml = Some(cdxml);
+        populated = true;
+    }
+
+    if populated {
+        Ok(payload)
+    } else {
+        Err("Chemcore payload storage did not contain any readable streams.".to_string())
+    }
+}
+
+unsafe fn text_payload_from_data_object(
+    data_object: *mut c_void,
+    format_name: &str,
+    unicode: bool,
+) -> Result<Option<String>, String> {
+    text_payload_from_data_object_by_id(data_object, clipboard_format(format_name), unicode)
+}
+
+unsafe fn text_payload_from_data_object_by_id(
+    data_object: *mut c_void,
+    cf_format: u16,
+    unicode: bool,
+) -> Result<Option<String>, String> {
+    if data_object.is_null() || cf_format == 0 {
+        return Ok(None);
+    }
+    let get_data = (*(*(data_object.cast::<*const DataObjectVtbl>()))).get_data;
+    let format = FORMATETC {
+        cfFormat: cf_format,
+        ptd: null_mut(),
+        dwAspect: DVASPECT_CONTENT,
+        lindex: -1,
+        tymed: TYMED_HGLOBAL as u32,
+    };
+    let mut medium = STGMEDIUM::default();
+    let hr = get_data(data_object, &format, &mut medium);
+    if !hresult_succeeded(hr) {
+        return Ok(None);
+    }
+    let result = if medium.tymed == TYMED_HGLOBAL as u32 && !medium.u.hGlobal.is_null() {
+        read_hglobal_text(medium.u.hGlobal, unicode)
+    } else {
+        Ok(None)
+    };
+    ReleaseStgMedium(&mut medium);
+    result
+}
+
+unsafe fn read_hglobal_text(handle: HGLOBAL, unicode: bool) -> Result<Option<String>, String> {
+    if handle.is_null() {
+        return Ok(None);
+    }
+    let size = GlobalSize(handle);
+    if size == 0 {
+        return Ok(None);
+    }
+    let source = GlobalLock(handle);
+    if source.is_null() {
+        return Err("Failed to lock HGLOBAL text payload.".to_string());
+    }
+    let result = if unicode {
+        let len = size / std::mem::size_of::<u16>();
+        let wide = std::slice::from_raw_parts(source.cast::<u16>(), len);
+        let end = wide.iter().position(|value| *value == 0).unwrap_or(wide.len());
+        String::from_utf16(&wide[..end])
+            .map(Some)
+            .map_err(|error| format!("Failed to decode UTF-16 HGLOBAL payload: {error}"))
+    } else {
+        let bytes = std::slice::from_raw_parts(source.cast::<u8>(), size);
+        let end = bytes.iter().position(|value| *value == 0).unwrap_or(bytes.len());
+        String::from_utf8(bytes[..end].to_vec())
+            .map(Some)
+            .map_err(|error| format!("Failed to decode UTF-8 HGLOBAL payload: {error}"))
+    };
+    GlobalUnlock(handle);
+    result
 }
 
 unsafe extern "system" fn ole_object_do_verb(

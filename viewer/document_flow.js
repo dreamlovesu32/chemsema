@@ -64,13 +64,11 @@ export function createDocumentFlow(options) {
     await options.state.editorEngine.loadDocumentJson(JSON.stringify(documentData));
     await options.syncEngineToolState();
     await options.syncDocumentFromEngine();
-    options.state.runtimeViewBox = options.state.currentDocument?.document?.page
-      ? options.pageViewBox(options.state.currentDocument.document.page)
-      : options.defaultEditorViewBox();
+    options.state.runtimeViewBox = null;
     options.viewerTitle.textContent = options.state.currentDocument?.document?.title || fileName || "Untitled";
     updateDocumentMeta();
-    options.renderDocument();
     options.fitView();
+    options.renderDocument();
   }
 
   async function currentDocumentJsonForSave() {
@@ -396,13 +394,11 @@ export function createDocumentFlow(options) {
     await options.state.editorEngine.loadDocumentCdxml(cdxml);
     await options.syncEngineToolState();
     await options.syncDocumentFromEngine();
-    options.state.runtimeViewBox = options.state.currentDocument?.document?.page
-      ? options.pageViewBox(options.state.currentDocument.document.page)
-      : options.defaultEditorViewBox();
+    options.state.runtimeViewBox = null;
     options.viewerTitle.textContent = options.state.currentDocument?.document?.title || fileName || "Imported CDXML";
     updateDocumentMeta();
-    options.renderDocument();
     options.fitView();
+    options.renderDocument();
   }
 
   function isAbortError(error) {

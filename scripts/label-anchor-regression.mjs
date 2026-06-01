@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { chromium } from "playwright";
+import { launchBrowser } from "./playwright-browser.mjs";
 
 const url = process.argv[2] || "http://127.0.0.1:8765/viewer/";
 const outputDir = process.argv[3] || path.resolve("tmp/label-anchor-regression");
@@ -13,7 +13,7 @@ const CENTER_LABEL_MAX_DRIFT_CM = 0.06;
 
 fs.mkdirSync(outputDir, { recursive: true });
 
-const browser = await chromium.launch({ headless: true });
+const browser = await launchBrowser({ headless: true });
 const page = await browser.newPage({
   viewport: { width: 1400, height: 1000 },
   deviceScaleFactor: 1.25,

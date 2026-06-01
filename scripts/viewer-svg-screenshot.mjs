@@ -1,11 +1,11 @@
-import { chromium } from "playwright";
 import path from "node:path";
+import { launchBrowser } from "./playwright-browser.mjs";
 
 const url = process.argv[2] || "http://127.0.0.1:8765/viewer/";
 const output = process.argv[3] || path.resolve("tmp/viewer-svg.png");
 const sample = process.argv[4] || "";
 
-const browser = await chromium.launch({ headless: true });
+const browser = await launchBrowser({ headless: true });
 const page = await browser.newPage({
   viewport: { width: 1440, height: 1100 },
   deviceScaleFactor: 1.5,

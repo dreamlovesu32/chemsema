@@ -198,13 +198,10 @@ pub(super) fn expand_chemical_run(base: &LabelRun, text: &str) -> Vec<LabelRun> 
         {
             scripts[index] = "subscript";
         }
-        if matches!(character, '+' | '-') {
+        if is_charge_marker(&chars, index) {
             scripts[index] = "superscript";
             if index > 0 && chars[index - 1].is_ascii_digit() {
-                let previous_index = index - 1;
-                if previous_index > 0 && !chars[previous_index - 1].is_whitespace() {
-                    scripts[previous_index] = "superscript";
-                }
+                scripts[index - 1] = "superscript";
             }
         }
     }
@@ -230,4 +227,58 @@ pub(super) fn expand_chemical_run(base: &LabelRun, text: &str) -> Vec<LabelRun> 
         out.push(run);
     }
     out
+}
+
+fn is_charge_marker(chars: &[char], index: usize) -> bool {
+    if !matches!(chars.get(index), Some('+' | '-')) {
+        return false;
+    }
+    let previous = index.checked_sub(1).and_then(|offset| chars.get(offset));
+    if !matches!(
+        previous,
+        Some(character) if character.is_alphanumeric() || matches!(character, ')' | ']' | '}')
+    ) {
+        return false;
+    }
+    chars.get(index + 1).is_none()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn chemical_base() -> LabelRun {
+        LabelRun {
+            font_family: Some("Arial".to_string()),
+            font_size: Some(10.0),
+            fill: Some("#000000".to_string()),
+            font_weight: Some(400),
+            font_style: Some("normal".to_string()),
+            underline: Some(false),
+            script: Some("normal".to_string()),
+            ..LabelRun::default()
+        }
+    }
+
+    #[test]
+    fn expand_chemical_run_keeps_internal_hyphen_normal() {
+        let runs = expand_chemical_run(&chemical_base(), "t-Bu");
+        assert_eq!(
+            runs.iter()
+                .map(|run| (run.text.as_str(), run.script.as_deref()))
+                .collect::<Vec<_>>(),
+            vec![("t-Bu", Some("normal"))]
+        );
+    }
+
+    #[test]
+    fn expand_chemical_run_keeps_terminal_charge_superscript() {
+        let runs = expand_chemical_run(&chemical_base(), "Fe3+");
+        assert_eq!(
+            runs.iter()
+                .map(|run| (run.text.as_str(), run.script.as_deref()))
+                .collect::<Vec<_>>(),
+            vec![("Fe", Some("normal")), ("3+", Some("superscript"))]
+        );
+    }
 }

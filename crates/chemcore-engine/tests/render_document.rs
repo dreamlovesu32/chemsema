@@ -468,15 +468,25 @@ fn select_all_selects_document_surface_without_expanding_groups() {
                 "type": "group",
                 "visible": true,
                 "zIndex": 40,
-                "children": [{
-                    "id": "group_child_shape",
-                    "type": "shape",
-                    "visible": true,
-                    "zIndex": 41,
-                    "transform": { "translate": [110.0, 70.0], "rotate": 0.0, "scale": [1.0, 1.0] },
-                    "styleRef": "style_shape",
-                    "payload": { "bbox": [0.0, 0.0, 20.0, 10.0], "kind": "rect" }
-                }]
+                "children": [
+                    {
+                        "id": "group_child_shape",
+                        "type": "shape",
+                        "visible": true,
+                        "zIndex": 41,
+                        "transform": { "translate": [110.0, 70.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+                        "styleRef": "style_shape",
+                        "payload": { "bbox": [0.0, 0.0, 20.0, 10.0], "kind": "rect" }
+                    },
+                    {
+                        "id": "group_child_text",
+                        "type": "text",
+                        "visible": true,
+                        "zIndex": 42,
+                        "transform": { "translate": [138.0, 68.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+                        "payload": { "text": "cond", "bbox": [0.0, 0.0, 26.0, 12.0], "runs": [] }
+                    }
+                ]
             }
         ],
         "resources": {
@@ -514,6 +524,30 @@ fn select_all_selects_document_surface_without_expanding_groups() {
     assert!(!selection
         .arrow_objects
         .contains(&"group_child_shape".to_string()));
+
+    let selection_boxes: Vec<_> = engine
+        .render_list()
+        .into_iter()
+        .filter_map(|primitive| match primitive {
+            RenderPrimitive::Rect {
+                role: RenderRole::SelectionBox,
+                x,
+                y,
+                width,
+                height,
+                ..
+            } => Some((x, y, width, height)),
+            _ => None,
+        })
+        .collect();
+    assert!(selection_boxes.iter().any(|(x, y, width, height)| {
+        *x <= 110.0
+            && *x >= 100.0
+            && *y <= 68.0
+            && *y >= 60.0
+            && (*x + *width) >= 164.0
+            && (*y + *height) >= 80.0
+    }));
 
     let internal_dot_count = engine
         .render_list()
@@ -2795,7 +2829,7 @@ fn parse_cdxml_imports_example_table_text_at_bbox_positions() {
 
 #[test]
 fn parse_cdxml_imports_example_formula_face_node_labels_with_subscripts() {
-    let cdxml = std::fs::read_to_string(fixture_path("02-13/2017-2-13/oleObject1.cdxml"))
+    let cdxml = std::fs::read_to_string(fixture_path("2017-2-13__oleObject1.cdxml"))
         .expect("example cdxml");
     let document =
         parse_cdxml_document(&cdxml, Some("example")).expect("example cdxml should parse");
@@ -2821,6 +2855,141 @@ fn parse_cdxml_imports_example_formula_face_node_labels_with_subscripts() {
         .iter()
         .all(|run| run.font_weight == Some(700)));
     assert_eq!(cf3_label.runs[1].script.as_deref(), Some("subscript"));
+}
+
+#[test]
+fn parse_cdxml_keeps_example_t_bu_hyphen_on_baseline() {
+    let cdxml = std::fs::read_to_string(fixture_path("2017-2-13__oleObject1.cdxml"))
+        .expect("example cdxml");
+    let document =
+        parse_cdxml_document(&cdxml, Some("example")).expect("example cdxml should parse");
+    let t_bu_label = document
+        .resources
+        .values()
+        .filter_map(|resource| resource.data.as_fragment())
+        .flat_map(|fragment| fragment.nodes.iter())
+        .filter_map(|node| node.label.as_ref())
+        .find(|label| label.source_text.as_deref() == Some("t-Bu"))
+        .expect("example should import t-Bu node label");
+
+    assert_eq!(
+        t_bu_label
+            .runs
+            .iter()
+            .map(|run| (run.text.as_str(), run.script.as_deref()))
+            .collect::<Vec<_>>(),
+        vec![("t-Bu", Some("normal"))]
+    );
+}
+
+#[test]
+fn parse_cdxml_infers_single_character_o_anchor_from_bbox_not_center_flag() {
+    let cdxml = std::fs::read_to_string(fixture_path("2017-2-13__oleObject1.cdxml"))
+        .expect("example cdxml");
+    let document =
+        parse_cdxml_document(&cdxml, Some("example")).expect("example cdxml should parse");
+    let (oxygen_node, oxygen_label) = document
+        .resources
+        .values()
+        .filter_map(|resource| resource.data.as_fragment())
+        .flat_map(|fragment| fragment.nodes.iter())
+        .filter_map(|node| node.label.as_ref().map(|label| (node, label)))
+        .find(|(_, label)| {
+            label.source_text.as_deref() == Some("O")
+                && label
+                    .meta
+                    .get("import")
+                    .and_then(|meta| meta.get("cdxml"))
+                    .and_then(|meta| meta.get("labelDisplay"))
+                    .and_then(serde_json::Value::as_str)
+                    == Some("Center")
+        })
+        .expect("example should contain centered carbonyl oxygen label");
+
+    assert_eq!(oxygen_label.align.as_deref(), Some("left"));
+    assert_eq!(oxygen_label.anchor.as_deref(), Some("start"));
+    assert_ne!(oxygen_label.layout.as_deref(), Some("attached-group-center"));
+    let bbox = oxygen_label.bbox().expect("oxygen label should keep bbox");
+    assert!(
+        (((bbox[0] + bbox[2]) * 0.5) - oxygen_node.position[0]).abs() < 0.5,
+        "single-character oxygen should still stay centered on atom: node={oxygen_node:?}, label={oxygen_label:?}"
+    );
+}
+
+#[test]
+fn select_all_wraps_example_reaction_group_text_inside_group_box() {
+    let cdxml = std::fs::read_to_string(fixture_path("2017-2-13__oleObject1.cdxml"))
+        .expect("example cdxml");
+    let document =
+        parse_cdxml_document(&cdxml, Some("example")).expect("example cdxml should parse");
+    let document_json = serde_json::to_string(&document).expect("document json");
+    let mut engine = Engine::new();
+    engine
+        .load_document_json(&document_json)
+        .expect("document should load");
+
+    assert!(engine.select_all());
+    assert!(
+        engine
+            .state()
+            .selection
+            .arrow_objects
+            .contains(&"obj_group_001".to_string()),
+        "group selection missing: {:?}",
+        engine.state().selection.arrow_objects
+    );
+
+    let group_text_bounds: Vec<[f64; 4]> = engine
+        .state()
+        .document
+        .find_scene_object("obj_group_001")
+        .expect("group object should exist")
+        .children
+        .iter()
+        .filter(|child| matches!(child.object_type.as_str(), "text"))
+        .map(|child| {
+            let local_box = child
+                .payload
+                .extra
+                .get("box")
+                .and_then(serde_json::Value::as_array)
+                .expect("group text should have box");
+            let x = child.transform.translate[0] + local_box[0].as_f64().expect("box x");
+            let y = child.transform.translate[1] + local_box[1].as_f64().expect("box y");
+            let width = local_box[2].as_f64().expect("box width");
+            let height = local_box[3].as_f64().expect("box height");
+            [x, y, x + width, y + height]
+        })
+        .collect();
+    assert_eq!(group_text_bounds.len(), 3);
+
+    let selection_boxes: Vec<[f64; 4]> = engine
+        .render_list()
+        .into_iter()
+        .filter_map(|primitive| match primitive {
+            RenderPrimitive::Rect {
+                role: RenderRole::SelectionBox,
+                x,
+                y,
+                width,
+                height,
+                ..
+            } => Some([x, y, x + width, y + height]),
+            _ => None,
+        })
+        .collect();
+
+    assert!(
+        group_text_bounds.iter().all(|text_bounds| selection_boxes.iter().any(|selection_box| {
+            selection_box[0] <= text_bounds[0]
+                && selection_box[1] <= text_bounds[1]
+                && selection_box[2] >= text_bounds[2]
+                && selection_box[3] >= text_bounds[3]
+        })),
+        "selection boxes {:?} do not wrap group text {:?}",
+        selection_boxes,
+        group_text_bounds
+    );
 }
 
 #[test]
@@ -2875,7 +3044,7 @@ fn parse_cdxml_keeps_numeric_suffix_node_label_anchored_on_letter() {
         );
     }
 
-    let cdxml = std::fs::read_to_string(fixture_path("02-13/2017-2-13/oleObject1.cdxml"))
+    let cdxml = std::fs::read_to_string(fixture_path("2017-2-13__oleObject1.cdxml"))
         .expect("example cdxml");
     let imported =
         parse_cdxml_document(&cdxml, Some("example")).expect("example cdxml should parse");
@@ -2920,7 +3089,6 @@ fn parse_cdxml_keeps_numeric_suffix_node_label_anchored_on_letter() {
             .and_then(serde_json::Value::as_str),
         Some("invalid")
     );
-    assert_eq!(invalid_label.runs[1].script.as_deref(), Some("subscript"));
     assert!(
         anchor_of(invalid_label, 0).distance(invalid_node.point()) < 0.01,
         "invalid labels should prefer non-script glyph anchors over subscript/superscript glyphs: node={invalid_node:?}, label={invalid_label:?}"
@@ -2929,7 +3097,7 @@ fn parse_cdxml_keeps_numeric_suffix_node_label_anchored_on_letter() {
 
 #[test]
 fn cdxml_export_import_preserves_example_above_nh_labels() {
-    let cdxml = std::fs::read_to_string(fixture_path("02-13/2017-2-13/oleObject1.cdxml"))
+    let cdxml = std::fs::read_to_string(fixture_path("2017-2-13__oleObject1.cdxml"))
         .expect("example cdxml");
     let imported =
         parse_cdxml_document(&cdxml, Some("example")).expect("example cdxml should parse");

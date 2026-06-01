@@ -29,6 +29,40 @@ function safeStem(inputPath) {
   return path.basename(inputPath, path.extname(inputPath)).replace(/[<>:"/\\|?*\x00-\x1f]/g, "_");
 }
 
+function runPowershell(scriptPath, jobsPath) {
+  const candidates = [
+    "powershell.exe",
+    "C:\\Windows\\SysWOW64\\WindowsPowerShell\\v1.0\\powershell.exe",
+  ];
+  let lastResult = null;
+  for (const executable of candidates) {
+    const result = spawnSync(
+      executable,
+      ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", scriptPath, "-JobsPath", jobsPath],
+      { encoding: "utf8" }
+    );
+    if (result.stdout) {
+      process.stdout.write(result.stdout);
+    }
+    if (result.stderr) {
+      process.stderr.write(result.stderr);
+    }
+    if (result.status === 0) {
+      return result;
+    }
+    lastResult = result;
+    const combinedOutput = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+    const shouldFallback =
+      executable !== candidates[candidates.length - 1] &&
+      /0x80040112|Class is not licensed for use/i.test(combinedOutput);
+    if (!shouldFallback) {
+      return result;
+    }
+    console.warn(`[CHEMDRAW] ${executable} failed with COM license gating, retrying with 32-bit PowerShell.`);
+  }
+  return lastResult;
+}
+
 async function defaultInputs() {
   const candidates = [
     "tmp/color.cdxml",
@@ -118,17 +152,7 @@ finally {
     "utf8"
   );
 
-  const result = spawnSync(
-    "powershell.exe",
-    ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", scriptPath, "-JobsPath", jobsPath],
-    { encoding: "utf8" }
-  );
-  if (result.stdout) {
-    process.stdout.write(result.stdout);
-  }
-  if (result.stderr) {
-    process.stderr.write(result.stderr);
-  }
+  const result = runPowershell(scriptPath, jobsPath);
   if (result.status !== 0) {
     throw new Error(`ChemDraw oracle generation failed with exit code ${result.status}.`);
   }

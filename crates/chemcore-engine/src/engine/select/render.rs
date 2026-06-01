@@ -47,6 +47,9 @@ pub(super) fn scene_object_selection_bounds(
     document: &crate::ChemcoreDocument,
     object: &crate::SceneObject,
 ) -> Option<AxisBounds> {
+    if object.object_type == "text" {
+        return text_object_world_bounds(object).map(AxisBounds::from_array);
+    }
     if object.object_type == "shape" {
         return shape_object_visual_bounds(document, object)
             .map(AxisBounds::from_array)

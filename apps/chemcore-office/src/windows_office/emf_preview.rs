@@ -55,7 +55,14 @@ const PREVIEW_SOURCE_RIGHT_PADDING_PT: f64 = 0.0;
 const ENV_PREVIEW_SOURCE_RIGHT_PADDING_PT: &str = "CHEMCORE_PREVIEW_SOURCE_RIGHT_PADDING_PT";
 const ENV_PREVIEW_SOURCE_BOUNDS_SIDES: &str = "CHEMCORE_PREVIEW_SOURCE_BOUNDS_SIDES";
 const ENV_PREVIEW_SOURCE_BOUNDS_MODE: &str = "CHEMCORE_PREVIEW_SOURCE_BOUNDS_MODE";
+const ENV_PREVIEW_FRAME_BOUNDS_MODE: &str = "CHEMCORE_PREVIEW_FRAME_BOUNDS_MODE";
 const ENV_PREVIEW_FRAME_OFFSETS_SVG_PX: &str = "CHEMCORE_PREVIEW_FRAME_OFFSETS_SVG_PX";
+const DEFAULT_PREVIEW_FRAME_OFFSETS_SVG_PX: PreviewFrameOffsetsSvgPx = PreviewFrameOffsetsSvgPx {
+    left: 1.0,
+    top: 1.0,
+    right: 1.0,
+    bottom: -1.0,
+};
 
 #[derive(Clone, Copy, Debug)]
 enum PreviewSourceBoundsMode {
@@ -65,6 +72,14 @@ enum PreviewSourceBoundsMode {
     SvgPadRight,
     Union,
     UnionPadRight,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum PreviewFrameBoundsMode {
+    Source,
+    Visible,
+    MixedSourceBottom,
+    MixedVisibleBottom,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -286,6 +301,27 @@ pub(super) fn preview_source_bounds(payload: &OleObjectPayload) -> Option<[f64; 
     }
 }
 
+fn preview_frame_source_bounds(payload: &OleObjectPayload) -> Option<[f64; 4]> {
+    let visible = visible_payload_bounds(payload);
+    let source = preview_source_bounds(payload);
+    match preview_frame_bounds_mode() {
+        PreviewFrameBoundsMode::Source => source.or(visible),
+        PreviewFrameBoundsMode::Visible => visible.or(source),
+        PreviewFrameBoundsMode::MixedSourceBottom => match (visible, source) {
+            (Some(visible), Some(source)) => Some([visible[0], visible[1], source[2], source[3]]),
+            (Some(visible), None) => Some(visible),
+            (None, Some(source)) => Some(source),
+            (None, None) => None,
+        },
+        PreviewFrameBoundsMode::MixedVisibleBottom => match (visible, source) {
+            (Some(visible), Some(source)) => Some([visible[0], visible[1], source[2], visible[3]]),
+            (Some(visible), None) => Some(visible),
+            (None, Some(source)) => Some(source),
+            (None, None) => None,
+        },
+    }
+}
+
 pub(super) fn preview_bounds_debug_report(
     payload: &OleObjectPayload,
     extent: SIZE,
@@ -294,7 +330,9 @@ pub(super) fn preview_bounds_debug_report(
     let visible_bounds = visible_payload_bounds(payload);
     let svg_bounds = svg_viewbox_bounds(&payload.svg);
     let source_bounds = preview_source_bounds(payload);
+    let frame_source_bounds = preview_frame_source_bounds(payload);
     let source_bounds_mode = preview_source_bounds_mode();
+    let frame_bounds_mode = preview_frame_bounds_mode();
     let source_bounds_sides_override = std::env::var(ENV_PREVIEW_SOURCE_BOUNDS_SIDES).ok();
     let right_padding = std::env::var(ENV_PREVIEW_SOURCE_RIGHT_PADDING_PT)
         .ok()
@@ -302,10 +340,11 @@ pub(super) fn preview_bounds_debug_report(
         .unwrap_or(PREVIEW_SOURCE_RIGHT_PADDING_PT);
     let (frame_bounds, draw_bounds, use_logical_preview_coords) =
         if let Some(visible) = visible_bounds {
-            let canvas_bounds = source_bounds.unwrap_or(visible);
+            let draw_source_bounds = source_bounds.unwrap_or(visible);
+            let frame_source_bounds = frame_source_bounds.unwrap_or(draw_source_bounds);
             (
-                office_preview_frame_bounds(canvas_bounds, use_chemdraw_units),
-                office_preview_logical_bounds(canvas_bounds, use_chemdraw_units),
+                office_preview_frame_bounds(frame_source_bounds, use_chemdraw_units),
+                office_preview_logical_bounds(draw_source_bounds, use_chemdraw_units),
                 true,
             )
         } else {
@@ -320,6 +359,7 @@ pub(super) fn preview_bounds_debug_report(
     json!({
         "useCdxmlEditingScale": use_chemdraw_units,
         "sourceBoundsMode": format!("{source_bounds_mode:?}"),
+        "frameBoundsMode": format!("{frame_bounds_mode:?}"),
         "sourceBoundsSidesOverride": source_bounds_sides_override,
         "frameOffsetsSvgPx": preview_frame_offsets_svg_px().map(|offsets| json!({
             "left": offsets.left,
@@ -335,6 +375,7 @@ pub(super) fn preview_bounds_debug_report(
         "visibleBoundsSvgPx": visible_bounds,
         "svgViewBoxBoundsSvgPx": svg_bounds,
         "sourceBoundsSvgPx": source_bounds,
+        "frameSourceBoundsSvgPx": frame_source_bounds,
         "useLogicalPreviewCoords": use_logical_preview_coords,
         "frameBoundsHimetric": rect_debug_json(frame_bounds),
         "drawBoundsLogical": rect_debug_json(draw_bounds),
@@ -496,11 +537,13 @@ pub(super) fn enhanced_metafile_for_payload(
         let use_chemdraw_units = payload_uses_cdxml_editing_scale(payload);
         let (frame_bounds, draw_bounds, source_bounds, use_logical_preview_coords) =
             if let Some(visible_bounds) = visible_payload_bounds(payload) {
-                let canvas_bounds = preview_source_bounds(payload).unwrap_or(visible_bounds);
+                let draw_source_bounds = preview_source_bounds(payload).unwrap_or(visible_bounds);
+                let frame_source_bounds =
+                    preview_frame_source_bounds(payload).unwrap_or(draw_source_bounds);
                 (
-                    office_preview_frame_bounds(canvas_bounds, use_chemdraw_units),
-                    office_preview_logical_bounds(canvas_bounds, use_chemdraw_units),
-                    Some(canvas_bounds),
+                    office_preview_frame_bounds(frame_source_bounds, use_chemdraw_units),
+                    office_preview_logical_bounds(draw_source_bounds, use_chemdraw_units),
+                    Some(draw_source_bounds),
                     true,
                 )
             } else {
@@ -626,6 +669,23 @@ fn preview_source_bounds_mode() -> PreviewSourceBoundsMode {
     }
 }
 
+fn preview_frame_bounds_mode() -> PreviewFrameBoundsMode {
+    match std::env::var(ENV_PREVIEW_FRAME_BOUNDS_MODE)
+        .ok()
+        .map(|value| value.trim().to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("visible") => PreviewFrameBoundsMode::Visible,
+        Some("mixed") | Some("mixedsourcebottom") | Some("visible-source-bottom") => {
+            PreviewFrameBoundsMode::MixedSourceBottom
+        }
+        Some("mixed-tight-bottom") | Some("mixedvisiblebottom") | Some("visible-source-right") => {
+            PreviewFrameBoundsMode::MixedVisibleBottom
+        }
+        _ => PreviewFrameBoundsMode::Source,
+    }
+}
+
 fn preview_source_bounds_sides_override() -> Option<PreviewSourceBoundsSides> {
     let raw = std::env::var(ENV_PREVIEW_SOURCE_BOUNDS_SIDES).ok()?;
     let parts: Vec<&str> = raw
@@ -645,20 +705,37 @@ fn preview_source_bounds_sides_override() -> Option<PreviewSourceBoundsSides> {
 }
 
 fn preview_frame_offsets_svg_px() -> Option<PreviewFrameOffsetsSvgPx> {
-    let raw = std::env::var(ENV_PREVIEW_FRAME_OFFSETS_SVG_PX).ok()?;
+    let Some(raw) = std::env::var(ENV_PREVIEW_FRAME_OFFSETS_SVG_PX).ok() else {
+        return Some(DEFAULT_PREVIEW_FRAME_OFFSETS_SVG_PX);
+    };
+    if raw.trim().eq_ignore_ascii_case("none") {
+        return None;
+    }
     let parts: Vec<&str> = raw
         .split(',')
         .map(|part| part.trim())
         .filter(|part| !part.is_empty())
         .collect();
     let [left, top, right, bottom] = parts.as_slice() else {
-        return None;
+        return Some(DEFAULT_PREVIEW_FRAME_OFFSETS_SVG_PX);
     };
     Some(PreviewFrameOffsetsSvgPx {
-        left: left.parse::<f64>().ok()?,
-        top: top.parse::<f64>().ok()?,
-        right: right.parse::<f64>().ok()?,
-        bottom: bottom.parse::<f64>().ok()?,
+        left: left
+            .parse::<f64>()
+            .ok()
+            .unwrap_or(DEFAULT_PREVIEW_FRAME_OFFSETS_SVG_PX.left),
+        top: top
+            .parse::<f64>()
+            .ok()
+            .unwrap_or(DEFAULT_PREVIEW_FRAME_OFFSETS_SVG_PX.top),
+        right: right
+            .parse::<f64>()
+            .ok()
+            .unwrap_or(DEFAULT_PREVIEW_FRAME_OFFSETS_SVG_PX.right),
+        bottom: bottom
+            .parse::<f64>()
+            .ok()
+            .unwrap_or(DEFAULT_PREVIEW_FRAME_OFFSETS_SVG_PX.bottom),
     })
 }
 

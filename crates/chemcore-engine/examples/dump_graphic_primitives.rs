@@ -1,4 +1,6 @@
-use chemcore_engine::{parse_cdxml_document, parse_document_json, render_document, RenderPrimitive, RenderRole};
+use chemcore_engine::{
+    parse_cdxml_document, parse_document_json, render_document, RenderPrimitive, RenderRole,
+};
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 

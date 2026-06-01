@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { chromium } from "playwright";
 import init, { WasmEngine } from "../viewer/engine/chemcore_engine.js";
+import { launchBrowser } from "./playwright-browser.mjs";
 
 const CASES = [
   {
@@ -369,7 +369,7 @@ async function runCase(page, testCase) {
 
 await init(await fs.readFile(new URL("../viewer/engine/chemcore_engine_bg.wasm", import.meta.url)));
 
-const browser = await chromium.launch();
+const browser = await launchBrowser({ headless: true });
 const page = await browser.newPage();
 const reports = [];
 try {

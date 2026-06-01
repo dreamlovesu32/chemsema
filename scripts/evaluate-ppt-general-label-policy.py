@@ -49,7 +49,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--policy",
-        default="ppt-family-v1",
+        default="ppt-box-v1",
         help="Value for CHEMCORE_EMF_ATTACHED_LABEL_REPLAY_GENERAL_POLICY_EXPERIMENT.",
     )
     args = parser.parse_args()

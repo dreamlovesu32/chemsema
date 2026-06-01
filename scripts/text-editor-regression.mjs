@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import path from "node:path";
-import { chromium } from "playwright";
+import { launchBrowser } from "./playwright-browser.mjs";
 
 const url = process.argv[2] || "http://127.0.0.1:8765/viewer/";
 const output = process.argv[3] || path.resolve("tmp/text-editor-regression.png");
 const deviceScaleFactor = Number(process.env.DEVICE_SCALE_FACTOR || 1.25);
 
-const browser = await chromium.launch({ headless: true });
+const browser = await launchBrowser({ headless: true });
 const page = await browser.newPage({
   viewport: { width: 1600, height: 1200 },
   deviceScaleFactor,

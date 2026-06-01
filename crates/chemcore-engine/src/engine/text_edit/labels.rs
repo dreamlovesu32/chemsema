@@ -960,6 +960,31 @@ pub(super) fn is_attached_node_label(label: &crate::NodeLabel) -> bool {
         && label.anchor.as_deref() == Some("start")
 }
 
+fn is_cdxml_imported_right_aligned_attached_label(label: &crate::NodeLabel) -> bool {
+    label.attachment.as_deref() == Some("node")
+        && label.align.as_deref() == Some("right")
+        && label
+            .meta
+            .pointer("/import/cdxml/boundingBox")
+            .is_some()
+}
+
+fn is_cdxml_imported_single_character_centered_label(label: &crate::NodeLabel) -> bool {
+    label.attachment.as_deref() == Some("node")
+        && label.align.as_deref() == Some("center")
+        && label
+            .source_text
+            .as_deref()
+            .unwrap_or(label.text.as_str())
+            .chars()
+            .count()
+            == 1
+        && label
+            .meta
+            .pointer("/import/cdxml/boundingBox")
+            .is_some()
+}
+
 pub(super) fn refreshed_attached_node_label(
     fragment: &crate::MoleculeFragment,
     node_id: &str,
@@ -977,7 +1002,10 @@ pub(super) fn refreshed_attached_node_label(
     if is_generated_centered_label(label) {
         return Some(make_centered_node_label(&label.text, local_anchor));
     }
-    if !is_attached_node_label(label) {
+    if !is_attached_node_label(label)
+        && !is_cdxml_imported_right_aligned_attached_label(label)
+        && !is_cdxml_imported_single_character_centered_label(label)
+    {
         return None;
     }
     let source_runs = source_runs_from_node_label(label);

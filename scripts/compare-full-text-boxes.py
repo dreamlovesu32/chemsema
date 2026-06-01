@@ -40,6 +40,10 @@ def load_mask(path: Path, threshold: int) -> tuple[list[list[bool]], int, int]:
     return mask, width, height
 
 
+def crop_mask(mask: list[list[bool]], width: int, height: int) -> list[list[bool]]:
+    return [row[:width] for row in mask[:height]]
+
+
 def transform_point(point: tuple[float, float], transform: dict) -> tuple[float, float]:
     x, y = point
     sx, sy = transform.get("scale", [1.0, 1.0])
@@ -66,6 +70,11 @@ def transform_box(box: list[float], transform: dict) -> list[float]:
     xs = [p[0] for p in corners]
     ys = [p[1] for p in corners]
     return [min(xs), min(ys), max(xs), max(ys)]
+
+
+def transform_origin_size_box(box: list[float], transform: dict) -> list[float]:
+    x, y, width, height = box
+    return transform_box([x, y, x + width, y + height], transform)
 
 
 def project_box(
@@ -141,8 +150,6 @@ def main() -> None:
     role_report = load_json_any_encoding(Path(args.role_report_json))
     ours, width, height = load_mask(Path(args.ours_png), args.threshold)
     reference, ref_width, ref_height = load_mask(Path(args.reference_png), args.threshold)
-    if (width, height) != (ref_width, ref_height):
-        raise SystemExit("PNG sizes must match")
 
     visible = role_report["visibleBoundsNoKnockout"]
 
@@ -154,15 +161,21 @@ def main() -> None:
         local_box = payload.get("box")
         if not local_box:
             continue
-        world_box = transform_box(local_box, obj.get("transform", {}))
-        pixel_box = project_box(world_box, visible, width, height, args.pad_px)
+        world_box = transform_origin_size_box(local_box, obj.get("transform", {}))
+        ours_pixel_box = project_box(world_box, visible, width, height, args.pad_px)
+        ref_pixel_box = project_box(world_box, visible, ref_width, ref_height, args.pad_px)
         obox = [
-            max(0, pixel_box[0] + args.dx),
-            max(0, pixel_box[1] + args.dy),
-            min(width - 1, pixel_box[2] + args.dx),
-            min(height - 1, pixel_box[3] + args.dy),
+            max(0, ours_pixel_box[0] + args.dx),
+            max(0, ours_pixel_box[1] + args.dy),
+            min(width - 1, ours_pixel_box[2] + args.dx),
+            min(height - 1, ours_pixel_box[3] + args.dy),
         ]
-        rbox = pixel_box
+        rbox = [
+            max(0, ref_pixel_box[0]),
+            max(0, ref_pixel_box[1]),
+            min(ref_width - 1, ref_pixel_box[2]),
+            min(ref_height - 1, ref_pixel_box[3]),
+        ]
         ours_bbox = mask_bbox(ours, obox)
         ref_bbox = mask_bbox(reference, rbox)
         if ours_bbox is None or ref_bbox is None:
@@ -180,7 +193,8 @@ def main() -> None:
             "baselineOffset": payload.get("baselineOffset"),
             "fontSize": payload.get("fontSize"),
             "worldBox": world_box,
-            "pixelBox": pixel_box,
+            "oursPixelBox": ours_pixel_box,
+            "refPixelBox": ref_pixel_box,
             "oursLocalBbox": ours_bbox,
             "refLocalBbox": ref_bbox,
             "oursDims": ours_dims,

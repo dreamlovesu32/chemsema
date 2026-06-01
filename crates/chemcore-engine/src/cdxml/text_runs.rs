@@ -91,13 +91,10 @@ fn expand_cdxml_chemical_run(base: &LabelRun) -> Vec<LabelRun> {
         {
             scripts[index] = "subscript";
         }
-        if matches!(character, '+' | '-') {
+        if is_cdxml_charge_marker(&chars, index) {
             scripts[index] = "superscript";
             if index > 0 && chars[index - 1].is_ascii_digit() {
-                let previous_index = index - 1;
-                if previous_index > 0 && !chars[previous_index - 1].is_whitespace() {
-                    scripts[previous_index] = "superscript";
-                }
+                scripts[index - 1] = "superscript";
             }
         }
     }
@@ -123,4 +120,70 @@ fn expand_cdxml_chemical_run(base: &LabelRun) -> Vec<LabelRun> {
         out.push(run);
     }
     out
+}
+
+fn is_cdxml_charge_marker(chars: &[char], index: usize) -> bool {
+    if !matches!(chars.get(index), Some('+' | '-')) {
+        return false;
+    }
+    let previous = index.checked_sub(1).and_then(|offset| chars.get(offset));
+    let next = chars.get(index + 1);
+    if !matches!(
+        previous,
+        Some(character) if character.is_alphanumeric() || matches!(character, ')' | ']' | '}')
+    ) {
+        return false;
+    }
+    next.is_none()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn chemical_run(text: &str) -> LabelRun {
+        LabelRun {
+            text: text.to_string(),
+            script: Some("chemical".to_string()),
+            ..LabelRun::default()
+        }
+    }
+
+    #[test]
+    fn chemical_runs_keep_internal_hyphen_normal() {
+        let runs = expand_cdxml_chemical_run(&chemical_run("t-Bu"));
+        assert_eq!(
+            runs.iter()
+                .map(|run| (run.text.as_str(), run.script.as_deref()))
+                .collect::<Vec<_>>(),
+            vec![("t-Bu", Some("normal"))]
+        );
+    }
+
+    #[test]
+    fn chemical_runs_keep_terminal_charge_suffix_superscript() {
+        let runs = expand_cdxml_chemical_run(&chemical_run("Fe3+"));
+        assert_eq!(
+            runs.iter()
+                .map(|run| (run.text.as_str(), run.script.as_deref()))
+                .collect::<Vec<_>>(),
+            vec![("Fe", Some("normal")), ("3+", Some("superscript"))]
+        );
+    }
+
+    #[test]
+    fn chemical_runs_keep_mid_label_hyphen_normal_even_after_digits() {
+        let runs = expand_cdxml_chemical_run(&chemical_run("CH3-CH2"));
+        assert_eq!(
+            runs.iter()
+                .map(|run| (run.text.as_str(), run.script.as_deref()))
+                .collect::<Vec<_>>(),
+            vec![
+                ("CH", Some("normal")),
+                ("3", Some("subscript")),
+                ("-CH", Some("normal")),
+                ("2", Some("subscript"))
+            ]
+        );
+    }
 }

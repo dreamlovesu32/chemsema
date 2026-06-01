@@ -1323,8 +1323,8 @@ function fitZoomPercentForViewBox(viewBox) {
   return zoomStepAtOrBelow((scale / CSS_PX_PER_CM) * 100);
 }
 
-function editorCanvasViewBoxFromBounds(bounds) {
-  const metrics = editorViewportMetrics();
+function editorCanvasViewBoxFromBounds(bounds, scale = viewportScale()) {
+  const metrics = editorViewportMetrics(scale);
   return paddedViewBoxFromBounds(
     bounds,
     metrics.bufferX,
@@ -1595,6 +1595,16 @@ function currentDocumentHasSelectableContent() {
     return false;
   }
   return documentData.objects.some((object) => sceneObjectHasSelectableContent(object, documentData.resources));
+}
+
+function activeDocumentTabIsBlankUntitled() {
+  const tab = activeDocumentTab();
+  if (!tab) {
+    return false;
+  }
+  const title = documentTitleFromState();
+  const hasPath = Boolean(state.currentPath || state.currentFileName || state.currentFilePath);
+  return title === "Untitled" && !hasPath && !currentDocumentHasSelectableContent();
 }
 
 function collectSceneObjects(objects = [], out = new Map()) {
@@ -3239,18 +3249,24 @@ async function openDocumentPathInTab(path) {
   }
   await appRuntimeReady;
   await finishActiveTextEditor(true);
+  const reuseActiveTab = activeDocumentTabIsBlankUntitled();
   saveActiveDocumentTabState();
   const previousTabId = activeDocumentTabId;
-  const tab = createDocumentTab(fileNameFromPath(path) || "Loading...");
-  documentTabs.push(tab);
-  activeDocumentTabId = tab.id;
-  await restoreDocumentTabState(tab);
+  let tab = activeDocumentTab();
+  if (!reuseActiveTab) {
+    tab = createDocumentTab(fileNameFromPath(path) || "Loading...");
+    documentTabs.push(tab);
+    activeDocumentTabId = tab.id;
+    await restoreDocumentTabState(tab);
+  }
   try {
     await openDocumentPath(path);
     saveActiveDocumentTabState();
     renderDocumentTabs();
   } catch (error) {
-    await closeDocumentTab(tab.id);
+    if (!reuseActiveTab) {
+      await closeDocumentTab(tab.id);
+    }
     if (previousTabId && activeDocumentTabId !== previousTabId) {
       await activateDocumentTab(previousTabId);
     }
@@ -3267,18 +3283,24 @@ async function openDocumentFileInTab(file) {
   }
   await appRuntimeReady;
   await finishActiveTextEditor(true);
+  const reuseActiveTab = activeDocumentTabIsBlankUntitled();
   saveActiveDocumentTabState();
   const previousTabId = activeDocumentTabId;
-  const tab = createDocumentTab(file.name || "Loading...");
-  documentTabs.push(tab);
-  activeDocumentTabId = tab.id;
-  await restoreDocumentTabState(tab);
+  let tab = activeDocumentTab();
+  if (!reuseActiveTab) {
+    tab = createDocumentTab(file.name || "Loading...");
+    documentTabs.push(tab);
+    activeDocumentTabId = tab.id;
+    await restoreDocumentTabState(tab);
+  }
   try {
     await openDocumentFile(file);
     saveActiveDocumentTabState();
     renderDocumentTabs();
   } catch (error) {
-    await closeDocumentTab(tab.id);
+    if (!reuseActiveTab) {
+      await closeDocumentTab(tab.id);
+    }
     if (previousTabId && activeDocumentTabId !== previousTabId) {
       await activateDocumentTab(previousTabId);
     }
@@ -4339,12 +4361,14 @@ function renderEditorOverlay(renderList = null) {
       if (!className) {
         continue;
       }
+      const selectionRole = primitive.role?.startsWith("selection-");
       overlay.appendChild(makeSvgNode("rect", {
         x: primitive.x,
         y: primitive.y,
         width: primitive.width,
         height: primitive.height,
         class: className,
+        fill: selectionRole ? "none" : undefined,
         "data-role": primitive.role,
       }));
     } else if (primitive.kind === "circle" && primitive.center) {
@@ -4525,6 +4549,84 @@ function buildRenderList(documentData) {
   });
 }
 
+function shouldRenderSceneObject(object) {
+  if (!object.visible) {
+    return false;
+  }
+  if (object.type === "molecule" && toggleMolecules && !toggleMolecules.checked) {
+    return false;
+  }
+  if (object.type === "line" && toggleLines && !toggleLines.checked) {
+    return false;
+  }
+  if (object.type === "text" && toggleTexts && !toggleTexts.checked) {
+    return false;
+  }
+  if (LABEL_DEBUG_MODE && object.type !== "molecule" && object.type !== "group") {
+    return false;
+  }
+  return true;
+}
+
+function sortedSceneChildren(children = []) {
+  return [...children].sort((a, b) => {
+    if (a.zIndex !== b.zIndex) {
+      return a.zIndex - b.zIndex;
+    }
+    return a.id.localeCompare(b.id);
+  });
+}
+
+function renderSceneObject(parentLayer, object, documentData) {
+  if (!shouldRenderSceneObject(object)) {
+    return;
+  }
+
+  const objectLayer = makeSvgNode("g", {
+    "data-object-id": object.id,
+    "data-object-type": object.type,
+  });
+
+  if (object.type === "group") {
+    for (const child of sortedSceneChildren(object.children || [])) {
+      renderSceneObject(objectLayer, child, documentData);
+    }
+  } else if (object.type === "molecule") {
+    const corePrimitives = corePrimitivesForObject(object.id);
+    if (corePrimitives.length) {
+      corePrimitives.forEach((primitive) => renderCorePrimitive(objectLayer, primitive, corePrimitiveRenderOptions()));
+    }
+  } else if (object.type === "shape") {
+    const corePrimitives = corePrimitivesForObject(object.id);
+    if (corePrimitives.length) {
+      corePrimitives.forEach((primitive) => renderCorePrimitive(objectLayer, primitive, corePrimitiveRenderOptions()));
+    } else {
+      renderShapeObject(objectLayer, object, documentData.styles);
+    }
+  } else if (object.type === "line") {
+    const corePrimitives = corePrimitivesForObject(object.id);
+    if (corePrimitives.length) {
+      corePrimitives.forEach((primitive) => renderCorePrimitive(objectLayer, primitive, corePrimitiveRenderOptions()));
+    } else {
+      renderLineObject(objectLayer, object, documentData.styles);
+    }
+  } else if (object.type === "text") {
+    const corePrimitives = corePrimitivesForObject(object.id);
+    if (corePrimitives.length) {
+      corePrimitives.forEach((primitive) => renderCorePrimitive(objectLayer, primitive, corePrimitiveRenderOptions()));
+    } else {
+      renderTextObject(objectLayer, object);
+    }
+  } else if (object.type === "bracket" || object.type === "symbol") {
+    const corePrimitives = corePrimitivesForObject(object.id);
+    corePrimitives.forEach((primitive) => renderCorePrimitive(objectLayer, primitive, corePrimitiveRenderOptions()));
+  }
+
+  if (objectLayer.childNodes.length) {
+    parentLayer.appendChild(objectLayer);
+  }
+}
+
 function renderDocument() {
   const documentData = state.currentDocument;
   if (!documentData) {
@@ -4554,60 +4656,7 @@ function renderDocument() {
   const visibleObjects = buildRenderList(documentData);
 
   for (const object of visibleObjects) {
-    if (!object.visible) {
-      continue;
-    }
-    if (object.type === "molecule" && toggleMolecules && !toggleMolecules.checked) {
-      continue;
-    }
-    if (object.type === "line" && toggleLines && !toggleLines.checked) {
-      continue;
-    }
-    if (object.type === "text" && toggleTexts && !toggleTexts.checked) {
-      continue;
-    }
-    if (LABEL_DEBUG_MODE && object.type !== "molecule") {
-      continue;
-    }
-
-    const objectLayer = makeSvgNode("g", {
-      "data-object-id": object.id,
-      "data-object-type": object.type,
-    });
-
-    if (object.type === "molecule") {
-      const corePrimitives = corePrimitivesForObject(object.id);
-      if (corePrimitives.length) {
-        corePrimitives.forEach((primitive) => renderCorePrimitive(objectLayer, primitive, corePrimitiveRenderOptions()));
-      }
-    } else if (object.type === "shape") {
-      const corePrimitives = corePrimitivesForObject(object.id);
-      if (corePrimitives.length) {
-        corePrimitives.forEach((primitive) => renderCorePrimitive(objectLayer, primitive, corePrimitiveRenderOptions()));
-      } else {
-        renderShapeObject(objectLayer, object, documentData.styles);
-      }
-    } else if (object.type === "line") {
-      const corePrimitives = corePrimitivesForObject(object.id);
-      if (corePrimitives.length) {
-        corePrimitives.forEach((primitive) => renderCorePrimitive(objectLayer, primitive, corePrimitiveRenderOptions()));
-      } else {
-        renderLineObject(objectLayer, object, state.currentDocument.styles);
-      }
-    } else if (object.type === "text") {
-      const corePrimitives = corePrimitivesForObject(object.id);
-      if (corePrimitives.length) {
-        corePrimitives.forEach((primitive) => renderCorePrimitive(objectLayer, primitive, corePrimitiveRenderOptions()));
-      } else {
-        renderTextObject(objectLayer, object);
-      }
-    } else if (object.type === "bracket" || object.type === "symbol") {
-      const corePrimitives = corePrimitivesForObject(object.id);
-      corePrimitives.forEach((primitive) => renderCorePrimitive(objectLayer, primitive, corePrimitiveRenderOptions()));
-    }
-    if (objectLayer.childNodes.length) {
-      documentLayer.appendChild(objectLayer);
-    }
+    renderSceneObject(documentLayer, object, documentData);
   }
 
   const counts = {};
@@ -4638,10 +4687,23 @@ function fitView() {
       applyViewerViewport({ centerWorld: { x: 0, y: 0 } });
       return;
     }
-    const metrics = editorViewportMetrics();
-    nextViewBox = editorCanvasViewBoxFromBounds(bounds);
-    fitTargetBox = paddedViewBoxFromBounds(bounds, metrics.fitPaddingX, metrics.fitPaddingY);
-    zoomPercent = fitZoomPercentForViewBox(fitTargetBox);
+    let targetZoom = zoomPercent;
+    let targetScale = viewportScaleForZoom(targetZoom);
+    let metrics = editorViewportMetrics(targetScale);
+    for (let index = 0; index < 3; index += 1) {
+      const candidateFitBox = paddedViewBoxFromBounds(bounds, metrics.fitPaddingX, metrics.fitPaddingY);
+      const nextZoom = fitZoomPercentForViewBox(candidateFitBox);
+      if (nextZoom === targetZoom && index > 0) {
+        fitTargetBox = candidateFitBox;
+        break;
+      }
+      targetZoom = nextZoom;
+      targetScale = viewportScaleForZoom(targetZoom);
+      metrics = editorViewportMetrics(targetScale);
+      fitTargetBox = paddedViewBoxFromBounds(bounds, metrics.fitPaddingX, metrics.fitPaddingY);
+    }
+    nextViewBox = editorCanvasViewBoxFromBounds(bounds, targetScale);
+    zoomPercent = targetZoom;
   } else {
     nextViewBox = pageViewBox(state.currentDocument.document.page);
     zoomPercent = fitZoomPercentForViewBox(nextViewBox);
