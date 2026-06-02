@@ -42,6 +42,7 @@ import {
   makeSvgNode,
   normalizeDisplayColor,
 } from "./render_support.js";
+import { createSceneRenderer } from "./scene_renderer.js";
 import {
   editorScriptScale as computeEditorScriptScale,
   estimateTextRunsWidth as computeEstimateTextRunsWidth,
@@ -63,11 +64,6 @@ import {
   createTextSymbolPalette,
   loadTextSymbolCatalog,
 } from "./text_symbol_palette.js";
-import {
-  renderLineObject,
-  renderShapeObject,
-  renderTextObject,
-} from "./object_fallbacks.js";
 import {
   primitiveStrokeWidthValue,
   renderCorePrimitive,
@@ -115,7 +111,6 @@ const state = {
   displayMetrics: displayMetrics(),
   pendingTextSymbol: null,
 };
-const legacyFallbackWarnings = new Set();
 const engineHost = createEngineHost();
 const desktopFileHost = createDesktopFileHost();
 const colorHost = createColorHost();
@@ -1477,46 +1472,15 @@ function corePrimitivesForObject(objectId) {
   return primitivesForObject(state.coreRenderList, objectId);
 }
 
-function documentUsesCorePrimitivePipeline(documentData) {
-  return Boolean(documentData && state.coreRenderList && state.coreRenderList.length);
-}
-
-function warnUnexpectedLegacyFallback(object, documentData) {
-  if (!documentUsesCorePrimitivePipeline(documentData)) {
-    return;
-  }
-  const kind = object?.payload?.kind || object?.type || "object";
-  const key = `${object?.id || "unknown"}:${kind}`;
-  if (legacyFallbackWarnings.has(key)) {
-    return;
-  }
-  legacyFallbackWarnings.add(key);
-  console.warn("[chemcore] unexpected legacy fallback render", {
-    id: object?.id || null,
-    type: object?.type || null,
-    kind,
-    meta: object?.meta || null,
-  });
-}
-
-function renderObjectCorePrimitives(objectLayer, objectId) {
-  const corePrimitives = corePrimitivesForObject(objectId);
-  if (!corePrimitives.length) {
-    return false;
-  }
-  objectLayer.setAttribute("data-renderer", "core");
-  corePrimitives.forEach((primitive) => renderCorePrimitive(objectLayer, primitive, corePrimitiveRenderOptions()));
-  return true;
-}
-
-function renderObjectWithCoreFallback(objectLayer, object, documentData, fallbackRenderer) {
-  if (renderObjectCorePrimitives(objectLayer, object.id)) {
-    return;
-  }
-  objectLayer.setAttribute("data-renderer", "fallback");
-  warnUnexpectedLegacyFallback(object, documentData);
-  fallbackRenderer();
-}
+const sceneRenderer = createSceneRenderer({
+  labelDebugMode: LABEL_DEBUG_MODE,
+  toggleMolecules: () => !(toggleMolecules && !toggleMolecules.checked),
+  toggleLines: () => !(toggleLines && !toggleLines.checked),
+  toggleTexts: () => !(toggleTexts && !toggleTexts.checked),
+  hasCoreRenderList: () => Boolean(state.coreRenderList?.length),
+  corePrimitivesForObject,
+  corePrimitiveRenderOptions,
+});
 
 function activeEndpointEditorNodeId() {
   return activeTextEditor?.session?.target?.kind === "endpoint-label"
@@ -4912,80 +4876,6 @@ window.addEventListener("resize", () => {
   applyViewerViewport({ centerWorld });
 });
 
-function buildRenderList(documentData) {
-  return [...documentData.objects].sort((a, b) => {
-    if (a.zIndex !== b.zIndex) {
-      return a.zIndex - b.zIndex;
-    }
-    return a.id.localeCompare(b.id);
-  });
-}
-
-function shouldRenderSceneObject(object) {
-  if (!object.visible) {
-    return false;
-  }
-  if (object.type === "molecule" && toggleMolecules && !toggleMolecules.checked) {
-    return false;
-  }
-  if (object.type === "line" && toggleLines && !toggleLines.checked) {
-    return false;
-  }
-  if (object.type === "text" && toggleTexts && !toggleTexts.checked) {
-    return false;
-  }
-  if (LABEL_DEBUG_MODE && object.type !== "molecule" && object.type !== "group") {
-    return false;
-  }
-  return true;
-}
-
-function sortedSceneChildren(children = []) {
-  return [...children].sort((a, b) => {
-    if (a.zIndex !== b.zIndex) {
-      return a.zIndex - b.zIndex;
-    }
-    return a.id.localeCompare(b.id);
-  });
-}
-
-function renderSceneObject(parentLayer, object, documentData) {
-  if (!shouldRenderSceneObject(object)) {
-    return;
-  }
-
-  const objectLayer = makeSvgNode("g", {
-    "data-object-id": object.id,
-    "data-object-type": object.type,
-  });
-
-  if (object.type === "group") {
-    for (const child of sortedSceneChildren(object.children || [])) {
-      renderSceneObject(objectLayer, child, documentData);
-    }
-  } else if (object.type === "molecule") {
-    renderObjectCorePrimitives(objectLayer, object.id);
-  } else if (object.type === "shape") {
-    renderObjectWithCoreFallback(objectLayer, object, documentData, () => {
-      renderShapeObject(objectLayer, object, documentData.styles);
-    });
-  } else if (object.type === "line") {
-    renderObjectWithCoreFallback(objectLayer, object, documentData, () => {
-      renderLineObject(objectLayer, object, documentData.styles);
-    });
-  } else if (object.type === "text") {
-    renderObjectWithCoreFallback(objectLayer, object, documentData, () => {
-      renderTextObject(objectLayer, object);
-    });
-  } else if (object.type === "bracket" || object.type === "symbol") {
-    renderObjectCorePrimitives(objectLayer, object.id);
-  }
-
-  if (objectLayer.childNodes.length) {
-    parentLayer.appendChild(objectLayer);
-  }
-}
-
 function renderDocument() {
   const documentData = state.currentDocument;
   if (!documentData) {
@@ -5012,10 +4902,10 @@ function renderDocument() {
   const documentLayer = makeSvgNode("g", { "data-layer": "document-content" });
   viewerSvg.appendChild(documentLayer);
 
-  const visibleObjects = buildRenderList(documentData);
+  const visibleObjects = sceneRenderer.buildRenderList(documentData);
 
   for (const object of visibleObjects) {
-    renderSceneObject(documentLayer, object, documentData);
+    sceneRenderer.renderSceneObject(documentLayer, object, documentData);
   }
 
   const counts = {};
