@@ -1,8 +1,7 @@
 use chemcore_engine::{
     angular_distance, document_to_cdxml, document_to_svg, hit_test_bond_center,
     parse_cdxml_document, parse_document_json, render_document, render_primitives_bounds,
-    BondAnchor, ChemcoreDocument, Engine, Point, RenderPrimitive, RenderRole, ResourceData,
-    Vector,
+    BondAnchor, ChemcoreDocument, Engine, Point, RenderPrimitive, RenderRole, ResourceData, Vector,
 };
 use serde_json::json;
 use serde_json::Map;
@@ -2843,19 +2842,27 @@ fn parse_cdxml_imports_example_formula_face_node_labels_with_subscripts() {
         .find(|label| label.source_text.as_deref() == Some("CF3"))
         .expect("example should import CF3 node label");
 
+    assert_eq!(cf3_label.text, "F3C");
     assert_eq!(
         cf3_label
             .runs
             .iter()
             .map(|run| run.text.as_str())
             .collect::<Vec<_>>(),
-        vec!["CF", "3"]
+        vec!["F", "3", "C"]
     );
     assert!(cf3_label
         .runs
         .iter()
         .all(|run| run.font_weight == Some(700)));
     assert_eq!(cf3_label.runs[1].script.as_deref(), Some("subscript"));
+    assert_eq!(
+        cf3_label
+            .meta
+            .pointer("/sourceRuns/0/text")
+            .and_then(serde_json::Value::as_str),
+        Some("CF3")
+    );
 }
 
 #[test]
@@ -2909,7 +2916,10 @@ fn parse_cdxml_infers_single_character_o_anchor_from_bbox_not_center_flag() {
 
     assert_eq!(oxygen_label.align.as_deref(), Some("left"));
     assert_eq!(oxygen_label.anchor.as_deref(), Some("start"));
-    assert_ne!(oxygen_label.layout.as_deref(), Some("attached-group-center"));
+    assert_ne!(
+        oxygen_label.layout.as_deref(),
+        Some("attached-group-center")
+    );
     let bbox = oxygen_label.bbox().expect("oxygen label should keep bbox");
     assert!(
         (((bbox[0] + bbox[2]) * 0.5) - oxygen_node.position[0]).abs() < 0.5,
@@ -2981,12 +2991,14 @@ fn select_all_wraps_example_reaction_group_text_inside_group_box() {
         .collect();
 
     assert!(
-        group_text_bounds.iter().all(|text_bounds| selection_boxes.iter().any(|selection_box| {
-            selection_box[0] <= text_bounds[0]
-                && selection_box[1] <= text_bounds[1]
-                && selection_box[2] >= text_bounds[2]
-                && selection_box[3] >= text_bounds[3]
-        })),
+        group_text_bounds
+            .iter()
+            .all(|text_bounds| selection_boxes.iter().any(|selection_box| {
+                selection_box[0] <= text_bounds[0]
+                    && selection_box[1] <= text_bounds[1]
+                    && selection_box[2] >= text_bounds[2]
+                    && selection_box[3] >= text_bounds[3]
+            })),
         "selection boxes {:?} do not wrap group text {:?}",
         selection_boxes,
         group_text_bounds
@@ -3029,7 +3041,9 @@ fn adding_bond_to_imported_cdxml_keeps_fragment_bbox_tight() {
         let anchor_node = fragment
             .nodes
             .iter()
-            .find(|node| node.position[0] < 10.0 && node.position[1] > 80.0 && node.position[1] < 100.0)
+            .find(|node| {
+                node.position[0] < 10.0 && node.position[1] > 80.0 && node.position[1] < 100.0
+            })
             .expect("fixture should contain a left-edge anchor node");
         let anchor_world = Point::new(
             molecule.transform.translate[0] + anchor_node.position[0],
@@ -3077,7 +3091,10 @@ fn adding_bond_to_imported_cdxml_keeps_fragment_bbox_tight() {
         panic!("resource should remain a fragment");
     };
     let after_bbox = fragment.bbox;
-    let object_bbox = molecule.payload.bbox.expect("molecule object should keep bbox");
+    let object_bbox = molecule
+        .payload
+        .bbox
+        .expect("molecule object should keep bbox");
 
     assert_eq!(object_bbox, after_bbox);
     assert!(
@@ -3151,7 +3168,10 @@ fn adding_isolated_bond_to_imported_cdxml_keeps_existing_label_geometry_stable()
             .iter()
             .find(|node| node.id == node_id)
             .expect("fixture node should still exist");
-        let label = node.label.as_ref().expect("fixture node should still keep label");
+        let label = node
+            .label
+            .as_ref()
+            .expect("fixture node should still keep label");
         assert_eq!(
             label.position.expect("label position"),
             expected_position,
@@ -3915,6 +3935,47 @@ fn parse_cdxml_attached_atom_label_preserves_source_bbox_size() {
     assert!(
         !label.glyph_polygons.is_empty(),
         "refresh should still populate glyph polygons for clipping"
+    );
+}
+
+#[test]
+fn parse_cdxml_right_aligned_chemical_node_label_reverses_display_groups() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >
+<CDXML BondLength="14.40" LineWidth="0.99" BoldWidth="2.01" HashSpacing="2.49" BondSpacing="18" LabelSize="10">
+  <page id="p1" BoundingBox="0 0 44 24">
+    <fragment id="f1" BoundingBox="0 0 44 24">
+      <n id="n1" p="22 12" Element="6">
+        <t p="22.00 15.90" BoundingBox="10.00 7.56 22.00 15.90" LabelJustification="Right">
+          <s font="3" size="10" color="0" face="96">CN</s>
+        </t>
+      </n>
+      <n id="n2" p="34 12"/>
+      <b id="b1" B="n1" E="n2"/>
+    </fragment>
+  </page>
+</CDXML>"#;
+    let document =
+        parse_cdxml_document(cdxml, Some("right aligned label")).expect("cdxml should parse");
+    let label = document
+        .resources
+        .values()
+        .find_map(|resource| resource.data.as_fragment())
+        .and_then(|fragment| fragment.nodes.iter().find(|node| node.id == "n1"))
+        .and_then(|node| node.label.as_ref())
+        .expect("CN label should import");
+
+    assert_eq!(label.align.as_deref(), Some("right"));
+    assert_eq!(label.source_text.as_deref(), Some("CN"));
+    assert_eq!(label.text, "NC");
+    let display_text: String = label.runs.iter().map(|run| run.text.as_str()).collect();
+    assert_eq!(display_text, "NC");
+    assert_eq!(
+        label
+            .meta
+            .pointer("/sourceRuns/0/text")
+            .and_then(serde_json::Value::as_str),
+        Some("CN")
     );
 }
 

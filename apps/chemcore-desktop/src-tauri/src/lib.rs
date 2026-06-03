@@ -1399,7 +1399,6 @@ fn native_clipboard_write(
                 FORMAT_CHEMCORE_DOCUMENT_JSON,
                 payload.chemcore_document_json.as_deref(),
             ),
-            (FORMAT_CHEMDRAW_INTERCHANGE, payload.cdxml.as_deref()),
             (FORMAT_CDXML_MIME, payload.cdxml.as_deref()),
             (FORMAT_SVG_MIME, payload.svg.as_deref()),
             (FORMAT_SVG, payload.svg.as_deref()),

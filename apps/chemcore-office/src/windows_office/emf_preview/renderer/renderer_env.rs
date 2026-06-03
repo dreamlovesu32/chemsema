@@ -65,8 +65,8 @@ pub(super) enum PreviewPackagedNodeLabelLayoutMode {
     SimplePayloadBox,
 }
 
-pub(super) fn preview_packaged_node_label_layout_mode(
-) -> Option<PreviewPackagedNodeLabelLayoutMode> {
+pub(super) fn preview_packaged_node_label_layout_mode() -> Option<PreviewPackagedNodeLabelLayoutMode>
+{
     let raw = std::env::var_os(ENV_PACKAGED_NODE_LABEL_LAYOUT_EXPERIMENT)?;
     let value = raw.to_string_lossy();
     match value.trim().to_ascii_lowercase().as_str() {
@@ -126,20 +126,23 @@ pub(super) fn preview_bond_pen_conversion_allowed(
         PreviewBondPenConversionMode::LabeledOnly => {
             bond_info.is_some_and(|info| info.start_has_label || info.end_has_label)
         }
-        PreviewBondPenConversionMode::LabeledOrCenterDouble => bond_info.is_some_and(|info| {
-            info.start_has_label || info.end_has_label || info.center_double
-        }),
-        PreviewBondPenConversionMode::NoSideDouble => bond_info.is_some_and(|info| !info.side_double),
-        PreviewBondPenConversionMode::LabeledOrNonSideDouble => bond_info.is_some_and(|info| {
-            info.start_has_label || info.end_has_label || !info.side_double
-        }),
+        PreviewBondPenConversionMode::LabeledOrCenterDouble => bond_info
+            .is_some_and(|info| info.start_has_label || info.end_has_label || info.center_double),
+        PreviewBondPenConversionMode::NoSideDouble => {
+            bond_info.is_some_and(|info| !info.side_double)
+        }
+        PreviewBondPenConversionMode::LabeledOrNonSideDouble => bond_info
+            .is_some_and(|info| info.start_has_label || info.end_has_label || !info.side_double),
         PreviewBondPenConversionMode::LabeledComplex => bond_info.is_some_and(|info| {
             (info.start_has_label || info.end_has_label)
                 && (info.both_junction || info.side_double || info.center_double)
         }),
-        PreviewBondPenConversionMode::LabeledOrder2OrBothJunction => bond_info.is_some_and(|info| {
-            (info.start_has_label || info.end_has_label) && (info.order >= 2 || info.both_junction)
-        }),
+        PreviewBondPenConversionMode::LabeledOrder2OrBothJunction => {
+            bond_info.is_some_and(|info| {
+                (info.start_has_label || info.end_has_label)
+                    && (info.order >= 2 || info.both_junction)
+            })
+        }
     }
 }
 
@@ -151,7 +154,11 @@ pub(super) fn preview_env_object_id_filter() -> Option<std::collections::BTreeSe
         .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned)
         .collect::<std::collections::BTreeSet<_>>();
-    if ids.is_empty() { None } else { Some(ids) }
+    if ids.is_empty() {
+        None
+    } else {
+        Some(ids)
+    }
 }
 
 pub(super) fn preview_env_node_id_filter() -> Option<std::collections::BTreeSet<String>> {
@@ -162,7 +169,11 @@ pub(super) fn preview_env_node_id_filter() -> Option<std::collections::BTreeSet<
         .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned)
         .collect::<std::collections::BTreeSet<_>>();
-    if ids.is_empty() { None } else { Some(ids) }
+    if ids.is_empty() {
+        None
+    } else {
+        Some(ids)
+    }
 }
 
 pub(super) fn preview_primitive_object_id(primitive: &RenderPrimitive) -> Option<&str> {

@@ -25,6 +25,7 @@
     "office:register-dev": "cargo run -p chemcore-office -- --register-user",
     "office:serve": "cargo run -p chemcore-office -- --serve",
     "office:self-test": "cargo run -p chemcore-office -- --self-test",
+    "office:validate-clipboard": "powershell -ExecutionPolicy Bypass -File scripts/validate-word-clipboard-paste.ps1",
     "office:unregister-dev": "cargo run -p chemcore-office -- --unregister-user",
     "office:validate-roundtrip": "powershell -ExecutionPolicy Bypass -File scripts/validate-word-ole-roundtrip.ps1",
     "audit:core-render-coverage": "node scripts/audit-core-render-coverage.mjs",

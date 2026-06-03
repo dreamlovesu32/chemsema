@@ -993,15 +993,11 @@ pub(super) fn is_attached_node_label(label: &crate::NodeLabel) -> bool {
 fn is_cdxml_imported_right_aligned_attached_label(label: &crate::NodeLabel) -> bool {
     label.attachment.as_deref() == Some("node")
         && label.align.as_deref() == Some("right")
-        && label
-            .meta
-            .pointer("/import/cdxml/boundingBox")
-            .is_some()
+        && label.meta.pointer("/import/cdxml/boundingBox").is_some()
 }
 
 fn is_cdxml_imported_single_character_centered_label(label: &crate::NodeLabel) -> bool {
-    label.attachment.as_deref() == Some("node")
-        && label.align.as_deref() == Some("center")
+    is_cdxml_imported_centered_attached_label(label)
         && label
             .source_text
             .as_deref()
@@ -1009,10 +1005,12 @@ fn is_cdxml_imported_single_character_centered_label(label: &crate::NodeLabel) -
             .chars()
             .count()
             == 1
-        && label
-            .meta
-            .pointer("/import/cdxml/boundingBox")
-            .is_some()
+}
+
+fn is_cdxml_imported_centered_attached_label(label: &crate::NodeLabel) -> bool {
+    label.attachment.as_deref() == Some("node")
+        && label.align.as_deref() == Some("center")
+        && label.meta.pointer("/import/cdxml/boundingBox").is_some()
 }
 
 fn cdxml_imported_label_alignment_is_horizontal_only(label: &crate::NodeLabel) -> bool {
@@ -1029,14 +1027,8 @@ fn cdxml_imported_label_alignment_is_horizontal_only(label: &crate::NodeLabel) -
 fn imported_cdxml_label_geometry_is_authoritative(label: &crate::NodeLabel) -> bool {
     label.attachment.as_deref() == Some("node")
         && cdxml_imported_label_alignment_is_horizontal_only(label)
-        && label
-            .meta
-            .pointer("/import/cdxml/boundingBox")
-            .is_some()
-        && label
-            .meta
-            .pointer("/import/cdxml/textPosition")
-            .is_some()
+        && label.meta.pointer("/import/cdxml/boundingBox").is_some()
+        && label.meta.pointer("/import/cdxml/textPosition").is_some()
 }
 
 fn cdxml_imported_label_flow_override(label: &crate::NodeLabel) -> Option<LabelFlow> {
@@ -1051,6 +1043,64 @@ fn cdxml_imported_label_flow_override(label: &crate::NodeLabel) -> Option<LabelF
     }
 }
 
+fn refreshed_authoritative_imported_label_display(
+    label: &crate::NodeLabel,
+    source_text: &str,
+    source_runs: &[LabelRun],
+    decision: &crate::LabelLayoutDecision,
+) -> crate::NodeLabel {
+    let mut next_label = label.clone();
+    if source_text.trim().is_empty() {
+        return next_label;
+    }
+
+    let layout = layout_label_text(source_text, &decision);
+    let font_family = label
+        .font_family
+        .clone()
+        .unwrap_or_else(|| DEFAULT_TEXT_FONT_FAMILY.to_string());
+    let font_size = WorldCm(label.font_size.unwrap_or(DEFAULT_TEXT_FONT_SIZE)).value();
+    let fill = label
+        .fill
+        .clone()
+        .unwrap_or_else(|| DEFAULT_TEXT_FILL.to_string());
+    let display_runs = display_runs_from_source_runs(source_runs, &font_family, font_size, &fill);
+    let (lines, line_runs) = layout_display_runs(&display_runs, &decision);
+
+    next_label.text = layout.rendered_text;
+    next_label.runs = if line_runs.len() == 1 {
+        line_runs.first().cloned().unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    next_label.line_runs = if line_runs.len() > 1 {
+        line_runs.clone()
+    } else {
+        Vec::new()
+    };
+    next_label.lines = if lines.len() > 1 { lines } else { Vec::new() };
+
+    if let Some(bbox) = label.bbox() {
+        let baseline_y = label
+            .position
+            .map(|position| position[1])
+            .unwrap_or_else(|| round2(bbox[1] + font_size * 0.82));
+        next_label.glyph_polygons = build_label_glyph_polygons(
+            if line_runs.len() == 1 {
+                line_runs.first().map(Vec::as_slice).unwrap_or(&[])
+            } else {
+                &[]
+            },
+            if line_runs.len() > 1 { &line_runs } else { &[] },
+            [round2(bbox[0]), baseline_y],
+            Some(bbox),
+            font_size,
+        );
+    }
+
+    next_label
+}
+
 pub(super) fn refreshed_attached_node_label(
     fragment: &crate::MoleculeFragment,
     node_id: &str,
@@ -1059,9 +1109,9 @@ pub(super) fn refreshed_attached_node_label(
 ) -> Option<crate::NodeLabel> {
     let node = fragment.nodes.iter().find(|node| node.id == node_id)?;
     let label = node.label.as_ref()?;
-    if imported_cdxml_label_geometry_is_authoritative(label) {
-        return Some(label.clone());
-    }
+    let source_runs = source_runs_from_node_label(label);
+    let source_text = label_source_text(label);
+    let connection_angles = adjacent_angles_for_fragment_node(fragment, node_id);
     let world_anchor =
         attached_node_label_anchor_world(fragment, node_id, object_translate, stroke_width);
     let local_anchor = [
@@ -1071,19 +1121,21 @@ pub(super) fn refreshed_attached_node_label(
     if is_generated_centered_label(label) {
         return Some(make_centered_node_label(&label.text, local_anchor));
     }
-    if !is_attached_node_label(label)
-        && !is_cdxml_imported_right_aligned_attached_label(label)
-        && !is_cdxml_imported_single_character_centered_label(label)
-    {
-        return None;
-    }
-    let source_runs = source_runs_from_node_label(label);
-    let source_text = label_source_text(label);
     let text = if implicit_hydrogen_label_is_user_edited(label) {
         source_text.clone()
     } else {
         implicit_hydrogen_label_text(node, &source_text)
     };
+    let should_use_internal_whole_label_layout =
+        label_should_render_as_whole_group(&text, connection_angles.len());
+    if !is_attached_node_label(label)
+        && !is_cdxml_imported_right_aligned_attached_label(label)
+        && !is_cdxml_imported_single_character_centered_label(label)
+        && !(is_cdxml_imported_centered_attached_label(label)
+            && should_use_internal_whole_label_layout)
+    {
+        return None;
+    }
     let font_family = label
         .font_family
         .clone()
@@ -1094,8 +1146,33 @@ pub(super) fn refreshed_attached_node_label(
         .clone()
         .unwrap_or_else(|| DEFAULT_TEXT_FILL.to_string());
     let source_runs = source_runs_for_attached_label(node, source_runs, &text, label);
+    let mut decision = label_layout_decision_for_text_mode(
+        &text,
+        &connection_angles,
+        source_runs_are_chemical(&source_runs),
+    );
+    if let Some(flow) = cdxml_imported_label_flow_override(label) {
+        decision.flow = flow;
+    }
+    if imported_cdxml_label_geometry_is_authoritative(label) {
+        if matches!(decision.flow, LabelFlow::Reverse)
+            && is_cdxml_imported_right_aligned_attached_label(label)
+            && !should_use_internal_whole_label_layout
+        {
+            return Some(refreshed_authoritative_imported_label_display(
+                label,
+                &text,
+                &source_runs,
+                &decision,
+            ));
+        }
+        if !matches!(decision.flow, LabelFlow::StackAbove | LabelFlow::StackBelow)
+            && !should_use_internal_whole_label_layout
+        {
+            return Some(label.clone());
+        }
+    }
     let display_runs = display_runs_from_source_runs(&source_runs, &font_family, font_size, &fill);
-    let connection_angles = adjacent_angles_for_fragment_node(fragment, node_id);
     let (anchor_offset, box_value) =
         current_node_label_editor_geometry(node, object_translate, &connection_angles);
     let session = TextEditSession {

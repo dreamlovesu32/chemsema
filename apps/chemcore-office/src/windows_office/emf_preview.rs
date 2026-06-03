@@ -11,15 +11,15 @@ use std::ptr::{null, null_mut};
 
 use chemcore_engine::{
     parse_document_json, render_document, render_primitives_bounds, Point as CorePoint,
-    RenderPrimitive, RenderRole, PT_PER_CM,
+    RenderPrimitive, RenderRole,
 };
 use serde_json::json;
 use windows_sys::Win32::Foundation::{GlobalFree, COLORREF, HGLOBAL, POINT, RECT, SIZE};
 use windows_sys::Win32::Globalization::WideCharToMultiByte;
 use windows_sys::Win32::Graphics::Gdi::{
-    BeginPath, CloseEnhMetaFile, CloseFigure, CloseMetaFile, CreateEnhMetaFileW, CreateFontW,
-    CreateMetaFileW, CreatePen, CreateSolidBrush, DeleteEnhMetaFile, DeleteMetaFile, DeleteObject,
-    Ellipse, EndPath, ExtCreatePen, ExtTextOutW, FillPath, GetEnhMetaFileBits, GetMetaFileBitsEx,
+    BeginPath, CloseEnhMetaFile, CloseFigure, CreateEnhMetaFileW, CreateFontW, CreatePen,
+    CreateSolidBrush, DeleteEnhMetaFile, DeleteMetaFile, DeleteObject, Ellipse, EndPath,
+    ExtCreatePen, ExtTextOutW, FillPath, GetDeviceCaps, GetEnhMetaFileBits, GetMetaFileBitsEx,
     GetStockObject, GetTextExtentExPointW, GetTextExtentPoint32W, LineTo, MoveToEx, PolyBezier,
     PolyBezierTo, Polygon, Polyline, Rectangle, RestoreDC, SaveDC, SelectClipPath, SelectObject,
     SetBkMode, SetGraphicsMode, SetMapMode, SetMiterLimit, SetPolyFillMode, SetTextAlign,
@@ -37,16 +37,33 @@ use windows_sys::Win32::System::Ole::{CF_ENHMETAFILE, CF_METAFILEPICT};
 
 use super::{
     wide_null, OleObjectPayload, DOCUMENT_DISPLAY_NAME, DV_E_FORMATETC,
-    EMF_LOGICAL_UNITS_PER_CSS_PX, E_FAIL, E_OUTOFMEMORY, GMEM_MOVEABLE_FLAG, HIMETRIC_PER_CM,
-    HIMETRIC_PER_CSS_PX, MIN_OBJECT_EXTENT_HIMETRIC, WMF_PREVIEW_MAX_EXTENT,
+    EMF_LOGICAL_UNITS_PER_CSS_PX, E_FAIL, E_OUTOFMEMORY, GMEM_MOVEABLE_FLAG, HIMETRIC_PER_CSS_PX,
+    MIN_OBJECT_EXTENT_HIMETRIC,
 };
 
 mod renderer;
 
 use renderer::{
-    draw_payload_emf_vector_preview_with_source_bounds, draw_payload_vector_preview,
-    office_preview_primitive_visible,
+    draw_payload_compatible_vector_preview_with_source_bounds,
+    draw_payload_emf_vector_preview_with_source_bounds, office_preview_primitive_visible,
 };
+
+unsafe extern "system" {
+    fn GetWinMetaFileBits(
+        hemf: *mut c_void,
+        cb_data16: u32,
+        data16: *mut u8,
+        map_mode: i32,
+        ref_dc: HDC,
+    ) -> u32;
+    fn SetMetaFileBitsEx(cb_buffer: u32, data: *const u8) -> *mut c_void;
+}
+
+#[link(name = "user32")]
+unsafe extern "system" {
+    fn GetDC(hwnd: *mut c_void) -> HDC;
+    fn ReleaseDC(hwnd: *mut c_void, hdc: HDC) -> i32;
+}
 
 const CHEMDRAW_HIMETRIC_PER_SVG_PX: f64 = 2540.0 / 240.0;
 const CHEMDRAW_EMF_LOGICAL_UNITS_PER_SVG_PX: f64 = 1.0;
@@ -63,6 +80,12 @@ const DEFAULT_PREVIEW_FRAME_OFFSETS_SVG_PX: PreviewFrameOffsetsSvgPx = PreviewFr
     right: 1.0,
     bottom: -1.0,
 };
+const GDI_HORZSIZE: i32 = 4;
+const GDI_VERTSIZE: i32 = 6;
+const GDI_HORZRES: i32 = 8;
+const GDI_VERTRES: i32 = 10;
+const GDI_DESKTOPVERTRES: i32 = 117;
+const GDI_DESKTOPHORZRES: i32 = 118;
 
 #[derive(Clone, Copy, Debug)]
 enum PreviewSourceBoundsMode {
@@ -111,54 +134,19 @@ pub(super) unsafe fn draw_placeholder_preview(dc: HDC, bounds: &RECT) {
 }
 
 pub(super) fn extent_himetric_for_payload(payload: &OleObjectPayload) -> Option<SIZE> {
-    let bounds = visible_payload_bounds(payload)?;
-    let (width_cm, height_cm) = if payload_uses_cdxml_editing_scale(payload) {
-        if let Some(cdxml_bounds) = cdxml_root_bounding_box_points(payload) {
-            (
-                (cdxml_bounds[2] - cdxml_bounds[0]).max(0.0) / PT_PER_CM,
-                (cdxml_bounds[3] - cdxml_bounds[1]).max(0.0) / PT_PER_CM,
-            )
-        } else {
-            (
-                (bounds[2] - bounds[0]).max(0.0) * CHEMDRAW_HIMETRIC_PER_SVG_PX / HIMETRIC_PER_CM,
-                (bounds[3] - bounds[1]).max(0.0) * CHEMDRAW_HIMETRIC_PER_SVG_PX / HIMETRIC_PER_CM,
-            )
-        }
-    } else {
-        (
-            (bounds[2] - bounds[0]).max(0.0) / PT_PER_CM,
-            (bounds[3] - bounds[1]).max(0.0) / PT_PER_CM,
-        )
-    };
-    if !width_cm.is_finite() || !height_cm.is_finite() || width_cm <= 0.0 || height_cm <= 0.0 {
+    let use_chemdraw_units = payload_uses_cdxml_editing_scale(payload);
+    let bounds =
+        preview_frame_source_bounds(payload).or_else(|| visible_payload_bounds(payload))?;
+    let frame = office_preview_frame_bounds(bounds, use_chemdraw_units);
+    let width = (frame.right - frame.left).max(1);
+    let height = (frame.bottom - frame.top).max(1);
+    if width <= 0 || height <= 0 {
         return None;
     }
 
-    let cx = (width_cm * HIMETRIC_PER_CM)
-        .round()
-        .clamp(MIN_OBJECT_EXTENT_HIMETRIC as f64, i32::MAX as f64) as i32;
-    let cy = (height_cm * HIMETRIC_PER_CM)
-        .round()
-        .clamp(MIN_OBJECT_EXTENT_HIMETRIC as f64, i32::MAX as f64) as i32;
+    let cx = width.max(MIN_OBJECT_EXTENT_HIMETRIC);
+    let cy = height.max(MIN_OBJECT_EXTENT_HIMETRIC);
     Some(SIZE { cx, cy })
-}
-
-fn cdxml_root_bounding_box_points(payload: &OleObjectPayload) -> Option<[f64; 4]> {
-    let cdxml = payload.cdxml.as_deref()?;
-    let start = cdxml.find("<CDXML")?;
-    let head_end = cdxml[start..].find('>')? + start;
-    let head = &cdxml[start..head_end];
-    let marker = "BoundingBox=\"";
-    let bbox_start = head.find(marker)? + marker.len();
-    let bbox_end = head[bbox_start..].find('"')? + bbox_start;
-    let values: Vec<f64> = head[bbox_start..bbox_end]
-        .split_ascii_whitespace()
-        .filter_map(|part| part.parse::<f64>().ok())
-        .collect();
-    let [x1, y1, x2, y2] = values.as_slice() else {
-        return None;
-    };
-    valid_bounds([*x1, *y1, *x2, *y2])
 }
 
 fn payload_uses_cdxml_editing_scale(payload: &OleObjectPayload) -> bool {
@@ -358,8 +346,8 @@ pub(super) fn preview_bounds_debug_report(
             let draw_source_bounds = source_bounds.unwrap_or(visible);
             let frame_source_bounds = frame_source_bounds.unwrap_or(draw_source_bounds);
             (
-                office_preview_frame_bounds(frame_source_bounds, use_chemdraw_units),
-                office_preview_logical_bounds(draw_source_bounds, use_chemdraw_units),
+                office_preview_frame_size_bounds(frame_source_bounds, use_chemdraw_units),
+                office_preview_logical_size_bounds(draw_source_bounds, use_chemdraw_units),
                 true,
             )
         } else {
@@ -398,6 +386,9 @@ pub(super) fn preview_bounds_debug_report(
 }
 
 fn payload_render_primitives(payload: &OleObjectPayload) -> Option<Vec<RenderPrimitive>> {
+    if document_clipboard_bounds(payload).is_some() {
+        return None;
+    }
     payload
         .render_list_json
         .as_deref()
@@ -473,22 +464,6 @@ fn svg_viewbox_bounds(svg: &str) -> Option<[f64; 4]> {
     Some([*x, *y, *x + *width, *y + *height])
 }
 
-fn wmf_preview_canvas_size(extent: SIZE) -> SIZE {
-    let source_width = extent.cx.max(1) as f64;
-    let source_height = extent.cy.max(1) as f64;
-    let scale = (WMF_PREVIEW_MAX_EXTENT as f64 / source_width.max(source_height)).min(1.0);
-    let width = (source_width * scale)
-        .round()
-        .clamp(1.0, WMF_PREVIEW_MAX_EXTENT as f64) as i32;
-    let height = (source_height * scale)
-        .round()
-        .clamp(1.0, WMF_PREVIEW_MAX_EXTENT as f64) as i32;
-    SIZE {
-        cx: width,
-        cy: height,
-    }
-}
-
 pub(super) fn hglobal_for_metafile_pict(
     payload: &OleObjectPayload,
     extent: SIZE,
@@ -520,24 +495,41 @@ unsafe fn windows_metafile_for_payload(
     payload: &OleObjectPayload,
     extent: SIZE,
 ) -> Result<*mut c_void, i32> {
-    let canvas = wmf_preview_canvas_size(extent);
-    let metafile_dc = CreateMetaFileW(null());
-    if metafile_dc.is_null() {
+    let enhanced_metafile =
+        enhanced_metafile_for_payload_with_options(payload, extent, false, false)?;
+    let reference_dc = GetDC(null_mut());
+    let size = GetWinMetaFileBits(
+        enhanced_metafile,
+        0,
+        null_mut(),
+        MM_ANISOTROPIC,
+        reference_dc,
+    );
+    if size == 0 {
+        if !reference_dc.is_null() {
+            ReleaseDC(null_mut(), reference_dc);
+        }
+        DeleteEnhMetaFile(enhanced_metafile);
         return Err(E_FAIL);
     }
-    SetMapMode(metafile_dc, MM_ANISOTROPIC);
-    SetWindowExtEx(metafile_dc, canvas.cx, canvas.cy, null_mut());
-    SetViewportExtEx(metafile_dc, canvas.cx, canvas.cy, null_mut());
-    let bounds = RECT {
-        left: 0,
-        top: 0,
-        right: canvas.cx,
-        bottom: canvas.cy,
-    };
-    if !draw_payload_vector_preview(metafile_dc, &bounds, payload) {
-        draw_placeholder_preview(metafile_dc, &bounds);
+    let mut bytes = vec![0u8; size as usize];
+    let written = GetWinMetaFileBits(
+        enhanced_metafile,
+        size,
+        bytes.as_mut_ptr(),
+        MM_ANISOTROPIC,
+        reference_dc,
+    );
+    if !reference_dc.is_null() {
+        ReleaseDC(null_mut(), reference_dc);
     }
-    let metafile = CloseMetaFile(metafile_dc);
+    DeleteEnhMetaFile(enhanced_metafile);
+    if written == 0 {
+        return Err(E_FAIL);
+    }
+    bytes.truncate(written as usize);
+
+    let metafile = SetMetaFileBitsEx(written, bytes.as_ptr());
     if metafile.is_null() {
         return Err(E_FAIL);
     }
@@ -548,6 +540,15 @@ pub(super) fn enhanced_metafile_for_payload(
     payload: &OleObjectPayload,
     extent: SIZE,
 ) -> Result<*mut c_void, i32> {
+    enhanced_metafile_for_payload_with_options(payload, extent, true, true)
+}
+
+fn enhanced_metafile_for_payload_with_options(
+    payload: &OleObjectPayload,
+    extent: SIZE,
+    allow_gdiplus_dual: bool,
+    high_resolution_vectors: bool,
+) -> Result<*mut c_void, i32> {
     unsafe {
         let use_chemdraw_units = payload_uses_cdxml_editing_scale(payload);
         let (frame_bounds, draw_bounds, source_bounds, use_logical_preview_coords) =
@@ -556,8 +557,8 @@ pub(super) fn enhanced_metafile_for_payload(
                 let frame_source_bounds =
                     preview_frame_source_bounds(payload).unwrap_or(draw_source_bounds);
                 (
-                    office_preview_frame_bounds(frame_source_bounds, use_chemdraw_units),
-                    office_preview_logical_bounds(draw_source_bounds, use_chemdraw_units),
+                    office_preview_frame_size_bounds(frame_source_bounds, use_chemdraw_units),
+                    office_preview_logical_size_bounds(draw_source_bounds, use_chemdraw_units),
                     Some(draw_source_bounds),
                     true,
                 )
@@ -577,7 +578,8 @@ pub(super) fn enhanced_metafile_for_payload(
         let force_gdiplus_dual = std::env::var_os("CHEMCORE_OFFICE_GDIPLUS_DUAL").is_some();
         let disable_gdiplus_dual =
             std::env::var_os("CHEMCORE_OFFICE_DISABLE_GDIPLUS_DUAL").is_some();
-        if (USE_GDIPLUS_DUAL_PREVIEW || force_gdiplus_dual)
+        if allow_gdiplus_dual
+            && (USE_GDIPLUS_DUAL_PREVIEW || force_gdiplus_dual)
             && !disable_gdiplus_dual
             && use_logical_preview_coords
         {
@@ -599,12 +601,22 @@ pub(super) fn enhanced_metafile_for_payload(
             SetWindowExtEx(dc, extent.cx.max(1), extent.cy.max(1), null_mut());
             SetViewportExtEx(dc, extent.cx.max(1), extent.cy.max(1), null_mut());
         }
-        if !draw_payload_emf_vector_preview_with_source_bounds(
-            dc,
-            &draw_bounds,
-            payload,
-            source_bounds,
-        ) {
+        let drew_preview = if high_resolution_vectors {
+            draw_payload_emf_vector_preview_with_source_bounds(
+                dc,
+                &draw_bounds,
+                payload,
+                source_bounds,
+            )
+        } else {
+            draw_payload_compatible_vector_preview_with_source_bounds(
+                dc,
+                &draw_bounds,
+                payload,
+                source_bounds,
+            )
+        };
+        if !drew_preview {
             draw_placeholder_preview(dc, &draw_bounds);
         }
         let metafile = CloseEnhMetaFile(dc);
@@ -626,16 +638,66 @@ fn office_preview_frame_bounds(bounds: [f64; 4], use_chemdraw_units: bool) -> RE
     } else {
         bounds
     };
-    let scale = if use_chemdraw_units {
-        CHEMDRAW_HIMETRIC_PER_SVG_PX
+    let (scale_x, scale_y) = if use_chemdraw_units {
+        chemdraw_himetric_per_svg_px_for_current_device()
     } else {
-        HIMETRIC_PER_CSS_PX
+        (HIMETRIC_PER_CSS_PX, HIMETRIC_PER_CSS_PX)
     };
     RECT {
-        left: scaled_to_i32(bounds[0], scale),
-        top: scaled_to_i32(bounds[1], scale),
-        right: scaled_to_i32(bounds[2], scale).max(scaled_to_i32(bounds[0], scale) + 1),
-        bottom: scaled_to_i32(bounds[3], scale).max(scaled_to_i32(bounds[1], scale) + 1),
+        left: scaled_to_i32(bounds[0], scale_x),
+        top: scaled_to_i32(bounds[1], scale_y),
+        right: scaled_to_i32(bounds[2], scale_x).max(scaled_to_i32(bounds[0], scale_x) + 1),
+        bottom: scaled_to_i32(bounds[3], scale_y).max(scaled_to_i32(bounds[1], scale_y) + 1),
+    }
+}
+
+fn chemdraw_himetric_per_svg_px_for_current_device() -> (f64, f64) {
+    unsafe {
+        let dc = GetDC(null_mut());
+        if dc.is_null() {
+            return (
+                CHEMDRAW_HIMETRIC_PER_SVG_PX,
+                CHEMDRAW_HIMETRIC_PER_SVG_PX,
+            );
+        }
+        let horz_res = positive_device_cap(dc, GDI_DESKTOPHORZRES)
+            .unwrap_or_else(|| GetDeviceCaps(dc, GDI_HORZRES));
+        let horz_size_mm = GetDeviceCaps(dc, GDI_HORZSIZE);
+        let vert_res = positive_device_cap(dc, GDI_DESKTOPVERTRES)
+            .unwrap_or_else(|| GetDeviceCaps(dc, GDI_VERTRES));
+        let vert_size_mm = GetDeviceCaps(dc, GDI_VERTSIZE);
+        ReleaseDC(null_mut(), dc);
+        let scale_x = himetric_per_svg_px_from_device_metrics(horz_res, horz_size_mm);
+        let scale_y = himetric_per_svg_px_from_device_metrics(vert_res, vert_size_mm);
+        (
+            scale_x.unwrap_or(CHEMDRAW_HIMETRIC_PER_SVG_PX),
+            scale_y.unwrap_or(CHEMDRAW_HIMETRIC_PER_SVG_PX),
+        )
+    }
+}
+
+unsafe fn positive_device_cap(dc: HDC, index: i32) -> Option<i32> {
+    let value = GetDeviceCaps(dc, index);
+    (value > 0).then_some(value)
+}
+
+fn himetric_per_svg_px_from_device_metrics(resolution_px: i32, size_mm: i32) -> Option<f64> {
+    if resolution_px <= 0 || size_mm <= 0 {
+        return None;
+    }
+    let dpi = resolution_px as f64 * 25.4 / size_mm as f64;
+    dpi.is_finite()
+        .then_some(2540.0 / dpi)
+        .filter(|scale| *scale > 0.0)
+}
+
+fn office_preview_frame_size_bounds(bounds: [f64; 4], use_chemdraw_units: bool) -> RECT {
+    let rect = office_preview_frame_bounds(bounds, use_chemdraw_units);
+    RECT {
+        left: 0,
+        top: 0,
+        right: (rect.right - rect.left).max(1),
+        bottom: (rect.bottom - rect.top).max(1),
     }
 }
 
@@ -650,6 +712,16 @@ fn office_preview_logical_bounds(bounds: [f64; 4], use_chemdraw_units: bool) -> 
         top: scaled_to_i32(bounds[1], scale),
         right: scaled_to_i32(bounds[2], scale).max(scaled_to_i32(bounds[0], scale) + 1),
         bottom: scaled_to_i32(bounds[3], scale).max(scaled_to_i32(bounds[1], scale) + 1),
+    }
+}
+
+fn office_preview_logical_size_bounds(bounds: [f64; 4], use_chemdraw_units: bool) -> RECT {
+    let rect = office_preview_logical_bounds(bounds, use_chemdraw_units);
+    RECT {
+        left: 0,
+        top: 0,
+        right: (rect.right - rect.left).max(1),
+        bottom: (rect.bottom - rect.top).max(1),
     }
 }
 
@@ -680,7 +752,7 @@ fn preview_source_bounds_mode() -> PreviewSourceBoundsMode {
         Some("svgpad") => PreviewSourceBoundsMode::SvgPadRight,
         Some("union") => PreviewSourceBoundsMode::Union,
         Some("unionpad") => PreviewSourceBoundsMode::UnionPadRight,
-        _ => PreviewSourceBoundsMode::SvgPadRight,
+        _ => PreviewSourceBoundsMode::Svg,
     }
 }
 
@@ -832,5 +904,78 @@ pub(super) fn enhanced_metafile_bits_for_payload(
         }
         bytes.truncate(written as usize);
         Ok(bytes)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chemcore_engine::ChemcoreDocument;
+    use serde_json::json;
+
+    #[test]
+    fn clipboard_selection_payload_ignores_stale_full_document_render_list() {
+        let mut document = ChemcoreDocument::blank();
+        document.document.meta = json!({
+            "clipboard": {
+                "selectionBounds": [10.0, 20.0, 30.0, 40.0]
+            }
+        });
+        let stale_full_document_render_list = serde_json::to_string(&vec![RenderPrimitive::Rect {
+            role: RenderRole::DocumentGraphic,
+            object_id: Some("stale-full-document".to_string()),
+            node_id: None,
+            x: 0.0,
+            y: 0.0,
+            width: 10_000.0,
+            height: 10_000.0,
+            fill: Some("#000000".to_string()),
+            stroke: None,
+            stroke_width: 0.0,
+            rx: None,
+            ry: None,
+            dash_array: Vec::new(),
+            fill_gradient: None,
+        }])
+        .unwrap();
+        let payload = OleObjectPayload {
+            chemcore_fragment_json: Some("{\"nodes\":[],\"bonds\":[]}".to_string()),
+            chemcore_document_json: serde_json::to_string(&document).unwrap(),
+            render_list_json: Some(stale_full_document_render_list),
+            cdxml: None,
+            svg: String::new(),
+            svg_was_supplied: false,
+            text: None,
+        };
+
+        assert!(
+            payload_render_primitives(&payload).is_none(),
+            "selection payloads must render from the clipboard document, not a stale full-document render list"
+        );
+        assert_eq!(
+            visible_payload_bounds(&payload),
+            Some([10.0, 20.0, 30.0, 40.0])
+        );
+
+        let extent = extent_himetric_for_payload(&payload).expect("selection needs an extent");
+        let report = preview_bounds_debug_report(&payload, extent);
+        assert_eq!(
+            report
+                .pointer("/extentHimetric/width")
+                .and_then(|value| value.as_i64()),
+            report
+                .pointer("/frameBoundsHimetric/width")
+                .and_then(|value| value.as_i64()),
+            "OLE object extent and preview frame must use the same horizontal scale"
+        );
+        assert_eq!(
+            report
+                .pointer("/extentHimetric/height")
+                .and_then(|value| value.as_i64()),
+            report
+                .pointer("/frameBoundsHimetric/height")
+                .and_then(|value| value.as_i64()),
+            "OLE object extent and preview frame must use the same vertical scale"
+        );
     }
 }

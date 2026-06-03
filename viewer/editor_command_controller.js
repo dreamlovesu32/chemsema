@@ -17,7 +17,7 @@ export function createEditorCommandController(options) {
       await options.desktopFileHost.writeClipboard({
         chemcoreFragmentJson: resolvedFragmentJson,
         chemcoreDocumentJson: resolvedDocumentJson,
-        renderListJson: state.editorEngine.renderListJson?.() || null,
+        renderListJson: resolvedDocumentJson ? null : state.editorEngine.renderListJson?.() || null,
         cdxml,
         svg,
         text: cdxml,

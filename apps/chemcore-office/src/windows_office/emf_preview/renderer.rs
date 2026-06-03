@@ -21,19 +21,19 @@ use windows_sys::Win32::Graphics::GdiPlus::{
     GdipDeletePen, GdipDeleteStringFormat, GdipDisposeImage, GdipDrawEllipse, GdipDrawLine,
     GdipDrawLines, GdipDrawPath, GdipDrawPolygon, GdipDrawRectangle, GdipDrawString,
     GdipFillEllipse, GdipFillPath, GdipFillPolygon, GdipFillRectangle, GdipGetDC,
-    GdipGetHemfFromMetafile,
-    GdipGetImageGraphicsContext, GdipMeasureString, GdipRecordMetafile, GdipReleaseDC,
-    GdipRestoreGraphics, GdipSaveGraphics, GdipSetPageScale, GdipSetPageUnit, GdipSetPenDashArray,
-    GdipSetPenDashStyle, GdipSetPenEndCap, GdipSetPenLineJoin, GdipSetPenMiterLimit,
-    GdipSetPenStartCap, GdipSetPixelOffsetMode, GdipSetSmoothingMode, GdipSetStringFormatAlign,
-    GdipSetStringFormatFlags, GdipSetStringFormatLineAlign, GdipSetTextRenderingHint,
-    GdipStartPathFigure, GdipStringFormatGetGenericTypographic, GdiplusStartup,
-    GdiplusStartupInput, GpBrush, GpFont, GpFontFamily, GpGraphics, GpImage, GpMetafile, GpPath,
-    GpPen, GpStringFormat, LineCapFlat, LineCapRound, LineCapSquare, LineJoinBevel, LineJoinMiter,
-    LineJoinRound, MetafileFrameUnitGdi, Ok as GDI_PLUS_OK, PixelOffsetModeHighQuality, PointF,
-    RectF, SmoothingModeAntiAlias, StringAlignmentNear, StringFormatFlagsMeasureTrailingSpaces,
-    StringFormatFlagsNoClip, StringFormatFlagsNoFitBlackBox, TextRenderingHintAntiAlias,
-    TextRenderingHintAntiAliasGridFit, UnitPixel, UnitWorld,
+    GdipGetHemfFromMetafile, GdipGetImageGraphicsContext, GdipMeasureString, GdipRecordMetafile,
+    GdipReleaseDC, GdipRestoreGraphics, GdipSaveGraphics, GdipSetPageScale, GdipSetPageUnit,
+    GdipSetPenDashArray, GdipSetPenDashStyle, GdipSetPenEndCap, GdipSetPenLineJoin,
+    GdipSetPenMiterLimit, GdipSetPenStartCap, GdipSetPixelOffsetMode, GdipSetSmoothingMode,
+    GdipSetStringFormatAlign, GdipSetStringFormatFlags, GdipSetStringFormatLineAlign,
+    GdipSetTextRenderingHint, GdipStartPathFigure, GdipStringFormatGetGenericTypographic,
+    GdiplusStartup, GdiplusStartupInput, GpBrush, GpFont, GpFontFamily, GpGraphics, GpImage,
+    GpMetafile, GpPath, GpPen, GpStringFormat, LineCapFlat, LineCapRound, LineCapSquare,
+    LineJoinBevel, LineJoinMiter, LineJoinRound, MetafileFrameUnitGdi, Ok as GDI_PLUS_OK,
+    PixelOffsetModeHighQuality, PointF, RectF, SmoothingModeAntiAlias, StringAlignmentNear,
+    StringFormatFlagsMeasureTrailingSpaces, StringFormatFlagsNoClip,
+    StringFormatFlagsNoFitBlackBox, TextRenderingHintAntiAlias, TextRenderingHintAntiAliasGridFit,
+    UnitPixel, UnitWorld,
 };
 
 mod renderer_env;
@@ -186,23 +186,6 @@ pub(super) unsafe fn draw_payload_preview(
     draw_svg_preview(dc, bounds, payload)
 }
 
-pub(super) unsafe fn draw_payload_vector_preview(
-    dc: HDC,
-    bounds: &RECT,
-    payload: &OleObjectPayload,
-) -> bool {
-    draw_payload_vector_preview_with_source_bounds(dc, bounds, payload, None)
-}
-
-pub(super) unsafe fn draw_payload_vector_preview_with_source_bounds(
-    dc: HDC,
-    bounds: &RECT,
-    payload: &OleObjectPayload,
-    source_bounds: Option<[f64; 4]>,
-) -> bool {
-    draw_payload_vector_preview_internal(dc, bounds, payload, source_bounds, false)
-}
-
 pub(super) unsafe fn draw_payload_emf_vector_preview_with_source_bounds(
     dc: HDC,
     bounds: &RECT,
@@ -210,6 +193,15 @@ pub(super) unsafe fn draw_payload_emf_vector_preview_with_source_bounds(
     source_bounds: Option<[f64; 4]>,
 ) -> bool {
     draw_payload_vector_preview_internal(dc, bounds, payload, source_bounds, true)
+}
+
+pub(super) unsafe fn draw_payload_compatible_vector_preview_with_source_bounds(
+    dc: HDC,
+    bounds: &RECT,
+    payload: &OleObjectPayload,
+    source_bounds: Option<[f64; 4]>,
+) -> bool {
+    draw_payload_vector_preview_internal(dc, bounds, payload, source_bounds, false)
 }
 
 pub(super) unsafe fn enhanced_metafile_gdiplus_dual_preview(
@@ -2140,8 +2132,7 @@ fn preview_packaged_node_label_line_rect(
         return None;
     }
     let mode = preview_packaged_node_label_layout_mode()?;
-    let info = label_context
-        .and_then(|context| node_id.and_then(|id| context.infos.get(id)))?;
+    let info = label_context.and_then(|context| node_id.and_then(|id| context.infos.get(id)))?;
     let attached_only = matches!(
         mode,
         PreviewPackagedNodeLabelLayoutMode::AttachedPayloadSize
@@ -2160,7 +2151,8 @@ fn preview_packaged_node_label_line_rect(
     }
     let world_box = info.world_box?;
     let segments = line_count.max(1) as f64;
-    let world_top = world_box.top + (world_box.bottom - world_box.top) * line_index as f64 / segments;
+    let world_top =
+        world_box.top + (world_box.bottom - world_box.top) * line_index as f64 / segments;
     let world_bottom =
         world_box.top + (world_box.bottom - world_box.top) * (line_index + 1) as f64 / segments;
     let top_left = transform.gdip_point(CorePoint {

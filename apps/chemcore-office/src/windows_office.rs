@@ -2,11 +2,14 @@ use std::env;
 use std::ffi::c_void;
 use std::io::{Cursor, Read, Write};
 use std::mem::zeroed;
+use std::net::{SocketAddr, TcpStream};
 use std::os::windows::ffi::OsStrExt;
+use std::os::windows::process::CommandExt;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::ptr::{null, null_mut};
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::time::Duration;
 
 use chemcore_engine::PT_PER_CM;
 use windows_sys::core::GUID;
@@ -31,8 +34,7 @@ use windows_sys::Win32::System::Ole::{
     CreateOleAdviseHolder, OleCreateFromData, OleFlushClipboard, OleInitialize, OleRegEnumVerbs,
     OleRegGetMiscStatus, OleRegGetUserType, OleSave, OleSetClipboard, OleUninitialize,
     ReleaseStgMedium, CF_ENHMETAFILE, CF_METAFILEPICT, OBJECTDESCRIPTOR,
-    OLEMISC_ACTIVATEWHENVISIBLE, OLEMISC_INSIDEOUT, OLEMISC_RENDERINGISDEVICEINDEPENDENT,
-    OLEMISC_SETCLIENTSITEFIRST, OLERENDER_FORMAT,
+    OLEMISC_RENDERINGISDEVICEINDEPENDENT, OLEMISC_SETCLIENTSITEFIRST, OLERENDER_FORMAT,
 };
 use windows_sys::Win32::System::Registry::{
     RegCloseKey, RegCreateKeyW, RegDeleteTreeW, RegSetValueExW, HKEY, HKEY_CURRENT_USER,
@@ -55,16 +57,22 @@ const DOCUMENT_DISPLAY_NAME: &str = "Chemcore Document";
 const PROG_ID: &str = "Chemcore.Document";
 const VERSIONED_PROG_ID: &str = "Chemcore.Document.1";
 const CLSID_STRING: &str = "{CB69F54F-F21E-44DE-84FB-89D98FECE056}";
+const CLIPBOARD_FORMAT_NATIVE: &str = "Native";
 const OLE_STREAM_MANIFEST: &str = "ChemcoreManifest";
+const OLE_STREAM_CONTENTS: &str = "CONTENTS";
+const OLE_STREAM_OLE: &str = "\u{0001}Ole";
 const OLE_STREAM_DOCUMENT: &str = "ChemcoreDocument";
 const OLE_STREAM_SOURCE_CDXML: &str = "ChemcoreSourceCdxml";
 const OLE_STREAM_PREVIEW_SVG: &str = "ChemcorePreviewSvg";
 const OLE_STREAM_PRESENTATION_EMF: &str = "\u{0002}OlePres001";
+const OLE_STREAM_OBJ_INFO: &str = "\u{0003}ObjInfo";
 const OLE_STREAM_ENHANCED_PRINT: &str = "\u{0003}EPRINT";
 const CLIPBOARD_FORMAT_EMBEDDED_OBJECT: &str = "Embedded Object";
 const CLIPBOARD_FORMAT_EMBED_SOURCE: &str = "Embed Source";
 const CLIPBOARD_FORMAT_OBJECT_DESCRIPTOR: &str = "Object Descriptor";
+const CLIPBOARD_FORMAT_RTF: &str = "Rich Text Format";
 const FORMAT_CHEMCORE_FRAGMENT: &str = "Chemcore Clipboard Fragment";
+const FORMAT_CHEMCORE_NATIVE: &str = "Chemcore Native Document";
 const FORMAT_CHEMCORE_DOCUMENT_JSON: &str = "Chemcore Document JSON";
 const FORMAT_CHEMDRAW_INTERCHANGE: &str = "ChemDraw Interchange Format";
 const FORMAT_CDXML_MIME: &str = "chemical/x-cdxml";
@@ -78,8 +86,9 @@ const HIMETRIC_PER_CM: f64 = 1000.0;
 const HIMETRIC_PER_CSS_PX: f64 = 2540.0 / 96.0;
 const EMF_LOGICAL_UNITS_PER_CSS_PX: f64 = 2.0;
 const WORD_A4_BODY_WIDTH_CM: f64 = 21.0 - 2.0 * 3.18;
-const WMF_PREVIEW_MAX_EXTENT: i32 = 30_000;
 const MIN_OBJECT_EXTENT_HIMETRIC: i32 = 100;
+const CREATE_NO_WINDOW_FLAG: u32 = 0x08000000;
+const DESKTOP_DEV_SERVER_ADDR: &str = "127.0.0.1:8767";
 
 const CLSID_CHEMCORE_DOCUMENT: GUID = GUID {
     data1: 0xcb69f54f,
@@ -299,16 +308,28 @@ fn register(scope: RegistrationScope) -> Result<(), String> {
         &format!("{clsid_path}\\LocalServer32"),
         &server_command,
     )?;
+    set_key_default(root, &format!("{clsid_path}\\LocalServer"), &server_command)?;
+    set_key_default(root, &format!("{clsid_path}\\InprocHandler32"), "ole32.dll")?;
     set_key_default(root, &format!("{clsid_path}\\DefaultIcon"), &icon_command)?;
     set_key_default(
         root,
         &format!("{clsid_path}\\AuxUserType\\2"),
         DOCUMENT_DISPLAY_NAME,
     )?;
+    set_key_default(
+        root,
+        &format!("{clsid_path}\\AuxUserType\\3"),
+        DOCUMENT_DISPLAY_NAME,
+    )?;
     set_key_default(root, &format!("{clsid_path}\\Verb\\0"), "&Edit,0,2")?;
     set_key_default(root, &format!("{clsid_path}\\Verb\\1"), "&Open,0,2")?;
-    set_key_default(root, &format!("{clsid_path}\\MiscStatus"), "0")?;
+    let misc_status = default_misc_status().to_string();
+    set_key_default(root, &format!("{clsid_path}\\MiscStatus"), &misc_status)?;
+    set_key_default(root, &format!("{clsid_path}\\MiscStatus\\1"), &misc_status)?;
+    register_data_formats(root, &clsid_path)?;
     create_key(root, &format!("{clsid_path}\\Insertable"))?;
+    register_std_file_editing(root, PROG_ID, &server_command)?;
+    register_std_file_editing(root, VERSIONED_PROG_ID, &server_command)?;
 
     println!(
         "Registered {DOCUMENT_DISPLAY_NAME} for {} at {}",
@@ -317,6 +338,44 @@ fn register(scope: RegistrationScope) -> Result<(), String> {
     );
     println!("CLSID: {CLSID_STRING}");
     println!("Server: {}", server_path.display());
+    Ok(())
+}
+
+fn register_std_file_editing(
+    root: HKEY,
+    prog_id: &str,
+    server_command: &str,
+) -> Result<(), String> {
+    let std_file_editing = classes_path(&format!("{prog_id}\\Protocol\\StdFileEditing"));
+    set_key_default(root, &format!("{std_file_editing}\\Server"), server_command)?;
+    set_key_default(root, &format!("{std_file_editing}\\Verb\\0"), "&Edit")?;
+    set_key_default(root, &format!("{std_file_editing}\\Verb\\1"), "&Open,0,2")?;
+    Ok(())
+}
+
+fn register_data_formats(root: HKEY, clsid_path: &str) -> Result<(), String> {
+    let data_formats = format!("{clsid_path}\\DataFormats");
+    set_key_default(
+        root,
+        &format!("{data_formats}\\DefaultFile"),
+        FORMAT_CHEMCORE_NATIVE,
+    )?;
+    let get_set = format!("{data_formats}\\GetSet");
+    set_key_default(root, &format!("{get_set}\\0"), "14,1,64,1")?;
+    set_key_default(root, &format!("{get_set}\\1"), "Embedded Object,1,8,1")?;
+    set_key_default(root, &format!("{get_set}\\2"), "Embed Source,1,8,1")?;
+    set_key_default(root, &format!("{get_set}\\3"), "Object Descriptor,1,1,1")?;
+    set_key_default(root, &format!("{get_set}\\4"), "Native,1,1,1")?;
+    set_key_default(
+        root,
+        &format!("{get_set}\\5"),
+        &format!("{FORMAT_CHEMCORE_NATIVE},1,1,1"),
+    )?;
+    set_key_default(
+        root,
+        &format!("{get_set}\\6"),
+        &format!("{FORMAT_CHEMCORE_DOCUMENT_JSON},1,1,1"),
+    )?;
     Ok(())
 }
 
@@ -394,6 +453,7 @@ impl OleObjectPayload {
             .ok()
             .map(|document| chemcore_engine::document_to_svg(&document))
             .filter(|value| !value.trim().is_empty());
+        let has_preview_svg = supplied_svg.is_some() || generated_svg.is_some();
         Self {
             chemcore_fragment_json: payload.chemcore_fragment_json,
             chemcore_document_json: document_json,
@@ -405,7 +465,7 @@ impl OleObjectPayload {
                 .clone()
                 .or(generated_svg)
                 .unwrap_or(fallback.svg),
-            svg_was_supplied: supplied_svg.is_some(),
+            svg_was_supplied: has_preview_svg,
             text: payload
                 .text
                 .filter(|value| !value.trim().is_empty())
@@ -626,7 +686,8 @@ fn run_self_test() -> Result<(), String> {
             part_release::<DataObjectVtbl>(data_object);
             return Err("IDataObject::GetData(Embedded Object) returned a null storage.".into());
         }
-        let document = storage_read_stream(medium.u.pstg, OLE_STREAM_DOCUMENT)?;
+        let document = storage_read_stream(medium.u.pstg, OLE_STREAM_DOCUMENT)
+            .or_else(|_| storage_read_stream(medium.u.pstg, OLE_STREAM_CONTENTS))?;
         ReleaseStgMedium(&mut medium);
         let document = String::from_utf8(document)
             .map_err(|error| format!("Embedded source document stream is not UTF-8: {error}"))?;
@@ -762,6 +823,7 @@ fn run_persist_storage_self_test() -> Result<(), String> {
         }
 
         let document = storage_read_stream(storage, OLE_STREAM_DOCUMENT)?;
+        let contents = storage_read_stream(storage, OLE_STREAM_CONTENTS)?;
         let manifest = storage_read_stream(storage, OLE_STREAM_MANIFEST)?;
         let preview = storage_read_stream(storage, OLE_STREAM_PREVIEW_SVG)?;
         let presentation_emf = storage_read_stream(storage, OLE_STREAM_PRESENTATION_EMF)?;
@@ -772,8 +834,13 @@ fn run_persist_storage_self_test() -> Result<(), String> {
 
         let document = String::from_utf8(document)
             .map_err(|error| format!("ChemcoreDocument stream is not UTF-8: {error}"))?;
+        let contents = String::from_utf8(contents)
+            .map_err(|error| format!("CONTENTS stream is not UTF-8: {error}"))?;
         if !document.contains("\"name\":\"chemcore\"") || !document.contains("\"objects\"") {
             return Err("ChemcoreDocument stream did not contain a blank Chemcore document".into());
+        }
+        if contents != document {
+            return Err("CONTENTS stream did not match ChemcoreDocument stream".into());
         }
 
         let manifest = String::from_utf8(manifest)
@@ -1639,6 +1706,13 @@ unsafe extern "system" fn persist_storage_load(this: *mut c_void, storage: *mut 
             .map_err(|error| format!("ChemcoreDocument stream is not UTF-8: {error}"))
     }) {
         (*object).payload.chemcore_document_json = document;
+    } else if let Ok(document) =
+        storage_read_stream(storage, OLE_STREAM_CONTENTS).and_then(|bytes| {
+            String::from_utf8(bytes)
+                .map_err(|error| format!("CONTENTS stream is not UTF-8: {error}"))
+        })
+    {
+        (*object).payload.chemcore_document_json = document;
     }
     if let Ok(svg) = storage_read_stream(storage, OLE_STREAM_PREVIEW_SVG).and_then(|bytes| {
         String::from_utf8(bytes)
@@ -1768,11 +1842,18 @@ unsafe fn write_ole_storage_payload(storage: *mut c_void, payload: &OleObjectPay
         return hr;
     }
     let user_type = wide_null(DOCUMENT_DISPLAY_NAME);
-    let hr = WriteFmtUserTypeStg(storage, CF_ENHMETAFILE, user_type.as_ptr());
+    let hr = WriteFmtUserTypeStg(
+        storage,
+        clipboard_format(FORMAT_CHEMCORE_NATIVE),
+        user_type.as_ptr(),
+    );
     if !hresult_succeeded(hr) {
         return hr;
     }
 
+    let contents = ole_contents_stream_payload(payload);
+    let ole = ole_stream_payload();
+    let obj_info = ole_obj_info_stream_payload();
     let document = chemcore_document_stream_payload(payload);
     let manifest = match ole_manifest_stream_payload() {
         Ok(manifest) => manifest,
@@ -1781,6 +1862,9 @@ unsafe fn write_ole_storage_payload(storage: *mut c_void, payload: &OleObjectPay
     let preview = payload.svg.as_bytes();
 
     let streams = [
+        (OLE_STREAM_OLE, ole.as_slice()),
+        (OLE_STREAM_CONTENTS, contents.as_slice()),
+        (OLE_STREAM_OBJ_INFO, obj_info.as_slice()),
         (OLE_STREAM_MANIFEST, manifest.as_slice()),
         (OLE_STREAM_DOCUMENT, document.as_slice()),
         (OLE_STREAM_PREVIEW_SVG, preview),
@@ -1819,6 +1903,22 @@ unsafe fn write_ole_storage_payload(storage: *mut c_void, payload: &OleObjectPay
 
 fn chemcore_document_stream_payload(payload: &OleObjectPayload) -> Vec<u8> {
     payload.chemcore_document_json.as_bytes().to_vec()
+}
+
+fn ole_contents_stream_payload(payload: &OleObjectPayload) -> Vec<u8> {
+    payload.chemcore_document_json.as_bytes().to_vec()
+}
+
+fn ole_obj_info_stream_payload() -> [u8; 6] {
+    // ODT: ODTPersist1=0, cf=0x0003 (metafile/EMF), ODTPersist2=0x0001
+    // (fEMF). Word's own RTF clipboard stream uses this pre-cache value.
+    [0x00, 0x00, 0x03, 0x00, 0x01, 0x00]
+}
+
+fn ole_stream_payload() -> [u8; 20] {
+    let mut bytes = [0u8; 20];
+    bytes[0..4].copy_from_slice(&0x0200_0001u32.to_le_bytes());
+    bytes
 }
 
 unsafe fn create_ole_storage_medium(payload: &OleObjectPayload, medium: *mut STGMEDIUM) -> i32 {
@@ -1870,6 +1970,110 @@ unsafe fn save_ole_object_storage(storage: *mut c_void, payload: &OleObjectPaylo
     } else {
         hr
     }
+}
+
+unsafe fn write_native_clipboard_storage_payload(
+    storage: *mut c_void,
+    payload: &OleObjectPayload,
+) -> i32 {
+    if storage.is_null() {
+        return E_POINTER;
+    }
+    let hr = WriteClassStg(storage, &CLSID_CHEMCORE_DOCUMENT);
+    if !hresult_succeeded(hr) {
+        return hr;
+    }
+    let user_type = wide_null(DOCUMENT_DISPLAY_NAME);
+    let hr = WriteFmtUserTypeStg(
+        storage,
+        clipboard_format(FORMAT_CHEMCORE_NATIVE),
+        user_type.as_ptr(),
+    );
+    if !hresult_succeeded(hr) {
+        return hr;
+    }
+    let hr = storage_write_stream(
+        storage,
+        OLE_STREAM_CONTENTS,
+        &ole_contents_stream_payload(payload),
+    );
+    if !hresult_succeeded(hr) {
+        return hr;
+    }
+    let hr = storage_write_stream(storage, OLE_STREAM_OLE, &ole_stream_payload());
+    if !hresult_succeeded(hr) {
+        return hr;
+    }
+    let hr = storage_write_stream(storage, OLE_STREAM_OBJ_INFO, &ole_obj_info_stream_payload());
+    if !hresult_succeeded(hr) {
+        return hr;
+    }
+    if let Ok(enhanced_print) =
+        enhanced_metafile_bits_for_payload(payload, payload.extent_himetric())
+    {
+        let hr = storage_write_stream(storage, OLE_STREAM_ENHANCED_PRINT, &enhanced_print);
+        if !hresult_succeeded(hr) {
+            return hr;
+        }
+    }
+    if let Ok(presentation) =
+        ole_presentation_stream_for_payload(payload, payload.extent_himetric(), CF_ENHMETAFILE)
+    {
+        let hr = storage_write_stream(storage, OLE_STREAM_PRESENTATION_EMF, &presentation);
+        if !hresult_succeeded(hr) {
+            return hr;
+        }
+    }
+    storage_commit(storage)
+}
+
+fn native_clipboard_storage_file_bytes_for_payload(
+    payload: &OleObjectPayload,
+) -> Result<Vec<u8>, String> {
+    let storage_path = env::temp_dir().join(format!(
+        "chemcore-office-native-{}-{}.ole",
+        std::process::id(),
+        unique_temp_suffix()
+    ));
+    let result = unsafe {
+        let mut storage = null_mut();
+        let storage_path_w = wide_path_null(&storage_path);
+        let hr = StgCreateDocfile(
+            storage_path_w.as_ptr(),
+            STGM_CREATE | STGM_READWRITE | STGM_SHARE_EXCLUSIVE,
+            0,
+            &mut storage,
+        );
+        if !hresult_succeeded(hr) || storage.is_null() {
+            Err(format!(
+                "StgCreateDocfile for Native clipboard payload failed: 0x{:08X}",
+                hr as u32
+            ))
+        } else {
+            let hr = write_native_clipboard_storage_payload(storage, payload);
+            com_release(storage);
+            if !hresult_succeeded(hr) {
+                Err(format!(
+                    "Saving Native clipboard payload failed: 0x{:08X}",
+                    hr as u32
+                ))
+            } else {
+                std::fs::read(&storage_path).map_err(|error| {
+                    format!(
+                        "Failed to read generated Native clipboard payload {}: {error}",
+                        storage_path.display()
+                    )
+                })
+            }
+        }
+    };
+    let _ = std::fs::remove_file(storage_path);
+    result
+}
+
+fn hglobal_for_native_clipboard_payload(payload: &OleObjectPayload) -> Result<HGLOBAL, i32> {
+    let bytes = native_clipboard_storage_file_bytes_for_payload(payload).map_err(|_| E_FAIL)?;
+    hglobal_for_bytes(&bytes)
 }
 
 fn hglobal_for_bytes(bytes: &[u8]) -> Result<HGLOBAL, i32> {
@@ -1946,6 +2150,103 @@ fn hglobal_for_object_descriptor(extent: SIZE) -> Result<HGLOBAL, i32> {
         GlobalUnlock(handle);
         Ok(handle)
     }
+}
+
+fn hglobal_for_word_rtf_object(payload: &OleObjectPayload) -> Result<HGLOBAL, i32> {
+    let rtf = word_rtf_object_for_payload(payload).map_err(|_| E_FAIL)?;
+    hglobal_for_utf8_nul(&rtf)
+}
+
+fn word_rtf_object_for_payload(payload: &OleObjectPayload) -> Result<String, String> {
+    let display_extent = fit_extent_himetric_to_word_body(payload.extent_himetric());
+    let emf = enhanced_metafile_bits_for_payload(payload, display_extent).map_err(|hr| {
+        format!(
+            "Failed to render Word RTF EMF preview: 0x{:08X}",
+            hr as u32
+        )
+    })?;
+    let ole = ole_storage_file_bytes_for_payload(payload)?;
+    let objdata = word_rtf_objdata_bytes(&ole, &emf)?;
+    let width_twips = points_to_twips(himetric_to_points(display_extent.cx));
+    let height_twips = points_to_twips(himetric_to_points(display_extent.cy));
+    let objdata_hex = rtf_hex_lines(&objdata);
+    let emf_hex = rtf_hex_lines(&emf);
+
+    let mut rtf = String::new();
+    rtf.push_str("{\\rtf1\\ansi\\ansicpg1252\\deff0");
+    rtf.push_str("{\\fonttbl{\\f0\\fnil Arial;}}");
+    rtf.push_str("\\viewkind4\\uc1\\pard\\plain\\f0\\fs22");
+    rtf.push_str("{\\object\\objemb");
+    rtf.push_str(&format!("\\objw{width_twips}\\objh{height_twips}"));
+    rtf.push_str(&format!("{{\\*\\objclass {VERSIONED_PROG_ID}}}"));
+    rtf.push_str(&format!("{{\\*\\objdata {objdata_hex}}}"));
+    rtf.push_str("{\\result {\\*\\shppict{\\pict");
+    rtf.push_str("{\\*\\picprop\\shplid1025");
+    rtf.push_str("{\\sp{\\sn shapeType}{\\sv 75}}");
+    rtf.push_str("{\\sp{\\sn fLine}{\\sv 0}}");
+    rtf.push_str("}");
+    rtf.push_str("\\picscalex100\\picscaley100");
+    rtf.push_str(&format!(
+        "\\picw{}\\pich{}\\picwgoal{width_twips}\\pichgoal{height_twips}\\emfblip ",
+        display_extent.cx, display_extent.cy
+    ));
+    rtf.push_str(&emf_hex);
+    rtf.push_str("}}}");
+    rtf.push_str("}\\par}");
+    Ok(rtf)
+}
+
+fn word_rtf_objdata_bytes(
+    ole_storage: &[u8],
+    presentation_emf: &[u8],
+) -> Result<Vec<u8>, String> {
+    if ole_storage.len() > u32::MAX as usize {
+        return Err("OLE storage is too large for RTF objdata.".into());
+    }
+    if presentation_emf.len() > u32::MAX as usize {
+        return Err("RTF presentation EMF is too large for RTF objdata.".into());
+    }
+    let class_name = VERSIONED_PROG_ID.as_bytes();
+    let class_name_len = class_name
+        .len()
+        .checked_add(1)
+        .ok_or_else(|| "OLE class name length overflowed.".to_string())?;
+    if class_name_len > u32::MAX as usize {
+        return Err("OLE class name is too large for RTF objdata.".into());
+    }
+
+    let mut bytes = Vec::with_capacity(
+        44 + class_name_len * 2 + ole_storage.len() + presentation_emf.len(),
+    );
+    bytes.extend_from_slice(&0x0000_0501u32.to_le_bytes());
+    bytes.extend_from_slice(&2u32.to_le_bytes());
+    bytes.extend_from_slice(&(class_name_len as u32).to_le_bytes());
+    bytes.extend_from_slice(class_name);
+    bytes.push(0);
+    bytes.extend_from_slice(&0u32.to_le_bytes());
+    bytes.extend_from_slice(&0u32.to_le_bytes());
+    bytes.extend_from_slice(&(ole_storage.len() as u32).to_le_bytes());
+    bytes.extend_from_slice(ole_storage);
+    bytes.extend_from_slice(&0x0000_0501u32.to_le_bytes());
+    bytes.extend_from_slice(&5u32.to_le_bytes());
+    bytes.extend_from_slice(&(class_name_len as u32).to_le_bytes());
+    bytes.extend_from_slice(class_name);
+    bytes.push(0);
+    bytes.extend_from_slice(&(CF_ENHMETAFILE as u32).to_le_bytes());
+    bytes.extend_from_slice(&(presentation_emf.len() as u32).to_le_bytes());
+    bytes.extend_from_slice(presentation_emf);
+    Ok(bytes)
+}
+
+fn rtf_hex_lines(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(bytes.len() * 2 + bytes.len() / 32 + 1);
+    for (index, byte) in bytes.iter().enumerate() {
+        if index > 0 && index % 32 == 0 {
+            out.push('\n');
+        }
+        out.push_str(&format!("{byte:02x}"));
+    }
+    out
 }
 
 fn word_docx_package_for_payload(payload: &OleObjectPayload) -> Result<Vec<u8>, String> {
@@ -2208,8 +2509,14 @@ fn known_clipboard_format_name(format: u16) -> &'static str {
         CLIPBOARD_FORMAT_EMBED_SOURCE
     } else if format == clipboard_format(CLIPBOARD_FORMAT_EMBEDDED_OBJECT) {
         CLIPBOARD_FORMAT_EMBEDDED_OBJECT
+    } else if format == clipboard_format(CLIPBOARD_FORMAT_NATIVE) {
+        CLIPBOARD_FORMAT_NATIVE
     } else if format == clipboard_format(CLIPBOARD_FORMAT_OBJECT_DESCRIPTOR) {
         CLIPBOARD_FORMAT_OBJECT_DESCRIPTOR
+    } else if format == clipboard_format(CLIPBOARD_FORMAT_RTF) {
+        CLIPBOARD_FORMAT_RTF
+    } else if format == clipboard_format(FORMAT_CHEMCORE_NATIVE) {
+        FORMAT_CHEMCORE_NATIVE
     } else if format == CF_ENHMETAFILE {
         "CF_ENHMETAFILE"
     } else if format == CF_METAFILEPICT {
@@ -2246,14 +2553,16 @@ unsafe fn log_format_request(prefix: &str, format: &FORMATETC, hr: i32) {
 }
 
 fn default_misc_status() -> u32 {
-    (OLEMISC_INSIDEOUT
-        | OLEMISC_ACTIVATEWHENVISIBLE
-        | OLEMISC_RENDERINGISDEVICEINDEPENDENT
-        | OLEMISC_SETCLIENTSITEFIRST) as u32
+    (OLEMISC_RENDERINGISDEVICEINDEPENDENT | OLEMISC_SETCLIENTSITEFIRST) as u32
 }
 
 fn ole_clipboard_formats(payload: &OleObjectPayload, _extent: SIZE) -> Vec<FORMATETC> {
     let mut formats = Vec::new();
+    push_format(
+        &mut formats,
+        clipboard_format(CLIPBOARD_FORMAT_RTF),
+        TYMED_HGLOBAL as u32,
+    );
     push_format(
         &mut formats,
         clipboard_format(CLIPBOARD_FORMAT_EMBEDDED_OBJECT),
@@ -2269,6 +2578,11 @@ fn ole_clipboard_formats(payload: &OleObjectPayload, _extent: SIZE) -> Vec<FORMA
         clipboard_format(CLIPBOARD_FORMAT_OBJECT_DESCRIPTOR),
         TYMED_HGLOBAL as u32,
     );
+    push_format(
+        &mut formats,
+        clipboard_format(CLIPBOARD_FORMAT_NATIVE),
+        TYMED_HGLOBAL as u32,
+    );
     if payload.chemcore_fragment_json.is_some() {
         push_format(
             &mut formats,
@@ -2278,35 +2592,20 @@ fn ole_clipboard_formats(payload: &OleObjectPayload, _extent: SIZE) -> Vec<FORMA
     }
     push_format(
         &mut formats,
+        clipboard_format(FORMAT_CHEMCORE_NATIVE),
+        TYMED_HGLOBAL as u32,
+    );
+    push_format(
+        &mut formats,
         clipboard_format(FORMAT_CHEMCORE_DOCUMENT_JSON),
         TYMED_HGLOBAL as u32,
     );
     if payload.cdxml.is_some() {
         push_format(
             &mut formats,
-            clipboard_format(FORMAT_CHEMDRAW_INTERCHANGE),
-            TYMED_HGLOBAL as u32,
-        );
-        push_format(
-            &mut formats,
             clipboard_format(FORMAT_CDXML_MIME),
             TYMED_HGLOBAL as u32,
         );
-    }
-    if !payload.svg.trim().is_empty() {
-        push_format(
-            &mut formats,
-            clipboard_format(FORMAT_SVG_MIME),
-            TYMED_HGLOBAL as u32,
-        );
-        push_format(
-            &mut formats,
-            clipboard_format(FORMAT_SVG),
-            TYMED_HGLOBAL as u32,
-        );
-    }
-    if payload.text.is_some() {
-        push_format(&mut formats, CF_UNICODETEXT_FORMAT, TYMED_HGLOBAL as u32);
     }
     push_format(&mut formats, CF_ENHMETAFILE, TYMED_ENHMF as u32);
 
@@ -2386,6 +2685,12 @@ unsafe fn write_clipboard_format_to_medium(
             Err(hr) => hr,
         };
     }
+    if format.cfFormat == clipboard_format(CLIPBOARD_FORMAT_RTF) {
+        return match hglobal_for_word_rtf_object(payload) {
+            Ok(handle) => hglobal_medium(handle, medium),
+            Err(hr) => hr,
+        };
+    }
     if format.cfFormat == clipboard_format(FORMAT_CHEMCORE_FRAGMENT) {
         return payload
             .chemcore_fragment_json
@@ -2393,12 +2698,19 @@ unsafe fn write_clipboard_format_to_medium(
             .map(|value| hglobal_text_medium(value, false, medium))
             .unwrap_or(DV_E_FORMATETC);
     }
+    if format.cfFormat == clipboard_format(CLIPBOARD_FORMAT_NATIVE) {
+        return match hglobal_for_native_clipboard_payload(payload) {
+            Ok(handle) => hglobal_medium(handle, medium),
+            Err(hr) => hr,
+        };
+    }
+    if format.cfFormat == clipboard_format(FORMAT_CHEMCORE_NATIVE) {
+        return hglobal_text_medium(&payload.chemcore_document_json, false, medium);
+    }
     if format.cfFormat == clipboard_format(FORMAT_CHEMCORE_DOCUMENT_JSON) {
         return hglobal_text_medium(&payload.chemcore_document_json, false, medium);
     }
-    if format.cfFormat == clipboard_format(FORMAT_CHEMDRAW_INTERCHANGE)
-        || format.cfFormat == clipboard_format(FORMAT_CDXML_MIME)
-    {
+    if format.cfFormat == clipboard_format(FORMAT_CDXML_MIME) {
         return payload
             .cdxml
             .as_deref()
@@ -2426,12 +2738,11 @@ mod tests {
     use std::collections::BTreeSet;
 
     #[test]
-    fn ole_clipboard_formats_include_textual_fallbacks() {
+    fn ole_clipboard_formats_prefer_embedded_object_over_visual_fallbacks() {
         let payload = OleObjectPayload {
             chemcore_fragment_json: Some("{\"nodes\":[],\"bonds\":[]}".to_string()),
             chemcore_document_json:
-                "{\"document\":{\"name\":\"chemcore\"},\"objects\":[],\"resources\":{}}"
-                    .to_string(),
+                "{\"document\":{\"name\":\"chemcore\"},\"objects\":[],\"resources\":{}}".to_string(),
             render_list_json: None,
             cdxml: Some("<CDXML></CDXML>".to_string()),
             svg: "<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>".to_string(),
@@ -2445,13 +2756,28 @@ mod tests {
         assert!(format_names.contains(CLIPBOARD_FORMAT_EMBEDDED_OBJECT));
         assert!(format_names.contains(CLIPBOARD_FORMAT_EMBED_SOURCE));
         assert!(format_names.contains(CLIPBOARD_FORMAT_OBJECT_DESCRIPTOR));
+        assert!(format_names.contains(CLIPBOARD_FORMAT_RTF));
+        assert!(format_names.contains(CLIPBOARD_FORMAT_NATIVE));
+        assert!(format_names.contains(FORMAT_CHEMCORE_NATIVE));
         assert!(format_names.contains(FORMAT_CHEMCORE_DOCUMENT_JSON));
-        assert!(format_names.contains(FORMAT_CHEMDRAW_INTERCHANGE));
         assert!(format_names.contains(FORMAT_CDXML_MIME));
-        assert!(format_names.contains(FORMAT_SVG_MIME));
-        assert!(format_names.contains(FORMAT_SVG));
-        assert!(format_names.contains("CF_UNICODETEXT"));
         assert!(format_names.contains("CF_ENHMETAFILE"));
+        assert!(
+            !format_names.contains(FORMAT_CHEMDRAW_INTERCHANGE),
+            "Chemcore should not advertise ChemDraw's native clipboard format with a CDXML payload"
+        );
+        assert!(
+            !format_names.contains(FORMAT_SVG_MIME),
+            "Word's default Paste prefers SVG as a plain image instead of embedding the OLE object"
+        );
+        assert!(
+            !format_names.contains(FORMAT_SVG),
+            "Word's default Paste prefers SVG as a plain image instead of embedding the OLE object"
+        );
+        assert!(
+            !format_names.contains("CF_UNICODETEXT"),
+            "Word's default Paste may choose plain text instead of embedding the OLE object"
+        );
     }
 
     #[test]
@@ -2468,11 +2794,18 @@ mod tests {
         });
         assert!(payload.svg.contains("<svg"));
         assert!(
+            payload.svg_was_supplied,
+            "generated preview SVG should drive the same preview bounds path as supplied SVG"
+        );
+        assert!(
+            emf_preview::preview_source_bounds(&payload).is_some(),
+            "generated preview SVG should provide OLE preview source bounds"
+        );
+        assert!(
             !payload.svg.contains(DOCUMENT_DISPLAY_NAME),
             "generated preview should not fall back to the placeholder svg"
         );
     }
-
 }
 
 fn ole_preview_svg_stream_payload() -> Vec<u8> {
@@ -2819,50 +3152,41 @@ unsafe fn payload_from_data_object(data_object: *mut c_void) -> Result<OleObject
     let mut payload = OleObjectPayload::blank();
     let mut populated = false;
 
-    if let Some(document) = text_payload_from_data_object(
-        data_object,
-        FORMAT_CHEMCORE_DOCUMENT_JSON,
-        false,
-    )? {
+    if let Some(document) =
+        text_payload_from_data_object(data_object, FORMAT_CHEMCORE_NATIVE, false)?.or(
+            text_payload_from_data_object(data_object, FORMAT_CHEMCORE_DOCUMENT_JSON, false)?,
+        )
+    {
         payload.chemcore_document_json = document;
         populated = true;
     }
-    if let Some(fragment) = text_payload_from_data_object(
-        data_object,
-        FORMAT_CHEMCORE_FRAGMENT,
-        false,
-    )? {
+    if let Some(fragment) =
+        text_payload_from_data_object(data_object, FORMAT_CHEMCORE_FRAGMENT, false)?
+    {
         payload.chemcore_fragment_json = Some(fragment);
         populated = true;
     }
-    if let Some(cdxml) = text_payload_from_data_object(
-        data_object,
-        FORMAT_CHEMDRAW_INTERCHANGE,
-        false,
-    )?
-    .or(text_payload_from_data_object(
-        data_object,
-        FORMAT_CDXML_MIME,
-        false,
-    )?) {
+    if let Some(cdxml) =
+        text_payload_from_data_object(data_object, FORMAT_CHEMDRAW_INTERCHANGE, false)?.or(
+            text_payload_from_data_object(data_object, FORMAT_CDXML_MIME, false)?,
+        )
+    {
         if payload.text.is_none() {
             payload.text = Some(cdxml.clone());
         }
         payload.cdxml = Some(cdxml);
         populated = true;
     }
-    if let Some(svg) = text_payload_from_data_object(data_object, FORMAT_SVG_MIME, false)?
-        .or(text_payload_from_data_object(data_object, FORMAT_SVG, false)?)
-    {
+    if let Some(svg) = text_payload_from_data_object(data_object, FORMAT_SVG_MIME, false)?.or(
+        text_payload_from_data_object(data_object, FORMAT_SVG, false)?,
+    ) {
         payload.svg = svg;
         payload.svg_was_supplied = true;
         populated = true;
     }
-    if let Some(text) = text_payload_from_data_object_by_id(
-        data_object,
-        CF_UNICODETEXT_FORMAT,
-        true,
-    )? {
+    if let Some(text) =
+        text_payload_from_data_object_by_id(data_object, CF_UNICODETEXT_FORMAT, true)?
+    {
         payload.text = Some(text);
         populated = true;
     }
@@ -2885,6 +3209,14 @@ unsafe fn payload_from_storage(storage: *mut c_void) -> Result<OleObjectPayload,
         String::from_utf8(bytes)
             .map_err(|error| format!("ChemcoreDocument stream is not UTF-8: {error}"))
     }) {
+        payload.chemcore_document_json = document;
+        populated = true;
+    } else if let Ok(document) =
+        storage_read_stream(storage, OLE_STREAM_CONTENTS).and_then(|bytes| {
+            String::from_utf8(bytes)
+                .map_err(|error| format!("CONTENTS stream is not UTF-8: {error}"))
+        })
+    {
         payload.chemcore_document_json = document;
         populated = true;
     }
@@ -2965,13 +3297,19 @@ unsafe fn read_hglobal_text(handle: HGLOBAL, unicode: bool) -> Result<Option<Str
     let result = if unicode {
         let len = size / std::mem::size_of::<u16>();
         let wide = std::slice::from_raw_parts(source.cast::<u16>(), len);
-        let end = wide.iter().position(|value| *value == 0).unwrap_or(wide.len());
+        let end = wide
+            .iter()
+            .position(|value| *value == 0)
+            .unwrap_or(wide.len());
         String::from_utf16(&wide[..end])
             .map(Some)
             .map_err(|error| format!("Failed to decode UTF-16 HGLOBAL payload: {error}"))
     } else {
         let bytes = std::slice::from_raw_parts(source.cast::<u8>(), size);
-        let end = bytes.iter().position(|value| *value == 0).unwrap_or(bytes.len());
+        let end = bytes
+            .iter()
+            .position(|value| *value == 0)
+            .unwrap_or(bytes.len());
         String::from_utf8(bytes[..end].to_vec())
             .map(Some)
             .map_err(|error| format!("Failed to decode UTF-8 HGLOBAL payload: {error}"))
@@ -3415,12 +3753,70 @@ fn launch_desktop_for_payload(payload: &OleObjectPayload) -> Result<(), String> 
             desktop_exe.display()
         ));
     }
+    ensure_desktop_dev_server_for_debug_exe(&desktop_exe)?;
 
     Command::new(desktop_exe)
         .arg(payload_path)
+        .creation_flags(CREATE_NO_WINDOW_FLAG)
         .spawn()
         .map_err(|error| format!("Failed to launch Chemcore desktop: {error}"))?;
     Ok(())
+}
+
+fn ensure_desktop_dev_server_for_debug_exe(desktop_exe: &PathBuf) -> Result<(), String> {
+    let Some(debug_dir) = desktop_exe.parent() else {
+        return Ok(());
+    };
+    if debug_dir.file_name().and_then(|name| name.to_str()) != Some("debug") {
+        return Ok(());
+    }
+    let Some(target_dir) = debug_dir.parent() else {
+        return Ok(());
+    };
+    if target_dir.file_name().and_then(|name| name.to_str()) != Some("target") {
+        return Ok(());
+    }
+    let Some(repo_root) = target_dir.parent() else {
+        return Ok(());
+    };
+    let server_script = repo_root.join("scripts").join("desktop-dev-server.mjs");
+    if !server_script.exists() {
+        return Ok(());
+    }
+    if desktop_dev_server_is_ready() {
+        return Ok(());
+    }
+
+    log_ole_event(&format!(
+        "Starting desktop dev server from {}",
+        server_script.display()
+    ));
+    Command::new("node")
+        .arg(server_script)
+        .current_dir(repo_root)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .creation_flags(CREATE_NO_WINDOW_FLAG)
+        .spawn()
+        .map_err(|error| format!("Failed to start Chemcore desktop dev server: {error}"))?;
+
+    for _ in 0..30 {
+        if desktop_dev_server_is_ready() {
+            return Ok(());
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    Err(format!(
+        "Chemcore desktop dev server did not start at http://{DESKTOP_DEV_SERVER_ADDR}/"
+    ))
+}
+
+fn desktop_dev_server_is_ready() -> bool {
+    let Ok(addr) = DESKTOP_DEV_SERVER_ADDR.parse::<SocketAddr>() else {
+        return false;
+    };
+    TcpStream::connect_timeout(&addr, Duration::from_millis(100)).is_ok()
 }
 
 fn log_ole_event(message: &str) {

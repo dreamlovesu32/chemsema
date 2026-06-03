@@ -12,8 +12,12 @@ if (!args.length) {
   process.exit(1);
 }
 
-if (args[0] === "build") {
-  const officeResult = spawnSync("cargo", ["build", "-p", "chemcore-office", "--release"], {
+if (args[0] === "dev" || args[0] === "build") {
+  const officeArgs = ["build", "-p", "chemcore-office"];
+  if (args[0] === "build") {
+    officeArgs.push("--release");
+  }
+  const officeResult = spawnSync("cargo", officeArgs, {
     cwd: rootDir,
     stdio: "inherit",
     shell: false,
