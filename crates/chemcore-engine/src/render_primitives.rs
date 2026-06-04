@@ -172,6 +172,8 @@ pub enum RenderPrimitive {
         role: RenderRole,
         #[serde(rename = "objectId", default, skip_serializing_if = "Option::is_none")]
         object_id: Option<String>,
+        #[serde(rename = "nodeId", default, skip_serializing_if = "Option::is_none")]
+        node_id: Option<String>,
         #[serde(rename = "bondId", default, skip_serializing_if = "Option::is_none")]
         bond_id: Option<String>,
         d: String,
@@ -207,6 +209,12 @@ pub enum RenderPrimitive {
             skip_serializing_if = "Option::is_none"
         )]
         baseline_offset: Option<f64>,
+        #[serde(
+            rename = "dominantBaseline",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        dominant_baseline: Option<String>,
         text: String,
         #[serde(rename = "fontSize")]
         font_size: f64,
@@ -461,6 +469,7 @@ pub(super) fn push_text_rotated(
         x,
         y,
         baseline_offset,
+        dominant_baseline: None,
         text,
         font_size,
         font_family,
@@ -497,6 +506,7 @@ pub(super) fn push_text_for_node(
         x,
         y,
         baseline_offset,
+        dominant_baseline: None,
         text,
         font_size,
         font_family,

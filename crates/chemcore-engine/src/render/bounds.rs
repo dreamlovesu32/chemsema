@@ -183,6 +183,7 @@ pub fn render_primitive_bounds(primitive: &RenderPrimitive) -> Option<[f64; 4]> 
             text,
             runs,
             text_anchor,
+            dominant_baseline,
             ..
         } => {
             let measured_width = estimate_text_width(text, runs, *font_size);
@@ -199,9 +200,17 @@ pub fn render_primitive_bounds(primitive: &RenderPrimitive) -> Option<[f64; 4]> 
                 Some("end") => x - width,
                 _ => *x,
             };
-            let min_y = y - max_font_size * 0.86;
-            let max_y =
-                y + (line_count - 1.0).max(0.0) * line_height + max_font_size * TEXT_GDI_DESCENT_EM;
+            let (min_y, max_y) =
+                if matches!(dominant_baseline.as_deref(), Some("central" | "middle")) {
+                    let block_height = line_height * line_count.max(1.0);
+                    (y - block_height * 0.5, y + block_height * 0.5)
+                } else {
+                    (
+                        y - max_font_size * 0.86,
+                        y + (line_count - 1.0).max(0.0) * line_height
+                            + max_font_size * TEXT_GDI_DESCENT_EM,
+                    )
+                };
             Some([min_x - left_pad, min_y, min_x + width + right_pad, max_y])
         }
     }

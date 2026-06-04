@@ -2,14 +2,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
+import sys
 from collections import defaultdict
 from pathlib import Path
 from statistics import mean
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PYTHON = Path(r"D:\anaconda3\python.exe")
+PYTHON = Path(os.environ.get("CHEMCORE_PYTHON", sys.executable))
 
 
 def run(args: list[str]) -> None:

@@ -1122,6 +1122,7 @@ fn push_bond_filled_path(
     out.push(RenderPrimitive::FilledPath {
         role: RenderRole::DocumentBond,
         object_id,
+        node_id: None,
         bond_id: Some(bond_id.to_string()),
         d,
         points,

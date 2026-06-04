@@ -952,6 +952,7 @@ fn push_symbol_filled_path(
     out.push(RenderPrimitive::FilledPath {
         role: RenderRole::DocumentGraphic,
         object_id,
+        node_id: None,
         bond_id: None,
         d,
         points: bounds,
@@ -1389,6 +1390,7 @@ fn push_shape_fill(
     out.push(RenderPrimitive::FilledPath {
         role: RenderRole::DocumentGraphic,
         object_id: Some(object_id.to_string()),
+        node_id: None,
         bond_id: None,
         d: geometry.fill_path_d(),
         points: geometry.bounds_points(),
@@ -1548,6 +1550,7 @@ fn push_shape_shadow_path(
     out.push(RenderPrimitive::FilledPath {
         role: RenderRole::DocumentGraphic,
         object_id: Some(object_id.to_string()),
+        node_id: None,
         bond_id: None,
         d: shifted_shape_path,
         points,
@@ -1573,6 +1576,7 @@ fn push_shape_ellipse_fill(
     out.push(RenderPrimitive::FilledPath {
         role: RenderRole::DocumentGraphic,
         object_id: Some(object_id.to_string()),
+        node_id: None,
         bond_id: None,
         d: oval_path_d(center, rx, ry, rotate, use_cubic),
         points: ellipse_bounds_points(center, rx, ry, rotate),
@@ -1643,6 +1647,7 @@ fn push_shape_rect_fill(
     out.push(RenderPrimitive::FilledPath {
         role: RenderRole::DocumentGraphic,
         object_id: Some(object_id.to_string()),
+        node_id: None,
         bond_id: None,
         d,
         points: vec![Point::new(x, y), Point::new(x + width, y + height)],
@@ -2158,6 +2163,7 @@ fn push_shaded_orbital_lobe_layers(
         out.push(RenderPrimitive::FilledPath {
             role: RenderRole::DocumentGraphic,
             object_id: Some(object_id.to_string()),
+            node_id: None,
             bond_id: None,
             d: orbital_lobe_path_d(&layer),
             points: orbital_lobe_outline_points(&layer),
@@ -2186,6 +2192,7 @@ fn render_orbital_lobe_style(
             out.push(RenderPrimitive::FilledPath {
                 role: RenderRole::DocumentGraphic,
                 object_id: Some(object_id.to_string()),
+                node_id: None,
                 bond_id: None,
                 d: orbital_lobe_path_d(geometry),
                 points: orbital_lobe_outline_points(geometry),
@@ -2204,6 +2211,7 @@ fn render_orbital_lobe_style(
             out.push(RenderPrimitive::FilledPath {
                 role: RenderRole::DocumentGraphic,
                 object_id: Some(object_id.to_string()),
+                node_id: None,
                 bond_id: None,
                 d: orbital_lobe_path_d(geometry),
                 points: orbital_lobe_outline_points(geometry),
@@ -2254,6 +2262,7 @@ fn render_orbital_ring(
             out.push(RenderPrimitive::FilledPath {
                 role: RenderRole::DocumentGraphic,
                 object_id: Some(object.id.clone()),
+                node_id: None,
                 bond_id: None,
                 d: ring_path.clone(),
                 points: ring_bounds.clone(),
@@ -2272,6 +2281,7 @@ fn render_orbital_ring(
             out.push(RenderPrimitive::FilledPath {
                 role: RenderRole::DocumentGraphic,
                 object_id: Some(object.id.clone()),
+                node_id: None,
                 bond_id: None,
                 d: ring_path.clone(),
                 points: ring_bounds.clone(),
@@ -2392,6 +2402,7 @@ fn push_shaded_dz2_ring_layers(
         out.push(RenderPrimitive::FilledPath {
             role: RenderRole::DocumentGraphic,
             object_id: Some(object_id.to_string()),
+            node_id: None,
             bond_id: None,
             d: oval_path_d(layer_center, layer_rx, layer_ry, rotate, true),
             points: ellipse_bounds_points(layer_center, layer_rx, layer_ry, rotate),

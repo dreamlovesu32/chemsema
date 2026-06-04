@@ -245,7 +245,7 @@ BC3A87EF5A2310D622F6E58D44DB351C002348A2205D527FBDDF8A52036EA62C
 ```text
 URL:      http://127.0.0.1:8766/viewer/
 Process: 8632
-Runtime: C:\Python314\python.exe
+Runtime: E:\anaconda3\python.exe
 ```
 
 选择 `8766` 是因为 `8765` 已有其他监听进程。`Invoke-WebRequest http://127.0.0.1:8766/viewer/` 返回 `200 OK`。

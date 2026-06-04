@@ -176,6 +176,7 @@ fn extend_bounds_for_primitive(
             text,
             runs,
             text_anchor,
+            dominant_baseline,
             rotate,
             rotate_center,
             ..
@@ -196,11 +197,19 @@ fn extend_bounds_for_primitive(
                 Some("end") => x - width,
                 _ => *x,
             };
-            let top_left = Point::new(min_x - left_pad, y - max_font_size);
-            let bottom_right = Point::new(
-                min_x + width + right_pad,
-                y + (line_count - 1.0).max(0.0) * line_height + max_font_size * TEXT_GDI_DESCENT_EM,
-            );
+            let (min_y, max_y) =
+                if matches!(dominant_baseline.as_deref(), Some("central" | "middle")) {
+                    let block_height = line_height * line_count.max(1.0);
+                    (y - block_height * 0.5, y + block_height * 0.5)
+                } else {
+                    (
+                        y - max_font_size,
+                        y + (line_count - 1.0).max(0.0) * line_height
+                            + max_font_size * TEXT_GDI_DESCENT_EM,
+                    )
+                };
+            let top_left = Point::new(min_x - left_pad, min_y);
+            let bottom_right = Point::new(min_x + width + right_pad, max_y);
             if rotate.abs() > crate::EPSILON {
                 let center = rotate_center.unwrap_or(Point::new(*x, *y));
                 for point in rotated_box_points(top_left, bottom_right, center, *rotate) {
@@ -484,6 +493,7 @@ fn write_primitive_svg(out: &mut String, defs: &mut SvgDefs, primitive: &RenderP
             font_family,
             fill,
             text_anchor,
+            dominant_baseline,
             runs,
             rotate,
             rotate_center,
@@ -493,10 +503,11 @@ fn write_primitive_svg(out: &mut String, defs: &mut SvgDefs, primitive: &RenderP
             let transform = rotate_transform_attr(*rotate, Some(&center));
             write!(
                 out,
-                r#"  <text x="{}" y="{}" font-size="{}" dominant-baseline="alphabetic" text-anchor="{}" fill="{}"{}{}>"#,
+                r#"  <text x="{}" y="{}" font-size="{}" dominant-baseline="{}" text-anchor="{}" fill="{}"{}{}>"#,
                 fmt_num(*x),
                 fmt_num(*y),
                 fmt_num(*font_size),
+                escape_attr(dominant_baseline.as_deref().unwrap_or("alphabetic")),
                 escape_attr(text_anchor.as_deref().unwrap_or("start")),
                 escape_attr(fill.as_deref().unwrap_or("#000000")),
                 optional_str_attr("font-family", font_family.as_deref()),

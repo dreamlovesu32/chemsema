@@ -241,7 +241,7 @@ A local static file server was started from `D:\chemcore`:
 ```text
 URL:      http://127.0.0.1:8766/viewer/
 Process: 8632
-Runtime: C:\Python314\python.exe
+Runtime: E:\anaconda3\python.exe
 ```
 
 Port `8766` was used because `8765` already had a listener. `Invoke-WebRequest http://127.0.0.1:8766/viewer/` returned `200 OK`.

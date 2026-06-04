@@ -804,6 +804,7 @@ fn render_solid_arrow_head(
             out.push(RenderPrimitive::FilledPath {
                 role: RenderRole::DocumentGraphic,
                 object_id,
+                node_id: None,
                 bond_id: None,
                 d: path.d,
                 points: path.points,

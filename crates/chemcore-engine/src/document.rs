@@ -673,6 +673,180 @@ fn normalize_node_label_payload(label: &mut NodeLabel, node_position: [f64; 2]) 
         let position = label.position.unwrap_or(node_position);
         label.box_field = Some(default_node_label_box(position, &label.text, font_size));
     }
+    if label.glyph_polygons.is_empty() || label.meta.pointer("/import/cdxml/boundingBox").is_some()
+    {
+        rebuild_node_label_glyph_polygons(label, node_position);
+    }
+}
+
+fn rebuild_node_label_glyph_polygons(label: &mut NodeLabel, node_position: [f64; 2]) {
+    if !label.has_visible_text() {
+        label.glyph_polygons.clear();
+        return;
+    }
+
+    let position = label.position.unwrap_or(node_position);
+    let font_size = label
+        .font_size
+        .unwrap_or(DEFAULT_MOLECULE_LABEL_FONT_SIZE_CM);
+    let local_bbox = label.bbox();
+    let align = label.align.as_deref().unwrap_or("left");
+    let line_runs = if label.line_runs.is_empty() {
+        &[][..]
+    } else {
+        label.line_runs.as_slice()
+    };
+    let single_line_runs = if line_runs.is_empty() {
+        label.runs.as_slice()
+    } else {
+        &[][..]
+    };
+
+    label.glyph_polygons = if align == "center" {
+        let width = local_bbox
+            .map(|bbox| (bbox[2] - bbox[0]).abs())
+            .filter(|width| *width > EPSILON)
+            .unwrap_or_else(|| {
+                (label.text.chars().count() as f64 * font_size * 0.55).max(font_size)
+            });
+        crate::build_label_glyph_polygons(
+            single_line_runs,
+            line_runs,
+            [round2(position[0] - width * 0.5), position[1]],
+            local_bbox,
+            font_size,
+        )
+    } else if align == "right" {
+        let width = local_bbox
+            .map(|bbox| (bbox[2] - bbox[0]).abs())
+            .filter(|width| *width > EPSILON)
+            .unwrap_or_else(|| {
+                (label.text.chars().count() as f64 * font_size * 0.55).max(font_size)
+            });
+        crate::build_label_glyph_polygons(
+            single_line_runs,
+            line_runs,
+            [round2(position[0] - width), position[1]],
+            local_bbox,
+            font_size,
+        )
+    } else {
+        crate::build_label_glyph_polygons(
+            single_line_runs,
+            line_runs,
+            position,
+            local_bbox,
+            font_size,
+        )
+    };
+
+    align_imported_node_label_glyph_anchor(label, node_position);
+}
+
+fn align_imported_node_label_glyph_anchor(label: &mut NodeLabel, node_position: [f64; 2]) {
+    if label.attachment.as_deref() != Some("node")
+        || label.meta.pointer("/import/cdxml/boundingBox").is_none()
+    {
+        return;
+    }
+    let Some(anchor) = imported_node_label_anchor_point(label) else {
+        return;
+    };
+    let delta_x = round2(node_position[0] - anchor[0]);
+    let delta_y = round2(node_position[1] - anchor[1]);
+    if delta_x.abs() > EPSILON || delta_y.abs() > EPSILON {
+        for polygon in &mut label.glyph_polygons {
+            for point in polygon {
+                point[0] = round2(point[0] + delta_x);
+                point[1] = round2(point[1] + delta_y);
+            }
+        }
+    }
+
+    if let Some(bbox) = &mut label.box_field {
+        if delta_x.abs() > EPSILON || delta_y.abs() > EPSILON {
+            bbox[0] = round2(bbox[0] + delta_x);
+            bbox[1] = round2(bbox[1] + delta_y);
+            bbox[2] = round2(bbox[2] + delta_x);
+            bbox[3] = round2(bbox[3] + delta_y);
+            if let Some(position) = &mut label.position {
+                position[0] = round2(position[0] + delta_x);
+                position[1] = round2(position[1] + delta_y);
+            }
+            if let Some(box_value) = &mut label.box_value {
+                box_value[0] = round2(box_value[0] + delta_x);
+                box_value[1] = round2(box_value[1] + delta_y);
+                box_value[2] = round2(box_value[2] + delta_x);
+                box_value[3] = round2(box_value[3] + delta_y);
+            }
+        }
+    } else if let Some(bbox) = &mut label.box_value {
+        if delta_x.abs() > EPSILON || delta_y.abs() > EPSILON {
+            bbox[0] = round2(bbox[0] + delta_x);
+            bbox[1] = round2(bbox[1] + delta_y);
+            bbox[2] = round2(bbox[2] + delta_x);
+            bbox[3] = round2(bbox[3] + delta_y);
+            if let Some(position) = &mut label.position {
+                position[0] = round2(position[0] + delta_x);
+                position[1] = round2(position[1] + delta_y);
+            }
+        }
+    }
+}
+
+fn imported_node_label_anchor_point(label: &NodeLabel) -> Option<[f64; 2]> {
+    if label.glyph_polygons.is_empty() {
+        return None;
+    }
+    if label.align.as_deref() == Some("center") && label.glyph_polygons.len() > 1 {
+        let x = label
+            .bbox()
+            .map(|bbox| (bbox[0] + bbox[2]) * 0.5)
+            .or_else(|| glyph_polygon_bounds(&label.glyph_polygons).map(|b| (b[0] + b[2]) * 0.5))?;
+        let first_glyph_bounds = glyph_single_polygon_bounds(label.glyph_polygons.first()?)?;
+        return Some([x, (first_glyph_bounds[1] + first_glyph_bounds[3]) * 0.5]);
+    }
+    let polygon = if label.align.as_deref() == Some("right") {
+        label.glyph_polygons.last()?
+    } else {
+        label.glyph_polygons.first()?
+    };
+    glyph_single_polygon_bounds(polygon)
+        .map(|bounds| [(bounds[0] + bounds[2]) * 0.5, (bounds[1] + bounds[3]) * 0.5])
+}
+
+fn glyph_single_polygon_bounds(polygon: &[[f64; 2]]) -> Option<[f64; 4]> {
+    let mut iter = polygon.iter();
+    let first = iter.next()?;
+    let mut min_x = first[0];
+    let mut min_y = first[1];
+    let mut max_x = first[0];
+    let mut max_y = first[1];
+    for point in iter {
+        min_x = min_x.min(point[0]);
+        min_y = min_y.min(point[1]);
+        max_x = max_x.max(point[0]);
+        max_y = max_y.max(point[1]);
+    }
+    Some([min_x, min_y, max_x, max_y])
+}
+
+fn glyph_polygon_bounds(polygons: &[Vec<[f64; 2]>]) -> Option<[f64; 4]> {
+    let mut min_x = f64::INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+    let mut found = false;
+    for polygon in polygons {
+        for point in polygon {
+            found = true;
+            min_x = min_x.min(point[0]);
+            min_y = min_y.min(point[1]);
+            max_x = max_x.max(point[0]);
+            max_y = max_y.max(point[1]);
+        }
+    }
+    found.then_some([min_x, min_y, max_x, max_y])
 }
 
 fn default_node_label_box(position: [f64; 2], text: &str, font_size: f64) -> [f64; 4] {
@@ -1264,4 +1438,185 @@ fn fragment_content_bbox(nodes: &[Node]) -> Option<[f64; 4]> {
         round2((max_x - min_x).max(1.0)),
         round2((max_y - min_y).max(1.0)),
     ])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn polygon_bounds(polygon: &[[f64; 2]]) -> Option<[f64; 4]> {
+        let mut iter = polygon.iter();
+        let first = iter.next()?;
+        let mut min_x = first[0];
+        let mut min_y = first[1];
+        let mut max_x = first[0];
+        let mut max_y = first[1];
+        for point in iter {
+            min_x = min_x.min(point[0]);
+            min_y = min_y.min(point[1]);
+            max_x = max_x.max(point[0]);
+            max_y = max_y.max(point[1]);
+        }
+        Some([min_x, min_y, max_x, max_y])
+    }
+
+    #[test]
+    fn parse_document_json_rebuilds_fragment_label_glyph_polygons() {
+        let mut document = ChemcoreDocument::blank();
+        document.resources.insert(
+            "frag_1".to_string(),
+            Resource {
+                resource_type: "molecule_fragment2d".to_string(),
+                encoding: "chemcore.molecule.fragment2d".to_string(),
+                data: ResourceData::Fragment(MoleculeFragment {
+                    schema: "chemcore.molecule.fragment2d".to_string(),
+                    bbox: [0.0, 0.0, 20.0, 20.0],
+                    nodes: vec![Node {
+                        id: "n1".to_string(),
+                        element: "N".to_string(),
+                        atomic_number: 7,
+                        position: [10.0, 10.0],
+                        charge: 0,
+                        num_hydrogens: 0,
+                        is_external_connection_point: false,
+                        is_placeholder: false,
+                        label: Some(NodeLabel {
+                            text: "N".to_string(),
+                            source_text: Some("N".to_string()),
+                            position: Some([10.0, 10.0]),
+                            box_field: None,
+                            runs: vec![LabelRun {
+                                text: "N".to_string(),
+                                font_family: Some("Arial".to_string()),
+                                font_size: Some(10.0),
+                                fill: Some("#000000".to_string()),
+                                font_weight: Some(400),
+                                font_style: Some("normal".to_string()),
+                                underline: None,
+                                script: Some("normal".to_string()),
+                            }],
+                            line_runs: Vec::new(),
+                            lines: Vec::new(),
+                            align: Some("left".to_string()),
+                            layout: None,
+                            attachment: Some("node".to_string()),
+                            anchor: Some("start".to_string()),
+                            font_family: Some("Arial".to_string()),
+                            fill: Some("#000000".to_string()),
+                            font_size: Some(10.0),
+                            glyph_polygons: vec![vec![
+                                [0.0, 0.0],
+                                [1.0, 0.0],
+                                [1.0, 1.0],
+                                [0.0, 1.0],
+                            ]],
+                            box_value: Some([10.0, 2.0, 17.2, 10.0]),
+                            meta: json!({
+                                "import": {
+                                    "cdxml": {
+                                        "boundingBox": [26.4, 24.95, 33.62, 36.45]
+                                    }
+                                }
+                            }),
+                        }),
+                        meta: Value::Null,
+                    }],
+                    bonds: Vec::new(),
+                    meta: Value::Null,
+                }),
+                meta: Value::Null,
+            },
+        );
+
+        normalize_fragment_label_payloads(&mut document);
+
+        let resource = document.resources.get("frag_1").expect("resource");
+        let fragment = resource.data.as_fragment().expect("fragment");
+        let label = fragment.nodes[0].label.as_ref().expect("label");
+
+        assert_eq!(label.text, "N");
+        assert_eq!(label.glyph_polygons.len(), 1);
+        assert!(
+            label.glyph_polygons[0].len() > 4,
+            "stale glyph polygon should be rebuilt using current kernel geometry: {:?}",
+            label.glyph_polygons[0]
+        );
+    }
+
+    #[test]
+    fn rebuild_left_aligned_label_glyph_polygons_uses_label_baseline() {
+        let mut document = ChemcoreDocument::blank();
+        document.resources.insert(
+            "frag_1".to_string(),
+            Resource {
+                resource_type: "molecule_fragment2d".to_string(),
+                encoding: "chemcore.molecule.fragment2d".to_string(),
+                data: ResourceData::Fragment(MoleculeFragment {
+                    schema: "chemcore.molecule.fragment2d".to_string(),
+                    bbox: [0.0, 0.0, 60.0, 60.0],
+                    nodes: vec![Node {
+                        id: "n1".to_string(),
+                        element: "N".to_string(),
+                        atomic_number: 7,
+                        position: [30.0, 30.0],
+                        charge: 0,
+                        num_hydrogens: 0,
+                        is_external_connection_point: false,
+                        is_placeholder: false,
+                        label: Some(NodeLabel {
+                            text: "N".to_string(),
+                            source_text: Some("N".to_string()),
+                            position: Some([26.4, 33.9]),
+                            box_field: Some([26.4, 24.95, 33.62, 36.45]),
+                            runs: vec![LabelRun {
+                                text: "N".to_string(),
+                                font_family: Some("Arial".to_string()),
+                                font_size: Some(10.0),
+                                fill: Some("#000000".to_string()),
+                                font_weight: Some(400),
+                                font_style: Some("normal".to_string()),
+                                underline: None,
+                                script: Some("chemical".to_string()),
+                            }],
+                            line_runs: Vec::new(),
+                            lines: Vec::new(),
+                            align: Some("left".to_string()),
+                            layout: None,
+                            attachment: Some("node".to_string()),
+                            anchor: Some("start".to_string()),
+                            font_family: Some("Arial".to_string()),
+                            fill: Some("#000000".to_string()),
+                            font_size: Some(10.0),
+                            glyph_polygons: Vec::new(),
+                            box_value: None,
+                            meta: json!({
+                                "import": {
+                                    "cdxml": {
+                                        "boundingBox": [26.4, 24.95, 33.62, 36.45]
+                                    }
+                                }
+                            }),
+                        }),
+                        meta: Value::Null,
+                    }],
+                    bonds: Vec::new(),
+                    meta: Value::Null,
+                }),
+                meta: Value::Null,
+            },
+        );
+
+        normalize_fragment_label_payloads(&mut document);
+
+        let resource = document.resources.get("frag_1").expect("resource");
+        let fragment = resource.data.as_fragment().expect("fragment");
+        let label = fragment.nodes[0].label.as_ref().expect("label");
+        let bounds = polygon_bounds(&label.glyph_polygons[0]).expect("bounds");
+        let center_y = (bounds[1] + bounds[3]) * 0.5;
+
+        assert!(
+            (center_y - 30.0).abs() < 0.01,
+            "single-glyph imported node labels should be vertically recentered onto the node position, got bounds={bounds:?}",
+        );
+    }
 }

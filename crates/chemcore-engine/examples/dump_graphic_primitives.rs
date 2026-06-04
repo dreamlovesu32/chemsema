@@ -253,6 +253,7 @@ fn main() {
             RenderPrimitive::FilledPath {
                 role,
                 object_id,
+                node_id,
                 bond_id,
                 d,
                 points,
@@ -264,13 +265,14 @@ fn main() {
                 rotate_center,
             } => {
                 if role != RenderRole::DocumentGraphic
-                    || !matches_filter(&filters, object_id.as_ref(), None)
+                    || !matches_filter(&filters, object_id.as_ref(), node_id.as_ref())
                 {
                     continue;
                 }
                 out.push(json!({
                     "kind": "filled-path",
                     "objectId": object_id,
+                    "nodeId": node_id,
                     "bondId": bond_id,
                     "d": d,
                     "points": points,

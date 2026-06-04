@@ -3939,6 +3939,110 @@ fn parse_cdxml_attached_atom_label_preserves_source_bbox_size() {
 }
 
 #[test]
+fn render_cdxml_single_character_atom_label_uses_node_center_baseline() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >
+<CDXML BondLength="14.40" LineWidth="0.99" BoldWidth="2.01" HashSpacing="2.49" BondSpacing="18" LabelSize="10">
+  <page id="p1" BoundingBox="0 0 40 24">
+    <fragment id="f1" BoundingBox="0 0 40 24">
+      <n id="n1" p="10 12" Element="7">
+        <t p="6.40 15.90" BoundingBox="6.40 7.56 13.62 15.90" LabelJustification="Left">
+          <s font="3" size="10" color="0" face="96">N</s>
+        </t>
+      </n>
+      <n id="n2" p="24 12"/>
+      <b id="b1" B="n1" E="n2"/>
+    </fragment>
+  </page>
+</CDXML>"#;
+    let document =
+        parse_cdxml_document(cdxml, Some("single atom label")).expect("cdxml should parse");
+    let primitives = render_document(&document);
+    let glyph = primitives
+        .iter()
+        .find_map(|primitive| match primitive {
+            RenderPrimitive::FilledPath {
+                node_id,
+                points,
+                role,
+                ..
+            } if node_id.as_deref() == Some("n1") && *role == RenderRole::DocumentText => {
+                Some(primitive_polygon_bounds(points))
+            }
+            _ => None,
+        })
+        .expect("N label should render as kernel glyph path");
+
+    assert!(
+        ((glyph[0] + glyph[2]) * 0.5 - 10.0).abs() < 0.001,
+        "{glyph:?}"
+    );
+    assert!(
+        ((glyph[1] + glyph[3]) * 0.5 - 12.0).abs() < 0.001,
+        "{glyph:?}"
+    );
+    assert!(!primitives.iter().any(|primitive| matches!(
+        primitive,
+        RenderPrimitive::Text {
+            node_id,
+            role: RenderRole::DocumentText,
+            ..
+        } if node_id.as_deref() == Some("n1")
+    )));
+}
+
+#[test]
+fn render_cdxml_imported_atom_label_uses_kernel_glyph_paths() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >
+<CDXML BondLength="14.40" LineWidth="0.99" BoldWidth="2.01" HashSpacing="2.49" BondSpacing="18" LabelSize="10">
+  <page id="p1" BoundingBox="0 0 48 24">
+    <fragment id="f1" BoundingBox="0 0 48 24">
+      <n id="n1" p="10 12" Element="7">
+        <t p="6.40 15.90" BoundingBox="6.40 7.56 21.60 15.90" LabelJustification="Left">
+          <s font="3" size="10" color="0" face="96">NH</s>
+        </t>
+      </n>
+      <n id="n2" p="30 12"/>
+      <b id="b1" B="n1" E="n2"/>
+    </fragment>
+  </page>
+</CDXML>"#;
+    let document = parse_cdxml_document(cdxml, Some("multi atom label")).expect("cdxml");
+    let primitives = render_document(&document);
+    let glyph_paths: Vec<_> = primitives
+        .iter()
+        .filter_map(|primitive| match primitive {
+            RenderPrimitive::FilledPath {
+                node_id,
+                role,
+                points,
+                ..
+            } if node_id.as_deref() == Some("n1") && *role == RenderRole::DocumentText => {
+                Some(primitive_polygon_bounds(points))
+            }
+            _ => None,
+        })
+        .collect();
+
+    assert_eq!(glyph_paths.len(), 2, "{glyph_paths:?}");
+    assert!(!primitives.iter().any(|primitive| matches!(
+        primitive,
+        RenderPrimitive::Text {
+            node_id,
+            role: RenderRole::DocumentText,
+            ..
+        } if node_id.as_deref() == Some("n1")
+    )));
+    assert!(
+        glyph_paths
+            .iter()
+            .any(|bounds| ((bounds[0] + bounds[2]) * 0.5 - 10.0).abs() < 0.001),
+        "{glyph_paths:?}"
+    );
+}
+
+#[test]
 fn parse_cdxml_right_aligned_chemical_node_label_reverses_display_groups() {
     let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >

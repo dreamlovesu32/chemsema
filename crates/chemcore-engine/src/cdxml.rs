@@ -1008,10 +1008,7 @@ fn node_label(
                 parent_size,
             )
         } else {
-            let glyph_origin = local_bbox
-                .map(|bbox| [bbox[0], round2(bbox[1] + parent_size * 0.82)])
-                .unwrap_or(position);
-            crate::build_label_glyph_polygons(&runs, &[], glyph_origin, local_bbox, parent_size)
+            crate::build_label_glyph_polygons(&runs, &[], position, local_bbox, parent_size)
         }
     } else {
         Vec::new()

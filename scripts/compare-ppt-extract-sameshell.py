@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -10,7 +11,7 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PYTHON = Path(r"D:\anaconda3\python.exe")
+PYTHON = Path(os.environ.get("CHEMCORE_PYTHON", sys.executable))
 POWERSHELL = "powershell"
 
 

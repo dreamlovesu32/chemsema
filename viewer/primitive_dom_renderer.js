@@ -93,6 +93,7 @@ export function renderCorePrimitive(svgRoot, primitive, options = {}) {
       fill: primitive.fill || CHEMDRAW_INK,
       "fill-rule": primitive.fillRule || primitive.fill_rule || undefined,
       stroke: "none",
+      "data-node-id": primitive.nodeId || primitive.node_id || undefined,
     };
     const clipPathD = primitive.clipPathD || primitive.clip_path_d;
     if (clipPathD) {
@@ -229,7 +230,8 @@ function renderTextPrimitive(svgRoot, primitive, options) {
     y: primitive.y,
     class: "chem-text",
     "font-size": primitive.fontSize || primitive.font_size || DEFAULT_TEXT_FONT_SIZE,
-    "dominant-baseline": "alphabetic",
+    "dominant-baseline": primitive.dominantBaseline || primitive.dominant_baseline || "alphabetic",
+    "alignment-baseline": primitive.dominantBaseline || primitive.dominant_baseline || undefined,
     "text-anchor": primitive.textAnchor || primitive.text_anchor || "start",
     fill: primitive.fill ? normalizeDisplayColor(primitive.fill) : undefined,
     "font-family": primitive.fontFamily
