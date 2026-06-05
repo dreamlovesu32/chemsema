@@ -2228,13 +2228,16 @@ fn hglobal_for_word_rtf_object(payload: &OleObjectPayload) -> Result<HGLOBAL, i3
 }
 
 fn word_rtf_object_for_payload(payload: &OleObjectPayload) -> Result<String, String> {
-    let display_extent = fit_extent_himetric_to_word_body(payload.extent_himetric());
-    let emf = enhanced_metafile_bits_for_payload(payload, display_extent)
+    let natural_extent = payload.extent_himetric();
+    let display_extent = fit_extent_himetric_to_word_body(natural_extent);
+    let emf = enhanced_metafile_bits_for_payload(payload, natural_extent)
         .map_err(|hr| format!("Failed to render Word RTF EMF preview: 0x{:08X}", hr as u32))?;
-    let ole = ole_storage_file_bytes_for_payload(payload, display_extent)?;
+    let ole = ole_storage_file_bytes_for_payload(payload, natural_extent)?;
     let objdata = word_rtf_objdata_bytes(&ole, &emf)?;
-    let width_twips = points_to_twips(himetric_to_points(display_extent.cx));
-    let height_twips = points_to_twips(himetric_to_points(display_extent.cy));
+    let width_twips = points_to_twips(himetric_to_points(natural_extent.cx));
+    let height_twips = points_to_twips(himetric_to_points(natural_extent.cy));
+    let scale_x = rtf_percent_scale(display_extent.cx, natural_extent.cx);
+    let scale_y = rtf_percent_scale(display_extent.cy, natural_extent.cy);
     let objdata_hex = rtf_hex_lines(&objdata);
     let emf_hex = rtf_hex_lines(&emf);
 
@@ -2251,15 +2254,24 @@ fn word_rtf_object_for_payload(payload: &OleObjectPayload) -> Result<String, Str
     rtf.push_str("{\\sp{\\sn shapeType}{\\sv 75}}");
     rtf.push_str("{\\sp{\\sn fLine}{\\sv 0}}");
     rtf.push_str("}");
-    rtf.push_str("\\picscalex100\\picscaley100");
+    rtf.push_str(&format!("\\picscalex{scale_x}\\picscaley{scale_y}"));
     rtf.push_str(&format!(
         "\\picw{}\\pich{}\\picwgoal{width_twips}\\pichgoal{height_twips}\\emfblip ",
-        display_extent.cx, display_extent.cy
+        natural_extent.cx, natural_extent.cy
     ));
     rtf.push_str(&emf_hex);
     rtf.push_str("}}}");
     rtf.push_str("}\\par}");
     Ok(rtf)
+}
+
+fn rtf_percent_scale(display: i32, natural: i32) -> i32 {
+    if natural <= 0 {
+        return 100;
+    }
+    ((display.max(1) as f64 / natural as f64) * 100.0)
+        .round()
+        .clamp(1.0, 1000.0) as i32
 }
 
 fn word_rtf_objdata_bytes(ole_storage: &[u8], presentation_emf: &[u8]) -> Result<Vec<u8>, String> {
@@ -2320,11 +2332,11 @@ fn word_docx_package_for_payload(payload: &OleObjectPayload) -> Result<Vec<u8>, 
             hr as u32
         )
     })?;
-    let ole = ole_storage_file_bytes_for_payload(payload, display_extent)?;
-    let width_pt = himetric_to_points(display_extent.cx);
-    let height_pt = himetric_to_points(display_extent.cy);
-    let width_twips = points_to_twips(width_pt);
-    let height_twips = points_to_twips(height_pt);
+    let ole = ole_storage_file_bytes_for_payload(payload, natural_extent)?;
+    let display_width_pt = himetric_to_points(display_extent.cx);
+    let display_height_pt = himetric_to_points(display_extent.cy);
+    let natural_width_twips = points_to_twips(himetric_to_points(natural_extent.cx));
+    let natural_height_twips = points_to_twips(himetric_to_points(natural_extent.cy));
 
     let mut cursor = Cursor::new(Vec::new());
     {
@@ -2349,7 +2361,12 @@ fn word_docx_package_for_payload(payload: &OleObjectPayload) -> Result<Vec<u8>, 
             &mut zip,
             options,
             "word/document.xml",
-            &word_document_xml(width_pt, height_pt, width_twips, height_twips),
+            &word_document_xml(
+                display_width_pt,
+                display_height_pt,
+                natural_width_twips,
+                natural_height_twips,
+            ),
         )?;
         zip_add_text(
             &mut zip,
@@ -2873,7 +2890,7 @@ mod tests {
     }
 
     #[test]
-    fn word_docx_orig_size_uses_fitted_display_extent() {
+    fn word_docx_uses_natural_orig_size_and_fitted_display_extent() {
         let document_json = serde_json::to_string(&chemcore_engine::ChemcoreDocument::blank())
             .expect("blank document should serialize");
         let payload = OleObjectPayload {
@@ -2886,9 +2903,12 @@ mod tests {
             svg_was_supplied: true,
             text: None,
         };
-        let display_extent = fit_extent_himetric_to_word_body(payload.extent_himetric());
-        let width_twips = points_to_twips(himetric_to_points(display_extent.cx));
-        let height_twips = points_to_twips(himetric_to_points(display_extent.cy));
+        let natural_extent = payload.extent_himetric();
+        let display_extent = fit_extent_himetric_to_word_body(natural_extent);
+        let natural_width_twips = points_to_twips(himetric_to_points(natural_extent.cx));
+        let natural_height_twips = points_to_twips(himetric_to_points(natural_extent.cy));
+        let display_width_pt = himetric_to_points(display_extent.cx);
+        let display_height_pt = himetric_to_points(display_extent.cy);
 
         let package = word_docx_package_for_payload(&payload).expect("docx should be generated");
         let mut archive =
@@ -2902,14 +2922,20 @@ mod tests {
 
         assert!(
             document_xml.contains(&format!(
-                r#"w:dxaOrig="{width_twips}" w:dyaOrig="{height_twips}""#
+                r#"w:dxaOrig="{natural_width_twips}" w:dyaOrig="{natural_height_twips}""#
             )),
-            "Word reset-size metadata must match the fitted display extent"
+            "Word reset-size metadata must preserve the natural OLE object size"
+        );
+        assert!(
+            document_xml.contains(&format!(
+                r#"style="width:{display_width_pt:.1}pt;height:{display_height_pt:.1}pt""#
+            )),
+            "Word's visible shape should still be fitted to the document body"
         );
     }
 
     #[test]
-    fn word_rtf_clipboard_uses_fitted_display_extent() {
+    fn word_rtf_clipboard_uses_natural_extent() {
         let document_json = serde_json::to_string(&chemcore_engine::ChemcoreDocument::blank())
             .expect("blank document should serialize");
         let payload = OleObjectPayload {
@@ -2922,23 +2948,30 @@ mod tests {
             svg_was_supplied: true,
             text: None,
         };
-        let display_extent = fit_extent_himetric_to_word_body(payload.extent_himetric());
-        let display_width_twips = points_to_twips(himetric_to_points(display_extent.cx));
-        let display_height_twips = points_to_twips(himetric_to_points(display_extent.cy));
+        let natural_extent = payload.extent_himetric();
+        let display_extent = fit_extent_himetric_to_word_body(natural_extent);
+        let natural_width_twips = points_to_twips(himetric_to_points(natural_extent.cx));
+        let natural_height_twips = points_to_twips(himetric_to_points(natural_extent.cy));
+        let scale_x = rtf_percent_scale(display_extent.cx, natural_extent.cx);
+        let scale_y = rtf_percent_scale(display_extent.cy, natural_extent.cy);
 
         let rtf = word_rtf_object_for_payload(&payload).expect("RTF should be generated");
 
         assert!(
             rtf.contains(&format!(
-                "\\objw{display_width_twips}\\objh{display_height_twips}"
+                "\\objw{natural_width_twips}\\objh{natural_height_twips}"
             )),
-            "clipboard RTF should respect the same Word body fit as OOXML packages"
+            "clipboard RTF should preserve natural OLE object size and let Word decide paste scaling"
         );
         assert!(
             rtf.contains(&format!(
-                "\\picwgoal{display_width_twips}\\pichgoal{display_height_twips}"
+                "\\picwgoal{natural_width_twips}\\pichgoal{natural_height_twips}"
             )),
-            "clipboard RTF preview should use the fitted EMF display size"
+            "clipboard RTF preview should preserve natural EMF goal size"
+        );
+        assert!(
+            rtf.contains(&format!("\\picscalex{scale_x}\\picscaley{scale_y}")),
+            "clipboard RTF should use picture scaling for the fitted display size"
         );
     }
 
