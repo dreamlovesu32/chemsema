@@ -37,7 +37,7 @@ use windows_sys::Win32::System::Ole::{CF_ENHMETAFILE, CF_METAFILEPICT};
 
 use super::{
     wide_null, OleObjectPayload, DOCUMENT_DISPLAY_NAME, DV_E_FORMATETC,
-    EMF_LOGICAL_UNITS_PER_CSS_PX, E_FAIL, E_OUTOFMEMORY, GMEM_MOVEABLE_FLAG, HIMETRIC_PER_CSS_PX,
+    EMF_LOGICAL_UNITS_PER_CSS_PX, E_FAIL, E_OUTOFMEMORY, GMEM_MOVEABLE_FLAG,
     MIN_OBJECT_EXTENT_HIMETRIC,
 };
 
@@ -65,23 +65,24 @@ unsafe extern "system" {
     fn ReleaseDC(hwnd: *mut c_void, hdc: HDC) -> i32;
 }
 
-const CHEMDRAW_HIMETRIC_PER_SVG_PX: f64 = 2540.0 / 240.0;
-const CHEMDRAW_EMF_LOGICAL_UNITS_PER_SVG_PX: f64 = 1.0;
+const DEFAULT_DEVICE_HIMETRIC_PER_PIXEL: f64 = 2540.0 / 240.0;
+const HIMETRIC_PER_PT: f64 = 2540.0 / 72.0;
 const USE_GDIPLUS_DUAL_PREVIEW: bool = true;
-const PREVIEW_SOURCE_PADDING_PX: f64 = 10.0;
+const PREVIEW_MARGIN_PT: f64 = 2.5;
 const PREVIEW_SOURCE_RIGHT_PADDING_PT: f64 = 0.0;
-const ENV_PREVIEW_SOURCE_PADDING_PX: &str = "CHEMCORE_PREVIEW_SOURCE_PADDING_PX";
+const ENV_PREVIEW_MARGIN_PT: &str = "CHEMCORE_PREVIEW_MARGIN_PT";
 const ENV_PREVIEW_SOURCE_RIGHT_PADDING_PT: &str = "CHEMCORE_PREVIEW_SOURCE_RIGHT_PADDING_PT";
 const ENV_PREVIEW_SOURCE_BOUNDS_SIDES: &str = "CHEMCORE_PREVIEW_SOURCE_BOUNDS_SIDES";
 const ENV_PREVIEW_SOURCE_BOUNDS_MODE: &str = "CHEMCORE_PREVIEW_SOURCE_BOUNDS_MODE";
 const ENV_PREVIEW_FRAME_BOUNDS_MODE: &str = "CHEMCORE_PREVIEW_FRAME_BOUNDS_MODE";
-const ENV_PREVIEW_FRAME_OFFSETS_SVG_PX: &str = "CHEMCORE_PREVIEW_FRAME_OFFSETS_SVG_PX";
-const DEFAULT_PREVIEW_FRAME_OFFSETS_SVG_PX: PreviewFrameOffsetsSvgPx = PreviewFrameOffsetsSvgPx {
-    left: 1.0,
-    top: 1.0,
-    right: 1.0,
-    bottom: -5.0,
+const ENV_PREVIEW_FRAME_OFFSETS_PT: &str = "CHEMCORE_PREVIEW_FRAME_OFFSETS_PT";
+const DEFAULT_PREVIEW_FRAME_OFFSETS_PT: PreviewFrameOffsetsPt = PreviewFrameOffsetsPt {
+    left: 0.0,
+    top: 0.0,
+    right: 0.0,
+    bottom: 0.0,
 };
+const OFFICE_TEXT_DESCENT_TRIM_EM: f64 = 0.4;
 const GDI_HORZSIZE: i32 = 4;
 const GDI_VERTSIZE: i32 = 6;
 const GDI_HORZRES: i32 = 8;
@@ -119,11 +120,19 @@ struct PreviewSourceBoundsSides {
 }
 
 #[derive(Clone, Copy, Debug)]
-struct PreviewFrameOffsetsSvgPx {
+struct PreviewFrameOffsetsPt {
     left: f64,
     top: f64,
     right: f64,
     bottom: f64,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct BottomVisiblePrimitiveStats {
+    text_bottom: Option<f64>,
+    non_text_bottom: Option<f64>,
+    bottom_text_font_size: f64,
+    bottom_is_text: bool,
 }
 
 pub(super) unsafe fn draw_payload_preview(
@@ -139,10 +148,9 @@ pub(super) unsafe fn draw_placeholder_preview(dc: HDC, bounds: &RECT) {
 }
 
 pub(super) fn extent_himetric_for_payload(payload: &OleObjectPayload) -> Option<SIZE> {
-    let use_chemdraw_units = payload_uses_cdxml_editing_scale(payload);
     let bounds =
         preview_frame_source_bounds(payload).or_else(|| visible_payload_bounds(payload))?;
-    let frame = office_preview_frame_bounds(bounds, use_chemdraw_units);
+    let frame = office_preview_frame_bounds(bounds);
     let width = (frame.right - frame.left).max(1);
     let height = (frame.bottom - frame.top).max(1);
     if width <= 0 || height <= 0 {
@@ -152,20 +160,6 @@ pub(super) fn extent_himetric_for_payload(payload: &OleObjectPayload) -> Option<
     let cx = width.max(MIN_OBJECT_EXTENT_HIMETRIC);
     let cy = height.max(MIN_OBJECT_EXTENT_HIMETRIC);
     Some(SIZE { cx, cy })
-}
-
-fn payload_uses_cdxml_editing_scale(payload: &OleObjectPayload) -> bool {
-    parse_document_json(&payload.chemcore_document_json)
-        .ok()
-        .and_then(|document| {
-            document
-                .document
-                .meta
-                .pointer("/import/cdxml/editingScale")
-                .and_then(serde_json::Value::as_f64)
-                .filter(|scale| (*scale - 1.0).abs() > f64::EPSILON)
-        })
-        .is_some()
 }
 
 fn visible_payload_bounds(payload: &OleObjectPayload) -> Option<[f64; 4]> {
@@ -211,8 +205,7 @@ pub(super) fn preview_source_bounds(payload: &OleObjectPayload) -> Option<[f64; 
         .ok()
         .and_then(|value| value.trim().parse::<f64>().ok())
         .unwrap_or(PREVIEW_SOURCE_RIGHT_PADDING_PT);
-    let source_padding_px = preview_source_padding_px();
-    let use_chemdraw_units = payload_uses_cdxml_editing_scale(payload);
+    let margin_pt = preview_margin_pt();
     let visible = visible_payload_bounds(payload).or_else(|| {
         (!payload.svg_was_supplied)
             .then(|| document_clipboard_bounds(payload))
@@ -274,8 +267,9 @@ pub(super) fn preview_source_bounds(payload: &OleObjectPayload) -> Option<[f64; 
             (None, None) => None,
         },
         PreviewSourceBoundsMode::Visible => visible,
-        PreviewSourceBoundsMode::VisiblePad => visible
-            .map(|bounds| pad_bounds_logical_px(bounds, source_padding_px, use_chemdraw_units)),
+        PreviewSourceBoundsMode::VisiblePad => {
+            visible.map(|bounds| pad_bounds_by_margin_pt(bounds, margin_pt))
+        }
         PreviewSourceBoundsMode::Svg => svg,
         PreviewSourceBoundsMode::SvgPadRight => {
             svg.map(|svg| [svg[0], svg[1], svg[2] + right_padding, svg[3]])
@@ -306,7 +300,7 @@ pub(super) fn preview_source_bounds(payload: &OleObjectPayload) -> Option<[f64; 
 fn preview_frame_source_bounds(payload: &OleObjectPayload) -> Option<[f64; 4]> {
     let visible = visible_payload_bounds(payload);
     let source = preview_source_bounds(payload);
-    match preview_frame_bounds_mode() {
+    let bounds = match preview_frame_bounds_mode() {
         PreviewFrameBoundsMode::Source => source.or(visible),
         PreviewFrameBoundsMode::Visible => visible.or(source),
         PreviewFrameBoundsMode::MixedSourceBottom => match (visible, source) {
@@ -321,14 +315,14 @@ fn preview_frame_source_bounds(payload: &OleObjectPayload) -> Option<[f64; 4]> {
             (None, Some(source)) => Some(source),
             (None, None) => None,
         },
-    }
+    };
+    bounds.map(|bounds| apply_preview_frame_offsets(bounds, preview_frame_offsets_pt(payload)))
 }
 
 pub(super) fn preview_bounds_debug_report(
     payload: &OleObjectPayload,
     extent: SIZE,
 ) -> serde_json::Value {
-    let use_chemdraw_units = payload_uses_cdxml_editing_scale(payload);
     let visible_bounds = visible_payload_bounds(payload);
     let svg_bounds = payload
         .svg_was_supplied
@@ -343,15 +337,18 @@ pub(super) fn preview_bounds_debug_report(
         .ok()
         .and_then(|value| value.trim().parse::<f64>().ok())
         .unwrap_or(PREVIEW_SOURCE_RIGHT_PADDING_PT);
-    let source_padding_px = preview_source_padding_px();
-    let source_padding_svg_px =
-        source_padding_svg_px_for_report(source_padding_px, use_chemdraw_units);
+    let margin_pt = preview_margin_pt();
+    let source_padding_pt = source_padding_pt_for_report(margin_pt);
     let (frame_bounds, draw_bounds, use_logical_preview_coords) =
         if let Some(visible) = visible_bounds {
             let draw_source_bounds = source_bounds.unwrap_or(visible);
+            let display_scale = display_extent_scale_for_payload(payload, extent);
             (
                 preview_frame_bounds_for_extent(extent),
-                office_preview_logical_size_bounds(draw_source_bounds, use_chemdraw_units),
+                scale_rect_size(
+                    office_preview_logical_size_bounds(draw_source_bounds),
+                    display_scale,
+                ),
                 true,
             )
         } else {
@@ -359,13 +356,18 @@ pub(super) fn preview_bounds_debug_report(
             (bounds, bounds, false)
         };
     json!({
-        "useCdxmlEditingScale": use_chemdraw_units,
         "sourceBoundsMode": format!("{source_bounds_mode:?}"),
         "frameBoundsMode": format!("{frame_bounds_mode:?}"),
         "sourceBoundsSidesOverride": source_bounds_sides_override,
-        "sourcePaddingPx": source_padding_px,
-        "sourcePaddingSvgPx": source_padding_svg_px,
-        "frameOffsetsSvgPx": preview_frame_offsets_svg_px().map(|offsets| json!({
+        "sourceMarginPt": margin_pt,
+        "sourcePaddingPt": source_padding_pt,
+        "bottomPrimitiveStats": bottom_visible_primitive_stats(payload).map(|stats| json!({
+            "textBottom": stats.text_bottom,
+            "nonTextBottom": stats.non_text_bottom,
+            "bottomTextFontSize": stats.bottom_text_font_size,
+            "bottomIsText": stats.bottom_is_text,
+        })),
+        "frameOffsetsPt": preview_frame_offsets_pt(payload).map(|offsets| json!({
             "left": offsets.left,
             "top": offsets.top,
             "right": offsets.right,
@@ -376,10 +378,10 @@ pub(super) fn preview_bounds_debug_report(
             "height": extent.cy,
         },
         "rightPaddingPt": right_padding,
-        "visibleBoundsSvgPx": visible_bounds,
-        "svgViewBoxBoundsSvgPx": svg_bounds,
-        "sourceBoundsSvgPx": source_bounds,
-        "frameSourceBoundsSvgPx": frame_source_bounds,
+        "visibleBoundsPt": visible_bounds,
+        "svgViewBoxBoundsPt": svg_bounds,
+        "sourceBoundsPt": source_bounds,
+        "frameSourceBoundsPt": frame_source_bounds,
         "useLogicalPreviewCoords": use_logical_preview_coords,
         "frameBoundsHimetric": rect_debug_json(frame_bounds),
         "drawBoundsLogical": rect_debug_json(draw_bounds),
@@ -441,26 +443,31 @@ fn union_bounds(a: [f64; 4], b: [f64; 4]) -> [f64; 4] {
     ]
 }
 
-fn pad_bounds_logical_px(bounds: [f64; 4], padding_px: f64, use_chemdraw_units: bool) -> [f64; 4] {
-    if !padding_px.is_finite() || padding_px <= 0.0 {
+fn apply_preview_frame_offsets(
+    bounds: [f64; 4],
+    offsets: Option<PreviewFrameOffsetsPt>,
+) -> [f64; 4] {
+    if let Some(offsets) = offsets {
+        [
+            bounds[0] + offsets.left,
+            bounds[1] + offsets.top,
+            bounds[2] + offsets.right,
+            bounds[3] + offsets.bottom,
+        ]
+    } else {
+        bounds
+    }
+}
+
+fn pad_bounds_by_margin_pt(bounds: [f64; 4], margin_pt: f64) -> [f64; 4] {
+    if !margin_pt.is_finite() || margin_pt <= 0.0 {
         return bounds;
     }
-    let (scale_x, scale_y) = office_preview_logical_units_per_svg_px(use_chemdraw_units);
-    let padding_x = if scale_x > 0.0 {
-        padding_px / scale_x
-    } else {
-        0.0
-    };
-    let padding_y = if scale_y > 0.0 {
-        padding_px / scale_y
-    } else {
-        0.0
-    };
     [
-        bounds[0] - padding_x,
-        bounds[1] - padding_y,
-        bounds[2] + padding_x,
-        bounds[3] + padding_y,
+        bounds[0] - margin_pt,
+        bounds[1] - margin_pt,
+        bounds[2] + margin_pt,
+        bounds[3] + margin_pt,
     ]
 }
 
@@ -574,10 +581,10 @@ fn enhanced_metafile_for_payload_with_options(
     high_resolution_vectors: bool,
 ) -> Result<*mut c_void, i32> {
     unsafe {
-        let use_chemdraw_units = payload_uses_cdxml_editing_scale(payload);
         let (frame_bounds, draw_bounds, source_bounds, use_logical_preview_coords) =
             if let Some(visible_bounds) = visible_payload_bounds(payload) {
                 let draw_source_bounds = preview_source_bounds(payload).unwrap_or(visible_bounds);
+                let display_scale = display_extent_scale_for_payload(payload, extent);
                 // Word reports an EMF's "original size" from the EMF frame adjusted
                 // by the metafile device DPI. Scale the frame and recorded
                 // coordinates together so the visual size stays unchanged while
@@ -586,7 +593,10 @@ fn enhanced_metafile_for_payload_with_options(
                 (
                     scale_rect_size(preview_frame_bounds_for_extent(extent), word_scale),
                     scale_rect_size(
-                        office_preview_logical_size_bounds(draw_source_bounds, use_chemdraw_units),
+                        scale_rect_size(
+                            office_preview_logical_size_bounds(draw_source_bounds),
+                            display_scale,
+                        ),
                         word_scale,
                     ),
                     Some(draw_source_bounds),
@@ -652,35 +662,25 @@ fn enhanced_metafile_for_payload_with_options(
     }
 }
 
-fn office_preview_frame_bounds(bounds: [f64; 4], use_chemdraw_units: bool) -> RECT {
-    let bounds = if let Some(offsets) = preview_frame_offsets_svg_px() {
-        [
-            bounds[0] + offsets.left,
-            bounds[1] + offsets.top,
-            bounds[2] + offsets.right,
-            bounds[3] + offsets.bottom,
-        ]
-    } else {
-        bounds
-    };
-    let (scale_x, scale_y) = if use_chemdraw_units {
-        chemdraw_himetric_per_svg_px_for_current_device()
-    } else {
-        (HIMETRIC_PER_CSS_PX, HIMETRIC_PER_CSS_PX)
-    };
+fn office_preview_frame_bounds(bounds: [f64; 4]) -> RECT {
     RECT {
-        left: scaled_to_i32(bounds[0], scale_x),
-        top: scaled_to_i32(bounds[1], scale_y),
-        right: scaled_to_i32(bounds[2], scale_x).max(scaled_to_i32(bounds[0], scale_x) + 1),
-        bottom: scaled_to_i32(bounds[3], scale_y).max(scaled_to_i32(bounds[1], scale_y) + 1),
+        left: scaled_to_i32(bounds[0], HIMETRIC_PER_PT),
+        top: scaled_to_i32(bounds[1], HIMETRIC_PER_PT),
+        right: scaled_to_i32(bounds[2], HIMETRIC_PER_PT)
+            .max(scaled_to_i32(bounds[0], HIMETRIC_PER_PT) + 1),
+        bottom: scaled_to_i32(bounds[3], HIMETRIC_PER_PT)
+            .max(scaled_to_i32(bounds[1], HIMETRIC_PER_PT) + 1),
     }
 }
 
-fn chemdraw_himetric_per_svg_px_for_current_device() -> (f64, f64) {
+fn device_himetric_per_pixel_for_current_device() -> (f64, f64) {
     unsafe {
         let dc = GetDC(null_mut());
         if dc.is_null() {
-            return (CHEMDRAW_HIMETRIC_PER_SVG_PX, CHEMDRAW_HIMETRIC_PER_SVG_PX);
+            return (
+                DEFAULT_DEVICE_HIMETRIC_PER_PIXEL,
+                DEFAULT_DEVICE_HIMETRIC_PER_PIXEL,
+            );
         }
         let horz_res = positive_device_cap(dc, GDI_DESKTOPHORZRES)
             .unwrap_or_else(|| GetDeviceCaps(dc, GDI_HORZRES));
@@ -689,11 +689,11 @@ fn chemdraw_himetric_per_svg_px_for_current_device() -> (f64, f64) {
             .unwrap_or_else(|| GetDeviceCaps(dc, GDI_VERTRES));
         let vert_size_mm = GetDeviceCaps(dc, GDI_VERTSIZE);
         ReleaseDC(null_mut(), dc);
-        let scale_x = himetric_per_svg_px_from_device_metrics(horz_res, horz_size_mm);
-        let scale_y = himetric_per_svg_px_from_device_metrics(vert_res, vert_size_mm);
+        let scale_x = himetric_per_pixel_from_device_metrics(horz_res, horz_size_mm);
+        let scale_y = himetric_per_pixel_from_device_metrics(vert_res, vert_size_mm);
         (
-            scale_x.unwrap_or(CHEMDRAW_HIMETRIC_PER_SVG_PX),
-            scale_y.unwrap_or(CHEMDRAW_HIMETRIC_PER_SVG_PX),
+            scale_x.unwrap_or(DEFAULT_DEVICE_HIMETRIC_PER_PIXEL),
+            scale_y.unwrap_or(DEFAULT_DEVICE_HIMETRIC_PER_PIXEL),
         )
     }
 }
@@ -703,7 +703,7 @@ unsafe fn positive_device_cap(dc: HDC, index: i32) -> Option<i32> {
     (value > 0).then_some(value)
 }
 
-fn himetric_per_svg_px_from_device_metrics(resolution_px: i32, size_mm: i32) -> Option<f64> {
+fn himetric_per_pixel_from_device_metrics(resolution_px: i32, size_mm: i32) -> Option<f64> {
     if resolution_px <= 0 || size_mm <= 0 {
         return None;
     }
@@ -722,8 +722,21 @@ fn preview_frame_bounds_for_extent(extent: SIZE) -> RECT {
     }
 }
 
-fn office_preview_logical_bounds(bounds: [f64; 4], use_chemdraw_units: bool) -> RECT {
-    let (scale_x, scale_y) = office_preview_logical_units_per_svg_px(use_chemdraw_units);
+fn display_extent_scale_for_payload(payload: &OleObjectPayload, extent: SIZE) -> (f64, f64) {
+    let Some(frame_source_bounds) = preview_frame_source_bounds(payload) else {
+        return (1.0, 1.0);
+    };
+    let natural_frame = office_preview_frame_bounds(frame_source_bounds);
+    let natural_width = (natural_frame.right - natural_frame.left).max(1) as f64;
+    let natural_height = (natural_frame.bottom - natural_frame.top).max(1) as f64;
+    (
+        (extent.cx.max(1) as f64 / natural_width).max(0.01),
+        (extent.cy.max(1) as f64 / natural_height).max(0.01),
+    )
+}
+
+fn office_preview_logical_bounds(bounds: [f64; 4]) -> RECT {
+    let (scale_x, scale_y) = office_preview_logical_units_per_pt();
     RECT {
         left: scaled_to_i32(bounds[0], scale_x),
         top: scaled_to_i32(bounds[1], scale_y),
@@ -732,33 +745,30 @@ fn office_preview_logical_bounds(bounds: [f64; 4], use_chemdraw_units: bool) -> 
     }
 }
 
-fn office_preview_logical_units_per_svg_px(use_chemdraw_units: bool) -> (f64, f64) {
-    if use_chemdraw_units {
-        return (
-            CHEMDRAW_EMF_LOGICAL_UNITS_PER_SVG_PX,
-            CHEMDRAW_EMF_LOGICAL_UNITS_PER_SVG_PX,
-        );
-    }
+fn office_preview_logical_units_per_pt() -> (f64, f64) {
     let (himetric_per_pixel_x, himetric_per_pixel_y) =
-        chemdraw_himetric_per_svg_px_for_current_device();
+        device_himetric_per_pixel_for_current_device();
     (
-        logical_units_per_svg_px(HIMETRIC_PER_CSS_PX, himetric_per_pixel_x),
-        logical_units_per_svg_px(HIMETRIC_PER_CSS_PX, himetric_per_pixel_y),
+        logical_units_per_source_unit(HIMETRIC_PER_PT, himetric_per_pixel_x),
+        logical_units_per_source_unit(HIMETRIC_PER_PT, himetric_per_pixel_y),
     )
 }
 
-fn logical_units_per_svg_px(himetric_per_svg_px: f64, himetric_per_device_pixel: f64) -> f64 {
-    if himetric_per_svg_px.is_finite()
+fn logical_units_per_source_unit(
+    himetric_per_source_unit: f64,
+    himetric_per_device_pixel: f64,
+) -> f64 {
+    if himetric_per_source_unit.is_finite()
         && himetric_per_device_pixel.is_finite()
         && himetric_per_device_pixel > 0.0
     {
-        return (himetric_per_svg_px / himetric_per_device_pixel).max(0.01);
+        return (himetric_per_source_unit / himetric_per_device_pixel).max(0.01);
     }
     EMF_LOGICAL_UNITS_PER_CSS_PX
 }
 
-fn office_preview_logical_size_bounds(bounds: [f64; 4], use_chemdraw_units: bool) -> RECT {
-    let rect = office_preview_logical_bounds(bounds, use_chemdraw_units);
+fn office_preview_logical_size_bounds(bounds: [f64; 4]) -> RECT {
+    let rect = office_preview_logical_bounds(bounds);
     RECT {
         left: 0,
         top: 0,
@@ -845,22 +855,18 @@ fn preview_source_bounds_mode() -> PreviewSourceBoundsMode {
     }
 }
 
-fn preview_source_padding_px() -> f64 {
-    std::env::var(ENV_PREVIEW_SOURCE_PADDING_PX)
+fn preview_margin_pt() -> f64 {
+    std::env::var(ENV_PREVIEW_MARGIN_PT)
         .ok()
         .and_then(|value| value.trim().parse::<f64>().ok())
         .filter(|value| value.is_finite() && *value >= 0.0)
-        .unwrap_or(PREVIEW_SOURCE_PADDING_PX)
+        .unwrap_or(PREVIEW_MARGIN_PT)
 }
 
-fn source_padding_svg_px_for_report(
-    padding_px: f64,
-    use_chemdraw_units: bool,
-) -> serde_json::Value {
-    let (scale_x, scale_y) = office_preview_logical_units_per_svg_px(use_chemdraw_units);
+fn source_padding_pt_for_report(margin_pt: f64) -> serde_json::Value {
     json!({
-        "x": if scale_x > 0.0 { padding_px / scale_x } else { 0.0 },
-        "y": if scale_y > 0.0 { padding_px / scale_y } else { 0.0 }
+        "x": margin_pt,
+        "y": margin_pt,
     })
 }
 
@@ -899,9 +905,11 @@ fn preview_source_bounds_sides_override() -> Option<PreviewSourceBoundsSides> {
     })
 }
 
-fn preview_frame_offsets_svg_px() -> Option<PreviewFrameOffsetsSvgPx> {
-    let Some(raw) = std::env::var(ENV_PREVIEW_FRAME_OFFSETS_SVG_PX).ok() else {
-        return Some(DEFAULT_PREVIEW_FRAME_OFFSETS_SVG_PX);
+fn preview_frame_offsets_pt(payload: &OleObjectPayload) -> Option<PreviewFrameOffsetsPt> {
+    let Some(raw) = std::env::var(ENV_PREVIEW_FRAME_OFFSETS_PT).ok() else {
+        let mut offsets = DEFAULT_PREVIEW_FRAME_OFFSETS_PT;
+        offsets.bottom = office_text_bottom_frame_offset_pt(payload);
+        return Some(offsets);
     };
     if raw.trim().eq_ignore_ascii_case("none") {
         return None;
@@ -912,26 +920,108 @@ fn preview_frame_offsets_svg_px() -> Option<PreviewFrameOffsetsSvgPx> {
         .filter(|part| !part.is_empty())
         .collect();
     let [left, top, right, bottom] = parts.as_slice() else {
-        return Some(DEFAULT_PREVIEW_FRAME_OFFSETS_SVG_PX);
+        return Some(DEFAULT_PREVIEW_FRAME_OFFSETS_PT);
     };
-    Some(PreviewFrameOffsetsSvgPx {
+    Some(PreviewFrameOffsetsPt {
         left: left
             .parse::<f64>()
             .ok()
-            .unwrap_or(DEFAULT_PREVIEW_FRAME_OFFSETS_SVG_PX.left),
+            .unwrap_or(DEFAULT_PREVIEW_FRAME_OFFSETS_PT.left),
         top: top
             .parse::<f64>()
             .ok()
-            .unwrap_or(DEFAULT_PREVIEW_FRAME_OFFSETS_SVG_PX.top),
+            .unwrap_or(DEFAULT_PREVIEW_FRAME_OFFSETS_PT.top),
         right: right
             .parse::<f64>()
             .ok()
-            .unwrap_or(DEFAULT_PREVIEW_FRAME_OFFSETS_SVG_PX.right),
+            .unwrap_or(DEFAULT_PREVIEW_FRAME_OFFSETS_PT.right),
         bottom: bottom
             .parse::<f64>()
             .ok()
-            .unwrap_or(DEFAULT_PREVIEW_FRAME_OFFSETS_SVG_PX.bottom),
+            .unwrap_or(DEFAULT_PREVIEW_FRAME_OFFSETS_PT.bottom),
     })
+}
+
+fn office_text_bottom_frame_offset_pt(payload: &OleObjectPayload) -> f64 {
+    let Some(stats) = bottom_visible_primitive_stats(payload) else {
+        return 0.0;
+    };
+    if !stats.bottom_is_text {
+        return 0.0;
+    }
+    let metric_trim = stats.bottom_text_font_size * OFFICE_TEXT_DESCENT_TRIM_EM;
+    let max_offset = if let (Some(text_bottom), Some(non_text_bottom)) =
+        (stats.text_bottom, stats.non_text_bottom)
+    {
+        (text_bottom - non_text_bottom - preview_margin_pt()).max(0.0)
+    } else {
+        metric_trim
+    };
+    -metric_trim.min(max_offset)
+}
+
+fn bottom_visible_primitive_stats(
+    payload: &OleObjectPayload,
+) -> Option<BottomVisiblePrimitiveStats> {
+    let primitives = payload_visible_primitives(payload)?;
+    let mut text_bottom: Option<f64> = None;
+    let mut non_text_bottom: Option<f64> = None;
+    let mut bottom_text_font_size = 0.0;
+    for primitive in primitives
+        .iter()
+        .filter(|primitive| office_preview_primitive_visible(primitive))
+    {
+        let Some(bounds) = render_primitives_bounds(std::iter::once(primitive)) else {
+            continue;
+        };
+        if let RenderPrimitive::Text {
+            role: RenderRole::DocumentText,
+            font_size,
+            ..
+        } = primitive
+        {
+            let update_text = text_bottom
+                .map(|bottom| bounds[3] > bottom + f64::EPSILON)
+                .unwrap_or(true);
+            if update_text {
+                text_bottom = Some(bounds[3]);
+                bottom_text_font_size = *font_size;
+            } else if text_bottom
+                .map(|bottom| (bounds[3] - bottom).abs() <= f64::EPSILON)
+                .unwrap_or(false)
+            {
+                bottom_text_font_size = bottom_text_font_size.max(*font_size);
+            }
+        } else {
+            non_text_bottom =
+                Some(non_text_bottom.map_or(bounds[3], |bottom| bottom.max(bounds[3])));
+        }
+    }
+    let bottom_is_text = match (text_bottom, non_text_bottom) {
+        (Some(text), Some(non_text)) => text > non_text + f64::EPSILON,
+        (Some(_), None) => true,
+        _ => false,
+    };
+    if text_bottom.is_some() || non_text_bottom.is_some() {
+        Some(BottomVisiblePrimitiveStats {
+            text_bottom,
+            non_text_bottom,
+            bottom_text_font_size,
+            bottom_is_text,
+        })
+    } else {
+        None
+    }
+}
+
+fn payload_visible_primitives(payload: &OleObjectPayload) -> Option<Vec<RenderPrimitive>> {
+    if let Some(primitives) = payload_render_primitives(payload) {
+        return Some(primitives);
+    }
+    parse_document_json(&payload.chemcore_document_json)
+        .ok()
+        .map(|document| render_document(&document))
+        .filter(|primitives| !primitives.is_empty())
 }
 
 pub(super) fn ole_presentation_stream_for_payload(
@@ -1133,6 +1223,38 @@ mod tests {
                 .and_then(|value| value.as_i64()),
             Some(200),
             "Word-fitted previews must record the requested display height in the EMF frame"
+        );
+    }
+
+    #[test]
+    fn pt_documents_use_point_sized_office_extents_with_fixed_margin() {
+        let mut document = ChemcoreDocument::blank();
+        document.document.meta = json!({
+            "clipboard": {
+                "selectionBounds": [0.0, 0.0, 100.0, 50.0]
+            }
+        });
+        let payload = OleObjectPayload {
+            chemcore_fragment_json: Some("{\"nodes\":[],\"bonds\":[]}".to_string()),
+            chemcore_document_json: serde_json::to_string(&document).unwrap(),
+            render_list_json: None,
+            cdxml: None,
+            svg: String::new(),
+            svg_was_supplied: false,
+            text: None,
+        };
+
+        let source = preview_source_bounds(&payload).expect("selection bounds need padding");
+        assert_eq!(source, [-2.5, -2.5, 102.5, 52.5]);
+
+        let extent = extent_himetric_for_payload(&payload).expect("selection needs an extent");
+        assert_eq!(
+            extent.cx, 3704,
+            "100 pt content plus 2.5 pt on both sides should stay in point units"
+        );
+        assert_eq!(
+            extent.cy, 1940,
+            "50 pt content plus 2.5 pt on both sides should stay in point units"
         );
     }
 }

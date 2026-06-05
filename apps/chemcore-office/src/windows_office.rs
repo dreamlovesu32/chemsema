@@ -84,7 +84,6 @@ const GMEM_MOVEABLE_FLAG: u32 = 0x0002;
 const DEFAULT_OBJECT_WIDTH_HIMETRIC: i32 = 6000;
 const DEFAULT_OBJECT_HEIGHT_HIMETRIC: i32 = 3000;
 const HIMETRIC_PER_CM: f64 = 1000.0;
-const HIMETRIC_PER_CSS_PX: f64 = 2540.0 / 96.0;
 const EMF_LOGICAL_UNITS_PER_CSS_PX: f64 = 2.0;
 const WORD_A4_BODY_WIDTH_CM: f64 = 21.0 - 2.0 * 3.18;
 const MIN_OBJECT_EXTENT_HIMETRIC: i32 = 100;
@@ -2229,7 +2228,7 @@ fn hglobal_for_word_rtf_object(payload: &OleObjectPayload) -> Result<HGLOBAL, i3
 }
 
 fn word_rtf_object_for_payload(payload: &OleObjectPayload) -> Result<String, String> {
-    let display_extent = payload.extent_himetric();
+    let display_extent = fit_extent_himetric_to_word_body(payload.extent_himetric());
     let emf = enhanced_metafile_bits_for_payload(payload, display_extent)
         .map_err(|hr| format!("Failed to render Word RTF EMF preview: 0x{:08X}", hr as u32))?;
     let ole = ole_storage_file_bytes_for_payload(payload, display_extent)?;
@@ -2910,7 +2909,7 @@ mod tests {
     }
 
     #[test]
-    fn word_rtf_clipboard_uses_natural_extent() {
+    fn word_rtf_clipboard_uses_fitted_display_extent() {
         let document_json = serde_json::to_string(&chemcore_engine::ChemcoreDocument::blank())
             .expect("blank document should serialize");
         let payload = OleObjectPayload {
@@ -2923,23 +2922,23 @@ mod tests {
             svg_was_supplied: true,
             text: None,
         };
-        let natural_extent = payload.extent_himetric();
-        let natural_width_twips = points_to_twips(himetric_to_points(natural_extent.cx));
-        let natural_height_twips = points_to_twips(himetric_to_points(natural_extent.cy));
+        let display_extent = fit_extent_himetric_to_word_body(payload.extent_himetric());
+        let display_width_twips = points_to_twips(himetric_to_points(display_extent.cx));
+        let display_height_twips = points_to_twips(himetric_to_points(display_extent.cy));
 
         let rtf = word_rtf_object_for_payload(&payload).expect("RTF should be generated");
 
         assert!(
             rtf.contains(&format!(
-                "\\objw{natural_width_twips}\\objh{natural_height_twips}"
+                "\\objw{display_width_twips}\\objh{display_height_twips}"
             )),
-            "clipboard RTF should preserve natural OLE object size and let Word decide paste scaling"
+            "clipboard RTF should respect the same Word body fit as OOXML packages"
         );
         assert!(
             rtf.contains(&format!(
-                "\\picwgoal{natural_width_twips}\\pichgoal{natural_height_twips}"
+                "\\picwgoal{display_width_twips}\\pichgoal{display_height_twips}"
             )),
-            "clipboard RTF preview should preserve natural EMF display size"
+            "clipboard RTF preview should use the fitted EMF display size"
         );
     }
 
