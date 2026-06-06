@@ -42,7 +42,7 @@ use windows_sys::Win32::System::Registry::{
 };
 use windows_sys::Win32::UI::Shell::ShellExecuteW;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    DispatchMessageW, GetMessageW, TranslateMessage, MSG, SW_SHOWNORMAL,
+    AllowSetForegroundWindow, DispatchMessageW, GetMessageW, TranslateMessage, MSG, SW_SHOWNORMAL,
 };
 
 mod emf_preview;
@@ -94,6 +94,7 @@ const EMF_LOGICAL_UNITS_PER_CSS_PX: f64 = 2.0;
 const WORD_A4_BODY_WIDTH_CM: f64 = 21.0 - 2.0 * 3.18;
 const MIN_OBJECT_EXTENT_HIMETRIC: i32 = 100;
 const CREATE_NO_WINDOW_FLAG: u32 = 0x08000000;
+const ASFW_ANY_PROCESS: u32 = u32::MAX;
 const DESKTOP_DEV_SERVER_ADDR: &str = "127.0.0.1:8767";
 const CHEMCORE_DESKTOP_EXE_NAME: &str = "chemcore-desktop.exe";
 const CHEMCORE_DESKTOP_ENV: &str = "CHEMCORE_DESKTOP_EXE";
@@ -199,6 +200,9 @@ pub fn run() -> Result<(), String> {
         "--print-registration" => print_registration(),
         "--self-test" => run_self_test(),
         "--copy-clipboard-payload" => {
+            unsafe {
+                FreeConsole();
+            }
             let payload_path = args.next().ok_or_else(|| {
                 "--copy-clipboard-payload requires a JSON payload path.".to_string()
             })?;
@@ -532,7 +536,6 @@ fn copy_clipboard_payload(payload_path: PathBuf) -> Result<(), String> {
         }
     }
 
-    println!("{DOCUMENT_DISPLAY_NAME} OLE clipboard payload copied.");
     Ok(())
 }
 
@@ -1096,7 +1099,6 @@ fn run_com_server() -> Result<(), String> {
     }
 
     log_ole_event("COM server class object registered");
-    println!("{DOCUMENT_DISPLAY_NAME} COM local server is running.");
     run_message_loop();
 
     log_ole_event("COM server message loop exited");
@@ -4142,6 +4144,9 @@ fn launch_desktop_for_payload(payload: &OleObjectPayload) -> Result<(), String> 
         "Launching Chemcore desktop from {}",
         desktop_exe.display()
     ));
+    unsafe {
+        AllowSetForegroundWindow(ASFW_ANY_PROCESS);
+    }
     launch_desktop_process(&desktop_exe, &payload_path)?;
     Ok(())
 }

@@ -24,6 +24,8 @@ const FORMAT_CDXML_MIME: &str = "chemical/x-cdxml";
 const FORMAT_SVG_MIME: &str = "image/svg+xml";
 const FORMAT_SVG: &str = "SVG";
 const GMEM_MOVEABLE_FLAG: u32 = 0x0002;
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW_FLAG: u32 = 0x08000000;
 
 struct DesktopState {
     service: Mutex<DesktopDocumentService>,
@@ -1464,6 +1466,8 @@ fn native_office_ole_clipboard_write(
     app: &tauri::AppHandle,
     payload: &NativeClipboardWritePayload,
 ) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+
     let adjacent_office_exe = std::env::current_exe()
         .map_err(|error| format!("Failed to resolve desktop executable path: {error}"))?
         .with_file_name("chemcore-office.exe");
@@ -1495,9 +1499,12 @@ fn native_office_ole_clipboard_write(
     fs::write(&payload_path, json)
         .map_err(|error| format!("Failed to write OLE clipboard payload: {error}"))?;
 
-    let result = std::process::Command::new(&office_exe)
+    let mut command = std::process::Command::new(&office_exe);
+    command
         .arg("--copy-clipboard-payload")
         .arg(&payload_path)
+        .creation_flags(CREATE_NO_WINDOW_FLAG);
+    let result = command
         .status()
         .map_err(|error| format!("Failed to run Chemcore Office/OLE clipboard bridge: {error}"))
         .and_then(|status| {
@@ -2393,6 +2400,7 @@ fn emit_open_paths(app: &tauri::AppHandle, paths: Vec<String>) {
         .or_else(|| app.get_webview_window("main"))
         .or_else(|| app.webview_windows().into_values().next());
     if let Some(window) = target {
+        focus_webview_window(&window);
         let _ = window.emit(EVENT_DESKTOP_OPEN_PATHS, DesktopOpenPathsPayload { paths });
         return;
     }
@@ -2451,10 +2459,14 @@ fn next_document_window_label(app: &tauri::AppHandle) -> String {
 
 fn focus_main_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
-        let _ = window.show();
-        let _ = window.unminimize();
-        let _ = window.set_focus();
+        focus_webview_window(&window);
     }
+}
+
+fn focus_webview_window(window: &WebviewWindow) {
+    let _ = window.show();
+    let _ = window.unminimize();
+    let _ = window.set_focus();
 }
 
 fn startup_file_args() -> Vec<String> {
