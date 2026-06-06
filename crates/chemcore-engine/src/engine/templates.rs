@@ -4,8 +4,8 @@ use crate::{
     adjacent_directions, angle_between, direction_from_angle, hit_test_bond, hit_test_bond_center,
     hit_test_endpoint, nearest_angle, normalize_angle, Bond, BondAnchor, BondPreview,
     ChemcoreDocument, DoubleBond, DoubleBondPlacement, EndpointHit, Node, Point, PointerEvent,
-    BOND_CENTER_HIT_RADIUS, BOND_HIT_RADIUS, DEFAULT_BOND_LENGTH, DRAG_START_THRESHOLD,
-    ENDPOINT_HIT_RADIUS, GLOBAL_SNAP_ANGLES,
+    BOND_CENTER_HIT_RADIUS, BOND_HIT_RADIUS, DRAG_START_THRESHOLD, ENDPOINT_HIT_RADIUS,
+    GLOBAL_SNAP_ANGLES,
 };
 
 const RING_REUSE_RADIUS: f64 = crate::px_to_pt(5.0);
@@ -184,6 +184,7 @@ impl Engine {
     fn template_ring_plan(&self, drag: &TemplateDrag, point: Point) -> Option<RingPlan> {
         let ring_size = selected_ring_size(&self.state.tool.template)?;
         let aromatic = self.state.tool.template == "benzene";
+        let side_length = self.template_ring_bond_length();
         match &drag.anchor {
             TemplateAnchor::Endpoint(anchor) => {
                 let angle = if drag.has_dragged {
@@ -191,7 +192,13 @@ impl Engine {
                 } else {
                     endpoint_click_ring_axis_angle(&self.state.document, anchor)
                 };
-                Some(endpoint_ring_plan(ring_size, anchor, angle, aromatic))
+                Some(endpoint_ring_plan(
+                    ring_size,
+                    anchor,
+                    angle,
+                    aromatic,
+                    side_length,
+                ))
             }
             TemplateAnchor::Center(center) => {
                 if drag.has_dragged {
@@ -205,9 +212,16 @@ impl Engine {
                         },
                         angle,
                         aromatic,
+                        side_length,
                     ))
                 } else {
-                    Some(centered_ring_plan(ring_size, *center, 270.0, aromatic))
+                    Some(centered_ring_plan(
+                        ring_size,
+                        *center,
+                        270.0,
+                        aromatic,
+                        side_length,
+                    ))
                 }
             }
             TemplateAnchor::Bond {
@@ -230,6 +244,7 @@ impl Engine {
                     *begin,
                     *end,
                     side,
+                    side_length,
                 ))
             }
         }
@@ -307,6 +322,7 @@ impl Engine {
             return -1.0;
         }
         let ring_size = selected_ring_size(&self.state.tool.template).unwrap_or(6);
+        let side_length = self.template_ring_bond_length();
         let left_score = self.ring_reuse_score(&fused_bond_ring_plan(
             ring_size,
             false,
@@ -315,6 +331,7 @@ impl Engine {
             begin,
             end,
             1.0,
+            side_length,
         ));
         let right_score = self.ring_reuse_score(&fused_bond_ring_plan(
             ring_size,
@@ -324,12 +341,20 @@ impl Engine {
             begin,
             end,
             -1.0,
+            side_length,
         ));
         if right_score > left_score {
             -1.0
         } else {
             1.0
         }
+    }
+
+    fn template_ring_bond_length(&self) -> f64 {
+        self.options
+            .bond_length_world_pt()
+            .value()
+            .max(crate::EPSILON)
     }
 
     fn bond_substituent_side_count(
@@ -435,9 +460,10 @@ fn endpoint_ring_plan(
     anchor: &BondAnchor,
     angle: f64,
     aromatic: bool,
+    side_length: f64,
 ) -> RingPlan {
     let direction = direction_from_angle(angle);
-    let side = DEFAULT_BOND_LENGTH;
+    let side = side_length;
     let radius = side / (2.0 * (std::f64::consts::PI / ring_size as f64).sin());
     let center = anchor.point.translated(direction.scaled(radius));
     let first_vector = crate::Vector::new(anchor.point.x - center.x, anchor.point.y - center.y);
@@ -461,8 +487,14 @@ fn endpoint_ring_plan(
     }
 }
 
-fn centered_ring_plan(ring_size: usize, center: Point, angle: f64, aromatic: bool) -> RingPlan {
-    let side = DEFAULT_BOND_LENGTH;
+fn centered_ring_plan(
+    ring_size: usize,
+    center: Point,
+    angle: f64,
+    aromatic: bool,
+    side_length: f64,
+) -> RingPlan {
+    let side = side_length;
     let radius = side / (2.0 * (std::f64::consts::PI / ring_size as f64).sin());
     let direction = direction_from_angle(angle);
     let first_vector = direction.scaled(radius);
@@ -489,8 +521,9 @@ fn fused_bond_ring_plan(
     begin: Point,
     end: Point,
     side_sign: f64,
+    fallback_side_length: f64,
 ) -> RingPlan {
-    let side = begin.distance(end).max(DEFAULT_BOND_LENGTH);
+    let side = begin.distance(end).max(fallback_side_length);
     let apothem = side / (2.0 * (std::f64::consts::PI / ring_size as f64).tan());
     let unit = crate::Vector::new((end.x - begin.x) / side, (end.y - begin.y) / side);
     let normal = crate::Vector::new(-unit.y, unit.x).scaled(side_sign);

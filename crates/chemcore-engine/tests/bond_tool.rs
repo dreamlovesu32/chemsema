@@ -263,6 +263,32 @@ fn attached_node_points(engine: &Engine, node_id: &str) -> Vec<Point> {
         .collect()
 }
 
+fn ring_bond_lengths(engine: &Engine) -> Vec<f64> {
+    let entry = engine.state().document.editable_fragment().unwrap();
+    entry
+        .fragment
+        .bonds
+        .iter()
+        .map(|bond| {
+            let begin = entry
+                .fragment
+                .nodes
+                .iter()
+                .find(|node| node.id == bond.begin)
+                .map(|node| entry.world_point_for_node(node))
+                .unwrap();
+            let end = entry
+                .fragment
+                .nodes
+                .iter()
+                .find(|node| node.id == bond.end)
+                .map(|node| entry.world_point_for_node(node))
+                .unwrap();
+            begin.distance(end)
+        })
+        .collect()
+}
+
 fn assert_no_duplicate_node_positions(engine: &Engine) {
     let entry = engine.state().document.editable_fragment().unwrap();
     for (index, left) in entry.fragment.nodes.iter().enumerate() {
@@ -1310,6 +1336,57 @@ fn acs_document_1996_preset_sets_new_graphic_strokes() {
             .and_then(|value| value.as_f64()),
         Some(0.6)
     );
+}
+
+#[test]
+fn acs_document_1996_preset_sets_template_ring_bond_lengths() {
+    let mut blank = Engine::new();
+    blank.set_document_style_preset("acs-document-1996");
+    blank.set_tool_state(templates_tool("ring-6"));
+    click(&mut blank, px(300.0), px(260.0));
+    assert!(ring_bond_lengths(&blank)
+        .iter()
+        .all(|length| (length - 14.4).abs() < 0.001));
+
+    let mut endpoint = Engine::new();
+    endpoint.set_document_style_preset("acs-document-1996");
+    endpoint.set_tool_state(bond_tool());
+    click(&mut endpoint, px(300.0), px(260.0));
+    let anchor = node_world_point(&endpoint, "n_2");
+    endpoint.set_tool_state(templates_tool("ring-6"));
+    click(&mut endpoint, anchor.x, anchor.y);
+    assert!(ring_bond_lengths(&endpoint)
+        .iter()
+        .all(|length| (length - 14.4).abs() < 0.001));
+
+    let mut fused = Engine::new();
+    fused.set_document_style_preset("acs-document-1996");
+    fused.set_tool_state(bond_tool());
+    click(&mut fused, px(300.0), px(260.0));
+    let center = {
+        let entry = fused.state().document.editable_fragment().unwrap();
+        let bond = &entry.fragment.bonds[0];
+        let begin = entry
+            .fragment
+            .nodes
+            .iter()
+            .find(|node| node.id == bond.begin)
+            .map(|node| entry.world_point_for_node(node))
+            .unwrap();
+        let end = entry
+            .fragment
+            .nodes
+            .iter()
+            .find(|node| node.id == bond.end)
+            .map(|node| entry.world_point_for_node(node))
+            .unwrap();
+        Point::new((begin.x + end.x) * 0.5, (begin.y + end.y) * 0.5)
+    };
+    fused.set_tool_state(templates_tool("ring-6"));
+    click(&mut fused, center.x, center.y);
+    assert!(ring_bond_lengths(&fused)
+        .iter()
+        .all(|length| (length - 14.4).abs() < 0.001));
 }
 
 #[test]
