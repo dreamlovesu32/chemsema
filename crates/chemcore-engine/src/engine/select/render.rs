@@ -9,7 +9,214 @@ pub(super) fn clear_select_hover_overlay(engine: &mut Engine) {
     engine.state.overlay.preview = None;
 }
 
-pub(super) fn render_selected_text_boxes(engine: &Engine, out: &mut Vec<RenderPrimitive>) {
+#[derive(Default)]
+pub(super) struct GroupSelectionOverlay {
+    complete_group_ids: BTreeSet<String>,
+    hidden_descendant_ids: BTreeSet<String>,
+    selected_group_descendant_ids: BTreeSet<String>,
+}
+
+impl GroupSelectionOverlay {
+    pub(super) fn group_is_complete(&self, object_id: &str) -> bool {
+        self.complete_group_ids.contains(object_id)
+    }
+
+    pub(super) fn hides_object(&self, object_id: &str) -> bool {
+        self.hidden_descendant_ids.contains(object_id)
+    }
+
+    pub(super) fn selected_group_hides_object(&self, object_id: &str) -> bool {
+        self.selected_group_descendant_ids.contains(object_id)
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ObjectSelectionCoverage {
+    None,
+    Partial,
+    Complete,
+}
+
+pub(super) fn group_selection_overlay(engine: &Engine) -> GroupSelectionOverlay {
+    let mut overlay = GroupSelectionOverlay::default();
+    for object in &engine.state.document.objects {
+        collect_complete_group_selection(
+            &engine.state.document,
+            &engine.state.selection,
+            object,
+            &mut overlay,
+        );
+    }
+    overlay
+}
+
+fn collect_complete_group_selection(
+    document: &crate::ChemcoreDocument,
+    selection: &SelectionState,
+    object: &crate::SceneObject,
+    overlay: &mut GroupSelectionOverlay,
+) {
+    if object.object_type != "group" {
+        return;
+    }
+    if scene_object_selection_coverage(document, selection, object)
+        == ObjectSelectionCoverage::Complete
+    {
+        overlay.complete_group_ids.insert(object.id.clone());
+        collect_descendant_ids(object, &mut overlay.hidden_descendant_ids);
+        if selection
+            .arrow_objects
+            .iter()
+            .any(|object_id| object_id == &object.id)
+        {
+            collect_descendant_ids(object, &mut overlay.selected_group_descendant_ids);
+        }
+        return;
+    }
+    for child in &object.children {
+        collect_complete_group_selection(document, selection, child, overlay);
+    }
+}
+
+fn collect_descendant_ids(object: &crate::SceneObject, out: &mut BTreeSet<String>) {
+    for child in &object.children {
+        out.insert(child.id.clone());
+        collect_descendant_ids(child, out);
+    }
+}
+
+fn scene_object_selection_coverage(
+    document: &crate::ChemcoreDocument,
+    selection: &SelectionState,
+    object: &crate::SceneObject,
+) -> ObjectSelectionCoverage {
+    if !object.visible {
+        return ObjectSelectionCoverage::None;
+    }
+    match object.object_type.as_str() {
+        "text" => selected_coverage(selection.text_objects.iter(), &object.id),
+        "line" | "bracket" | "symbol" | "shape" => {
+            selected_coverage(selection.arrow_objects.iter(), &object.id)
+        }
+        "molecule" => molecule_selection_coverage(document, selection, object),
+        "group" => group_selection_coverage(document, selection, object),
+        _ => ObjectSelectionCoverage::None,
+    }
+}
+
+fn selected_coverage<'a>(
+    selected_ids: impl Iterator<Item = &'a String>,
+    object_id: &str,
+) -> ObjectSelectionCoverage {
+    if selected_ids
+        .into_iter()
+        .any(|selected_id| selected_id == object_id)
+    {
+        ObjectSelectionCoverage::Complete
+    } else {
+        ObjectSelectionCoverage::None
+    }
+}
+
+fn group_selection_coverage(
+    document: &crate::ChemcoreDocument,
+    selection: &SelectionState,
+    object: &crate::SceneObject,
+) -> ObjectSelectionCoverage {
+    let group_id_selected = selection
+        .arrow_objects
+        .iter()
+        .any(|object_id| object_id == &object.id);
+    let mut selectable_child_count = 0usize;
+    let mut complete_child_count = 0usize;
+    let mut any_child_selected = false;
+
+    for child in object.children.iter().filter(|child| child.visible) {
+        let coverage = scene_object_selection_coverage(document, selection, child);
+        if coverage == ObjectSelectionCoverage::None && !scene_object_is_selectable(child) {
+            continue;
+        }
+        selectable_child_count += 1;
+        match coverage {
+            ObjectSelectionCoverage::Complete => {
+                complete_child_count += 1;
+                any_child_selected = true;
+            }
+            ObjectSelectionCoverage::Partial => any_child_selected = true,
+            ObjectSelectionCoverage::None => {}
+        }
+    }
+
+    if group_id_selected && !selection.region {
+        return ObjectSelectionCoverage::Complete;
+    }
+    if selectable_child_count > 0 && complete_child_count == selectable_child_count {
+        return ObjectSelectionCoverage::Complete;
+    }
+    if group_id_selected || any_child_selected {
+        ObjectSelectionCoverage::Partial
+    } else {
+        ObjectSelectionCoverage::None
+    }
+}
+
+fn scene_object_is_selectable(object: &crate::SceneObject) -> bool {
+    matches!(
+        object.object_type.as_str(),
+        "text" | "line" | "bracket" | "symbol" | "shape" | "molecule" | "group"
+    )
+}
+
+fn molecule_selection_coverage(
+    document: &crate::ChemcoreDocument,
+    selection: &SelectionState,
+    object: &crate::SceneObject,
+) -> ObjectSelectionCoverage {
+    let Some(resource_ref) = object.payload.resource_ref.as_ref() else {
+        return ObjectSelectionCoverage::None;
+    };
+    let Some(fragment) = document
+        .resources
+        .get(resource_ref)
+        .and_then(|resource| resource.data.as_fragment())
+    else {
+        return ObjectSelectionCoverage::None;
+    };
+
+    let selected_nodes: BTreeSet<&str> = selection.nodes.iter().map(String::as_str).collect();
+    let selected_label_nodes: BTreeSet<&str> =
+        selection.label_nodes.iter().map(String::as_str).collect();
+    let selected_bonds: BTreeSet<&str> = selection.bonds.iter().map(String::as_str).collect();
+    let any_selected = fragment.nodes.iter().any(|node| {
+        selected_nodes.contains(node.id.as_str()) || selected_label_nodes.contains(node.id.as_str())
+    }) || fragment
+        .bonds
+        .iter()
+        .any(|bond| selected_bonds.contains(bond.id.as_str()));
+    if !any_selected {
+        return ObjectSelectionCoverage::None;
+    }
+
+    let all_nodes_selected = fragment
+        .nodes
+        .iter()
+        .all(|node| selected_nodes.contains(node.id.as_str()));
+    let all_bonds_selected = fragment
+        .bonds
+        .iter()
+        .all(|bond| selected_bonds.contains(bond.id.as_str()));
+    if all_nodes_selected && all_bonds_selected {
+        ObjectSelectionCoverage::Complete
+    } else {
+        ObjectSelectionCoverage::Partial
+    }
+}
+
+pub(super) fn render_selected_text_boxes(
+    engine: &Engine,
+    overlay: &GroupSelectionOverlay,
+    out: &mut Vec<RenderPrimitive>,
+) {
     let selected_text_objects: BTreeSet<&str> = engine
         .state
         .selection
@@ -19,6 +226,9 @@ pub(super) fn render_selected_text_boxes(engine: &Engine, out: &mut Vec<RenderPr
         .collect();
     for object in engine.state.document.scene_objects() {
         if !selected_text_objects.contains(object.id.as_str()) {
+            continue;
+        }
+        if overlay.hides_object(&object.id) {
             continue;
         }
         let Some(bounds) = text_object_world_bounds(object) else {
@@ -32,9 +242,20 @@ pub(super) fn render_selected_text_boxes(engine: &Engine, out: &mut Vec<RenderPr
     }
 }
 
-pub(super) fn render_selected_arrow_handles(engine: &Engine, out: &mut Vec<RenderPrimitive>) {
+pub(super) fn render_selected_arrow_handles(
+    engine: &Engine,
+    overlay: &GroupSelectionOverlay,
+    out: &mut Vec<RenderPrimitive>,
+) {
     for object in engine.state.document.scene_objects() {
-        if !engine.state.selection.arrow_objects.contains(&object.id) {
+        if overlay.hides_object(&object.id) {
+            continue;
+        }
+        if object.object_type == "group" {
+            if !overlay.group_is_complete(&object.id) {
+                continue;
+            }
+        } else if !engine.state.selection.arrow_objects.contains(&object.id) {
             continue;
         }
         if let Some(bounds) = scene_object_selection_bounds(&engine.state.document, object) {
@@ -59,6 +280,9 @@ pub(super) fn scene_object_selection_bounds(
     if object.object_type == "group" {
         return group_object_selection_bounds(document, object);
     }
+    if object.object_type == "molecule" {
+        return molecule_object_selection_bounds(document, object);
+    }
     if matches!(object.object_type.as_str(), "bracket" | "symbol") {
         return object_bbox_selection_bounds(object);
     }
@@ -79,6 +303,40 @@ fn group_object_selection_bounds(
         }
     }
     out.or_else(|| object_bbox_selection_bounds(object))
+}
+
+fn molecule_object_selection_bounds(
+    document: &crate::ChemcoreDocument,
+    object: &crate::SceneObject,
+) -> Option<AxisBounds> {
+    object_bbox_selection_bounds(object)
+        .or_else(|| molecule_fragment_selection_bounds(document, object))
+}
+
+fn molecule_fragment_selection_bounds(
+    document: &crate::ChemcoreDocument,
+    object: &crate::SceneObject,
+) -> Option<AxisBounds> {
+    let resource_ref = object.payload.resource_ref.as_ref()?;
+    let fragment = document.resources.get(resource_ref)?.data.as_fragment()?;
+    let entry = crate::EditableFragment { object, fragment };
+    let component = ComponentSelection {
+        node_ids: fragment.nodes.iter().map(|node| node.id.clone()).collect(),
+        label_node_ids: fragment
+            .nodes
+            .iter()
+            .filter_map(|node| node.label.as_ref().map(|_| node.id.clone()))
+            .collect(),
+        bond_ids: fragment.bonds.iter().map(|bond| bond.id.clone()).collect(),
+        complete: true,
+    };
+    component_selection_items(document, &entry, &component)
+        .into_iter()
+        .map(|item| item.bounds)
+        .reduce(|mut bounds, item_bounds| {
+            bounds.include_bounds(item_bounds);
+            bounds
+        })
 }
 
 pub(super) fn arrow_object_selection_bounds(object: &crate::SceneObject) -> Option<AxisBounds> {
@@ -194,10 +452,17 @@ fn shape_payload_point(object: &crate::SceneObject, key: &str) -> Option<Point> 
         })
 }
 
-pub(super) fn render_selected_fragment_content(engine: &Engine, out: &mut Vec<RenderPrimitive>) {
+pub(super) fn render_selected_fragment_content(
+    engine: &Engine,
+    overlay: &GroupSelectionOverlay,
+    out: &mut Vec<RenderPrimitive>,
+) {
     let Some(entry) = engine.state.document.editable_fragment() else {
         return;
     };
+    if overlay.hides_object(&entry.object.id) {
+        return;
+    }
 
     for component in selected_component_summaries(engine) {
         let items = component_selection_items(&engine.state.document, &entry, &component);

@@ -72,6 +72,24 @@ fn primitive_polygon_bounds(points: &[Point]) -> [f64; 4] {
     )
 }
 
+fn rects_with_role(engine: &Engine, role_filter: RenderRole) -> Vec<[f64; 4]> {
+    engine
+        .render_list()
+        .into_iter()
+        .filter_map(|primitive| match primitive {
+            RenderPrimitive::Rect {
+                role,
+                x,
+                y,
+                width,
+                height,
+                ..
+            } if role == role_filter => Some([x, y, x + width, y + height]),
+            _ => None,
+        })
+        .collect()
+}
+
 #[test]
 fn render_document_adds_margin_knockout_for_later_crossing_bond() {
     let document = fragment_document(
@@ -264,6 +282,244 @@ fn grouped_scene_objects_render_and_select_as_one_tight_box() {
         }
         _ => unreachable!(),
     }
+}
+
+#[test]
+fn region_selection_collapses_group_box_only_when_all_children_are_selected() {
+    let document: ChemcoreDocument = serde_json::from_value(json!({
+        "format": { "name": "chemcore", "version": "0.1", "unit": "pt" },
+        "document": {
+            "id": "doc_group_region",
+            "title": "group region",
+            "page": { "width": 200.0, "height": 160.0, "background": "#ffffff" }
+        },
+        "styles": {
+            "style_shape": {
+                "kind": "shape",
+                "stroke": "#000000",
+                "strokeWidth": 1.0
+            }
+        },
+        "objects": [{
+            "id": "grp_1",
+            "type": "group",
+            "zIndex": 30,
+            "children": [
+                {
+                    "id": "shape_a",
+                    "type": "shape",
+                    "zIndex": 10,
+                    "transform": { "translate": [10.0, 10.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+                    "styleRef": "style_shape",
+                    "payload": { "bbox": [0.0, 0.0, 20.0, 10.0], "kind": "rect" }
+                },
+                {
+                    "id": "shape_b",
+                    "type": "shape",
+                    "zIndex": 20,
+                    "transform": { "translate": [50.0, 40.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+                    "styleRef": "style_shape",
+                    "payload": { "bbox": [0.0, 0.0, 30.0, 10.0], "kind": "rect" }
+                }
+            ]
+        }],
+        "resources": {}
+    }))
+    .expect("document should deserialize");
+
+    let mut engine = Engine::new();
+    engine
+        .load_document_json(&serde_json::to_string(&document).unwrap())
+        .expect("document should load");
+    engine.select_in_rect(Point::new(5.0, 5.0), Point::new(35.0, 25.0), false);
+    let partial_boxes = rects_with_role(&engine, RenderRole::SelectionBox);
+    assert_eq!(partial_boxes.len(), 1);
+    assert!(
+        partial_boxes[0][2] - partial_boxes[0][0] < 30.0,
+        "partial group selection should show only the child box, got {partial_boxes:?}"
+    );
+
+    engine.select_in_rect(Point::new(0.0, 0.0), Point::new(90.0, 60.0), false);
+    let complete_boxes = rects_with_role(&engine, RenderRole::SelectionBox);
+    assert_eq!(complete_boxes.len(), 1);
+    assert!(
+        complete_boxes[0][2] - complete_boxes[0][0] > 60.0,
+        "complete group selection should collapse to the group box, got {complete_boxes:?}"
+    );
+}
+
+#[test]
+fn select_all_collapses_grouped_molecule_and_text_to_one_group_box() {
+    let document: ChemcoreDocument = serde_json::from_value(json!({
+        "format": { "name": "chemcore", "version": "0.1", "unit": "pt" },
+        "document": {
+            "id": "doc_group_molecule",
+            "title": "group molecule",
+            "page": { "width": 220.0, "height": 160.0, "background": "#ffffff" }
+        },
+        "styles": {
+            "style_molecule_default": {
+                "kind": "molecule",
+                "stroke": "#000000",
+                "strokeWidth": 0.85,
+                "fontFamily": "Arial",
+                "fontSize": 11.0
+            }
+        },
+        "objects": [{
+            "id": "grp_1",
+            "type": "group",
+            "zIndex": 30,
+            "children": [
+                {
+                    "id": "obj_molecule_001",
+                    "type": "molecule",
+                    "visible": true,
+                    "zIndex": 10,
+                    "transform": { "translate": [10.0, 10.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+                    "styleRef": "style_molecule_default",
+                    "payload": { "resourceRef": "mol_001", "bbox": [0.0, 0.0, 80.0, 40.0] }
+                },
+                {
+                    "id": "group_text",
+                    "type": "text",
+                    "visible": true,
+                    "zIndex": 20,
+                    "transform": { "translate": [100.0, 20.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+                    "payload": { "text": "Note", "bbox": [0.0, 0.0, 24.0, 12.0], "runs": [] }
+                }
+            ]
+        }],
+        "resources": {
+            "mol_001": {
+                "type": "molecule_fragment2d",
+                "encoding": "chemcore.molecule.fragment2d",
+                "data": {
+                    "schema": "chemcore.molecule.fragment2d",
+                    "bbox": [0.0, 0.0, 80.0, 40.0],
+                    "nodes": [
+                        { "id": "n1", "element": "C", "atomicNumber": 6, "position": [10.0, 20.0], "charge": 0, "numHydrogens": 0 },
+                        { "id": "n2", "element": "C", "atomicNumber": 6, "position": [60.0, 20.0], "charge": 0, "numHydrogens": 0 }
+                    ],
+                    "bonds": [
+                        { "id": "b1", "begin": "n1", "end": "n2", "order": 1, "strokeWidth": 0.85 }
+                    ]
+                }
+            }
+        }
+    }))
+    .expect("document should deserialize");
+
+    let mut engine = Engine::new();
+    engine
+        .load_document_json(&serde_json::to_string(&document).unwrap())
+        .expect("document should load");
+    assert!(engine.select_all());
+
+    let group_boxes = rects_with_role(&engine, RenderRole::SelectionBox);
+    assert_eq!(group_boxes.len(), 1);
+    assert!(
+        group_boxes[0][0] <= 10.0
+            && group_boxes[0][1] <= 10.0
+            && group_boxes[0][2] >= 124.0
+            && group_boxes[0][3] >= 50.0,
+        "group box should cover both molecule and text, got {group_boxes:?}"
+    );
+    assert!(rects_with_role(&engine, RenderRole::SelectionTextBox).is_empty());
+    assert!(rects_with_role(&engine, RenderRole::SelectionBond).is_empty());
+    assert!(rects_with_role(&engine, RenderRole::SelectionNode).is_empty());
+    let bond_dot_count = engine
+        .render_list()
+        .into_iter()
+        .filter(|primitive| {
+            matches!(
+                primitive,
+                RenderPrimitive::Circle {
+                    role: RenderRole::SelectionBondDot,
+                    ..
+                }
+            )
+        })
+        .count();
+    assert_eq!(bond_dot_count, 0);
+}
+
+#[test]
+fn moving_selected_grouped_molecule_does_not_move_nodes_twice() {
+    let document: ChemcoreDocument = serde_json::from_value(json!({
+        "format": { "name": "chemcore", "version": "0.1", "unit": "pt" },
+        "document": {
+            "id": "doc_group_molecule_move",
+            "title": "group molecule move",
+            "page": { "width": 220.0, "height": 160.0, "background": "#ffffff" }
+        },
+        "styles": {
+            "style_molecule_default": {
+                "kind": "molecule",
+                "stroke": "#000000",
+                "strokeWidth": 0.85,
+                "fontFamily": "Arial",
+                "fontSize": 11.0
+            }
+        },
+        "objects": [{
+            "id": "grp_1",
+            "type": "group",
+            "zIndex": 30,
+            "children": [{
+                "id": "obj_molecule_001",
+                "type": "molecule",
+                "visible": true,
+                "zIndex": 10,
+                "transform": { "translate": [10.0, 10.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+                "styleRef": "style_molecule_default",
+                "payload": { "resourceRef": "mol_001", "bbox": [0.0, 0.0, 80.0, 40.0] }
+            }]
+        }],
+        "resources": {
+            "mol_001": {
+                "type": "molecule_fragment2d",
+                "encoding": "chemcore.molecule.fragment2d",
+                "data": {
+                    "schema": "chemcore.molecule.fragment2d",
+                    "bbox": [0.0, 0.0, 80.0, 40.0],
+                    "nodes": [
+                        { "id": "n1", "element": "C", "atomicNumber": 6, "position": [10.0, 20.0], "charge": 0, "numHydrogens": 0 },
+                        { "id": "n2", "element": "C", "atomicNumber": 6, "position": [60.0, 20.0], "charge": 0, "numHydrogens": 0 }
+                    ],
+                    "bonds": [
+                        { "id": "b1", "begin": "n1", "end": "n2", "order": 1, "strokeWidth": 0.85 }
+                    ]
+                }
+            }
+        }
+    }))
+    .expect("document should deserialize");
+
+    let mut engine = Engine::new();
+    engine
+        .load_document_json(&serde_json::to_string(&document).unwrap())
+        .expect("document should load");
+    assert!(engine.select_all());
+    assert!(engine.begin_selection_move_at_point(Point::new(20.0, 30.0), false, false));
+    assert!(engine.update_selection_move(Point::new(30.0, 30.0), false));
+    assert!(engine.finish_selection_move(Point::new(30.0, 30.0), false));
+
+    let molecule = engine
+        .state()
+        .document
+        .find_scene_object("obj_molecule_001")
+        .expect("grouped molecule should still exist");
+    assert_eq!(molecule.transform.translate, [20.0, 10.0]);
+    let fragment = engine
+        .state()
+        .document
+        .resources
+        .get("mol_001")
+        .and_then(|resource| resource.data.as_fragment())
+        .expect("fragment should still exist");
+    assert_eq!(fragment.nodes[0].position, [10.0, 20.0]);
+    assert_eq!(fragment.nodes[1].position, [60.0, 20.0]);
 }
 
 #[test]

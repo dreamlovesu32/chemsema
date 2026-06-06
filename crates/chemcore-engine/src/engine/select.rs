@@ -8,13 +8,13 @@ use crate::{
     hit_test_arrow_center, hit_test_bond_center, hit_test_endpoint, line_object_points,
     nearest_angle, round2, shape_object_visual_bounds, HoverTextBox, Point, RenderPrimitive,
     RenderRole, SceneObject, SelectionState, BOND_CENTER_HIT_RADIUS, DEFAULT_BOND_LENGTH,
-    DRAG_START_THRESHOLD, ENDPOINT_FOCUS_RADIUS, ENDPOINT_HIT_RADIUS, GLOBAL_SNAP_ANGLES,
+    DRAG_START_THRESHOLD, ENDPOINT_HIT_RADIUS, GLOBAL_SNAP_ANGLES,
 };
 use serde_json::{json, Value as JsonValue};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
-const SELECTION_NODE_BOX_SIZE: f64 = ENDPOINT_FOCUS_RADIUS * 2.0;
-const SELECTION_BOX_STROKE_WIDTH: f64 = crate::px_to_cm(1.2);
+const SELECTION_NODE_BOX_SIZE: f64 = 2.0;
+const SELECTION_BOX_STROKE_WIDTH: f64 = 1.0;
 const SELECTION_BOND_DOT_RADIUS: f64 = 0.5;
 
 #[path = "select/arrange.rs"]
@@ -1335,8 +1335,12 @@ impl Engine {
     }
 
     fn selection_hit_bounds(&self) -> Vec<AxisBounds> {
+        let overlay = group_selection_overlay(self);
         let mut bounds = Vec::new();
         for object in self.state.document.scene_objects() {
+            if overlay.hides_object(&object.id) {
+                continue;
+            }
             if !self
                 .state
                 .selection
@@ -1351,7 +1355,14 @@ impl Engine {
             }
         }
         for object in self.state.document.scene_objects() {
-            if !self.state.selection.arrow_objects.contains(&object.id) {
+            if overlay.hides_object(&object.id) {
+                continue;
+            }
+            if object.object_type == "group" {
+                if !overlay.group_is_complete(&object.id) {
+                    continue;
+                }
+            } else if !self.state.selection.arrow_objects.contains(&object.id) {
                 continue;
             }
             if let Some(arrow_bounds) = scene_object_selection_bounds(&self.state.document, object)
@@ -1363,6 +1374,9 @@ impl Engine {
         let Some(entry) = self.state.document.editable_fragment() else {
             return bounds;
         };
+        if overlay.hides_object(&entry.object.id) {
+            return bounds;
+        }
         for component in selected_component_summaries(self) {
             let items = component_selection_items(&self.state.document, &entry, &component);
             if items.is_empty() {
@@ -1663,13 +1677,7 @@ impl Engine {
     }
 
     fn selected_resize_object_ids(&self) -> BTreeSet<String> {
-        self.state
-            .selection
-            .text_objects
-            .iter()
-            .chain(self.state.selection.arrow_objects.iter())
-            .cloned()
-            .collect()
+        selected_text_object_ids(self)
     }
 
     pub(super) fn selection_render_list(&self) -> Vec<RenderPrimitive> {
@@ -1677,15 +1685,20 @@ impl Engine {
             return Vec::new();
         }
         let mut out = Vec::new();
-        render_selected_text_boxes(self, &mut out);
-        render_selected_arrow_handles(self, &mut out);
-        render_selected_fragment_content(self, &mut out);
+        let overlay = group_selection_overlay(self);
+        render_selected_text_boxes(self, &overlay, &mut out);
+        render_selected_arrow_handles(self, &overlay, &mut out);
+        render_selected_fragment_content(self, &overlay, &mut out);
         out
     }
 
     fn selection_rotation_bounds(&self) -> Option<AxisBounds> {
+        let overlay = group_selection_overlay(self);
         let mut out = None;
         for object in self.state.document.scene_objects() {
+            if overlay.hides_object(&object.id) {
+                continue;
+            }
             if !self.state.selection.text_objects.contains(&object.id) {
                 continue;
             }
@@ -1695,7 +1708,14 @@ impl Engine {
             include_optional_bounds(&mut out, AxisBounds::from_array(bounds));
         }
         for object in self.state.document.scene_objects() {
-            if !self.state.selection.arrow_objects.contains(&object.id) {
+            if overlay.hides_object(&object.id) {
+                continue;
+            }
+            if object.object_type == "group" {
+                if !overlay.group_is_complete(&object.id) {
+                    continue;
+                }
+            } else if !self.state.selection.arrow_objects.contains(&object.id) {
                 continue;
             }
             if let Some(bounds) = scene_object_selection_bounds(&self.state.document, object) {
@@ -1705,6 +1725,9 @@ impl Engine {
         let Some(entry) = self.state.document.editable_fragment() else {
             return out;
         };
+        if overlay.hides_object(&entry.object.id) {
+            return out;
+        }
         for component in selected_component_summaries(self) {
             for item in component_selection_items(&self.state.document, &entry, &component) {
                 include_optional_bounds(&mut out, item.bounds);

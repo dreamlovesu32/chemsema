@@ -1,6 +1,7 @@
 use super::*;
 
 pub(super) fn selected_text_object_ids(engine: &Engine) -> BTreeSet<String> {
+    let overlay = group_selection_overlay(engine);
     let mut ids: BTreeSet<String> = engine
         .state
         .selection
@@ -9,10 +10,20 @@ pub(super) fn selected_text_object_ids(engine: &Engine) -> BTreeSet<String> {
         .cloned()
         .collect();
     ids.extend(engine.state.selection.arrow_objects.iter().cloned());
+    ids.retain(|object_id| !overlay.selected_group_hides_object(object_id));
     ids
 }
 
 pub(super) fn selected_movable_node_ids(engine: &Engine) -> Vec<String> {
+    let overlay = group_selection_overlay(engine);
+    if engine
+        .state
+        .document
+        .editable_fragment()
+        .is_some_and(|entry| overlay.selected_group_hides_object(&entry.object.id))
+    {
+        return Vec::new();
+    }
     let mut node_ids: BTreeSet<String> = engine.state.selection.nodes.iter().cloned().collect();
     node_ids.extend(engine.state.selection.label_nodes.iter().cloned());
     let Some(entry) = engine.state.document.editable_fragment() else {
