@@ -5,6 +5,11 @@ import {
 import { renderCorePrimitive } from "./primitive_dom_renderer.js";
 
 const SELECTION_RESIZE_MIN_SCALE = 0.05;
+const SELECTION_STROKE_SCREEN_PX = 1;
+const SELECTION_RESIZE_HANDLE_SCREEN_PX = 1.5;
+const SELECTION_ROTATE_HANDLE_RADIUS_SCREEN_PX = 2.0;
+const SELECTION_ROTATE_HANDLE_OFFSET_SCREEN_PX = 18;
+const SELECTION_CENTER_CROSS_HALF_SCREEN_PX = 5;
 
 export function createEditorOverlayRenderer(options) {
   function formatTlcRfValue(rf) {
@@ -62,6 +67,134 @@ export function createEditorOverlayRenderer(options) {
     return selectionRotateHandles(renderList)[0] || null;
   }
 
+  function normalizeSelectionPrimitiveForViewport(primitive) {
+    if (!primitive?.role?.startsWith("selection-")) {
+      return primitive;
+    }
+    const strokeWidth = options.screenPxToWorld(SELECTION_STROKE_SCREEN_PX);
+    if (primitive.role === "selection-resize-handle" && primitive.kind === "rect") {
+      const size = options.screenPxToWorld(SELECTION_RESIZE_HANDLE_SCREEN_PX);
+      const centerX = primitive.x + primitive.width * 0.5;
+      const centerY = primitive.y + primitive.height * 0.5;
+      return {
+        ...primitive,
+        x: centerX - size * 0.5,
+        y: centerY - size * 0.5,
+        width: size,
+        height: size,
+        strokeWidth: 0,
+        stroke_width: undefined,
+      };
+    }
+
+    if (primitive.role === "selection-center-cross" && primitive.kind === "line") {
+      const half = options.screenPxToWorld(SELECTION_CENTER_CROSS_HALF_SCREEN_PX);
+      const center = {
+        x: (primitive.from.x + primitive.to.x) * 0.5,
+        y: (primitive.from.y + primitive.to.y) * 0.5,
+      };
+      const horizontal = Math.abs(primitive.to.x - primitive.from.x) >= Math.abs(primitive.to.y - primitive.from.y);
+      return {
+        ...primitive,
+        from: horizontal ? { x: center.x - half, y: center.y } : { x: center.x, y: center.y - half },
+        to: horizontal ? { x: center.x + half, y: center.y } : { x: center.x, y: center.y + half },
+        strokeWidth,
+        stroke_width: undefined,
+      };
+    }
+
+    if (primitive.role?.startsWith("selection-rotate-")) {
+      return normalizeSelectionRotatePrimitiveForViewport(primitive, strokeWidth);
+    }
+
+    if (
+      primitive.kind === "line"
+      || primitive.kind === "path"
+      || primitive.kind === "rect"
+      || primitive.kind === "circle"
+      || primitive.kind === "ellipse"
+    ) {
+      return {
+        ...primitive,
+        strokeWidth,
+        stroke_width: undefined,
+      };
+    }
+    return primitive;
+  }
+
+  function normalizedSelectionRotateGeometry() {
+    const bounds = options.currentRenderBounds("selection");
+    if (!bounds) {
+      return null;
+    }
+    const radius = options.screenPxToWorld(SELECTION_ROTATE_HANDLE_RADIUS_SCREEN_PX);
+    const offset = options.screenPxToWorld(SELECTION_ROTATE_HANDLE_OFFSET_SCREEN_PX);
+    const centerX = (bounds.minX + bounds.maxX) * 0.5;
+    return {
+      bounds,
+      radius,
+      handle: {
+        x: centerX,
+        y: bounds.minY - offset,
+      },
+      topCenter: {
+        x: centerX,
+        y: bounds.minY,
+      },
+    };
+  }
+
+  function normalizeSelectionRotatePrimitiveForViewport(primitive, strokeWidth) {
+    const geometry = normalizedSelectionRotateGeometry();
+    if (!geometry) {
+      return primitive;
+    }
+    const { handle, radius, topCenter } = geometry;
+    if (primitive.role === "selection-rotate-stem" && primitive.kind === "line") {
+      return {
+        ...primitive,
+        from: topCenter,
+        to: { x: handle.x, y: handle.y + radius },
+        strokeWidth,
+        stroke_width: undefined,
+      };
+    }
+    if (primitive.role === "selection-rotate-handle" && primitive.kind === "circle") {
+      return {
+        ...primitive,
+        center: handle,
+        radius,
+        strokeWidth,
+        stroke_width: undefined,
+      };
+    }
+    if (primitive.role === "selection-rotate-handle" && primitive.kind === "rect") {
+      const size = radius * 2;
+      return {
+        ...primitive,
+        x: handle.x - size * 0.5,
+        y: handle.y - size * 0.5,
+        width: size,
+        height: size,
+        strokeWidth,
+        stroke_width: undefined,
+      };
+    }
+    if (primitive.role === "selection-rotate-glyph" && primitive.kind === "path") {
+      return {
+        ...primitive,
+        d: [
+          `M ${handle.x - radius * 0.55} ${handle.y}`,
+          `A ${radius * 0.55} ${radius * 0.55} 0 1 1 ${handle.x + radius * 0.35} ${handle.y + radius * 0.42}`,
+        ].join(" "),
+        strokeWidth,
+        stroke_width: undefined,
+      };
+    }
+    return primitive;
+  }
+
   function selectionRotateHandles(renderList = options.currentEditorRenderList()) {
     return (renderList || [])
       .filter((primitive) => (
@@ -73,30 +206,33 @@ export function createEditorOverlayRenderer(options) {
   }
 
   function selectionRotateHandleFromPrimitive(primitive) {
-    if (!primitive) {
+    const normalized = normalizeSelectionPrimitiveForViewport(primitive);
+    if (!normalized) {
       return null;
     }
     const bounds = options.currentRenderBounds("selection");
     if (!bounds) {
       return null;
     }
-    if (primitive.kind === "circle" && primitive.center) {
+    if (normalized.kind === "circle" && normalized.center) {
       return {
-        x: primitive.center.x,
-        y: primitive.center.y,
-        radius: Number(primitive.radius || 0),
+        x: normalized.center.x,
+        y: normalized.center.y,
+        radius: Number(normalized.radius || 0),
         hitRadius: options.screenPxToWorld(10),
         bounds,
-        primitive,
+        primitive: normalized,
+        sourcePrimitive: primitive,
       };
     }
     return {
-      x: primitive.x + primitive.width * 0.5,
-      y: primitive.y + primitive.height * 0.5,
-      radius: Math.max(primitive.width, primitive.height) * 0.5,
+      x: normalized.x + normalized.width * 0.5,
+      y: normalized.y + normalized.height * 0.5,
+      radius: Math.max(normalized.width, normalized.height) * 0.5,
       hitRadius: options.screenPxToWorld(10),
       bounds,
-      primitive,
+      primitive: normalized,
+      sourcePrimitive: primitive,
     };
   }
 
@@ -118,6 +254,7 @@ export function createEditorOverlayRenderer(options) {
   }
 
   function selectionResizeHandleFromPrimitive(primitive) {
+    const normalized = normalizeSelectionPrimitiveForViewport(primitive);
     const rawId = String(primitive.objectId || primitive.object_id || "");
     const name = resizeHandleShortName(rawId);
     if (!name) {
@@ -126,11 +263,12 @@ export function createEditorOverlayRenderer(options) {
     return {
       name,
       cursor: resizeHandleCursor(name),
-      x: primitive.x + primitive.width * 0.5,
-      y: primitive.y + primitive.height * 0.5,
-      size: primitive.width,
+      x: normalized.x + normalized.width * 0.5,
+      y: normalized.y + normalized.height * 0.5,
+      size: normalized.width,
       hitRadius: options.screenPxToWorld(10),
-      primitive,
+      primitive: normalized,
+      sourcePrimitive: primitive,
     };
   }
 
@@ -348,12 +486,12 @@ export function createEditorOverlayRenderer(options) {
         if (!primitive.role?.startsWith("selection-")) {
           continue;
         }
-        renderCorePrimitive(overlay, primitive, options.corePrimitiveRenderOptions());
+        renderCorePrimitive(overlay, normalizeSelectionPrimitiveForViewport(primitive), options.corePrimitiveRenderOptions());
       } else if (primitive.kind === "path" && primitive.d) {
         if (!primitive.role?.startsWith("selection-")) {
           continue;
         }
-        renderCorePrimitive(overlay, primitive, options.corePrimitiveRenderOptions());
+        renderCorePrimitive(overlay, normalizeSelectionPrimitiveForViewport(primitive), options.corePrimitiveRenderOptions());
       } else if (primitive.kind === "polygon" && Array.isArray(primitive.points)) {
         const className = primitive.role === "hover-bond-center" ? "editor-bond-center-rect" : "";
         if (!className) {
@@ -372,11 +510,11 @@ export function createEditorOverlayRenderer(options) {
         };
         if (primitive.role?.startsWith("selection-")) {
           if (primitive.role === "selection-resize-handle") {
-            if (activeSelectionGesture || !visibleResizeHandles.some((handle) => handle.primitive === primitive)) {
+            if (activeSelectionGesture || !visibleResizeHandles.some((handle) => handle.sourcePrimitive === primitive)) {
               continue;
             }
           }
-          renderCorePrimitive(overlay, primitive, options.corePrimitiveRenderOptions());
+          renderCorePrimitive(overlay, normalizeSelectionPrimitiveForViewport(primitive), options.corePrimitiveRenderOptions());
           continue;
         }
         const className = classByRole[primitive.role];
@@ -393,7 +531,7 @@ export function createEditorOverlayRenderer(options) {
         }));
       } else if (primitive.kind === "circle" && primitive.center) {
         if (primitive.role?.startsWith("selection-")) {
-          renderCorePrimitive(overlay, primitive, options.corePrimitiveRenderOptions());
+          renderCorePrimitive(overlay, normalizeSelectionPrimitiveForViewport(primitive), options.corePrimitiveRenderOptions());
           continue;
         }
         const classByRole = {
