@@ -95,6 +95,12 @@ struct RecentFilesStore {
     files: Vec<DesktopRecentFile>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OleEditDocumentPayload {
+    chemcore_document_json: Option<String>,
+}
+
 #[derive(Default)]
 pub struct DesktopDocumentService {
     next_session_id: SessionId,
@@ -1148,6 +1154,11 @@ impl DesktopDocumentService {
                 format!("Failed to read {} as UTF-8 text: {error}", path.display())
             })?
         };
+        let text = if is_ole_edit_path(&path) {
+            ole_edit_document_text(&text).unwrap_or(text)
+        } else {
+            text
+        };
         let format = if format == "text" && looks_like_cdxml(&text) {
             "cdxml".to_string()
         } else if format == "text" {
@@ -1621,6 +1632,13 @@ fn is_ole_edit_path(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
+fn ole_edit_document_text(text: &str) -> Option<String> {
+    let payload: OleEditDocumentPayload = serde_json::from_str(text).ok()?;
+    payload
+        .chemcore_document_json
+        .filter(|value| !value.trim().is_empty())
+}
+
 fn document_format_for_path_and_bytes(path: &Path, bytes: &[u8]) -> String {
     let format = document_format_for_path(path);
     if format != "ccjz" && bytes.starts_with(&[0x1f, 0x8b]) {
@@ -1909,6 +1927,29 @@ mod tests {
             "chemcore-ole-edit-123-456.ccjz"
         )));
         assert!(!is_ole_edit_path(Path::new("regular-document.ccjs")));
+    }
+
+    #[test]
+    fn reads_ole_edit_payload_as_document_text() {
+        let mut service = DesktopDocumentService::new();
+        let path = std::env::temp_dir().join(format!(
+            "chemcore-ole-edit-test-{}-{}.ccjs",
+            std::process::id(),
+            1
+        ));
+        let document_json =
+            r#"{"document":{"title":"OLE payload"},"objects":[],"resources":{}}"#;
+        let payload = serde_json::json!({
+            "chemcoreDocumentJson": document_json,
+            "renderListJson": "[]",
+            "cdxml": "<CDXML></CDXML>"
+        });
+        fs::write(&path, serde_json::to_string(&payload).unwrap()).unwrap();
+        let opened = service.read_document_file(&path).unwrap();
+        let _ = fs::remove_file(&path);
+
+        assert_eq!(opened.format, "ccjs");
+        assert_eq!(opened.text, document_json);
     }
 
     #[test]

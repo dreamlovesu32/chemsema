@@ -26,6 +26,8 @@ const FORMAT_SVG: &str = "SVG";
 const GMEM_MOVEABLE_FLAG: u32 = 0x0002;
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW_FLAG: u32 = 0x08000000;
+#[cfg(target_os = "windows")]
+const WM_OLE_EDIT_SESSION_CHANGED: u32 = 0x80CC;
 
 struct DesktopState {
     service: Mutex<DesktopDocumentService>,
@@ -82,6 +84,13 @@ struct NativeClipboardWritePayload {
     cdxml: Option<String>,
     svg: Option<String>,
     text: Option<String>,
+}
+
+#[cfg(target_os = "windows")]
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OleEditNotifyPayload {
+    thread_id: u32,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1191,6 +1200,13 @@ fn desktop_file_write_transient_path(
     path: String,
     content: String,
 ) -> Result<DesktopSavedDocument, String> {
+    Ok(write_transient_content(path, content)?.0)
+}
+
+fn write_transient_content(
+    path: String,
+    content: String,
+) -> Result<(DesktopSavedDocument, PathBuf), String> {
     let path = normalize_output_path(path)?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
@@ -1198,7 +1214,7 @@ fn desktop_file_write_transient_path(
     }
     fs::write(&path, content)
         .map_err(|error| format!("Failed to write {}: {error}", path.display()))?;
-    Ok(DesktopSavedDocument {
+    Ok((DesktopSavedDocument {
         file_name: path
             .file_name()
             .and_then(|name| name.to_str())
@@ -1206,8 +1222,59 @@ fn desktop_file_write_transient_path(
             .to_string(),
         path: path.to_string_lossy().to_string(),
         format: "ccjs".to_string(),
-    })
+    }, path))
 }
+
+#[tauri::command]
+fn desktop_file_write_ole_edit_payload(
+    path: String,
+    payload: NativeClipboardWritePayload,
+) -> Result<DesktopSavedDocument, String> {
+    let content = serde_json::to_string_pretty(&payload)
+        .map_err(|error| format!("Failed to serialize OLE edit payload: {error}"))?;
+    let (saved, normalized_path) = write_transient_content(path, format!("{content}\n"))?;
+    notify_ole_edit_session_payload_changed(&normalized_path);
+    Ok(saved)
+}
+
+fn ole_edit_notify_path(path: &Path) -> PathBuf {
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("chemcore-ole-edit.ccjs");
+    path.with_file_name(format!("{file_name}.notify.json"))
+}
+
+#[cfg(target_os = "windows")]
+fn notify_ole_edit_session_payload_changed(path: &Path) {
+    use windows_sys::Win32::Foundation::GetLastError;
+    use windows_sys::Win32::UI::WindowsAndMessaging::PostThreadMessageW;
+
+    let notify_path = ole_edit_notify_path(path);
+    let Ok(text) = fs::read_to_string(&notify_path) else {
+        return;
+    };
+    let Ok(payload) = serde_json::from_str::<OleEditNotifyPayload>(&text) else {
+        return;
+    };
+    if payload.thread_id == 0 {
+        return;
+    }
+    unsafe {
+        let posted = PostThreadMessageW(payload.thread_id, WM_OLE_EDIT_SESSION_CHANGED, 0, 0);
+        if posted == 0 {
+            eprintln!(
+                "Failed to notify OLE edit session thread {} after writing {}: {}",
+                payload.thread_id,
+                path.display(),
+                GetLastError()
+            );
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn notify_ole_edit_session_payload_changed(_path: &Path) {}
 
 #[tauri::command]
 fn desktop_file_write_base64(
@@ -2656,6 +2723,7 @@ pub fn run() {
             desktop_file_read_path,
             desktop_file_write_path,
             desktop_file_write_transient_path,
+            desktop_file_write_ole_edit_payload,
             desktop_file_write_base64,
             desktop_file_export_emf,
             desktop_recent_files,

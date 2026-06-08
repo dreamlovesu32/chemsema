@@ -186,6 +186,24 @@ export function createDocumentFlow(options) {
     return options.state.editorEngine.documentSvg();
   }
 
+  async function currentOleEditPayloadForSave() {
+    const chemcoreDocumentJson = await currentDocumentJsonForSave();
+    let cdxml = null;
+    try {
+      cdxml = await currentDocumentCdxmlForSave();
+    } catch (error) {
+      console.warn("Failed to build OLE edit CDXML payload", error);
+    }
+    return {
+      chemcoreFragmentJson: null,
+      chemcoreDocumentJson,
+      renderListJson: options.state.editorEngine?.renderListJson?.() || null,
+      cdxml,
+      svg: null,
+      text: cdxml,
+    };
+  }
+
   async function saveCurrentDocumentCdxml() {
     const suggestedName = cdxmlFileNameForSave();
     if (options.desktopFileHost?.available) {
@@ -349,10 +367,16 @@ export function createDocumentFlow(options) {
 
   async function saveCurrentDocumentToDesktopPath(path, forcedFormat = null) {
     const format = desktopFormatForPath(path, forcedFormat);
-    const content = await desktopContentForFormat(format);
-    const saved = isOleEditPath(path) && options.desktopFileHost.writeTransientPath
-      ? await options.desktopFileHost.writeTransientPath(path, content)
-      : await options.desktopFileHost.writePath(path, content, format);
+    let saved;
+    if (isOleEditPath(path) && options.desktopFileHost.writeOleEditPayload) {
+      saved = await options.desktopFileHost.writeOleEditPayload(path, await currentOleEditPayloadForSave());
+      options.markCurrentDocumentOfficeSynced?.();
+    } else {
+      const content = await desktopContentForFormat(format);
+      saved = isOleEditPath(path) && options.desktopFileHost.writeTransientPath
+        ? await options.desktopFileHost.writeTransientPath(path, content)
+        : await options.desktopFileHost.writePath(path, content, format);
+    }
     if (format !== "svg") {
       options.state.currentFilePath = saved.path || path;
       options.state.currentFileName = saved.fileName || fileNameFromPath(path);

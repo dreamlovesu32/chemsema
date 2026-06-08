@@ -105,6 +105,8 @@ const state = {
   currentFilePath: null,
   savedDocumentJson: null,
   savedRevision: null,
+  oleSyncedDocumentJson: null,
+  oleSyncedRevision: null,
   currentDocument: null,
   editorEngine: null,
   documentEngine: null,
@@ -363,6 +365,8 @@ const TAB_STATE_KEYS = [
   "currentFilePath",
   "savedDocumentJson",
   "savedRevision",
+  "oleSyncedDocumentJson",
+  "oleSyncedRevision",
   "currentDocument",
   "editorEngine",
   "documentEngine",
@@ -387,6 +391,8 @@ function createDocumentTab(title = "Untitled") {
     currentFilePath: null,
     savedDocumentJson: null,
     savedRevision: null,
+    oleSyncedDocumentJson: null,
+    oleSyncedRevision: null,
     currentDocument: null,
     editorEngine: null,
     documentEngine: null,
@@ -483,24 +489,90 @@ function isOleEditFilePath(path) {
   return fileName.startsWith("chemcore-ole-edit-") && fileName.endsWith(".ccjs");
 }
 
-async function autoSaveOleEditDocumentTab(tab) {
-  if (!desktopFileHost?.writeTransientPath || !tab?.currentFilePath || !isOleEditFilePath(tab.currentFilePath)) {
+function markCurrentDocumentOfficeSynced() {
+  state.oleSyncedDocumentJson = currentDocumentSaveFingerprint();
+  state.oleSyncedRevision = currentDocumentRevision();
+  const tab = activeDocumentTab();
+  if (tab) {
+    tab.oleSyncedDocumentJson = state.oleSyncedDocumentJson;
+    tab.oleSyncedRevision = state.oleSyncedRevision;
+  }
+}
+
+function tabDocumentFingerprint(tab) {
+  return tab?.currentDocument ? JSON.stringify(tab.currentDocument) : null;
+}
+
+function tabDocumentRevision(tab) {
+  const revision = tab?.editorEngine?.revision?.();
+  return Number.isFinite(Number(revision)) ? Number(revision) : null;
+}
+
+async function buildOleEditPayloadForTab(tab) {
+  const documentJson = tab?.currentDocument
+    ? `${JSON.stringify(tab.currentDocument, null, 2)}\n`
+    : tab?.editorEngine?.documentJson?.();
+  if (!documentJson || !String(documentJson).trim()) {
+    return null;
+  }
+  let cdxml = null;
+  try {
+    cdxml = await tab.editorEngine?.documentCdxml?.() || null;
+  } catch (error) {
+    console.warn("Failed to build OLE edit CDXML payload", error);
+  }
+  return {
+    chemcoreFragmentJson: null,
+    chemcoreDocumentJson: documentJson,
+    renderListJson: tab.editorEngine?.renderListJson?.() || null,
+    cdxml,
+    svg: null,
+    text: cdxml,
+  };
+}
+
+async function syncOleEditDocumentTabToOffice(tab, options = {}) {
+  if (
+    !(desktopFileHost?.writeOleEditPayload || desktopFileHost?.writeTransientPath)
+    || !tab?.currentFilePath
+    || !isOleEditFilePath(tab.currentFilePath)
+  ) {
     return false;
   }
   if (!tab.currentDocument) {
     return false;
   }
-  const fingerprint = JSON.stringify(tab.currentDocument);
-  const revision = tab.editorEngine?.revision?.();
-  if (tab.savedDocumentJson === fingerprint && (revision == null || tab.savedRevision === revision)) {
+  const fingerprint = tabDocumentFingerprint(tab);
+  const revision = tabDocumentRevision(tab);
+  if (
+    !options.force
+    && tab.oleSyncedDocumentJson === fingerprint
+    && (revision == null || tab.oleSyncedRevision === revision)
+  ) {
     return false;
   }
-  await desktopFileHost.writeTransientPath(tab.currentFilePath, `${JSON.stringify(tab.currentDocument, null, 2)}\n`);
-  tab.savedDocumentJson = fingerprint;
-  tab.savedRevision = Number.isFinite(Number(revision)) ? Number(revision) : tab.savedRevision;
+  const payload = await buildOleEditPayloadForTab(tab);
+  if (!payload) {
+    return false;
+  }
+  if (desktopFileHost.writeOleEditPayload) {
+    await desktopFileHost.writeOleEditPayload(tab.currentFilePath, payload);
+  } else {
+    await desktopFileHost.writeTransientPath(tab.currentFilePath, payload.chemcoreDocumentJson);
+  }
+  tab.oleSyncedDocumentJson = fingerprint;
+  tab.oleSyncedRevision = revision;
+  if (options.markSaved) {
+    tab.savedDocumentJson = fingerprint;
+    tab.savedRevision = revision;
+  }
   if (tab.id === activeDocumentTabId) {
-    state.savedDocumentJson = fingerprint;
-    state.savedRevision = tab.savedRevision;
+    state.oleSyncedDocumentJson = tab.oleSyncedDocumentJson;
+    state.oleSyncedRevision = tab.oleSyncedRevision;
+    if (options.markSaved) {
+      state.savedDocumentJson = tab.savedDocumentJson;
+      state.savedRevision = tab.savedRevision;
+    }
   }
   refreshCommandAvailability();
   return true;
@@ -513,7 +585,7 @@ async function autoSaveAllOleEditDocumentTabs() {
   }
   saveActiveDocumentTabState();
   for (const tab of documentTabs) {
-    await autoSaveOleEditDocumentTab(tab);
+    await syncOleEditDocumentTabToOffice(tab, { force: true });
   }
 }
 
@@ -521,7 +593,7 @@ async function handleDocumentCommandCommitted(event) {
   saveActiveDocumentTabState();
   const tab = activeDocumentTab();
   if (tab) {
-    await autoSaveOleEditDocumentTab(tab);
+    await syncOleEditDocumentTabToOffice(tab);
   }
   refreshCommandAvailability();
   console.debug?.("[chemcore] document command committed", {
@@ -636,7 +708,7 @@ async function closeDocumentTab(tabId) {
     await finishActiveTextEditor(true);
     saveActiveDocumentTabState();
   }
-  await autoSaveOleEditDocumentTab(closing);
+  await syncOleEditDocumentTabToOffice(closing, { force: true });
   await closing.editorEngine?.free?.();
   await closing.documentEngine?.free?.();
   documentTabs.splice(index, 1);
@@ -2824,6 +2896,7 @@ const documentFlow = createDocumentFlow({
   renderDocument,
   fitView,
   markCurrentDocumentSaved,
+  markCurrentDocumentOfficeSynced,
   resetCommandEngineRevision: () => commandEngine.resetRevision(),
   refreshCommandAvailability,
   waitForRuntimeReady: () => appRuntimeReady,

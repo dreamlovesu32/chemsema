@@ -584,6 +584,46 @@ fn read_ole_object_payload(payload_path: &PathBuf) -> Result<OleObjectPayload, S
     Ok(OleObjectPayload::from_clipboard(payload))
 }
 
+fn ole_edit_session_payload_json(payload: &OleObjectPayload) -> Result<String, String> {
+    serde_json::to_string_pretty(&serde_json::json!({
+        "chemcoreFragmentJson": payload.chemcore_fragment_json.clone(),
+        "chemcoreDocumentJson": payload.chemcore_document_json.clone(),
+        "renderListJson": payload.render_list_json.clone(),
+        "cdxml": payload.cdxml.clone(),
+        "svg": payload.svg.clone(),
+        "text": payload.text.clone(),
+    }))
+    .map_err(|error| format!("Failed to serialize OLE edit session payload: {error}"))
+}
+
+fn ole_object_payload_from_edit_session_text(text: &str) -> Result<OleObjectPayload, String> {
+    if text.trim().is_empty() {
+        return Err("OLE edit session payload was empty.".into());
+    }
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(text) {
+        if value.get("chemcoreDocumentJson").is_some() {
+            let payload: ClipboardPayload = serde_json::from_value(value)
+                .map_err(|error| format!("Invalid OLE edit session payload JSON: {error}"))?;
+            if payload
+                .chemcore_document_json
+                .as_deref()
+                .is_some_and(|value| !value.trim().is_empty())
+            {
+                return Ok(OleObjectPayload::from_clipboard(payload));
+            }
+            return Err("OLE edit session payload did not contain chemcoreDocumentJson.".into());
+        }
+    }
+    Ok(OleObjectPayload::from_clipboard(ClipboardPayload {
+        chemcore_fragment_json: None,
+        chemcore_document_json: Some(text.to_string()),
+        render_list_json: None,
+        cdxml: None,
+        svg: None,
+        text: None,
+    }))
+}
+
 fn write_word_docx_payload(payload_path: PathBuf, output_path: PathBuf) -> Result<(), String> {
     let payload = read_ole_object_payload(&payload_path)?;
     let package = word_docx_package_for_payload(&payload)?;
@@ -992,8 +1032,17 @@ fn run_ole_edit_session_update_self_test() -> Result<(), String> {
         let document_json = serde_json::to_string(&document_json).map_err(|error| {
             format!("Edited OLE document JSON self-test serialize failed: {error}")
         })?;
+        let edit_payload = OleObjectPayload::from_clipboard(ClipboardPayload {
+            chemcore_fragment_json: None,
+            chemcore_document_json: Some(document_json),
+            render_list_json: None,
+            cdxml: Some("<CDXML></CDXML>".to_string()),
+            svg: None,
+            text: Some("<CDXML></CDXML>".to_string()),
+        });
+        let edit_payload_json = ole_edit_session_payload_json(&edit_payload)?;
 
-        let hr = apply_ole_edit_session_update(object, &document_json);
+        let hr = apply_ole_edit_session_update(object, &edit_payload_json);
         if !hresult_succeeded(hr) {
             com_release(persist_storage);
             com_release(storage);
@@ -1021,6 +1070,22 @@ fn run_ole_edit_session_update_self_test() -> Result<(), String> {
             com_release(persist_storage);
             com_release(storage);
             return Err("OLE edit session update self-test did not update storage.".into());
+        }
+        let presentation_emf = storage_read_stream(storage, OLE_STREAM_PRESENTATION_EMF)?;
+        if presentation_emf.len() <= 40 {
+            com_release(persist_storage);
+            com_release(storage);
+            return Err(
+                "OLE edit session update self-test did not update presentation EMF.".into(),
+            );
+        }
+        let enhanced_print = storage_read_stream(storage, OLE_STREAM_ENHANCED_PRINT)?;
+        if !enhanced_print_is_emf(&enhanced_print) {
+            com_release(persist_storage);
+            com_release(storage);
+            return Err(
+                "OLE edit session update self-test did not update enhanced print EMF.".into(),
+            );
         }
 
         com_release(persist_storage);
@@ -1328,6 +1393,31 @@ fn file_modified_time(path: &PathBuf) -> Option<SystemTime> {
         .ok()
 }
 
+fn ole_edit_session_notify_path(path: &PathBuf) -> PathBuf {
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("chemcore-ole-edit.ccjs");
+    path.with_file_name(format!("{file_name}.notify.json"))
+}
+
+fn write_ole_edit_session_notify_file(path: &PathBuf) -> Result<(), String> {
+    let Some(thread_id) = OLE_EDIT_MAIN_THREAD_ID.get().copied() else {
+        return Ok(());
+    };
+    let notify_path = ole_edit_session_notify_path(path);
+    let payload = serde_json::to_string_pretty(&serde_json::json!({
+        "threadId": thread_id,
+    }))
+    .map_err(|error| format!("Failed to serialize OLE edit notification payload: {error}"))?;
+    std::fs::write(&notify_path, format!("{payload}\n")).map_err(|error| {
+        format!(
+            "Failed to write OLE edit notification file {}: {error}",
+            notify_path.display()
+        )
+    })
+}
+
 fn start_ole_edit_file_watcher(
     session_id: String,
     path: PathBuf,
@@ -1497,14 +1587,13 @@ unsafe fn apply_ole_edit_session_update(
     if document_json.trim().is_empty() {
         return E_FAIL;
     }
-    let payload = OleObjectPayload::from_clipboard(ClipboardPayload {
-        chemcore_fragment_json: None,
-        chemcore_document_json: Some(document_json.to_string()),
-        render_list_json: None,
-        cdxml: None,
-        svg: None,
-        text: None,
-    });
+    let payload = match ole_object_payload_from_edit_session_text(document_json) {
+        Ok(payload) => payload,
+        Err(error) => {
+            log_ole_event(&format!("Invalid OLE edit session payload: {error}"));
+            return E_FAIL;
+        }
+    };
     log_ole_event("Built OLE edit session payload");
     (*object).payload = payload;
     (*object).extent_himetric = (*object).payload.extent_himetric();
@@ -4674,6 +4763,7 @@ unsafe fn launch_desktop_for_object(object: *mut ChemcoreOleObject) -> Result<()
             "Reusing OLE edit session payload at {}",
             payload_path.display()
         ));
+        write_ole_edit_session_notify_file(&payload_path)?;
         let desktop_exe = resolve_desktop_exe()?;
         ensure_desktop_dev_server_for_debug_exe(&desktop_exe)?;
         log_ole_event(&format!(
@@ -4693,8 +4783,10 @@ unsafe fn launch_desktop_for_object(object: *mut ChemcoreOleObject) -> Result<()
         monotonic_millis()
     );
     let payload_path = env::temp_dir().join(format!("{session_id}.ccjs"));
-    std::fs::write(&payload_path, &(*object).payload.chemcore_document_json)
+    let payload_json = ole_edit_session_payload_json(&(*object).payload)?;
+    std::fs::write(&payload_path, payload_json)
         .map_err(|error| format!("Failed to write temporary OLE edit payload: {error}"))?;
+    write_ole_edit_session_notify_file(&payload_path)?;
     log_ole_event(&format!(
         "Wrote OLE edit session {session_id} payload to {}",
         payload_path.display()
