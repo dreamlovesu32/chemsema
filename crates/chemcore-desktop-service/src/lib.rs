@@ -156,6 +156,10 @@ impl DesktopDocumentService {
         self.session_mut(session_id)?.load_cdx_document(cdx)
     }
 
+    pub fn load_document_sdf(&mut self, session_id: SessionId, sdf: &str) -> Result<(), String> {
+        self.session_mut(session_id)?.load_sdf_document(sdf)
+    }
+
     pub fn document_json(&self, session_id: SessionId) -> Result<String, String> {
         self.session(session_id)?
             .document_json()
@@ -265,6 +269,10 @@ impl DesktopDocumentService {
 
     pub fn document_cdx(&self, session_id: SessionId) -> Result<Vec<u8>, String> {
         self.session(session_id)?.document_cdx()
+    }
+
+    pub fn document_sdf(&self, session_id: SessionId) -> Result<String, String> {
+        self.session(session_id)?.document_sdf()
     }
 
     pub fn document_svg(&self, session_id: SessionId) -> Result<String, String> {
@@ -1674,6 +1682,7 @@ fn normalize_document_format(format: &str) -> String {
         "ccjs" => "ccjs",
         "cdxml" => "cdxml",
         "cdx" => "cdx",
+        "sdf" | "sd" => "sdf",
         "svg" => "svg",
         _ => "",
     }
@@ -1692,6 +1701,7 @@ fn document_format_for_path(path: &Path) -> String {
         "ccjs" => "ccjs",
         "cdxml" => "cdxml",
         "cdx" => "cdx",
+        "sdf" | "sd" => "sdf",
         "svg" => "svg",
         _ => "ccjz",
     }
@@ -1988,8 +1998,37 @@ mod tests {
         assert_eq!(document_format_for_path(Path::new("sample.ccjs")), "ccjs");
         assert_eq!(document_format_for_path(Path::new("sample.cdxml")), "cdxml");
         assert_eq!(document_format_for_path(Path::new("sample.cdx")), "cdx");
+        assert_eq!(document_format_for_path(Path::new("sample.sdf")), "sdf");
+        assert_eq!(document_format_for_path(Path::new("sample.sd")), "sdf");
         assert_eq!(document_format_for_path(Path::new("sample.svg")), "svg");
         assert_eq!(document_format_for_path(Path::new("sample")), "ccjz");
+    }
+
+    #[test]
+    fn native_session_reads_and_writes_sdf_documents() {
+        let mut service = DesktopDocumentService::new();
+        let session_id = service.create_session();
+        let sdf = concat!(
+            "Ethanol\n",
+            "  ChemCore\n",
+            "\n",
+            "  3  2  0  0  0  0            999 V2000\n",
+            "    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n",
+            "    1.5000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n",
+            "    3.0000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n",
+            "  1  2  1  0  0  0  0\n",
+            "  2  3  1  0  0  0  0\n",
+            "M  END\n",
+            "$$$$\n",
+        );
+        service.load_document_sdf(session_id, sdf).unwrap();
+        let document: Value =
+            serde_json::from_str(&service.document_json(session_id).unwrap()).unwrap();
+        assert_eq!(document["objects"][0]["type"], "molecule");
+
+        let exported = service.document_sdf(session_id).unwrap();
+        assert!(exported.contains("M  END"));
+        assert!(exported.ends_with("$$$$\n"));
     }
 
     #[test]

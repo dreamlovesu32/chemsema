@@ -47,6 +47,7 @@ export class WasmEngine {
     documentCdxml(): string;
     documentColorsJson(): string;
     documentJson(): string;
+    documentSdf(): string;
     documentStylePreset(): string;
     documentSvg(): string;
     elementPaletteJson(): string;
@@ -67,6 +68,7 @@ export class WasmEngine {
     loadDocumentCdx(cdx: Uint8Array): void;
     loadDocumentCdxml(cdxml: string): void;
     loadDocumentJson(json: string): void;
+    loadDocumentSdf(sdf: string): void;
     constructor();
     objectSettingsDialogJson(): string;
     orbitalToolIconSvg(template: string, style: string, phase: string): string;
@@ -169,6 +171,7 @@ export interface InitOutput {
     readonly wasmengine_documentCdxml: (a: number) => [number, number];
     readonly wasmengine_documentColorsJson: (a: number) => [number, number, number, number];
     readonly wasmengine_documentJson: (a: number) => [number, number, number, number];
+    readonly wasmengine_documentSdf: (a: number) => [number, number, number, number];
     readonly wasmengine_documentStylePreset: (a: number) => [number, number];
     readonly wasmengine_documentSvg: (a: number) => [number, number];
     readonly wasmengine_elementPaletteJson: (a: number) => [number, number];
@@ -189,6 +192,7 @@ export interface InitOutput {
     readonly wasmengine_loadDocumentCdx: (a: number, b: number, c: number) => [number, number];
     readonly wasmengine_loadDocumentCdxml: (a: number, b: number, c: number) => [number, number];
     readonly wasmengine_loadDocumentJson: (a: number, b: number, c: number) => [number, number];
+    readonly wasmengine_loadDocumentSdf: (a: number, b: number, c: number) => [number, number];
     readonly wasmengine_new: () => number;
     readonly wasmengine_objectSettingsDialogJson: (a: number) => [number, number];
     readonly wasmengine_orbitalToolIconSvg: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number];

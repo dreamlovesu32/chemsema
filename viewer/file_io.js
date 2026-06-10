@@ -3,6 +3,7 @@ export const CHEMCORE_COMPRESSED_EXTENSION = ".ccjz";
 export const CHEMCORE_TEXT_MIME = "application/vnd.chemcore+json";
 export const CHEMCORE_COMPRESSED_MIME = "application/vnd.chemcore+gzip";
 export const CHEMDRAW_CDX_MIME = "chemical/x-cdx";
+export const MDL_SDF_MIME = "chemical/x-mdl-sdfile";
 
 export function documentTitleForFileName(documentData) {
   const rawTitle = String(documentData?.document?.title || "chemcore-document").trim();
@@ -30,6 +31,9 @@ export function saveFormatFromFileName(fileName) {
   if (lowerName.endsWith(".cdx")) {
     return "cdx";
   }
+  if (lowerName.endsWith(".sdf") || lowerName.endsWith(".sd")) {
+    return "sdf";
+  }
   return "ccjz";
 }
 
@@ -39,6 +43,8 @@ export function baseNameWithoutDocumentExtension(fileName) {
     .replace(/\.ccjs$/i, "")
     .replace(/\.cdxml$/i, "")
     .replace(/\.cdx$/i, "")
+    .replace(/\.sdf$/i, "")
+    .replace(/\.sd$/i, "")
     .replace(/\.svg$/i, "");
 }
 
@@ -62,6 +68,15 @@ export function looksLikeCdxFile(file, bytes = null) {
     return String.fromCharCode(...view.slice(0, 8)) === "VjCD0100";
   }
   return false;
+}
+
+export function looksLikeSdfFile(file, text = "") {
+  const name = (file?.name || "").toLowerCase();
+  const type = (file?.type || "").toLowerCase();
+  if (name.endsWith(".sdf") || name.endsWith(".sd") || type.includes("mdl-sdfile") || type.includes("sdf")) {
+    return true;
+  }
+  return /(?:^|\n)M  END(?:\n|\r\n?)\s*\$\$\$\$/i.test(text);
 }
 
 export function looksLikeCompressedChemcoreFile(file) {
@@ -92,7 +107,7 @@ export async function decompressChemcoreText(bytes) {
 
 export function chemcoreOpenAcceptTypes() {
   return [{
-    description: "ChemCore CCJS/CCJZ or CDXML",
+    description: "ChemCore, ChemDraw, or SDF",
     accept: {
       [CHEMCORE_COMPRESSED_MIME]: [CHEMCORE_COMPRESSED_EXTENSION],
       [CHEMCORE_TEXT_MIME]: [CHEMCORE_TEXT_EXTENSION],
@@ -104,6 +119,9 @@ export function chemcoreOpenAcceptTypes() {
       [CHEMDRAW_CDX_MIME]: [".cdx"],
       "application/x-cdx": [".cdx"],
       "application/vnd.cambridgesoft.cdx": [".cdx"],
+      [MDL_SDF_MIME]: [".sdf", ".sd"],
+      "chemical/x-mdl-sdfile": [".sdf", ".sd"],
+      "chemical/x-sdf": [".sdf", ".sd"],
     },
   }];
 }
@@ -124,6 +142,11 @@ export function chemcoreOpenAcceptString() {
     CHEMDRAW_CDX_MIME,
     "application/x-cdx",
     "application/vnd.cambridgesoft.cdx",
+    ".sdf",
+    ".sd",
+    MDL_SDF_MIME,
+    "chemical/x-mdl-sdfile",
+    "chemical/x-sdf",
   ].join(",");
 }
 

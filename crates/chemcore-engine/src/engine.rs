@@ -431,6 +431,10 @@ impl Engine {
         crate::document_to_cdx(&self.state.document)
     }
 
+    pub fn document_sdf(&self) -> Result<String, String> {
+        crate::document_to_sdf(&self.state.document)
+    }
+
     pub fn document_svg(&self) -> String {
         crate::document_to_svg(&self.state.document)
     }
@@ -479,6 +483,11 @@ impl Engine {
     pub fn load_cdx_document(&mut self, cdx: &[u8]) -> Result<(), String> {
         let mut document = crate::parse_cdx_document(cdx, None)?;
         crate::cdxml::normalize_cdxml_document_for_editing(&mut document);
+        self.load_imported_document(document)
+    }
+
+    pub fn load_sdf_document(&mut self, sdf: &str) -> Result<(), String> {
+        let document = crate::parse_sdf_document(sdf, None)?;
         self.load_imported_document(document)
     }
 

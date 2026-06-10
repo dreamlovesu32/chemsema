@@ -60,6 +60,7 @@ class TauriEngineSession {
       canRedo: false,
       documentCdxml: null,
       documentCdx: null,
+      documentSdf: null,
       documentSvg: null,
     };
     this.exportDirty = true;
@@ -115,6 +116,7 @@ class TauriEngineSession {
     this.exportDirty = true;
     this.cache.documentCdxml = null;
     this.cache.documentCdx = null;
+    this.cache.documentSdf = null;
     this.cache.documentSvg = null;
   }
 
@@ -220,6 +222,14 @@ class TauriEngineSession {
     throw new Error("CDX import is unavailable.");
   }
 
+  async loadDocumentSdf(sdf) {
+    const result = await this.invokeMutation("desktop_engine_load_document_sdf", { sdf }, { refresh: "document" });
+    if (this.layoutEngine?.loadDocumentJson) {
+      this.layoutEngine.loadDocumentJson(this.cache.documentJson);
+    }
+    return result;
+  }
+
   documentJson() {
     return this.cache.documentJson || "";
   }
@@ -250,6 +260,11 @@ class TauriEngineSession {
       return this.layoutEngine.documentCdx();
     }
     throw new Error("CDX export is unavailable.");
+  }
+
+  async documentSdf() {
+    await this.ready();
+    return this.invoke("desktop_engine_document_sdf", { sessionId: this.sessionId });
   }
 
   async documentSvg() {

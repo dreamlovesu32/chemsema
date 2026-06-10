@@ -12,6 +12,7 @@ mod render;
 mod render_constants;
 mod render_svg;
 mod repeating_units;
+mod sdf;
 mod symbols;
 mod units;
 
@@ -29,6 +30,7 @@ pub use render::*;
 pub(crate) use render_constants::*;
 pub use render_svg::*;
 pub use repeating_units::*;
+pub use sdf::*;
 pub use symbols::*;
 pub use units::*;
 

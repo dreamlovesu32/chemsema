@@ -4,6 +4,7 @@ import {
   CHEMCORE_TEXT_EXTENSION,
   CHEMCORE_TEXT_MIME,
   CHEMDRAW_CDX_MIME,
+  MDL_SDF_MIME,
   baseNameWithoutDocumentExtension,
   chemcoreOpenAcceptTypes,
   compressChemcoreText,
@@ -15,6 +16,7 @@ import {
   looksLikeCompressedChemcoreFile,
   looksLikeCdxFile,
   looksLikeCdxmlFile,
+  looksLikeSdfFile,
   saveFormatFromFileName,
 } from "./file_io.js";
 import { pdfPreviewBase64FromSvg } from "./export_preview.js";
@@ -112,6 +114,57 @@ export function createDocumentFlow(options) {
     return baseNameWithoutDocumentExtension(baseName) || "chemcore-document";
   }
 
+  function preferredSaveFormat() {
+    const format = saveFormatFromFileName(options.state.currentFileName || options.state.currentFilePath || "");
+    return format || "ccjz";
+  }
+
+  function extensionForSaveFormat(format) {
+    switch (format) {
+      case "ccjs": return CHEMCORE_TEXT_EXTENSION;
+      case "cdxml": return ".cdxml";
+      case "cdx": return ".cdx";
+      case "sdf": return ".sdf";
+      case "svg": return ".svg";
+      default: return CHEMCORE_COMPRESSED_EXTENSION;
+    }
+  }
+
+  function suggestedSaveAsName() {
+    const format = preferredSaveFormat();
+    return `${saveAsBaseName()}${extensionForSaveFormat(format)}`;
+  }
+
+  function currentHasCleanCompleteDocumentSave() {
+    const sourceName = options.state.currentFileName || options.state.currentFilePath || "";
+    if (!sourceName) {
+      return false;
+    }
+    const format = saveFormatFromFileName(sourceName);
+    return ["ccjz", "ccjs", "cdxml", "cdx"].includes(format) && !options.currentDocumentIsDirty?.();
+  }
+
+  function lossyExportWarningMessage(format) {
+    if (format === "sdf") {
+      return "SDF is a molecular structure exchange format. Exporting to SDF will save molecule structures and mappable data fields only; text, arrows, shapes, orbitals, colors, line widths, fonts, page layout, and other drawing styles will not be written. To preserve the full editable document appearance, save as ChemCore, CDXML, or CDX.";
+    }
+    if (format === "svg" || format === "emf") {
+      return `${format.toUpperCase()} is a presentation/export format. It does not preserve the full editable ChemCore document. To preserve editable molecules, objects, and styling, save as ChemCore, CDXML, or CDX.`;
+    }
+    return "";
+  }
+
+  async function confirmLossyExportIfNeeded(format) {
+    if (!["sdf", "svg", "emf"].includes(format) || currentHasCleanCompleteDocumentSave()) {
+      return true;
+    }
+    const message = lossyExportWarningMessage(format);
+    if (!message) {
+      return true;
+    }
+    return window.confirm(message);
+  }
+
   async function savePayloadForFormat(format) {
     if (format === "svg") {
       return {
@@ -129,6 +182,12 @@ export function createDocumentFlow(options) {
       return {
         content: await currentDocumentCdxForSave(),
         mimeType: CHEMDRAW_CDX_MIME,
+      };
+    }
+    if (format === "sdf") {
+      return {
+        content: await currentDocumentSdfForSave(),
+        mimeType: MDL_SDF_MIME,
       };
     }
     const json = await currentDocumentJsonForSave();
@@ -195,6 +254,14 @@ export function createDocumentFlow(options) {
     return options.state.editorEngine.documentCdx();
   }
 
+  async function currentDocumentSdfForSave() {
+    await options.finishActiveTextEditor(true);
+    if (!options.state.editorEngine?.documentSdf) {
+      throw new Error("SDF export is unavailable.");
+    }
+    return options.state.editorEngine.documentSdf();
+  }
+
   async function currentDocumentSvgForSave() {
     await options.finishActiveTextEditor(true);
     if (!options.state.editorEngine?.documentSvg) {
@@ -249,6 +316,9 @@ export function createDocumentFlow(options) {
   }
 
   async function saveCurrentDocumentSvg() {
+    if (!await confirmLossyExportIfNeeded("svg")) {
+      return;
+    }
     const suggestedName = svgFileNameForSave();
     if (options.desktopFileHost?.available) {
       const path = await options.desktopFileHost.chooseSavePath(suggestedName);
@@ -302,6 +372,9 @@ export function createDocumentFlow(options) {
     if (!options.desktopFileHost?.available || !options.desktopFileHost.exportEmf) {
       throw new Error("EMF export is available only in the Windows desktop app.");
     }
+    if (!await confirmLossyExportIfNeeded("emf")) {
+      return;
+    }
     await options.finishActiveTextEditor(true);
     if (!options.state.editorEngine?.renderListJson || !options.state.editorEngine?.renderBoundsJson) {
       throw new Error("EMF export is unavailable.");
@@ -325,7 +398,7 @@ export function createDocumentFlow(options) {
 
   async function saveCurrentDocumentAs() {
     if (options.desktopFileHost?.available) {
-      const path = await options.desktopFileHost.chooseSavePath(`${saveAsBaseName()}${CHEMCORE_COMPRESSED_EXTENSION}`);
+      const path = await options.desktopFileHost.chooseSavePath(suggestedSaveAsName());
       if (!path) {
         return;
       }
@@ -334,7 +407,7 @@ export function createDocumentFlow(options) {
     }
     if (window.showSaveFilePicker) {
       const handle = await window.showSaveFilePicker({
-        suggestedName: `${saveAsBaseName()}${CHEMCORE_COMPRESSED_EXTENSION}`,
+        suggestedName: suggestedSaveAsName(),
         types: [
           {
             description: "ChemCore CCJZ",
@@ -346,10 +419,14 @@ export function createDocumentFlow(options) {
           },
           { description: "ChemDraw CDXML", accept: { "chemical/x-cdxml": [".cdxml"], "text/xml": [".cdxml"] } },
           { description: "ChemDraw CDX", accept: { [CHEMDRAW_CDX_MIME]: [".cdx"], "application/x-cdx": [".cdx"] } },
+          { description: "MDL SDfile", accept: { [MDL_SDF_MIME]: [".sdf", ".sd"], "chemical/x-mdl-sdfile": [".sdf", ".sd"] } },
           { description: "Scalable Vector Graphics", accept: { "image/svg+xml": [".svg"] } },
         ],
       });
       const format = saveFormatFromFileName(handle.name);
+      if (!await confirmLossyExportIfNeeded(format)) {
+        return;
+      }
       const { content } = await savePayloadForFormat(format);
       const writable = await handle.createWritable();
       await writable.write(content);
@@ -383,11 +460,17 @@ export function createDocumentFlow(options) {
     if (format === "cdx") {
       return currentDocumentCdxmlForSave();
     }
+    if (format === "sdf") {
+      return currentDocumentSdfForSave();
+    }
     return currentDocumentJsonForSave();
   }
 
   async function saveCurrentDocumentToDesktopPath(path, forcedFormat = null) {
     const format = desktopFormatForPath(path, forcedFormat);
+    if (!await confirmLossyExportIfNeeded(format)) {
+      return;
+    }
     let saved;
     if (isOleEditPath(path) && options.desktopFileHost.writeOleEditPayload) {
       saved = await options.desktopFileHost.writeOleEditPayload(path, await currentOleEditPayloadForSave());
@@ -398,7 +481,7 @@ export function createDocumentFlow(options) {
         ? await options.desktopFileHost.writeTransientPath(path, content)
         : await options.desktopFileHost.writePath(path, content, format);
     }
-    if (format !== "svg") {
+    if (format !== "svg" && format !== "emf") {
       options.state.currentFilePath = saved.path || path;
       options.state.currentFileName = saved.fileName || fileNameFromPath(path);
       options.viewerTitle.textContent = options.state.currentDocument?.document?.title || options.state.currentFileName || "Untitled";
@@ -420,6 +503,10 @@ export function createDocumentFlow(options) {
     const text = looksLikeCompressedChemcoreFile(file)
       ? await decompressChemcoreText(await file.arrayBuffer())
       : await file.text();
+    if (looksLikeSdfFile(file, text)) {
+      await loadSdfDocumentIntoEditor(text, file.name || null, null);
+      return;
+    }
     await openDocumentText(text, file.name || null, null, looksLikeCdxmlFile(file, text) ? "cdxml" : saveFormatFromFileName(file.name));
   }
 
@@ -427,6 +514,10 @@ export function createDocumentFlow(options) {
     const resolvedFormat = format || saveFormatFromFileName(fileName);
     if (resolvedFormat === "cdxml" || looksLikeCdxmlFile({ name: fileName || "" }, text)) {
       await loadCdxmlDocumentIntoEditor(text, fileName, filePath);
+      return;
+    }
+    if (resolvedFormat === "sdf" || looksLikeSdfFile({ name: fileName || "" }, text)) {
+      await loadSdfDocumentIntoEditor(text, fileName, filePath);
       return;
     }
     await loadJsonDocumentIntoEditor(JSON.parse(text), fileName, filePath);
@@ -455,6 +546,30 @@ export function createDocumentFlow(options) {
     options.markCurrentDocumentSaved?.();
   }
 
+  async function loadSdfDocumentIntoEditor(sdf, fileName = null, filePath = null) {
+    await waitForRuntimeReady();
+    await options.finishActiveTextEditor(false);
+    options.state.currentPath = null;
+    options.state.currentFileName = fileName;
+    options.state.currentFilePath = filePath;
+    await options.state.editorEngine?.free?.();
+    options.state.editorEngine = options.engineHost.createEngineSession();
+    await options.state.editorEngine.ready?.();
+    options.resetCommandEngineRevision?.();
+    options.state.lastEditFocusPoint = null;
+    options.clearZoomHandoffs();
+    await options.state.editorEngine.loadDocumentSdf(sdf);
+    await options.syncEngineToolState();
+    await options.syncDocumentFromEngine();
+    options.renderSecondaryToolbar?.();
+    options.state.runtimeViewBox = null;
+    options.viewerTitle.textContent = options.state.currentDocument?.document?.title || fileName || "Imported SDF";
+    updateDocumentMeta();
+    options.fitView();
+    options.renderDocument();
+    options.markCurrentDocumentSaved?.();
+  }
+
   async function openDocumentPath(path) {
     if (!options.desktopFileHost?.available || !path) {
       return;
@@ -462,6 +577,10 @@ export function createDocumentFlow(options) {
     const opened = await options.desktopFileHost.readPath(path);
     if (opened.format === "cdxml" || opened.format === "cdx") {
       await loadCdxmlDocumentIntoEditor(opened.text, opened.fileName || fileNameFromPath(path), opened.path || path);
+      return;
+    }
+    if (opened.format === "sdf") {
+      await loadSdfDocumentIntoEditor(opened.text, opened.fileName || fileNameFromPath(path), opened.path || path);
       return;
     }
     await loadJsonDocumentIntoEditor(JSON.parse(opened.text), opened.fileName || fileNameFromPath(path), opened.path || path);
@@ -584,6 +703,7 @@ export function createDocumentFlow(options) {
     isAbortError,
     loadAndRender,
     loadCdxDocumentIntoEditor,
+    loadSdfDocumentIntoEditor,
     loadJsonDocumentIntoEditor,
     openDocumentText,
     openDocumentFile,

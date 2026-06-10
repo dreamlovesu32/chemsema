@@ -18,6 +18,7 @@ import {
   looksLikeCdxFile,
   looksLikeCdxmlFile,
   looksLikeCompressedChemcoreFile,
+  looksLikeSdfFile,
   saveFormatFromFileName,
 } from "./file_io.js";
 import {
@@ -3348,6 +3349,7 @@ const documentFlow = createDocumentFlow({
   renderDocument,
   fitView,
   markCurrentDocumentSaved,
+  currentDocumentIsDirty,
   markCurrentDocumentOfficeSynced,
   resetCommandEngineRevision: () => commandEngine.resetRevision(),
   refreshCommandAvailability,
@@ -3358,6 +3360,7 @@ const {
   isAbortError,
   loadAndRender,
   loadCdxDocumentIntoEditor,
+  loadSdfDocumentIntoEditor,
   loadJsonDocumentIntoEditor,
   openDocumentText,
   openDocumentFile,
@@ -3414,7 +3417,11 @@ async function openBrowserFileInNewTab(file) {
     text,
     fileName: file.name || null,
     filePath: null,
-    format: looksLikeCdxmlFile(file, text) ? "cdxml" : saveFormatFromFileName(file.name),
+    format: looksLikeCdxmlFile(file, text)
+      ? "cdxml"
+      : looksLikeSdfFile(file, text)
+        ? "sdf"
+        : saveFormatFromFileName(file.name),
   };
   localStorage.setItem(`${BROWSER_PENDING_DOCUMENT_KEY_PREFIX}${id}`, JSON.stringify(payload));
   const opened = !!window.open(browserTabUrlForPendingDocument(id), "_blank", "noopener,noreferrer");

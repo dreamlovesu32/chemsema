@@ -70,6 +70,13 @@
         "description": "ChemDraw CDX document",
         "role": "Editor",
         "mimeType": "chemical/x-cdx"
+      },
+      {
+        "ext": ["sdf", "sd"],
+        "name": "MDL SDfile",
+        "description": "MDL structure-data file",
+        "role": "Editor",
+        "mimeType": "chemical/x-mdl-sdfile"
       }
     ],
     "windows": {

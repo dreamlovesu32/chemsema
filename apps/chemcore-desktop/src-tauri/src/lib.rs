@@ -139,6 +139,16 @@ fn desktop_engine_load_document_cdxml(
 }
 
 #[tauri::command]
+fn desktop_engine_load_document_sdf(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    sdf: String,
+) -> Result<(), String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.load_document_sdf(session_id, &sdf)
+}
+
+#[tauri::command]
 fn desktop_engine_document_json(
     state: tauri::State<'_, DesktopState>,
     session_id: SessionId,
@@ -202,6 +212,15 @@ fn desktop_engine_document_cdxml(
 ) -> Result<String, String> {
     let service = state.service.lock().map_err(|error| error.to_string())?;
     service.document_cdxml(session_id)
+}
+
+#[tauri::command]
+fn desktop_engine_document_sdf(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+) -> Result<String, String> {
+    let service = state.service.lock().map_err(|error| error.to_string())?;
+    service.document_sdf(session_id)
 }
 
 #[tauri::command]
@@ -2329,11 +2348,15 @@ fn with_pen_and_brush<F: FnOnce()>(
 
 fn document_file_dialog() -> rfd::FileDialog {
     rfd::FileDialog::new()
-        .add_filter("Chemcore and ChemDraw", &["ccjz", "ccjs", "cdxml", "cdx"])
+        .add_filter(
+            "Chemcore, ChemDraw, and SDF",
+            &["ccjz", "ccjs", "cdxml", "cdx", "sdf", "sd"],
+        )
         .add_filter("Chemcore compressed", &["ccjz"])
         .add_filter("Chemcore JSON", &["ccjs"])
         .add_filter("ChemDraw CDXML", &["cdxml"])
         .add_filter("ChemDraw CDX", &["cdx"])
+        .add_filter("MDL SDfile", &["sdf", "sd"])
         .add_filter("SVG", &["svg"])
 }
 
@@ -2690,6 +2713,7 @@ pub fn run() {
             desktop_engine_free,
             desktop_engine_load_document_json,
             desktop_engine_load_document_cdxml,
+            desktop_engine_load_document_sdf,
             desktop_engine_document_json,
             desktop_engine_execute_command_json,
             desktop_engine_state_json,
@@ -2697,6 +2721,7 @@ pub fn run() {
             desktop_engine_render_bounds_json,
             desktop_engine_snapshot_json,
             desktop_engine_document_cdxml,
+            desktop_engine_document_sdf,
             desktop_engine_document_svg,
             desktop_engine_document_colors_json,
             desktop_engine_set_tool,
