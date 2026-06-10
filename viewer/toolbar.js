@@ -31,6 +31,71 @@ export function arrowTypeSupportsHeadSize(type) {
   return type === "solid" || type === "curved" || type === "curved-mirror" || type === "equilibrium";
 }
 
+export const SHAPE_TOOL_ICON_KINDS = ["circle", "ellipse", "round-rect", "rect", "cross-table"];
+export const SHAPE_TOOL_STYLE_KINDS = ["circle", "ellipse", "round-rect", "rect"];
+export const SHAPE_TOOL_ICON_STYLES = ["solid", "dashed", "shaded", "filled", "shadowed"];
+export const ORBITAL_TOOL_ICON_TEMPLATES = ["s", "p", "dxy", "oval", "hybrid", "dz2", "lobe"];
+export const ORBITAL_TOOL_ICON_STYLES = ["hollow", "filled", "shaded"];
+export const ORBITAL_TOOL_ICON_PHASES = ["plus", "minus"];
+export const SYMBOL_TOOL_ICON_TYPES = [
+  "circle-plus",
+  "plus",
+  "radical-cation",
+  "lone-pair",
+  "circle-minus",
+  "minus",
+  "radical-anion",
+  "electron",
+];
+
+const ORBITAL_TEMPLATE_BUTTONS = [
+  { template: "s", title: "s orbital", style: "shaded", phase: "plus" },
+  { template: "oval", title: "oval orbital", style: "shaded", phase: "plus" },
+  { template: "lobe", title: "lobe orbital", style: "shaded", phase: "plus" },
+  { template: "p", title: "p orbital", style: "shaded", phase: "plus" },
+  { template: "dxy", title: "dxy orbital", style: "shaded", phase: "plus" },
+  { template: "hybrid", title: "hybrid orbital", style: "shaded", phase: "minus" },
+  { template: "dz2", title: "dz2 orbital", style: "shaded", phase: "minus" },
+];
+
+const ORBITAL_STYLE_BUTTONS_BY_TEMPLATE = {
+  s: [
+    { title: "Hollow", style: "hollow", phase: "plus" },
+    { title: "Filled", style: "filled", phase: "plus" },
+    { title: "Shaded", style: "shaded", phase: "plus" },
+  ],
+  oval: [
+    { title: "Hollow", style: "hollow", phase: "plus" },
+    { title: "Filled", style: "filled", phase: "plus" },
+    { title: "Shaded", style: "shaded", phase: "plus" },
+  ],
+  lobe: [
+    { title: "Hollow", style: "hollow", phase: "plus" },
+    { title: "Filled", style: "filled", phase: "plus" },
+    { title: "Shaded", style: "shaded", phase: "plus" },
+  ],
+  p: [
+    { title: "Filled", style: "filled", phase: "plus" },
+    { title: "Shaded", style: "shaded", phase: "plus" },
+  ],
+  dxy: [
+    { title: "Filled", style: "filled", phase: "plus" },
+    { title: "Shaded", style: "shaded", phase: "plus" },
+  ],
+  hybrid: [
+    { title: "Filled plus", style: "filled", phase: "plus" },
+    { title: "Filled minus", style: "filled", phase: "minus" },
+    { title: "Shaded plus", style: "shaded", phase: "plus" },
+    { title: "Shaded minus", style: "shaded", phase: "minus" },
+  ],
+  dz2: [
+    { title: "Filled plus", style: "filled", phase: "plus" },
+    { title: "Filled minus", style: "filled", phase: "minus" },
+    { title: "Shaded plus", style: "shaded", phase: "plus" },
+    { title: "Shaded minus", style: "shaded", phase: "minus" },
+  ],
+};
+
 const ICON_VIEWBOX = "0 0 24 24";
 const ICON_BLACK = "#111318";
 const ICON_BLUE = "#2f6fed";
@@ -132,21 +197,49 @@ function curvedArrowSvg({ mirrored = false, curve = "270" } = {}) {
   return iconSvg(`<g${transform}><path class="cc-arrow" d="${paths[curve] || paths["270"]}"/>${arrowHead(point(19.9, 7.5), point(1, -0.25), 0.78)}</g>`, "cc-arrow-icon");
 }
 
-function shapeIconSvg(kind = "rect", style = "solid") {
-  const fill = style === "filled" ? "cc-shape-fill" : style === "shaded" ? "cc-shape-soft-fill" : "cc-empty-fill";
-  const dash = style === "dashed" ? ` stroke-dasharray="2.2 1.8"` : "";
-  const shadow = style === "shadowed"
+function shapeIconSvg(kind = "rect", style = "solid", editorState = null) {
+  const normalizedKind = SHAPE_TOOL_ICON_KINDS.includes(kind) ? kind : "rect";
+  const normalizedStyle = SHAPE_TOOL_STYLE_KINDS.includes(normalizedKind) && SHAPE_TOOL_ICON_STYLES.includes(style)
+    ? style
+    : "solid";
+  const cached = editorState?.shapeIconSvgs?.[shapeIconKey(normalizedKind, normalizedStyle)];
+  if (cached) {
+    return cached;
+  }
+  const fill = normalizedStyle === "filled" ? "cc-shape-fill" : normalizedStyle === "shaded" ? "cc-shape-soft-fill" : "cc-empty-fill";
+  const dash = normalizedStyle === "dashed" ? ` stroke-dasharray="2.2 1.8"` : "";
+  const shadow = normalizedStyle === "shadowed"
     ? `<path class="cc-shadow-fill" d="M8.2 8.2h10.3v9.5H8.2z"/><path class="cc-shadow-edge" d="M5.5 6.2 8.2 8.2M18.5 6.2v11.5M5.5 17.7h2.7"/>`
     : "";
-  const mark = kind === "circle"
+  const mark = normalizedKind === "circle"
     ? `<circle class="${fill} cc-shape" cx="12" cy="12" r="6.2"${dash}/>`
-    : kind === "ellipse"
+    : normalizedKind === "ellipse"
       ? `<ellipse class="${fill} cc-shape" cx="12" cy="12" rx="7.2" ry="4.5"${dash}/>`
-      : kind === "cross-table"
+      : normalizedKind === "cross-table"
         ? `<rect class="${fill} cc-shape" x="5.5" y="6.2" width="13" height="11.5"${dash}/><path class="cc-shape" d="M12 6.2v11.5M5.5 11.95h13"${dash}/>`
-        : `<rect class="${fill} cc-shape" x="5.5" y="6.2" width="13" height="11.5"${kind === "round-rect" ? ` rx="2.6"` : ""}${dash}/>`;
+        : `<rect class="${fill} cc-shape" x="5.5" y="6.2" width="13" height="11.5"${normalizedKind === "round-rect" ? ` rx="2.6"` : ""}${dash}/>`;
   return iconSvg(`${shadow}${mark}`, "cc-shape-icon");
 }
+
+function shapeIconKey(kind, style) {
+  return `${kind}:${style}`;
+}
+
+const SHAPE_KIND_TITLES = {
+  circle: "Circle",
+  ellipse: "Ellipse",
+  "round-rect": "Rounded rectangle",
+  rect: "Rectangle",
+  "cross-table": "Cross table",
+};
+
+const SHAPE_STYLE_TITLES = {
+  solid: "Solid outline",
+  dashed: "Dashed outline",
+  shaded: "Shaded",
+  filled: "Filled",
+  shadowed: "Shadowed",
+};
 
 function generatedRingSvg(sides, aromatic = false) {
   const pointsBySide = {
@@ -277,7 +370,6 @@ export function syncPrimaryChromeIcons(root = document) {
     ["text", commandIconSvg("text")],
     ["arrow", arrowIconSvg("solid")],
     ["bracket", generatedBracketIconSvg("round")],
-    ["symbol", generatedBracketIconSvg("circle-plus")],
     ["element", elementIconSvg()],
     ["shape", commandIconSvg("shape")],
     ["tlc-plate", commandIconSvg("tlc-plate")],
@@ -339,6 +431,7 @@ export function syncPrimaryToolButtons(editorState, root = document) {
   syncPrimaryTemplateToolButton(editorState, root);
   syncPrimarySymbolToolButton(editorState, root);
   syncPrimaryElementToolButton(editorState, root);
+  syncPrimaryShapeToolButton(editorState, root);
   syncPrimaryOrbitalToolButton(editorState, root);
 }
 
@@ -525,7 +618,8 @@ function syncPrimarySymbolToolButton(editorState, root) {
   if (!symbolButton) {
     return;
   }
-  symbolButton.innerHTML = bracketIconSvg(editorState.symbolKind);
+  const kind = SYMBOL_TOOL_ICON_TYPES.includes(editorState.symbolKind) ? editorState.symbolKind : "circle-plus";
+  symbolButton.innerHTML = symbolIconSvg(kind, editorState);
 }
 
 function syncPrimaryElementToolButton(editorState, root) {
@@ -538,6 +632,23 @@ function syncPrimaryElementToolButton(editorState, root) {
   elementButton.setAttribute("title", "Element");
 }
 
+function syncPrimaryShapeToolButton(editorState, root) {
+  const shapeButton = root.querySelector('.tool-button[data-tool="shape"]');
+  if (!shapeButton) {
+    return;
+  }
+  const kind = SHAPE_TOOL_ICON_KINDS.includes(editorState.shapeKind) ? editorState.shapeKind : "circle";
+  const style = SHAPE_TOOL_STYLE_KINDS.includes(kind) && SHAPE_TOOL_ICON_STYLES.includes(editorState.shapeStyle)
+    ? editorState.shapeStyle
+    : "solid";
+  const title = SHAPE_TOOL_STYLE_KINDS.includes(kind)
+    ? `${SHAPE_KIND_TITLES[kind]} ${SHAPE_STYLE_TITLES[style]}`
+    : SHAPE_KIND_TITLES[kind];
+  shapeButton.innerHTML = shapeIconSvg(kind, style, editorState);
+  shapeButton.setAttribute("aria-label", title);
+  shapeButton.setAttribute("title", title);
+}
+
 function syncPrimaryOrbitalToolButton(editorState, root) {
   const orbitalButton = root.querySelector('.tool-button[data-tool="orbital"]');
   if (!orbitalButton) {
@@ -547,6 +658,7 @@ function syncPrimaryOrbitalToolButton(editorState, root) {
     editorState.orbitalTemplate || "s",
     editorState.orbitalStyle || "hollow",
     editorState.orbitalPhase || "plus",
+    editorState,
   );
 }
 
@@ -1249,21 +1361,45 @@ function textToolbarHtml(editorState) {
 }
 
 function shapeToolbarHtml(editorState) {
+  const activeKind = SHAPE_TOOL_ICON_KINDS.includes(editorState.shapeKind) ? editorState.shapeKind : "circle";
+  const kindButtons = SHAPE_TOOL_ICON_KINDS
+    .map((kind) => toolbarButton(
+      `shape-kind-${kind}`,
+      SHAPE_KIND_TITLES[kind],
+      shapeIconSvg(kind, shapeStyleForKind(editorState, kind), editorState),
+      editorState.shapeKind === kind,
+    ))
+    .join("");
+  const styleButtons = SHAPE_TOOL_STYLE_KINDS.includes(activeKind)
+    ? SHAPE_TOOL_ICON_STYLES
+      .map((style) => toolbarButton(
+        `shape-style-${activeKind}-${style}`,
+        `${SHAPE_KIND_TITLES[activeKind]} ${SHAPE_STYLE_TITLES[style]}`,
+        shapeIconSvg(activeKind, style, editorState),
+        editorState.shapeStyle === style,
+      ))
+      .join("")
+    : "";
   return `
-    ${toolbarButton("shape-kind-circle", "Circle", shapeIconSvg("circle"), editorState.shapeKind === "circle")}
-    ${toolbarButton("shape-kind-ellipse", "Ellipse", shapeIconSvg("ellipse"), editorState.shapeKind === "ellipse")}
-    ${toolbarButton("shape-kind-round-rect", "Rounded rectangle", shapeIconSvg("round-rect"), editorState.shapeKind === "round-rect")}
-    ${toolbarButton("shape-kind-rect", "Rectangle", shapeIconSvg("rect"), editorState.shapeKind === "rect")}
-    ${toolbarButton("shape-kind-cross-table", "Cross table", shapeIconSvg("cross-table"), editorState.shapeKind === "cross-table")}
-    ${secondaryDivider()}
-    ${toolbarButton("shape-style-solid", "Solid outline", shapeIconSvg("rect", "solid"), editorState.shapeStyle === "solid")}
-    ${toolbarButton("shape-style-dashed", "Dashed outline", shapeIconSvg("rect", "dashed"), editorState.shapeStyle === "dashed")}
-    ${toolbarButton("shape-style-shaded", "Shaded", shapeIconSvg("rect", "shaded"), editorState.shapeStyle === "shaded")}
-    ${toolbarButton("shape-style-filled", "Filled", shapeIconSvg("rect", "filled"), editorState.shapeStyle === "filled")}
-    ${toolbarButton("shape-style-shadowed", "Shadowed", shapeIconSvg("rect", "shadowed"), editorState.shapeStyle === "shadowed")}
+    ${kindButtons}
+    ${styleButtons ? `${secondaryDivider()}${styleButtons}` : ""}
     ${secondaryDivider()}
     ${colorPickerControl("shape-color", editorState.shapeColor, editorState.colorPalette)}
   `;
+}
+
+function shapeStyleForKind(editorState, kind) {
+  if (!SHAPE_TOOL_STYLE_KINDS.includes(kind)) {
+    return "solid";
+  }
+  const saved = editorState?.shapeStyleByKind?.[kind];
+  if (SHAPE_TOOL_ICON_STYLES.includes(saved)) {
+    return saved;
+  }
+  if (editorState?.shapeKind === kind && SHAPE_TOOL_ICON_STYLES.includes(editorState?.shapeStyle)) {
+    return editorState.shapeStyle;
+  }
+  return "solid";
 }
 
 function tlcPlateToolbarHtml(editorState) {
@@ -1272,31 +1408,46 @@ function tlcPlateToolbarHtml(editorState) {
   `;
 }
 
-function orbitalGlyphSvg(template = "s", style = "hollow", phase = "plus") {
+function orbitalIconKey(template, style, phase) {
+  return `${template}:${style}:${phase}`;
+}
+
+function orbitalComboValue(template, style, phase) {
+  return `orbital-combo-${template}-${style}-${phase}`;
+}
+
+function orbitalGlyphSvg(template = "s", style = "hollow", phase = "plus", editorState = null) {
+  const normalizedTemplate = ORBITAL_TOOL_ICON_TEMPLATES.includes(template) ? template : "s";
+  const normalizedStyle = ORBITAL_TOOL_ICON_STYLES.includes(style) ? style : "hollow";
+  const normalizedPhase = ORBITAL_TOOL_ICON_PHASES.includes(phase) ? phase : "plus";
+  const cached = editorState?.orbitalIconSvgs?.[orbitalIconKey(normalizedTemplate, normalizedStyle, normalizedPhase)];
+  if (cached) {
+    return cached;
+  }
   const filledClass = style === "filled" ? "cc-shape-fill" : style === "shaded" ? "cc-shape-soft-fill" : "cc-empty-fill";
   const secondaryFill = style === "hollow" ? "cc-empty-fill" : "cc-empty-fill";
-  if (template === "s") {
+  if (normalizedTemplate === "s") {
     return iconSvg(`<circle class="${filledClass} cc-shape" cx="12" cy="12" r="6.1"/>`, "cc-shape-icon");
   }
-  if (template === "oval") {
+  if (normalizedTemplate === "oval") {
     return iconSvg(`<ellipse class="${filledClass} cc-shape" cx="12" cy="12" rx="7.1" ry="4.1"/>`, "cc-shape-icon");
   }
-  if (template === "p") {
+  if (normalizedTemplate === "p") {
     const topClass = phase === "plus" ? filledClass : secondaryFill;
     const bottomClass = phase === "plus" ? secondaryFill : filledClass;
     return iconSvg(`<ellipse class="${topClass} cc-shape" cx="12" cy="8.1" rx="3.1" ry="4.2"/><ellipse class="${bottomClass} cc-shape" cx="12" cy="15.9" rx="3.1" ry="4.2"/>`, "cc-shape-icon");
   }
-  if (template === "dxy") {
+  if (normalizedTemplate === "dxy") {
     const primaryClass = phase === "plus" ? filledClass : secondaryFill;
     const secondaryClass = phase === "plus" ? secondaryFill : filledClass;
     return iconSvg(`<ellipse class="${primaryClass} cc-shape" cx="8.4" cy="8.4" rx="2.2" ry="3.6" transform="rotate(-45 8.4 8.4)"/><ellipse class="${primaryClass} cc-shape" cx="15.6" cy="15.6" rx="2.2" ry="3.6" transform="rotate(-45 15.6 15.6)"/><ellipse class="${secondaryClass} cc-shape" cx="15.6" cy="8.4" rx="2.2" ry="3.6" transform="rotate(45 15.6 8.4)"/><ellipse class="${secondaryClass} cc-shape" cx="8.4" cy="15.6" rx="2.2" ry="3.6" transform="rotate(45 8.4 15.6)"/>`, "cc-shape-icon");
   }
-  if (template === "hybrid") {
+  if (normalizedTemplate === "hybrid") {
     const primaryClass = phase === "plus" ? filledClass : secondaryFill;
     const secondaryClass = phase === "plus" ? secondaryFill : filledClass;
     return iconSvg(`<ellipse class="${primaryClass} cc-shape" cx="14.2" cy="12" rx="4.4" ry="2.8"/><ellipse class="${secondaryClass} cc-shape" cx="8.6" cy="12" rx="2.3" ry="1.6"/>`, "cc-shape-icon");
   }
-  if (template === "dz2") {
+  if (normalizedTemplate === "dz2") {
     const primaryClass = phase === "plus" ? filledClass : secondaryFill;
     const secondaryClass = phase === "plus" ? secondaryFill : filledClass;
     return iconSvg(`<ellipse class="${primaryClass} cc-shape" cx="12" cy="7.2" rx="2.4" ry="3.5"/><ellipse class="${secondaryClass} cc-shape" cx="12" cy="16.8" rx="2.4" ry="3.5"/><ellipse class="cc-empty-fill cc-shape" cx="12" cy="12" rx="5.7" ry="1.8"/>`, "cc-shape-icon");
@@ -1305,31 +1456,38 @@ function orbitalGlyphSvg(template = "s", style = "hollow", phase = "plus") {
 }
 
 function orbitalToolbarHtml(editorState) {
-  const template = editorState.orbitalTemplate || "s";
+  const template = ORBITAL_STYLE_BUTTONS_BY_TEMPLATE[editorState.orbitalTemplate]
+    ? editorState.orbitalTemplate
+    : "s";
   const style = editorState.orbitalStyle || "hollow";
   const phase = editorState.orbitalPhase || "plus";
-  return `
-    ${toolbarButton("orbital-template-s", "s orbital", orbitalGlyphSvg("s", style, phase), template === "s")}
-    ${toolbarButton("orbital-template-p", "p orbital", orbitalGlyphSvg("p", style, phase), template === "p")}
-    ${toolbarButton("orbital-template-dxy", "dxy orbital", orbitalGlyphSvg("dxy", style, phase), template === "dxy")}
-    ${toolbarButton("orbital-template-oval", "oval orbital", orbitalGlyphSvg("oval", style, phase), template === "oval")}
-    ${toolbarButton("orbital-template-hybrid", "hybrid orbital", orbitalGlyphSvg("hybrid", style, phase), template === "hybrid")}
-    ${toolbarButton("orbital-template-dz2", "dz2 orbital", orbitalGlyphSvg("dz2", style, phase), template === "dz2")}
-    ${toolbarButton("orbital-template-lobe", "lobe orbital", orbitalGlyphSvg("lobe", style, phase), template === "lobe")}
-    ${secondaryDivider()}
-    ${toolbarButton("orbital-style-hollow", "Hollow", orbitalGlyphSvg(template, "hollow", phase), style === "hollow")}
-    ${toolbarButton("orbital-style-filled", "Filled", orbitalGlyphSvg(template, "filled", phase), style === "filled")}
-    ${toolbarButton("orbital-style-shaded", "Shaded", orbitalGlyphSvg(template, "shaded", phase), style === "shaded")}
-    ${secondaryDivider()}
-    ${toolbarButton("orbital-phase-plus", "Primary lobe position", orbitalGlyphSvg(template, style, "plus"), phase === "plus")}
-    ${toolbarButton("orbital-phase-minus", "Alternate lobe position", orbitalGlyphSvg(template, style, "minus"), phase === "minus")}
-    ${secondaryDivider()}
-    ${colorPickerControl("orbital-color", editorState.orbitalColor || editorState.shapeColor, editorState.colorPalette)}
-  `;
+  const templateButtons = ORBITAL_TEMPLATE_BUTTONS.map((spec) => toolbarButton(
+    orbitalComboValue(spec.template, spec.style, spec.phase),
+    spec.title,
+    orbitalGlyphSvg(spec.template, spec.style, spec.phase, editorState),
+    template === spec.template,
+  ));
+  const styleButtons = (ORBITAL_STYLE_BUTTONS_BY_TEMPLATE[template] || ORBITAL_STYLE_BUTTONS_BY_TEMPLATE.s)
+    .map((spec) => toolbarButton(
+      orbitalComboValue(template, spec.style, spec.phase),
+      spec.title,
+      orbitalGlyphSvg(template, spec.style, spec.phase, editorState),
+      style === spec.style && phase === spec.phase,
+    ));
+  return [
+    ...templateButtons,
+    secondaryDivider(),
+    ...styleButtons,
+  ].join("");
 }
 
 function bracketIconSvg(kind = "round") {
   return generatedBracketIconSvg(kind);
+}
+
+function symbolIconSvg(kind = "circle-plus", editorState = null) {
+  const normalizedKind = SYMBOL_TOOL_ICON_TYPES.includes(kind) ? kind : "circle-plus";
+  return editorState?.symbolIconSvgs?.[normalizedKind] || generatedBracketIconSvg(normalizedKind);
 }
 
 function bracketToolbarHtml(editorState) {
@@ -1342,14 +1500,14 @@ function bracketToolbarHtml(editorState) {
 
 function symbolToolbarHtml(editorState) {
   return [
-    toolbarButton("symbol-kind-circle-plus", "Circle plus", bracketIconSvg("circle-plus"), editorState.symbolKind === "circle-plus"),
-    toolbarButton("symbol-kind-plus", "Plus", bracketIconSvg("plus"), editorState.symbolKind === "plus"),
-    toolbarButton("symbol-kind-radical-cation", "Radical cation", bracketIconSvg("radical-cation"), editorState.symbolKind === "radical-cation"),
-    toolbarButton("symbol-kind-lone-pair", "Lone pair", bracketIconSvg("lone-pair"), editorState.symbolKind === "lone-pair"),
-    toolbarButton("symbol-kind-circle-minus", "Circle minus", bracketIconSvg("circle-minus"), editorState.symbolKind === "circle-minus"),
-    toolbarButton("symbol-kind-minus", "Minus", bracketIconSvg("minus"), editorState.symbolKind === "minus"),
-    toolbarButton("symbol-kind-radical-anion", "Radical anion", bracketIconSvg("radical-anion"), editorState.symbolKind === "radical-anion"),
-    toolbarButton("symbol-kind-electron", "Electron", bracketIconSvg("electron"), editorState.symbolKind === "electron"),
+    toolbarButton("symbol-kind-circle-plus", "Circle plus", symbolIconSvg("circle-plus", editorState), editorState.symbolKind === "circle-plus"),
+    toolbarButton("symbol-kind-plus", "Plus", symbolIconSvg("plus", editorState), editorState.symbolKind === "plus"),
+    toolbarButton("symbol-kind-radical-cation", "Radical cation", symbolIconSvg("radical-cation", editorState), editorState.symbolKind === "radical-cation"),
+    toolbarButton("symbol-kind-lone-pair", "Lone pair", symbolIconSvg("lone-pair", editorState), editorState.symbolKind === "lone-pair"),
+    toolbarButton("symbol-kind-circle-minus", "Circle minus", symbolIconSvg("circle-minus", editorState), editorState.symbolKind === "circle-minus"),
+    toolbarButton("symbol-kind-minus", "Minus", symbolIconSvg("minus", editorState), editorState.symbolKind === "minus"),
+    toolbarButton("symbol-kind-radical-anion", "Radical anion", symbolIconSvg("radical-anion", editorState), editorState.symbolKind === "radical-anion"),
+    toolbarButton("symbol-kind-electron", "Electron", symbolIconSvg("electron", editorState), editorState.symbolKind === "electron"),
   ].join("");
 }
 

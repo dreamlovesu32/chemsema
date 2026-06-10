@@ -335,7 +335,9 @@ export function createEditorPointerController(options) {
         return;
       }
     }
-    if (editorState.activeTool === "shape" || editorState.activeTool === "tlc-plate") {
+    if (editorState.activeTool === "shape"
+      || editorState.activeTool === "tlc-plate"
+      || editorState.activeTool === "orbital") {
       if (editorState.activeTool === "tlc-plate") {
         const tlcSpotHit = options.parseEngineJson(
           await options.state().editorEngine.beginTlcSpotDragJson?.(point.x, point.y),

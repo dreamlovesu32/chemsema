@@ -35,6 +35,26 @@ fn symbol_orbit_point(anchor: SymbolOrbitAnchor, pointer: Point) -> Point {
 }
 
 impl Engine {
+    pub fn symbol_tool_icon_svg(kind: crate::BracketKind) -> String {
+        let mut engine = Engine::new();
+        let mut tool = engine.state.tool.clone();
+        tool.active_tool = Tool::Symbol;
+        tool.symbol_kind = kind;
+        engine.set_tool_state(tool);
+
+        let object =
+            engine.bracket_symbol_scene_object(Point::new(12.0, 12.0), "__symbol_icon".to_string());
+        let mut document = engine.state.document.clone();
+        document.objects.push(object);
+        let primitives = crate::render_document(&document);
+        crate::primitives_to_svg_viewbox(
+            &primitives,
+            [4.5, 4.5, 15.0, 15.0],
+            Some("chemcore-icon cc-symbol-icon"),
+        )
+        .replace("#000000", "currentColor")
+    }
+
     pub(super) fn pointer_down_bracket(&mut self, event: PointerEvent) {
         let point = event.point();
         self.clear_interaction();

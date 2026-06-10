@@ -460,21 +460,21 @@ body.browser-shell .document-tabbar {
   overflow: visible;
 }
 
-.editor-topbar svg:not(.cc-bond-icon):not(.cc-kernel-arrow-icon) path,
-.editor-topbar svg:not(.cc-bond-icon):not(.cc-kernel-arrow-icon) rect,
-.editor-topbar svg:not(.cc-bond-icon):not(.cc-kernel-arrow-icon) circle,
-.tool-rail svg:not(.cc-bond-icon):not(.cc-kernel-arrow-icon) path,
-.tool-rail svg:not(.cc-bond-icon):not(.cc-kernel-arrow-icon) rect,
-.tool-rail svg:not(.cc-bond-icon):not(.cc-kernel-arrow-icon) circle,
-.tool-rail svg:not(.cc-bond-icon):not(.cc-kernel-arrow-icon) polygon,
-.quick-palette svg:not(.cc-bond-icon):not(.cc-kernel-arrow-icon) path,
-.quick-palette svg:not(.cc-bond-icon):not(.cc-kernel-arrow-icon) rect,
-.quick-palette svg:not(.cc-bond-icon):not(.cc-kernel-arrow-icon) circle,
-.quick-palette svg:not(.cc-bond-icon):not(.cc-kernel-arrow-icon) polygon,
-.toolbar-row-secondary svg:not(.cc-bond-icon):not(.cc-kernel-arrow-icon) path,
-.toolbar-row-secondary svg:not(.cc-bond-icon):not(.cc-kernel-arrow-icon) rect,
-.toolbar-row-secondary svg:not(.cc-bond-icon):not(.cc-kernel-arrow-icon) circle,
-.toolbar-row-secondary svg:not(.cc-bond-icon):not(.cc-kernel-arrow-icon) polygon {
+.editor-topbar svg:not(.cc-bond-icon):not(.cc-kernel-arrow-icon):not(.cc-kernel-shape-icon):not(.cc-kernel-symbol-icon):not(.cc-kernel-orbital-icon) path,
+.editor-topbar svg:not(.cc-bond-icon):not(.cc-kernel-arrow-icon):not(.cc-kernel-shape-icon):not(.cc-kernel-symbol-icon):not(.cc-kernel-orbital-icon) rect,
+.editor-topbar svg:not(.cc-bond-icon):not(.cc-kernel-arrow-icon):not(.cc-kernel-shape-icon):not(.cc-kernel-symbol-icon):not(.cc-kernel-orbital-icon) circle,
+.tool-rail svg:not(.cc-bond-icon):not(.cc-kernel-arrow-icon):not(.cc-kernel-shape-icon):not(.cc-kernel-symbol-icon):not(.cc-kernel-orbital-icon) path,
+.tool-rail svg:not(.cc-bond-icon):not(.cc-kernel-arrow-icon):not(.cc-kernel-shape-icon):not(.cc-kernel-symbol-icon):not(.cc-kernel-orbital-icon) rect,
+.tool-rail svg:not(.cc-bond-icon):not(.cc-kernel-arrow-icon):not(.cc-kernel-shape-icon):not(.cc-kernel-symbol-icon):not(.cc-kernel-orbital-icon) circle,
+.tool-rail svg:not(.cc-bond-icon):not(.cc-kernel-arrow-icon):not(.cc-kernel-shape-icon):not(.cc-kernel-symbol-icon):not(.cc-kernel-orbital-icon) polygon,
+.quick-palette svg:not(.cc-bond-icon):not(.cc-kernel-arrow-icon):not(.cc-kernel-shape-icon):not(.cc-kernel-symbol-icon):not(.cc-kernel-orbital-icon) path,
+.quick-palette svg:not(.cc-bond-icon):not(.cc-kernel-arrow-icon):not(.cc-kernel-shape-icon):not(.cc-kernel-symbol-icon):not(.cc-kernel-orbital-icon) rect,
+.quick-palette svg:not(.cc-bond-icon):not(.cc-kernel-arrow-icon):not(.cc-kernel-shape-icon):not(.cc-kernel-symbol-icon):not(.cc-kernel-orbital-icon) circle,
+.quick-palette svg:not(.cc-bond-icon):not(.cc-kernel-arrow-icon):not(.cc-kernel-shape-icon):not(.cc-kernel-symbol-icon):not(.cc-kernel-orbital-icon) polygon,
+.toolbar-row-secondary svg:not(.cc-bond-icon):not(.cc-kernel-arrow-icon):not(.cc-kernel-shape-icon):not(.cc-kernel-symbol-icon):not(.cc-kernel-orbital-icon) path,
+.toolbar-row-secondary svg:not(.cc-bond-icon):not(.cc-kernel-arrow-icon):not(.cc-kernel-shape-icon):not(.cc-kernel-symbol-icon):not(.cc-kernel-orbital-icon) rect,
+.toolbar-row-secondary svg:not(.cc-bond-icon):not(.cc-kernel-arrow-icon):not(.cc-kernel-shape-icon):not(.cc-kernel-symbol-icon):not(.cc-kernel-orbital-icon) circle,
+.toolbar-row-secondary svg:not(.cc-bond-icon):not(.cc-kernel-arrow-icon):not(.cc-kernel-shape-icon):not(.cc-kernel-symbol-icon):not(.cc-kernel-orbital-icon) polygon {
   fill: none;
   stroke: currentColor;
   stroke-width: var(--chrome-svg-stroke-width);

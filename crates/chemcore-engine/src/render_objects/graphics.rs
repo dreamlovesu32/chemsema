@@ -138,6 +138,7 @@ fn render_orbital_shape_object(
     let phase_positive = phase != "minus";
     match template.as_str() {
         "p" => {
+            let phase_positive = true;
             let primary = orbital_lobe_geometry(center, end, P_ORBITAL_PROFILE);
             let secondary = orbital_lobe_geometry(
                 center,
@@ -164,6 +165,7 @@ fn render_orbital_shape_object(
             );
         }
         "dxy" => {
+            let phase_positive = true;
             let vertical = orbital_lobe_geometry(center, end, DXY_ORBITAL_PROFILE);
             let vertical_opposite = orbital_lobe_geometry(
                 center,
@@ -274,6 +276,7 @@ fn render_orbital_shape_object(
                 stroke_width,
                 &style,
                 phase_positive,
+                true,
             );
         }
         "lobe" => {
@@ -2253,8 +2256,9 @@ fn render_orbital_ring(
     stroke_width: f64,
     style: &ShapeStyleSpec,
     active_fill: bool,
+    flip_y: bool,
 ) {
-    let ring_path = dz2_ring_path_d(center, rx, ry, rotate);
+    let ring_path = dz2_ring_path_d(center, rx, ry, rotate, flip_y);
     let ring_bounds = ellipse_bounds_points(center, rx, ry, rotate);
     let suppress_outline = style.render_style == ShapeRenderStyle::Filled && active_fill;
     match style.render_style {
@@ -2275,7 +2279,7 @@ fn render_orbital_ring(
             });
         }
         ShapeRenderStyle::Shaded if active_fill => {
-            push_shaded_dz2_ring_layers(out, &object.id, center, rx, ry, rotate);
+            push_shaded_dz2_ring_layers(out, &object.id, center, rx, ry, rotate, flip_y);
         }
         ShapeRenderStyle::Filled | ShapeRenderStyle::Shaded => {
             out.push(RenderPrimitive::FilledPath {
@@ -2313,7 +2317,7 @@ fn render_orbital_ring(
     }
 }
 
-fn dz2_ring_path_d(center: Point, rx: f64, ry: f64, rotate: f64) -> String {
+fn dz2_ring_path_d(center: Point, rx: f64, ry: f64, rotate: f64, flip_y: bool) -> String {
     let outer_cx = 0.499;
     let inner_cx = 0.315;
     let center_cx = 0.239;
@@ -2323,6 +2327,11 @@ fn dz2_ring_path_d(center: Point, rx: f64, ry: f64, rotate: f64) -> String {
     let cos = radians.cos();
     let sin = radians.sin();
     let rotate_point = |point: Point| {
+        let point = if flip_y {
+            Point::new(point.x, (center.y * 2.0) - point.y)
+        } else {
+            point
+        };
         if rotate.abs() <= crate::EPSILON {
             return point;
         }
@@ -2388,16 +2397,18 @@ fn push_shaded_dz2_ring_layers(
     rx: f64,
     ry: f64,
     rotate: f64,
+    flip_y: bool,
 ) {
-    let clip_path = dz2_ring_path_d(center, rx, ry, rotate);
+    let clip_path = dz2_ring_path_d(center, rx, ry, rotate, flip_y);
     let max_index = (SHADED_LEVELS.len() - 1) as f64;
     for (index, level) in SHADED_LEVELS.iter().enumerate() {
         let t = index as f64 / max_index;
         let layer_rx = rx * (1.0 - (1.0 - ELLIPSE_SHADED_REMAIN_RATIO) * t);
         let layer_ry = ry * (1.0 - (1.0 - ELLIPSE_SHADED_REMAIN_RATIO) * t);
+        let y_shift_sign = if flip_y { 1.0 } else { -1.0 };
         let layer_center = center.translated(crate::Vector::new(
             -ELLIPSE_SHADED_CENTER_SHIFT_RATIO * rx * t,
-            -ELLIPSE_SHADED_CENTER_SHIFT_RATIO * ry * t,
+            y_shift_sign * ELLIPSE_SHADED_CENTER_SHIFT_RATIO * ry * t,
         ));
         out.push(RenderPrimitive::FilledPath {
             role: RenderRole::DocumentGraphic,

@@ -67,6 +67,7 @@ export class WasmEngine {
     loadDocumentJson(json: string): void;
     constructor();
     objectSettingsDialogJson(): string;
+    orbitalToolIconSvg(template: string, style: string, phase: string): string;
     pasteClipboard(): boolean;
     pasteClipboardJson(json: string): boolean;
     pointerDown(x: number, y: number, alt_key: boolean): void;
@@ -100,7 +101,9 @@ export class WasmEngine {
     setSymbolOptions(kind: string): void;
     setTemplate(template: string): void;
     setTool(active_tool: string, bond_variant: string): void;
+    shapeToolIconSvg(kind: string, style: string): string;
     stateJson(): string;
+    symbolToolIconSvg(kind: string): string;
     textFormatIconSvg(kind: string): string;
     textSymbolPaletteJson(): string;
     tlcLaneGuideHitTestJson(x: number, y: number): string | undefined;
@@ -184,6 +187,7 @@ export interface InitOutput {
     readonly wasmengine_loadDocumentJson: (a: number, b: number, c: number) => [number, number];
     readonly wasmengine_new: () => number;
     readonly wasmengine_objectSettingsDialogJson: (a: number) => [number, number];
+    readonly wasmengine_orbitalToolIconSvg: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number];
     readonly wasmengine_pasteClipboard: (a: number) => number;
     readonly wasmengine_pasteClipboardJson: (a: number, b: number, c: number) => [number, number, number];
     readonly wasmengine_pointerDown: (a: number, b: number, c: number, d: number) => void;
@@ -217,7 +221,9 @@ export interface InitOutput {
     readonly wasmengine_setSymbolOptions: (a: number, b: number, c: number) => void;
     readonly wasmengine_setTemplate: (a: number, b: number, c: number) => void;
     readonly wasmengine_setTool: (a: number, b: number, c: number, d: number, e: number) => void;
+    readonly wasmengine_shapeToolIconSvg: (a: number, b: number, c: number, d: number, e: number) => [number, number];
     readonly wasmengine_stateJson: (a: number) => [number, number, number, number];
+    readonly wasmengine_symbolToolIconSvg: (a: number, b: number, c: number) => [number, number];
     readonly wasmengine_textFormatIconSvg: (a: number, b: number, c: number) => [number, number];
     readonly wasmengine_textSymbolPaletteJson: (a: number) => [number, number];
     readonly wasmengine_tlcLaneGuideHitTestJson: (a: number, b: number, c: number) => [number, number, number, number];

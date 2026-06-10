@@ -142,6 +142,25 @@ impl WasmEngine {
         Engine::bond_tool_icon_svg(parse_bond_variant(variant), stroke_width, bold_width)
     }
 
+    #[wasm_bindgen(js_name = shapeToolIconSvg)]
+    pub fn shape_tool_icon_svg(&self, kind: &str, style: &str) -> String {
+        Engine::shape_tool_icon_svg(parse_shape_kind(kind), parse_shape_style(style))
+    }
+
+    #[wasm_bindgen(js_name = symbolToolIconSvg)]
+    pub fn symbol_tool_icon_svg(&self, kind: &str) -> String {
+        Engine::symbol_tool_icon_svg(parse_bracket_kind(kind))
+    }
+
+    #[wasm_bindgen(js_name = orbitalToolIconSvg)]
+    pub fn orbital_tool_icon_svg(&self, template: &str, style: &str, phase: &str) -> String {
+        Engine::orbital_tool_icon_svg(
+            parse_orbital_template(template),
+            parse_orbital_style(style),
+            parse_orbital_phase(phase),
+        )
+    }
+
     #[wasm_bindgen(js_name = textFormatIconSvg)]
     pub fn text_format_icon_svg(&self, kind: &str) -> String {
         Engine::text_format_icon_svg(kind)

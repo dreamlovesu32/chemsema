@@ -5760,14 +5760,16 @@ fn cdxml_acs_hollow_and_open_arrows_keep_chemdraw_head_width() {
 }
 
 #[test]
-fn cdxml_imports_hollow_and_open_arrows_as_two_chemdraw_sizes() {
+fn cdxml_import_preserves_hollow_and_open_arrow_dimensions() {
     let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
 <CDXML LineWidth="0.60">
   <page id="1">
     <arrow id="1" ArrowheadHead="Full" ArrowheadType="Hollow" HeadSize="1200" ArrowheadCenterSize="1200" ArrowheadWidth="300" ArrowShaftSpacing="1200" Head3D="110 20 0" Tail3D="10 20 0"/>
     <arrow id="2" ArrowheadHead="Full" ArrowheadType="Hollow" HeadSize="600" ArrowheadCenterSize="600" ArrowheadWidth="150" ArrowShaftSpacing="600" Head3D="110 50 0" Tail3D="10 50 0"/>
-    <arrow id="3" ArrowheadHead="Full" ArrowheadType="Angle" HeadSize="1200" ArrowheadCenterSize="1200" ArrowheadWidth="300" ArrowShaftSpacing="1200" Head3D="110 80 0" Tail3D="10 80 0"/>
-    <arrow id="4" ArrowheadHead="Full" ArrowheadType="Angle" HeadSize="600" ArrowheadCenterSize="600" ArrowheadWidth="150" ArrowShaftSpacing="600" Head3D="110 110 0" Tail3D="10 110 0"/>
+    <arrow id="3" ArrowheadHead="Full" ArrowheadType="Hollow" HeadSize="900" ArrowheadCenterSize="875" ArrowheadWidth="225" ArrowShaftSpacing="875" Head3D="110 80 0" Tail3D="10 80 0"/>
+    <arrow id="4" ArrowheadHead="Full" ArrowheadType="Angle" HeadSize="1200" ArrowheadCenterSize="1200" ArrowheadWidth="300" ArrowShaftSpacing="1200" Head3D="110 110 0" Tail3D="10 110 0"/>
+    <arrow id="5" ArrowheadHead="Full" ArrowheadType="Angle" HeadSize="600" ArrowheadCenterSize="600" ArrowheadWidth="150" ArrowShaftSpacing="600" Head3D="110 140 0" Tail3D="10 140 0"/>
+    <arrow id="6" ArrowheadHead="Full" ArrowheadType="Angle" HeadSize="900" ArrowheadCenterSize="875" ArrowheadWidth="225" ArrowShaftSpacing="875" Head3D="110 170 0" Tail3D="10 170 0"/>
   </page>
 </CDXML>"#;
     let document = parse_cdxml_document(cdxml, Some("hollow-open-sizes"))
@@ -5781,11 +5783,13 @@ fn cdxml_imports_hollow_and_open_arrows_as_two_chemdraw_sizes() {
             .cloned()
             .expect("arrowHead payload")
     };
-    for (object_id, expected_kind, expected_length, expected_width) in [
-        ("obj_line_001", "hollow", 12.0, 3.0),
-        ("obj_line_002", "hollow", 6.0, 1.5),
-        ("obj_line_003", "open", 12.0, 3.0),
-        ("obj_line_004", "open", 6.0, 1.5),
+    for (object_id, expected_kind, expected_length, expected_center_length, expected_width) in [
+        ("obj_line_001", "hollow", 12.0, 12.0, 3.0),
+        ("obj_line_002", "hollow", 6.0, 6.0, 1.5),
+        ("obj_line_003", "hollow", 9.0, 8.75, 2.25),
+        ("obj_line_004", "open", 12.0, 12.0, 3.0),
+        ("obj_line_005", "open", 6.0, 6.0, 1.5),
+        ("obj_line_006", "open", 9.0, 8.75, 2.25),
     ] {
         let arrow_head = arrow_head_for(object_id);
         assert_eq!(
@@ -5802,7 +5806,7 @@ fn cdxml_imports_hollow_and_open_arrows_as_two_chemdraw_sizes() {
             arrow_head
                 .get("centerLength")
                 .and_then(serde_json::Value::as_f64),
-            Some(expected_length),
+            Some(expected_center_length),
             "{object_id}"
         );
         assert_eq!(

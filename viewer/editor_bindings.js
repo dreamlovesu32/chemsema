@@ -1,4 +1,8 @@
-import { arrowTypeSupportsHeadSize } from "./toolbar.js";
+import {
+  SHAPE_TOOL_ICON_STYLES,
+  SHAPE_TOOL_STYLE_KINDS,
+  arrowTypeSupportsHeadSize,
+} from "./toolbar.js";
 
 const HOVER_ENDPOINT_SHORTCUT_LABELS = {
   h: "H",
@@ -701,9 +705,27 @@ async function handleSecondaryToolbarValue(value, options) {
       }
     }
   } else if (value?.startsWith("shape-kind-")) {
-    editorState.shapeKind = value.replace("shape-kind-", "");
+    const nextShapeKind = value.replace("shape-kind-", "");
+    const nextShapeStyle = shapeStyleForKind(editorState, nextShapeKind);
+    editorState.shapeKind = nextShapeKind;
+    editorState.shapeStyle = nextShapeStyle;
   } else if (value?.startsWith("shape-style-")) {
-    editorState.shapeStyle = value.replace("shape-style-", "");
+    const shapeSelection = shapeSelectionFromToolbarValue(value);
+    if (shapeSelection) {
+      editorState.shapeKind = shapeSelection.kind;
+      editorState.shapeStyle = shapeSelection.style;
+      setShapeStyleForKind(editorState, shapeSelection.kind, shapeSelection.style);
+    } else {
+      editorState.shapeStyle = value.replace("shape-style-", "");
+      setShapeStyleForKind(editorState, editorState.shapeKind, editorState.shapeStyle);
+    }
+  } else if (value?.startsWith("orbital-combo-")) {
+    const [, template, style, phase] = value.match(/^orbital-combo-([a-z0-9]+)-([a-z]+)-([a-z]+)$/) || [];
+    if (template && style && phase) {
+      editorState.orbitalTemplate = template;
+      editorState.orbitalStyle = style;
+      editorState.orbitalPhase = phase;
+    }
   } else if (value?.startsWith("orbital-template-")) {
     editorState.orbitalTemplate = value.replace("orbital-template-", "");
   } else if (value?.startsWith("orbital-style-")) {
@@ -734,6 +756,45 @@ async function handleSecondaryToolbarValue(value, options) {
   options.renderSecondaryToolbar();
   options.syncCanvasCursor();
   options.focusActiveTextEditor();
+}
+
+function shapeSelectionFromToolbarValue(value) {
+  const prefix = "shape-style-";
+  if (!value?.startsWith(prefix)) {
+    return null;
+  }
+  const body = value.slice(prefix.length);
+  for (const kind of SHAPE_TOOL_STYLE_KINDS) {
+    const style = body.startsWith(`${kind}-`) ? body.slice(kind.length + 1) : null;
+    if (SHAPE_TOOL_ICON_STYLES.includes(style)) {
+      return { kind, style };
+    }
+  }
+  return null;
+}
+
+function shapeStyleForKind(editorState, kind) {
+  if (!SHAPE_TOOL_STYLE_KINDS.includes(kind)) {
+    return "solid";
+  }
+  const saved = editorState.shapeStyleByKind?.[kind];
+  if (SHAPE_TOOL_ICON_STYLES.includes(saved)) {
+    return saved;
+  }
+  if (editorState.shapeKind === kind && SHAPE_TOOL_ICON_STYLES.includes(editorState.shapeStyle)) {
+    return editorState.shapeStyle;
+  }
+  return "solid";
+}
+
+function setShapeStyleForKind(editorState, kind, style) {
+  if (!SHAPE_TOOL_STYLE_KINDS.includes(kind) || !SHAPE_TOOL_ICON_STYLES.includes(style)) {
+    return;
+  }
+  editorState.shapeStyleByKind = {
+    ...(editorState.shapeStyleByKind || {}),
+    [kind]: style,
+  };
 }
 
 function currentColorForPrefix(prefix, options) {

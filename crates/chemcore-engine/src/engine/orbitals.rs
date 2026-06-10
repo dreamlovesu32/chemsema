@@ -5,19 +5,72 @@ const DEFAULT_ORBITAL_SIZE_RATIO: f64 = 1.6;
 const OVAL_MINOR_RATIO: f64 = 0.4;
 
 impl Engine {
+    pub fn orbital_tool_icon_svg(
+        template: OrbitalTemplate,
+        style: OrbitalStyle,
+        phase: OrbitalPhase,
+    ) -> String {
+        let mut engine = Engine::new();
+        let mut tool = engine.state.tool.clone();
+        tool.active_tool = Tool::Orbital;
+        tool.orbital_template = template;
+        tool.orbital_style = style;
+        tool.orbital_phase = phase;
+        tool.orbital_color = "#000000".to_string();
+        engine.set_tool_state(tool);
+
+        let style_id = "__orbital_icon_style".to_string();
+        let (anchor, current) = match template {
+            OrbitalTemplate::Lobe => (Point::new(0.0, 24.0), Point::new(0.0, 23.0)),
+            OrbitalTemplate::P
+            | OrbitalTemplate::Dxy
+            | OrbitalTemplate::Hybrid
+            | OrbitalTemplate::Dz2 => (Point::new(0.0, 0.0), Point::new(0.0, -1.0)),
+            _ => (Point::new(0.0, 0.0), Point::new(1.0, 0.0)),
+        };
+        let Some(object) = engine.orbital_scene_object(
+            anchor,
+            current,
+            "__orbital_icon".to_string(),
+            style_id.clone(),
+        ) else {
+            return String::new();
+        };
+        let mut document = engine.state.document.clone();
+        document
+            .styles
+            .insert(style_id, engine.pending_orbital_style());
+        document.objects.push(object);
+        let primitives = crate::render_document(&document);
+        crate::primitives_to_svg_viewbox(
+            &primitives,
+            [-60.0, -60.0, 120.0, 120.0],
+            Some("chemcore-icon cc-orbital-icon"),
+        )
+        .replace("#000000", "currentColor")
+    }
+
     pub(super) fn pointer_down_orbital(&mut self, event: PointerEvent) {
         let point = event.point();
+        if self.begin_hover_shape_edit(point) != "" {
+            return;
+        }
+        let anchor = self.orbital_draw_anchor_at_point(point);
         self.clear_interaction();
         self.state.selection = SelectionState::default();
         self.orbital_drag = Some(OrbitalDragState {
-            anchor: point,
-            current: point,
+            anchor,
+            current: anchor,
             has_dragged: false,
         });
     }
 
     pub(super) fn pointer_move_orbital(&mut self, event: PointerEvent) {
         let point = event.point();
+        if self.shape_edit_drag.is_some() {
+            self.update_hover_shape_edit(point, event.alt_key);
+            return;
+        }
         self.state.overlay = OverlayState::default();
         if let Some(mut drag) = self.orbital_drag.take() {
             drag.current = point;
@@ -31,10 +84,16 @@ impl Engine {
                 });
             }
             self.orbital_drag = Some(drag);
+        } else {
+            self.refresh_shape_hover(point);
         }
     }
 
     pub(super) fn pointer_up_orbital(&mut self, event: PointerEvent) {
+        if self.shape_edit_drag.is_some() {
+            self.finish_hover_shape_edit(event.point(), event.alt_key);
+            return;
+        }
         let Some(mut drag) = self.orbital_drag.take() else {
             return;
         };
@@ -42,17 +101,18 @@ impl Engine {
         if drag.anchor.distance(drag.current) >= DRAG_START_THRESHOLD {
             drag.has_dragged = true;
         }
-        if drag.has_dragged {
-            let command = EditorCommand::AddOrbital {
-                template: self.state.tool.orbital_template,
-                style: self.state.tool.orbital_style,
-                phase: self.state.tool.orbital_phase,
-                color: self.state.tool.orbital_color.clone(),
-                center: CommandAnchor::from(drag.anchor),
-                end: CommandAnchor::from(drag.current),
-            };
-            self.with_command(command, |engine| engine.insert_orbital_from_drag(&drag));
+        if !drag.has_dragged {
+            drag.current = drag.anchor;
         }
+        let command = EditorCommand::AddOrbital {
+            template: self.state.tool.orbital_template,
+            style: self.state.tool.orbital_style,
+            phase: self.state.tool.orbital_phase,
+            color: self.state.tool.orbital_color.clone(),
+            center: CommandAnchor::from(drag.anchor),
+            end: CommandAnchor::from(drag.current),
+        };
+        self.with_command(command, |engine| engine.insert_orbital_from_drag(&drag));
         self.state.overlay = OverlayState::default();
     }
 
@@ -275,6 +335,23 @@ impl Engine {
     fn default_orbital_size(&self) -> f64 {
         (self.options.bond_length_world_pt().value() * DEFAULT_ORBITAL_SIZE_RATIO).max(12.0)
     }
+
+    fn orbital_draw_anchor_at_point(&self, point: Point) -> Point {
+        if let Some(endpoint) = hit_test_endpoint(&self.state.document, point, ENDPOINT_HIT_RADIUS)
+        {
+            if let Some(label_anchor) = endpoint.label_anchor {
+                return Point::new(
+                    (label_anchor.glyph_box[0] + label_anchor.glyph_box[2]) * 0.5,
+                    (label_anchor.glyph_box[1] + label_anchor.glyph_box[3]) * 0.5,
+                );
+            }
+            return endpoint.point;
+        }
+        if let Some((_node_id, bounds)) = self.hit_test_endpoint_label_box(point) {
+            return Point::new((bounds[0] + bounds[2]) * 0.5, (bounds[1] + bounds[3]) * 0.5);
+        }
+        point
+    }
 }
 
 fn snapped_orbital_angle(anchor: Point, current: Point) -> f64 {
@@ -415,5 +492,72 @@ mod tests {
                 Some(&json!([200.0, 323.04]))
             );
         }
+    }
+
+    #[test]
+    fn orbital_zero_distance_defaults_to_vertical_axis() {
+        let mut engine = Engine::new();
+        let anchor = Point::new(200.0, 300.0);
+
+        for template in [
+            OrbitalTemplate::P,
+            OrbitalTemplate::Dxy,
+            OrbitalTemplate::Hybrid,
+            OrbitalTemplate::Dz2,
+        ] {
+            engine.state.tool.orbital_template = template;
+            let object = engine
+                .orbital_scene_object(anchor, anchor, "orb".to_string(), "style_orb".to_string())
+                .expect("orbital object");
+            assert_eq!(
+                object.payload.extra.get("axisStart"),
+                Some(&json!([200.0, 300.0]))
+            );
+            assert_eq!(
+                object.payload.extra.get("axisEnd"),
+                Some(&json!([200.0, 348.0]))
+            );
+        }
+    }
+
+    #[test]
+    fn orbital_click_uses_endpoint_center_as_anchor() {
+        let mut engine = Engine::new();
+        engine
+            .execute_command(EditorCommand::AddBond {
+                begin: CommandAnchor::from(Point::new(200.0, 300.0)),
+                end: CommandAnchor::from(Point::new(260.0, 300.0)),
+                order: 1,
+                variant: BondVariant::Single,
+            })
+            .expect("add bond");
+        let mut tool = engine.state.tool.clone();
+        tool.active_tool = Tool::Orbital;
+        tool.orbital_template = OrbitalTemplate::P;
+        engine.set_tool_state(tool);
+
+        let event = PointerEvent {
+            x: 200.0,
+            y: 300.0,
+            button: Some(0),
+            alt_key: false,
+        };
+        engine.pointer_down(event.clone());
+        engine.pointer_up(event);
+
+        let orbital = engine
+            .state
+            .document
+            .objects
+            .iter()
+            .rev()
+            .find(|object| {
+                object.payload.extra.get("kind").and_then(JsonValue::as_str) == Some("orbital")
+            })
+            .expect("orbital object");
+        assert_eq!(
+            orbital.payload.extra.get("axisStart"),
+            Some(&json!([200.0, 300.0]))
+        );
     }
 }

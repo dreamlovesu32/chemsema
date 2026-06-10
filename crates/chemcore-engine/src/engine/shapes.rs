@@ -5,6 +5,45 @@ const DEFAULT_SHAPE_CLICK_RADIUS: f64 = 7.7;
 const ACS_SHAPE_CLICK_RADIUS: f64 = 7.2;
 
 impl Engine {
+    pub fn shape_tool_icon_svg(kind: ShapeKind, style: ShapeStyle) -> String {
+        let mut engine = Engine::new();
+        let mut tool = engine.state.tool.clone();
+        tool.active_tool = Tool::Shape;
+        tool.shape_kind = kind;
+        tool.shape_style = style;
+        tool.shape_color = "#000000".to_string();
+        engine.set_tool_state(tool);
+
+        let style_id = "__shape_icon_style".to_string();
+        let object_id = "__shape_icon".to_string();
+        let (start, current) = match kind {
+            ShapeKind::Circle => (Point::new(12.0, 12.0), Point::new(18.2, 12.0)),
+            ShapeKind::Ellipse => (Point::new(12.0, 12.0), Point::new(19.2, 12.0)),
+            ShapeKind::RoundRect | ShapeKind::Rect => {
+                (Point::new(5.5, 6.2), Point::new(18.5, 17.7))
+            }
+            ShapeKind::CrossTable | ShapeKind::TlcPlate => {
+                (Point::new(5.5, 6.2), Point::new(18.5, 17.7))
+            }
+        };
+        let Some(object) = engine.shape_scene_object(start, current, object_id, style_id.clone())
+        else {
+            return String::new();
+        };
+        let mut document = engine.state.document.clone();
+        document
+            .styles
+            .insert(style_id, engine.pending_shape_style());
+        document.objects.push(object);
+        let primitives = crate::render_document(&document);
+        crate::primitives_to_svg_viewbox(
+            &primitives,
+            [0.0, 0.0, 24.0, 24.0],
+            Some("chemcore-icon cc-shape-icon"),
+        )
+        .replace("#000000", "currentColor")
+    }
+
     pub(super) fn pointer_down_shape(&mut self, event: PointerEvent) {
         let point = event.point();
         if self.begin_hover_shape_edit(point) != "" {
@@ -578,6 +617,22 @@ impl Engine {
         if self.state.overlay.hover_shape.is_some() {
             return;
         }
+        if self.state.tool.active_tool == Tool::Orbital {
+            if let Some(endpoint) =
+                hit_test_endpoint(&self.state.document, point, ENDPOINT_HIT_RADIUS)
+            {
+                if let Some(label_anchor) = &endpoint.label_anchor {
+                    self.state.overlay.hover_text_box = Some(HoverTextBox {
+                        bounds: label_anchor.glyph_box,
+                        object_id: None,
+                        node_id: Some(endpoint.node_id),
+                    });
+                } else {
+                    self.state.overlay.hover_endpoint = Some(endpoint);
+                }
+            }
+            return;
+        }
         if let Some((node_id, bounds)) = self.hit_test_endpoint_label_box(point) {
             self.state.overlay.hover_text_box = Some(HoverTextBox {
                 bounds,
@@ -634,6 +689,7 @@ impl Engine {
     }
 
     fn shape_hover_target_at_point(&self, point: Point) -> Option<ShapeTarget> {
+        let orbital_tool = self.state.tool.active_tool == Tool::Orbital;
         for object in self.state.document.objects.iter().rev() {
             if object.object_type != "shape" || !object.visible {
                 continue;
@@ -641,6 +697,9 @@ impl Engine {
             let Some(kind) = shape_object_kind(object) else {
                 continue;
             };
+            if orbital_tool != (kind == ShapeObjectKind::Orbital) {
+                continue;
+            }
             match kind {
                 ShapeObjectKind::Circle => {
                     let Some(hit) = shape_circle_hover(object, point) else {
@@ -681,10 +740,18 @@ impl Engine {
                     });
                 }
                 ShapeObjectKind::Orbital => {
-                    if shape_rect_hit(object, point, true).is_none() {
+                    let Some(hit) = orbital_hover(object, point) else {
                         continue;
-                    }
-                    return None;
+                    };
+                    return Some(ShapeTarget {
+                        object_id: object.id.clone(),
+                        object: object.clone(),
+                        handle: hit
+                            .active_handle
+                            .unwrap_or(ShapeEditHandle::EllipseMajorPositive),
+                        active_handle: hit.active_handle,
+                        handles: hit.handles,
+                    });
                 }
             }
         }
@@ -905,6 +972,107 @@ fn shape_rect_hit(object: &SceneObject, point: Point, include_fill: bool) -> Opt
     ((on_vertical && within_y) || (on_horizontal && within_x)).then_some(())
 }
 
+fn orbital_hover(object: &SceneObject, point: Point) -> Option<ShapeHoverHit> {
+    let (handles, handle_defs) = orbital_handle_points(object)?;
+    let active_handle = handles
+        .iter()
+        .zip(handle_defs.iter().copied())
+        .filter_map(|(handle_point, handle)| {
+            let distance = handle_point.distance(point);
+            (distance <= ENDPOINT_HIT_RADIUS).then_some((distance, handle))
+        })
+        .min_by(|left, right| left.0.total_cmp(&right.0))
+        .map(|(_, handle)| handle);
+    active_handle.map(|handle| ShapeHoverHit {
+        active_handle: Some(handle),
+        handles,
+    })
+}
+
+fn orbital_handle_points(object: &SceneObject) -> Option<(Vec<Point>, Vec<ShapeEditHandle>)> {
+    let template = object
+        .payload
+        .extra
+        .get("orbitalTemplate")
+        .and_then(JsonValue::as_str)
+        .unwrap_or("");
+    match template {
+        "s" | "oval" => {
+            let (center, major, minor) = shape_oval_points(object)?;
+            Some((
+                vec![
+                    major,
+                    reflected_point(center, major),
+                    minor,
+                    reflected_point(center, minor),
+                ],
+                vec![
+                    ShapeEditHandle::EllipseMajorPositive,
+                    ShapeEditHandle::EllipseMajorNegative,
+                    ShapeEditHandle::EllipseMinorPositive,
+                    ShapeEditHandle::EllipseMinorNegative,
+                ],
+            ))
+        }
+        "dxy" => {
+            let start = shape_payload_point(object, "axisStart")?;
+            let end = shape_payload_point(object, "axisEnd")?;
+            let vector = crate::Vector::new(end.x - start.x, end.y - start.y);
+            let length = vector.length();
+            if length <= crate::EPSILON {
+                return None;
+            }
+            let unit = vector.normalized();
+            let minor = start.translated(crate::Vector::new(-unit.y, unit.x).scaled(length));
+            Some((
+                vec![
+                    end,
+                    reflected_point(start, end),
+                    minor,
+                    reflected_point(start, minor),
+                ],
+                vec![
+                    ShapeEditHandle::EllipseMajorPositive,
+                    ShapeEditHandle::EllipseMajorNegative,
+                    ShapeEditHandle::EllipseMinorPositive,
+                    ShapeEditHandle::EllipseMinorNegative,
+                ],
+            ))
+        }
+        "lobe" => {
+            let end = shape_payload_point(object, "axisEnd")?;
+            Some((vec![end], vec![ShapeEditHandle::EllipseMajorPositive]))
+        }
+        "hybrid" => {
+            let start = shape_payload_point(object, "axisStart")?;
+            let end = shape_payload_point(object, "axisEnd")?;
+            let small = Point::new(
+                start.x + (start.x - end.x) * 0.4,
+                start.y + (start.y - end.y) * 0.4,
+            );
+            Some((
+                vec![end, small],
+                vec![
+                    ShapeEditHandle::EllipseMajorPositive,
+                    ShapeEditHandle::EllipseMajorNegative,
+                ],
+            ))
+        }
+        "p" | "dz2" => {
+            let start = shape_payload_point(object, "axisStart")?;
+            let end = shape_payload_point(object, "axisEnd")?;
+            Some((
+                vec![end, reflected_point(start, end)],
+                vec![
+                    ShapeEditHandle::EllipseMajorPositive,
+                    ShapeEditHandle::EllipseMajorNegative,
+                ],
+            ))
+        }
+        _ => None,
+    }
+}
+
 fn resized_shape_object_from_handle(
     original: &SceneObject,
     handle: ShapeEditHandle,
@@ -917,8 +1085,102 @@ fn resized_shape_object_from_handle(
         ShapeObjectKind::Rect | ShapeObjectKind::RoundRect => {
             resized_rect_object(original, handle, point)
         }
-        ShapeObjectKind::Orbital => None,
+        ShapeObjectKind::Orbital => rotated_orbital_object_from_handle(original, handle, point),
     }
+}
+
+fn rotated_orbital_object_from_handle(
+    original: &SceneObject,
+    handle: ShapeEditHandle,
+    point: Point,
+) -> Option<SceneObject> {
+    let template = original
+        .payload
+        .extra
+        .get("orbitalTemplate")
+        .and_then(JsonValue::as_str)
+        .unwrap_or("");
+    if matches!(template, "s" | "oval") {
+        return rotated_orbital_oval_from_handle(original, handle, point);
+    }
+    rotated_orbital_axis_from_handle(original, handle, point)
+}
+
+fn rotated_orbital_oval_from_handle(
+    original: &SceneObject,
+    handle: ShapeEditHandle,
+    point: Point,
+) -> Option<SceneObject> {
+    let (center, major, minor) = shape_oval_points(original)?;
+    let rx = center.distance(major);
+    let ry = center.distance(minor);
+    if rx <= crate::EPSILON || ry <= crate::EPSILON || center.distance(point) <= crate::EPSILON {
+        return None;
+    }
+    let angle = orbital_angle_from_handle(center, handle, point)?;
+    let next_major = center.translated(direction_from_angle(angle).scaled(rx));
+    let next_minor = center.translated(direction_from_angle(angle + 90.0).scaled(ry));
+    let mut object = original.clone();
+    set_shape_point(&mut object, "majorAxisEnd", next_major);
+    set_shape_point(&mut object, "minorAxisEnd", next_minor);
+    object
+        .payload
+        .extra
+        .insert("angle".to_string(), json!(round2(angle)));
+    object.payload.bbox = Some([
+        round2(center.x - rx),
+        round2(center.y - ry),
+        round2(rx * 2.0),
+        round2(ry * 2.0),
+    ]);
+    Some(object)
+}
+
+fn rotated_orbital_axis_from_handle(
+    original: &SceneObject,
+    handle: ShapeEditHandle,
+    point: Point,
+) -> Option<SceneObject> {
+    let start = shape_payload_point(original, "axisStart")?;
+    let end = shape_payload_point(original, "axisEnd")?;
+    let length = start.distance(end);
+    if length <= crate::EPSILON || start.distance(point) <= crate::EPSILON {
+        return None;
+    }
+    let angle = orbital_angle_from_handle(start, handle, point)?;
+    let next_end = start.translated(direction_from_angle(angle).scaled(length));
+    let mut object = original.clone();
+    set_shape_point(&mut object, "axisEnd", next_end);
+    object
+        .payload
+        .extra
+        .insert("angle".to_string(), json!(round2(angle)));
+    object.payload.bbox = orbital_axis_bbox(start, next_end, length * 0.75);
+    Some(object)
+}
+
+fn orbital_angle_from_handle(center: Point, handle: ShapeEditHandle, point: Point) -> Option<f64> {
+    let base = angle_between(center, point);
+    match handle {
+        ShapeEditHandle::EllipseMajorPositive => Some(base),
+        ShapeEditHandle::EllipseMajorNegative => Some(crate::normalize_angle(base + 180.0)),
+        ShapeEditHandle::EllipseMinorPositive => Some(crate::normalize_angle(base - 90.0)),
+        ShapeEditHandle::EllipseMinorNegative => Some(crate::normalize_angle(base + 90.0)),
+        _ => None,
+    }
+}
+
+fn orbital_axis_bbox(start: Point, end: Point, padding: f64) -> Option<[f64; 4]> {
+    let left = start.x.min(end.x) - padding;
+    let top = start.y.min(end.y) - padding;
+    let right = start.x.max(end.x) + padding;
+    let bottom = start.y.max(end.y) + padding;
+    Some([
+        round2(left),
+        round2(top),
+        round2(right - left),
+        round2(bottom - top),
+    ])
 }
 
 fn resized_circle_object(original: &SceneObject, point: Point) -> Option<SceneObject> {
@@ -1090,4 +1352,53 @@ fn set_shape_point(object: &mut SceneObject, key: &str, point: Point) {
         .payload
         .extra
         .insert(key.to_string(), json!([round2(point.x), round2(point.y)]));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn orbital_tool_rotates_orbital_handle_without_resizing() {
+        let mut engine = Engine::new();
+        engine
+            .execute_command(EditorCommand::AddOrbital {
+                template: OrbitalTemplate::P,
+                style: OrbitalStyle::Filled,
+                phase: OrbitalPhase::Plus,
+                color: "#000000".to_string(),
+                center: CommandAnchor::from(Point::new(200.0, 300.0)),
+                end: CommandAnchor::from(Point::new(200.0, 348.0)),
+            })
+            .expect("add orbital");
+        let mut tool = engine.state.tool.clone();
+        tool.active_tool = Tool::Orbital;
+        engine.set_tool_state(tool);
+
+        assert_eq!(
+            engine.hover_shape_action_at_point(Point::new(200.0, 348.0)),
+            "ellipse-major-positive"
+        );
+        assert_eq!(
+            engine.begin_hover_shape_edit(Point::new(200.0, 348.0)),
+            "ellipse-major-positive"
+        );
+        assert!(engine.update_hover_shape_edit(Point::new(248.0, 300.0), false));
+        assert!(engine.finish_hover_shape_edit(Point::new(248.0, 300.0), false));
+
+        let orbital = engine
+            .state
+            .document
+            .objects
+            .iter()
+            .find(|object| {
+                object.payload.extra.get("kind").and_then(JsonValue::as_str) == Some("orbital")
+            })
+            .expect("orbital object");
+        let start = shape_payload_point(orbital, "axisStart").expect("axis start");
+        let end = shape_payload_point(orbital, "axisEnd").expect("axis end");
+        assert_eq!(start, Point::new(200.0, 300.0));
+        assert_eq!(end, Point::new(248.0, 300.0));
+        assert!((start.distance(end) - 48.0).abs() < 0.01);
+    }
 }

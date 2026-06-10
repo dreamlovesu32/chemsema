@@ -30,6 +30,13 @@ import {
 } from "./geometry.js";
 import {
   BOND_TOOL_ICON_TYPES,
+  ORBITAL_TOOL_ICON_PHASES,
+  ORBITAL_TOOL_ICON_STYLES,
+  ORBITAL_TOOL_ICON_TEMPLATES,
+  SHAPE_TOOL_ICON_KINDS,
+  SHAPE_TOOL_ICON_STYLES,
+  SHAPE_TOOL_STYLE_KINDS,
+  SYMBOL_TOOL_ICON_TYPES,
   TEXT_FORMAT_ICON_TYPES,
   TEXT_FONT_OPTIONS,
   TEXT_FONT_SIZE_OPTIONS,
@@ -360,15 +367,22 @@ const editorState = {
   arrowNoGo: "none",
   shapeKind: "circle",
   shapeStyle: "solid",
+  shapeStyleByKind: {},
+  shapeIconSvgs: {},
+  shapeIconCacheKey: "",
   shapeColor: "#000000",
   orbitalTemplate: "s",
-  orbitalStyle: "hollow",
+  orbitalStyle: "shaded",
   orbitalPhase: "plus",
   orbitalColor: "#000000",
+  orbitalIconSvgs: {},
+  orbitalIconCacheKey: "",
   documentColors: [],
   colorPalette: null,
   bracketKind: "round",
   symbolKind: "circle-plus",
+  symbolIconSvgs: {},
+  symbolIconCacheKey: "",
   elementSymbol: "P",
   elementAtomicNumber: 15,
   elementPlacementActive: false,
@@ -2418,12 +2432,126 @@ function refreshTextFormatIcons() {
   editorState.textIconCacheKey = "kernel-text-v1";
 }
 
+function refreshShapeToolIcons() {
+  const iconSvg = state.editorEngine?.shapeToolIconSvg;
+  if (typeof iconSvg !== "function") {
+    return;
+  }
+  const hasCompleteIconSet = SHAPE_TOOL_ICON_KINDS.every((kind) => (
+    shapeToolIconStylesForKind(kind).every((style) => editorState.shapeIconSvgs?.[`${kind}:${style}`])
+  ));
+  if (editorState.shapeIconCacheKey === "kernel-shape-v1" && hasCompleteIconSet) {
+    return;
+  }
+  const icons = {};
+  for (const kind of SHAPE_TOOL_ICON_KINDS) {
+    for (const style of shapeToolIconStylesForKind(kind)) {
+      const key = `${kind}:${style}`;
+      icons[key] = normalizeKernelShapeIconSvg(iconSvg.call(state.editorEngine, kind, style), key);
+    }
+  }
+  editorState.shapeIconSvgs = icons;
+  editorState.shapeIconCacheKey = "kernel-shape-v1";
+}
+
+function refreshSymbolToolIcons() {
+  const iconSvg = state.editorEngine?.symbolToolIconSvg;
+  if (typeof iconSvg !== "function") {
+    return;
+  }
+  const hasCompleteIconSet = SYMBOL_TOOL_ICON_TYPES.every((type) => editorState.symbolIconSvgs?.[type]);
+  if (editorState.symbolIconCacheKey === "kernel-symbol-v1" && hasCompleteIconSet) {
+    return;
+  }
+  const icons = {};
+  for (const type of SYMBOL_TOOL_ICON_TYPES) {
+    icons[type] = normalizeKernelSymbolIconSvg(iconSvg.call(state.editorEngine, type), type);
+  }
+  editorState.symbolIconSvgs = icons;
+  editorState.symbolIconCacheKey = "kernel-symbol-v1";
+}
+
+function refreshOrbitalToolIcons() {
+  const iconSvg = state.editorEngine?.orbitalToolIconSvg;
+  if (typeof iconSvg !== "function") {
+    return;
+  }
+  const hasCompleteIconSet = ORBITAL_TOOL_ICON_TEMPLATES.every((template) => (
+    ORBITAL_TOOL_ICON_STYLES.every((style) => (
+      ORBITAL_TOOL_ICON_PHASES.every((phase) => (
+        editorState.orbitalIconSvgs?.[`${template}:${style}:${phase}`]
+      ))
+    ))
+  ));
+  if (editorState.orbitalIconCacheKey === "kernel-orbital-v1" && hasCompleteIconSet) {
+    return;
+  }
+  const icons = {};
+  for (const template of ORBITAL_TOOL_ICON_TEMPLATES) {
+    for (const style of ORBITAL_TOOL_ICON_STYLES) {
+      for (const phase of ORBITAL_TOOL_ICON_PHASES) {
+        const key = `${template}:${style}:${phase}`;
+        icons[key] = normalizeKernelOrbitalIconSvg(
+          iconSvg.call(state.editorEngine, template, style, phase),
+          key,
+        );
+      }
+    }
+  }
+  editorState.orbitalIconSvgs = icons;
+  editorState.orbitalIconCacheKey = "kernel-orbital-v1";
+}
+
+function shapeToolIconStylesForKind(kind) {
+  return SHAPE_TOOL_STYLE_KINDS.includes(kind) ? SHAPE_TOOL_ICON_STYLES : ["solid"];
+}
+
+function normalizeKernelShapeIconSvg(svg, key) {
+  if (!svg) {
+    return "";
+  }
+  const safeKey = String(key).replace(/[^a-zA-Z0-9_-]/g, "-");
+  return addClassToSvg(svg, "cc-kernel-shape-icon")
+    .replace(/\bid="([^"]+)"/g, `id="shape-icon-${safeKey}-$1"`)
+    .replace(/url\(#([^)]+)\)/g, `url(#shape-icon-${safeKey}-$1)`);
+}
+
+function normalizeKernelSymbolIconSvg(svg, key) {
+  if (!svg) {
+    return "";
+  }
+  const safeKey = String(key).replace(/[^a-zA-Z0-9_-]/g, "-");
+  return addClassToSvg(svg, "cc-kernel-symbol-icon")
+    .replace(/\bid="([^"]+)"/g, `id="symbol-icon-${safeKey}-$1"`)
+    .replace(/url\(#([^)]+)\)/g, `url(#symbol-icon-${safeKey}-$1)`);
+}
+
+function normalizeKernelOrbitalIconSvg(svg, key) {
+  if (!svg) {
+    return "";
+  }
+  const safeKey = String(key).replace(/[^a-zA-Z0-9_-]/g, "-");
+  return addClassToSvg(svg, "cc-kernel-orbital-icon")
+    .replace(/\bid="([^"]+)"/g, `id="orbital-icon-${safeKey}-$1"`)
+    .replace(/url\(#([^)]+)\)/g, `url(#orbital-icon-${safeKey}-$1)`);
+}
+
+function addClassToSvg(svg, className) {
+  if (/\bclass="/.test(svg)) {
+    return svg.replace(/\bclass="([^"]*)"/, `class="$1 ${className}"`);
+  }
+  return svg.replace("<svg ", `<svg class="${className}" `);
+}
+
 function renderSecondaryToolbar() {
   if (!secondaryToolbar) {
     return;
   }
   refreshBondToolIcons();
   refreshTextFormatIcons();
+  refreshShapeToolIcons();
+  refreshSymbolToolIcons();
+  refreshOrbitalToolIcons();
   editorState.documentColors = currentDocumentColors();
   editorState.colorPalette = currentToolbarColorPalette(editorState.documentColors);
   editorState.elementPalette = currentElementPalette();
@@ -3872,7 +4000,7 @@ function bracketLabelAnchorPoint(start, end, kind = editorState.bracketKind) {
     nominalRight = right - depth * 0.5;
   }
   return {
-    x: nominalRight + 4.0,
+    x: nominalRight + 8.0,
     y: bottom - 8.0,
   };
 }

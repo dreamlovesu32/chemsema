@@ -65,6 +65,7 @@ export const wasmengine_loadDocumentCdxml: (a: number, b: number, c: number) => 
 export const wasmengine_loadDocumentJson: (a: number, b: number, c: number) => [number, number];
 export const wasmengine_new: () => number;
 export const wasmengine_objectSettingsDialogJson: (a: number) => [number, number];
+export const wasmengine_orbitalToolIconSvg: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number];
 export const wasmengine_pasteClipboard: (a: number) => number;
 export const wasmengine_pasteClipboardJson: (a: number, b: number, c: number) => [number, number, number];
 export const wasmengine_pointerDown: (a: number, b: number, c: number, d: number) => void;
@@ -98,7 +99,9 @@ export const wasmengine_setShapeOptions: (a: number, b: number, c: number, d: nu
 export const wasmengine_setSymbolOptions: (a: number, b: number, c: number) => void;
 export const wasmengine_setTemplate: (a: number, b: number, c: number) => void;
 export const wasmengine_setTool: (a: number, b: number, c: number, d: number, e: number) => void;
+export const wasmengine_shapeToolIconSvg: (a: number, b: number, c: number, d: number, e: number) => [number, number];
 export const wasmengine_stateJson: (a: number) => [number, number, number, number];
+export const wasmengine_symbolToolIconSvg: (a: number, b: number, c: number) => [number, number];
 export const wasmengine_textFormatIconSvg: (a: number, b: number, c: number) => [number, number];
 export const wasmengine_textSymbolPaletteJson: (a: number) => [number, number];
 export const wasmengine_tlcLaneGuideHitTestJson: (a: number, b: number, c: number) => [number, number, number, number];
