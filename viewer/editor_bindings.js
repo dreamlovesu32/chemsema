@@ -732,7 +732,7 @@ async function handleSecondaryToolbarValue(value, options) {
     editorState.orbitalStyle = value.replace("orbital-style-", "");
   } else if (value?.startsWith("orbital-phase-")) {
     editorState.orbitalPhase = value.replace("orbital-phase-", "");
-  } else if (value?.startsWith("ring-") || value === "benzene") {
+  } else if (value?.startsWith("ring-") || value?.startsWith("chair-") || value === "benzene") {
     editorState.template = value;
   } else if (value === "shape-color-apply") {
     await applyToolbarColor("shape-color", editorState.shapeColor, options);

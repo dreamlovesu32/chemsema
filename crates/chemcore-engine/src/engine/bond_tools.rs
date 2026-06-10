@@ -26,6 +26,7 @@ fn refresh_attached_label_geometry_for_bond_endpoints(
 impl Engine {
     pub fn text_format_icon_svg(kind: &str) -> String {
         let runs = match kind {
+            "tool" => vec![text_icon_run("A", 18.0, Some(400), None, false, "normal")],
             "bold" => vec![text_icon_run("B", 16.0, Some(700), None, false, "normal")],
             "italic" => vec![text_icon_run(
                 "I",
@@ -65,7 +66,7 @@ impl Engine {
             dominant_baseline: None,
             text: String::new(),
             font_size: fallback_font_size,
-            font_family: Some("Arial".to_string()),
+            font_family: Some("Times New Roman".to_string()),
             fill: Some("#000000".to_string()),
             text_anchor: Some("middle".to_string()),
             line_height: None,
@@ -75,7 +76,9 @@ impl Engine {
             rotate: 0.0,
             rotate_center: None,
         };
-        let class_name = if matches!(kind, "chemical" | "subscript" | "superscript") {
+        let class_name = if kind == "tool" {
+            "chemcore-icon cc-tool-icon cc-text-tool-icon"
+        } else if matches!(kind, "chemical" | "subscript" | "superscript") {
             "chemcore-icon cc-text-format-icon cc-script-icon"
         } else {
             "chemcore-icon cc-text-format-icon"
@@ -328,7 +331,7 @@ fn text_icon_run(
 ) -> crate::LabelRun {
     crate::LabelRun {
         text: text.to_string(),
-        font_family: Some("Arial".to_string()),
+        font_family: Some("Times New Roman".to_string()),
         font_size: Some(font_size),
         fill: Some("#000000".to_string()),
         font_weight,

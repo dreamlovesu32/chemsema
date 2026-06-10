@@ -2416,6 +2416,106 @@ fn template_benzene_click_on_bond_keeps_fused_side_and_adds_three_double_bonds()
 }
 
 #[test]
+fn template_chair_click_on_blank_canvas_centers_shape() {
+    let mut engine = Engine::new();
+    let center = px_point(300.0, 260.0);
+
+    engine.set_tool_state(templates_tool("chair-6-right"));
+    click(&mut engine, center.x, center.y);
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    assert_eq!(entry.fragment.nodes.len(), 6);
+    assert_eq!(entry.fragment.bonds.len(), 6);
+    assert!(entry
+        .fragment
+        .bonds
+        .iter()
+        .all(|bond| bond.order == 1 && bond.double.is_none()));
+    let points = entry
+        .fragment
+        .nodes
+        .iter()
+        .map(|node| entry.world_point_for_node(node))
+        .collect::<Vec<_>>();
+    let actual_center = Point::new(
+        points.iter().map(|point| point.x).sum::<f64>() / points.len() as f64,
+        points.iter().map(|point| point.y).sum::<f64>() / points.len() as f64,
+    );
+    assert!(
+        actual_center.distance(center) < 0.005,
+        "{actual_center:?} {center:?}"
+    );
+    let first_bond_angle = chemcore_engine::angle_between(points[0], points[1]);
+    assert!(
+        chemcore_engine::angular_distance(60.0, first_bond_angle) < 0.2,
+        "{first_bond_angle}"
+    );
+    assert_no_duplicate_node_positions(&engine);
+}
+
+#[test]
+fn template_chair_drag_on_blank_canvas_uses_initial_point_as_anchor() {
+    let mut engine = Engine::new();
+    let anchor = px_point(300.0, 260.0);
+    let target = anchor.translated(direction_from_angle(22.0).scaled(DEFAULT_BOND_LENGTH * 2.0));
+
+    engine.set_tool_state(templates_tool("chair-6-right"));
+    drag(&mut engine, anchor, target);
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    assert_eq!(entry.fragment.nodes.len(), 6);
+    assert_eq!(entry.fragment.bonds.len(), 6);
+    assert!(entry
+        .fragment
+        .nodes
+        .iter()
+        .any(|node| entry.world_point_for_node(node).distance(anchor) < 0.01));
+    assert_no_duplicate_node_positions(&engine);
+}
+
+#[test]
+fn template_chair_endpoint_click_aligns_anchor_bisector_with_existing_bond() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, px(300.0), px(260.0));
+    let existing_begin = node_world_point(&engine, "n_1");
+    let endpoint = node_world_point(&engine, "n_2");
+
+    engine.set_tool_state(templates_tool("chair-6-right"));
+    click(&mut engine, endpoint.x, endpoint.y);
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    assert_eq!(entry.fragment.nodes.len(), 7);
+    assert_eq!(entry.fragment.bonds.len(), 7);
+    let new_neighbors = attached_node_points(&engine, "n_2")
+        .into_iter()
+        .filter(|point| point.distance(existing_begin) > 0.01)
+        .collect::<Vec<_>>();
+    assert_eq!(new_neighbors.len(), 2, "{new_neighbors:?}");
+    let first = chemcore_engine::Vector::new(
+        new_neighbors[0].x - endpoint.x,
+        new_neighbors[0].y - endpoint.y,
+    )
+    .normalized();
+    let second = chemcore_engine::Vector::new(
+        new_neighbors[1].x - endpoint.x,
+        new_neighbors[1].y - endpoint.y,
+    )
+    .normalized();
+    let bisector = Point::new(
+        endpoint.x + first.x + second.x,
+        endpoint.y + first.y + second.y,
+    );
+    let expected_axis = chemcore_engine::angle_between(existing_begin, endpoint);
+    let actual_axis = chemcore_engine::angle_between(endpoint, bisector);
+    assert!(
+        chemcore_engine::angular_distance(expected_axis, actual_axis) < 0.2,
+        "{expected_axis} {actual_axis}"
+    );
+    assert_no_duplicate_node_positions(&engine);
+}
+
+#[test]
 fn template_drag_on_blank_canvas_snaps_ring_axis_to_15_degrees() {
     let mut engine = Engine::new();
     let anchor = px_point(300.0, 260.0);
@@ -8922,6 +9022,14 @@ fn bond_tool_icons_are_rendered_with_kernel_bond_styles() {
 
 #[test]
 fn text_format_icons_are_rendered_with_kernel_text_runs() {
+    let tool = Engine::text_format_icon_svg("tool");
+    assert!(
+        tool.contains(r#"class="chemcore-icon cc-tool-icon cc-text-tool-icon""#),
+        "{tool}"
+    );
+    assert!(tool.contains(r#"font-family="Times New Roman""#), "{tool}");
+    assert!(tool.contains(">A</tspan>"), "{tool}");
+
     let bold = Engine::text_format_icon_svg("bold");
     assert!(
         bold.contains(r#"class="chemcore-icon cc-text-format-icon""#),
@@ -8929,7 +9037,7 @@ fn text_format_icons_are_rendered_with_kernel_text_runs() {
     );
     assert!(bold.contains("<text "), "{bold}");
     assert!(bold.contains("<tspan"), "{bold}");
-    assert!(bold.contains(r#"font-family="Arial""#), "{bold}");
+    assert!(bold.contains(r#"font-family="Times New Roman""#), "{bold}");
     assert!(bold.contains(r#"font-size="16""#), "{bold}");
     assert!(bold.contains(r#"font-weight="700""#), "{bold}");
     assert!(bold.contains(">B</tspan>"), "{bold}");
@@ -8966,4 +9074,46 @@ fn text_format_icons_are_rendered_with_kernel_text_runs() {
     assert!(superscript.contains(">2</tspan>"), "{superscript}");
     assert!(superscript.contains(r#"font-size="12""#), "{superscript}");
     assert!(superscript.contains("baseline-shift"), "{superscript}");
+}
+
+#[test]
+fn shape_tool_icons_are_rendered_in_double_size_viewbox() {
+    let styled_kinds = [
+        ShapeKind::Circle,
+        ShapeKind::Ellipse,
+        ShapeKind::RoundRect,
+        ShapeKind::Rect,
+    ];
+    let styles = [
+        ShapeStyle::Solid,
+        ShapeStyle::Dashed,
+        ShapeStyle::Shaded,
+        ShapeStyle::Filled,
+        ShapeStyle::Shadowed,
+    ];
+    for kind in styled_kinds {
+        for style in styles {
+            let svg = Engine::shape_tool_icon_svg(kind, style);
+            assert!(
+                svg.contains(r#"viewBox="0 0 48 48""#),
+                "{kind:?} {style:?}: {svg}"
+            );
+        }
+    }
+
+    let cross_table = Engine::shape_tool_icon_svg(ShapeKind::CrossTable, ShapeStyle::Solid);
+    assert!(
+        cross_table.contains(r#"viewBox="0 0 48 48""#),
+        "{cross_table}"
+    );
+
+    let round_rect = Engine::shape_tool_icon_svg(ShapeKind::RoundRect, ShapeStyle::Solid);
+    assert!(round_rect.contains("M 8.4,31.68"), "{round_rect}");
+    assert!(round_rect.contains("39.6,16.08"), "{round_rect}");
+    assert!(round_rect.contains(r#"stroke-width="2""#), "{round_rect}");
+
+    assert!(
+        cross_table.matches(r#"stroke-width="2""#).count() >= 3,
+        "{cross_table}"
+    );
 }

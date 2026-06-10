@@ -42,15 +42,48 @@ export function createEditorPointerController(options) {
     return "pointer-document-edit";
   }
 
+  function toolSupportsSelectionBoxMove(tool) {
+    return tool === "bond"
+      || tool === "arrow"
+      || tool === "bracket"
+      || tool === "symbol"
+      || tool === "element"
+      || tool === "text"
+      || tool === "shape"
+      || tool === "tlc-plate"
+      || tool === "orbital"
+      || tool === "templates";
+  }
+
+  async function beginSelectionBoxMove(point, event) {
+    if (!toolSupportsSelectionBoxMove(options.editorState().activeTool)) {
+      return false;
+    }
+    const overSelection = !!options.state().editorEngine.selectionContainsPoint?.(point.x, point.y);
+    if (!overSelection) {
+      return false;
+    }
+    if (!await options.state().editorEngine.beginSelectionMove?.(point.x, point.y, !!event.shiftKey, event.altKey)) {
+      return false;
+    }
+    options.setActiveSelectionGesture({
+      kind: "move",
+      start: point,
+      current: point,
+      dragged: false,
+      additive: !!event.shiftKey,
+    });
+    await options.syncArrowAwareCursorForPoint(point);
+    options.syncEditorRenderListFromEngine();
+    options.renderEditorOverlay(options.currentEditorOverlayRenderList());
+    return true;
+  }
+
   async function handleEditorPointerMove(event) {
     const point = options.svgPointFromEvent(event);
     const editorState = options.editorState();
     const gesture = options.activeSelectionGesture();
-    if ((editorState.activeTool === "select"
-      || editorState.activeTool === "arrow"
-      || editorState.activeTool === "shape"
-      || editorState.activeTool === "tlc-plate"
-      || editorState.activeTool === "orbital") && gesture) {
+    if ((editorState.activeTool === "select" || toolSupportsSelectionBoxMove(editorState.activeTool)) && gesture) {
       event.preventDefault();
       if (gesture.kind === "tlc-spot-drag") {
         gesture.current = point;
@@ -117,6 +150,9 @@ export function createEditorPointerController(options) {
         return;
       }
       if (gesture.kind === "move") {
+        if (options.pointDistance(gesture.start, point) >= options.cssPxToPt(3)) {
+          gesture.dragged = true;
+        }
         gesture.current = point;
         if (options.applyDocumentObjectPreviewTransform()) {
           await options.syncSelectCursorForPoint(point);
@@ -160,10 +196,7 @@ export function createEditorPointerController(options) {
       options.syncCanvasCursor();
     } else if (editorState.activeTool === "select") {
       await options.syncSelectCursorForPoint(point);
-    } else if (editorState.activeTool === "arrow"
-      || editorState.activeTool === "shape"
-      || editorState.activeTool === "tlc-plate"
-      || editorState.activeTool === "orbital") {
+    } else if (toolSupportsSelectionBoxMove(editorState.activeTool)) {
       await options.syncArrowAwareCursorForPoint(point);
     }
     const renderList = options.currentEditorRenderList();
@@ -187,14 +220,6 @@ export function createEditorPointerController(options) {
       options.renderEditorOverlay(options.currentEditorRenderList());
       return;
     }
-    if (editorState.activeTool === "bracket") {
-      options.setActiveBracketDragStart(point);
-    }
-    if (editorState.activeTool === "text") {
-      event.preventDefault();
-      await options.openTextEditorAt(point);
-      return;
-    }
     if (editorState.activeTool === "select") {
       event.preventDefault();
       options.viewerSvg().setPointerCapture?.(event.pointerId);
@@ -209,7 +234,7 @@ export function createEditorPointerController(options) {
           start: point,
           current: point,
           dragged: false,
-          cursor: "ns-resize",
+          cursor: "grabbing",
           hit: tlcSpotHit,
         });
         options.setActiveTlcSpotHover(tlcSpotHit);
@@ -299,6 +324,7 @@ export function createEditorPointerController(options) {
           kind: "move",
           start: point,
           current: point,
+          dragged: false,
           additive: !!event.shiftKey,
         });
         await options.syncSelectCursorForPoint(point);
@@ -315,6 +341,15 @@ export function createEditorPointerController(options) {
         additive: !!event.shiftKey,
       });
       options.renderEditorOverlay(options.currentEditorRenderList());
+      return;
+    }
+    if (editorState.activeTool === "text") {
+      event.preventDefault();
+      if (await beginSelectionBoxMove(point, event)) {
+        options.viewerSvg().setPointerCapture?.(event.pointerId);
+        return;
+      }
+      await options.openTextEditorAt(point);
       return;
     }
     event.preventDefault();
@@ -335,6 +370,9 @@ export function createEditorPointerController(options) {
         return;
       }
     }
+    if (editorState.activeTool === "arrow" && await beginSelectionBoxMove(point, event)) {
+      return;
+    }
     if (editorState.activeTool === "shape"
       || editorState.activeTool === "tlc-plate"
       || editorState.activeTool === "orbital") {
@@ -349,7 +387,7 @@ export function createEditorPointerController(options) {
             start: point,
             current: point,
             dragged: false,
-            cursor: "ns-resize",
+            cursor: "grabbing",
             hit: tlcSpotHit,
           });
           options.setActiveTlcSpotHover(tlcSpotHit);
@@ -374,13 +412,19 @@ export function createEditorPointerController(options) {
         return;
       }
     }
+    if (await beginSelectionBoxMove(point, event)) {
+      return;
+    }
+    if (editorState.activeTool === "bracket") {
+      options.setActiveBracketDragStart(point);
+    }
     await options.state().editorEngine.pointerDown(point.x, point.y, event.altKey);
     await options.syncDocumentFromEngine();
     options.renderEditorOverlay(options.currentEditorRenderList());
   }
 
   async function handleEditorPointerUp(event) {
-    if (options.editorState().activeTool === "text") {
+    if (options.editorState().activeTool === "text" && !options.activeSelectionGesture()) {
       return;
     }
     if (!options.routeEditorPointerEvents()) {
@@ -492,6 +536,34 @@ export function createEditorPointerController(options) {
       }
       return;
     }
+    if (gesture?.kind === "move") {
+      options.setActiveSelectionGesture(null);
+      if (gesture.dragged) {
+        await executeDocumentCommand(
+          {
+            type: "move-selection",
+            payload: {
+              start: gesture.start,
+              end: point,
+              altKey: event.altKey,
+            },
+          },
+          () => options.state().editorEngine.finishSelectionMove(point.x, point.y, event.altKey),
+        );
+        options.clearDocumentObjectPreviewTransform();
+        await options.syncArrowAwareCursorForPoint(point);
+        options.renderDocument();
+      } else if (options.editorState().activeTool === "select") {
+        await options.selectClickTarget(point, gesture.additive);
+        options.clearDocumentObjectPreviewTransform();
+        await options.renderSelectionOnlyUpdate(point);
+      } else {
+        options.clearDocumentObjectPreviewTransform();
+        await options.syncArrowAwareCursorForPoint(point);
+        options.renderEditorOverlay(options.currentEditorRenderList());
+      }
+      return;
+    }
     if (options.editorState().activeTool === "select") {
       options.setActiveSelectionGesture(null);
       if (!gesture) {
@@ -596,7 +668,9 @@ export function createEditorPointerController(options) {
     if (!options.isEditingRustDocument()) {
       return;
     }
-    if (options.editorState().activeTool === "select" && options.activeSelectionGesture()) {
+    if ((options.editorState().activeTool === "select"
+      || toolSupportsSelectionBoxMove(options.editorState().activeTool))
+      && options.activeSelectionGesture()) {
       return;
     }
     options.clearTlcHoverState();

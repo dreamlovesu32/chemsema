@@ -2291,7 +2291,7 @@ async function syncArrowAwareCursorForPoint(point) {
     return;
   }
   if (activeSelectionGesture?.kind === "tlc-spot-drag") {
-    viewerSvg.style.cursor = "ns-resize";
+    viewerSvg.style.cursor = "grabbing";
     return;
   }
   if (activeSelectionGesture?.kind === "move") {
@@ -2319,7 +2319,7 @@ async function syncArrowAwareCursorForPoint(point) {
     return;
   }
   if ((editorState.activeTool === "select" || editorState.activeTool === "tlc-plate") && activeTlcSpotHover) {
-    viewerSvg.style.cursor = "ns-resize";
+    viewerSvg.style.cursor = "grab";
     return;
   }
   if (editorState.activeTool === "select") {
@@ -2343,7 +2343,18 @@ async function syncArrowAwareCursorForPoint(point) {
     return;
   }
   const overSelection = !!state.editorEngine.selectionContainsPoint?.(point.x, point.y);
-  if (editorState.activeTool === "select" && overSelection) {
+  if ((editorState.activeTool === "select"
+    || editorState.activeTool === "bond"
+    || editorState.activeTool === "arrow"
+    || editorState.activeTool === "bracket"
+    || editorState.activeTool === "symbol"
+    || editorState.activeTool === "element"
+    || editorState.activeTool === "text"
+    || editorState.activeTool === "shape"
+    || editorState.activeTool === "tlc-plate"
+    || editorState.activeTool === "orbital"
+    || editorState.activeTool === "templates")
+    && overSelection) {
     viewerSvg.style.cursor = "grab";
     return;
   }
@@ -2442,7 +2453,7 @@ function refreshShapeToolIcons() {
   const hasCompleteIconSet = SHAPE_TOOL_ICON_KINDS.every((kind) => (
     shapeToolIconStylesForKind(kind).every((style) => editorState.shapeIconSvgs?.[`${kind}:${style}`])
   ));
-  if (editorState.shapeIconCacheKey === "kernel-shape-v1" && hasCompleteIconSet) {
+  if (editorState.shapeIconCacheKey === "kernel-shape-v2" && hasCompleteIconSet) {
     return;
   }
   const icons = {};
@@ -2453,7 +2464,7 @@ function refreshShapeToolIcons() {
     }
   }
   editorState.shapeIconSvgs = icons;
-  editorState.shapeIconCacheKey = "kernel-shape-v1";
+  editorState.shapeIconCacheKey = "kernel-shape-v2";
 }
 
 function refreshSymbolToolIcons() {

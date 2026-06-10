@@ -6,7 +6,18 @@ const ACS_SHAPE_CLICK_RADIUS: f64 = 7.2;
 
 impl Engine {
     pub fn shape_tool_icon_svg(kind: ShapeKind, style: ShapeStyle) -> String {
+        const ICON_SCALE: f64 = 2.0;
+        const ICON_CONTENT_SCALE: f64 = 1.2;
+        const ICON_VIEWBOX_SIZE: f64 = 24.0 * ICON_SCALE;
+        let icon_point = |x: f64, y: f64| {
+            Point::new(
+                (12.0 + (x - 12.0) * ICON_CONTENT_SCALE) * ICON_SCALE,
+                (12.0 + (y - 12.0) * ICON_CONTENT_SCALE) * ICON_SCALE,
+            )
+        };
+
         let mut engine = Engine::new();
+        engine.options.graphic_stroke_width *= ICON_SCALE;
         let mut tool = engine.state.tool.clone();
         tool.active_tool = Tool::Shape;
         tool.shape_kind = kind;
@@ -17,13 +28,13 @@ impl Engine {
         let style_id = "__shape_icon_style".to_string();
         let object_id = "__shape_icon".to_string();
         let (start, current) = match kind {
-            ShapeKind::Circle => (Point::new(12.0, 12.0), Point::new(18.2, 12.0)),
-            ShapeKind::Ellipse => (Point::new(12.0, 12.0), Point::new(19.2, 12.0)),
+            ShapeKind::Circle => (icon_point(12.0, 12.0), icon_point(18.2, 12.0)),
+            ShapeKind::Ellipse => (icon_point(12.0, 12.0), icon_point(19.2, 12.0)),
             ShapeKind::RoundRect | ShapeKind::Rect => {
-                (Point::new(5.5, 6.2), Point::new(18.5, 17.7))
+                (icon_point(5.5, 6.2), icon_point(18.5, 17.7))
             }
             ShapeKind::CrossTable | ShapeKind::TlcPlate => {
-                (Point::new(5.5, 6.2), Point::new(18.5, 17.7))
+                (icon_point(5.5, 6.2), icon_point(18.5, 17.7))
             }
         };
         let Some(object) = engine.shape_scene_object(start, current, object_id, style_id.clone())
@@ -38,7 +49,7 @@ impl Engine {
         let primitives = crate::render_document(&document);
         crate::primitives_to_svg_viewbox(
             &primitives,
-            [0.0, 0.0, 24.0, 24.0],
+            [0.0, 0.0, ICON_VIEWBOX_SIZE, ICON_VIEWBOX_SIZE],
             Some("chemcore-icon cc-shape-icon"),
         )
         .replace("#000000", "currentColor")

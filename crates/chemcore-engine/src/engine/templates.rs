@@ -51,6 +51,12 @@ struct RingEdge {
     double_placement: Option<DoubleBondPlacement>,
 }
 
+#[derive(Clone, Copy)]
+enum ChairTemplate {
+    Right,
+    Left,
+}
+
 impl Engine {
     pub(super) fn pointer_move_template(&mut self, event: PointerEvent) {
         let point = event.point();
@@ -182,9 +188,13 @@ impl Engine {
     }
 
     fn template_ring_plan(&self, drag: &TemplateDrag, point: Point) -> Option<RingPlan> {
+        let side_length = self.template_ring_bond_length();
+        if let Some(chair) = selected_chair_template(&self.state.tool.template) {
+            return self.template_chair_plan(drag, point, chair, side_length);
+        }
+
         let ring_size = selected_ring_size(&self.state.tool.template)?;
         let aromatic = self.state.tool.template == "benzene";
-        let side_length = self.template_ring_bond_length();
         match &drag.anchor {
             TemplateAnchor::Endpoint(anchor) => {
                 let angle = if drag.has_dragged {
@@ -247,6 +257,43 @@ impl Engine {
                     side_length,
                 ))
             }
+        }
+    }
+
+    fn template_chair_plan(
+        &self,
+        drag: &TemplateDrag,
+        point: Point,
+        chair: ChairTemplate,
+        side_length: f64,
+    ) -> Option<RingPlan> {
+        match &drag.anchor {
+            TemplateAnchor::Endpoint(anchor) => {
+                let angle = if drag.has_dragged {
+                    nearest_angle(angle_between(anchor.point, point), GLOBAL_SNAP_ANGLES)
+                } else {
+                    endpoint_click_ring_axis_angle(&self.state.document, anchor)
+                };
+                Some(chair_plan_from_anchor(anchor, angle, chair, side_length))
+            }
+            TemplateAnchor::Center(center) => {
+                if drag.has_dragged {
+                    let angle = nearest_angle(angle_between(*center, point), GLOBAL_SNAP_ANGLES);
+                    Some(chair_plan_from_anchor(
+                        &BondAnchor {
+                            node_id: None,
+                            point: *center,
+                            label_anchor: None,
+                        },
+                        angle,
+                        chair,
+                        side_length,
+                    ))
+                } else {
+                    Some(centered_chair_plan(*center, chair, side_length))
+                }
+            }
+            TemplateAnchor::Bond { .. } => None,
         }
     }
 
@@ -440,6 +487,14 @@ fn selected_ring_size(template: &str) -> Option<usize> {
     }
 }
 
+fn selected_chair_template(template: &str) -> Option<ChairTemplate> {
+    match template {
+        "chair-6-right" => Some(ChairTemplate::Right),
+        "chair-6-left" => Some(ChairTemplate::Left),
+        _ => None,
+    }
+}
+
 fn endpoint_click_ring_axis_angle(document: &ChemcoreDocument, anchor: &BondAnchor) -> f64 {
     let Some(node_id) = anchor.node_id.as_deref() else {
         return crate::default_angle_for_anchor(document, anchor);
@@ -453,6 +508,123 @@ fn endpoint_click_ring_axis_angle(document: &ChemcoreDocument, anchor: &BondAnch
     } else {
         crate::default_angle_for_anchor(document, anchor)
     }
+}
+
+fn chair_plan_from_anchor(
+    anchor: &BondAnchor,
+    axis_angle: f64,
+    chair: ChairTemplate,
+    side_length: f64,
+) -> RingPlan {
+    let vertices = chair_vertices_from_anchor(anchor.point, axis_angle, chair, side_length)
+        .into_iter()
+        .enumerate()
+        .map(|(index, point)| RingVertex {
+            point,
+            node_id: if index == 0 {
+                anchor.node_id.clone()
+            } else {
+                None
+            },
+        })
+        .collect::<Vec<_>>();
+    chair_ring_plan(vertices)
+}
+
+fn centered_chair_plan(center: Point, chair: ChairTemplate, side_length: f64) -> RingPlan {
+    let mut points = chair_local_vertices(chair)
+        .into_iter()
+        .map(|(x, y)| Point::new(x * side_length, y * side_length))
+        .collect::<Vec<_>>();
+    let visual_center = points_center(&points);
+    for point in &mut points {
+        point.x += center.x - visual_center.x;
+        point.y += center.y - visual_center.y;
+    }
+    chair_ring_plan(
+        points
+            .into_iter()
+            .map(|point| RingVertex {
+                point,
+                node_id: None,
+            })
+            .collect(),
+    )
+}
+
+fn chair_ring_plan(vertices: Vec<RingVertex>) -> RingPlan {
+    let edges = (0..vertices.len())
+        .map(|index| RingEdge {
+            begin: index,
+            end: (index + 1) % vertices.len(),
+            order: 1,
+            double_placement: None,
+        })
+        .collect();
+    RingPlan {
+        vertices,
+        edges,
+        attach_edges: Vec::new(),
+    }
+}
+
+fn chair_vertices_from_anchor(
+    anchor: Point,
+    axis_angle: f64,
+    chair: ChairTemplate,
+    side_length: f64,
+) -> Vec<Point> {
+    let local = chair_local_vertices(chair);
+    let local_axis = chair_local_anchor_axis_angle(&local);
+    let rotation = (axis_angle - local_axis).to_radians();
+    let cos = rotation.cos();
+    let sin = rotation.sin();
+    local
+        .iter()
+        .map(|(x, y)| {
+            let scaled_x = x * side_length;
+            let scaled_y = y * side_length;
+            Point::new(
+                anchor.x + scaled_x * cos - scaled_y * sin,
+                anchor.y + scaled_x * sin + scaled_y * cos,
+            )
+        })
+        .collect()
+}
+
+fn chair_local_vertices(chair: ChairTemplate) -> [(f64, f64); 6] {
+    match chair {
+        ChairTemplate::Right => [
+            (0.0, 0.0),
+            (0.5, 0.866),
+            (1.467_667, 0.612_667),
+            (2.429, 0.887_333),
+            (1.929, 0.021_333),
+            (0.961_667, 0.274_667),
+        ],
+        ChairTemplate::Left => [
+            (0.0, 0.0),
+            (-0.5, 0.866),
+            (0.461_333, 0.591_333),
+            (1.428_667, 0.844_667),
+            (1.929, -0.021_333),
+            (0.967_333, 0.253_333),
+        ],
+    }
+}
+
+fn chair_local_anchor_axis_angle(local: &[(f64, f64); 6]) -> f64 {
+    let first = crate::Vector::new(local[1].0 - local[0].0, local[1].1 - local[0].1).normalized();
+    let last = crate::Vector::new(local[5].0 - local[0].0, local[5].1 - local[0].1).normalized();
+    normalize_angle((first.y + last.y).atan2(first.x + last.x).to_degrees())
+}
+
+fn points_center(points: &[Point]) -> Point {
+    let count = points.len().max(1) as f64;
+    Point::new(
+        points.iter().map(|point| point.x).sum::<f64>() / count,
+        points.iter().map(|point| point.y).sum::<f64>() / count,
+    )
 }
 
 fn endpoint_ring_plan(

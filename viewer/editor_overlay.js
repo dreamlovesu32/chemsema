@@ -12,8 +12,42 @@ const SELECTION_ROTATE_HANDLE_OFFSET_SCREEN_PX = 18;
 const SELECTION_CENTER_CROSS_HALF_SCREEN_PX = 5;
 
 export function createEditorOverlayRenderer(options) {
-  function formatTlcRfValue(rf) {
-    return `Rf ${Number(rf || 0).toFixed(2)}`;
+  function appendTlcRfLabel(overlay, hit) {
+    if (!hit?.center) {
+      return;
+    }
+    const rfValue = Number(hit.rf || 0).toFixed(2).replace(/\.?0+$/, "");
+    const labelX = hit.center.x + options.screenPxToWorld(10);
+    const labelY = hit.center.y - options.screenPxToWorld(10);
+    const paddingX = options.screenPxToWorld(3);
+    const paddingY = options.screenPxToWorld(2);
+    const labelWidth = options.screenPxToWorld(30);
+    const labelHeight = options.screenPxToWorld(10);
+    overlay.appendChild(makeSvgNode("rect", {
+      x: labelX - paddingX,
+      y: labelY - labelHeight + paddingY,
+      width: labelWidth + paddingX * 2,
+      height: labelHeight,
+      rx: options.screenPxToWorld(3),
+      ry: options.screenPxToWorld(3),
+      class: "tlc-spot-rf-box",
+      fill: "#ffffff",
+      "data-role": "tlc-spot-rf-box",
+    }));
+    const text = makeSvgNode("text", {
+      x: labelX,
+      y: labelY,
+      class: "tlc-spot-rf-label",
+      "data-role": "tlc-spot-rf-label",
+    });
+    text.appendChild(makeSvgNode("tspan", {})).textContent = "R";
+    text.appendChild(makeSvgNode("tspan", {
+      class: "tlc-spot-rf-subscript",
+    })).textContent = "f";
+    text.appendChild(makeSvgNode("tspan", {
+      dx: options.screenPxToWorld(2),
+    })).textContent = ` = ${rfValue}`;
+    overlay.appendChild(text);
   }
 
   function tlcSpotSupportsOverlay(hit) {
@@ -33,34 +67,7 @@ export function createEditorOverlayRenderer(options) {
     if (!showLabel || !hit.center) {
       return;
     }
-    const label = formatTlcRfValue(hit.rf);
-    const labelX = hit.center.x + options.screenPxToWorld(10);
-    const labelY = hit.center.y - options.screenPxToWorld(10);
-    const paddingX = options.screenPxToWorld(6);
-    const paddingY = options.screenPxToWorld(4);
-    const labelWidth = Math.max(
-      options.screenPxToWorld(44),
-      options.screenPxToWorld(label.length * 7),
-    );
-    const labelHeight = options.screenPxToWorld(20);
-    overlay.appendChild(makeSvgNode("rect", {
-      x: labelX - paddingX,
-      y: labelY - labelHeight + paddingY,
-      width: labelWidth + paddingX * 2,
-      height: labelHeight,
-      rx: options.screenPxToWorld(4),
-      ry: options.screenPxToWorld(4),
-      class: "editor-selection-text-box",
-      fill: "#ffffff",
-      "data-role": "tlc-spot-rf-box",
-    }));
-    overlay.appendChild(makeSvgNode("text", {
-      x: labelX,
-      y: labelY,
-      class: "editor-selection-rotate-angle",
-      "data-role": "tlc-spot-rf-label",
-    }));
-    overlay.lastChild.textContent = label;
+    appendTlcRfLabel(overlay, hit);
   }
 
   function currentSelectionRotateHandle(renderList = options.currentEditorRenderList()) {
@@ -592,36 +599,7 @@ export function createEditorOverlayRenderer(options) {
     } else if ((editorState.activeTool === "select" || editorState.activeTool === "tlc-plate")
       && activeSelectionGesture?.kind === "tlc-spot-drag") {
       const hit = activeSelectionGesture.hit;
-      if (hit?.center) {
-        const label = formatTlcRfValue(hit.rf);
-        const labelX = hit.center.x + options.screenPxToWorld(10);
-        const labelY = hit.center.y - options.screenPxToWorld(10);
-        const paddingX = options.screenPxToWorld(6);
-        const paddingY = options.screenPxToWorld(4);
-        const labelWidth = Math.max(
-          options.screenPxToWorld(44),
-          options.screenPxToWorld(label.length * 7),
-        );
-        const labelHeight = options.screenPxToWorld(20);
-        overlay.appendChild(makeSvgNode("rect", {
-          x: labelX - paddingX,
-          y: labelY - labelHeight + paddingY,
-          width: labelWidth + paddingX * 2,
-          height: labelHeight,
-          rx: options.screenPxToWorld(4),
-          ry: options.screenPxToWorld(4),
-          class: "editor-selection-text-box",
-          fill: "#ffffff",
-          "data-role": "tlc-spot-rf-box",
-        }));
-        overlay.appendChild(makeSvgNode("text", {
-          x: labelX,
-          y: labelY,
-          class: "editor-selection-rotate-angle",
-          "data-role": "tlc-spot-rf-label",
-        }));
-        overlay.lastChild.textContent = label;
-      }
+      appendTlcRfLabel(overlay, hit);
     } else if ((editorState.activeTool === "select" || editorState.activeTool === "tlc-plate")
       && !activeSelectionGesture
       && options.activeTlcLaneHover()) {

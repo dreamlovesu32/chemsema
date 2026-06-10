@@ -259,9 +259,74 @@ function generatedRingSvg(sides, aromatic = false) {
     7: [point(12, 4.1), point(18.2, 7), point(20.2, 13.7), point(16.4, 19.6), point(7.6, 19.6), point(3.8, 13.7), point(5.8, 7)],
     8: [point(9, 4), point(15, 4), point(20, 9), point(20, 15), point(15, 20), point(9, 20), point(4, 15), point(4, 9)],
   };
-  const ring = polygon(pointsBySide[sides] || pointsBySide[6], "cc-ring");
-  const aromaticMark = aromatic ? `<circle class="cc-ring" cx="12" cy="12" r="4.35"/>` : "";
+  const points = pointsBySide[sides] || pointsBySide[6];
+  const ring = polygon(points, "cc-ring");
+  const aromaticMark = aromatic ? benzeneDoubleBondSvg(points) : "";
   return iconSvg(`${ring}${aromaticMark}`, "cc-ring-icon");
+}
+
+function benzeneDoubleBondSvg(points) {
+  const center = pointsCenter(points);
+  return [0, 2, 4]
+    .map((index) => insetBondLine(points[index], points[(index + 1) % points.length], center, 2.2, 0.2))
+    .join("");
+}
+
+function insetBondLine(begin, end, center, inset, trim) {
+  const edge = sub(end, begin);
+  const mid = point((begin.x + end.x) * 0.5, (begin.y + end.y) * 0.5);
+  const inward = unit(sub(center, mid));
+  const start = add(add(begin, mul(edge, trim)), mul(inward, inset));
+  const stop = add(add(end, mul(edge, -trim)), mul(inward, inset));
+  return linePath(start, stop, "cc-ring");
+}
+
+function pointsCenter(points) {
+  const count = points.length || 1;
+  return point(
+    points.reduce((sum, item) => sum + item.x, 0) / count,
+    points.reduce((sum, item) => sum + item.y, 0) / count,
+  );
+}
+
+const CHAIR_TEMPLATE_POINTS = {
+  right: [
+    point(0, 0),
+    point(0.5, 0.866),
+    point(1.4677, 0.6127),
+    point(2.429, 0.8873),
+    point(1.929, 0.0213),
+    point(0.9617, 0.2747),
+  ],
+  left: [
+    point(0, 0),
+    point(-0.5, 0.866),
+    point(0.4613, 0.5913),
+    point(1.4287, 0.8447),
+    point(1.929, -0.0213),
+    point(0.9673, 0.2533),
+  ],
+};
+
+function generatedChairSvg(kind = "right") {
+  const fitted = fitPointsToIcon(CHAIR_TEMPLATE_POINTS[kind] || CHAIR_TEMPLATE_POINTS.right, 3.6);
+  return iconSvg(polyline([...fitted, fitted[0]], "cc-ring"), "cc-ring-icon cc-chair-icon");
+}
+
+function fitPointsToIcon(points, padding = 4) {
+  const minX = Math.min(...points.map((item) => item.x));
+  const minY = Math.min(...points.map((item) => item.y));
+  const maxX = Math.max(...points.map((item) => item.x));
+  const maxY = Math.max(...points.map((item) => item.y));
+  const width = Math.max(maxX - minX, 0.001);
+  const height = Math.max(maxY - minY, 0.001);
+  const scale = Math.min((24 - padding * 2) / width, (24 - padding * 2) / height);
+  const offsetX = (24 - width * scale) * 0.5;
+  const offsetY = (24 - height * scale) * 0.5;
+  return points.map((item) => point(
+    offsetX + (item.x - minX) * scale,
+    offsetY + (item.y - minY) * scale,
+  ));
 }
 
 function generatedBracketIconSvg(kind = "round") {
@@ -350,7 +415,7 @@ function commandIconSvg(name) {
     text: iconSvg(`<path class="cc-stroke" d="M7.5 19 12 5.1 16.5 19"/><path class="cc-stroke" d="M9 14.1h6"/>`, "cc-tool-icon"),
     arrow: straightArrowSvg(),
     shape: iconSvg(`<rect class="cc-shape cc-empty-fill" x="5.5" y="5.5" width="10.2" height="10.2"/><circle class="cc-shape cc-empty-fill" cx="16.8" cy="16.8" r="3.45"/>`, "cc-tool-icon"),
-    "tlc-plate": iconSvg(`<rect class="cc-shape cc-empty-fill" x="5.3" y="4.8" width="13.4" height="14.2"/><path class="cc-shape" d="M5.3 8.5h13.4M5.3 15.6h13.4" stroke-dasharray="1.5 1.5"/><circle class="cc-shape-fill" cx="8.9" cy="12.9" r="1.2"/><circle class="cc-shape-fill" cx="12" cy="10.9" r="1.2"/><circle class="cc-shape-fill" cx="15.1" cy="14.1" r="1.2"/>`, "cc-tool-icon"),
+    "tlc-plate": iconSvg(`<rect class="cc-shape cc-empty-fill" x="8.2" y="3.8" width="7.6" height="15.2" rx="0.55"/><path class="cc-shape" d="M9.4 7.1h5.2" stroke-dasharray="1.05 1.05"/><path class="cc-shape" d="M9.4 16.25h5.2"/><circle class="cc-shape-fill" cx="10.15" cy="14.65" r="0.55"/><circle class="cc-shape-fill" cx="12" cy="12.2" r="0.68"/><circle class="cc-shape-fill" cx="13.85" cy="9.95" r="0.55"/>`, "cc-tool-icon"),
     orbital: iconSvg(`<path class="cc-shape cc-empty-fill" d="M12 4c3.35 0 5.35 2.67 5.35 6.25 0 3.26-2 6.17-5.35 9.5-3.35-3.33-5.35-6.24-5.35-9.5C6.65 6.67 8.65 4 12 4Z"/><path class="cc-shape" d="M12 4c0 0 2 2.55 2 6.25S12 19.75 12 19.75"/>`, "cc-tool-icon"),
   };
   return icons[name] || "";
@@ -435,6 +500,7 @@ export function syncPrimaryToolButtons(editorState, root = document) {
     button.classList.toggle("is-active", button.dataset.tool === activeTool);
   });
   syncPrimarySelectToolButton(editorState, root);
+  syncPrimaryTextToolButton(editorState, root);
   syncPrimaryBondToolButton(editorState, root);
   syncPrimaryArrowToolButton(editorState, root);
   syncPrimaryTemplateToolButton(editorState, root);
@@ -524,6 +590,7 @@ export const BOND_TOOL_ICON_TYPES = [
 ];
 
 export const TEXT_FORMAT_ICON_TYPES = [
+  "tool",
   "bold",
   "italic",
   "underline",
@@ -620,6 +687,19 @@ function syncPrimaryTemplateToolButton(editorState, root) {
   templateButton.innerHTML = spec.svg;
   templateButton.setAttribute("aria-label", spec.title);
   templateButton.setAttribute("title", spec.title);
+}
+
+function syncPrimaryTextToolButton(editorState, root) {
+  const textButton = root.querySelector('.tool-button[data-tool="text"]');
+  if (!textButton) {
+    return;
+  }
+  const svg = textFormatIconSvg("tool", editorState);
+  if (svg) {
+    textButton.innerHTML = svg;
+  }
+  textButton.setAttribute("aria-label", "Text");
+  textButton.setAttribute("title", "Text");
 }
 
 function syncPrimarySymbolToolButton(editorState, root) {
@@ -1558,9 +1638,19 @@ function ringSvg(sides, aromatic = false) {
   return generatedRingSvg(sides, aromatic);
 }
 
+function chairSvg(kind = "right") {
+  return generatedChairSvg(kind);
+}
+
 function templateIconSpec(template = "ring-6") {
   if (template === "benzene") {
     return { title: "Benzene ring", svg: ringSvg(6, true) };
+  }
+  if (template === "chair-6-right") {
+    return { title: "Chair cyclohexane", svg: chairSvg("right") };
+  }
+  if (template === "chair-6-left") {
+    return { title: "Flipped chair cyclohexane", svg: chairSvg("left") };
   }
   const match = /^ring-(\d+)$/.exec(template || "");
   const sides = Number(match?.[1] || 6);
@@ -1575,6 +1665,8 @@ function templatesToolbarHtml(editorState) {
     toolbarButton("ring-6", "6-membered ring", ringSvg(6), editorState.template === "ring-6"),
     toolbarButton("ring-7", "7-membered ring", ringSvg(7), editorState.template === "ring-7"),
     toolbarButton("ring-8", "8-membered ring", ringSvg(8), editorState.template === "ring-8"),
+    toolbarButton("chair-6-right", "Chair cyclohexane", chairSvg("right"), editorState.template === "chair-6-right"),
+    toolbarButton("chair-6-left", "Flipped chair cyclohexane", chairSvg("left"), editorState.template === "chair-6-left"),
     toolbarButton("benzene", "Benzene ring", ringSvg(6, true), editorState.template === "benzene"),
   ].join("");
 }
