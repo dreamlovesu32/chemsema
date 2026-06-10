@@ -32,6 +32,7 @@ export const wasmengine_bondToolIconSvg: (a: number, b: number, c: number, d: nu
 export const wasmengine_canRedo: (a: number) => number;
 export const wasmengine_canUndo: (a: number) => number;
 export const wasmengine_centerSelectionOnPage: (a: number) => number;
+export const wasmengine_chainToolIconSvg: (a: number, b: number) => [number, number];
 export const wasmengine_clearInteraction: (a: number) => void;
 export const wasmengine_clearSelection: (a: number) => number;
 export const wasmengine_clipboardDocumentJson: (a: number) => [number, number, number, number];

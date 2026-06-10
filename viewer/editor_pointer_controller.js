@@ -33,7 +33,7 @@ export function createEditorPointerController(options) {
     if (tool === "element") {
       return "add-element";
     }
-    if (tool === "templates") {
+    if (tool === "templates" || tool === "chain") {
       return "insert-template";
     }
     if (tool === "delete") {
@@ -52,7 +52,8 @@ export function createEditorPointerController(options) {
       || tool === "shape"
       || tool === "tlc-plate"
       || tool === "orbital"
-      || tool === "templates";
+      || tool === "templates"
+      || tool === "chain";
   }
 
   async function beginSelectionBoxMove(point, event) {

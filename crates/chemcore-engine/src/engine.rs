@@ -776,6 +776,28 @@ impl Engine {
                 stroke_width: PREVIEW_END_STROKE_WIDTH,
             });
         }
+        if let Some((point, count)) = self.template_chain_count_label() {
+            out.push(RenderPrimitive::Text {
+                role: RenderRole::DocumentText,
+                object_id: Some("__preview_chain_count".to_string()),
+                node_id: None,
+                x: point.x,
+                y: point.y,
+                baseline_offset: None,
+                dominant_baseline: Some("central".to_string()),
+                text: count.to_string(),
+                font_size: 8.0,
+                font_family: Some("Arial".to_string()),
+                fill: Some("#000000".to_string()),
+                text_anchor: Some("middle".to_string()),
+                line_height: None,
+                preserve_lines: false,
+                box_width: None,
+                runs: Vec::new(),
+                rotate: 0.0,
+                rotate_center: None,
+            });
+        }
         out
     }
 

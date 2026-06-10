@@ -34,6 +34,7 @@ export class WasmEngine {
     canRedo(): boolean;
     canUndo(): boolean;
     centerSelectionOnPage(): boolean;
+    chainToolIconSvg(stroke_width: number): string;
     clearInteraction(): void;
     clearSelection(): boolean;
     clipboardDocumentJson(): string | undefined;
@@ -159,6 +160,7 @@ export interface InitOutput {
     readonly wasmengine_canRedo: (a: number) => number;
     readonly wasmengine_canUndo: (a: number) => number;
     readonly wasmengine_centerSelectionOnPage: (a: number) => number;
+    readonly wasmengine_chainToolIconSvg: (a: number, b: number) => [number, number];
     readonly wasmengine_clearInteraction: (a: number) => void;
     readonly wasmengine_clearSelection: (a: number) => number;
     readonly wasmengine_clipboardDocumentJson: (a: number) => [number, number, number, number];

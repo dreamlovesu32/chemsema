@@ -390,6 +390,22 @@ export class WasmEngine {
         const ret = wasm.wasmengine_centerSelectionOnPage(this.__wbg_ptr);
         return ret !== 0;
     }
+    /**
+     * @param {number} stroke_width
+     * @returns {string}
+     */
+    chainToolIconSvg(stroke_width) {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmengine_chainToolIconSvg(this.__wbg_ptr, stroke_width);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
     clearInteraction() {
         wasm.wasmengine_clearInteraction(this.__wbg_ptr);
     }

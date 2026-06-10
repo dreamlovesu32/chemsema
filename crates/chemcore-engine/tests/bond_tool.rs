@@ -2305,6 +2305,119 @@ fn template_drag_on_endpoint_keeps_live_focus_on_connection_anchor() {
 }
 
 #[test]
+fn template_chain_drag_on_blank_canvas_creates_open_zigzag() {
+    let mut engine = Engine::new();
+    let start = px_point(300.0, 260.0);
+    let target = start.translated(direction_from_angle(0.0).scaled(DEFAULT_BOND_LENGTH * 4.1));
+
+    engine.set_tool_state(templates_tool("chain"));
+    drag(&mut engine, start, target);
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    assert_eq!(entry.fragment.nodes.len(), 5);
+    assert_eq!(entry.fragment.bonds.len(), 4);
+    for bond in &entry.fragment.bonds {
+        let begin = node_world_point(&engine, &bond.begin);
+        let end = node_world_point(&engine, &bond.end);
+        assert!((begin.distance(end) - DEFAULT_BOND_LENGTH).abs() < 0.001);
+    }
+    assert!(!entry.fragment.bonds.iter().any(|bond| {
+        (bond.begin == "n_1" && bond.end == "n_5") || (bond.begin == "n_5" && bond.end == "n_1")
+    }));
+    let first_angle = angle_between(
+        node_world_point(&engine, "n_1"),
+        node_world_point(&engine, "n_2"),
+    );
+    let second_angle = angle_between(
+        node_world_point(&engine, "n_2"),
+        node_world_point(&engine, "n_3"),
+    );
+    assert!(chemcore_engine::angular_distance(first_angle, 30.0) < 0.2);
+    assert!(chemcore_engine::angular_distance(second_angle, 330.0) < 0.2);
+}
+
+#[test]
+fn template_chain_drag_on_endpoint_reuses_anchor_node() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, px(300.0), px(260.0));
+
+    let endpoint = node_world_point(&engine, "n_2");
+    let target = endpoint.translated(direction_from_angle(45.0).scaled(DEFAULT_BOND_LENGTH * 3.1));
+    engine.set_tool_state(templates_tool("chain"));
+    drag(&mut engine, endpoint, target);
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    assert_eq!(entry.fragment.nodes.len(), 5);
+    assert_eq!(entry.fragment.bonds.len(), 4);
+    assert_eq!(attached_node_points(&engine, "n_2").len(), 2);
+    assert_no_duplicate_node_positions(&engine);
+}
+
+#[test]
+fn template_chain_click_without_drag_does_not_insert_chain() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(templates_tool("chain"));
+
+    click(&mut engine, px(300.0), px(260.0));
+
+    assert_eq!(fragment_counts(&engine), (0, 0));
+}
+
+#[test]
+fn template_chain_drag_preview_shows_terminal_count_label() {
+    let mut engine = Engine::new();
+    let start = px_point(300.0, 260.0);
+    let target = start.translated(direction_from_angle(0.0).scaled(DEFAULT_BOND_LENGTH * 3.1));
+    engine.set_tool_state(templates_tool("chain"));
+
+    engine.pointer_down(PointerEvent {
+        x: start.x,
+        y: start.y,
+        button: Some(0),
+        alt_key: false,
+    });
+    engine.pointer_move(PointerEvent {
+        x: target.x,
+        y: target.y,
+        button: None,
+        alt_key: false,
+    });
+
+    let preview_label = engine
+        .render_list()
+        .into_iter()
+        .find_map(|primitive| match primitive {
+            RenderPrimitive::Text {
+                object_id: Some(object_id),
+                text,
+                font_size,
+                ..
+            } if object_id == "__preview_chain_count" => Some((text, font_size)),
+            _ => None,
+        })
+        .expect("chain drag should show terminal count label");
+    assert_eq!(preview_label.0, "4");
+    assert_eq!(preview_label.1, 8.0);
+
+    engine.pointer_up(PointerEvent {
+        x: target.x,
+        y: target.y,
+        button: Some(0),
+        alt_key: false,
+    });
+    assert!(engine.render_list().into_iter().all(|primitive| {
+        !matches!(
+            primitive,
+            RenderPrimitive::Text {
+                object_id: Some(object_id),
+                ..
+            } if object_id == "__preview_chain_count"
+        )
+    }));
+}
+
+#[test]
 fn template_click_on_blank_canvas_creates_regular_ring() {
     let mut engine = Engine::new();
     let anchor = px_point(300.0, 260.0);

@@ -58,6 +58,13 @@ enum ChairTemplate {
 }
 
 impl Engine {
+    pub fn chain_tool_icon_svg(stroke_width: f64) -> String {
+        let stroke_width = stroke_width.max(0.1);
+        format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" class="chemcore-icon cc-tool-icon cc-kernel-chain-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.2 14.5 L8.4 9.8 L12.6 14.5 L16.8 9.8" fill="none" stroke="currentColor" stroke-width="{stroke_width:.3}" stroke-linecap="butt" stroke-linejoin="miter"/><text x="18.2" y="18.2" text-anchor="middle" style="font-family:'Times New Roman',serif;font-size:6.2px;font-style:italic;fill:currentColor;stroke:none">n</text></svg>"#
+        )
+    }
+
     pub(super) fn pointer_move_template(&mut self, event: PointerEvent) {
         let point = event.point();
         if let Some(mut drag) = self.template_drag.take() {
@@ -101,6 +108,7 @@ impl Engine {
         self.drag = None;
         self.selection_drag = None;
         self.state.selection = crate::SelectionState::default();
+        let is_chain = selected_chain_template(&self.state.tool.template);
         if let Some(endpoint) = hit_test_endpoint(&self.state.document, point, ENDPOINT_HIT_RADIUS)
         {
             self.template_drag = Some(TemplateDrag {
@@ -115,23 +123,25 @@ impl Engine {
             });
             return;
         }
-        if let Some(bond) = hit_test_bond(&self.state.document, point, BOND_HIT_RADIUS) {
-            let Some((begin_id, end_id)) = self.bond_node_ids(&bond.bond_id) else {
+        if !is_chain {
+            if let Some(bond) = hit_test_bond(&self.state.document, point, BOND_HIT_RADIUS) {
+                let Some((begin_id, end_id)) = self.bond_node_ids(&bond.bond_id) else {
+                    return;
+                };
+                self.template_drag = Some(TemplateDrag {
+                    start: point,
+                    current: point,
+                    anchor: TemplateAnchor::Bond {
+                        bond_id: bond.bond_id,
+                        begin_id,
+                        end_id,
+                        begin: bond.begin,
+                        end: bond.end,
+                    },
+                    has_dragged: false,
+                });
                 return;
-            };
-            self.template_drag = Some(TemplateDrag {
-                start: point,
-                current: point,
-                anchor: TemplateAnchor::Bond {
-                    bond_id: bond.bond_id,
-                    begin_id,
-                    end_id,
-                    begin: bond.begin,
-                    end: bond.end,
-                },
-                has_dragged: false,
-            });
-            return;
+            }
         }
         self.template_drag = Some(TemplateDrag {
             start: point,
@@ -187,8 +197,27 @@ impl Engine {
         Some(document)
     }
 
+    pub(super) fn template_chain_count_label(&self) -> Option<(Point, usize)> {
+        let drag = self.template_drag.as_ref()?;
+        if !drag.has_dragged || !selected_chain_template(&self.state.tool.template) {
+            return None;
+        }
+        let plan = self.template_ring_plan(drag, drag.current)?;
+        let count = plan.vertices.len();
+        let end = plan.vertices.last()?.point;
+        let previous = plan
+            .vertices
+            .get(plan.vertices.len().saturating_sub(2))
+            .map(|vertex| vertex.point)
+            .unwrap_or(end);
+        Some((chain_count_label_point(previous, end), count))
+    }
+
     fn template_ring_plan(&self, drag: &TemplateDrag, point: Point) -> Option<RingPlan> {
         let side_length = self.template_ring_bond_length();
+        if selected_chain_template(&self.state.tool.template) {
+            return self.template_chain_plan(drag, point, side_length);
+        }
         if let Some(chair) = selected_chair_template(&self.state.tool.template) {
             return self.template_chair_plan(drag, point, chair, side_length);
         }
@@ -293,6 +322,32 @@ impl Engine {
                     Some(centered_chair_plan(*center, chair, side_length))
                 }
             }
+            TemplateAnchor::Bond { .. } => None,
+        }
+    }
+
+    fn template_chain_plan(
+        &self,
+        drag: &TemplateDrag,
+        point: Point,
+        side_length: f64,
+    ) -> Option<RingPlan> {
+        if !drag.has_dragged {
+            return None;
+        }
+        match &drag.anchor {
+            TemplateAnchor::Endpoint(anchor) => {
+                Some(chain_plan_from_anchor(anchor, point, side_length))
+            }
+            TemplateAnchor::Center(center) => Some(chain_plan_from_anchor(
+                &BondAnchor {
+                    node_id: None,
+                    point: *center,
+                    label_anchor: None,
+                },
+                point,
+                side_length,
+            )),
             TemplateAnchor::Bond { .. } => None,
         }
     }
@@ -493,6 +548,94 @@ fn selected_chair_template(template: &str) -> Option<ChairTemplate> {
         "chair-6-left" => Some(ChairTemplate::Left),
         _ => None,
     }
+}
+
+fn selected_chain_template(template: &str) -> bool {
+    template == "chain"
+}
+
+fn chain_plan_from_anchor(anchor: &BondAnchor, point: Point, side_length: f64) -> RingPlan {
+    let axis_angle = nearest_angle(angle_between(anchor.point, point), GLOBAL_SNAP_ANGLES);
+    let distance = anchor.point.distance(point);
+    let bond_count = (distance / side_length).round().max(1.0) as usize;
+    let points = chain_points_for_cursor(anchor.point, point, axis_angle, bond_count, side_length);
+    let vertices = points
+        .into_iter()
+        .enumerate()
+        .map(|(index, point)| RingVertex {
+            point,
+            node_id: if index == 0 {
+                anchor.node_id.clone()
+            } else {
+                None
+            },
+        })
+        .collect::<Vec<_>>();
+    let edges = (0..vertices.len().saturating_sub(1))
+        .map(|index| RingEdge {
+            begin: index,
+            end: index + 1,
+            order: 1,
+            double_placement: None,
+        })
+        .collect();
+    RingPlan {
+        vertices,
+        edges,
+        attach_edges: Vec::new(),
+    }
+}
+
+fn chain_points_for_cursor(
+    start: Point,
+    cursor: Point,
+    axis_angle: f64,
+    bond_count: usize,
+    side_length: f64,
+) -> Vec<Point> {
+    let up = zigzag_chain_points(start, axis_angle, 1.0, bond_count, side_length);
+    let down = zigzag_chain_points(start, axis_angle, -1.0, bond_count, side_length);
+    let up_distance = up
+        .last()
+        .map_or(f64::INFINITY, |point| point.distance(cursor));
+    let down_distance = down
+        .last()
+        .map_or(f64::INFINITY, |point| point.distance(cursor));
+    if down_distance < up_distance {
+        down
+    } else {
+        up
+    }
+}
+
+fn zigzag_chain_points(
+    start: Point,
+    axis_angle: f64,
+    phase: f64,
+    bond_count: usize,
+    side_length: f64,
+) -> Vec<Point> {
+    let mut points = Vec::with_capacity(bond_count + 1);
+    points.push(start);
+    let mut current = start;
+    for index in 0..bond_count {
+        let sign = if index % 2 == 0 { phase } else { -phase };
+        let segment_angle = axis_angle + sign * 30.0;
+        current = current.translated(direction_from_angle(segment_angle).scaled(side_length));
+        points.push(current);
+    }
+    points
+}
+
+fn chain_count_label_point(previous: Point, end: Point) -> Point {
+    let dx = end.x - previous.x;
+    let dy = end.y - previous.y;
+    let length = (dx * dx + dy * dy).sqrt().max(crate::EPSILON);
+    let ux = dx / length;
+    let uy = dy / length;
+    let nx = -uy;
+    let ny = ux;
+    Point::new(end.x + ux * 2.0 - nx * 4.0, end.y + uy * 2.0 - ny * 4.0)
 }
 
 fn endpoint_click_ring_axis_angle(document: &ChemcoreDocument, anchor: &BondAnchor) -> f64 {

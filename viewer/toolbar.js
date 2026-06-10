@@ -427,6 +427,11 @@ function elementIconSvg() {
   `, "cc-tool-icon cc-element-icon");
 }
 
+function chainToolIconSvg(editorState = null) {
+  return editorState?.chainIconSvg
+    || iconSvg(`<path class="cc-stroke" d="M4.2 14.5 8.4 9.8 12.6 14.5 16.8 9.8"/><text x="18.2" y="18.2" text-anchor="middle" style="font-family:'Times New Roman',serif;font-size:6.2px;font-style:italic">n</text>`, "cc-tool-icon");
+}
+
 export function syncPrimaryChromeIcons(root = document) {
   for (const button of root.querySelectorAll(".icon-button[data-command]")) {
     const svg = commandIconSvg(button.dataset.command);
@@ -449,6 +454,7 @@ export function syncPrimaryChromeIcons(root = document) {
     ["tlc-plate", commandIconSvg("tlc-plate")],
     ["orbital", commandIconSvg("orbital")],
     ["templates", generatedRingSvg(6)],
+    ["chain", chainToolIconSvg()],
   ]) {
     const button = root.querySelector(`.tool-button[data-tool="${tool}"]`);
     if (button && svg) {
@@ -491,6 +497,9 @@ export function renderSecondaryToolbarHtml(editorState) {
   if (editorState.activeTool === "templates") {
     return templatesToolbarHtml(editorState);
   }
+  if (editorState.activeTool === "chain") {
+    return "";
+  }
   return selectToolbarHtml(editorState);
 }
 
@@ -504,6 +513,7 @@ export function syncPrimaryToolButtons(editorState, root = document) {
   syncPrimaryBondToolButton(editorState, root);
   syncPrimaryArrowToolButton(editorState, root);
   syncPrimaryTemplateToolButton(editorState, root);
+  syncPrimaryChainToolButton(editorState, root);
   syncPrimarySymbolToolButton(editorState, root);
   syncPrimaryElementToolButton(editorState, root);
   syncPrimaryShapeToolButton(editorState, root);
@@ -687,6 +697,16 @@ function syncPrimaryTemplateToolButton(editorState, root) {
   templateButton.innerHTML = spec.svg;
   templateButton.setAttribute("aria-label", spec.title);
   templateButton.setAttribute("title", spec.title);
+}
+
+function syncPrimaryChainToolButton(editorState, root) {
+  const chainButton = root.querySelector('.tool-button[data-tool="chain"]');
+  if (!chainButton) {
+    return;
+  }
+  chainButton.innerHTML = chainToolIconSvg(editorState);
+  chainButton.setAttribute("aria-label", "Chain");
+  chainButton.setAttribute("title", "Chain");
 }
 
 function syncPrimaryTextToolButton(editorState, root) {

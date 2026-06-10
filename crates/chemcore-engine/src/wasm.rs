@@ -166,6 +166,11 @@ impl WasmEngine {
         )
     }
 
+    #[wasm_bindgen(js_name = chainToolIconSvg)]
+    pub fn chain_tool_icon_svg(&self, stroke_width: f64) -> String {
+        Engine::chain_tool_icon_svg(stroke_width)
+    }
+
     #[wasm_bindgen(js_name = textFormatIconSvg)]
     pub fn text_format_icon_svg(&self, kind: &str) -> String {
         Engine::text_format_icon_svg(kind)
@@ -938,7 +943,7 @@ fn parse_tool(value: &str) -> Tool {
         "shape" => Tool::Shape,
         "tlc-plate" | "tlcPlate" => Tool::TlcPlate,
         "orbital" => Tool::Orbital,
-        "templates" => Tool::Templates,
+        "templates" | "chain" => Tool::Templates,
         _ => Tool::Select,
     }
 }

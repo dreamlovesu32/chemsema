@@ -362,6 +362,8 @@ const editorState = {
   orbitalColor: "#000000",
   orbitalIconSvgs: {},
   orbitalIconCacheKey: "",
+  chainIconSvg: "",
+  chainIconCacheKey: "",
   documentColors: [],
   colorPalette: null,
   bracketKind: "round",
@@ -916,9 +918,14 @@ async function syncEngineToolState() {
     return;
   }
   await state.editorEngine.ready?.();
-  const effectiveTool = editorState.elementPlacementActive ? "element" : editorState.activeTool;
+  const effectiveTool = editorState.elementPlacementActive
+    ? "element"
+    : editorState.activeTool === "chain"
+      ? "templates"
+      : editorState.activeTool;
+  const effectiveTemplate = editorState.activeTool === "chain" ? "chain" : editorState.template;
   await state.editorEngine.setTool(effectiveTool, editorState.bondType);
-  await state.editorEngine.setTemplate?.(editorState.template);
+  await state.editorEngine.setTemplate?.(effectiveTemplate);
   const shapeKind = editorState.activeTool === "tlc-plate" ? "tlc-plate" : editorState.shapeKind;
   await state.editorEngine.setShapeOptions?.(
     shapeKind,
@@ -2353,7 +2360,8 @@ async function syncArrowAwareCursorForPoint(point) {
     || editorState.activeTool === "shape"
     || editorState.activeTool === "tlc-plate"
     || editorState.activeTool === "orbital"
-    || editorState.activeTool === "templates")
+    || editorState.activeTool === "templates"
+    || editorState.activeTool === "chain")
     && overSelection) {
     viewerSvg.style.cursor = "grab";
     return;
@@ -2374,6 +2382,10 @@ async function syncArrowAwareCursorForPoint(point) {
     return;
   }
   if (editorState.activeTool === "shape" || editorState.activeTool === "tlc-plate" || editorState.activeTool === "orbital") {
+    viewerSvg.style.cursor = "crosshair";
+    return;
+  }
+  if (editorState.activeTool === "chain") {
     viewerSvg.style.cursor = "crosshair";
     return;
   }
@@ -2409,6 +2421,22 @@ function refreshBondToolIcons() {
   }
   editorState.bondIconSvgs = icons;
   editorState.bondIconCacheKey = widths.key;
+}
+
+function refreshChainToolIcon() {
+  const iconSvg = state.editorEngine?.chainToolIconSvg;
+  if (typeof iconSvg !== "function") {
+    return;
+  }
+  const widths = toolbarBondIconWidths();
+  const cacheKey = `kernel-chain-v1:${widths.key}`;
+  if (editorState.chainIconCacheKey === cacheKey && editorState.chainIconSvg) {
+    return;
+  }
+  editorState.chainIconSvg = normalizeKernelChainIconSvg(
+    iconSvg.call(state.editorEngine, widths.thin),
+  );
+  editorState.chainIconCacheKey = cacheKey;
 }
 
 function refreshArrowToolIcons() {
@@ -2559,6 +2587,13 @@ function normalizeKernelOrbitalIconSvg(svg, key) {
     .replace(/url\(#([^)]+)\)/g, `url(#orbital-icon-${safeKey}-$1)`);
 }
 
+function normalizeKernelChainIconSvg(svg) {
+  if (!svg) {
+    return "";
+  }
+  return addClassToSvg(svg, "cc-kernel-chain-icon");
+}
+
 function addClassToSvg(svg, className) {
   if (/\bclass="/.test(svg)) {
     return svg.replace(/\bclass="([^"]*)"/, `class="$1 ${className}"`);
@@ -2571,6 +2606,7 @@ function renderSecondaryToolbar() {
     return;
   }
   refreshBondToolIcons();
+  refreshChainToolIcon();
   refreshArrowToolIcons();
   refreshTextFormatIcons();
   refreshShapeToolIcons();
@@ -3771,7 +3807,8 @@ function routeEditorPointerEvents() {
       || editorState.activeTool === "shape"
       || editorState.activeTool === "tlc-plate"
       || editorState.activeTool === "orbital"
-      || editorState.activeTool === "templates");
+      || editorState.activeTool === "templates"
+      || editorState.activeTool === "chain");
 }
 
 function isDocumentPreviewPrimitive(primitive) {
