@@ -4,6 +4,9 @@ import {
   renderBoundsFromEngine,
   renderListFromEngine,
 } from "./engine_bridge.js";
+import { createAppDomRefs } from "./app_dom.js";
+import { registerChemcoreDebug } from "./app_debug.js";
+import { base64ToBytes, bytesToBase64 } from "./binary_helpers.js";
 import { createColorHost } from "./color_host.js";
 import { createObjectSettingsHost } from "./object_settings_host.js";
 import { createNumericDialogHost } from "./numeric_dialog_host.js";
@@ -12,7 +15,6 @@ import { createEngineHost } from "./engine_host.js";
 import { bindEditorControls, openColorDialog } from "./editor_bindings.js";
 import { createDocumentFlow } from "./document_flow.js";
 import {
-  chemcoreOpenAcceptString,
   chemcoreOpenAcceptTypes,
   decompressChemcoreText,
   looksLikeCdxFile,
@@ -167,56 +169,6 @@ const sharedGlyphProfilesReady = loadSharedGlyphProfiles();
 document.body.classList.toggle("desktop-shell", isDesktopShell);
 document.body.classList.toggle("browser-shell", !isDesktopShell);
 
-if (typeof window !== "undefined") {
-  window.__chemcoreDebug = {
-    state,
-    get document() {
-      return state.currentDocument;
-    },
-    get engineState() {
-      return currentEditorEngineState();
-    },
-    get activeTextEditor() {
-      return activeTextEditor;
-    },
-    get displayMetrics() {
-      return state.displayMetrics;
-    },
-    get engineHost() {
-      return engineHost;
-    },
-    get desktopFileHost() {
-      return desktopFileHost;
-    },
-    get commandEngine() {
-      return commandEngine;
-    },
-    insertEditorText(text) {
-      if (!activeTextEditor) {
-        return false;
-      }
-      for (const character of Array.from(String(text || ""))) {
-        textEditorController.insertTextAtSelection(character);
-      }
-      return true;
-    },
-    async syncDocument() {
-      await state.editorEngine?.ready?.();
-      await syncDocumentFromEngine();
-      renderDocument();
-      return state.currentDocument;
-    },
-    worldToClient(x, y) {
-      const matrix = viewerSvg?.getScreenCTM?.();
-      if (!matrix) {
-        return null;
-      }
-      const point = new DOMPoint(x, y).matrixTransform(matrix);
-      return { x: point.x, y: point.y };
-    },
-  };
-}
-
 const DEFAULT_TEXT_FONT_SIZE = 10;
 const BOND_STROKE = 1.0;
 const CHEMDRAW_PAGE_BACKGROUND = "#ffffff";
@@ -249,34 +201,63 @@ function elementCursor(symbol) {
   return `url("data:image/svg+xml,${svg}") 12 12, crosshair`;
 }
 
-const sampleSelect = document.getElementById("sample-select");
-const reloadButton = document.getElementById("reload-button");
-const fitButton = document.getElementById("fit-button");
-const toggleMolecules = document.getElementById("toggle-molecules");
-const toggleLines = document.getElementById("toggle-lines");
-const toggleTexts = document.getElementById("toggle-texts");
-const docMeta = document.getElementById("doc-meta");
-const viewerTitle = document.getElementById("viewer-title");
-const viewerStats = document.getElementById("viewer-stats");
-const viewerSvg = document.getElementById("viewer-svg");
-const viewerContainer = document.getElementById("viewer-container");
-const secondaryToolbar = document.getElementById("secondary-toolbar");
-const selectionChemistrySummary = document.getElementById("selection-chemistry-summary");
-const desktopTitlebar = document.getElementById("desktop-titlebar");
-const documentTabsRoot = document.getElementById("document-tabs");
-const documentStyleButton = document.getElementById("document-style-button");
-const documentStyleMenu = document.getElementById("document-style-menu");
-const openFileInput = document.createElement("input");
-openFileInput.type = "file";
-openFileInput.accept = chemcoreOpenAcceptString();
-openFileInput.className = "visually-hidden";
-document.body.appendChild(openFileInput);
-const textEditorLayer = document.createElement("div");
-textEditorLayer.className = "text-editor-layer";
-viewerContainer?.appendChild(textEditorLayer);
+const {
+  sampleSelect,
+  reloadButton,
+  fitButton,
+  toggleMolecules,
+  toggleLines,
+  toggleTexts,
+  docMeta,
+  viewerTitle,
+  viewerStats,
+  viewerSvg,
+  viewerContainer,
+  secondaryToolbar,
+  selectionChemistrySummary,
+  desktopTitlebar,
+  documentTabsRoot,
+  documentStyleButton,
+  documentStyleMenu,
+  zoomInput,
+  openFileInput,
+  textEditorLayer,
+} = createAppDomRefs();
 let canvasContextMenuHost = null;
 let canvasContextMenu = null;
 let textSymbolPalette = null;
+registerChemcoreDebug({
+  state,
+  getEngineState: () => currentEditorEngineState(),
+  getActiveTextEditor: () => activeTextEditor,
+  getDisplayMetrics: () => state.displayMetrics,
+  engineHost,
+  desktopFileHost,
+  commandEngine,
+  insertEditorText(text) {
+    if (!activeTextEditor) {
+      return false;
+    }
+    for (const character of Array.from(String(text || ""))) {
+      textEditorController.insertTextAtSelection(character);
+    }
+    return true;
+  },
+  async syncDocument() {
+    await state.editorEngine?.ready?.();
+    await syncDocumentFromEngine();
+    renderDocument();
+    return state.currentDocument;
+  },
+  worldToClient(x, y) {
+    const matrix = viewerSvg?.getScreenCTM?.();
+    if (!matrix) {
+      return null;
+    }
+    const point = new DOMPoint(x, y).matrixTransform(matrix);
+    return { x: point.x, y: point.y };
+  },
+});
 const appRuntimeReady = Promise.all([
   engineHost.initialize(),
   sharedGlyphProfilesReady,
@@ -312,7 +293,6 @@ toggleMolecules?.addEventListener("change", () => renderDocument());
 toggleLines?.addEventListener("change", () => renderDocument());
 toggleTexts?.addEventListener("change", () => renderDocument());
 
-const zoomInput = document.getElementById("zoom-input");
 let zoomPercent = 100;
 const documentTabs = [];
 let activeDocumentTabId = null;
@@ -3970,23 +3950,6 @@ async function applySelectionArrangeCommand(command) {
   }
   renderDocument();
   return true;
-}
-
-function bytesToBase64(bytes) {
-  let binary = "";
-  for (let index = 0; index < bytes.length; index += 1) {
-    binary += String.fromCharCode(bytes[index]);
-  }
-  return btoa(binary);
-}
-
-function base64ToBytes(value) {
-  const binary = atob(value);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  return bytes;
 }
 
 async function applyArrowOptionsToSelection() {
