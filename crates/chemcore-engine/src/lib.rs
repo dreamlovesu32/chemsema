@@ -1,4 +1,5 @@
 mod abbreviation;
+mod cdx;
 mod cdxml;
 mod document;
 mod editing;
@@ -15,6 +16,7 @@ mod symbols;
 mod units;
 
 pub use abbreviation::*;
+pub use cdx::*;
 pub use cdxml::*;
 pub use document::*;
 pub use editing::*;

@@ -2329,10 +2329,11 @@ fn with_pen_and_brush<F: FnOnce()>(
 
 fn document_file_dialog() -> rfd::FileDialog {
     rfd::FileDialog::new()
-        .add_filter("Chemcore and CDXML", &["ccjz", "ccjs", "cdxml"])
+        .add_filter("Chemcore and ChemDraw", &["ccjz", "ccjs", "cdxml", "cdx"])
         .add_filter("Chemcore compressed", &["ccjz"])
         .add_filter("Chemcore JSON", &["ccjs"])
         .add_filter("ChemDraw CDXML", &["cdxml"])
+        .add_filter("ChemDraw CDX", &["cdx"])
         .add_filter("SVG", &["svg"])
 }
 
@@ -2667,6 +2668,7 @@ fn is_openable_document_arg(arg: &str) -> bool {
     lower.ends_with(".ccjz")
         || lower.ends_with(".ccjs")
         || lower.ends_with(".cdxml")
+        || lower.ends_with(".cdx")
         || lower.ends_with(".svg")
 }
 

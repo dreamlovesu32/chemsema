@@ -707,6 +707,13 @@ impl WasmEngine {
             .map_err(|error| JsValue::from_str(&error))
     }
 
+    #[wasm_bindgen(js_name = loadDocumentCdx)]
+    pub fn load_document_cdx(&mut self, cdx: &[u8]) -> Result<(), JsValue> {
+        self.inner
+            .load_cdx_document(cdx)
+            .map_err(|error| JsValue::from_str(&error))
+    }
+
     pub fn undo(&mut self) -> bool {
         self.inner.undo()
     }
@@ -848,6 +855,13 @@ impl WasmEngine {
     #[wasm_bindgen(js_name = documentCdxml)]
     pub fn document_cdxml(&self) -> String {
         self.inner.document_cdxml()
+    }
+
+    #[wasm_bindgen(js_name = documentCdx)]
+    pub fn document_cdx(&self) -> Result<Vec<u8>, JsValue> {
+        self.inner
+            .document_cdx()
+            .map_err(|error| JsValue::from_str(&error))
     }
 
     #[wasm_bindgen(js_name = documentSvg)]

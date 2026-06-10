@@ -41,6 +41,7 @@ export const wasmengine_contextMenuJson: (a: number, b: number, c: number, d: nu
 export const wasmengine_copySelection: (a: number) => number;
 export const wasmengine_cutSelection: (a: number) => number;
 export const wasmengine_deleteSelection: (a: number) => number;
+export const wasmengine_documentCdx: (a: number) => [number, number, number, number];
 export const wasmengine_documentCdxml: (a: number) => [number, number];
 export const wasmengine_documentColorsJson: (a: number) => [number, number, number, number];
 export const wasmengine_documentJson: (a: number) => [number, number, number, number];
@@ -61,6 +62,7 @@ export const wasmengine_historyJson: (a: number) => [number, number, number, num
 export const wasmengine_hoverArrowAction: (a: number, b: number, c: number) => [number, number];
 export const wasmengine_hoverShapeAction: (a: number, b: number, c: number) => [number, number];
 export const wasmengine_lastCommandResultJson: (a: number) => [number, number, number, number];
+export const wasmengine_loadDocumentCdx: (a: number, b: number, c: number) => [number, number];
 export const wasmengine_loadDocumentCdxml: (a: number, b: number, c: number) => [number, number];
 export const wasmengine_loadDocumentJson: (a: number, b: number, c: number) => [number, number];
 export const wasmengine_new: () => number;

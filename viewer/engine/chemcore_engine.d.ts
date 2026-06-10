@@ -43,6 +43,7 @@ export class WasmEngine {
     copySelection(): boolean;
     cutSelection(): boolean;
     deleteSelection(): boolean;
+    documentCdx(): Uint8Array;
     documentCdxml(): string;
     documentColorsJson(): string;
     documentJson(): string;
@@ -63,6 +64,7 @@ export class WasmEngine {
     hoverArrowAction(x: number, y: number): string;
     hoverShapeAction(x: number, y: number): string;
     lastCommandResultJson(): string;
+    loadDocumentCdx(cdx: Uint8Array): void;
     loadDocumentCdxml(cdxml: string): void;
     loadDocumentJson(json: string): void;
     constructor();
@@ -163,6 +165,7 @@ export interface InitOutput {
     readonly wasmengine_copySelection: (a: number) => number;
     readonly wasmengine_cutSelection: (a: number) => number;
     readonly wasmengine_deleteSelection: (a: number) => number;
+    readonly wasmengine_documentCdx: (a: number) => [number, number, number, number];
     readonly wasmengine_documentCdxml: (a: number) => [number, number];
     readonly wasmengine_documentColorsJson: (a: number) => [number, number, number, number];
     readonly wasmengine_documentJson: (a: number) => [number, number, number, number];
@@ -183,6 +186,7 @@ export interface InitOutput {
     readonly wasmengine_hoverArrowAction: (a: number, b: number, c: number) => [number, number];
     readonly wasmengine_hoverShapeAction: (a: number, b: number, c: number) => [number, number];
     readonly wasmengine_lastCommandResultJson: (a: number) => [number, number, number, number];
+    readonly wasmengine_loadDocumentCdx: (a: number, b: number, c: number) => [number, number];
     readonly wasmengine_loadDocumentCdxml: (a: number, b: number, c: number) => [number, number];
     readonly wasmengine_loadDocumentJson: (a: number, b: number, c: number) => [number, number];
     readonly wasmengine_new: () => number;

@@ -1,8 +1,8 @@
 use chemcore_engine::{
-    ArrowCurve, ArrowEndpointStyle, ArrowHeadSize, ArrowNoGo, ArrowVariant, BondVariant,
-    BracketKind, Engine, OrbitalPhase, OrbitalStyle, OrbitalTemplate, Point, PointerEvent,
-    RenderBoundsScope, RenderPrimitive, RenderRole, ShapeKind, ShapeStyle, TextEditLayoutRequest,
-    TextEditSession, Tool, ToolState, WorldPoint, WorldPt,
+    cdx_to_cdxml, cdxml_to_cdx, ArrowCurve, ArrowEndpointStyle, ArrowHeadSize, ArrowNoGo,
+    ArrowVariant, BondVariant, BracketKind, Engine, OrbitalPhase, OrbitalStyle, OrbitalTemplate,
+    Point, PointerEvent, RenderBoundsScope, RenderPrimitive, RenderRole, ShapeKind, ShapeStyle,
+    TextEditLayoutRequest, TextEditSession, Tool, ToolState, WorldPoint, WorldPt,
 };
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
@@ -152,6 +152,10 @@ impl DesktopDocumentService {
         self.session_mut(session_id)?.load_cdxml_document(cdxml)
     }
 
+    pub fn load_document_cdx(&mut self, session_id: SessionId, cdx: &[u8]) -> Result<(), String> {
+        self.session_mut(session_id)?.load_cdx_document(cdx)
+    }
+
     pub fn document_json(&self, session_id: SessionId) -> Result<String, String> {
         self.session(session_id)?
             .document_json()
@@ -257,6 +261,10 @@ impl DesktopDocumentService {
 
     pub fn document_cdxml(&self, session_id: SessionId) -> Result<String, String> {
         Ok(self.session(session_id)?.document_cdxml())
+    }
+
+    pub fn document_cdx(&self, session_id: SessionId) -> Result<Vec<u8>, String> {
+        self.session(session_id)?.document_cdx()
     }
 
     pub fn document_svg(&self, session_id: SessionId) -> Result<String, String> {
@@ -1207,6 +1215,8 @@ impl DesktopDocumentService {
         let format = document_format_for_path_and_bytes(&path, &bytes);
         let text = if format == "ccjz" {
             decompress_gzip_text(&bytes)?
+        } else if format == "cdx" {
+            cdx_to_cdxml(&bytes)?
         } else {
             String::from_utf8(bytes).map_err(|error| {
                 format!("Failed to read {} as UTF-8 text: {error}", path.display())
@@ -1254,6 +1264,10 @@ impl DesktopDocumentService {
             .unwrap_or_else(|| document_format_for_path(&path));
         if format == "ccjz" {
             let bytes = compress_gzip_text(content)?;
+            fs::write(&path, bytes)
+                .map_err(|error| format!("Failed to write {}: {error}", path.display()))?;
+        } else if format == "cdx" {
+            let bytes = cdxml_to_cdx(content)?;
             fs::write(&path, bytes)
                 .map_err(|error| format!("Failed to write {}: {error}", path.display()))?;
         } else {
@@ -1659,6 +1673,7 @@ fn normalize_document_format(format: &str) -> String {
         "ccjz" => "ccjz",
         "ccjs" => "ccjs",
         "cdxml" => "cdxml",
+        "cdx" => "cdx",
         "svg" => "svg",
         _ => "",
     }
@@ -1676,6 +1691,7 @@ fn document_format_for_path(path: &Path) -> String {
         "ccjz" => "ccjz",
         "ccjs" => "ccjs",
         "cdxml" => "cdxml",
+        "cdx" => "cdx",
         "svg" => "svg",
         _ => "ccjz",
     }
@@ -1971,8 +1987,42 @@ mod tests {
         assert_eq!(document_format_for_path(Path::new("sample.ccjz")), "ccjz");
         assert_eq!(document_format_for_path(Path::new("sample.ccjs")), "ccjs");
         assert_eq!(document_format_for_path(Path::new("sample.cdxml")), "cdxml");
+        assert_eq!(document_format_for_path(Path::new("sample.cdx")), "cdx");
         assert_eq!(document_format_for_path(Path::new("sample.svg")), "svg");
         assert_eq!(document_format_for_path(Path::new("sample")), "ccjz");
+    }
+
+    #[test]
+    fn cdx_file_round_trip_uses_binary_storage_and_cdxml_text_payload() {
+        let mut service = DesktopDocumentService::new();
+        let path = std::env::temp_dir().join(format!(
+            "chemcore-cdx-round-trip-{}-{}.cdx",
+            std::process::id(),
+            1
+        ));
+        let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<CDXML CreationProgram="ChemCore" BoundingBox="0 0 100 80" LabelFont="3" LabelSize="10" CaptionFont="3" CaptionSize="10" LineWidth="1" BoldWidth="4" BondLength="18">
+  <fonttable><font id="3" charset="iso-8859-1" name="Arial"/></fonttable>
+  <page id="1" BoundingBox="0 0 100 80">
+    <fragment id="2" BoundingBox="10 10 50 20">
+      <n id="3" p="10 10" Element="6"/>
+      <n id="4" p="50 20" Element="8"/>
+      <b id="5" B="3" E="4" Order="1"/>
+    </fragment>
+  </page>
+</CDXML>
+"#;
+        service
+            .write_document_file(&path, cdxml, Some("cdx"))
+            .expect("cdx should write");
+        let bytes = fs::read(&path).expect("cdx file should exist");
+        assert!(bytes.starts_with(b"VjCD0100"));
+        let opened = service.read_document_file(&path).expect("cdx should read");
+        let _ = fs::remove_file(&path);
+
+        assert_eq!(opened.format, "cdx");
+        assert!(opened.text.contains("<CDXML"));
+        assert!(opened.text.contains("<fragment"));
     }
 
     #[test]

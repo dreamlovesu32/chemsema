@@ -10,7 +10,7 @@ mod colors;
 mod export;
 mod import_objects;
 mod text_runs;
-mod xml;
+pub(crate) mod xml;
 
 use self::colors::CdxmlColorTable;
 pub use self::export::document_to_cdxml;
@@ -20,7 +20,8 @@ use self::import_objects::{
     append_tlc_plate_shape_objects,
 };
 use self::text_runs::{label_display_runs, label_source_run};
-use self::xml::{descendants, parse_xml_tree, XmlNode};
+pub(crate) use self::xml::parse_xml_tree;
+use self::xml::{descendants, XmlNode};
 
 #[derive(Debug, Clone, Copy)]
 struct CdxmlDefaults {

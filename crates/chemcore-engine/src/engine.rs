@@ -427,6 +427,10 @@ impl Engine {
         crate::document_to_cdxml(&self.state.document)
     }
 
+    pub fn document_cdx(&self) -> Result<Vec<u8>, String> {
+        crate::document_to_cdx(&self.state.document)
+    }
+
     pub fn document_svg(&self) -> String {
         crate::document_to_svg(&self.state.document)
     }
@@ -469,6 +473,16 @@ impl Engine {
     pub fn load_cdxml_document(&mut self, cdxml: &str) -> Result<(), String> {
         let mut document = crate::parse_cdxml_document(cdxml, None)?;
         crate::cdxml::normalize_cdxml_document_for_editing(&mut document);
+        self.load_imported_document(document)
+    }
+
+    pub fn load_cdx_document(&mut self, cdx: &[u8]) -> Result<(), String> {
+        let mut document = crate::parse_cdx_document(cdx, None)?;
+        crate::cdxml::normalize_cdxml_document_for_editing(&mut document);
+        self.load_imported_document(document)
+    }
+
+    fn load_imported_document(&mut self, mut document: ChemcoreDocument) -> Result<(), String> {
         refresh_repeating_units(&mut document);
         let options = editor_options_from_imported_cdxml_document(&document);
         self.state.document = document;

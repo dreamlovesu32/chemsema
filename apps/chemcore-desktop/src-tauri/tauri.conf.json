@@ -63,6 +63,13 @@
         "description": "ChemDraw CDXML document",
         "role": "Editor",
         "mimeType": "chemical/x-cdxml"
+      },
+      {
+        "ext": ["cdx"],
+        "name": "ChemDraw CDX Document",
+        "description": "ChemDraw CDX document",
+        "role": "Editor",
+        "mimeType": "chemical/x-cdx"
       }
     ],
     "windows": {

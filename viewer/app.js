@@ -15,6 +15,7 @@ import {
   chemcoreOpenAcceptString,
   chemcoreOpenAcceptTypes,
   decompressChemcoreText,
+  looksLikeCdxFile,
   looksLikeCdxmlFile,
   looksLikeCompressedChemcoreFile,
   saveFormatFromFileName,
@@ -3356,6 +3357,7 @@ const documentFlow = createDocumentFlow({
 const {
   isAbortError,
   loadAndRender,
+  loadCdxDocumentIntoEditor,
   loadJsonDocumentIntoEditor,
   openDocumentText,
   openDocumentFile,
@@ -3387,6 +3389,22 @@ function openBrowserBlankDocumentTab() {
 async function openBrowserFileInNewTab(file) {
   if (!file) {
     return false;
+  }
+  if (looksLikeCdxFile(file)) {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const id = `doc-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const payload = {
+      dataBase64: bytesToBase64(bytes),
+      fileName: file.name || null,
+      filePath: null,
+      format: "cdx",
+    };
+    localStorage.setItem(`${BROWSER_PENDING_DOCUMENT_KEY_PREFIX}${id}`, JSON.stringify(payload));
+    const opened = !!window.open(browserTabUrlForPendingDocument(id), "_blank", "noopener,noreferrer");
+    if (!opened) {
+      localStorage.removeItem(`${BROWSER_PENDING_DOCUMENT_KEY_PREFIX}${id}`);
+    }
+    return opened;
   }
   const text = looksLikeCompressedChemcoreFile(file)
     ? await decompressChemcoreText(await file.arrayBuffer())
@@ -3489,6 +3507,12 @@ async function loadDetachedDocumentPayload(payload) {
 }
 
 async function loadBrowserPendingDocumentPayload(payload) {
+  if (payload?.format === "cdx" && payload?.dataBase64) {
+    await loadCdxDocumentIntoEditor(base64ToBytes(payload.dataBase64), payload.fileName || null, payload.filePath || null);
+    saveActiveDocumentTabState();
+    renderDocumentTabs();
+    return true;
+  }
   if (!payload?.text) {
     return false;
   }
@@ -3939,6 +3963,23 @@ async function applySelectionArrangeCommand(command) {
   }
   renderDocument();
   return true;
+}
+
+function bytesToBase64(bytes) {
+  let binary = "";
+  for (let index = 0; index < bytes.length; index += 1) {
+    binary += String.fromCharCode(bytes[index]);
+  }
+  return btoa(binary);
+}
+
+function base64ToBytes(value) {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
 }
 
 async function applyArrowOptionsToSelection() {

@@ -4,14 +4,14 @@ use quick_xml::Reader;
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Default)]
-pub(super) struct XmlNode {
-    pub(super) name: String,
-    pub(super) attrs: BTreeMap<String, String>,
-    pub(super) text: String,
-    pub(super) children: Vec<XmlNode>,
+pub(crate) struct XmlNode {
+    pub(crate) name: String,
+    pub(crate) attrs: BTreeMap<String, String>,
+    pub(crate) text: String,
+    pub(crate) children: Vec<XmlNode>,
 }
 
-pub(super) fn parse_xml_tree(xml: &str) -> Result<XmlNode, String> {
+pub(crate) fn parse_xml_tree(xml: &str) -> Result<XmlNode, String> {
     let mut reader = Reader::from_str(xml);
     reader.config_mut().trim_text(false);
     let mut stack: Vec<XmlNode> = Vec::new();
@@ -97,22 +97,22 @@ fn local_name(value: &str) -> String {
 }
 
 impl XmlNode {
-    pub(super) fn attr(&self, key: &str) -> Option<&str> {
+    pub(crate) fn attr(&self, key: &str) -> Option<&str> {
         self.attrs.get(key).map(String::as_str)
     }
 
-    pub(super) fn is(&self, name: &str) -> bool {
+    pub(crate) fn is(&self, name: &str) -> bool {
         self.name == name
     }
 
-    pub(super) fn direct_children<'a>(
+    pub(crate) fn direct_children<'a>(
         &'a self,
         name: &'a str,
     ) -> impl Iterator<Item = &'a XmlNode> {
         self.children.iter().filter(move |child| child.is(name))
     }
 
-    pub(super) fn full_text(&self) -> String {
+    pub(crate) fn full_text(&self) -> String {
         let mut out = self.text.clone();
         for child in &self.children {
             out.push_str(&child.full_text());
@@ -121,7 +121,7 @@ impl XmlNode {
     }
 }
 
-pub(super) fn descendants(node: &XmlNode) -> Vec<&XmlNode> {
+pub(crate) fn descendants(node: &XmlNode) -> Vec<&XmlNode> {
     let mut out = Vec::new();
     collect_descendants(node, &mut out);
     out

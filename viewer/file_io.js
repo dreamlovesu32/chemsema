@@ -2,6 +2,7 @@ export const CHEMCORE_TEXT_EXTENSION = ".ccjs";
 export const CHEMCORE_COMPRESSED_EXTENSION = ".ccjz";
 export const CHEMCORE_TEXT_MIME = "application/vnd.chemcore+json";
 export const CHEMCORE_COMPRESSED_MIME = "application/vnd.chemcore+gzip";
+export const CHEMDRAW_CDX_MIME = "chemical/x-cdx";
 
 export function documentTitleForFileName(documentData) {
   const rawTitle = String(documentData?.document?.title || "chemcore-document").trim();
@@ -26,6 +27,9 @@ export function saveFormatFromFileName(fileName) {
   if (lowerName.endsWith(".cdxml")) {
     return "cdxml";
   }
+  if (lowerName.endsWith(".cdx")) {
+    return "cdx";
+  }
   return "ccjz";
 }
 
@@ -34,6 +38,7 @@ export function baseNameWithoutDocumentExtension(fileName) {
     .replace(/\.ccjz$/i, "")
     .replace(/\.ccjs$/i, "")
     .replace(/\.cdxml$/i, "")
+    .replace(/\.cdx$/i, "")
     .replace(/\.svg$/i, "");
 }
 
@@ -44,6 +49,19 @@ export function looksLikeCdxmlFile(file, text) {
     return true;
   }
   return /^\s*(?:<\?xml[^>]*>\s*)?<CDXML\b/i.test(text);
+}
+
+export function looksLikeCdxFile(file, bytes = null) {
+  const name = (file?.name || "").toLowerCase();
+  const type = (file?.type || "").toLowerCase();
+  if (name.endsWith(".cdx") || type.includes("cdx")) {
+    return true;
+  }
+  if (bytes && bytes.byteLength >= 8) {
+    const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+    return String.fromCharCode(...view.slice(0, 8)) === "VjCD0100";
+  }
+  return false;
 }
 
 export function looksLikeCompressedChemcoreFile(file) {
@@ -83,6 +101,9 @@ export function chemcoreOpenAcceptTypes() {
       "application/x-cdxml": [".cdxml"],
       "chemical/x-cdxml": [".cdxml"],
       "application/vnd.cambridgesoft.cdxml": [".cdxml"],
+      [CHEMDRAW_CDX_MIME]: [".cdx"],
+      "application/x-cdx": [".cdx"],
+      "application/vnd.cambridgesoft.cdx": [".cdx"],
     },
   }];
 }
@@ -92,6 +113,7 @@ export function chemcoreOpenAcceptString() {
     CHEMCORE_COMPRESSED_EXTENSION,
     CHEMCORE_TEXT_EXTENSION,
     ".cdxml",
+    ".cdx",
     CHEMCORE_COMPRESSED_MIME,
     CHEMCORE_TEXT_MIME,
     "text/xml",
@@ -99,6 +121,9 @@ export function chemcoreOpenAcceptString() {
     "application/x-cdxml",
     "chemical/x-cdxml",
     "application/vnd.cambridgesoft.cdxml",
+    CHEMDRAW_CDX_MIME,
+    "application/x-cdx",
+    "application/vnd.cambridgesoft.cdx",
   ].join(",");
 }
 

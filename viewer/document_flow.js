@@ -3,6 +3,7 @@ import {
   CHEMCORE_COMPRESSED_MIME,
   CHEMCORE_TEXT_EXTENSION,
   CHEMCORE_TEXT_MIME,
+  CHEMDRAW_CDX_MIME,
   baseNameWithoutDocumentExtension,
   chemcoreOpenAcceptTypes,
   compressChemcoreText,
@@ -12,6 +13,7 @@ import {
   downloadBlobFile,
   downloadTextFile,
   looksLikeCompressedChemcoreFile,
+  looksLikeCdxFile,
   looksLikeCdxmlFile,
   saveFormatFromFileName,
 } from "./file_io.js";
@@ -123,6 +125,12 @@ export function createDocumentFlow(options) {
         mimeType: "chemical/x-cdxml",
       };
     }
+    if (format === "cdx") {
+      return {
+        content: await currentDocumentCdxForSave(),
+        mimeType: CHEMDRAW_CDX_MIME,
+      };
+    }
     const json = await currentDocumentJsonForSave();
     if (format === "ccjs") {
       return {
@@ -177,6 +185,14 @@ export function createDocumentFlow(options) {
       throw new Error("CDXML export is unavailable.");
     }
     return options.state.editorEngine.documentCdxml();
+  }
+
+  async function currentDocumentCdxForSave() {
+    await options.finishActiveTextEditor(true);
+    if (!options.state.editorEngine?.documentCdx) {
+      throw new Error("CDX export is unavailable.");
+    }
+    return options.state.editorEngine.documentCdx();
   }
 
   async function currentDocumentSvgForSave() {
@@ -329,6 +345,7 @@ export function createDocumentFlow(options) {
             accept: { [CHEMCORE_TEXT_MIME]: [CHEMCORE_TEXT_EXTENSION] },
           },
           { description: "ChemDraw CDXML", accept: { "chemical/x-cdxml": [".cdxml"], "text/xml": [".cdxml"] } },
+          { description: "ChemDraw CDX", accept: { [CHEMDRAW_CDX_MIME]: [".cdx"], "application/x-cdx": [".cdx"] } },
           { description: "Scalable Vector Graphics", accept: { "image/svg+xml": [".svg"] } },
         ],
       });
@@ -363,6 +380,9 @@ export function createDocumentFlow(options) {
     if (format === "cdxml") {
       return currentDocumentCdxmlForSave();
     }
+    if (format === "cdx") {
+      return currentDocumentCdxmlForSave();
+    }
     return currentDocumentJsonForSave();
   }
 
@@ -393,6 +413,10 @@ export function createDocumentFlow(options) {
     if (!file) {
       return;
     }
+    if (looksLikeCdxFile(file)) {
+      await loadCdxDocumentIntoEditor(new Uint8Array(await file.arrayBuffer()), file.name || null, null);
+      return;
+    }
     const text = looksLikeCompressedChemcoreFile(file)
       ? await decompressChemcoreText(await file.arrayBuffer())
       : await file.text();
@@ -408,12 +432,35 @@ export function createDocumentFlow(options) {
     await loadJsonDocumentIntoEditor(JSON.parse(text), fileName, filePath);
   }
 
+  async function loadCdxDocumentIntoEditor(cdx, fileName = null, filePath = null) {
+    await waitForRuntimeReady();
+    await options.finishActiveTextEditor(false);
+    options.state.currentPath = null;
+    options.state.currentFileName = fileName;
+    options.state.currentFilePath = filePath;
+    await options.state.editorEngine?.free?.();
+    options.state.editorEngine = options.engineHost.createEngineSession();
+    await options.state.editorEngine.ready?.();
+    options.resetCommandEngineRevision?.();
+    options.state.lastEditFocusPoint = null;
+    options.clearZoomHandoffs();
+    await options.state.editorEngine.loadDocumentCdx(cdx);
+    await options.syncEngineToolState();
+    await options.syncDocumentFromEngine();
+    options.state.runtimeViewBox = null;
+    options.viewerTitle.textContent = options.state.currentDocument?.document?.title || fileName || "Imported CDX";
+    updateDocumentMeta();
+    options.fitView();
+    options.renderDocument();
+    options.markCurrentDocumentSaved?.();
+  }
+
   async function openDocumentPath(path) {
     if (!options.desktopFileHost?.available || !path) {
       return;
     }
     const opened = await options.desktopFileHost.readPath(path);
-    if (opened.format === "cdxml") {
+    if (opened.format === "cdxml" || opened.format === "cdx") {
       await loadCdxmlDocumentIntoEditor(opened.text, opened.fileName || fileNameFromPath(path), opened.path || path);
       return;
     }
@@ -536,6 +583,7 @@ export function createDocumentFlow(options) {
     chooseAndOpenDocument,
     isAbortError,
     loadAndRender,
+    loadCdxDocumentIntoEditor,
     loadJsonDocumentIntoEditor,
     openDocumentText,
     openDocumentFile,
