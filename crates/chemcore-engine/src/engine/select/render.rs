@@ -2,6 +2,7 @@ use super::*;
 
 pub(super) fn clear_select_hover_overlay(engine: &mut Engine) {
     engine.state.overlay.hover_bond_center = None;
+    engine.state.overlay.hover_bond_target = None;
     engine.state.overlay.hover_arrow = None;
     engine.state.overlay.hover_shape = None;
     engine.state.overlay.hover_text_box = None;

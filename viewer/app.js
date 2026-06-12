@@ -1688,6 +1688,34 @@ function currentSelectionBoundsContainsPoint(point, padding = 0) {
   return pointInAxisBounds(point, currentRenderBounds("selection"), padding);
 }
 
+function currentSelectionHandleZoneContainsPoint(point) {
+  const bounds = currentRenderBounds("selection");
+  if (!bounds) {
+    return true;
+  }
+  const edgePad = screenPxToWorld(14);
+  const rotatePad = screenPxToWorld(18);
+  const insideExpandedBounds = point.x >= bounds.minX - edgePad
+    && point.x <= bounds.maxX + edgePad
+    && point.y >= bounds.minY - rotatePad
+    && point.y <= bounds.maxY + edgePad;
+  if (!insideExpandedBounds) {
+    return false;
+  }
+  const nearEdge = Math.abs(point.x - bounds.minX) <= edgePad
+    || Math.abs(point.x - bounds.maxX) <= edgePad
+    || Math.abs(point.y - bounds.minY) <= edgePad
+    || Math.abs(point.y - bounds.maxY) <= edgePad;
+  if (nearEdge) {
+    return true;
+  }
+  const rotateHandle = {
+    x: (bounds.minX + bounds.maxX) * 0.5,
+    y: bounds.minY - screenPxToWorld(18),
+  };
+  return pointDistance(point, rotateHandle) <= rotatePad;
+}
+
 function ensureEditorViewportCapacity(centerWorld = currentViewportCenterWorld()) {
   if (!isEditingRustDocument()) {
     return false;
@@ -2474,6 +2502,14 @@ async function syncArrowAwareCursorForPoint(point) {
     return;
   }
   if ((editorState.activeTool === "select" || editorState.activeTool === "tlc-plate") && activeTlcSpotHover) {
+    viewerSvg.style.cursor = "grab";
+    return;
+  }
+  if (
+    activeToolCanDragSelection()
+    && currentSelectionBoundsContainsPoint(point)
+    && !currentSelectionHandleZoneContainsPoint(point)
+  ) {
     viewerSvg.style.cursor = "grab";
     return;
   }

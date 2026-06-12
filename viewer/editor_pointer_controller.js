@@ -75,8 +75,7 @@ export function createEditorPointerController(options) {
       return false;
     }
     const overSelection = !!options.selectionBoundsContainsPoint?.(point);
-    const largeSelection = options.selectionHasLargeOverlay?.();
-    if (!overSelection || !largeSelection) {
+    if (!overSelection || selectionHandleZoneContainsPoint(point)) {
       return false;
     }
     options.clearTlcHoverState();

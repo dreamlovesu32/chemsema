@@ -611,6 +611,8 @@ pub struct DragState {
 pub struct OverlayState {
     pub hover_endpoint: Option<EndpointHit>,
     pub hover_bond_center: Option<BondCenterHit>,
+    #[serde(skip)]
+    pub hover_bond_target: Option<String>,
     pub hover_text_box: Option<HoverTextBox>,
     pub hover_arrow: Option<HoverArrow>,
     pub hover_shape: Option<HoverShape>,

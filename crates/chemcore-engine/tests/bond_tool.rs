@@ -5284,6 +5284,38 @@ fn select_tool_does_not_hover_selected_label_box() {
 }
 
 #[test]
+fn select_tool_does_not_hover_selected_bond_or_atom() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, px(300.0), px(260.0));
+    engine.set_tool_state(select_tool());
+
+    engine.select_at_point(Point::new(FIRST_CENTER_X, FIRST_CENTER_Y), false);
+    hover(&mut engine, FIRST_CENTER_X, FIRST_CENTER_Y);
+
+    assert!(engine.state().overlay.hover_bond_center.is_none());
+    assert!(!engine.render_list().iter().any(|primitive| matches!(
+        primitive,
+        RenderPrimitive::Polygon {
+            role: RenderRole::HoverBondCenter,
+            ..
+        }
+    )));
+
+    engine.select_at_point(Point::new(FIRST_END_X, FIRST_END_Y), false);
+    hover(&mut engine, FIRST_END_X, FIRST_END_Y);
+
+    assert!(engine.state().overlay.hover_endpoint.is_none());
+    assert!(!engine.render_list().iter().any(|primitive| matches!(
+        primitive,
+        RenderPrimitive::Circle {
+            role: RenderRole::HoverEndpoint,
+            ..
+        }
+    )));
+}
+
+#[test]
 fn select_tool_click_on_endpoint_selects_atom_box() {
     let mut engine = Engine::new();
     engine.set_tool_state(bond_tool());
