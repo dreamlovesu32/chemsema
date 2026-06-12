@@ -219,6 +219,7 @@ pub struct Engine {
     shape_edit_drag: Option<ShapeEditDragState>,
     bracket_drag: Option<BracketDragState>,
     pending_select_target: Option<PendingSelectTarget>,
+    pointer_bond_target: Option<String>,
     clipboard: Option<clipboard::ClipboardContent>,
     options: EditorOptions,
     document_style_preset: String,
@@ -399,6 +400,7 @@ impl Engine {
             shape_edit_drag: None,
             bracket_drag: None,
             pending_select_target: None,
+            pointer_bond_target: None,
             clipboard: None,
             options: EditorOptions::default(),
             document_style_preset: DEFAULT_DOCUMENT_STYLE_PRESET.to_string(),
@@ -1221,6 +1223,7 @@ impl Engine {
         self.shape_drag = None;
         self.shape_edit_drag = None;
         self.bracket_drag = None;
+        self.pointer_bond_target = None;
         self.state.overlay = OverlayState::default();
     }
 

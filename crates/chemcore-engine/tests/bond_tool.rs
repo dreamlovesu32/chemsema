@@ -5301,6 +5301,10 @@ fn select_tool_does_not_hover_selected_bond_or_atom() {
             ..
         }
     )));
+    let state_json: serde_json::Value =
+        serde_json::from_str(&engine.state_json().expect("state json")).expect("json");
+    assert!(state_json["overlay"]["hoverBondCenter"].is_null());
+    assert!(state_json["overlay"].get("hoverBondTarget").is_none());
 
     engine.select_at_point(Point::new(FIRST_END_X, FIRST_END_Y), false);
     hover(&mut engine, FIRST_END_X, FIRST_END_Y);

@@ -1190,16 +1190,16 @@ impl Engine {
             return;
         }
         self.state.overlay.hover_bond_center = None;
-        self.state.overlay.hover_bond_target = None;
         self.state.overlay.hover_arrow = None;
         self.state.overlay.hover_shape = None;
         self.state.overlay.hover_text_box = None;
         self.state.overlay.hover_endpoint = None;
         self.state.overlay.preview = None;
+        self.pointer_bond_target = None;
         if let Some(hit) = self.select_hit_at_point(point) {
             if selection_contains_hit(&self.state.selection, &hit) {
                 if let SelectHit::Bond { bond_id } = hit {
-                    self.state.overlay.hover_bond_target = Some(bond_id);
+                    self.pointer_bond_target = Some(bond_id);
                 }
                 return;
             }

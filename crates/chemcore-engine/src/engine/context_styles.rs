@@ -364,7 +364,7 @@ impl Engine {
             .hover_bond_center
             .as_ref()
             .map(|hover| hover.bond_id.clone())
-            .or_else(|| self.state.overlay.hover_bond_target.clone())
+            .or_else(|| self.pointer_bond_target.clone())
         else {
             return false;
         };
@@ -413,7 +413,7 @@ impl Engine {
         );
         entry.update_bounds();
         self.state.overlay.hover_bond_center = None;
-        self.state.overlay.hover_bond_target = None;
+        self.pointer_bond_target = None;
         true
     }
 
