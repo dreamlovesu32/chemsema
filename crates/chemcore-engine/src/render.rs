@@ -48,7 +48,10 @@ pub use primitives::{RenderPrimitive, RenderRole};
 
 use bond_geometry::*;
 use bond_metrics::*;
-pub(crate) use bounds::{fragment_bond_visual_bounds, shape_object_visual_bounds};
+pub(crate) use bounds::{
+    bracket_object_visual_bounds, fragment_bond_visual_bounds, line_object_visual_bounds,
+    shape_object_visual_bounds,
+};
 use labels::{
     clip_point_out_of_label_geometry, label_box_world, label_polygons_world, render_fragment_line,
     render_fragment_line_with_profiles, world_point,

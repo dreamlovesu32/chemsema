@@ -4,11 +4,12 @@ use super::text_edit::{
 };
 use super::{ArrowEditDragState, ArrowEditMode, EditorCommand, Engine, PendingSelectTarget};
 use crate::{
-    angle_between, arrow_object_handle_points, direction_from_angle, fragment_bond_visual_bounds,
-    hit_test_arrow_center, hit_test_bond_center, hit_test_endpoint, line_object_points,
-    nearest_angle, round2, shape_object_visual_bounds, HoverTextBox, Point, RenderPrimitive,
-    RenderRole, SceneObject, SelectionState, BOND_CENTER_HIT_RADIUS, DEFAULT_BOND_LENGTH,
-    DRAG_START_THRESHOLD, ENDPOINT_FOCUS_RADIUS, ENDPOINT_HIT_RADIUS, GLOBAL_SNAP_ANGLES,
+    angle_between, arrow_object_handle_points, bracket_object_visual_bounds, direction_from_angle,
+    fragment_bond_visual_bounds, hit_test_arrow_center, hit_test_bond_center, hit_test_endpoint,
+    line_object_points, line_object_visual_bounds, nearest_angle, round2,
+    shape_object_visual_bounds, HoverTextBox, Point, RenderPrimitive, RenderRole, SceneObject,
+    SelectionState, BOND_CENTER_HIT_RADIUS, DEFAULT_BOND_LENGTH, DRAG_START_THRESHOLD,
+    ENDPOINT_FOCUS_RADIUS, ENDPOINT_HIT_RADIUS, GLOBAL_SNAP_ANGLES,
 };
 use serde_json::{json, Value as JsonValue};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};

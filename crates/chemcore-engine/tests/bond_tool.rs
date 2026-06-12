@@ -446,6 +446,46 @@ fn selection_box_rect(engine: &Engine) -> (f64, f64, f64, f64) {
         .expect("selection box rect should exist")
 }
 
+fn selection_box_bounds(engine: &Engine) -> [f64; 4] {
+    let (x, y, width, height) = selection_box_rect(engine);
+    [x, y, x + width, y + height]
+}
+
+fn primitive_object_id(primitive: &RenderPrimitive) -> Option<&str> {
+    match primitive {
+        RenderPrimitive::Line { object_id, .. }
+        | RenderPrimitive::Circle { object_id, .. }
+        | RenderPrimitive::Polygon { object_id, .. }
+        | RenderPrimitive::Rect { object_id, .. }
+        | RenderPrimitive::Ellipse { object_id, .. }
+        | RenderPrimitive::Polyline { object_id, .. }
+        | RenderPrimitive::Path { object_id, .. }
+        | RenderPrimitive::FilledPath { object_id, .. }
+        | RenderPrimitive::Text { object_id, .. } => object_id.as_deref(),
+    }
+}
+
+fn rendered_object_bounds(engine: &Engine, object_id: &str) -> [f64; 4] {
+    let render_list = engine.render_list();
+    chemcore_engine::render_primitives_bounds(
+        render_list
+            .iter()
+            .filter(|primitive| primitive_object_id(primitive) == Some(object_id)),
+    )
+    .expect("object should have rendered bounds")
+}
+
+fn assert_bounds_contains(outer: [f64; 4], inner: [f64; 4]) {
+    let epsilon = 1.0e-6;
+    assert!(
+        outer[0] <= inner[0] + epsilon
+            && outer[1] <= inner[1] + epsilon
+            && outer[2] >= inner[2] - epsilon
+            && outer[3] >= inner[3] - epsilon,
+        "outer bounds {outer:?} should contain inner bounds {inner:?}"
+    );
+}
+
 fn assert_rect_close(actual: (f64, f64, f64, f64), expected: (f64, f64, f64, f64)) {
     assert!(
         (actual.0 - expected.0).abs() < 1.0e-9
@@ -966,6 +1006,144 @@ fn curved_arrow_tool_stores_curve_and_renders_arc_segments() {
         })
         .expect("curved arrow should render as a smooth path with sampled bounds points");
     assert!(arc_points[arc_points.len() / 2].y > arc_points[0].y);
+}
+
+#[test]
+fn selected_curved_arrow_box_wraps_visual_arc_and_head() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(ToolState {
+        active_tool: Tool::Arrow,
+        arrow_variant: ArrowVariant::Curved,
+        arrow_curve: ArrowCurve::Arc270,
+        ..ToolState::default()
+    });
+
+    drag(
+        &mut engine,
+        Point::new(100.0, 100.0),
+        Point::new(140.0, 100.0),
+    );
+
+    let object_id = engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "line")
+        .expect("created curved arrow object should exist")
+        .id
+        .clone();
+    let visual_bounds = rendered_object_bounds(&engine, &object_id);
+    assert!(
+        visual_bounds[0] < 100.0,
+        "fixture should exercise an arc that extends left of the endpoint handles: {visual_bounds:?}"
+    );
+
+    engine.set_tool_state(select_tool());
+
+    assert_eq!(engine.state().selection.arrow_objects, vec![object_id]);
+    assert_bounds_contains(selection_box_bounds(&engine), visual_bounds);
+}
+
+#[test]
+fn selected_curved_equilibrium_arrow_box_wraps_both_branches() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(ToolState {
+        active_tool: Tool::Arrow,
+        arrow_variant: ArrowVariant::Equilibrium,
+        arrow_curve: ArrowCurve::Arc120,
+        ..ToolState::default()
+    });
+
+    drag(&mut engine, Point::new(40.0, 80.0), Point::new(120.0, 80.0));
+
+    let object_id = engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "line")
+        .expect("created curved equilibrium arrow object should exist")
+        .id
+        .clone();
+    let visual_bounds = rendered_object_bounds(&engine, &object_id);
+
+    engine.set_tool_state(select_tool());
+
+    assert_eq!(engine.state().selection.arrow_objects, vec![object_id]);
+    assert_bounds_contains(selection_box_bounds(&engine), visual_bounds);
+}
+
+#[test]
+fn selected_bracket_and_symbol_boxes_wrap_visual_geometry() {
+    let mut engine = Engine::new();
+    let document = json!({
+        "format": { "name": "chemcore", "version": "0.1", "unit": "pt" },
+        "document": {
+            "id": "doc_graphic_selection_visual_bounds",
+            "title": "graphic selection visual bounds",
+            "page": { "width": 220.0, "height": 120.0, "background": "#ffffff" }
+        },
+        "objects": [
+            {
+                "id": "obj_round_bracket",
+                "type": "bracket",
+                "visible": true,
+                "zIndex": 10,
+                "transform": { "translate": [40.0, 20.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+                "payload": {
+                    "bbox": [0.0, 0.0, 18.0, 70.0],
+                    "kind": "round",
+                    "stroke": "#000000",
+                    "strokeWidth": 1.0
+                }
+            },
+            {
+                "id": "obj_circle_plus",
+                "type": "symbol",
+                "visible": true,
+                "zIndex": 11,
+                "transform": { "translate": [130.0, 40.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+                "payload": {
+                    "bbox": [0.0, 0.0, 20.0, 20.0],
+                    "kind": "circle-plus",
+                    "fill": "#000000",
+                    "strokeWidth": 1.0
+                }
+            }
+        ],
+        "resources": {}
+    });
+    engine
+        .load_document_json(&document.to_string())
+        .expect("graphic selection document should load");
+
+    let bracket_bounds = rendered_object_bounds(&engine, "obj_round_bracket");
+    assert!(
+        bracket_bounds[0] < 40.0,
+        "fixture should exercise round bracket geometry outside the stored bbox: {bracket_bounds:?}"
+    );
+    let symbol_bounds = rendered_object_bounds(&engine, "obj_circle_plus");
+    assert!(
+        symbol_bounds[0] < 130.0,
+        "fixture should exercise symbol stroke outside the stored bbox: {symbol_bounds:?}"
+    );
+
+    engine.set_tool_state(select_tool());
+
+    engine.select_at_point(Point::new(49.0, 55.0), false);
+    assert_eq!(
+        engine.state().selection.arrow_objects,
+        vec!["obj_round_bracket".to_string()]
+    );
+    assert_bounds_contains(selection_box_bounds(&engine), bracket_bounds);
+
+    engine.select_at_point(Point::new(140.0, 50.0), false);
+    assert_eq!(
+        engine.state().selection.arrow_objects,
+        vec!["obj_circle_plus".to_string()]
+    );
+    assert_bounds_contains(selection_box_bounds(&engine), symbol_bounds);
 }
 
 #[test]

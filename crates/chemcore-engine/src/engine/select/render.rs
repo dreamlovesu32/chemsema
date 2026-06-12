@@ -284,8 +284,16 @@ pub(super) fn scene_object_selection_bounds(
     if object.object_type == "molecule" {
         return molecule_object_selection_bounds(document, object);
     }
+    if object.object_type == "line" {
+        return line_object_visual_bounds(document, object)
+            .map(AxisBounds::from_array)
+            .or_else(|| arrow_object_selection_bounds(object))
+            .or_else(|| object_bbox_selection_bounds(object));
+    }
     if matches!(object.object_type.as_str(), "bracket" | "symbol") {
-        return object_bbox_selection_bounds(object);
+        return bracket_object_visual_bounds(document, object)
+            .map(AxisBounds::from_array)
+            .or_else(|| object_bbox_selection_bounds(object));
     }
     arrow_object_selection_bounds(object)
 }

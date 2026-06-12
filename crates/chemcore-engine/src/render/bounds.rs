@@ -83,6 +83,24 @@ pub(crate) fn shape_object_visual_bounds(
     render_primitives_bounds(out.iter())
 }
 
+pub(crate) fn line_object_visual_bounds(
+    document: &ChemcoreDocument,
+    object: &SceneObject,
+) -> Option<[f64; 4]> {
+    let mut out = Vec::new();
+    render_line_object(&mut out, document, object);
+    render_primitives_bounds(out.iter())
+}
+
+pub(crate) fn bracket_object_visual_bounds(
+    document: &ChemcoreDocument,
+    object: &SceneObject,
+) -> Option<[f64; 4]> {
+    let mut out = Vec::new();
+    render_bracket_object(&mut out, document, object);
+    render_primitives_bounds(out.iter())
+}
+
 pub(crate) fn primitive_matches_bond(primitive: &RenderPrimitive, bond_id: &str) -> bool {
     match primitive {
         RenderPrimitive::Line {
