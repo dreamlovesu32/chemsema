@@ -5195,6 +5195,31 @@ fn select_tool_click_on_text_object_selects_text_box() {
 }
 
 #[test]
+fn select_tool_does_not_hover_selected_text_object() {
+    let mut engine = Engine::new();
+    load_text_object_document(&mut engine);
+    engine.set_tool_state(select_tool());
+
+    let point = px_point(300.0, 250.0);
+    engine.select_at_point(point, false);
+    engine.pointer_move(PointerEvent {
+        x: point.x,
+        y: point.y,
+        button: None,
+        alt_key: false,
+    });
+
+    assert!(engine.state().overlay.hover_text_box.is_none());
+    assert!(!engine.render_list().iter().any(|primitive| matches!(
+        primitive,
+        RenderPrimitive::Rect {
+            role: RenderRole::HoverTextBox,
+            ..
+        }
+    )));
+}
+
+#[test]
 fn select_tool_click_on_label_selects_label_box_not_atom() {
     let mut engine = Engine::new();
     load_label_document(
@@ -5218,6 +5243,41 @@ fn select_tool_click_on_label_selects_label_box_not_atom() {
         primitive,
         RenderPrimitive::Rect {
             role: RenderRole::SelectionTextBox,
+            ..
+        }
+    )));
+}
+
+#[test]
+fn select_tool_does_not_hover_selected_label_box() {
+    let mut engine = Engine::new();
+    load_label_document(
+        &mut engine,
+        "CuF3",
+        vec![
+            rect_polygon(294.0, 256.0, 300.0, 264.0),
+            rect_polygon(302.0, 256.0, 308.0, 264.0),
+            rect_polygon(310.0, 256.0, 316.0, 264.0),
+            rect_polygon(318.0, 256.0, 324.0, 264.0),
+        ],
+        json!([]),
+    );
+    engine.set_tool_state(select_tool());
+
+    let point = px_point(305.0, 260.0);
+    engine.select_at_point(point, false);
+    engine.pointer_move(PointerEvent {
+        x: point.x,
+        y: point.y,
+        button: None,
+        alt_key: false,
+    });
+
+    assert!(engine.state().overlay.hover_text_box.is_none());
+    assert!(!engine.render_list().iter().any(|primitive| matches!(
+        primitive,
+        RenderPrimitive::Rect {
+            role: RenderRole::HoverLabelGlyph | RenderRole::HoverTextBox,
             ..
         }
     )));

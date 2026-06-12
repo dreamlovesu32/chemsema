@@ -1196,6 +1196,11 @@ impl Engine {
         self.state.overlay.hover_endpoint = None;
         self.state.overlay.preview = None;
         if let Some((node_id, bounds)) = self.hit_test_endpoint_label_box(point) {
+            if self.state.selection.label_nodes.contains(&node_id)
+                || self.state.selection.nodes.contains(&node_id)
+            {
+                return;
+            }
             self.state.overlay.hover_text_box = Some(HoverTextBox {
                 bounds,
                 object_id: None,
@@ -1204,6 +1209,9 @@ impl Engine {
             return;
         }
         if let Some((object_id, bounds)) = self.hit_test_text_object(point) {
+            if self.state.selection.text_objects.contains(&object_id) {
+                return;
+            }
             self.state.overlay.hover_text_box = Some(HoverTextBox {
                 bounds,
                 object_id: Some(object_id),
