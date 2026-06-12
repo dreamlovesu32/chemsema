@@ -3,9 +3,7 @@ export function createEditorPointerController(options) {
   let hoverMoveFrame = 0;
   let hoverMoveRunning = false;
   let hoverMoveVersion = 0;
-  let selectionInteriorFastPathActive = false;
-  let selectionInteriorSyncRequest = null;
-  let selectionInteriorSyncRunning = false;
+  let selectionHoverSuppressionActive = false;
 
   async function executeDocumentCommand(command, apply, executeOptions = {}) {
     if (options.commandEngine?.executeEngineCommand) {
@@ -62,7 +60,7 @@ export function createEditorPointerController(options) {
   function scheduleHoverPointerMove(point, altKey) {
     hoverMoveRequest = { point, altKey };
     hoverMoveVersion += 1;
-    if (!hoverMoveFrame && !hoverMoveRunning && !selectionInteriorSyncRunning) {
+    if (!hoverMoveFrame && !hoverMoveRunning) {
       hoverMoveFrame = requestAnimationFrame(drainScheduledHoverPointerMove);
     }
   }
@@ -71,14 +69,25 @@ export function createEditorPointerController(options) {
     return version !== hoverMoveVersion || !!options.activeSelectionGesture();
   }
 
-  function selectionInteriorFastPathApplies(point) {
+  function toolCanHoverSuppressSelection(tool) {
+    return tool === "select" || toolSupportsSelectionBoxMove(tool);
+  }
+
+  function selectionHoverSuppressionState(point) {
     const editorState = options.editorState();
     if (editorState.elementPlacementActive
-      || (editorState.activeTool !== "select" && !toolSupportsSelectionBoxMove(editorState.activeTool))) {
-      return false;
+      || !toolCanHoverSuppressSelection(editorState.activeTool)) {
+      return null;
     }
+    const selectionBounds = options.currentRenderBounds?.("selection");
     const overSelection = !!options.selectionBoundsContainsPoint?.(point);
-    return overSelection && !selectionHandleZoneContainsPoint(point);
+    const inHandleZone = !!selectionBounds
+      && editorState.activeTool === "select"
+      && selectionHandleZoneContainsPoint(point);
+    if (!overSelection && !inHandleZone) {
+      return null;
+    }
+    return { overSelection, inHandleZone };
   }
 
   function clearVisibleHoverOverlay() {
@@ -94,55 +103,44 @@ export function createEditorPointerController(options) {
     }
   }
 
-  function requestSelectionInteriorInteractionSync(point, altKey) {
-    selectionInteriorSyncRequest = { point, altKey };
-    if (hoverMoveRunning || selectionInteriorSyncRunning) {
+  function syncSelectionHoverSuppressionCursor(point, state) {
+    const viewerSvg = options.viewerSvg?.();
+    if (!viewerSvg) {
       return;
     }
-    void drainSelectionInteriorInteractionSync();
-  }
-
-  async function drainSelectionInteriorInteractionSync() {
-    if (hoverMoveRunning || selectionInteriorSyncRunning || !selectionInteriorSyncRequest) {
-      return;
-    }
-    const request = selectionInteriorSyncRequest;
-    selectionInteriorSyncRequest = null;
-    selectionInteriorSyncRunning = true;
-    try {
-      await options.state().editorEngine.pointerMove(request.point.x, request.point.y, request.altKey);
-    } finally {
-      selectionInteriorSyncRunning = false;
-      if (selectionInteriorSyncRequest) {
-        void drainSelectionInteriorInteractionSync();
-      } else if (hoverMoveRequest && !hoverMoveFrame && !hoverMoveRunning) {
-        hoverMoveFrame = requestAnimationFrame(drainScheduledHoverPointerMove);
+    if (options.editorState().activeTool === "select") {
+      const resizeHandle = options.selectionResizeHandleHit(point);
+      if (resizeHandle) {
+        viewerSvg.style.cursor = resizeHandle.cursor;
+        return;
+      }
+      if (options.selectionRotateHandleHit(point)) {
+        viewerSvg.style.cursor = "grab";
+        return;
       }
     }
+    if (state.overSelection) {
+      viewerSvg.style.cursor = "grab";
+    } else {
+      options.syncCanvasCursor?.();
+    }
   }
 
-  function enterSelectionInteriorFastPath(point, altKey) {
-    const wasActive = selectionInteriorFastPathActive;
-    selectionInteriorFastPathActive = true;
+  function enterSelectionHoverSuppression(point, state) {
+    selectionHoverSuppressionActive = true;
     cancelScheduledHoverMove();
     options.clearTlcHoverState();
-    const viewerSvg = options.viewerSvg?.();
-    if (viewerSvg) {
-      viewerSvg.style.cursor = "grab";
-    }
+    syncSelectionHoverSuppressionCursor(point, state);
     clearVisibleHoverOverlay();
     options.positionActiveTextEditor();
-    if (!wasActive) {
-      requestSelectionInteriorInteractionSync(point, altKey);
-    }
   }
 
-  function leaveSelectionInteriorFastPath(point) {
-    if (!selectionInteriorFastPathActive) {
+  function leaveSelectionHoverSuppression(point = null) {
+    if (!selectionHoverSuppressionActive) {
       return;
     }
-    selectionInteriorFastPathActive = false;
-    if (options.editorState().activeTool === "select") {
+    selectionHoverSuppressionActive = false;
+    if (point && options.editorState().activeTool === "select") {
       const resizeHandle = options.selectionResizeHandleHit(point);
       if (resizeHandle) {
         const viewerSvg = options.viewerSvg?.();
@@ -162,11 +160,12 @@ export function createEditorPointerController(options) {
     options.syncCanvasCursor?.();
   }
 
-  function renderSelectionHoverFastPath(point, altKey) {
-    if (!selectionInteriorFastPathApplies(point)) {
+  function renderSelectionHoverFastPath(point) {
+    const state = selectionHoverSuppressionState(point);
+    if (!state) {
       return false;
     }
-    enterSelectionInteriorFastPath(point, altKey);
+    enterSelectionHoverSuppression(point, state);
     return true;
   }
 
@@ -185,9 +184,7 @@ export function createEditorPointerController(options) {
       }
     } finally {
       hoverMoveRunning = false;
-      if (selectionInteriorSyncRequest) {
-        void drainSelectionInteriorInteractionSync();
-      } else if (hoverMoveRequest && !hoverMoveFrame && !selectionInteriorSyncRunning) {
+      if (hoverMoveRequest && !hoverMoveFrame) {
         hoverMoveFrame = requestAnimationFrame(drainScheduledHoverPointerMove);
       }
     }
@@ -204,7 +201,7 @@ export function createEditorPointerController(options) {
       }
       return;
     }
-    if (renderSelectionHoverFastPath(point, altKey)) {
+    if (renderSelectionHoverFastPath(point)) {
       return;
     }
     await options.state().editorEngine.pointerMove(point.x, point.y, altKey);
@@ -414,12 +411,13 @@ export function createEditorPointerController(options) {
       options.renderEditorOverlay(options.currentEditorOverlayRenderList());
       return;
     }
-    if (selectionInteriorFastPathApplies(point)) {
+    const selectionHoverSuppression = selectionHoverSuppressionState(point);
+    if (selectionHoverSuppression) {
       event.preventDefault();
-      enterSelectionInteriorFastPath(point, event.altKey);
+      enterSelectionHoverSuppression(point, selectionHoverSuppression);
       return;
     }
-    leaveSelectionInteriorFastPath(point);
+    leaveSelectionHoverSuppression(point);
     scheduleHoverPointerMove(point, event.altKey);
   }
 
@@ -878,6 +876,7 @@ export function createEditorPointerController(options) {
 
   async function handleEditorPointerLeave() {
     cancelScheduledHoverMove();
+    leaveSelectionHoverSuppression();
     if (!options.isEditingRustDocument()) {
       return;
     }
