@@ -3940,30 +3940,56 @@ function documentPrimitiveHasSelectionAnchor(primitive) {
   ));
 }
 
-function selectedWholeDocumentObjectIds(renderList = state.coreRenderList || currentEditorRenderList()) {
+function currentDocumentSceneObjects() {
+  const out = [];
+  const visit = (object) => {
+    if (!object) {
+      return;
+    }
+    out.push(object);
+    for (const child of object.children || []) {
+      visit(child);
+    }
+  };
+  for (const object of state.currentDocument?.objects || []) {
+    visit(object);
+  }
+  return out;
+}
+
+function selectedDocumentPreviewObjectIds() {
   const selection = currentEditorEngineState()?.selection;
   if (!selection || editorSelectionHasItems(selection) === false) {
     return [];
   }
-  const objectSelection = new Map();
-  for (const primitive of renderList || []) {
-    if (!isDocumentPreviewPrimitive(primitive)) {
-      continue;
+  const objectIds = new Set([
+    ...(selection.textObjects || []),
+    ...(selection.arrowObjects || []),
+  ]);
+  const selectedNodeIds = new Set([
+    ...(selection.nodes || []),
+    ...(selection.labelNodes || []),
+  ]);
+  const selectedBondIds = new Set(selection.bonds || []);
+  if (selectedNodeIds.size || selectedBondIds.size) {
+    const moleculeObjects = currentDocumentSceneObjects()
+      .filter((object) => object?.type === "molecule");
+    const matchedMoleculeIds = [];
+    for (const object of moleculeObjects) {
+      const resourceRef = object.payload?.resourceRef || object.payload?.resource_ref;
+      const fragment = resourceRef ? state.currentDocument?.resources?.[resourceRef]?.data : null;
+      const matchesNode = fragment?.nodes?.some((node) => selectedNodeIds.has(node.id));
+      const matchesBond = fragment?.bonds?.some((bond) => selectedBondIds.has(bond.id));
+      if (matchesNode || matchesBond) {
+        objectIds.add(object.id);
+        matchedMoleculeIds.push(object.id);
+      }
     }
-    const objectId = primitiveObjectId(primitive);
-    if (!objectId || primitive.role === "document-knockout" || !documentPrimitiveHasSelectionAnchor(primitive)) {
-      continue;
+    if (!matchedMoleculeIds.length && moleculeObjects.length === 1) {
+      objectIds.add(moleculeObjects[0].id);
     }
-    const entry = objectSelection.get(objectId) || { total: 0, selected: 0 };
-    entry.total += 1;
-    if (documentPrimitiveSelectedByState(primitive, selection)) {
-      entry.selected += 1;
-    }
-    objectSelection.set(objectId, entry);
   }
-  return [...objectSelection.entries()]
-    .filter(([, entry]) => entry.total > 0 && entry.total === entry.selected)
-    .map(([objectId]) => objectId);
+  return [...objectIds];
 }
 
 function selectionCoversRenderedDocument(renderList = state.coreRenderList || currentEditorRenderList()) {
@@ -4063,7 +4089,7 @@ function applyDocumentObjectPreviewTransform() {
     return true;
   }
   const hasCachedObjectIds = Array.isArray(activeSelectionGesture.previewObjectIds);
-  const objectIds = activeSelectionGesture.previewObjectIds || selectedWholeDocumentObjectIds();
+  const objectIds = activeSelectionGesture.previewObjectIds || selectedDocumentPreviewObjectIds();
   if (!objectIds.length) {
     clearDocumentObjectPreviewTransform();
     return false;
