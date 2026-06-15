@@ -1,7 +1,7 @@
 # Chemcore 缩写识别规则
 
 本文档定义 Chemcore 当前内核对结构端点标签、functional group 缩写和
-formula-like 标签的识别行为。普通自由文本不属于这里的结构标签规则。
+formula-like 标签的识别行为。普通自由文本由文本对象规则处理。
 
 识别入口必须带连接数上下文。同一个字符串在不同连接数下可能有不同语义，
 也可能从合法变为非法。
@@ -215,8 +215,7 @@ NCl  -> -N(Cl)-
 
 ## 标签显示与反转
 
-结构标签的显示不是简单逐字符反转。内核会先把显示文本切成化学上有意义的
-组，再按连接方向决定组顺序。
+结构标签显示会先把文本切成化学上有意义的组，再按连接方向决定组顺序。
 
 分组规则：
 
@@ -231,20 +230,20 @@ NCl  -> -N(Cl)-
 OTMS -> TMSO
 ```
 
-而不是逐字符变成 `SMTO`。
+其中 `TMS` 保持为一个整体字母组。
 
 `iPr`、`nBu`、`tBu` 这类以小写字母开头且后面包含大写字母的末端模板，
 使用 whole-label layout：选择和锚点把整个标签视作一个不可拆的结构标签。
 
 ## 与元素隐式氢的关系
 
-缩写识别发生在简单元素隐式氢之前。命中 functional group 后，不再按元素串
-逐字符加氢。
+缩写识别发生在简单元素隐式氢之前。命中 functional group 后，隐式氢规则使用
+functional group expansion 作为输入。
 
 示例：
 
-- `NO2` 是 nitro group，不是 `N` 加两个普通 `O` 字符。
-- `CN` 是 cyano group，不是自由文本。
+- `NO2` 识别为 nitro group。
+- `CN` 识别为 cyano group。
 - `TMS` 是一价 trimethylsilyl group，连接点是 `Si`。
 - `CO2Et`、`COOSO2Me`、`CH2CH2CH3` 由价键 parser 解释。
 

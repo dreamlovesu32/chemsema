@@ -4,7 +4,7 @@
 
 ## 目标
 
-文本编辑器必须能稳定插入和渲染常见符号，不能因为某个字符没有手工写入 `shared/glyph_profiles.json` 就退回错误宽度或错误高度。`%` 这类问题的根因不是单个字符漏补，而是 glyph profile 覆盖和兜底策略不完整。
+文本编辑器必须能稳定插入和渲染常见符号。未手工写入 `shared/glyph_profiles.json` 的字符也需要正确宽度和高度兜底。`%` 这类问题来自 glyph profile 覆盖和兜底策略不完整。
 
 当前规则：
 
@@ -42,7 +42,7 @@ shared/glyph_profiles.json
 - `shape`
 - `visible`
 
-新增或调整文本符号时，应优先运行生成脚本，而不是手工补单个字符：
+新增或调整文本符号时，应优先运行生成脚本：
 
 ```bash
 python scripts/generate-glyph-profiles.py
@@ -60,7 +60,7 @@ python scripts/generate-glyph-profiles.py
 - 数学符号和箭头：按宽符号 profile 处理。
 - 未知符号：按中等宽度保守矩形处理。
 
-兜底 profile 的裁剪形状必须保守。自动生成脚本能提供真实 ink bbox；如果不能可靠判断角裁剪，就使用矩形而不是激进切角。
+兜底 profile 的裁剪形状必须保守。自动生成脚本能提供真实 ink bbox；无法可靠判断角裁剪时使用矩形。
 
 ## 裁剪策略
 

@@ -13,11 +13,11 @@ Jiajun ZHANG, Pinhong Chen,* Guosheng Liu*, Copper-Catalyzed Site- and
 Enantioselective C–H Cyanation of Trisubstituted Allenes,
 [Chin. J. Chem. 2026, 44, 1729–1734](https://onlinelibrary.wiley.com/doi/full/10.1002/cjoc.70531).
 
-These are real publication figures rather than simplified demo fixtures. They
-exercise molecule rendering, text layout, reaction arrows, brackets, colors,
-radical/single-electron dots, graphical objects, and Office-oriented vector
-output. The left column is exported by ChemDraw; the right column is exported by
-ChemCore after importing the same CDXML files.
+These real publication figures exercise molecule rendering, text layout,
+reaction arrows, brackets, colors, radical/single-electron dots, graphical
+objects, and Office-oriented vector output. The left column is exported by
+ChemDraw; the right column is exported by ChemCore after importing the same
+CDXML files.
 
 ![ChemDraw and ChemCore CDXML rendering comparison](./docs/assets/readme/comparison/published-cdxml-comparison.svg)
 
@@ -40,7 +40,7 @@ built locally with the commands below.
 - **Built for real research drawing workflows**: ChemCore is designed around drawing structures, arranging reaction schemes, copying into Word or PowerPoint, and returning later for editing.
 - **ChemDraw-compatible files and layout habits**: CDXML/CDX import and export are first-class paths, with source structure, text, arrows, brackets, symbols, colors, and object positions preserved as much as possible.
 - **One shared core for browser, desktop, and Office integration**: Editing rules, hit testing, chemical labels, render primitives, and import/export logic live in the Rust engine to avoid behavior drift between surfaces.
-- **Low-latency editing**: Hover, focus, selection, drag preview, rotation, and zoom use local WASM/Rust hot paths instead of turning every pointer move into a cross-process request.
+- **Low-latency editing**: Hover, focus, selection, drag preview, rotation, and zoom use local WASM/Rust hot paths.
 - **Modern desktop behavior**: The Tauri/WebView2 desktop shell supports file open/save, drag-to-open, recent files, tabs, unsaved-change prompts, shortcuts, and Windows file association.
 - **Office paste and embedding are treated seriously**: Copy operations consider native ChemCore data, CDXML, SVG, EMF, RTF/OOXML, and OLE payloads so Office display and later editing remain reliable.
 
@@ -66,8 +66,7 @@ consume the same geometry.
 
 ### Text Clipping
 
-ChemCore does not treat an atom label as one coarse rectangle. Endpoint labels
-are split into styled runs and line runs, then the engine builds per-glyph clip
+Endpoint labels are split into styled runs and line runs, then the engine builds per-glyph clip
 polygons from font size, baseline, subscript/superscript shifts, and character
 advance data. When a bond is rendered, its endpoint ray intersects the glyph
 polygon edges, picks the farthest exit point from the atom, and advances by the
@@ -82,21 +81,19 @@ engine falls back to the label bounding box.
 
 ### Label Grouping
 
-Chemical labels are grouped by uppercase-led fragments and known abbreviations,
-not reversed character by character. For example, `OTMS` is grouped as `O` +
-`TMS`, so a right-side label becomes `TMSO`, not `SMTO`. Anchors are assigned to
-the chemically meaningful terminal letter rather than a trailing digit,
-implicit hydrogen, or an internal abbreviation character.
+Chemical labels are grouped by uppercase-led fragments and known abbreviations.
+For example, `OTMS` is grouped as `O` + `TMS`, so a right-side label becomes
+`TMSO`. Anchors are assigned to
+the chemically meaningful terminal letter.
 
 ### Bond Joins
 
-Shared endpoints are computed as real polygons instead of relying on SVG stroke
-caps. Each bond endpoint is converted into an axis, normal, left/right contour
-lines, and half width. For two-bond joins, the engine intersects inner-inner and
-outer-outer contours and stores endpoint profiles for each bond. For three or
-more incident bonds, contours are sorted by polar angle and only adjacent pairs
-are intersected, producing a ring of profiles around the node. Sharp angles are
-limited by a miter cap.
+Shared endpoints are computed as real polygons. Each bond endpoint is converted
+into an axis, normal, left/right contour lines, and half width. For two-bond
+joins, the engine intersects inner-inner and outer-outer contours and stores
+endpoint profiles for each bond. For three or more incident bonds, contours are
+sorted by polar angle and only adjacent pairs are intersected, producing a ring
+of profiles around the node. Sharp angles are limited by a miter cap.
 
 ### Crossing Gaps
 
@@ -110,13 +107,13 @@ visual width plus its template `marginWidth`.
 
 ### Infinite Canvas
 
-The editor uses a runtime `viewBox` rather than a fixed page-sized viewport.
+The editor uses a runtime `viewBox`.
 The SVG `viewBox` is expressed in document-world coordinates, while CSS size is
 computed from `pt -> css px -> zoom`; the scroll container is just a window into
 that world. Empty documents start with a centered buffer around the visible
 area. After each render, document bounds are compared with the current viewBox;
 if content approaches an edge, the viewBox expands in that direction and
-left/top expansions compensate scroll delta so the scene does not jump.
+left/top expansions compensate scroll delta so the scene remains visually stable.
 
 ### Stable Interaction
 
@@ -130,7 +127,7 @@ Architecturally, ChemCore keeps the rules that affect consistency inside the
 engine wherever possible: hit testing, selection ranges, hover behavior,
 drawing geometry, text clipping, bond joins, implicit hydrogen, abbreviation
 recognition, CDXML parsing, and export rendering are shared by the browser,
-desktop, and Office paths instead of being patched separately in the front end.
+desktop, and Office paths.
 
 Complex CDXML compatibility, Office copy/paste, OLE embedding, and ChemDraw
 format fidelity are still being actively refined. Reports with concrete files,
@@ -145,8 +142,7 @@ to try ChemCore, open issues, join discussions, or contribute code.
 The most useful feedback usually comes in two forms: concrete files with
 screenshots that help align ChemDraw display and interaction, and real writing
 workflows that expose copy/paste, Office editing, layout, or export problems.
-ChemCore is not meant to be a demo that merely looks like an editor; the goal is
-to become a tool that can enter daily research work.
+ChemCore is built to become a tool that can enter daily research work.
 
 Please contact the maintainer using the email address at the top of this README.
 

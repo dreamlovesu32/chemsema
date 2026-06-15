@@ -22,7 +22,7 @@ patches or inverse operations without changing the editor event model.
 Only committed document changes are commands.
 
 Pointer hover, focus halos, preview bonds, lasso outlines, active drag state,
-and text cursor movement are interaction state. They do not enter history.
+and text cursor movement are interaction state outside history.
 
 ## Current Commands
 
@@ -190,11 +190,11 @@ Recorded data:
 
 Fallback command used if a document change still calls the low-level snapshot
 API outside a command context. This should be treated as a migration warning:
-new editing features should not rely on it.
+new editing features should use semantic commands.
 
-## Non-Commands
+## Transient Actions
 
-The following actions are not document history commands:
+The following actions are transient UI/runtime actions:
 
 - `copy-selection`: changes only the internal clipboard
 - `set-tool`

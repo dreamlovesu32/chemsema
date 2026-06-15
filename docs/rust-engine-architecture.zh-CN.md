@@ -23,14 +23,14 @@ Chemcore 的编辑能力从现在开始以 Rust 核心为准。Web、Windows、i
 
 ## WASM 和 Native 的关系
 
-WASM 不是前端 fallback。它是同一个 Rust `chemcore-engine` 在浏览器/WebView 内的运行形态。
+WASM 是同一个 Rust `chemcore-engine` 在浏览器/WebView 内的运行形态。
 
 长期运行时边界如下：
 
 - 浏览器端：通过 `WasmEngineHost` 调用 WASM core。
 - Windows 桌面端默认热编辑路径：通过 `DesktopHybridEngineHost` 调用 WebView 内 WASM core。
 - Windows 桌面端系统能力：通过 Tauri command 调用 native desktop service。
-- `TauriEngineHost` / `?engine=tauri-native`：保留为诊断和未来 native editor path 验证，不是当前桌面默认热交互路径。
+- `TauriEngineHost` / `?engine=tauri-native`：保留为诊断和未来 native editor path 验证；当前桌面默认热交互路径使用 `DesktopHybridEngineHost`。
 
 pointer move、hover、focus、hit testing、selection、drag preview、rotate/scale/move、object settings 等高频编辑行为，不应同步跨 Tauri IPC 再取完整 JSON snapshot。除非 native path 已经具备增量更新、事件合并和大文件性能证明，否则这些行为必须留在进程内 core runtime。
 

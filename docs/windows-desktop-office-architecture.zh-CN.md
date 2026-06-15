@@ -1,6 +1,6 @@
 # Windows 桌面端与 Office 集成长期架构
 
-本文记录 Chemcore Windows 桌面端和 Office 集成的长期方案。目标不是先做一个临时桌面壳再重构，而是从第一阶段就沿着最终产品形态建设：同一个 Rust 化学内核、一个专业 Windows 桌面应用、一个真正的 Office/OLE 集成层，以及一个仍然可共享的 Web 端适配层。
+本文记录 Chemcore Windows 桌面端和 Office 集成的长期方案。方案从第一阶段就沿着最终产品形态建设：同一个 Rust 化学内核、一个专业 Windows 桌面应用、一个真正的 Office/OLE 集成层，以及一个仍然可共享的 Web 端适配层。
 
 ## 目标体验
 
@@ -8,7 +8,7 @@
 
 - 双击 `.ccjz`、`.ccjs`、`.cdxml` 可直接打开 Chemcore。
 - Word、PowerPoint、Excel 中可以插入 Chemcore 对象。
-- Office 文档中显示高质量预览图，而不是只显示附件或普通图片。
+- Office 文档中显示高质量预览图。
 - 双击 Office 里的 Chemcore 对象可以打开 Chemcore 编辑。
 - 编辑完成后，Office 内对象数据和预览同步更新。
 - 从 Chemcore 复制到 Office 时，既有可再编辑的 Chemcore native object，也有 CDXML、SVG、PNG 等 fallback。
@@ -74,7 +74,7 @@ migrate_document()
 
 桌面端采用 Tauri 2 + WebView2。Tauri 官方 Windows 前置条件包括 Microsoft C++ Build Tools、Microsoft Edge WebView2、Rust 和 Node.js。Microsoft WebView2 Runtime 是 WebView2 app 的底层 Web 平台，发布时应选择 Evergreen 或 Fixed Version runtime 分发策略。
 
-Tauri 在本项目中不是临时套壳，而是长期系统 adapter：
+Tauri 在本项目中承担长期系统 adapter：
 
 - Windows 窗口。
 - 原生菜单栏。
@@ -107,7 +107,7 @@ EngineHost
     显式 native diagnostic/future path：通过 Tauri command 调用 Rust native desktop service。
 ```
 
-这里的“hybrid”不是前端 fallback，也不是两套化学逻辑。它的长期含义是：同一个 Rust `chemcore-engine` 同时编译成 WASM editor runtime 和 native desktop service runtime；浏览器和桌面编辑热路径共享同一个 engine 行为，桌面系统能力由 native service 承担。
+这里的“hybrid”指同一个 Rust `chemcore-engine` 同时编译成 WASM editor runtime 和 native desktop service runtime；浏览器和桌面编辑热路径共享同一个 engine 行为，桌面系统能力由 native service 承担。
 
 桌面端长期默认应使用 `DesktopHybridEngineHost`：
 
@@ -123,7 +123,7 @@ EngineHost
 - render primitive 和 selection/focus overlay 支持增量 diff 或共享内存式更新。
 - 大文件下聚焦、拖拽和框选的延迟不高于桌面默认 hybrid path。
 
-因此，长期方向不是“Web 端一套、桌面端一套”，也不是“桌面永远只能靠前端”。长期方向是：
+长期方向：
 
 ```text
 同一个 Rust core
@@ -149,9 +149,9 @@ apps/chemcore-desktop/src-tauri
   Tauri command 边界。当前已经暴露 desktop_engine_* 命令给未来 TauriEngineHost 使用。
 ```
 
-当前阶段 Web 仍默认使用 `WasmEngineHost`，桌面端使用 `DesktopHybridEngineHost`。这是为了保持编辑器同步调用模型稳定，同时保证 Tauri native command 通路不再只是空代码。后续扩展 native service 时，不应让 UI 直接散落调用 Tauri command；低频系统能力通过 desktop file/export/clipboard host 接入，高频编辑能力继续通过同一套 editor-facing engine API 接入。
+当前阶段 Web 默认使用 `WasmEngineHost`，桌面端使用 `DesktopHybridEngineHost`。这保持编辑器同步调用模型稳定，同时让 Tauri native command 通路服务低频系统能力。扩展 native service 时，UI 通过 desktop file/export/clipboard host 接入低频系统能力，高频编辑能力继续通过同一套 editor-facing engine API 接入。
 
-这段话的约束在 2026-05-07 调整为更明确的长期规则：桌面端默认不再切换到 `TauriEngineHost` 热编辑路径。native path 继续存在，但必须先证明它在大文件高频交互下达到上述性能条件；在此之前，`DesktopHybridEngineHost` 是正式桌面编辑运行时。
+2026-05-07 起的长期规则：`DesktopHybridEngineHost` 是正式桌面编辑运行时。`TauriEngineHost` / native path 保留为诊断和性能验证路径；只有在大文件高频交互下满足上述性能条件后，才进入热编辑路径评估。
 
 同日后续推进中，桌面端非 Office 原生能力继续加厚：
 
@@ -175,7 +175,7 @@ viewer/desktop_file_host.js
   浏览器端继续走 File System Access API 或下载 fallback。
 ```
 
-这仍不表示 Office/OLE 已完成，也不表示编辑事件已经切到 native engine path。当前桌面端的化学编辑交互仍主要通过 WebView + WASM engine 同步执行；这部分保持不变，是为了避免在文件系统原生化时同时改动 editor-facing API 的同步/异步模型。基础 EMF preview 已经落地，但还不是最终 Office/OLE 对象渲染后端；后续应继续把更多 SVG/path/text 细节迁到可测试的 native vector renderer。
+当前桌面端的化学编辑交互仍主要通过 WebView + WASM engine 同步执行；这部分保持稳定，以便文件系统原生化时保持 editor-facing API 的同步/异步模型稳定。基础 EMF preview 已经落地；后续应继续把更多 SVG/path/text 细节迁到可测试的 native vector renderer。
 
 建议的推进顺序：
 
@@ -189,7 +189,7 @@ viewer/desktop_file_host.js
 
 ## Office 集成策略
 
-如果目标是 ChemDraw 级 Office 体验，核心不是单纯 Office Add-in，而是真正的 Windows OLE/COM 嵌入对象。
+ChemDraw 级 Office 体验的核心是 Windows OLE/COM 嵌入对象。
 
 Office 集成分三层：
 
@@ -209,7 +209,7 @@ chemcore://open?id=...
 chemcore://edit-object?id=...
 ```
 
-这用于外部系统、网页、Office Add-in 或文档链接唤醒 Chemcore。它不是 Office 嵌入对象的替代品，只是启动和定位机制。
+这用于外部系统、网页、Office Add-in 或文档链接唤醒 Chemcore，作为启动和定位机制。
 
 ### 3. OLE/COM 嵌入对象
 
@@ -283,8 +283,8 @@ ChemcorePreviewSvg  当前阶段的 SVG preview placeholder，后续由真实渲
 ```
 
 - `npm run office:self-test` 用于无 Office 环境下验证 COM object 创建、接口查询、CLSID 返回，以及 OLE storage stream 写入/读回。
-- 桌面端复制时会继续写入普通 Windows clipboard 格式，同时调用 `chemcore-office.exe --copy-clipboard-payload` 把同一份 Chemcore document/svg/cdxml payload 放入 OLE clipboard。该 OLE clipboard object 支持 `Embed Source`、`Object Descriptor`、Chemcore 自定义 JSON、CDXML、SVG、Unicode text 和 `CF_ENHMETAFILE`，用于 Office 粘贴为可编辑对象。默认 OLE clipboard 不再枚举 `CF_METAFILEPICT`，避免 Word 优先生成 WMF 预览。
-- 已增加 `chemcore-office.exe --write-word-docx-payload <payload.json> <output.docx>`。这是第一条“直写 Word 结构”的路径：直接生成包含 `word/embeddings/oleObject1.bin` 和 `word/media/image1.emf` 的 OOXML package，用于验证和沉淀 ChemDraw 式外部 EMF 预览结构。后续 clipboard/active Word 插入能力应复用这条 package writer，而不是让 Word 自己从 WMF fallback 反推预览。
+- 桌面端复制时会继续写入普通 Windows clipboard 格式，同时调用 `chemcore-office.exe --copy-clipboard-payload` 把同一份 Chemcore document/svg/cdxml payload 放入 OLE clipboard。该 OLE clipboard object 支持 `Embed Source`、`Object Descriptor`、Chemcore 自定义 JSON、CDXML、SVG、Unicode text 和 `CF_ENHMETAFILE`，用于 Office 粘贴为可编辑对象。默认 OLE clipboard 枚举排除 `CF_METAFILEPICT`，避免 Word 优先生成 WMF 预览。
+- 已增加 `chemcore-office.exe --write-word-docx-payload <payload.json> <output.docx>`。这是第一条“直写 Word 结构”的路径：直接生成包含 `word/embeddings/oleObject1.bin` 和 `word/media/image1.emf` 的 OOXML package，用于验证和沉淀 ChemDraw 式外部 EMF 预览结构。后续 clipboard/active Word 插入能力应复用这条 package writer，直接生成稳定预览。
 
 后续仍需补齐真正的 embedded object 接口：
 
@@ -395,7 +395,7 @@ Office 中的对象预览不能只依赖 SVG。长期需要：
 
 - 桌面默认编辑运行时使用 `DesktopHybridEngineHost`：热交互通过 WebView 内 WASM core 同步完成。
 - Tauri 后端直接调用 Rust engine。已开始：Tauri 已持有 `DesktopDocumentService`，并暴露 `desktop_engine_*` commands。
-- WebView 不再负责本地文件系统、gzip 和路径权限。已开始：桌面打开/保存/另存为优先走 Tauri native file commands，`.ccjz` gzip 由 Rust service 处理。
+- 本地文件系统、gzip 和路径权限归属于 Tauri/Rust service。已开始：桌面打开/保存/另存为优先走 Tauri native file commands，`.ccjz` gzip 由 Rust service 处理。
 - viewer 只负责 UI、事件采集、坐标换算和渲染；编辑语义仍由 Rust core 决定。
 - `TauriEngineHost` 保留为 `?engine=tauri-native` 诊断路径，不作为桌面热交互默认路径。
 

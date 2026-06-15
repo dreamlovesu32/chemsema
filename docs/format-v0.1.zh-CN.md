@@ -4,7 +4,7 @@
 
 本文档定义 `chemcore` 第一版持久化文档格式。
 
-`0.1` 版本会刻意收窄范围。它是一个面向渲染和未来编辑的文档 / 对象格式，不是完整的化学交换标准。
+`0.1` 版本会刻意收窄范围，定位为面向渲染和未来编辑的文档 / 对象格式。
 
 它当前的直接目的包括：
 
@@ -146,7 +146,7 @@
 - `text`、`line`、`bracket`、`shape` 负责文档图形
 - `group` 只负责收纳和变换
 
-重要原则：属于 `molecule` 的 label 不是普通 `text` 对象。
+重要原则：属于 `molecule` 的 label 是分子资源内部标签。
 例如 `CN`、`Ph`、`N3`、`t-Bu`、`HN`，以及像 `H` 在上、`N` 在下这种杂原子标签，它们本质上都是结构标签，具备：
 
 - 标签内部的连接锚点
@@ -161,7 +161,7 @@
   `label.meta.sourceRuns`；源格式专属的原始字段仍应放在
   `meta.import.<source>` 下
 
-这类内容应当保留在分子资源或分子专属 payload 里，而不是建模成独立的文档文本框。
+这类内容应当保留在分子资源或分子专属 payload 里。
 
 Viewer 说明：渲染器可以在显示阶段做小幅且有上限的光学校正，例如把
 `attached-group` 标签与附近原子标签轻微拉开。这类调整只属于 viewer
@@ -367,7 +367,7 @@ text 对象表示带定位信息的富文本内容。
 ## Molecule Fragment2D
 
 `molecule_fragment2d` resource 用局部坐标保存节点和键。字段应直接表达化学
-语义和渲染意图，而不是暴露源格式的位掩码。
+语义和渲染意图。
 
 节点 label 示例：
 
@@ -518,8 +518,8 @@ text 对象表示带定位信息的富文本内容。
 - `lineRuns`：可选，逐渲染行的归一化 runs
 - `lines`：可选，逐渲染行文本，通常与 `lineRuns` 成对出现
 - `glyphPolygons`：可选，局部坐标系下的逐字形 optical polygon；存在时，
-  renderer 可优先用它做 label knockout 和 bond clipping，而不是只用粗颗粒
-  的 `box`
+  renderer 可优先用它做 label knockout 和 bond clipping，提高相对粗颗粒
+  `box` 的裁剪精度
 - `meta.sourceRuns`：可选，结构标签编辑前的源 runs；用于重新打开编辑器和
   重新生成方向相关显示文本
 
@@ -543,8 +543,8 @@ text 对象表示带定位信息的富文本内容。
   `begin -> end` 的有向键定义；在页面坐标 y 向下时，`left` 对应键向量
   左法线 `(-dy, dx)`，`right` 对应右法线 `(dy, -dx)`
 - `double.centerExitSide`：可选，用于保存中心双键在分叉端的出口侧偏好
-- `double.frozen`：可选布尔值，表示双键位置已经由用户或导入数据锁定，不再
-  自动重新推断
+- `double.frozen`：可选布尔值，表示双键位置已经由用户或导入数据锁定，后续
+  渲染沿用该位置
 
 当前内置绘图模板的关键值：
 
@@ -637,7 +637,7 @@ line 的外观主要放在样式里，包括：
 - line cap
 - line join
 
-因此，箭头在模型里应当被看作同一个 `line` 对象上的线端装饰，而不是单独的顶层对象类型。
+因此，箭头在模型里应当被看作同一个 `line` 对象上的线端装饰。
 
 ## Bracket 对象
 
@@ -777,7 +777,7 @@ children 会继承 group 的变换。
 - `group` 只负责组织归属和共同变换
 - `group` 不创建独立 stacking context
 - `group` 不决定重叠时谁在前谁在后
-- `group` 不是图层
+- `group` 是对象层级和选择单元
 - `group` 本身不要求拥有可见几何
 - 顶层 `objects` 只应包含没有父 group 的根对象
 
@@ -822,7 +822,7 @@ children 会继承 group 的变换。
 
 后绘制的对象，在发生重叠时显示在前面。
 
-group 不替代子对象排序；它只负责变换作用域和归属关系。
+group 负责变换作用域和归属关系；子对象排序仍由同级容器顺序定义。
 
 ## 重叠与堆叠顺序
 

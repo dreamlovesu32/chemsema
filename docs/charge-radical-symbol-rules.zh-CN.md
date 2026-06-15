@@ -1,10 +1,10 @@
 # Chemcore 电荷与自由基符号归属规则
 
-本文档定义 8 个电荷/电子符号的化学语义。这里的符号不是普通装饰图形；当它们靠近分子端点或 attached label 时，应归属到对应原子，并参与价态、隐式氢、红框合法性和 repeating unit expansion。
+本文档定义 8 个电荷/电子符号的化学语义。这些符号靠近分子端点或 attached label 时，应归属到对应原子，并参与价态、隐式氢、红框合法性和 repeating unit expansion。
 
 ## 符号集合
 
-当前 bracket/symbol 工具里的 8 个符号按化学语义分为：
+bracket/symbol 工具里的 8 个符号按化学语义分为：
 
 | UI kind | 语义 | 对原子的影响 |
 | --- | --- | --- |
@@ -15,11 +15,11 @@
 | `radical-cation` | 自由基阳离子 | `formalCharge += 1`，`radicalCount += 1` |
 | `radical-anion` | 自由基阴离子 | `formalCharge -= 1`，`radicalCount += 1` |
 | `electron` | 单电子 | `radicalCount += 1` |
-| `lone-pair` | 孤对电子显示符号 | 当前不参与价态修正 |
+| `lone-pair` | 孤对电子显示符号 | 保留分子图形与归属信息 |
 
 带圈正负和普通正负在化学语义上等价。带圈只是显示风格，不应导致不同的节点电荷结果。
 
-`lone-pair` 的两个点只作为分子图形的一部分保留，不进入隐式氢和价态合法性计算。Lewis 结构扩展可以在后续格式版本中把它升级为显式孤对电子计数。
+`lone-pair` 的两个点作为分子图形的一部分保留，参与选择、拖动和 round-trip。Lewis 结构扩展可以在后续格式版本中把它升级为显式孤对电子计数。
 
 ## 存储模型
 
@@ -61,7 +61,7 @@ symbol 对象保存归属信息：
 }
 ```
 
-节点上的 `charge`、后续的 `radicalCount` 或等价字段是化学计算权威；symbol 对象上的归属信息用于编辑、选择、拖动和 round-trip。不能只把符号当成独立图形，否则 expansion、导出、红框和隐式氢都会丢语义。
+节点上的 `charge`、后续的 `radicalCount` 或等价字段是化学计算权威；symbol 对象上的归属信息用于编辑、选择、拖动和 round-trip。expansion、导出、红框和隐式氢刷新都必须消费这份归属语义。
 
 ## 归属规则
 
@@ -71,7 +71,7 @@ symbol 对象保存归属信息：
 - attached label 的 heavy atom 锚点，例如 `N`、`O`、`Cl`、`NH2` 的重原子。
 - 由合法 abbreviation 或 formula-like label 展开的 attachment atom，例如 `CF3` 的 `C`、`CO2Et` 的入口 `C`。
 
-不应归属到自动生成的氢字符。用户把符号拖到 `NH2` 的 `H` 字符旁边时，实际目标仍是该 label 的重原子 `N`。
+自动生成的氢字符归属回对应重原子。用户把符号拖到 `NH2` 的 `H` 字符旁边时，实际目标仍是该 label 的重原子 `N`。
 
 候选选择：
 
@@ -84,7 +84,7 @@ symbol 对象保存归属信息：
 
 ## 与标签合法性的关系
 
-现有 label 红框来自 `meta.labelRecognition.status == "invalid"` 或简单元素标签与节点状态不匹配。电荷符号归属后，合法性必须使用“节点 + 归属符号”的综合状态重新计算。
+label 红框来自 `meta.labelRecognition.status == "invalid"` 或简单元素标签与节点状态不匹配。电荷符号归属后，合法性必须使用“节点 + 归属符号”的综合状态重新计算。
 
 ### 非法标签少一个连接点
 
@@ -139,22 +139,23 @@ R3-N + radical-anion -> allowed when radical valence model permits it
 
 ## 隐式氢计算
 
-现有文档里的旧公式：
-
-```text
-numHydrogens = typical_valence - radical_count - connection_count - abs(charge)
-```
-
-不适合直接表达用户期望的“正电荷加 H、负电荷减 H”。规则应按元素、形式电荷和自由基状态选择目标价态，再由目标价态减去已有连接数：
+权威计算模型：
 
 ```text
 target_valence = valence_model(element, formal_charge, radical_count, connection_count)
 numHydrogens = target_valence - connection_count
 ```
 
-如果是普通负电荷，还需要检查是否存在可减少的氢；不能让已经无氢的三配位 N 通过。自由基阴离子可走 radical 分支。
+其中 `target_valence` 按元素、形式电荷和自由基状态选择，再由目标价态减去已有连接数。普通负电荷需要存在可减少的氢；自由基阴离子走独立 radical 分支。
 
-规则覆盖当前已经支持隐式氢的元素：
+```text
+legacy_simple_model = typical_valence - radical_count - connection_count - abs(charge)
+```
+
+`legacy_simple_model` 只可作为迁移校验项。电荷/自由基归属后的合法性定义以上面的
+`target_valence` 模型为准。
+
+规则覆盖支持隐式氢的元素：
 
 | 元素 | 中性基线 | 正电荷规则 | 负电荷规则 | 自由基说明 |
 | --- | --- | --- | --- | --- |
@@ -248,11 +249,11 @@ Select 工具拖动已有符号时：
 
 规则坚持以下原则：
 
-1. 正负号是原子属性，不是文字装饰。
+1. 正负号是原子属性。
 2. 带圈和不带圈的正负号化学等价。
 3. 普通正电荷可让 N/O/S/P 等元素进入更高价态，并可能增加隐式 H。
 4. 普通负电荷通常来自去质子化，应减少一个隐式 H；如果没有 H 可减，不应强行合法化。
-5. 自由基阴离子/阳离子不是普通负/正电荷的简单别名；它们还包含一个未成对电子，合法性要单独建模。
+5. 自由基阴离子/阳离子包含电荷和未成对电子，合法性要单独建模。
 6. 两点孤对符号只保留显示和分子归属，不参与价态。
 7. 所有这些语义必须进入 expansion，否则复制、括号展开、导出和后续化学分析都会丢信息。
 8. Viewer 不应单独推断这些规则；归属、合法性和隐式氢刷新必须由 Rust engine 统一完成。

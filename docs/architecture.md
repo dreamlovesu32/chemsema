@@ -9,14 +9,13 @@
 - import/export pipelines
 - future editing tools
 
-The project should not optimize for a temporary frontend. It should optimize for
-the final core architecture from the beginning, even if implementation is slow.
+The project optimizes for the final core architecture from the beginning.
 
 ## Core Principles
 
 ### 1. Platform-independent core first
 
-The primary asset is the document model, not the first renderer.
+The document model is the primary asset.
 
 The core must define:
 
@@ -28,7 +27,7 @@ The core must define:
 - chemistry-bearing objects
 - rendering contracts
 
-Web and desktop are hosts, not separate products.
+Web and desktop are hosts for the same core.
 
 ### 2. Separate chemistry semantics from document semantics
 
@@ -53,7 +52,7 @@ Document semantics include:
 - z-order
 - transforms
 
-The architecture should not collapse those concerns into a single object model.
+The architecture keeps those concerns in separate models.
 
 ### 3. Stable file format, optimized runtime model
 
@@ -61,7 +60,7 @@ The file format is a persistence contract.
 
 The runtime scene model is an execution model.
 
-They should be close, but they do not need to be identical. The file format
+They should be close, with execution-oriented differences where useful. The file format
 should be explicit, versioned, and migration-friendly. The runtime model should
 be suitable for:
 
@@ -73,8 +72,8 @@ be suitable for:
 
 ### 4. Renderer backends are replaceable
 
-The first backend may be web-based, but the drawing API should not assume DOM,
-React, or any browser-only primitive.
+The first backend may be web-based, and the drawing API should remain independent
+of DOM, React, or any browser-only primitive.
 
 The long-term backend set may include:
 
@@ -87,8 +86,7 @@ The long-term backend set may include:
 
 `chemcore` must be able to ingest legacy formats, especially CDXML.
 
-That means imports should target the `chemcore` document model, not an
-intermediate UI state.
+Imports should target the `chemcore` document model directly.
 
 ## Layered Structure
 
@@ -152,7 +150,7 @@ The interface should support at least:
 - draw molecule
 - apply style
 
-The interface should not assume how the backend stores or draws primitives.
+The interface remains independent of backend primitive storage and drawing.
 
 ### Layer E: Host Adapters
 
@@ -164,7 +162,7 @@ Examples:
 - desktop shell
 - CLI exporter
 
-Hosts should not redefine the document model.
+Hosts reuse the core document model.
 
 ## Why CDXML Parsing Lives In The Core
 
@@ -183,9 +181,7 @@ Their role is:
 
 ## First Milestone
 
-The first meaningful milestone is not full editing.
-
-It is:
+The first meaningful milestone is:
 
 1. `chemcore` file format v0.1
 2. `chemcore` runtime model v0.1
@@ -197,9 +193,9 @@ That milestone answers the most important question:
 "Can the document model faithfully represent the kind of chemistry pages we need
 to support?"
 
-## Non-Goals of v0.1
+## Future Scope After v0.1
 
-The following are explicitly out of scope for the first format version:
+The following capabilities belong in later format versions:
 
 - full ChemDraw feature parity
 - rich query chemistry
@@ -209,5 +205,4 @@ The following are explicitly out of scope for the first format version:
 - collaborative editing
 - binary cache formats
 
-The first version should instead optimize for clarity, stability, and
-inspectability.
+The first version should optimize for clarity, stability, and inspectability.

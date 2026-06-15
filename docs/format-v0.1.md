@@ -5,7 +5,7 @@
 This document defines the first persisted document format for `chemcore`.
 
 Version `0.1` is intentionally narrow. It is a document/object format for
-rendering and future editing, not a complete chemistry interchange standard.
+rendering and future editing.
 
 Its immediate purpose is:
 
@@ -78,8 +78,8 @@ Rules:
 - Every object must belong to exactly one container
 - A container is either the top-level `objects` array or one `group.children` list
 - An object may have at most one direct parent group
-- An object must not appear both at top level and inside a group
-- An object must not appear in more than one `group.children` list
+- An object may appear in exactly one container
+- A direct parent group owns each grouped object
 
 This keeps ownership, traversal, selection, and editing behavior deterministic.
 
@@ -148,7 +148,7 @@ This split is intentional.
 - `text`, `line`, `bracket`, and `shape` are document graphics
 - `group` owns containment and transform only
 
-Important: labels that belong to a `molecule` are not generic `text` objects.
+Important: labels that belong to a `molecule` are molecule-owned structure labels.
 Examples include `CN`, `Ph`, `N3`, `t-Bu`, `HN`, or stacked hetero labels such as
 `H` over `N`. These are structure labels with:
 
@@ -160,24 +160,22 @@ Examples include `CN`, `Ph`, `N3`, `t-Bu`, `HN`, or stacked hetero labels such a
   displayed as stacked lines but still needs per-token styling like the
   subscript `2` in `SO2`
 - normalized display runs should preserve chemistry-relevant inline formatting
-  such as subscript and superscript, but should not directly inherit
-  source-format text styling like CDXML `face` weight/style flags
+  such as subscript and superscript; source-format text styling like CDXML
+  `face` weight/style flags belongs in import metadata
 - structure-label source runs may still be preserved for import fidelity in
   `label.meta.sourceRuns`; raw source-format fields still belong under
   `meta.import.<source>`
 
-They should live inside molecule resources or molecule-specific payloads, not be
-modeled as standalone document text boxes.
+They should live inside molecule resources or molecule-specific payloads.
 
 Viewer note: a renderer may apply small bounded optical adjustments at display
 time, for example to separate attached-group labels from nearby atom labels.
-These adjustments are viewer behavior only. They must not rewrite the stored
-document geometry.
+These adjustments are viewer behavior only. Stored document geometry remains
+authoritative.
 
 Brackets are kept separate from `molecule` in `v0.1`. They often appear around
-chemistry, but they are still document objects first. Chemical meaning, if
-needed later, can be added through metadata rather than by collapsing brackets
-into the molecule model.
+chemistry and remain document objects first. Chemical meaning, if needed later,
+can be added through metadata.
 
 ## Transform
 
@@ -229,8 +227,8 @@ Example:
 }
 ```
 
-Version `0.1` does not enforce a hard style taxonomy beyond `kind`, but the
-renderer should expect styles to describe either:
+Version `0.1` keeps style taxonomy narrow. The renderer should expect styles to
+describe either:
 
 - text appearance
 - stroke/fill appearance
@@ -238,8 +236,7 @@ renderer should expect styles to describe either:
 
 ## Resources
 
-`resources` hold reusable content blobs that do not naturally belong inline in
-every object.
+`resources` hold reusable content blobs shared by scene objects.
 
 Version `0.1` defines one resource type explicitly:
 
@@ -296,8 +293,7 @@ Example:
 - `bbox`: optional local bounding box
 - `role`: optional semantic hint such as `substrate`, `product`, `ligand`
 
-Version `0.1` does not encode full reaction semantics in the object model.
-`role` is only a hint.
+Version `0.1` stores reaction semantics only as lightweight `role` hints.
 
 ## Text Object
 
@@ -372,17 +368,14 @@ Recommended inline model:
 ]
 ```
 
-`script` is one of `normal | subscript | superscript`. The core format does not
-store source-format bit masks such as CDXML `face`; CDXML `face`, `font`, and
+`script` is one of `normal | subscript | superscript`. CDXML `face`, `font`, and
 `color` should be decoded into these explicit fields during import. Raw source
-values may be kept only in `meta.import.cdxml` for debugging and round-trip
-work.
+values may be kept only in `meta.import.cdxml` for debugging and round-trip work.
 
 ## Molecule Fragment2D
 
 `molecule_fragment2d` resources store nodes and bonds in local coordinates.
-Fields should describe chemistry and rendering intent directly rather than
-exposing source-format bit masks.
+Fields should describe chemistry and rendering intent directly.
 
 Example node label:
 
@@ -479,8 +472,8 @@ consume `expansion`:
 }
 ```
 
-`expansion` is an additional semantic layer, not a replacement for the main
-molecule graph. Its atom ids are local to the expansion. Bridge labels use
+`expansion` is an additional semantic layer on top of the main molecule graph.
+Its atom ids are local to the expansion. Bridge labels use
 `left` and `right` attachment roles. `complete: false` means the label was
 recognized, but the current expansion contains a partial or opaque component.
 Atoms may also carry `formalCharge` for valence-parser exceptions such as
@@ -536,8 +529,8 @@ Molecule label fields:
 - `lineRuns`: optional normalized runs per rendered line
 - `lines`: optional rendered-line text, usually paired with `lineRuns`
 - `glyphPolygons`: optional per-glyph optical polygons in local coordinates; when
-  present, renderers may use them for label knockout and bond clipping instead of
-  the coarse label `box`
+  present, renderers may use them for label knockout and bond clipping with
+  finer precision than the coarse label `box`
 - `meta.sourceRuns`: optional source runs for reopening the structure-label editor
   and regenerating direction-dependent display text
 
@@ -644,7 +637,7 @@ Example:
 - `bold` marks a bold arrow stroke
 - `shaftSpacing` stores the spacing between equilibrium-arrow shafts
 - `equilibriumRatio` stores the long/short ratio for `kind: "unequal-equilibrium"` and is removed for equal equilibrium arrows
-- `hollow` and `open` arrow kinds use their own size template instead of reusing the solid arrow template
+- `hollow` and `open` arrow kinds use their own size templates
 
 Line appearance belongs primarily in styles, including:
 
@@ -655,7 +648,7 @@ Line appearance belongs primarily in styles, including:
 - line join
 
 Arrow semantics are therefore modeled as line-end decoration on the same `line`
-object type, not as a separate top-level object class.
+object type.
 
 ## Bracket Object
 
@@ -758,7 +751,7 @@ Shape appearance belongs primarily in styles, including:
 
 ## Group Object
 
-The group object organizes children but does not itself carry visible geometry.
+The group object organizes children and shared transforms.
 
 Example:
 
@@ -794,11 +787,10 @@ Children inherit the group transform.
 
 In `v0.1`, `group` is intentionally narrow.
 
-- A `group` organizes ownership and shared transform
-- A `group` does not create a separate stacking context
-- A `group` does not decide front/back visibility for overlaps
-- A `group` is not a layer
-- A `group` does not need visible geometry of its own
+- A `group` owns an ordered child list
+- A `group` scopes shared transforms
+- Stacking order decides front/back visibility for overlaps
+- A `group` can be purely structural
 - Top-level `objects` should contain only root objects with no parent group
 
 This keeps grouping and overlap handling separate.
@@ -843,7 +835,7 @@ Objects are painted by:
 Later-painted objects appear in front of earlier-painted objects where they
 overlap.
 
-Groups do not replace child ordering; they only scope transforms and ownership.
+Groups scope transforms and ownership while preserving child ordering.
 
 ## Overlap and Stacking
 
@@ -855,11 +847,11 @@ Rules:
 - Higher `zIndex` objects appear in front of lower `zIndex` objects
 - If two objects have the same `zIndex`, later sibling order appears in front
 - Rendering is defined as ordered painting; later paint covers earlier paint
-- `group` membership does not change these rules
+- `group` membership preserves these rules
 
 ## Constraints for v0.1
 
-Version `0.1` intentionally does not include:
+Later versions may add:
 
 - multiple pages
 - embedded binary assets
@@ -870,7 +862,7 @@ Version `0.1` intentionally does not include:
 - selection state
 - collaborative metadata
 
-Those belong in future versions once the base model is proven.
+Those capabilities belong in future versions once the base model is proven.
 
 ## File Extension
 
@@ -894,4 +886,4 @@ The current promise is:
 - ids should remain stable once generated
 - migration should be possible by versioned transforms
 
-Backward compatibility is not guaranteed yet.
+Backward compatibility will be defined after the format stabilizes.
