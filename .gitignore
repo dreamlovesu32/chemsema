@@ -41,6 +41,7 @@ Makefile
 tmp/
 .codex-run-logs/
 private-docs/
+private-scripts/
 
 # Local sample source binaries
 *.pdf
