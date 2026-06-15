@@ -870,8 +870,10 @@ fn normalize_node(
         charge: parse_i32(node.attr("Charge")).unwrap_or(0),
         num_hydrogens: parse_u8(node.attr("NumHydrogens")).unwrap_or(0),
         is_external_connection_point: node_type == "ExternalConnectionPoint",
-        is_placeholder: matches!(node_type, "Fragment" | "Nickname" | "Unspecified")
-            && !is_bullet_carbon,
+        is_placeholder: matches!(
+            node_type,
+            "Fragment" | "Nickname" | "GenericNickname" | "Unspecified"
+        ) && !is_bullet_carbon,
         label,
         meta: json!({
             "import": {

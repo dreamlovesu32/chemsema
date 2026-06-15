@@ -5733,6 +5733,28 @@ mod tests {
     }
 
     #[test]
+    fn preview_invalid_label_marker_without_node_id_is_hidden_by_default() {
+        let primitive = RenderPrimitive::Rect {
+            role: RenderRole::DocumentGraphic,
+            object_id: None,
+            node_id: None,
+            x: 1.0,
+            y: 2.0,
+            width: 3.0,
+            height: 4.0,
+            fill: Some("none".to_string()),
+            stroke: Some("#d32f2f".to_string()),
+            stroke_width: 1.0,
+            rx: None,
+            ry: None,
+            dash_array: Vec::new(),
+            fill_gradient: None,
+        };
+        assert!(preview_is_invalid_marker_primitive(&primitive));
+        assert!(!office_preview_primitive_visible(&primitive));
+    }
+
+    #[test]
     fn preview_non_invalid_document_graphic_stays_visible() {
         let primitive = RenderPrimitive::Rect {
             role: RenderRole::DocumentGraphic,

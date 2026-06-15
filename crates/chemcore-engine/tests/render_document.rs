@@ -2007,6 +2007,123 @@ fn render_cdxml_merged_fragment_node_labels_interleave_with_external_graphics_by
 }
 
 #[test]
+fn render_cdxml_group_children_keep_source_z_against_external_symbols() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >
+<CDXML BondLength="18" LineWidth="0.6" BondSpacing="18">
+  <page id="1" BoundingBox="0 0 80 80">
+    <group id="10" Z="30">
+      <graphic id="11"
+        BoundingBox="40 20 40 34"
+        Z="1"
+        GraphicType="Orbital"
+        OrbitalType="lobe"/>
+    </group>
+    <graphic id="12"
+      BoundingBox="40 26 40 38"
+      Z="2"
+      GraphicType="Symbol"
+      SymbolType="Electron"/>
+  </page>
+</CDXML>"#;
+    let document =
+        parse_cdxml_document(cdxml, Some("group z")).expect("grouped orbital cdxml should parse");
+    let primitives = render_document(&document);
+    let lobe_last = primitives
+        .iter()
+        .enumerate()
+        .filter(|(_, primitive)| {
+            render_primitive_object_id(primitive) == Some("obj_shape_orbital_001")
+        })
+        .map(|(index, _)| index)
+        .max()
+        .expect("grouped lobe should render");
+    let electron_first = primitives
+        .iter()
+        .enumerate()
+        .find_map(|(index, primitive)| {
+            (render_primitive_object_id(primitive) == Some("obj_symbol_001")).then_some(index)
+        })
+        .expect("external electron should render");
+
+    assert!(
+        lobe_last < electron_first,
+        "CDXML group Z must not lift the white lobe fill above the higher-Z electron"
+    );
+}
+
+#[test]
+fn cdxml_generic_r_prime_labels_do_not_render_invalid_markers() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >
+<CDXML BondLength="18" LineWidth="0.6" BondSpacing="18">
+  <page id="1" BoundingBox="0 0 120 50">
+    <fragment id="10" BoundingBox="0 0 100 40">
+      <n id="11" p="10 20" NodeType="GenericNickname" Z="1">
+        <t p="10 20" BoundingBox="4 12 14 22"><s font="3" size="10">R&apos;</s></t>
+      </n>
+      <n id="12" p="40 20" Z="2"/>
+      <n id="13" p="70 20" NodeType="GenericNickname" Z="3">
+        <t p="70 20" BoundingBox="64 12 76 22"><s font="3" size="10">R&apos;&apos;</s></t>
+      </n>
+      <b id="14" B="11" E="12" Order="1" Z="4"/>
+      <b id="15" B="12" E="13" Order="1" Z="5"/>
+    </fragment>
+  </page>
+</CDXML>"#;
+    let document =
+        parse_cdxml_document(cdxml, Some("r groups")).expect("generic R labels should parse");
+    let fragment = document
+        .resources
+        .values()
+        .find_map(|resource| match &resource.data {
+            ResourceData::Fragment(fragment) => Some(fragment),
+            _ => None,
+        })
+        .expect("fragment should be imported");
+    for text in ["R'", "R''"] {
+        let node = fragment
+            .nodes
+            .iter()
+            .find(|node| {
+                node.label
+                    .as_ref()
+                    .is_some_and(|label| label.source_text.as_deref() == Some(text))
+            })
+            .unwrap_or_else(|| panic!("{text} node should exist"));
+        assert!(
+            node.is_placeholder,
+            "{text} GenericNickname should import as a placeholder"
+        );
+        assert_ne!(
+            node.meta
+                .get("labelRecognition")
+                .and_then(|value| value.get("status"))
+                .and_then(serde_json::Value::as_str),
+            Some("invalid"),
+            "{text} should not be an invalid chemical label"
+        );
+        assert_ne!(
+            node.label
+                .as_ref()
+                .and_then(|label| label.meta.get("labelRecognition"))
+                .and_then(|value| value.get("status"))
+                .and_then(serde_json::Value::as_str),
+            Some("invalid"),
+            "{text} label should not be an invalid chemical label"
+        );
+    }
+    assert!(!render_document(&document).iter().any(|primitive| matches!(
+        primitive,
+        RenderPrimitive::Rect {
+            role: RenderRole::DocumentGraphic,
+            stroke: Some(stroke),
+            ..
+        } if stroke == "#d32f2f"
+    )));
+}
+
+#[test]
 fn load_cdxml_document_preserves_imported_acs_drawing_options() {
     let Some(cdxml) = read_optional_cdxml_fixture("db-acs.cdxml") else {
         return;

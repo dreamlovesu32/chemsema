@@ -189,12 +189,17 @@ fn render_scene_object_layered(
 ) {
     let object_z_index = parent_z_index.unwrap_or(object.z_index);
     if object.object_type == "group" {
+        let child_parent_z_index = if cdxml_group_preserves_child_z(object) {
+            parent_z_index
+        } else {
+            Some(object_z_index)
+        };
         render_scene_objects_layered(
             out,
             sequence,
             document,
             &object.children,
-            Some(object_z_index),
+            child_parent_z_index,
         );
         return;
     }
@@ -214,6 +219,15 @@ fn render_scene_object_layered(
         });
         *sequence += 1;
     }
+}
+
+fn cdxml_group_preserves_child_z(object: &SceneObject) -> bool {
+    object.object_type == "group"
+        && object
+            .meta
+            .pointer("/import/cdxml/groupId")
+            .and_then(JsonValue::as_str)
+            .is_some()
 }
 
 fn render_scene_object(

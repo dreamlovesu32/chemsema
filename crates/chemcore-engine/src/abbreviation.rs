@@ -157,7 +157,13 @@ const N_BRIDGE_FRAGMENT: FragmentDef = FragmentDef {
 };
 
 const TERMINAL_FRAGMENTS: &[FragmentDef] = &[
-    terminal("R", &[], "R group / generic substituent", "R", "R"),
+    terminal(
+        "R",
+        &["R'", "R''"],
+        "R group / generic substituent",
+        "R",
+        "R",
+    ),
     terminal(
         "Ar",
         &[],

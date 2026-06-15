@@ -207,12 +207,11 @@ pub(super) fn preview_is_invalid_marker_primitive(primitive: &RenderPrimitive) -
             fill,
             stroke,
             stroke_width,
-            node_id,
+            node_id: _,
             dash_array,
             ..
         } => {
             *role == RenderRole::DocumentGraphic
-                && node_id.is_some()
                 && dash_array.is_empty()
                 && fill.as_deref() == Some("none")
                 && stroke.as_deref() == Some("#d32f2f")
