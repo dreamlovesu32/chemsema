@@ -314,6 +314,33 @@ export function createEditorPointerController(options) {
     return beginSelectionMoveGesture(point, event, options.syncSelectCursorForPoint);
   }
 
+  function toolUsesEngineDragPreview(tool) {
+    return tool === "bond"
+      || tool === "arrow"
+      || tool === "bracket"
+      || tool === "symbol"
+      || tool === "shape"
+      || tool === "tlc-plate"
+      || tool === "orbital"
+      || tool === "templates"
+      || tool === "chain";
+  }
+
+  function primaryButtonIsDown(event) {
+    return (event.buttons & 1) === 1;
+  }
+
+  async function updateEngineDragPreview(point, event) {
+    event.preventDefault();
+    cancelScheduledHoverMove();
+    leaveSelectionHoverSuppression(point);
+    await options.state().editorEngine.pointerMove(point.x, point.y, event.altKey);
+    options.renderEditorOverlay(
+      options.currentEditorInteractionRenderList?.() || options.syncEditorRenderListFromEngine(),
+    );
+    options.positionActiveTextEditor();
+  }
+
   async function handleEditorPointerMove(event) {
     const point = options.svgPointFromEvent(event);
     const editorState = options.editorState();
@@ -410,6 +437,14 @@ export function createEditorPointerController(options) {
         }
       }
       options.renderEditorOverlay(options.currentEditorOverlayRenderList());
+      return;
+    }
+    if (
+      primaryButtonIsDown(event)
+      && toolUsesEngineDragPreview(editorState.activeTool)
+      && options.routeEditorPointerEvents()
+    ) {
+      await updateEngineDragPreview(point, event);
       return;
     }
     const selectionHoverSuppression = selectionHoverSuppressionState(point);
