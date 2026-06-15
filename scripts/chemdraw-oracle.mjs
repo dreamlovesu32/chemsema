@@ -67,8 +67,6 @@ async function defaultInputs() {
   const candidates = [
     "f1.cdxml",
     "f2.cdxml",
-    "crates/chemcore-engine/tests/fixtures/cdxml/molecule.cdxml",
-    "crates/chemcore-engine/tests/fixtures/cdxml/dash.cdxml",
   ];
   const existing = [];
   for (const candidate of candidates) {

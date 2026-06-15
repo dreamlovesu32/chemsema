@@ -1,11 +1,11 @@
-# Manual CDXML Fixtures
+# Optional Local CDXML Fixtures
 
-This directory contains small CDXML regression fixtures for import, rendering,
-toolbar, arrow, shape, orbital, and large-selection behavior.
+This directory is reserved for local CDXML regression fixtures used during
+import, rendering, toolbar, arrow, shape, orbital, and large-selection checks.
 
-Keep regression inputs here once they become important enough to reproduce a
-bug or verify a fix. Files in this directory are tracked by git; avoid relying
-on ignored `tmp/` files or local desktop copies for future test work.
+CDXML/CDX files can contain unpublished reaction content, so they are ignored by
+git. Tests that use these files must treat them as optional: run the regression
+when the local fixture exists, and skip cleanly in public source checkouts.
 
-- `desktop/`: hand-authored or manually exported files used for regression
-  coverage of desktop-facing drawing behavior.
+- `desktop/`: local hand-authored or manually exported files used for
+  desktop-facing drawing behavior.

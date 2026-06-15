@@ -5,11 +5,13 @@ use chemcore_engine::{
 use serde_json::json;
 
 mod support;
-use support::read_cdxml_fixture;
+use support::read_optional_cdxml_fixture;
 
 #[test]
 fn parse_cdxml_imports_rest_fixture_special_bonds_and_table() {
-    let cdxml = read_cdxml_fixture("rest.cdxml");
+    let Some(cdxml) = read_optional_cdxml_fixture("rest.cdxml") else {
+        return;
+    };
     let document = parse_cdxml_document(&cdxml, Some("rest")).expect("rest cdxml should parse");
 
     let bonds: Vec<_> = document
@@ -120,7 +122,9 @@ fn parse_cdxml_imports_rest_fixture_special_bonds_and_table() {
 
 #[test]
 fn parse_cdxml_exports_rest_fixture_special_bonds_and_table_tags() {
-    let cdxml = read_cdxml_fixture("rest.cdxml");
+    let Some(cdxml) = read_optional_cdxml_fixture("rest.cdxml") else {
+        return;
+    };
     let document = parse_cdxml_document(&cdxml, Some("rest")).expect("rest cdxml should parse");
     let exported = document_to_cdxml(&document);
 
@@ -138,7 +142,9 @@ fn parse_cdxml_exports_rest_fixture_special_bonds_and_table_tags() {
 
 #[test]
 fn load_cdxml_document_preserves_rest_fixture_tlc_plate_for_editing() {
-    let cdxml = read_cdxml_fixture("rest.cdxml");
+    let Some(cdxml) = read_optional_cdxml_fixture("rest.cdxml") else {
+        return;
+    };
     let mut engine = Engine::new();
     engine
         .load_cdxml_document(&cdxml)
@@ -163,7 +169,9 @@ fn load_cdxml_document_preserves_rest_fixture_tlc_plate_for_editing() {
 
 #[test]
 fn parse_cdxml_imports_orbital_fixture_templates_and_styles() {
-    let cdxml = read_cdxml_fixture("orbital.cdxml");
+    let Some(cdxml) = read_optional_cdxml_fixture("orbital.cdxml") else {
+        return;
+    };
     let document =
         parse_cdxml_document(&cdxml, Some("orbital")).expect("orbital cdxml should parse");
 
@@ -248,7 +256,9 @@ fn parse_cdxml_imports_orbital_fixture_templates_and_styles() {
 
 #[test]
 fn load_cdxml_document_preserves_orbital_axes_for_editing() {
-    let cdxml = read_cdxml_fixture("orbital.cdxml");
+    let Some(cdxml) = read_optional_cdxml_fixture("orbital.cdxml") else {
+        return;
+    };
     let mut engine = Engine::new();
     engine
         .load_cdxml_document(&cdxml)
@@ -281,7 +291,9 @@ fn load_cdxml_document_preserves_orbital_axes_for_editing() {
 
 #[test]
 fn parse_cdxml_exports_orbital_fixture_orbital_tags() {
-    let cdxml = read_cdxml_fixture("orbital.cdxml");
+    let Some(cdxml) = read_optional_cdxml_fixture("orbital.cdxml") else {
+        return;
+    };
     let document =
         parse_cdxml_document(&cdxml, Some("orbital")).expect("orbital cdxml should parse");
     let exported = document_to_cdxml(&document);
@@ -305,7 +317,9 @@ fn parse_cdxml_exports_orbital_fixture_orbital_tags() {
 
 #[test]
 fn tlc_plate_spot_drag_updates_rf() {
-    let cdxml = read_cdxml_fixture("rest.cdxml");
+    let Some(cdxml) = read_optional_cdxml_fixture("rest.cdxml") else {
+        return;
+    };
     let mut engine = Engine::new();
     engine
         .load_cdxml_document(&cdxml)
@@ -409,7 +423,9 @@ fn tlc_plate_spot_drag_updates_rf() {
 #[test]
 fn parse_cdxml_preserves_default_and_acs_hash_spacing_presets_for_dashed_bonds() {
     for (fixture, expected_hash_spacing) in [("dash.cdxml", 2.7), ("dash-acs.cdxml", 2.5)] {
-        let cdxml = read_cdxml_fixture(fixture);
+        let Some(cdxml) = read_optional_cdxml_fixture(fixture) else {
+            continue;
+        };
         let document = parse_cdxml_document(&cdxml, Some(fixture)).expect("cdxml should parse");
         let defaults = &document.document.meta["import"]["cdxml"]["defaults"];
         assert_eq!(
@@ -441,7 +457,9 @@ fn parse_cdxml_preserves_default_and_acs_hash_spacing_presets_for_dashed_bonds()
 #[test]
 fn parse_cdxml_uses_document_hash_spacing_for_dashed_lines() {
     for (fixture, expected_dash) in [("dash.cdxml", 2.7_f64), ("dash-acs.cdxml", 2.5_f64)] {
-        let cdxml = read_cdxml_fixture(fixture);
+        let Some(cdxml) = read_optional_cdxml_fixture(fixture) else {
+            continue;
+        };
         let mut engine = Engine::new();
         engine
             .load_cdxml_document(&cdxml)
@@ -461,7 +479,9 @@ fn parse_cdxml_uses_document_hash_spacing_for_dashed_lines() {
 
 #[test]
 fn tlc_plate_guides_use_document_hash_spacing() {
-    let cdxml = read_cdxml_fixture("rest.cdxml");
+    let Some(cdxml) = read_optional_cdxml_fixture("rest.cdxml") else {
+        return;
+    };
     let mut engine = Engine::new();
     engine
         .load_cdxml_document(&cdxml)
