@@ -93,19 +93,7 @@ import {
   mapLengthArray,
 } from "./units.js";
 
-const SAMPLE_FILES = [
-  "../tmp/examples/02-13/2017-2-13/oleObject1.ccjs",
-  "../tmp/examples/02-13/2017-2-13/oleObject2.ccjs",
-  "../tmp/examples/02-13/2017-2-13/oleObject3.ccjs",
-  "../tmp/examples/02-13/2017-2-13/oleObject4.ccjs",
-  "../tmp/examples/02-13/lm 2017-2-13  working report/oleObject1.ccjs",
-  "../tmp/examples/02-13/工作汇报-jc-2017-2-13/oleObject1.ccjs",
-  "../tmp/examples/02-13/工作汇报-jc-2017-2-13/oleObject2.ccjs",
-  "../tmp/examples/02-13/工作汇报-jc-2017-2-13/oleObject3.ccjs",
-  "../tmp/examples/02-13/工作汇报-jc-2017-2-13/oleObject4.ccjs",
-  "../tmp/examples/02-13/工作汇报-jc-2017-2-13/oleObject5.ccjs",
-  "../tmp/examples/02-13/工作汇报-jc-2017-2-13/oleObject6.ccjs",
-];
+const SAMPLE_FILES = [];
 
 const VIEW_MODE = document.body.dataset.viewMode || "document";
 const LABEL_DEBUG_MODE = VIEW_MODE === "label-debug";

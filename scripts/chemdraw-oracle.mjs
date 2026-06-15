@@ -65,10 +65,10 @@ function runPowershell(scriptPath, jobsPath) {
 
 async function defaultInputs() {
   const candidates = [
-    "tmp/color.cdxml",
-    "tmp/arrows-acs.cdxml",
-    "tmp/kuohao.cdxml",
-    "tmp/硫氰基化反应条件.cdxml",
+    "f1.cdxml",
+    "f2.cdxml",
+    "crates/chemcore-engine/tests/fixtures/cdxml/molecule.cdxml",
+    "crates/chemcore-engine/tests/fixtures/cdxml/dash.cdxml",
   ];
   const existing = [];
   for (const candidate of candidates) {
@@ -76,7 +76,7 @@ async function defaultInputs() {
       await fs.access(candidate);
       existing.push(candidate);
     } catch {
-      // Skip missing fixtures; tmp is intentionally local and fluid.
+      // Skip optional fixtures so the script can run from source checkouts.
     }
   }
   return existing;
