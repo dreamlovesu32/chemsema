@@ -1,0 +1,59 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.der
+
+# Build outputs
+.dev/
+build/
+build-wasm/
+dist/
+target/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+Makefile
+*.msi
+*.msix
+*.appx
+*.nupkg
+
+# Local/generated imports and previews
+tmp/
+.codex-run-logs/
+private-docs/
+private-scripts/
+
+# Local sample source binaries
+*.pdf
+*.jpg
+*.jpeg
+*.cdx
+
+# OS/editor
+.DS_Store
+*.swp
+*.swo
+*:Zone.Identifier
+*:mshield
+*Zone.Identifier
+*mshield

@@ -1,0 +1,205 @@
+import assert from "node:assert/strict";
+import path from "node:path";
+import { launchBrowser } from "./playwright-browser.mjs";
+
+const url = process.argv[2] || "http://127.0.0.1:8765/viewer/";
+const output = process.argv[3] || path.resolve("tmp/text-editor-regression.png");
+const deviceScaleFactor = Number(process.env.DEVICE_SCALE_FACTOR || 1.25);
+
+const browser = await launchBrowser({ headless: true });
+const page = await browser.newPage({
+  viewport: { width: 1600, height: 1200 },
+  deviceScaleFactor,
+});
+page.setDefaultTimeout(8000);
+
+const consoleMessages = [];
+page.on("console", (message) => {
+  const text = message.text();
+  if (
+    message.type() === "warning"
+    && text.includes("WebAssembly.instantiateStreaming failed")
+  ) {
+    return;
+  }
+  consoleMessages.push(`[${message.type()}] ${text}`);
+});
+
+function logStep(label) {
+  console.log(`STEP ${label}`);
+}
+
+function pointInBox(box, xRatio, yRatio) {
+  return {
+    x: box.x + box.width * xRatio,
+    y: box.y + box.height * yRatio,
+  };
+}
+
+function assertBoxesClose(actual, expected, label, tolerance = 1) {
+  assert(actual, `${label}: missing actual box`);
+  assert(expected, `${label}: missing expected box`);
+  for (const key of ["x", "y", "width", "height"]) {
+    assert(
+      Math.abs(actual[key] - expected[key]) <= tolerance,
+      `${label}: ${key} changed by ${actual[key] - expected[key]}px`,
+    );
+  }
+}
+
+async function clickTool(tool) {
+  await page.click(`.tool-button[data-tool="${tool}"]`);
+}
+
+async function clientPointFromWorld(x, y) {
+  return page.evaluate(({ worldX, worldY }) => {
+    const svg = document.getElementById("viewer-svg");
+    const point = new DOMPoint(worldX, worldY).matrixTransform(svg.getScreenCTM());
+    return { x: point.x, y: point.y };
+  }, { worldX: x, worldY: y });
+}
+
+async function currentEditorText() {
+  return page.locator(".text-editor-display").innerText();
+}
+
+async function selectedEditorText() {
+  return page.evaluate(() => Array.from(
+    document.querySelectorAll(".text-editor-run.is-selected"),
+    (node) => node.textContent || "",
+  ).join(""));
+}
+
+logStep("goto");
+await page.goto(url, { waitUntil: "networkidle" });
+logStep("wait-engine");
+await page.waitForFunction(() => window.__chemcoreDebug?.state?.editorEngine && window.__chemcoreDebug?.document);
+
+logStep("new-doc");
+await page.click('[data-command="new"]');
+await page.waitForFunction(() => window.__chemcoreDebug?.document && Array.isArray(window.__chemcoreDebug.document.objects));
+
+const svg = page.locator("#viewer-svg");
+const viewerContainer = page.locator("#viewer-container");
+const svgBox = await svg.boundingBox();
+assert(svgBox, "viewer svg is not visible");
+
+const bondStart = pointInBox(svgBox, 0.52, 0.58);
+const bondEnd = { x: bondStart.x + 110, y: bondStart.y - 85 };
+logStep("draw-bond");
+await page.mouse.move(bondStart.x, bondStart.y);
+await page.mouse.down();
+await page.mouse.move(bondEnd.x, bondEnd.y, { steps: 12 });
+await page.mouse.up();
+await page.waitForFunction(() => window.__chemcoreDebug?.document?.objects?.length > 0);
+const endpointWorld = await page.evaluate(() => {
+  const point = window.__chemcoreDebug.engineState.document.resources.mol_editor.data.nodes[1].position;
+  return { x: point[0], y: point[1] };
+});
+const endpointClient = await clientPointFromWorld(endpointWorld.x, endpointWorld.y);
+
+logStep("open-label-editor");
+await clickTool("text");
+await page.mouse.click(endpointClient.x, endpointClient.y);
+await page.waitForSelector(".text-editor");
+assert.equal(await page.evaluate(() => window.__chemcoreDebug.activeTextEditor?.session?.target?.kind), "endpoint-label");
+logStep("type-chemical");
+assert.equal(await page.evaluate(() => window.__chemcoreDebug.insertEditorText("H2SO4")), true);
+await page.waitForFunction(() => Array.from(
+  document.querySelectorAll('.text-editor-display [data-script="subscript"]'),
+  (node) => node.textContent || "",
+).join("") === "24");
+assert.equal(await currentEditorText(), "H2SO4");
+const labelEditorTextBox = await page.locator(".text-editor-svg text").first().boundingBox();
+
+logStep("commit-label");
+const blankCanvasBox = await viewerContainer.boundingBox();
+assert(blankCanvasBox, "viewer container is not visible before label commit");
+const blankPoint = pointInBox(blankCanvasBox, 0.1, 0.1);
+await page.mouse.click(blankPoint.x, blankPoint.y);
+await page.waitForFunction(() => Array.from(
+  document.querySelectorAll("#viewer-svg text"),
+  (node) => node.textContent || "",
+).some((text) => text.includes("H2SO4")));
+
+logStep("reopen-label");
+const labelNode = page.locator("#viewer-svg text").filter({ hasText: "H2SO4" }).first();
+await labelNode.waitFor();
+const labelBox = await labelNode.boundingBox();
+assert(labelBox, "committed label is not visible");
+assertBoxesClose(labelBox, labelEditorTextBox, "label edit-to-commit geometry");
+await page.mouse.click(labelBox.x + labelBox.width / 2, labelBox.y + labelBox.height / 2);
+await page.waitForFunction(() => document.querySelector(".text-editor-display")?.textContent?.includes("H2SO4"));
+assert.equal(await selectedEditorText(), "H2SO4");
+const reopenedLabelTextBox = await page.locator(".text-editor-svg text").first().boundingBox();
+const reopenedLabelEditorBox = await page.locator(".text-editor").boundingBox();
+assert(reopenedLabelEditorBox, "reopened label editor is not visible");
+assertBoxesClose(reopenedLabelTextBox, labelBox, "label reopen geometry");
+assert(
+  Math.abs(reopenedLabelEditorBox.x - reopenedLabelTextBox.x) <= 1,
+  `label editor root should align with text x: ${reopenedLabelEditorBox.x} vs ${reopenedLabelTextBox.x}`,
+);
+assert(
+  Math.abs(reopenedLabelEditorBox.y - reopenedLabelTextBox.y) <= 1,
+  `label editor root should align with text y: ${reopenedLabelEditorBox.y} vs ${reopenedLabelTextBox.y}`,
+);
+
+logStep("zoom-editor");
+const editorBeforeZoom = await page.locator(".text-editor").boundingBox();
+assert(editorBeforeZoom, "text editor is not visible before zoom");
+await page.$eval("#zoom-input", (input) => {
+  input.value = "200";
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+});
+await page.waitForTimeout(150);
+const editorAfterZoom = await page.locator(".text-editor").boundingBox();
+assert(editorAfterZoom, "text editor is not visible after zoom");
+assert(
+  editorAfterZoom.width > editorBeforeZoom.width * 1.5,
+  `editor width did not scale with zoom: before=${editorBeforeZoom.width}, after=${editorAfterZoom.width}`,
+);
+assert(
+  editorAfterZoom.height > editorBeforeZoom.height * 1.5,
+  `editor height did not scale with zoom: before=${editorBeforeZoom.height}, after=${editorAfterZoom.height}`,
+);
+
+logStep("plain-text");
+const visibleCanvasBox = await viewerContainer.boundingBox();
+assert(visibleCanvasBox, "viewer container is not visible after zoom");
+const plainTextPoint = pointInBox(visibleCanvasBox, 0.18, 0.32);
+await page.mouse.click(plainTextPoint.x, plainTextPoint.y);
+await page.waitForSelector(".text-editor");
+await page.waitForFunction(() => window.__chemcoreDebug.activeTextEditor?.session?.target?.kind === "text-object");
+assert.equal(await page.evaluate(() => window.__chemcoreDebug.insertEditorText("Hello")), true);
+assert.equal(await currentEditorText(), "Hello");
+const hasScriptedRuns = await page.evaluate(() => document.querySelector('.text-editor-display [data-script="subscript"], .text-editor-display [data-script="superscript"]') !== null);
+assert.equal(hasScriptedRuns, false, "plain text editor unexpectedly applied chemical scripts");
+const plainEditorTextBox = await page.locator(".text-editor-svg text").first().boundingBox();
+
+logStep("commit-plain-text");
+const secondBlankPoint = pointInBox(visibleCanvasBox, 0.72, 0.18);
+await page.mouse.click(secondBlankPoint.x, secondBlankPoint.y);
+await page.waitForFunction(() => Array.from(
+  document.querySelectorAll("#viewer-svg text"),
+  (node) => node.textContent || "",
+).some((text) => text.includes("Hello")));
+
+const plainTextNode = page.locator("#viewer-svg text").filter({ hasText: "Hello" }).first();
+await plainTextNode.waitFor();
+const plainTextBox = await plainTextNode.boundingBox();
+assert(plainTextBox, "committed plain text is not visible");
+assertBoxesClose(plainTextBox, plainEditorTextBox, "plain text edit-to-commit geometry");
+await page.mouse.click(plainTextBox.x + plainTextBox.width / 2, plainTextBox.y + plainTextBox.height / 2);
+await page.waitForFunction(() => document.querySelector(".text-editor-display")?.textContent?.includes("Hello"));
+assert.equal(await selectedEditorText(), "Hello");
+const reopenedPlainTextBox = await page.locator(".text-editor-svg text").first().boundingBox();
+assertBoxesClose(reopenedPlainTextBox, plainTextBox, "plain text reopen geometry");
+
+logStep("screenshot");
+await page.screenshot({ path: output, fullPage: true });
+await browser.close();
+
+if (consoleMessages.length) {
+  console.log(consoleMessages.join("\n"));
+}
+console.log(output);

@@ -1,0 +1,97 @@
+# Chemcore 项目规则
+
+这份文档记录当前开发阶段也必须保持的项目级规则。更细的行为规则仍放在各专题文档里，例如格式、键绘制和命令历史。
+
+Windows 桌面端和 Office 集成的长期方案见 `docs/windows-desktop-office-architecture.zh-CN.md`。该方案的核心约束是：桌面端和 Office 集成层不能复制化学逻辑，必须继续通过 Rust engine 和统一 document service 工作。
+
+## 内核边界
+
+- Rust `crates/chemcore-engine` 是当前编辑行为、文档 mutation、命中测试、吸附、选择、删除、命令历史和 render primitive 的权威。
+- Viewer 只负责 toolbar、菜单、文件打开保存、浏览器事件采集、坐标换算和 SVG/DOM 绘制。
+- 新的化学编辑行为不应重新散回 `viewer/app.js`。如果 viewer 需要知道几何，应优先消费 engine 输出的 primitive 或显式状态。
+- WASM 是同一个 Rust engine 在浏览器端和桌面端热编辑路径中的运行形态，业务规则仍在 Rust engine 中。
+- Windows 桌面端默认使用 `DesktopHybridEngineHost`：pointer move、hover、focus、hit testing、selection、拖拽预览、旋转、缩放、object settings 等高频编辑行为必须保持进程内 core 调用。
+- Tauri native service 负责文件、剪贴板、导出、Office/OLE、窗口、菜单、最近文件和后台任务等系统能力。
+- 不允许把高频鼠标事件设计成每次同步跨 Tauri IPC 并回传完整 document/render/state JSON snapshot。除非有增量 diff、事件合并和大文件性能证明，否则 `TauriEngineHost` 只能作为 `?engine=tauri-native` 诊断路径。
+- 右键菜单、缩放/旋转面板、object settings 等界面可以由 viewer 展示，但字段定义、适用对象、混合值、应用逻辑和文档 mutation 必须来自 engine API。
+
+## Office/OLE 边界
+
+- Office 集成必须以 `apps/chemcore-office` 的独立 COM/OLE local server 为边界，不把 OLE 生命周期直接塞进桌面主窗口进程。
+- Chemcore 自己的 OLE class 固定为 `Chemcore.Document` / `Chemcore.Document.1` / `{CB69F54F-F21E-44DE-84FB-89D98FECE056}`。
+- 开发期注册写 `HKCU\Software\Classes`，正式安装器写 `HKLM\Software\Classes`。不要要求用户手动编辑注册表。
+- OLE server 只能负责 COM/OLE 接口、storage、preview、剪贴板对象和唤醒桌面端；化学解析、文档 mutation、导入导出和渲染语义仍由 Rust engine / desktop service 提供。
+- Office Add-in 只能作为后续 Ribbon/入口增强，不能替代 OLE embedded object。
+
+## 文档单位
+
+- 当前 `.ccjs` / `.ccjz` 原生文件里的文档 JSON 单位固定为印刷点数：`format.unit = "pt"`。
+- 文档坐标、对象位置、键长、线宽、字号、命中半径和粘贴偏移等持久化或 engine 世界坐标值，都按 `pt` 解释。
+- CSS 像素只允许出现在 viewer 边界和浏览器输入/显示适配层。进入 engine 前必须显式换算。
+- 代码中仍有 `WorldCm`、`*_CM` 等历史命名时，当前语义按 `pt` 规则理解；后续重命名只能作为独立重构处理，不能顺手混进行为修改。
+- 旧文档或日志里出现的 `cm` 规则已被 2026-04-30 的 `pt` 决策取代。
+
+## WASM 同步
+
+- 日常开发允许 Rust 源码和 `viewer/engine` 生成物短暂不同步。
+- 需要在 viewer 里验证 engine 行为时，必须先重建 Web engine：
+
+```powershell
+npm run build:engine-wasm
+```
+
+- 高频修改 Rust engine 时，建议开一个自动重建进程：
+
+```powershell
+npm run dev:engine
+```
+
+- 准备提交、交付或让别人验证 viewer 前，必须跑：
+
+```powershell
+npm run verify
+```
+
+这个命令会跑 Rust 测试、重建 engine WASM、检查 viewer 语法，并确认 `viewer/engine` 没有未提交的生成物差异。
+
+## 生成物
+
+- `viewer/engine/chemcore_engine.js`、`viewer/engine/chemcore_engine.d.ts` 和 `viewer/engine/chemcore_engine_bg.wasm` 是 Web viewer 的运行时生成物。
+- 修改 `crates/chemcore-engine/src/wasm.rs`、engine API 或 render primitive 结构后，必须同步更新这些生成物。
+- `wasm-pack` 生成的 `viewer/engine/.gitignore` 不应保留；构建脚本会删除它。
+
+## 渲染几何
+
+- Fragment 路径的键绘制规则以 `docs/bond-rendering-rules.zh-CN.md` 为行为基线。
+- 键接触、label clipping、dash/hash knockout、预览态和落地态几何应由 Rust render 路径统一定义。
+- Viewer 不应靠 SVG `linecap`、额外中心 patch 或前台补丁重新定义化学键几何。
+
+## 化学标签
+
+- 隐式氢行为以 `docs/implicit-hydrogen-rules.zh-CN.md` 为当前行为基线。
+- 缩写识别与 functional group 展开规则以 `docs/abbreviation-recognition-rules.zh-CN.md` 为当前行为基线。
+- formula-like 标签的价键解析规则以 `docs/valence-label-recognition-rules.zh-CN.md` 为当前行为基线。
+- 电荷、自由基和孤对符号归属到分子原子后的语义，以 `docs/charge-radical-symbol-rules.zh-CN.md` 为规则基线。
+- 标签识别、隐式氢数量、生成标签文本和画键锚点都属于 Rust engine 行为，不应在 viewer 里另写一套。
+
+## 文本符号和 Glyph
+
+- 文本里的 Unicode 符号和特殊字符，以 `docs/text-symbol-glyph-profile-rules.zh-CN.md` 为当前行为基线。
+- `shared/text_symbols.json` 只定义文本符号表 UI 分组；字符进入文档后仍是普通 text run 内容。
+- glyph advance、ink box、background box、glyph polygon 和未知字符兜底由 Rust glyph kernel 统一定义；viewer 只能消费共享 profile 和 engine layout。
+
+## 命令历史
+
+- 只有已提交的文档变化进入 history。
+- hover、focus halo、preview、lasso、active drag 和 caret movement 都是临时交互状态，不进入 history。
+- 新编辑功能应使用语义 `EditorCommand`；`legacy-mutation` 只能视为迁移期警告。
+
+## 常用命令
+
+```powershell
+cargo test
+npm run build:engine-wasm
+npm run dev:engine
+npm run verify
+node --check viewer/app.js
+```

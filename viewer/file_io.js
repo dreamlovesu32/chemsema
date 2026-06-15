@@ -1,0 +1,172 @@
+export const CHEMCORE_TEXT_EXTENSION = ".ccjs";
+export const CHEMCORE_COMPRESSED_EXTENSION = ".ccjz";
+export const CHEMCORE_TEXT_MIME = "application/vnd.chemcore+json";
+export const CHEMCORE_COMPRESSED_MIME = "application/vnd.chemcore+gzip";
+export const CHEMDRAW_CDX_MIME = "chemical/x-cdx";
+export const MDL_SDF_MIME = "chemical/x-mdl-sdfile";
+
+export function documentTitleForFileName(documentData) {
+  const rawTitle = String(documentData?.document?.title || "chemcore-document").trim();
+  const safeTitle = rawTitle
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return `${safeTitle || "chemcore-document"}${CHEMCORE_COMPRESSED_EXTENSION}`;
+}
+
+export function saveFormatFromFileName(fileName) {
+  const lowerName = String(fileName || "").toLowerCase();
+  if (lowerName.endsWith(CHEMCORE_TEXT_EXTENSION)) {
+    return "ccjs";
+  }
+  if (lowerName.endsWith(CHEMCORE_COMPRESSED_EXTENSION)) {
+    return "ccjz";
+  }
+  if (lowerName.endsWith(".svg")) {
+    return "svg";
+  }
+  if (lowerName.endsWith(".cdxml")) {
+    return "cdxml";
+  }
+  if (lowerName.endsWith(".cdx")) {
+    return "cdx";
+  }
+  if (lowerName.endsWith(".sdf") || lowerName.endsWith(".sd")) {
+    return "sdf";
+  }
+  return "ccjz";
+}
+
+export function baseNameWithoutDocumentExtension(fileName) {
+  return String(fileName || "")
+    .replace(/\.ccjz$/i, "")
+    .replace(/\.ccjs$/i, "")
+    .replace(/\.cdxml$/i, "")
+    .replace(/\.cdx$/i, "")
+    .replace(/\.sdf$/i, "")
+    .replace(/\.sd$/i, "")
+    .replace(/\.svg$/i, "");
+}
+
+export function looksLikeCdxmlFile(file, text) {
+  const name = (file?.name || "").toLowerCase();
+  const type = (file?.type || "").toLowerCase();
+  if (name.endsWith(".cdxml") || type.includes("cdxml")) {
+    return true;
+  }
+  return /^\s*(?:<\?xml[^>]*>\s*)?<CDXML\b/i.test(text);
+}
+
+export function looksLikeCdxFile(file, bytes = null) {
+  const name = (file?.name || "").toLowerCase();
+  const type = (file?.type || "").toLowerCase();
+  if (name.endsWith(".cdx") || type.includes("cdx")) {
+    return true;
+  }
+  if (bytes && bytes.byteLength >= 8) {
+    const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+    return String.fromCharCode(...view.slice(0, 8)) === "VjCD0100";
+  }
+  return false;
+}
+
+export function looksLikeSdfFile(file, text = "") {
+  const name = (file?.name || "").toLowerCase();
+  const type = (file?.type || "").toLowerCase();
+  if (name.endsWith(".sdf") || name.endsWith(".sd") || type.includes("mdl-sdfile") || type.includes("sdf")) {
+    return true;
+  }
+  return /(?:^|\n)M  END(?:\n|\r\n?)\s*\$\$\$\$/i.test(text);
+}
+
+export function looksLikeCompressedChemcoreFile(file) {
+  const name = (file?.name || "").toLowerCase();
+  const type = (file?.type || "").toLowerCase();
+  return name.endsWith(CHEMCORE_COMPRESSED_EXTENSION) || type.includes("gzip");
+}
+
+export async function compressChemcoreText(text) {
+  if (!globalThis.CompressionStream) {
+    throw new Error("This browser cannot write compressed .ccjz files.");
+  }
+  const stream = new Blob([text], { type: CHEMCORE_TEXT_MIME })
+    .stream()
+    .pipeThrough(new CompressionStream("gzip"));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+export async function decompressChemcoreText(bytes) {
+  if (!globalThis.DecompressionStream) {
+    throw new Error("This browser cannot open compressed .ccjz files.");
+  }
+  const stream = new Blob([bytes], { type: CHEMCORE_COMPRESSED_MIME })
+    .stream()
+    .pipeThrough(new DecompressionStream("gzip"));
+  return new Response(stream).text();
+}
+
+export function chemcoreOpenAcceptTypes() {
+  return [{
+    description: "ChemCore, ChemDraw, or SDF",
+    accept: {
+      [CHEMCORE_COMPRESSED_MIME]: [CHEMCORE_COMPRESSED_EXTENSION],
+      [CHEMCORE_TEXT_MIME]: [CHEMCORE_TEXT_EXTENSION],
+      "text/xml": [".cdxml"],
+      "application/xml": [".cdxml"],
+      "application/x-cdxml": [".cdxml"],
+      "chemical/x-cdxml": [".cdxml"],
+      "application/vnd.cambridgesoft.cdxml": [".cdxml"],
+      [CHEMDRAW_CDX_MIME]: [".cdx"],
+      "application/x-cdx": [".cdx"],
+      "application/vnd.cambridgesoft.cdx": [".cdx"],
+      [MDL_SDF_MIME]: [".sdf", ".sd"],
+      "chemical/x-mdl-sdfile": [".sdf", ".sd"],
+      "chemical/x-sdf": [".sdf", ".sd"],
+    },
+  }];
+}
+
+export function chemcoreOpenAcceptString() {
+  return [
+    CHEMCORE_COMPRESSED_EXTENSION,
+    CHEMCORE_TEXT_EXTENSION,
+    ".cdxml",
+    ".cdx",
+    CHEMCORE_COMPRESSED_MIME,
+    CHEMCORE_TEXT_MIME,
+    "text/xml",
+    "application/xml",
+    "application/x-cdxml",
+    "chemical/x-cdxml",
+    "application/vnd.cambridgesoft.cdxml",
+    CHEMDRAW_CDX_MIME,
+    "application/x-cdx",
+    "application/vnd.cambridgesoft.cdx",
+    ".sdf",
+    ".sd",
+    MDL_SDF_MIME,
+    "chemical/x-mdl-sdfile",
+    "chemical/x-sdf",
+  ].join(",");
+}
+
+export function downloadTextFile(content, fileName, mimeType) {
+  const blob = new Blob([content], { type: mimeType });
+  downloadBlobFile(blob, fileName);
+}
+
+export function downloadBinaryFile(content, fileName, mimeType) {
+  const blob = new Blob([content], { type: mimeType });
+  downloadBlobFile(blob, fileName);
+}
+
+export function downloadBlobFile(blob, fileName) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}

@@ -1,0 +1,23 @@
+import path from "node:path";
+import { launchBrowser } from "./playwright-browser.mjs";
+
+const url = process.argv[2] || "http://127.0.0.1:8765/viewer/";
+const output = process.argv[3] || path.resolve("tmp/viewer-svg.png");
+const sample = process.argv[4] || "";
+
+const browser = await launchBrowser({ headless: true });
+const page = await browser.newPage({
+  viewport: { width: 1440, height: 1100 },
+  deviceScaleFactor: 1.5,
+});
+
+await page.goto(url, { waitUntil: "networkidle" });
+if (sample) {
+  await page.selectOption("#sample-select", sample);
+  await page.waitForTimeout(250);
+}
+const svg = await page.locator("#viewer-svg");
+await svg.screenshot({ path: output });
+await browser.close();
+
+console.log(output);

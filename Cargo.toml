@@ -1,0 +1,13 @@
+[workspace]
+members = [
+  "crates/chemcore-engine",
+  "crates/chemcore-desktop-service",
+  "apps/chemcore-desktop/src-tauri",
+  "apps/chemcore-office",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "Apache-2.0"
+authors = ["Jiajun Zhang"]

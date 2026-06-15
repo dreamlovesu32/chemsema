@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>chemcore editor</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="./styles.css?v=20260508-office-clipboard" />
+  </head>
+  <body data-view-mode="document">
+    <div id="desktop-titlebar" class="desktop-titlebar" aria-label="Window title bar">
+      <div class="titlebar-brand" data-titlebar-drag-region aria-hidden="true">
+        <img src="./brand-icon.svg?v=20260603-titlebar-icon" alt="" draggable="false" />
+      </div>
+      <div class="document-tabbar" aria-label="Document tabs">
+        <div id="document-tabs" class="document-tabs" role="tablist" aria-label="Open documents"></div>
+        <button id="document-tab-new" class="document-tab-new" type="button" data-command="new" aria-label="New file" title="New file">
+          <span aria-hidden="true">+</span>
+        </button>
+      </div>
+      <div class="titlebar-drag-region" data-titlebar-drag-region></div>
+      <div class="window-controls" aria-label="Window controls">
+        <button class="window-control" type="button" data-window-command="minimize" aria-label="Minimize" title="Minimize">
+          <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5h8"/></svg>
+        </button>
+        <button class="window-control" type="button" data-window-command="maximize" aria-label="Maximize" title="Maximize">
+          <svg class="window-icon-maximize" viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="2.5" width="7" height="7"/></svg>
+          <svg class="window-icon-restore" viewBox="0 0 12 12" aria-hidden="true"><path d="M4 2.5h5.5V8H8"/><rect x="2.5" y="4" width="5.5" height="5.5"/></svg>
+        </button>
+        <button class="window-control window-control-close" type="button" data-window-command="close" aria-label="Close" title="Close">
+          <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3 3 9"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="editor-shell">
+      <header class="editor-topbar" aria-label="Editor toolbar">
+        <div class="toolbar-row toolbar-row-primary">
+          <div class="toolbar-group">
+            <button class="icon-button" type="button" data-command="new" aria-label="New file" title="New file">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h8.5L19 8v12.5H6z"/><path d="M14.5 3.5V8H19"/><path d="M12.5 11v6"/><path d="M9.5 14h6"/></svg>
+            </button>
+            <button class="icon-button" type="button" data-command="open" aria-label="Open file" title="Open file">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7.5h6l2 2h9v9.5H3.5z"/><path d="M3.5 7.5V5h5.2l2 2h6.8v2.5"/><path d="M8 14h8"/><path d="M13 11l3 3-3 3"/></svg>
+            </button>
+            <button class="icon-button" type="button" data-command="save" aria-label="Save" title="Save" disabled>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h12l2 2v14H5z"/><path d="M8 4v6h8V4"/><path d="M8 16h8v4H8z"/></svg>
+            </button>
+            <button class="icon-button" type="button" data-command="save-as" aria-label="Save as" title="Save as">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h12l2 2v14H5z"/><path d="M8 4v6h8V4"/><path d="M8 16h7"/><path d="m14.5 18.5 4-4 1.5 1.5-4 4H14.5z"/></svg>
+            </button>
+          </div>
+
+          <div class="toolbar-divider" aria-hidden="true"></div>
+
+          <div class="toolbar-group">
+            <button class="icon-button" type="button" data-command="undo" aria-label="Undo" title="Undo">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7 4.5 11.5 9 16"/><path d="M5 11.5h9.5a5 5 0 0 1 0 10"/></svg>
+            </button>
+            <button class="icon-button" type="button" data-command="redo" aria-label="Redo" title="Redo">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 7 4.5 4.5L15 16"/><path d="M19 11.5H9.5a5 5 0 0 0 0 10"/></svg>
+            </button>
+            <button class="icon-button" type="button" data-tool="delete" aria-label="Delete" title="Delete">
+              <svg class="chemcore-icon cc-command-icon" viewBox="0 0 24 24" aria-hidden="true"><path class="cc-delete-stroke" d="M5.5 7.6h13"/><path class="cc-delete-stroke" d="M9.05 7.6V4.85h5.9V7.6"/><path class="cc-delete-stroke" d="M7.45 7.6 8.2 19.15h7.6l.75-11.55"/><path class="cc-delete-soft" d="M10.45 10.95v5.05"/><path class="cc-delete-soft" d="M13.55 10.95v5.05"/></svg>
+            </button>
+            <button class="icon-button" type="button" data-command="cut" aria-label="Cut" title="Cut">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6.5" cy="17.5" r="2.2"/><circle cx="17.5" cy="17.5" r="2.2"/><path d="M8.2 16 18 5"/><path d="m6 5 9.8 11"/></svg>
+            </button>
+            <button class="icon-button" type="button" data-command="copy" aria-label="Copy" title="Copy">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="7" width="10" height="12"/><rect x="5" y="4" width="10" height="12"/></svg>
+            </button>
+            <button class="icon-button" type="button" data-command="paste" aria-label="Paste" title="Paste">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5h8v3H8z"/><path d="M6 7h12v13H6z"/><path d="M9 12h6"/><path d="M9 16h5"/></svg>
+            </button>
+          </div>
+
+          <div class="toolbar-divider" aria-hidden="true"></div>
+
+          <div class="toolbar-group zoom-group">
+            <select id="zoom-input" class="zoom-input" aria-label="Zoom percentage">
+              <option value="12">12%</option>
+              <option value="25">25%</option>
+              <option value="50">50%</option>
+              <option value="75">75%</option>
+              <option value="100" selected>100%</option>
+              <option value="150">150%</option>
+              <option value="200">200%</option>
+              <option value="400">400%</option>
+              <option value="600">600%</option>
+              <option value="800">800%</option>
+            </select>
+            <button class="icon-button" type="button" data-command="zoom-in" aria-label="Zoom in" title="Zoom in">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/><path d="M10.5 7.5v6"/><path d="M7.5 10.5h6"/></svg>
+            </button>
+            <button class="icon-button" type="button" data-command="zoom-out" aria-label="Zoom out" title="Zoom out">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/><path d="M7.5 10.5h6"/></svg>
+            </button>
+            <button id="fit-button" class="icon-button" type="button" data-command="fit" aria-label="Fit all" title="Fit all">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5"/><path d="M20 9V4h-5"/><path d="M4 15v5h5"/><path d="M20 15v5h-5"/><path d="M8 8h8v8H8z"/></svg>
+            </button>
+          </div>
+
+          <div class="toolbar-divider" aria-hidden="true"></div>
+
+          <div class="toolbar-group document-style-group">
+            <button id="document-style-button" class="style-preset-button" type="button" aria-haspopup="menu" aria-expanded="false" title="Apply style preset">
+              Style
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>
+            </button>
+            <div id="document-style-menu" class="style-preset-menu" role="menu" hidden>
+              <button type="button" role="menuitem" data-document-style-preset="default">Default</button>
+              <button type="button" role="menuitem" data-document-style-preset="acs-document-1996">ACS 1996</button>
+            </div>
+          </div>
+        </div>
+        <div id="secondary-toolbar" class="toolbar-row toolbar-row-secondary" aria-label="Secondary toolbar"></div>
+      </header>
+
+      <aside class="tool-rail" aria-label="Drawing tools">
+        <button class="tool-button" type="button" data-tool="select" aria-label="Box selection" title="Box selection">
+          <svg class="chemcore-icon cc-tool-icon cc-select-mode-icon" viewBox="0 0 24 24" aria-hidden="true"><rect class="cc-stroke" x="5.2" y="5.2" width="13.6" height="13.6" rx="1.5" stroke-dasharray="2.1 2.1"/></svg>
+        </button>
+        <button class="tool-button is-active" type="button" data-tool="bond" aria-label="Bond" title="Bond">
+          <svg xmlns="http://www.w3.org/2000/svg" class="chemcore-icon cc-bond-icon" viewBox="0 0 24 24" aria-hidden="true"><polygon points="18.569817,8.971682 6.089817,16.171682 5.430183,15.028318 17.910183,7.828318" fill="currentColor" stroke="none" stroke-width="0" /></svg>
+        </button>
+        <button class="tool-button" type="button" data-tool="text" aria-label="Text" title="Text">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 19 12 5l4.5 14"/><path d="M9 14h6"/></svg>
+        </button>
+        <button class="tool-button" type="button" data-tool="arrow" aria-label="Arrow" title="Arrow">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12h12"/><path class="filled" d="M15.5 7.5 21 12l-5.5 4.5z"/></svg>
+        </button>
+        <button class="tool-button" type="button" data-tool="bracket" aria-label="Bracket" title="Bracket">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5H6v14h3"/><path d="M15 5h3v14h-3"/></svg>
+        </button>
+        <button class="tool-button" type="button" data-tool="symbol" aria-label="Charge and electron symbols" title="Charge and electron symbols">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6.5"/><path d="M12 8.5v7"/><path d="M8.5 12h7"/></svg>
+        </button>
+        <button class="tool-button" type="button" data-tool="shape" aria-label="Shape" title="Shape">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="10" height="10"/><circle cx="16.5" cy="16.5" r="3.5"/></svg>
+        </button>
+        <button class="tool-button" type="button" data-tool="tlc-plate" aria-label="TLC plate" title="TLC plate">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4.5" width="14" height="15"/><path d="M5 8.1h14M5 16.1h14" stroke-dasharray="1.5 1.5"/><circle cx="9" cy="13" r="1.3"/><circle cx="12" cy="11.2" r="1.3"/><circle cx="15" cy="14.4" r="1.3"/></svg>
+        </button>
+        <button class="tool-button" type="button" data-tool="orbital" aria-label="Orbital" title="Orbital">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4c3.3 0 5.4 2.6 5.4 6.2S15.3 16.4 12 20c-3.3-3.6-5.4-6.2-5.4-9.8S8.7 4 12 4z"/><path d="M12 4c0 0 2 2.4 2 6.2S12 20 12 20"/></svg>
+        </button>
+        <button class="tool-button" type="button" data-tool="templates" aria-label="Rings and templates" title="Rings and templates">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><polygon points="12,4 19,8 19,16 12,20 5,16 5,8"/></svg>
+        </button>
+        <button class="tool-button" type="button" data-tool="chain" aria-label="Chain" title="Chain">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.2 14.5 8.4 9.8 12.6 14.5 16.8 9.8"/><text x="18.2" y="18.2" text-anchor="middle" style="font-family:'Times New Roman',serif;font-size:6.2px;font-style:italic">n</text></svg>
+        </button>
+      </aside>
+
+      <main class="canvas-panel">
+        <div id="viewer-container" class="viewer-container">
+          <svg id="viewer-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+        </div>
+      </main>
+
+      <footer class="selection-status-bar" aria-label="Selection chemistry summary">
+        <div id="selection-chemistry-summary" class="selection-chemistry-summary" aria-live="polite"></div>
+      </footer>
+
+      <select id="sample-select" class="visually-hidden" aria-label="Sample document"></select>
+      <button id="reload-button" class="visually-hidden" type="button" aria-label="Reload"></button>
+      <span id="viewer-title" class="visually-hidden">No document loaded</span>
+      <span id="viewer-stats" class="visually-hidden"></span>
+      <pre id="doc-meta" class="visually-hidden"></pre>
+    </div>
+
+    <script type="module" src="./app.js?v=20260508-office-clipboard"></script>
+  </body>
+</html>
