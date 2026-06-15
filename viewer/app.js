@@ -328,6 +328,19 @@ const editorEngineReadCache = {
   boundsByScope: new Map(),
 };
 
+function invalidateEditorEngineReadCache() {
+  editorEngineReadCache.engine = null;
+  editorEngineReadCache.revision = null;
+  editorEngineReadCache.stateJson = null;
+  editorEngineReadCache.parsedState = null;
+  editorEngineReadCache.renderListJson = null;
+  editorEngineReadCache.renderList = null;
+  editorEngineReadCache.interactionRenderListJson = null;
+  editorEngineReadCache.interactionRenderList = null;
+  editorEngineReadCache.boundsJsonByScope = new Map();
+  editorEngineReadCache.boundsByScope = new Map();
+}
+
 const syncWindowTitle = () => {
   updateActiveDocumentTabTitle();
   const title = documentTitleFromState();
@@ -2325,6 +2338,7 @@ const editorPointerController = createEditorPointerController({
   currentEditorInteractionRenderList,
   currentEditorOverlayRenderList,
   renderEditorOverlay,
+  invalidateEditorEngineReadCache,
   selectionHasLargeOverlay: () => currentSelectionItemCount() >= 80,
   selectionBoundsContainsPoint: currentSelectionBoundsContainsPoint,
   selectionHitContainsPoint: currentSelectionHitContainsPoint,

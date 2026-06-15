@@ -330,11 +330,16 @@ export function createEditorPointerController(options) {
     return (event.buttons & 1) === 1;
   }
 
+  function invalidateEngineReadCache() {
+    options.invalidateEditorEngineReadCache?.();
+  }
+
   async function updateEngineDragPreview(point, event) {
     event.preventDefault();
     cancelScheduledHoverMove();
     leaveSelectionHoverSuppression(point);
     await options.state().editorEngine.pointerMove(point.x, point.y, event.altKey);
+    invalidateEngineReadCache();
     options.renderEditorOverlay(
       options.currentEditorInteractionRenderList?.() || options.syncEditorRenderListFromEngine(),
     );
@@ -368,6 +373,7 @@ export function createEditorPointerController(options) {
         }
         gesture.current = point;
         await options.state().editorEngine.updateHoverArrowEdit?.(point.x, point.y, event.altKey);
+        invalidateEngineReadCache();
         if (gesture.kind === "arrow-curve") {
           gesture.angle = options.state().editorEngine.activeArrowEditDegrees?.() || 0;
         }
@@ -381,6 +387,7 @@ export function createEditorPointerController(options) {
         }
         gesture.current = point;
         await options.state().editorEngine.updateHoverShapeEdit?.(point.x, point.y, event.altKey);
+        invalidateEngineReadCache();
         await options.syncArrowAwareCursorForPoint(point);
         options.renderEditorOverlay(options.currentEditorInteractionRenderList?.() || options.syncEditorRenderListFromEngine());
         return;
@@ -394,6 +401,7 @@ export function createEditorPointerController(options) {
           return;
         }
         await options.state().editorEngine.updateSelectionRotate(point.x, point.y, event.altKey);
+        invalidateEngineReadCache();
         await options.syncSelectCursorForPoint(point);
         options.renderEditorOverlay(options.syncEditorRenderListFromEngine());
         return;
@@ -407,6 +415,7 @@ export function createEditorPointerController(options) {
           return;
         }
         await options.state().editorEngine.updateSelectionResize?.(point.x, point.y);
+        invalidateEngineReadCache();
         await options.syncSelectCursorForPoint(point);
         options.renderEditorOverlay(options.syncEditorRenderListFromEngine());
         return;
@@ -422,6 +431,7 @@ export function createEditorPointerController(options) {
           return;
         }
         await options.state().editorEngine.updateSelectionMove(point.x, point.y, event.altKey);
+        invalidateEngineReadCache();
         await options.syncSelectCursorForPoint(point);
         options.renderEditorOverlay(options.syncEditorRenderListFromEngine());
         return;

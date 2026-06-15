@@ -1,5 +1,9 @@
 use super::*;
 
+const CURVED_ARROW_SAMPLE_DEGREES: f64 = 3.0;
+const CURVED_ARROW_MIN_SAMPLE_STEPS: usize = 16;
+const CURVED_ARROW_MAX_SAMPLE_STEPS: usize = 128;
+
 fn arrow_head_points(from: Point, to: Point, arrow_head: ArrowHeadGeometry) -> Vec<Point> {
     let direction = Vector::new(to.x - from.x, to.y - from.y);
     let unit = direction.normalized();
@@ -442,13 +446,18 @@ fn curved_arrow_points(
     let Some(arc) = curved_arrow_arc(start, sweep_degrees, arrow_arc) else {
         return Vec::new();
     };
-    let steps = ((sweep_degrees.abs() / 12.0).ceil() as usize).clamp(8, 32);
+    let steps = curved_arrow_sample_steps(sweep_degrees);
     (0..=steps)
         .map(|index| {
             let t = index as f64 / steps as f64;
             arc.point_at(arc.start_angle() + arc.sweep() * t)
         })
         .collect()
+}
+
+fn curved_arrow_sample_steps(sweep_degrees: f64) -> usize {
+    ((sweep_degrees.abs() / CURVED_ARROW_SAMPLE_DEGREES).ceil() as usize)
+        .clamp(CURVED_ARROW_MIN_SAMPLE_STEPS, CURVED_ARROW_MAX_SAMPLE_STEPS)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -542,8 +551,8 @@ fn curved_arrow_path(
     let segments = (sweep.abs() / (std::f64::consts::FRAC_PI_2)).ceil() as usize;
     let segments = segments.max(1);
     let delta = sweep / segments as f64;
-    let mut points = Vec::with_capacity(33);
-    let sample_steps = ((sweep.abs().to_degrees() / 6.0).ceil() as usize).clamp(8, 64);
+    let sample_steps = curved_arrow_sample_steps(sweep.abs().to_degrees());
+    let mut points = Vec::with_capacity(sample_steps + 1);
     for index in 0..=sample_steps {
         let t = index as f64 / sample_steps as f64;
         points.push(arc.point_at(start_angle + sweep * t));
@@ -1895,4 +1904,40 @@ fn open_arrow_head_outline_points(
         tip.translated(outward.scaled(-neck_offset))
             .translated(normal.scaled(-shaft_half_width)),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_arc() -> ArrowArcGeometry {
+        ArrowArcGeometry {
+            center: Point::new(0.0, 0.0),
+            major_axis_end: Point::new(100.0, 0.0),
+            minor_axis_end: Point::new(0.0, 60.0),
+        }
+    }
+
+    #[test]
+    fn curved_arrow_points_use_dense_sampling_for_offset_curves() {
+        let points = curved_arrow_points(Point::new(100.0, 0.0), 180.0, test_arc());
+
+        assert!(points.len() >= 61, "sampled points: {}", points.len());
+        assert!(points
+            .windows(2)
+            .all(|pair| pair[0].distance(pair[1]) < 6.0));
+    }
+
+    #[test]
+    fn curved_arrow_path_keeps_cubic_commands_with_dense_points() {
+        let path = curved_arrow_path(Point::new(100.0, 0.0), 90.0, test_arc(), 0.0, 0.0)
+            .expect("curved arrow path");
+
+        assert!(path.d.contains(" C "), "{}", path.d);
+        assert!(
+            path.points.len() >= 31,
+            "path points: {}",
+            path.points.len()
+        );
+    }
 }
