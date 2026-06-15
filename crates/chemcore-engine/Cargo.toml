@@ -1,6 +1,7 @@
 [package]
 name = "chemcore-engine"
 version = "1.0.0-beta"
+description = "Shared Rust engine for ChemCore chemical documents, editing, rendering, and import/export."
 edition.workspace = true
 license.workspace = true
 authors.workspace = true

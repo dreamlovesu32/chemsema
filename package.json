@@ -1,7 +1,7 @@
 {
   "name": "chemcore",
   "version": "1.0.0-beta",
-  "description": "`chemcore` 是一个跨平台的化学文档核心。",
+  "description": "A cross-platform chemical structure editor core and desktop application.",
   "type": "module",
   "main": "index.js",
   "directories": {

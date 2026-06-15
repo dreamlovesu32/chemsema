@@ -3544,10 +3544,10 @@ mod tests {
 
     #[test]
     fn desktop_exe_candidates_cover_dev_and_tauri_resource_layouts() {
-        let dev_server = PathBuf::from(r"C:\repo\chemcore\target\debug\chemcore-office.exe");
+        let dev_server = PathBuf::from(r"C:\ChemcoreDev\chemcore\target\debug\chemcore-office.exe");
         assert_eq!(
             desktop_exe_candidates_for_server_path(&dev_server)[0],
-            PathBuf::from(r"C:\repo\chemcore\target\debug\chemcore-desktop.exe")
+            PathBuf::from(r"C:\ChemcoreDev\chemcore\target\debug\chemcore-desktop.exe")
         );
 
         let resource_server =

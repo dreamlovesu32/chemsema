@@ -6,9 +6,9 @@ areas.
 
 ## Reporting a Vulnerability
 
-Do not post exploit details publicly. Until a private security advisory channel
-is configured for the public repository, open a minimal issue asking for a
-private contact route and omit technical details from that issue.
+Do not post exploit details publicly. Send security reports to
+zhangjiajun21@sioc.ac.cn with a concise subject such as
+`ChemCore security report`.
 
 Useful private reports should include:
 

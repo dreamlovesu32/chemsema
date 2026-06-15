@@ -4,6 +4,7 @@
   "collaborators": [
     "Jiajun Zhang"
   ],
+  "description": "Shared Rust engine for ChemCore chemical documents, editing, rendering, and import/export.",
   "version": "1.0.0-beta",
   "license": "Apache-2.0",
   "files": [
