@@ -1,14 +1,154 @@
 # ChemCore
 
-> Maintainer opening goes here.
+ChemCore is an open-source chemistry structure editor built from scratch for everyday research drawing, publication layout, and Office copy/paste workflows at ChemDraw-level fidelity. Maintainer: Jiajun ZHANG / 张家骏, [zhangjiajun21@sioc.ac.cn](mailto:zhangjiajun21@sioc.ac.cn). Feedback, issues, real CDXML files, and contributions are very welcome. The long-term goal is to make ChemCore a free research infrastructure platform that can later grow into automation, batch processing, AI-assisted research interfaces, and more carefully designed scientific software.
 
-## Technical Overview
+The core architecture is a shared Rust engine with a lightweight Web interface. Rust owns the document model, editing commands, hit testing, chemical label rules, implicit hydrogen logic, CDXML/CDX import/export, render primitive generation, and vector output needed by Office/OLE. The front end mainly collects events, manages UI state, and presents the result. Rust is used because this type of editor depends on long-lived geometry code, format parsers, and interaction state machines where memory safety, testability, performance, and typed boundaries matter. The same engine can compile to WASM for the browser and run as native code for the desktop shell and Windows Office integration; the desktop app uses Tauri/WebView2, so the UI can remain Web-based while behavior stays centralized in the cross-platform core.
 
-ChemCore is a cross-platform chemistry document editor built around a shared
-Rust core. The core owns the document model, editing behavior, hit testing,
-chemical label logic, CDXML/CDX-oriented import and export, and render primitive
-generation. Browser, desktop, and Office/OLE hosts consume that shared behavior
-rather than reimplementing chemistry rules in each surface.
+## Published Figure Comparison
+
+The comparison below uses CDXML source files from a published paper by the
+maintainer:
+
+Jiajun ZHANG, Pinhong Chen,* Guosheng Liu*, Copper-Catalyzed Site- and
+Enantioselective C–H Cyanation of Trisubstituted Allenes,
+[Chin. J. Chem. 2026, 44, 1729–1734](https://onlinelibrary.wiley.com/doi/full/10.1002/cjoc.70531).
+
+These are real publication figures rather than simplified demo fixtures. They
+exercise molecule rendering, text layout, reaction arrows, brackets, colors,
+radical/single-electron dots, graphical objects, and Office-oriented vector
+output. The left column is exported by ChemDraw; the right column is exported by
+ChemCore after importing the same CDXML files.
+
+![ChemDraw and ChemCore CDXML rendering comparison](./docs/assets/readme/comparison/published-cdxml-comparison.svg)
+
+The generated SVG and EMF files for both ChemDraw and ChemCore are kept in
+[docs/assets/readme/comparison](./docs/assets/readme/comparison/).
+
+The original CDXML files are tracked at the repository root:
+[f1.cdxml](./f1.cdxml) and [f2.cdxml](./f2.cdxml).
+
+## Current Status
+
+Current version: `1.0.0-beta`.
+
+The Windows installer is coming soon and is still under testing. For now, the
+browser and desktop builds can be run from source, and release binaries can be
+built locally with the commands below.
+
+## Product Highlights
+
+- **Built for real research drawing workflows**: ChemCore is designed around drawing structures, arranging reaction schemes, copying into Word or PowerPoint, and returning later for editing.
+- **ChemDraw-compatible files and layout habits**: CDXML/CDX import and export are first-class paths, with source structure, text, arrows, brackets, symbols, colors, and object positions preserved as much as possible.
+- **One shared core for browser, desktop, and Office integration**: Editing rules, hit testing, chemical labels, render primitives, and import/export logic live in the Rust engine to avoid behavior drift between surfaces.
+- **Low-latency editing**: Hover, focus, selection, drag preview, rotation, and zoom use local WASM/Rust hot paths instead of turning every pointer move into a cross-process request.
+- **Modern desktop behavior**: The Tauri/WebView2 desktop shell supports file open/save, drag-to-open, recent files, tabs, unsaved-change prompts, shortcuts, and Windows file association.
+- **Office paste and embedding are treated seriously**: Copy operations consider native ChemCore data, CDXML, SVG, EMF, RTF/OOXML, and OLE payloads so Office display and later editing remain reliable.
+
+## Implemented Capabilities
+
+- **CDXML/CDX import and export**: The Rust engine parses and writes ChemDraw-oriented formats, maps them into the ChemCore document model, and keeps enough drawing information for re-rendering and round trips.
+- **Unified document and rendering model**: The document model, runtime scene, hit testing, selection state, and render primitives are defined in the engine while the front end focuses on events and display.
+- **Complex bond geometry**: Single, double, triple, bold, dashed, solid wedge, hashed wedge, label clipping, bond joins, crossing gaps, and ChemDraw-style template parameters are implemented.
+- **Arrows and graphical objects**: Reaction arrows, equilibrium arrows, hollow arrows, curved arrows, brackets, lines, shapes, and symbols are supported and continue to be aligned with ChemDraw interaction details.
+- **Selection, drag, rotation, and arrangement**: Object-level and partial molecule selection, multi-select drag preview, rotation, flip, alignment, distribution, color application, and undoable command history are available.
+- **Text and label editing**: Free text, endpoint element replacement, label editing, text selection, style synchronization, and the behavioral distinction between chemical labels and free text are handled.
+- **Implicit hydrogen and element rules**: Main-group auto-hydrogen logic, valence counting, charge effects, and period-specific rules are centralized in the engine.
+- **Abbreviation and group recognition**: Common abbreviations such as Me, Et, Ph, CN, NO2, Boc, Ts, TMS, TBDMS, and TBDPS are recognized and treated as groups during flipping, formula, and mass calculations.
+- **Formula and mass statistics**: Selected structures can report formula weight, exact mass, and expanded abbreviation composition.
+- **Desktop and Office foundations**: Browser, desktop, and Office/OLE boundaries are established, including Windows clipboard, EMF preview, and Word OOXML/OLE payload paths.
+
+## Design Details
+
+ChemCore focuses on the small details that decide whether a chemistry editor is
+pleasant enough for real daily use. These rules live in the shared Rust engine
+where possible, so the browser, desktop shell, SVG/EMF output, and Office paths
+consume the same geometry.
+
+### Text Clipping
+
+ChemCore does not treat an atom label as one coarse rectangle. Endpoint labels
+are split into styled runs and line runs, then the engine builds per-glyph clip
+polygons from font size, baseline, subscript/superscript shifts, and character
+advance data. When a bond is rendered, its endpoint ray intersects the glyph
+polygon edges, picks the farthest exit point from the atom, and advances by the
+bond's `label_clip_margin`. The default template uses `1.2pt`; ACS Document
+1996 uses `0.8pt`.
+
+Common uppercase letters and symbols use tuned height-centered glyph polygons
+generated from Arial, including cases such as `N`, `I`, and `+`. Unknown
+uppercase letters fall back to conservative uppercase profiles, and full-width
+or CJK characters use square profiles. If a document has no glyph polygons, the
+engine falls back to the label bounding box.
+
+### Label Grouping
+
+Chemical labels are grouped by uppercase-led fragments and known abbreviations,
+not reversed character by character. For example, `OTMS` is grouped as `O` +
+`TMS`, so a right-side label becomes `TMSO`, not `SMTO`. Anchors are assigned to
+the chemically meaningful terminal letter rather than a trailing digit,
+implicit hydrogen, or an internal abbreviation character.
+
+### Bond Joins
+
+Shared endpoints are computed as real polygons instead of relying on SVG stroke
+caps. Each bond endpoint is converted into an axis, normal, left/right contour
+lines, and half width. For two-bond joins, the engine intersects inner-inner and
+outer-outer contours and stores endpoint profiles for each bond. For three or
+more incident bonds, contours are sorted by polar angle and only adjacent pairs
+are intersected, producing a ring of profiles around the node. Sharp angles are
+limited by a miter cap.
+
+### Crossing Gaps
+
+Non-endpoint crossings use a separate knockout pass. Within a molecule
+fragment, bonds are rendered in order and later bonds are treated as the upper
+layer. Before drawing an upper bond, the engine checks it against already drawn
+lower bonds, skips shared endpoints and near-parallel cases, and inserts a
+white knockout polygon at true interior intersections. The gap length is
+compensated by the crossing angle's sine, and the width uses the upper bond's
+visual width plus its template `marginWidth`.
+
+### Infinite Canvas
+
+The editor uses a runtime `viewBox` rather than a fixed page-sized viewport.
+The SVG `viewBox` is expressed in document-world coordinates, while CSS size is
+computed from `pt -> css px -> zoom`; the scroll container is just a window into
+that world. Empty documents start with a centered buffer around the visible
+area. After each render, document bounds are compared with the current viewBox;
+if content approaches an edge, the viewBox expands in that direction and
+left/top expansions compensate scroll delta so the scene does not jump.
+
+### Stable Interaction
+
+Selection boxes, hover state, drag previews, rotation handles, curved-arrow
+handles, text boxes, and graphical objects are kept stable in dense CDXML
+documents. Selected content suppresses internal hover, drag previews follow
+locally before committing to the engine, and each desktop tab preserves its
+document, zoom, and runtime view state.
+
+Architecturally, ChemCore keeps the rules that affect consistency inside the
+engine wherever possible: hit testing, selection ranges, hover behavior,
+drawing geometry, text clipping, bond joins, implicit hydrogen, abbreviation
+recognition, CDXML parsing, and export rendering are shared by the browser,
+desktop, and Office paths instead of being patched separately in the front end.
+
+Complex CDXML compatibility, Office copy/paste, OLE embedding, and ChemDraw
+format fidelity are still being actively refined. Reports with concrete files,
+screenshots, or real Office workflows are especially useful.
+
+## Welcome
+
+If you use ChemDraw heavily, care about free research infrastructure, or are
+interested in AI-assisted scientific software development, you are very welcome
+to try ChemCore, open issues, join discussions, or contribute code.
+
+The most useful feedback usually comes in two forms: concrete files with
+screenshots that help align ChemDraw display and interaction, and real writing
+workflows that expose copy/paste, Office editing, layout, or export problems.
+ChemCore is not meant to be a demo that merely looks like an editor; the goal is
+to become a tool that can enter daily research work.
+
+Please contact the maintainer using the email address at the top of this README.
 
 ## Repository Layout
 
@@ -19,7 +159,7 @@ chemcore/
   apps/chemcore-desktop/           Tauri Windows desktop application
   apps/chemcore-office/            Windows Office/OLE integration server
   viewer/                          Browser editor host and generated WASM package
-  docs/                            Architecture, format, rendering, and behavior notes
+  docs/                            Public rules, specs, architecture notes, and assets
   examples/                        Example ChemCore native documents
   scripts/                         Build, verification, and regression helpers
   shared/                          Shared JSON data consumed by Rust and viewer code
@@ -107,12 +247,22 @@ needed analysis packages.
 ## Design Documents
 
 - [docs/architecture.md](./docs/architecture.md)
+- [docs/architecture.zh-CN.md](./docs/architecture.zh-CN.md)
 - [docs/format-v0.1.md](./docs/format-v0.1.md)
+- [docs/format-v0.1.zh-CN.md](./docs/format-v0.1.zh-CN.md)
 - [docs/project-rules.zh-CN.md](./docs/project-rules.zh-CN.md)
 - [docs/implicit-hydrogen-rules.zh-CN.md](./docs/implicit-hydrogen-rules.zh-CN.md)
 - [docs/abbreviation-recognition-rules.zh-CN.md](./docs/abbreviation-recognition-rules.zh-CN.md)
 - [docs/bond-rendering-rules.zh-CN.md](./docs/bond-rendering-rules.zh-CN.md)
+- [docs/charge-radical-symbol-rules.zh-CN.md](./docs/charge-radical-symbol-rules.zh-CN.md)
+- [docs/document-commit-contract.zh-CN.md](./docs/document-commit-contract.zh-CN.md)
 - [docs/editor-command-history.md](./docs/editor-command-history.md)
+- [docs/glyph-clip-polygons.zh-CN.md](./docs/glyph-clip-polygons.zh-CN.md)
+- [docs/glyph-kernel.md](./docs/glyph-kernel.md)
+- [docs/rust-engine-architecture.zh-CN.md](./docs/rust-engine-architecture.zh-CN.md)
+- [docs/text-symbol-glyph-profile-rules.zh-CN.md](./docs/text-symbol-glyph-profile-rules.zh-CN.md)
+- [docs/valence-label-recognition-rules.zh-CN.md](./docs/valence-label-recognition-rules.zh-CN.md)
+- [docs/windows-desktop-office-architecture.zh-CN.md](./docs/windows-desktop-office-architecture.zh-CN.md)
 - [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)
 
 ## License

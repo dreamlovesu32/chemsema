@@ -46,6 +46,8 @@ pub fn compact_label_text(text: &str) -> String {
 }
 
 pub fn split_label_groups(text: &str) -> Vec<String> {
+    // Labels are mirrored as chemistry groups, not as raw characters. Known
+    // abbreviations such as TMS must stay atomic when OTMS flips to TMSO.
     let compact = compact_label_text(text);
     if compact.is_empty() {
         return Vec::new();
@@ -85,6 +87,8 @@ pub fn reverse_label_groups(text: &str) -> String {
 }
 
 pub fn terminal_letter_anchor_offset(group: &str) -> usize {
+    // Anchor the bond to the terminal letter in a group and ignore digits or
+    // generated hydrogens that are visible text but not connection points.
     group
         .chars()
         .enumerate()

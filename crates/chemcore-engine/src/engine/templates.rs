@@ -107,6 +107,9 @@ impl Engine {
         let point = event.point();
         self.drag = None;
         self.selection_drag = None;
+        // Template creation starts a new gesture; stale hover endpoints from
+        // the previous tool action must not survive into the preview.
+        self.clear_overlay();
         self.state.selection = crate::SelectionState::default();
         let is_chain = selected_chain_template(&self.state.tool.template);
         if let Some(endpoint) = hit_test_endpoint(&self.state.document, point, ENDPOINT_HIT_RADIUS)
@@ -177,13 +180,9 @@ impl Engine {
         if !inserted {
             return;
         }
+        // Do not immediately re-hit-test at the release point. The next real
+        // pointer move should decide whether a template endpoint is hovered.
         self.clear_interaction();
-        self.pointer_move_template(PointerEvent {
-            x: event.x,
-            y: event.y,
-            button: None,
-            alt_key: event.alt_key,
-        });
     }
 
     pub(super) fn template_preview_document(&self) -> Option<ChemcoreDocument> {

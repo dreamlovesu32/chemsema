@@ -50,6 +50,8 @@ pub(crate) fn render_bounds_scope_accepts(
         RenderBoundsScope::All => true,
         RenderBoundsScope::Document => {
             let role = render_primitive_role(primitive);
+            // Document bounds drive fitting, export padding, and auto-expansion;
+            // transient UI overlays must not enlarge the chemical page.
             role != RenderRole::DocumentKnockout
                 && !render_role_is_selection(role)
                 && !render_role_is_hover(role)

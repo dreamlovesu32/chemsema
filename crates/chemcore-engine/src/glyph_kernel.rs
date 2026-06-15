@@ -233,6 +233,9 @@ pub fn build_label_glyph_polygons(
     box_value: Option<[f64; 4]>,
     fallback_font_size: f64,
 ) -> Vec<Vec<[f64; 2]>> {
+    // Build world-space clip polygons from the same styled runs used for
+    // label rendering, so bonds can retreat from actual glyph shapes instead
+    // of the much coarser text bounding box.
     let lines: Vec<Vec<LabelRun>> = if !line_runs.is_empty() {
         line_runs.to_vec()
     } else if !runs.is_empty() {
@@ -667,6 +670,8 @@ fn shape_polygon(placement: &GlyphPlacement) -> Option<Vec<[f64; 2]>> {
     if !placement.visible {
         return None;
     }
+    // The shared manifest stores normalized glyph outlines. Height-centered
+    // mapping keeps narrow capitals such as I from losing their side margin.
     let manifest = shared_glyph_clip_polygons();
     manifest
         .glyphs

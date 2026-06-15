@@ -854,6 +854,55 @@ fn hover(engine: &mut Engine, x: f64, y: f64) {
     });
 }
 
+#[test]
+fn bond_pointer_down_clears_previous_hover_overlay() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, FIRST_START_X, FIRST_START_Y);
+
+    hover(&mut engine, FIRST_END_HOVER_X, FIRST_END_HOVER_Y);
+    assert!(engine.state().overlay.hover_endpoint.is_some());
+
+    engine.pointer_down(PointerEvent {
+        x: FIRST_END_X,
+        y: FIRST_END_Y,
+        button: Some(0),
+        alt_key: false,
+    });
+
+    assert!(engine.state().overlay.hover_endpoint.is_none());
+    assert!(engine.state().overlay.hover_bond_center.is_none());
+    assert!(engine.state().overlay.hover_arrow.is_none());
+    assert!(engine.state().overlay.hover_shape.is_none());
+    assert!(engine.state().overlay.hover_text_box.is_none());
+    assert!(engine.state().overlay.preview.is_none());
+}
+
+#[test]
+fn template_pointer_down_clears_previous_hover_overlay() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, FIRST_START_X, FIRST_START_Y);
+
+    engine.set_tool_state(templates_tool("chain"));
+    hover(&mut engine, FIRST_END_HOVER_X, FIRST_END_HOVER_Y);
+    assert!(engine.state().overlay.hover_endpoint.is_some());
+
+    engine.pointer_down(PointerEvent {
+        x: FIRST_END_X,
+        y: FIRST_END_Y,
+        button: Some(0),
+        alt_key: false,
+    });
+
+    assert!(engine.state().overlay.hover_endpoint.is_none());
+    assert!(engine.state().overlay.hover_bond_center.is_none());
+    assert!(engine.state().overlay.hover_arrow.is_none());
+    assert!(engine.state().overlay.hover_shape.is_none());
+    assert!(engine.state().overlay.hover_text_box.is_none());
+    assert!(engine.state().overlay.preview.is_none());
+}
+
 fn drag(engine: &mut Engine, from: Point, to: Point) {
     engine.pointer_down(PointerEvent {
         x: from.x,
@@ -3941,7 +3990,7 @@ fn click_on_single_bond_endpoint_extends_at_120_degrees() {
 }
 
 #[test]
-fn click_draw_keeps_hover_at_pointer_position_instead_of_new_endpoint() {
+fn click_draw_clears_hover_after_commit() {
     let mut engine = Engine::new();
     engine.set_tool_state(bond_tool());
     click(&mut engine, px(300.0), px(260.0));
@@ -3959,14 +4008,39 @@ fn click_draw_keeps_hover_at_pointer_position_instead_of_new_endpoint() {
         alt_key: false,
     });
 
-    let hover = engine
-        .state()
-        .overlay
-        .hover_endpoint
-        .as_ref()
-        .expect("pointer-position hover should remain on clicked endpoint");
-    assert_eq!(hover.point.x, FIRST_END_X);
-    assert_eq!(hover.point.y, FIRST_END_Y);
+    assert!(engine.state().overlay.hover_endpoint.is_none());
+    assert!(engine.state().overlay.hover_bond_center.is_none());
+    assert!(engine.state().overlay.preview.is_none());
+}
+
+#[test]
+fn dragged_bond_clears_hover_after_commit() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, px(300.0), px(260.0));
+
+    engine.pointer_down(PointerEvent {
+        x: FIRST_END_X,
+        y: FIRST_END_Y,
+        button: Some(0),
+        alt_key: false,
+    });
+    engine.pointer_move(PointerEvent {
+        x: FIRST_END_SINGLE_EXTEND_X,
+        y: FIRST_END_SINGLE_EXTEND_Y,
+        button: None,
+        alt_key: false,
+    });
+    engine.pointer_up(PointerEvent {
+        x: FIRST_END_SINGLE_EXTEND_X,
+        y: FIRST_END_SINGLE_EXTEND_Y,
+        button: Some(0),
+        alt_key: false,
+    });
+
+    assert!(engine.state().overlay.hover_endpoint.is_none());
+    assert!(engine.state().overlay.hover_bond_center.is_none());
+    assert!(engine.state().overlay.preview.is_none());
 }
 
 #[test]

@@ -135,6 +135,8 @@ pub(super) fn build_main_bond_contact_kernel<'a>(
     let mut kernel = MainBondContactKernel::default();
 
     for node in node_map.values() {
+        // Labeled nodes are clipped against glyph geometry instead of mitered
+        // against neighboring bonds, so the two systems stay independent.
         if node
             .label
             .as_ref()
@@ -172,6 +174,8 @@ pub(super) fn build_main_bond_contact_kernel<'a>(
                 .insert(MainBondEndpointKey::new(&geometry.bond.id, &node.id));
         }
 
+        // Straight chains with two simple bonds use the multi-contact path too;
+        // it gives the same endpoint-profile representation as branched nodes.
         if geometries.len() == 2
             && geometries
                 .iter()
@@ -522,6 +526,8 @@ fn two_bond_main_contact(
         return None;
     };
 
+    // Intersect the inner pair and outer pair separately. Each bond receives
+    // its own endpoint profile, while the bridge patch fills any shared wedge.
     let inner = bounded_main_contour_intersection(
         first.contour_for_side(first_inner_side),
         second.contour_for_side(second_inner_side),
@@ -599,6 +605,8 @@ fn append_multi_bond_main_contact(
         return;
     }
 
+    // Sort by polar angle and intersect only adjacent contours. That builds a
+    // stable ring around substituted centers without all-pairs artifacts.
     let mut ring_intersections = Vec::with_capacity(ordered.len());
     for index in 0..ordered.len() {
         let current = ordered[index];

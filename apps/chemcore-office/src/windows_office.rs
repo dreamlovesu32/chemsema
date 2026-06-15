@@ -420,6 +420,8 @@ fn copy_clipboard_payload(payload_path: PathBuf) -> Result<(), String> {
         let data_object =
             (&mut (*object).data_object as *mut InterfacePart<DataObjectVtbl>).cast::<c_void>();
 
+        // Flush the COM data object immediately so Word can paste an owned OLE
+        // payload even after this helper process exits.
         let set_hr = OleSetClipboard(data_object);
         let flush_hr = if hresult_succeeded(set_hr) {
             OleFlushClipboard()

@@ -40,6 +40,7 @@ Makefile
 # Local/generated imports and previews
 tmp/
 .codex-run-logs/
+private-docs/
 
 # Local sample source binaries
 *.pdf

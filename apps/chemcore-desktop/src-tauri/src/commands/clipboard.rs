@@ -38,6 +38,9 @@ fn native_clipboard_write(
         }
 
         let mut wrote = false;
+        // Write portable text/vector formats first. Office-specific OLE data is
+        // added afterward by the helper process so normal clipboard consumers
+        // are not forced through COM.
         for (format_name, value) in [
             (
                 FORMAT_CHEMCORE_FRAGMENT,
@@ -146,6 +149,8 @@ fn native_office_ole_clipboard_write(
         .map_err(|error| format!("Failed to write OLE clipboard payload: {error}"))?;
 
     let mut command = std::process::Command::new(&office_exe);
+    // The OLE bridge is a short-lived sibling process. Keeping COM clipboard
+    // ownership there avoids tying the Tauri window process to Office lifetime.
     command
         .arg("--copy-clipboard-payload")
         .arg(&payload_path)

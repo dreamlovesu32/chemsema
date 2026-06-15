@@ -23,6 +23,8 @@ impl DesktopDocumentService {
         } else {
             text
         };
+        // Normalize by content after decoding so dragged CDXML files without a
+        // trusted extension still open through the chemical import path.
         let format = if format == "text" && looks_like_cdxml(&text) {
             "cdxml".to_string()
         } else if format == "text" {

@@ -165,6 +165,8 @@ pub(super) fn clip_point_out_of_label_geometry(
     polygons: &[Vec<Point>],
     margin: f64,
 ) -> Point {
+    // Prefer per-glyph polygons when they exist; bounding boxes are only a
+    // fallback for imported or legacy labels without glyph geometry.
     if polygons.is_empty() {
         return clip_point_out_of_box(start, end, rect, margin);
     }
@@ -261,6 +263,8 @@ pub(super) fn render_fragment_line_with_profiles(
         .is_some_and(|label| label.has_visible_text());
     let (clipped_start, clipped_end) = if clip_against_label_geometry {
         let label_clip_margin = label_clip_margin_for_bond(bond, stroke_width);
+        // Clip both endpoints before contact profiles are inherited, so label
+        // retreat and shared-node joins compose instead of fighting each other.
         let clipped_start = clip_point_out_of_label_geometry(
             start,
             end,

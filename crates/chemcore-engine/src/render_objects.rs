@@ -195,6 +195,8 @@ fn render_bond_crossing_knockouts(
     let over_width = crossing_bond_visual_width(over_bond, over_start, over_end, over_stroke_width);
 
     for under_bond in previous_bonds {
+        // Bonds are painted in document order. The current bond is the visual
+        // upper layer, so its knockout cuts only previously rendered bonds.
         if bonds_share_endpoint(over_bond, under_bond) {
             continue;
         }
@@ -224,6 +226,8 @@ fn render_bond_crossing_knockouts(
         );
         let half_length = (under_width * 0.5 / crossing_sin) + margin_width;
         let half_width = (over_width * 0.5) + margin_width;
+        // A shallow crossing needs a longer cut along the upper bond direction;
+        // dividing by sin(theta) keeps the visible gap roughly constant.
         push_bond_knockout_polygon(
             out,
             vec![

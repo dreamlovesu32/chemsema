@@ -836,6 +836,12 @@ impl Engine {
         }
     }
 
+    fn clear_overlay(&mut self) {
+        // Overlay state is transient UI feedback. Clearing it without touching
+        // selection or history prevents hover/focus from sticking after commits.
+        self.state.overlay = OverlayState::default();
+    }
+
     pub fn pointer_move(&mut self, event: PointerEvent) {
         let point = event.point();
         if self.state.tool.active_tool == Tool::Select {
@@ -1137,6 +1143,7 @@ impl Engine {
         let point = event.point();
         if let Some(endpoint) = hit_test_endpoint(&self.state.document, point, ENDPOINT_HIT_RADIUS)
         {
+            self.clear_overlay();
             self.drag = Some(DragState {
                 anchor: BondAnchor {
                     node_id: Some(endpoint.node_id),
@@ -1159,6 +1166,7 @@ impl Engine {
         let Some(anchor) = anchor_from_point(&self.state.document, point) else {
             return;
         };
+        self.clear_overlay();
         self.drag = Some(DragState {
             anchor,
             start: point,
@@ -1248,11 +1256,10 @@ impl Engine {
                 })
         };
         self.state.overlay.preview = None;
-        let pointer_point = event.point();
-        let added = self.add_bond_between(drag.anchor, end_anchor, self.pending_bond_order());
-        if added {
-            self.refresh_bond_mode_hover(pointer_point);
-        }
+        let _ = self.add_bond_between(drag.anchor, end_anchor, self.pending_bond_order());
+        // Do not synthesize a hover target at the committed endpoint; the next
+        // pointer move should be the source of truth for focus feedback.
+        self.clear_overlay();
     }
 
     pub fn clear_interaction(&mut self) {
@@ -1926,19 +1933,6 @@ impl Engine {
             point: target.point,
             label_anchor: target.label_anchor,
         })
-    }
-
-    fn refresh_bond_mode_hover(&mut self, point: Point) {
-        self.state.overlay.hover_text_box = None;
-        self.state.overlay.hover_bond_center = None;
-        self.state.overlay.hover_arrow = None;
-        self.state.overlay.hover_shape = None;
-        self.state.overlay.hover_endpoint =
-            hit_test_endpoint(&self.state.document, point, ENDPOINT_HIT_RADIUS);
-        if self.state.overlay.hover_endpoint.is_none() && can_focus_bond_center(&self.state.tool) {
-            self.state.overlay.hover_bond_center =
-                hit_test_bond_center(&self.state.document, point, BOND_CENTER_HIT_RADIUS);
-        }
     }
 
     fn bond_exists(&self, begin_id: &str, end_id: &str) -> bool {

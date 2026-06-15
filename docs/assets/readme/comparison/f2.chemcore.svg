@@ -1,0 +1,193 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="454.9" height="229.8" viewBox="1.03 205.11 454.9 229.8">
+  <polyline points="172.12,240.11 291.61,240.11" fill="none" stroke="#000000" stroke-width="0.6" stroke-linecap="butt" stroke-linejoin="miter" />
+  <path d="M 296.86,240.11 C 296.86,240.11 290.86,241.66000000000003 290.86,241.66000000000003 C 290.86,241.66000000000003 291.61,240.788125 291.61,240.11 C 291.61,239.43187500000002 290.86,238.56 290.86,238.56 C 290.86,238.56 296.86,240.11 296.86,240.11" fill="#000000" stroke="none" />
+  <text x="234.5" y="223.11" font-size="10" dominant-baseline="alphabetic" text-anchor="middle" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">CuOAc (10 mol%)</tspan></text>
+  <text x="234.5" y="234.86" font-size="10" dominant-baseline="alphabetic" text-anchor="middle" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="700" font-style="normal">L1</tspan><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal"> (15 mol%)</tspan></text>
+  <text x="234.5" y="254.61" font-size="10" dominant-baseline="alphabetic" text-anchor="middle" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="700" font-style="normal">NF-1</tspan><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal"> / </tspan><tspan font-size="10" font-family="Arial" fill="#ff0000" font-weight="700" font-style="normal">TMSCN</tspan></text>
+  <text x="234.5" y="266.36" font-size="10" dominant-baseline="alphabetic" text-anchor="middle" fill="#000000" font-family="Arial"><tspan font-size="7.5" font-family="Arial" fill="#000000" font-weight="400" font-style="italic" baseline-shift="3.92">t</tspan><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">AmOH/Acetone/</tspan><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">PhCF</tspan><tspan font-size="7.5" font-family="Arial" fill="#000000" font-weight="400" font-style="normal" baseline-shift="-2.2">3</tspan><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal"> </tspan><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">(1:1:1</tspan><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">)</tspan></text>
+  <text x="234.5" y="278.11" font-size="10" dominant-baseline="alphabetic" text-anchor="middle" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">Ar, -40 °C, 7 d</tspan></text>
+  <text x="379.57" y="267.72" font-size="10" dominant-baseline="alphabetic" text-anchor="middle" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="700" font-style="normal">2a</tspan></text>
+  <polygon points="57.572437,358.553341 69.76,351.516415 69.76,351.17 69.210084,351.141098 57.272428,358.03373 57.29,358.37" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="69.76,351.516415 81.947676,358.553406 82.23,358.37 82.247618,358.033757 70.309916,351.141098 69.76,351.17" fill="#000000" stroke="none" stroke-width="0" />
+  <text x="40.26" y="356.18" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">O</tspan></text>
+  <text x="52.19" y="376.32" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">N</tspan></text>
+  <polygon points="57.272428,358.03373 49.311814,354.486262 49.06759,355.034308 56.968942,358.555367 57.29,358.37" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="40.113966,356.530534 34.389413,362.88455 34.5,363.21 34.868827,363.248815 40.559735,356.932143" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="34.324045,363.505229 41.356307,375.684714 41.7,375.68 41.850859,375.341306 34.868827,363.248815 34.5,363.21" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="41.926433,375.93863 51.094017,373.993202 50.969466,373.406272 41.850859,375.341306 41.7,375.68" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="56.68051,367.068265 57.572437,358.553341 57.29,358.37 56.968942,358.555367 56.083775,367.005758" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="54.10291,366.798265 54.854883,359.619432 54.258148,359.556924 53.506175,366.735758" fill="#000000" stroke="none" stroke-width="0" />
+  <text x="80.14" y="376.32" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">N</tspan></text>
+  <text x="91.51" y="356.18" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">O</tspan></text>
+  <polygon points="81.947676,358.553406 82.84834,367.094795 83.445031,367.031876 82.55121,358.555367 82.23,358.37" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="84.666178,359.617838 85.42594,366.822995 86.022631,366.760076 85.26287,359.554918" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="88.462533,373.999557 97.970842,376.018722 97.82,375.68 97.669158,375.341278 88.587168,373.412645" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="97.970842,376.018722 105.388768,363.171288 105.02,363.21 104.651232,363.248712 97.669158,375.341278 97.82,375.68" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="105.388768,363.171288 99.402338,356.519699 98.956362,356.921078 104.651232,363.248712 105.02,363.21" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="90.187143,354.498376 82.247618,358.033757 82.23,358.37 82.55121,358.555367 90.431212,355.046491" fill="#000000" stroke="none" stroke-width="0" />
+  <text x="38.59" y="392.51" font-size="10" dominant-baseline="alphabetic" text-anchor="end" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">Ph</tspan></text>
+  <polygon points="41.356307,375.684714 35.994645,384.792941 38.744356,386.017356 41.926433,375.93863 41.7,375.68" fill="#000000" stroke="none" stroke-width="0" />
+  <text x="100.46" y="392.47" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">Ph</tspan></text>
+  <path d="M 98.5588 378.0767 L 98.7409 378.9020 L 99.5985 378.5201 L 99.1069 377.8326 Z" fill="#000000" stroke="none" />
+  <path d="M 99.1656 380.8270 L 99.2976 381.4251 L 101.1012 380.6219 L 100.7450 380.1237 Z" fill="#000000" stroke="none" />
+  <path d="M 99.7223 383.3501 L 99.8542 383.9481 L 102.6040 382.7237 L 102.2478 382.2255 Z" fill="#000000" stroke="none" />
+  <text x="403.5" y="343.91" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">S</tspan></text>
+  <text x="415.7" y="351.07" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">N</tspan></text>
+  <polygon points="411.363082,343.203752 414.309452,344.904944 414.609466,344.385337 411.663096,342.684145" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="402.014239,342.674136 394.36,347.093585 394.36,347.44 394.66,347.6132 402.314253,343.193743" fill="#000000" stroke="none" stroke-width="0" />
+  <text x="395.75" y="331.44" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">O</tspan></text>
+  <polygon points="403.093646,335.760632 401.639439,333.242025 401.119832,333.542039 402.574039,336.060646" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="405.338246,334.464632 403.884039,331.946025 403.364432,332.246039 404.818639,334.764646" fill="#000000" stroke="none" stroke-width="0" />
+  <text x="410.15" y="331.44" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">O</tspan></text>
+  <polygon points="408.819707,334.802149 410.30334,332.232578 409.783733,331.932565 408.3001,334.502135" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="411.064307,336.098149 412.54794,333.528578 412.028333,333.228565 410.5447,335.798135" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="394.36,347.093585 381.89,339.893585 381.89,340.586415 394.06,347.6132 394.36,347.44" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="391.918086,348.67655 382.039927,342.973042 381.739914,343.49265 391.618073,349.196158" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="381.89,339.893585 369.42,347.093585 369.42,347.44 369.72,347.6132 381.89,340.586415" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="369.12,347.6132 369.12,362.0132 369.72,361.6668 369.72,347.6132 369.42,347.44" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="371.712,348.936492 371.712,360.343508 372.312,360.343508 372.312,348.936492" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="369.12,362.0132 381.59,369.2132 381.89,369.04 381.89,368.693585 369.72,361.6668" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="382.19,369.2132 394.66,362.0132 394.06,361.6668 381.89,368.693585 381.89,369.04" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="382.039927,366.306958 391.918086,360.60345 391.618073,360.083842 381.739914,365.78735" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="394.66,362.0132 394.66,347.6132 394.36,347.44 394.06,347.6132 394.06,361.6668" fill="#000000" stroke="none" stroke-width="0" />
+  <text x="428.27" y="343.78" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">R</tspan></text>
+  <polygon points="424.301656,344.88608 426.878633,343.391555 426.577621,342.872526 424.000643,344.36705" fill="#000000" stroke="none" stroke-width="0" />
+  <text x="416.29" y="365.47" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">F</tspan></text>
+  <polygon points="419.007546,352.873687 419.012214,356.234088 419.612213,356.233254 419.607546,352.872853" fill="#000000" stroke="none" stroke-width="0" />
+  <text x="378.31" y="387.11" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">CF</tspan><tspan font-size="7.5" font-family="Arial" fill="#000000" font-weight="400" font-style="normal" baseline-shift="-2.2">3</tspan></text>
+  <polygon points="381.59,369.2132 381.59,377.69 382.19,377.69 382.19,369.2132 381.89,369.04" fill="#000000" stroke="none" stroke-width="0" />
+  <text x="360.57" y="343.91" font-size="10" dominant-baseline="alphabetic" text-anchor="end" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">F</tspan><tspan font-size="7.5" font-family="Arial" fill="#000000" font-weight="400" font-style="normal" baseline-shift="-2.2">3</tspan><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">C</tspan></text>
+  <polygon points="369.42,347.093585 361.8899,342.745812 361.589886,343.265419 369.12,347.6132 369.42,347.44" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="70.309916,351.141098 81.762671,342.814503 81.41,342.7 81.057329,342.585497 69.76,350.799092 69.76,351.17" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="81.762671,342.814503 77.177935,328.71 76.96,329.01 76.742065,329.31 81.057329,342.585497 81.41,342.7" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="77.177935,328.71 62.342065,328.71 62.56,329.01 62.777935,329.31 76.742065,329.31 76.96,329.01" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="62.342065,328.71 57.757329,342.814503 58.11,342.7 58.462671,342.585497 62.777935,329.31 62.56,329.01" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="57.757329,342.814503 69.210084,351.141098 69.76,351.17 69.76,350.799092 58.462671,342.585497 58.11,342.7" fill="#000000" stroke="none" stroke-width="0" />
+  <text x="22.93" y="365.37" font-size="10" dominant-baseline="alphabetic" text-anchor="end" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">Ph</tspan></text>
+  <polygon points="34.389413,362.88455 24.307823,360.621922 23.992177,363.615326 34.324045,363.505229 34.5,363.21" fill="#000000" stroke="none" stroke-width="0" />
+  <text x="116.12" y="365.33" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">Ph</tspan></text>
+  <path d="M 107.5277 363.2472 L 108.3653 363.2948 L 108.2741 362.4293 L 107.4648 362.6505 Z" fill="#000000" stroke="none" />
+  <path d="M 109.9692 363.3858 L 110.5762 363.4203 L 110.4101 361.8455 L 109.8237 362.0058 Z" fill="#000000" stroke="none" />
+  <path d="M 112.1800 363.5113 L 112.7870 363.5457 L 112.5461 361.2617 L 111.9597 361.4219 Z" fill="#000000" stroke="none" />
+  <path d="M 114.3909 363.6368 L 114.9978 363.6712 L 114.6822 360.6778 L 114.0958 360.8381 Z" fill="#000000" stroke="none" />
+  <polygon points="37.15,236.656731 37.15,251.0568 37.45,251.23 37.75,251.056731 37.75,237.003269" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="39.742,238.326492 39.742,249.733508 40.342,249.733508 40.342,238.326492" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="37.45006,251.576381 49.93006,258.776381 49.92994,258.083619 37.75,251.056731 37.45,251.23" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="49.93006,258.776381 62.7,251.4032 62.1,251.0568 49.92994,258.083619" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="50.079927,255.696958 59.958086,249.99345 59.658073,249.473842 49.779914,255.17735" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="62.7,251.4032 62.7,237.0032 62.4,236.83 62.1,237.0032 62.1,251.0568" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="62.4,236.483585 49.93006,229.283619 49.92994,229.976381 62.1,237.0032 62.4,236.83" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="59.958086,238.06655 50.079927,232.363042 49.779914,232.88265 59.658073,238.586158" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="49.93006,229.283619 37.15,236.656731 37.75,237.003269 49.92994,229.976381" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="62.7,237.0032 75.17,229.8032 74.87,229.63 74.57,229.4568 62.4,236.483585 62.4,236.83" fill="#000000" stroke="none" stroke-width="0" />
+  <text x="85.59" y="240.73" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">•</tspan></text>
+  <polygon points="74.57,228.306754 85.649588,234.70395 85.949602,234.184342 75.17,227.960354" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="73.574119,230.724638 84.353588,236.94855 84.653602,236.428942 73.574119,230.031807" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="91.291294,237.96139 101.105881,243.628193 101.105881,242.935362 91.591308,237.441783" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="89.995294,240.20599 99.51,245.699646 100.11,245.353246 90.295308,239.686383" fill="#000000" stroke="none" stroke-width="0" />
+  <text x="108.66" y="240.46" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#ff0000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#ff0000" font-weight="700" font-style="normal">H</tspan></text>
+  <polygon points="100.11,244.2032 107.593435,239.882371 107.293421,239.362764 99.51,243.8568 99.81,244.03" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="75.17,229.8032 75.17,215.23 74.57,215.23 74.57,229.4568 74.87,229.63" fill="#000000" stroke="none" stroke-width="0" />
+  <text x="27.73" y="262.1" font-size="10" dominant-baseline="alphabetic" text-anchor="end" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">Ph</tspan></text>
+  <polygon points="37.15,251.0568 28.274124,256.181604 28.574138,256.701211 37.45006,251.576381 37.45,251.23" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="334.03,236.406731 334.03,250.8068 334.33,250.98 334.63,250.806731 334.63,236.753269" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="336.622,238.076492 336.622,249.483508 337.222,249.483508 337.222,238.076492" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="334.33006,251.326381 346.81006,258.526381 346.80994,257.833619 334.63,250.806731 334.33,250.98" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="346.81006,258.526381 359.58,251.1532 358.98,250.8068 346.80994,257.833619" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="346.959927,255.446958 356.838086,249.74345 356.538073,249.223842 346.659914,254.92735" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="359.58,251.1532 359.58,236.7532 359.28,236.58 358.98,236.7532 358.98,250.8068" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="359.28,236.233585 346.81006,229.033619 346.80994,229.726381 358.98,236.7532 359.28,236.58" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="356.838086,237.81655 346.959927,232.113042 346.659914,232.63265 356.538073,238.336158" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="346.81006,229.033619 334.03,236.406731 334.63,236.753269 346.80994,229.726381" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="359.58,236.7532 372.05,229.5532 371.75,229.38 371.45,229.2068 359.28,236.233585 359.28,236.58" fill="#000000" stroke="none" stroke-width="0" />
+  <text x="382.47" y="240.48" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">•</tspan></text>
+  <polygon points="371.45,228.056754 382.529588,234.45395 382.829602,233.934342 372.05,227.710354" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="370.454119,230.474638 381.233588,236.69855 381.533602,236.178942 370.454119,229.781807" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="388.171294,237.71139 397.187993,242.917504 397.488007,242.397896 388.471308,237.191783" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="386.875294,239.95599 396.256723,245.372693 397.106352,245.170426 387.175308,239.436383" fill="#000000" stroke="none" stroke-width="0" />
+  <text x="405.58" y="240.25" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#ff0000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#ff0000" font-weight="700" font-style="normal">CN</tspan></text>
+  <path d="M 398.9964 242.7947 L 399.7898 242.5130 L 399.3371 241.7289 L 398.6964 242.2751 Z" fill="#000000" stroke="none" />
+  <path d="M 401.9482 241.7465 L 402.5231 241.5423 L 401.5442 239.8469 L 401.0800 240.2428 Z" fill="#000000" stroke="none" />
+  <path d="M 404.6815 240.7759 L 405.2565 240.5717 L 403.7514 237.9650 L 403.2872 238.3608 Z" fill="#000000" stroke="none" />
+  <polygon points="372.05,229.5532 372.05,214.98 371.45,214.98 371.45,229.2068 371.75,229.38" fill="#000000" stroke="none" stroke-width="0" />
+  <text x="324.61" y="261.85" font-size="10" dominant-baseline="alphabetic" text-anchor="end" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">Ph</tspan></text>
+  <polygon points="334.03,250.8068 325.154124,255.931604 325.454138,256.451211 334.33006,251.326381 334.33,250.98" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="396.39,243.78 395.226712,257.681534 398.240947,258.729079 396.99,243.78" fill="#000000" stroke="none" stroke-width="0" />
+  <text x="63.9" y="407.76" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="700" font-style="normal">L1</tspan></text>
+  <text x="378.4" y="405.7" font-size="10" dominant-baseline="alphabetic" text-anchor="middle" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="700" font-style="normal">N</tspan><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="700" font-style="normal">F-1 </tspan><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">R =</tspan></text>
+  <polygon points="99.51,243.8568 99.51,258.6032 99.81,258.43 100.11,258.2568 100.11,244.2032 99.81,244.03" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="99.51,258.6032 112.28,265.976415 112.28,265.63 112.28,265.283585 100.11,258.2568 99.81,258.43" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="112.28,265.976415 124.75,258.776415 124.75,258.43 124.75,258.083585 112.28,265.283585 112.28,265.63" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="124.75,258.776415 137.22,265.976415 137.22,265.63 137.22,265.283585 124.75,258.083585 124.75,258.43" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="137.22,265.976415 149.840007,258.689804 149.539993,258.170196 137.22,265.283585 137.22,265.63" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="395.226712,257.681534 409.16,265.726415 409.16,265.38 409.16,265.033585 398.240947,258.729079" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="409.16,265.726415 421.63,258.526415 421.63,258.18 421.63,257.833585 409.16,265.033585 409.16,265.38" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="421.63,258.526415 434.1,265.726415 434.1,265.38 434.1,265.033585 421.63,257.833585 421.63,258.18" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="434.1,265.726415 446.720007,258.439804 446.419993,257.920196 434.1,265.033585 434.1,265.38" fill="#000000" stroke="none" stroke-width="0" />
+  <text x="76.69" y="271.97" font-size="10" dominant-baseline="alphabetic" text-anchor="middle" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="700" font-style="normal">1a</tspan></text>
+  <text x="187.58" y="288.1" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#800080" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#800080" font-weight="400" font-style="normal">"standard conditions"</tspan></text>
+  <polygon points="194.462437,346.673341 206.65,339.636415 206.65,339.29 206.240189,339.180203 194.162325,346.15379 194.18,346.49" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="206.65,339.636415 218.837676,346.673406 219.12,346.49 219.137722,346.153817 207.059811,339.180203 206.65,339.29" fill="#000000" stroke="none" stroke-width="0" />
+  <text x="177.15" y="344.31" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">O</tspan></text>
+  <text x="189.08" y="364.44" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">N</tspan></text>
+  <polygon points="194.162325,346.15379 186.203012,342.612955 185.959135,343.161156 193.858927,346.675512 194.18,346.49" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="177.003966,344.660534 171.240681,351.05754 171.39,351.34 171.758827,351.378815 177.449735,345.062143" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="171.248496,351.694895 178.211896,363.755116 178.59,363.81 178.740781,363.471172 171.758827,351.378815 171.39,351.34" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="178.759968,364.080536 187.983198,362.116754 187.858248,361.529908 178.740781,363.471172 178.59,363.81" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="193.57051,355.188265 194.462437,346.673341 194.18,346.49 193.858927,346.675512 192.973775,355.125758" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="190.99291,354.918265 191.744883,347.739432 191.148148,347.676924 190.396175,354.855758" fill="#000000" stroke="none" stroke-width="0" />
+  <text x="217.03" y="364.44" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">N</tspan></text>
+  <text x="228.4" y="344.31" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">O</tspan></text>
+  <polygon points="218.837676,346.673406 219.73834,355.214795 220.335031,355.151876 219.441225,346.675512 219.12,346.49" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="221.556178,347.737838 222.31594,354.942995 222.912631,354.880076 222.15287,347.674918" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="225.353286,362.123116 234.860764,364.148857 234.71,363.81 234.559236,363.471143 225.478321,361.536289" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="234.860764,364.148857 242.278768,351.301288 241.91,351.34 241.541232,351.378712 234.559236,363.471143 234.71,363.81" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="242.278768,351.301288 236.292338,344.649699 235.846362,345.051078 241.541232,351.378712 241.91,351.34" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="227.076071,342.624991 219.137722,346.153817 219.12,346.49 219.441225,346.675512 227.319792,343.173261" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="171.240681,351.05754 157.165818,352.836538 157.450971,355.853914 171.248496,351.694895 171.39,351.34" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="157.165818,352.836538 155.515648,368.485827 155.8,368.65 156.12121,368.464633 157.450971,355.853914" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="155.836261,368.994545 168.679683,374.713576 168.96,374.51 167.71121,373.62553 156.12121,368.464633 155.8,368.65" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="155.990793,371.901847 166.415538,376.543868 166.659607,375.995753 156.234862,371.353732" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="178.211896,363.755116 167.71121,373.62553 168.96,374.51 169.453383,376.340493 178.759968,364.080536 178.59,363.81" fill="#000000" stroke="none" stroke-width="0" />
+  <path d="M 236.1538 365.8607 L 236.6293 366.5468 L 237.2325 366.0034 L 236.5996 365.4591 Z" fill="#000000" stroke="none" />
+  <path d="M 237.9300 368.4232 L 238.2746 368.9203 L 239.4221 367.8865 L 238.9635 367.4921 Z" fill="#000000" stroke="none" />
+  <path d="M 239.5753 370.7967 L 239.9199 371.2939 L 241.6118 369.7696 L 241.1532 369.3752 Z" fill="#000000" stroke="none" />
+  <path d="M 241.2206 373.1703 L 241.5652 373.6674 L 243.8015 371.6527 L 243.3428 371.2583 Z" fill="#000000" stroke="none" />
+  <polygon points="244.630197,374.713576 257.463785,368.994578 257.5,368.65 257.178942,368.464633 244.069803,374.306424" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="246.8935,376.542034 257.310324,371.900012 257.0661,371.351966 246.649276,375.993988" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="257.784452,368.4859 256.298368,354.298746 255.701632,354.361254 257.178942,368.464633 257.5,368.65" fill="#000000" stroke="none" stroke-width="0" />
+  <path d="M 244.2835 352.1504 L 245.0715 352.4258 L 245.2400 351.6317 L 244.4080 351.5634 Z" fill="#000000" stroke="none" />
+  <path d="M 247.2273 353.1794 L 247.7983 353.3790 L 248.1189 351.8681 L 247.5160 351.8186 Z" fill="#000000" stroke="none" />
+  <path d="M 249.9540 354.1326 L 250.5250 354.3322 L 250.9978 352.1045 L 250.3949 352.0550 Z" fill="#000000" stroke="none" />
+  <path d="M 252.6808 355.0857 L 253.2518 355.2853 L 253.8767 352.3409 L 253.2738 352.2914 Z" fill="#000000" stroke="none" />
+  <polygon points="155.515648,368.485827 143.833491,376.979207 144.466509,377.260793 155.836261,368.994545 155.8,368.65" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="143.833491,376.979207 145.379817,391.643702 145.940183,391.236298 144.466509,377.260793" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="146.586178,378.367838 147.78233,389.711482 148.379022,389.648562 147.18287,378.304918" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="145.379817,391.643702 158.846215,397.634458 158.773785,396.945542 145.940183,391.236298" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="158.846215,397.634458 170.776409,388.970986 170.143591,388.689014 158.773785,396.945542" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="158.674182,394.556558 167.902774,387.854936 167.550218,387.369442 158.321626,394.071064" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="170.776409,388.970986 169.453383,376.340493 168.96,374.51 168.679683,374.713576 170.143591,388.689014" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="244.069803,374.306424 242.523479,388.970905 243.156521,388.689095 244.630197,374.713576" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="242.523479,388.970905 254.453739,397.634425 254.526261,396.945575 243.156521,388.689095" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="245.397226,387.854936 254.625818,394.556558 254.978374,394.071064 245.749782,387.369442" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="254.453739,397.634425 267.930304,391.643702 267.369696,391.236298 254.526261,396.945575" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="267.930304,391.643702 269.466398,376.979125 268.833602,377.260875 267.369696,391.236298" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="265.526652,389.713076 266.714883,378.369432 266.118148,378.306924 264.929917,389.650568" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="269.466398,376.979125 257.784452,368.4859 257.5,368.65 257.463785,368.994578 268.833602,377.260875" fill="#000000" stroke="none" stroke-width="0" />
+  <text x="210.25" y="330.45" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">R</tspan></text>
+  <text x="195.85" y="330.45" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">R</tspan></text>
+  <polygon points="207.059811,339.180203 210.983039,332.38539 210.463432,332.085376 206.65,338.690028 206.65,339.29" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="202.316361,332.38435 206.240189,339.180203 206.65,339.29 206.65,338.690028 202.835968,332.084336" fill="#000000" stroke="none" stroke-width="0" />
+  <text x="172.57" y="409.26" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="700" font-style="normal">L2</tspan><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal"> R = (CH</tspan><tspan font-size="7.5" font-family="Arial" fill="#000000" font-weight="400" font-style="normal" baseline-shift="-2.2">2</tspan><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">)</tspan><tspan font-size="7.5" font-family="Arial" fill="#000000" font-weight="400" font-style="normal" baseline-shift="-2.2">2</tspan></text>
+  <text x="172.57" y="421.01" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="700" font-style="normal">L3 </tspan><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">R = CH</tspan><tspan font-size="7.5" font-family="Arial" fill="#000000" font-weight="400" font-style="normal" baseline-shift="-2.2">2</tspan><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">OH</tspan></text>
+  <polyline points="10.12,309.48 447.63,309.48" fill="none" stroke="#000000" stroke-width="0.6" stroke-dasharray="2.49" stroke-linecap="butt" stroke-linejoin="miter" />
+  <polygon points="405.180075,403.579765 415.000075,397.906424 415,397.56 414.590274,397.450245 404.879925,403.060235" fill="#000000" stroke="none" stroke-width="0" />
+  <text x="422.4" y="406.22" font-size="8" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="8" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">Ph</tspan></text>
+  <polygon points="415.000075,397.906424 421.105303,401.430082 421.405226,400.910423 415.409791,397.450132 415,397.56" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="415,396.959847 409.49983,387.430038 408.98017,387.729962 414.590274,397.450245 415,397.56" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="415.409791,397.450132 421.01983,387.729962 420.50017,387.430038 415,396.959847 415,397.56" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="409.293278,398.662668 411.194223,401.953018 407.903872,403.853963 406.002928,400.563613" fill="#ffffff" stroke="none" stroke-width="0" />
+  <path d="M 405.6300 396.1200 A 1.1250,1.1250 90 0,0 405.2319 397.6798 A 1.1250,1.1250 90 0,0 406.7820 398.1140 A 1.1250,1.1250 90 0,1 408.3321 398.5482 A 1.1250,1.1250 90 0,1 407.9340 400.1080 A 1.1250,1.1250 90 0,0 407.5359 401.6678 A 1.1250,1.1250 90 0,0 409.0860 402.1020 A 1.1250,1.1250 90 0,1 410.6361 402.5362 A 1.1250,1.1250 90 0,1 410.2380 404.0960 A 1.1250,1.1250 90 0,0 409.8399 405.6558 A 1.1250,1.1250 90 0,0 411.3900 406.0900" fill="none" stroke="#000000" stroke-width="0.6" stroke-linejoin="bevel" />
+  <text x="385.41" y="420.7" font-size="10" dominant-baseline="alphabetic" text-anchor="middle" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="700" font-style="normal">N</tspan><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="700" font-style="normal">F-2 </tspan><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">R = Ad</tspan></text>
+  <polyline points="311.12,323.75 311.12,425.25" fill="none" stroke="#808080" stroke-width="0.6" stroke-linecap="butt" stroke-linejoin="miter" />
+</svg>

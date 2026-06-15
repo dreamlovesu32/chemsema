@@ -175,6 +175,8 @@ const BOND_STROKE = 1.0;
 const CHEMDRAW_PAGE_BACKGROUND = "#ffffff";
 const DEFAULT_WORKSPACE_WIDTH = 900;
 const DEFAULT_WORKSPACE_HEIGHT = 600;
+// The editor canvas is a growing world-space viewBox. These ratios define
+// how much empty room to keep around content and when to expand the world.
 const EDITOR_VIEW_BUFFER_RATIO = 0.6;
 const EDITOR_AUTO_EXPAND_TRIGGER_RATIO = 0.18;
 const EDITOR_FIT_PADDING_RATIO = 0.08;
@@ -2040,6 +2042,8 @@ function maybeAutoExpandEditorViewport(_primitives) {
   let shiftTop = 0;
   let changed = false;
 
+  // Expanding left/top changes the world-space origin, so we record the delta
+  // and compensate scroll afterward to avoid a visible jump.
   if (bounds.minX < current.x + metrics.triggerX) {
     const targetX = bounds.minX - metrics.bufferX;
     shiftLeft = current.x - targetX;
