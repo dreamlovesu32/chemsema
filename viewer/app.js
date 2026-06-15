@@ -297,11 +297,20 @@ toggleTexts?.addEventListener("change", () => renderDocument());
 let zoomPercent = 100;
 const documentTabs = [];
 let activeDocumentTabId = null;
+let activeTextEditor = null;
+const UNSAVED_CLOSE_DECISION = {
+  SAVE: "save",
+  DISCARD: "discard",
+  CANCEL: "cancel",
+};
 const BROWSER_PENDING_DOCUMENT_KEY_PREFIX = "chemcore:pending-browser-document:";
 const BROWSER_PENDING_DOCUMENT_PARAM = "chemcorePendingDocument";
 let activeTitlebarTabDrag = null;
 let detachingDocumentTabId = null;
 let suppressNextDocumentTabClick = false;
+let activeUnsavedChangesDialog = null;
+let windowCloseGuardInProgress = false;
+let forceWindowClose = false;
 let activeDocumentPreviewObjectIds = new Set();
 let activeDocumentPreviewPrimitiveElements = new Set();
 let activeDocumentPreviewLayer = false;
@@ -322,8 +331,9 @@ const editorEngineReadCache = {
 const syncWindowTitle = () => {
   updateActiveDocumentTabTitle();
   const title = documentTitleFromState();
-  document.title = `${title} - Chemcore`;
-  desktopFileHost?.setWindowTitle?.(title).catch?.(() => {});
+  const displayTitle = documentTitleWithDirtyMarker(title, currentDocumentIsDirty());
+  document.title = `${displayTitle} - Chemcore`;
+  desktopFileHost?.setWindowTitle?.(displayTitle).catch?.(() => {});
 };
 
 if (viewerTitle) {
@@ -390,7 +400,6 @@ const editorState = {
   massDigits: 2,
   template: "ring-6",
 };
-let activeTextEditor = null;
 let activeSelectionGesture = null;
 let activeTlcSpotHover = null;
 let activeTlcLaneHover = null;
@@ -488,6 +497,10 @@ function documentTitleFromState() {
   return title || "Untitled";
 }
 
+function documentTitleWithDirtyMarker(title, dirty) {
+  return dirty ? `${title || "Untitled"} *` : title || "Untitled";
+}
+
 function currentDocumentSaveFingerprint() {
   return state.currentDocument ? JSON.stringify(state.currentDocument) : null;
 }
@@ -506,9 +519,18 @@ function markCurrentDocumentSaved() {
     tab.savedRevision = state.savedRevision;
   }
   refreshCommandAvailability();
+  renderDocumentTabs();
+  syncWindowTitle();
+}
+
+function activeTextEditorIsDirty() {
+  return Boolean(activeTextEditor?.hasUserEdited);
 }
 
 function currentDocumentIsDirty() {
+  if (activeTextEditorIsDirty()) {
+    return true;
+  }
   const revision = currentDocumentRevision();
   if (revision != null && state.savedRevision != null) {
     return revision !== state.savedRevision;
@@ -543,6 +565,21 @@ function tabDocumentFingerprint(tab) {
 function tabDocumentRevision(tab) {
   const revision = tab?.editorEngine?.revision?.();
   return Number.isFinite(Number(revision)) ? Number(revision) : null;
+}
+
+function documentTabIsDirty(tab) {
+  if (!tab) {
+    return false;
+  }
+  if (tab.id === activeDocumentTabId && activeTextEditorIsDirty()) {
+    return true;
+  }
+  const revision = tabDocumentRevision(tab);
+  if (revision != null && tab.savedRevision != null) {
+    return revision !== tab.savedRevision;
+  }
+  const fingerprint = tabDocumentFingerprint(tab);
+  return !!fingerprint && tab.savedDocumentJson != null && fingerprint !== tab.savedDocumentJson;
 }
 
 async function buildOleEditPayloadForTab(tab) {
@@ -632,6 +669,8 @@ async function handleDocumentCommandCommitted(event) {
   if (tab) {
     await syncOleEditDocumentTabToOffice(tab);
   }
+  renderDocumentTabs();
+  syncWindowTitle();
   refreshCommandAvailability();
   console.debug?.("[chemcore] document command committed", {
     type: event.commandType,
@@ -686,7 +725,8 @@ function renderDocumentTabs() {
   }
   documentTabsRoot.innerHTML = documentTabs.map((tab) => {
     const active = tab.id === activeDocumentTabId;
-    const title = escapeHtml(tab.title || "Untitled");
+    const baseTitle = tab.title || "Untitled";
+    const title = escapeHtml(documentTitleWithDirtyMarker(baseTitle, documentTabIsDirty(tab)));
     const dragging = tab.id === detachingDocumentTabId;
     return `
       <div class="document-tab${active ? " is-active" : ""}${dragging ? " is-dragging" : ""}" role="tab" tabindex="0" aria-selected="${active ? "true" : "false"}" data-document-tab-id="${tab.id}" title="${title}">
@@ -734,10 +774,18 @@ async function activateDocumentTab(tabId) {
   await restoreDocumentTabState(nextTab);
 }
 
-async function closeDocumentTab(tabId) {
-  const index = documentTabs.findIndex((tab) => tab.id === tabId);
+async function closeDocumentTab(tabId, options = {}) {
+  const activeTabIdBeforeClose = activeDocumentTabId;
+  let index = documentTabs.findIndex((tab) => tab.id === tabId);
   if (index < 0) {
-    return;
+    return false;
+  }
+  if (!options.skipUnsavedPrompt && !await confirmCloseDocumentTab(tabId)) {
+    return false;
+  }
+  index = documentTabs.findIndex((tab) => tab.id === tabId);
+  if (index < 0) {
+    return true;
   }
   const closing = documentTabs[index];
   const wasActive = closing.id === activeDocumentTabId;
@@ -759,15 +807,19 @@ async function closeDocumentTab(tabId) {
     fitView();
     saveActiveDocumentTabState();
     renderDocumentTabs();
-    return;
+    return true;
   }
   if (wasActive) {
-    const nextTab = documentTabs[Math.max(0, Math.min(index, documentTabs.length - 1))];
+    const previousActiveTab = activeTabIdBeforeClose !== tabId
+      ? documentTabs.find((tab) => tab.id === activeTabIdBeforeClose)
+      : null;
+    const nextTab = previousActiveTab || documentTabs[Math.max(0, Math.min(index, documentTabs.length - 1))];
     activeDocumentTabId = nextTab.id;
     await restoreDocumentTabState(nextTab);
   } else {
     renderDocumentTabs();
   }
+  return true;
 }
 
 documentTabsRoot?.addEventListener("click", async (event) => {
@@ -863,6 +915,13 @@ function bindDesktopWindowChrome() {
   if (!isDesktopShell || !desktopFileHost?.available) {
     return;
   }
+  void desktopFileHost.listenWindowCloseRequested?.(async (event) => {
+    if (forceWindowClose) {
+      return;
+    }
+    event?.preventDefault?.();
+    await requestCloseWindow();
+  });
   desktopTitlebar?.querySelectorAll("[data-window-command]").forEach((button) => {
     button.addEventListener("click", async () => {
       const command = button.dataset.windowCommand;
@@ -872,8 +931,7 @@ function bindDesktopWindowChrome() {
         await desktopFileHost.toggleMaximizeWindow?.();
         await syncDesktopMaximizedState();
       } else if (command === "close") {
-        await autoSaveAllOleEditDocumentTabs();
-        await desktopFileHost.closeWindow?.();
+        await requestCloseWindow();
       }
     });
   });
@@ -902,6 +960,211 @@ async function syncDesktopMaximizedState() {
   }
   const maximized = await desktopFileHost.isWindowMaximized().catch(() => false);
   document.body.classList.toggle("is-window-maximized", !!maximized);
+}
+
+function makeUnsavedChangesButton(label, decision, className = "") {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = label;
+  button.dataset.unsavedDecision = decision;
+  if (className) {
+    button.className = className;
+  }
+  return button;
+}
+
+function showUnsavedChangesDialog(title) {
+  if (activeUnsavedChangesDialog) {
+    return activeUnsavedChangesDialog;
+  }
+  activeUnsavedChangesDialog = new Promise((resolve) => {
+    const previousFocus = document.activeElement;
+    const root = document.createElement("div");
+    root.className = "unsaved-changes-dialog";
+    root.setAttribute("role", "alertdialog");
+    root.setAttribute("aria-modal", "true");
+    root.setAttribute("aria-labelledby", "unsaved-changes-title");
+    root.setAttribute("aria-describedby", "unsaved-changes-message");
+
+    const backdrop = document.createElement("div");
+    backdrop.className = "unsaved-changes-backdrop";
+    const panel = document.createElement("section");
+    panel.className = "unsaved-changes-panel";
+
+    const heading = document.createElement("h2");
+    heading.id = "unsaved-changes-title";
+    heading.className = "unsaved-changes-title";
+    heading.textContent = "Save changes?";
+
+    const message = document.createElement("p");
+    message.id = "unsaved-changes-message";
+    message.className = "unsaved-changes-message";
+    message.textContent = `Do you want to save changes to "${title || "Untitled"}" before closing?`;
+
+    const actions = document.createElement("div");
+    actions.className = "unsaved-changes-actions";
+    const saveButton = makeUnsavedChangesButton("Save", UNSAVED_CLOSE_DECISION.SAVE, "is-primary");
+    const discardButton = makeUnsavedChangesButton("Don't Save", UNSAVED_CLOSE_DECISION.DISCARD);
+    const cancelButton = makeUnsavedChangesButton("Cancel", UNSAVED_CLOSE_DECISION.CANCEL);
+    actions.append(saveButton, discardButton, cancelButton);
+    panel.append(heading, message, actions);
+    root.append(backdrop, panel);
+
+    const finish = (decision) => {
+      root.remove();
+      document.removeEventListener("keydown", onKeyDown, true);
+      activeUnsavedChangesDialog = null;
+      if (previousFocus && typeof previousFocus.focus === "function") {
+        previousFocus.focus({ preventScroll: true });
+      }
+      resolve(decision);
+    };
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        finish(UNSAVED_CLOSE_DECISION.CANCEL);
+      }
+    };
+    actions.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-unsaved-decision]");
+      if (!button) {
+        return;
+      }
+      finish(button.dataset.unsavedDecision || UNSAVED_CLOSE_DECISION.CANCEL);
+    });
+    document.addEventListener("keydown", onKeyDown, true);
+    document.body.append(root);
+    saveButton.focus({ preventScroll: true });
+  });
+  return activeUnsavedChangesDialog;
+}
+
+async function prepareDocumentTabForDirtyCheck(tab) {
+  if (!tab || tab.id !== activeDocumentTabId) {
+    return;
+  }
+  await finishActiveTextEditor(true);
+  if (state.editorEngine) {
+    await syncDocumentFromEngine();
+  }
+  saveActiveDocumentTabState();
+  renderDocumentTabs();
+  syncWindowTitle();
+  refreshCommandAvailability();
+}
+
+async function saveDocumentTabBeforeClose(tab) {
+  const target = documentTabs.find((entry) => entry.id === tab?.id);
+  if (!target) {
+    return true;
+  }
+  if (target.id !== activeDocumentTabId) {
+    await activateDocumentTab(target.id);
+  }
+  try {
+    const saved = await saveCurrentDocument();
+    if (!saved) {
+      return false;
+    }
+    saveActiveDocumentTabState();
+    renderDocumentTabs();
+    syncWindowTitle();
+    return true;
+  } catch (error) {
+    if (isAbortError(error)) {
+      return false;
+    }
+    console.error("Save before close failed", error);
+    window.alert?.(`Save failed: ${error.message || error}`);
+    return false;
+  }
+}
+
+async function confirmUnsavedChangesForTab(tab) {
+  await prepareDocumentTabForDirtyCheck(tab);
+  const freshTab = documentTabs.find((entry) => entry.id === tab?.id) || tab;
+  if (!documentTabIsDirty(freshTab)) {
+    return true;
+  }
+  const decision = await showUnsavedChangesDialog(freshTab?.title || "Untitled");
+  if (decision === UNSAVED_CLOSE_DECISION.CANCEL) {
+    return false;
+  }
+  if (decision === UNSAVED_CLOSE_DECISION.DISCARD) {
+    return true;
+  }
+  return saveDocumentTabBeforeClose(freshTab);
+}
+
+async function confirmCloseDocumentTab(tabId) {
+  const tab = documentTabs.find((entry) => entry.id === tabId);
+  if (!tab) {
+    return true;
+  }
+  return confirmUnsavedChangesForTab(tab);
+}
+
+async function confirmCloseAllDocumentTabs() {
+  const active = activeDocumentTab();
+  const orderedTabs = [
+    ...(active ? [active] : []),
+    ...documentTabs.filter((tab) => tab.id !== active?.id),
+  ];
+  for (const tab of orderedTabs) {
+    if (!documentTabs.some((entry) => entry.id === tab.id)) {
+      continue;
+    }
+    if (!await confirmUnsavedChangesForTab(tab)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+async function requestCloseWindow() {
+  if (windowCloseGuardInProgress) {
+    return false;
+  }
+  windowCloseGuardInProgress = true;
+  try {
+    if (!await confirmCloseAllDocumentTabs()) {
+      return false;
+    }
+    await autoSaveAllOleEditDocumentTabs();
+    forceWindowClose = true;
+    try {
+      if (desktopFileHost?.destroyWindow) {
+        await desktopFileHost.destroyWindow();
+      } else if (desktopFileHost?.closeWindow) {
+        await desktopFileHost.closeWindow();
+      } else {
+        window.close();
+      }
+    } catch (error) {
+      console.error("Window close failed", error);
+      window.alert?.(`Close failed: ${error.message || error}`);
+      return false;
+    }
+    return true;
+  } finally {
+    windowCloseGuardInProgress = false;
+    if (!document.hidden) {
+      forceWindowClose = false;
+    }
+  }
+}
+
+function bindBrowserBeforeUnloadGuard() {
+  if (isDesktopShell) {
+    return;
+  }
+  window.addEventListener("beforeunload", (event) => {
+    if (!activeTextEditorIsDirty() && !documentTabs.some((tab) => documentTabIsDirty(tab))) {
+      return;
+    }
+    event.preventDefault();
+    event.returnValue = "";
+  });
 }
 
 async function loadSharedGlyphProfiles() {
@@ -3746,7 +4009,7 @@ async function detachDocumentTab(tabId, screenX = null, screenY = null) {
     return false;
   }
   await desktopFileHost.detachDocumentWindow(snapshot, screenX, screenY);
-  await closeDocumentTab(tabId);
+  await closeDocumentTab(tabId, { skipUnsavedPrompt: true });
   return true;
 }
 
@@ -3788,16 +4051,19 @@ async function loadBrowserPendingDocumentPayload(payload) {
 }
 
 async function newDocumentTab() {
-  if (!isDesktopShell && openBrowserBlankDocumentTab()) {
-    return;
-  }
   await appRuntimeReady;
   await finishActiveTextEditor(true);
+  const reuseActiveTab = activeDocumentTabIsBlankUntitled() && !currentDocumentIsDirty();
   saveActiveDocumentTabState();
-  const tab = createDocumentTab();
-  documentTabs.push(tab);
-  activeDocumentTabId = tab.id;
-  await restoreDocumentTabState(tab);
+  if (!isDesktopShell && !reuseActiveTab && openBrowserBlankDocumentTab()) {
+    return;
+  }
+  if (!reuseActiveTab) {
+    const tab = createDocumentTab();
+    documentTabs.push(tab);
+    activeDocumentTabId = tab.id;
+    await restoreDocumentTabState(tab);
+  }
   await resetEditorEngine();
   renderDocument();
   fitView();
@@ -3817,7 +4083,7 @@ async function openDocumentPathInTab(path) {
     await activateDocumentTab(existingTab.id);
     return;
   }
-  const reuseActiveTab = activeDocumentTabIsBlankUntitled();
+  const reuseActiveTab = activeDocumentTabIsBlankUntitled() && !currentDocumentIsDirty();
   const previousTabId = activeDocumentTabId;
   let tab = activeDocumentTab();
   if (!reuseActiveTab) {
@@ -3832,7 +4098,7 @@ async function openDocumentPathInTab(path) {
     renderDocumentTabs();
   } catch (error) {
     if (!reuseActiveTab) {
-      await closeDocumentTab(tab.id);
+      await closeDocumentTab(tab.id, { skipUnsavedPrompt: true });
     }
     if (previousTabId && activeDocumentTabId !== previousTabId) {
       await activateDocumentTab(previousTabId);
@@ -3850,7 +4116,7 @@ async function openDocumentFileInTab(file) {
   }
   await appRuntimeReady;
   await finishActiveTextEditor(true);
-  const reuseActiveTab = activeDocumentTabIsBlankUntitled();
+  const reuseActiveTab = activeDocumentTabIsBlankUntitled() && !currentDocumentIsDirty();
   saveActiveDocumentTabState();
   const previousTabId = activeDocumentTabId;
   let tab = activeDocumentTab();
@@ -3866,7 +4132,7 @@ async function openDocumentFileInTab(file) {
     renderDocumentTabs();
   } catch (error) {
     if (!reuseActiveTab) {
-      await closeDocumentTab(tab.id);
+      await closeDocumentTab(tab.id, { skipUnsavedPrompt: true });
     }
     if (previousTabId && activeDocumentTabId !== previousTabId) {
       await activateDocumentTab(previousTabId);
@@ -3970,6 +4236,7 @@ bindEditorControls({
 
 renderSecondaryToolbar();
 syncCanvasCursor();
+bindBrowserBeforeUnloadGuard();
 
 function svgPointFromEvent(event) {
   const screenMatrix = viewerSvg.getScreenCTM?.();

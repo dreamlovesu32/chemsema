@@ -256,6 +256,7 @@ pub fn run() {
             desktop_window_minimize,
             desktop_window_toggle_maximize,
             desktop_window_close,
+            desktop_window_destroy,
             desktop_window_start_dragging,
             desktop_window_is_maximized,
             desktop_window_detach_document,

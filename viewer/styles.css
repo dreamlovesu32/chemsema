@@ -1931,6 +1931,72 @@ body.browser-shell .document-tabbar {
   color: #ffffff;
 }
 
+.unsaved-changes-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  color: #111318;
+  font-size: 14px;
+}
+
+.unsaved-changes-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(17, 19, 24, 0.22);
+}
+
+.unsaved-changes-panel {
+  position: relative;
+  width: min(420px, calc(100vw - 32px));
+  padding: 16px;
+  border: 1px solid #c9ced6;
+  border-radius: 6px;
+  background: #ffffff;
+  box-shadow: 0 16px 42px rgba(17, 19, 24, 0.22);
+}
+
+.unsaved-changes-title {
+  margin: 0 0 10px;
+  font-size: 16px;
+  line-height: 1.25;
+}
+
+.unsaved-changes-message {
+  margin: 0;
+  color: #384250;
+  line-height: 1.45;
+}
+
+.unsaved-changes-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.unsaved-changes-actions button {
+  min-width: 86px;
+  height: 31px;
+  padding: 0 12px;
+  border: 1px solid #aeb7c2;
+  border-radius: 3px;
+  background: #f5f6f8;
+  color: #111318;
+}
+
+.unsaved-changes-actions button:focus-visible {
+  outline: 2px solid rgba(47, 111, 237, 0.45);
+  outline-offset: 2px;
+}
+
+.unsaved-changes-actions button.is-primary {
+  border-color: #245ed0;
+  background: #2f6fed;
+  color: #ffffff;
+}
+
 .text-editor {
   position: absolute;
   display: inline-block;

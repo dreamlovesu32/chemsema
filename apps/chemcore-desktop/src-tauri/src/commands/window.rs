@@ -28,6 +28,11 @@ pub(crate) fn desktop_window_close(window: WebviewWindow) -> Result<(), String> 
 }
 
 #[tauri::command]
+pub(crate) fn desktop_window_destroy(window: WebviewWindow) -> Result<(), String> {
+    window.destroy().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub(crate) fn desktop_window_start_dragging(window: WebviewWindow) -> Result<(), String> {
     window.start_dragging().map_err(|error| error.to_string())
 }

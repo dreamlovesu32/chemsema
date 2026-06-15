@@ -205,16 +205,14 @@ export function createDocumentFlow(options) {
 
   async function saveCurrentDocument() {
     if (options.desktopFileHost?.available && options.state.currentFilePath) {
-      await saveCurrentDocumentToDesktopPath(options.state.currentFilePath);
-      return;
+      return saveCurrentDocumentToDesktopPath(options.state.currentFilePath);
     }
-    await saveCurrentDocumentAs();
+    return saveCurrentDocumentAs();
   }
 
   async function saveCurrentDocumentNative() {
     if (options.desktopFileHost?.available) {
-      await saveCurrentDocumentAs();
-      return;
+      return saveCurrentDocumentAs();
     }
     const suggestedName = `${saveAsBaseName()}${CHEMCORE_COMPRESSED_EXTENSION}`;
     if (window.showSaveFilePicker) {
@@ -232,10 +230,11 @@ export function createDocumentFlow(options) {
       options.state.currentFileName = handle.name || suggestedName;
       options.viewerTitle.textContent = options.state.currentDocument?.document?.title || options.state.currentFileName || "Untitled";
       options.markCurrentDocumentSaved?.();
-      return;
+      return true;
     }
     const payload = await savePayloadForFormat("ccjz");
     downloadBinaryFile(payload.content, suggestedName, payload.mimeType);
+    return true;
   }
 
   async function currentDocumentCdxmlForSave() {
@@ -293,10 +292,9 @@ export function createDocumentFlow(options) {
     if (options.desktopFileHost?.available) {
       const path = await options.desktopFileHost.chooseSavePath(suggestedName);
       if (!path) {
-        return;
+        return false;
       }
-      await saveCurrentDocumentToDesktopPath(path, "cdxml");
-      return;
+      return saveCurrentDocumentToDesktopPath(path, "cdxml");
     }
     if (window.showSaveFilePicker) {
       const handle = await window.showSaveFilePicker({
@@ -309,24 +307,24 @@ export function createDocumentFlow(options) {
       await writable.close();
       options.state.currentFileName = handle.name || suggestedName;
       options.viewerTitle.textContent = options.state.currentDocument?.document?.title || options.state.currentFileName || "Untitled";
-      return;
+      return true;
     }
     const cdxml = await currentDocumentCdxmlForSave();
     downloadTextFile(cdxml, suggestedName, "chemical/x-cdxml");
+    return true;
   }
 
   async function saveCurrentDocumentSvg() {
     if (!await confirmLossyExportIfNeeded("svg")) {
-      return;
+      return false;
     }
     const suggestedName = svgFileNameForSave();
     if (options.desktopFileHost?.available) {
       const path = await options.desktopFileHost.chooseSavePath(suggestedName);
       if (!path) {
-        return;
+        return false;
       }
-      await saveCurrentDocumentToDesktopPath(path, "svg");
-      return;
+      return saveCurrentDocumentToDesktopPath(path, "svg");
     }
     if (window.showSaveFilePicker) {
       const handle = await window.showSaveFilePicker({
@@ -337,10 +335,11 @@ export function createDocumentFlow(options) {
       const writable = await handle.createWritable();
       await writable.write(svg);
       await writable.close();
-      return;
+      return true;
     }
     const svg = await currentDocumentSvgForSave();
     downloadTextFile(svg, suggestedName, "image/svg+xml");
+    return true;
   }
 
   async function currentDocumentPdfPreviewBase64ForSave() {
@@ -355,17 +354,18 @@ export function createDocumentFlow(options) {
         || options.desktopFileHost.chooseSavePath(suggestedName)
       );
       if (!path) {
-        return;
+        return false;
       }
       const pdfBase64 = await currentDocumentPdfPreviewBase64ForSave();
       await options.desktopFileHost.writeBase64(path, pdfBase64);
-      return;
+      return true;
     }
     const pdfBase64 = await currentDocumentPdfPreviewBase64ForSave();
     downloadBlobFile(
       new Blob([base64ToUint8(pdfBase64)], { type: "application/pdf" }),
       suggestedName,
     );
+    return true;
   }
 
   async function saveCurrentDocumentEmf() {
@@ -373,7 +373,7 @@ export function createDocumentFlow(options) {
       throw new Error("EMF export is available only in the Windows desktop app.");
     }
     if (!await confirmLossyExportIfNeeded("emf")) {
-      return;
+      return false;
     }
     await options.finishActiveTextEditor(true);
     if (!options.state.editorEngine?.renderListJson || !options.state.editorEngine?.renderBoundsJson) {
@@ -385,7 +385,7 @@ export function createDocumentFlow(options) {
       || options.desktopFileHost.chooseSavePath(suggestedName)
     );
     if (!path) {
-      return;
+      return false;
     }
     const boundsJson = options.state.editorEngine.renderBoundsJson("document")
       || options.state.editorEngine.renderBoundsJson("all");
@@ -394,16 +394,16 @@ export function createDocumentFlow(options) {
       options.state.editorEngine.renderListJson(),
       boundsJson,
     );
+    return true;
   }
 
   async function saveCurrentDocumentAs() {
     if (options.desktopFileHost?.available) {
       const path = await options.desktopFileHost.chooseSavePath(suggestedSaveAsName());
       if (!path) {
-        return;
+        return false;
       }
-      await saveCurrentDocumentToDesktopPath(path);
-      return;
+      return saveCurrentDocumentToDesktopPath(path);
     }
     if (window.showSaveFilePicker) {
       const handle = await window.showSaveFilePicker({
@@ -425,7 +425,7 @@ export function createDocumentFlow(options) {
       });
       const format = saveFormatFromFileName(handle.name);
       if (!await confirmLossyExportIfNeeded(format)) {
-        return;
+        return false;
       }
       const { content } = await savePayloadForFormat(format);
       const writable = await handle.createWritable();
@@ -436,9 +436,9 @@ export function createDocumentFlow(options) {
         options.viewerTitle.textContent = options.state.currentDocument?.document?.title || options.state.currentFileName || "Untitled";
         options.markCurrentDocumentSaved?.();
       }
-      return;
+      return true;
     }
-    await saveCurrentDocumentNative();
+    return saveCurrentDocumentNative();
   }
 
   function desktopFormatForPath(path, fallbackFormat = null) {
@@ -469,7 +469,7 @@ export function createDocumentFlow(options) {
   async function saveCurrentDocumentToDesktopPath(path, forcedFormat = null) {
     const format = desktopFormatForPath(path, forcedFormat);
     if (!await confirmLossyExportIfNeeded(format)) {
-      return;
+      return false;
     }
     let saved;
     if (isOleEditPath(path) && options.desktopFileHost.writeOleEditPayload) {
@@ -490,6 +490,7 @@ export function createDocumentFlow(options) {
     } else {
       options.refreshCommandAvailability?.();
     }
+    return true;
   }
 
   async function openDocumentFile(file) {

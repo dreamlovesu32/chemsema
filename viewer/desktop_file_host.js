@@ -2,6 +2,7 @@ export class DesktopFileHost {
   constructor() {
     this.invoke = null;
     this.listen = null;
+    this.tauriWindow = null;
     this.unlisteners = [];
   }
 
@@ -12,7 +13,12 @@ export class DesktopFileHost {
   initialize() {
     this.invoke = globalThis.__TAURI__?.core?.invoke || null;
     this.listen = globalThis.__TAURI__?.event?.listen || null;
+    this.tauriWindow = globalThis.__TAURI__?.window || null;
     return this;
+  }
+
+  currentWindow() {
+    return this.tauriWindow?.getCurrentWindow?.() || null;
   }
 
   async chooseOpenPath() {
@@ -33,6 +39,21 @@ export class DesktopFileHost {
 
   async closeWindow() {
     return this.invoke("desktop_window_close");
+  }
+
+  async destroyWindow() {
+    if (typeof this.invoke === "function") {
+      try {
+        return await this.invoke("desktop_window_destroy");
+      } catch (error) {
+        console.warn("desktop_window_destroy failed; falling back to Tauri window destroy", error);
+      }
+    }
+    const currentWindow = this.currentWindow();
+    if (typeof currentWindow?.destroy === "function") {
+      return currentWindow.destroy();
+    }
+    return this.closeWindow();
   }
 
   async startWindowDrag() {
@@ -125,6 +146,15 @@ export class DesktopFileHost {
       const paths = Array.isArray(event?.payload?.paths) ? event.payload.paths : [];
       handler(paths);
     });
+    this.unlisteners.push(unlisten);
+  }
+
+  async listenWindowCloseRequested(handler) {
+    const currentWindow = this.currentWindow();
+    if (typeof currentWindow?.onCloseRequested !== "function") {
+      return;
+    }
+    const unlisten = await currentWindow.onCloseRequested(handler);
     this.unlisteners.push(unlisten);
   }
 
