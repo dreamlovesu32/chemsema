@@ -572,22 +572,13 @@ pub(super) fn split_styled_groups(
 ) -> Vec<Vec<StyledGlyph>> {
     let mut groups = Vec::new();
     let mut current = Vec::new();
+    let mut glyphs = Vec::new();
     for run in display_runs {
         for ch in run.text.chars() {
             if ch.is_whitespace() {
                 continue;
             }
-            if whole_label {
-                current.push(StyledGlyph {
-                    ch,
-                    run: run.clone(),
-                });
-                continue;
-            }
-            if ch.is_ascii_uppercase() && !current.is_empty() {
-                groups.push(std::mem::take(&mut current));
-            }
-            current.push(StyledGlyph {
+            glyphs.push(StyledGlyph {
                 ch,
                 run: LabelRun {
                     text: ch.to_string(),
@@ -601,6 +592,35 @@ pub(super) fn split_styled_groups(
                 },
             });
         }
+    }
+    if whole_label {
+        if glyphs.is_empty() {
+            return Vec::new();
+        }
+        return vec![glyphs];
+    }
+    let compact_text = glyphs.iter().map(|glyph| glyph.ch).collect::<String>();
+    let mut glyph_index = 0usize;
+    let mut byte_index = 0usize;
+    while glyph_index < glyphs.len() && byte_index < compact_text.len() {
+        let rest = &compact_text[byte_index..];
+        if let Some(prefix_len) = crate::label_group_abbreviation_prefix_len(rest) {
+            if !current.is_empty() {
+                groups.push(std::mem::take(&mut current));
+            }
+            let char_count = rest[..prefix_len].chars().count();
+            groups.push(glyphs[glyph_index..glyph_index + char_count].to_vec());
+            glyph_index += char_count;
+            byte_index += prefix_len;
+            continue;
+        }
+        let glyph = glyphs[glyph_index].clone();
+        if glyph.ch.is_ascii_uppercase() && !current.is_empty() {
+            groups.push(std::mem::take(&mut current));
+        }
+        byte_index += glyph.ch.len_utf8();
+        glyph_index += 1;
+        current.push(glyph);
     }
     if !current.is_empty() {
         groups.push(current);

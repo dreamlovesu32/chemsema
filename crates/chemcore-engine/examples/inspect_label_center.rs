@@ -1,4 +1,5 @@
 use chemcore_engine::{parse_cdxml_document, render_document, Point, RenderPrimitive, RenderRole};
+use std::path::PathBuf;
 
 fn polygon_bounds(polygon: &[[f64; 2]]) -> Option<[f64; 4]> {
     let mut iter = polygon.iter();
@@ -17,8 +18,19 @@ fn polygon_bounds(polygon: &[[f64; 2]]) -> Option<[f64; 4]> {
 }
 
 fn main() {
-    let cdxml = std::fs::read_to_string(r"C:\Users\Dream\OneDrive\Desktop\untitled.cdxml")
-        .expect("read cdxml");
+    let cdxml_path = std::env::args_os()
+        .nth(1)
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("tests")
+                .join("fixtures")
+                .join("cdxml")
+                .join("manual")
+                .join("desktop")
+                .join("untitled.cdxml")
+        });
+    let cdxml = std::fs::read_to_string(&cdxml_path).expect("read cdxml");
     let document = parse_cdxml_document(&cdxml, Some("untitled")).expect("parse");
     let fragment = document
         .resources

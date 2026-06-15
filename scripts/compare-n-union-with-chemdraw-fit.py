@@ -9,11 +9,13 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
+from chemcore_script_env import tmp_input_path, windows_font_path
+
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_FONT = Path(r"C:\Windows\Fonts\arial.ttf")
+DEFAULT_FONT = windows_font_path("arial.ttf")
 DEFAULT_FIT_SCRIPT = ROOT / "scripts" / "fit-chemdraw-n-clip-from-svg.py"
-DEFAULT_FIT_SVG = Path(r"C:\Users\Dream\OneDrive\Desktop\untitled.svg")
+DEFAULT_FIT_SVG = tmp_input_path("chemdraw-n-clip-source.svg")
 DEFAULT_OUT = ROOT / "tmp" / "n-union-vs-chemdraw-fit.png"
 
 

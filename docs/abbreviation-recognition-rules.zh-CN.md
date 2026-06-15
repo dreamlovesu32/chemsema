@@ -10,14 +10,14 @@
 
 本次阅读了两份本地开源源码：
 
-- Ketcher：`/home/jiajun/ketcher-src`
+- Ketcher：`<local-ketcher-source>`
   - Abbreviation Lookup 的候选来自元素、functional groups、templates、salts/solvents。
   - functional groups 由 `packages/ketcher-react/src/templates/fg.sdf` 载入。
   - 相关入口：
     - `packages/ketcher-react/src/script/ui/state/functionalGroups/index.ts`
     - `packages/ketcher-react/src/script/ui/dialog/AbbreviationLookup/hooks/useOptions.tsx`
     - `packages/ketcher-core/src/domain/entities/functionalGroup.ts`
-- ChemCanvas：`/home/jiajun/chemcanvas-src`
+- ChemCanvas：`<local-chemcanvas-source>`
   - 工具栏中有一组小型 functional group 清单。
   - 相关入口：
     - `chemcanvas/tools.py`

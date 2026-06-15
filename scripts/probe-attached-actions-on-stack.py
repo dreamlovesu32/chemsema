@@ -9,8 +9,11 @@ import tempfile
 import zipfile
 from pathlib import Path
 
+from chemcore_script_env import python_executable
+
 
 ROOT = Path(__file__).resolve().parents[1]
+PYTHON = python_executable()
 
 
 def run(cmd: list[str], env: dict[str, str] | None = None) -> None:
@@ -171,7 +174,7 @@ def main() -> None:
             shell_docx = td_path / "baseline.shell.docx"
             run(
                 [
-                    "D:\\anaconda3\\python.exe",
+                    PYTHON,
                     str(ROOT / "scripts" / "patch-docx-image1.py"),
                     str(template_docx),
                     str(raw_emf),
@@ -180,7 +183,7 @@ def main() -> None:
             )
             run(
                 [
-                    "D:\\anaconda3\\python.exe",
+                    PYTHON,
                     str(ROOT / "scripts" / "patch-docx-image1-frame.py"),
                     str(shell_docx),
                     "--frame",
@@ -205,7 +208,7 @@ def main() -> None:
         )
         run(
             [
-                "D:\\anaconda3\\python.exe",
+                PYTHON,
                 str(ROOT / "scripts" / "png-best-shift.py"),
                 str(baseline_png),
                 str(reference_png),
@@ -218,7 +221,7 @@ def main() -> None:
         best = json.loads(baseline_best.read_text(encoding="utf-8"))
         run(
             [
-                "D:\\anaconda3\\python.exe",
+                PYTHON,
                 str(ROOT / "scripts" / "compare-full-label-iou.py"),
                 str(label_json),
                 str(baseline_png),
@@ -364,7 +367,7 @@ def main() -> None:
                 shell_docx = td_path / "variant.shell.docx"
                 run(
                     [
-                        "D:\\anaconda3\\python.exe",
+                        PYTHON,
                         str(ROOT / "scripts" / "patch-docx-image1.py"),
                         str(template_docx),
                         str(raw_emf),
@@ -373,7 +376,7 @@ def main() -> None:
                 )
                 run(
                     [
-                        "D:\\anaconda3\\python.exe",
+                        PYTHON,
                         str(ROOT / "scripts" / "patch-docx-image1-frame.py"),
                         str(shell_docx),
                         "--frame",
@@ -398,7 +401,7 @@ def main() -> None:
             )
             run(
                 [
-                    "D:\\anaconda3\\python.exe",
+                    PYTHON,
                     str(ROOT / "scripts" / "png-best-shift.py"),
                     str(variant_png),
                     str(reference_png),
@@ -411,7 +414,7 @@ def main() -> None:
             best = json.loads(variant_best.read_text(encoding="utf-8"))
             run(
                 [
-                    "D:\\anaconda3\\python.exe",
+                    PYTHON,
                     str(ROOT / "scripts" / "compare-full-label-iou.py"),
                     str(label_json),
                     str(variant_png),

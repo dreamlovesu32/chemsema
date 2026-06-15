@@ -19,18 +19,18 @@
 
 ### 源文件
 
-- [`tmp/rest.cdxml`](D:/Projects/chemcore/tmp/rest.cdxml:1)
+- [`tmp/rest.cdxml`](../tmp/rest.cdxml:1)
 
 其中 4 类对象分别是：
 
-- 波浪键：bond `28`，`Display="Wavy"`，见 [rest.cdxml](D:/Projects/chemcore/tmp/rest.cdxml:98)
-- 空心锲形键：bond `32`，`Display="HollowWedgeBegin"`，见 [rest.cdxml](D:/Projects/chemcore/tmp/rest.cdxml:118)
-- `田字`：`<table id="34">`，见 [rest.cdxml](D:/Projects/chemcore/tmp/rest.cdxml:124)
-- TLC 板：`<tlcplate id="35">` 及其 `tlclane/tlcspot`，见 [rest.cdxml](D:/Projects/chemcore/tmp/rest.cdxml:147)
+- 波浪键：bond `28`，`Display="Wavy"`，见 [rest.cdxml](../tmp/rest.cdxml:98)
+- 空心锲形键：bond `32`，`Display="HollowWedgeBegin"`，见 [rest.cdxml](../tmp/rest.cdxml:118)
+- `田字`：`<table id="34">`，见 [rest.cdxml](../tmp/rest.cdxml:124)
+- TLC 板：`<tlcplate id="35">` 及其 `tlclane/tlcspot`，见 [rest.cdxml](../tmp/rest.cdxml:147)
 
 ### ChemDraw SVG
 
-- 现有 oracle：[`tmp/oracle-svg/rest.svg`](D:/Projects/chemcore/tmp/oracle-svg/rest.svg:1)
+- 现有 oracle：[`tmp/oracle-svg/rest.svg`](../tmp/oracle-svg/rest.svg:1)
 
 已经明确观察到：
 
@@ -49,8 +49,8 @@
 
 相关工具：
 
-- [`scripts/chemdraw-oracle.mjs`](D:/Projects/chemcore/scripts/chemdraw-oracle.mjs:1)
-- [`scripts/compare-emf-oracle.mjs`](D:/Projects/chemcore/scripts/compare-emf-oracle.mjs:1)
+- [`scripts/chemdraw-oracle.mjs`](../scripts/chemdraw-oracle.mjs:1)
+- [`scripts/compare-emf-oracle.mjs`](../scripts/compare-emf-oracle.mjs:1)
 
 ## 对象逐项审计
 
@@ -58,20 +58,20 @@
 
 #### 已证实
 
-- `CDXML` 使用 `Display="Wavy"`，见 [rest.cdxml](D:/Projects/chemcore/tmp/rest.cdxml:105)
-- `CDXML` 根节点设置了 `MarginWidth="2"`，见 [rest.cdxml](D:/Projects/chemcore/tmp/rest.cdxml:29)
-- `ChemDraw SVG` 输出的是连续圆弧链，不是二次贝塞尔自由波形，见 [rest.svg](D:/Projects/chemcore/tmp/oracle-svg/rest.svg:1)
+- `CDXML` 使用 `Display="Wavy"`，见 [rest.cdxml](../tmp/rest.cdxml:105)
+- `CDXML` 根节点设置了 `MarginWidth="2"`，见 [rest.cdxml](../tmp/rest.cdxml:29)
+- `ChemDraw SVG` 输出的是连续圆弧链，不是二次贝塞尔自由波形，见 [rest.svg](../tmp/oracle-svg/rest.svg:1)
 
 #### 当前实现
 
 - 导入/导出映射已经接上：
-  - [`cdxml.rs`](D:/Projects/chemcore/crates/chemcore-engine/src/cdxml.rs:1267)
-  - [`export.rs`](D:/Projects/chemcore/crates/chemcore-engine/src/cdxml/export.rs:1581)
+  - [`cdxml.rs`](../crates/chemcore-engine/src/cdxml.rs:1267)
+  - [`export.rs`](../crates/chemcore-engine/src/cdxml/export.rs:1581)
 - 工具条已经接上：
-  - [`toolbar.js`](D:/Projects/chemcore/viewer/toolbar.js:559)
-  - [`wasm.rs`](D:/Projects/chemcore/crates/chemcore-engine/src/wasm.rs:852)
+  - [`toolbar.js`](../viewer/toolbar.js:559)
+  - [`wasm.rs`](../crates/chemcore-engine/src/wasm.rs:852)
 - 渲染在：
-  - [`render_bonds.rs`](D:/Projects/chemcore/crates/chemcore-engine/src/render_bonds.rs:677)
+  - [`render_bonds.rs`](../crates/chemcore-engine/src/render_bonds.rs:677)
 
 #### 当前问题
 
@@ -89,21 +89,21 @@
 
 #### 已证实
 
-- `CDXML` 使用 `Display="HollowWedgeBegin"`，见 [rest.cdxml](D:/Projects/chemcore/tmp/rest.cdxml:118)
+- `CDXML` 使用 `Display="HollowWedgeBegin"`，见 [rest.cdxml](../tmp/rest.cdxml:118)
 - `ChemDraw SVG` 的导出结果会表现成多块实心片，但这不应直接当成对象建模规则
 
 #### 当前实现
 
 - 导入/导出映射已经接上：
-  - [`cdxml.rs`](D:/Projects/chemcore/crates/chemcore-engine/src/cdxml.rs:1135)
-  - [`export.rs`](D:/Projects/chemcore/crates/chemcore-engine/src/cdxml/export.rs:1561)
+  - [`cdxml.rs`](../crates/chemcore-engine/src/cdxml.rs:1135)
+  - [`export.rs`](../crates/chemcore-engine/src/cdxml/export.rs:1561)
 - 工具条已经接上：
-  - [`wasm.rs`](D:/Projects/chemcore/crates/chemcore-engine/src/wasm.rs:855)
+  - [`wasm.rs`](../crates/chemcore-engine/src/wasm.rs:855)
 - 当前渲染已改回：
   - **复用实锲形键 polygon**
   - **空心描边**
   - **不再按“四块黑片”直接建模**
-  - 见 [`render_bonds.rs`](D:/Projects/chemcore/crates/chemcore-engine/src/render_bonds.rs:1071)
+  - 见 [`render_bonds.rs`](../crates/chemcore-engine/src/render_bonds.rs:1071)
 
 #### 当前判断
 
@@ -120,19 +120,19 @@
 
 #### 已证实
 
-- `CDXML` 是标准 `<table>`，不是伪装成几根线，见 [rest.cdxml](D:/Projects/chemcore/tmp/rest.cdxml:124)
+- `CDXML` 是标准 `<table>`，不是伪装成几根线，见 [rest.cdxml](../tmp/rest.cdxml:124)
 - `ChemDraw SVG` 也是清晰的 2x2 表格
 
 #### 当前实现
 
 - 导入为 `shape.kind = "crossTable"`：
-  - [`import_objects.rs`](D:/Projects/chemcore/crates/chemcore-engine/src/cdxml/import_objects.rs:427)
+  - [`import_objects.rs`](../crates/chemcore-engine/src/cdxml/import_objects.rs:427)
 - 渲染为外框 + 中横线 + 中竖线：
-  - [`render_objects/graphics.rs`](D:/Projects/chemcore/crates/chemcore-engine/src/render_objects/graphics.rs:17)
+  - [`render_objects/graphics.rs`](../crates/chemcore-engine/src/render_objects/graphics.rs:17)
 - 导出回 `<table>`：
-  - [`export.rs`](D:/Projects/chemcore/crates/chemcore-engine/src/cdxml/export.rs:689)
+  - [`export.rs`](../crates/chemcore-engine/src/cdxml/export.rs:689)
 - 工具条也已接入：
-  - [`wasm.rs`](D:/Projects/chemcore/crates/chemcore-engine/src/wasm.rs:793)
+  - [`wasm.rs`](../crates/chemcore-engine/src/wasm.rs:793)
 
 #### 判断
 
@@ -144,7 +144,7 @@
 
 #### 已证实
 
-- `CDXML` 有正式 `tlcplate/tlclane/tlcspot` 语义，见 [rest.cdxml](D:/Projects/chemcore/tmp/rest.cdxml:147)
+- `CDXML` 有正式 `tlcplate/tlclane/tlcspot` 语义，见 [rest.cdxml](../tmp/rest.cdxml:147)
 - `ChemDraw SVG` 明确包含：
   - 外框
   - 上下两条虚线
@@ -154,21 +154,21 @@
 #### 当前实现
 
 - 导入为 `shape.kind = "tlcPlate"`：
-  - [`import_objects.rs`](D:/Projects/chemcore/crates/chemcore-engine/src/cdxml/import_objects.rs:528)
+  - [`import_objects.rs`](../crates/chemcore-engine/src/cdxml/import_objects.rs:528)
 - 渲染在：
-  - [`render_objects/graphics.rs`](D:/Projects/chemcore/crates/chemcore-engine/src/render_objects/graphics.rs:13)
+  - [`render_objects/graphics.rs`](../crates/chemcore-engine/src/render_objects/graphics.rs:13)
 - 导出在：
-  - [`export.rs`](D:/Projects/chemcore/crates/chemcore-engine/src/cdxml/export.rs:736)
+  - [`export.rs`](../crates/chemcore-engine/src/cdxml/export.rs:736)
 - 工具条与交互入口在：
-  - [`viewer/index.html`](D:/Projects/chemcore/viewer/index.html:141)
-  - [`toolbar.js`](D:/Projects/chemcore/viewer/toolbar.js:816)
-  - [`engine.rs`](D:/Projects/chemcore/crates/chemcore-engine/src/engine.rs:1645)
+  - [`viewer/index.html`](../viewer/index.html:141)
+  - [`toolbar.js`](../viewer/toolbar.js:816)
+  - [`engine.rs`](../crates/chemcore-engine/src/engine.rs:1645)
 
 #### 已确认的问题
 
 - 后端一直都有 spot circle primitive
 - 但前端主渲染器之前漏掉了普通 `circle` primitive，导致点完全不显示
-- 这个问题是在 [`primitive_dom_renderer.js`](D:/Projects/chemcore/viewer/primitive_dom_renderer.js:26) 找到的
+- 这个问题是在 [`primitive_dom_renderer.js`](../viewer/primitive_dom_renderer.js:26) 找到的
 
 #### 交互风险
 

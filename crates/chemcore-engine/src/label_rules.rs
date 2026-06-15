@@ -52,11 +52,25 @@ pub fn split_label_groups(text: &str) -> Vec<String> {
     }
     let mut groups = Vec::new();
     let mut current = String::new();
-    for character in compact.chars() {
+    let mut index = 0usize;
+    while index < compact.len() {
+        let rest = &compact[index..];
+        if let Some(prefix_len) = crate::label_group_abbreviation_prefix_len(rest) {
+            if !current.is_empty() {
+                groups.push(std::mem::take(&mut current));
+            }
+            groups.push(rest[..prefix_len].to_string());
+            index += prefix_len;
+            continue;
+        }
+        let Some(character) = rest.chars().next() else {
+            break;
+        };
         if character.is_ascii_uppercase() && !current.is_empty() {
             groups.push(std::mem::take(&mut current));
         }
         current.push(character);
+        index += character.len_utf8();
     }
     if !current.is_empty() {
         groups.push(current);
@@ -284,12 +298,24 @@ mod tests {
     fn splits_formula_text_into_uppercase_led_groups() {
         assert_eq!(split_label_groups("CuF3"), vec!["Cu", "F3"]);
         assert_eq!(split_label_groups("CuF3Ph2"), vec!["Cu", "F3", "Ph2"]);
+        assert_eq!(split_label_groups("OTMS"), vec!["O", "TMS"]);
+        assert_eq!(split_label_groups("OTBDMS"), vec!["O", "TBDMS"]);
+        assert_eq!(split_label_groups("OFMOC"), vec!["O", "FMOC"]);
+        assert_eq!(split_label_groups("OCH3"), vec!["O", "CH3"]);
+        assert_eq!(split_label_groups("TMSOPh"), vec!["TMS", "O", "Ph"]);
+        assert_eq!(split_label_groups("CF3"), vec!["C", "F3"]);
     }
 
     #[test]
     fn reverses_formula_by_letter_groups() {
         assert_eq!(reverse_label_groups("CuF3"), "F3Cu");
         assert_eq!(reverse_label_groups("CuF3Ph2"), "Ph2F3Cu");
+        assert_eq!(reverse_label_groups("OTMS"), "TMSO");
+        assert_eq!(reverse_label_groups("OTBDMS"), "TBDMSO");
+        assert_eq!(reverse_label_groups("OFMOC"), "FMOCO");
+        assert_eq!(reverse_label_groups("OCH3"), "CH3O");
+        assert_eq!(reverse_label_groups("TMSOPh"), "PhOTMS");
+        assert_eq!(reverse_label_groups("CF3"), "F3C");
     }
 
     #[test]

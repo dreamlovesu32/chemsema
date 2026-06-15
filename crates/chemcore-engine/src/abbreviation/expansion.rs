@@ -883,6 +883,53 @@ mod tests {
     }
 
     #[test]
+    fn parses_tms_as_single_silicon_attachment_group() {
+        let tms = recognized_abbreviation_meta("TMS").unwrap();
+        assert_eq!(tms["formula"], "-Si(CH3)3");
+        let expansion = tms["expansion"].as_object().unwrap();
+        assert_eq!(expansion["complete"], true);
+        assert_eq!(expansion["attachments"].as_array().unwrap().len(), 1);
+        assert_eq!(expansion["attachments"][0]["atomId"], "si1");
+        let atoms = expansion["atoms"].as_array().unwrap();
+        assert_eq!(
+            atoms
+                .iter()
+                .filter(|atom| atom["element"].as_str() == Some("Si"))
+                .count(),
+            1
+        );
+        assert_eq!(
+            atoms
+                .iter()
+                .filter(|atom| atom["element"].as_str() == Some("C"))
+                .count(),
+            3
+        );
+        assert_eq!(
+            atoms
+                .iter()
+                .filter(|atom| atom["element"].as_str() == Some("C"))
+                .map(|atom| atom["numHydrogens"].as_u64().unwrap_or(0))
+                .sum::<u64>(),
+            9
+        );
+        assert!(recognize_abbreviation_label_for_connection_count("TMS", 2).is_none());
+
+        let otms = recognized_abbreviation_meta("OTMS").unwrap();
+        assert_eq!(otms["source"], "valence-parser");
+        assert_eq!(otms["anchorAtom"], "O");
+        let expansion = otms["expansion"].as_object().unwrap();
+        assert_eq!(expansion["complete"], true);
+        assert_eq!(expansion["attachments"].as_array().unwrap().len(), 1);
+        assert_eq!(expansion["attachments"][0]["atomId"], "o1");
+        assert!(expansion["bonds"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|bond| bond["begin"] == "o1" && bond["end"] == "si1" && bond["order"] == 1));
+    }
+
+    #[test]
     fn rejects_open_fragments_without_terminal_fragment() {
         assert!(recognize_abbreviation_label("CO").is_none());
         assert!(recognize_abbreviation_label("CO2").is_none());

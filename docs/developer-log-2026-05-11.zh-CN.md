@@ -8,7 +8,7 @@
 
 基线提交：`7c2a6bc Improve EMF preview vector clarity`
 
-工作目录：`D:\Projects\chemcore`
+工作目录：`<repo>`
 
 ### 总结
 

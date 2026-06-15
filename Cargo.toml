@@ -9,5 +9,5 @@ resolver = "2"
 
 [workspace.package]
 edition = "2021"
-license = "ISC"
+license = "Apache-2.0"
 authors = ["Jiajun Zhang"]

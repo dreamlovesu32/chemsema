@@ -6,7 +6,7 @@ Time range: 2026-05-05 00:00 to 2026-05-05 23:59, Asia/Shanghai
 
 Baseline commit: `56cdd4a feat: adopt ccjs and ccjz document extensions`
 
-Workspace: `D:\chemcore`
+Workspace: `<repo>`
 
 ### Summary
 
@@ -18,7 +18,7 @@ The temporary root-level `HANDOFF-2026-05-05.md` has been folded into this log, 
 
 ### Migration State Received Today
 
-The migration target is `D:\chemcore`, corresponding to `/mnt/d/chemcore` in WSL. The original WSL source directory was `/home/jiajun/chemcore`. The migration was a full copy, including `.git`, `target/`, `node_modules/`, `tmp/`, generated `viewer/engine` artifacts, and the worktree state at the time.
+The migration target is `<repo>`, corresponding to `<repo>` in WSL. The original WSL source directory was `<old-wsl-repo>`. The migration was a full copy, including `.git`, `target/`, `node_modules/`, `tmp/`, generated `viewer/engine` artifacts, and the worktree state at the time.
 
 Both worktrees were aligned at:
 
@@ -128,42 +128,42 @@ The Windows toolchain was rebuilt and normalized today. The guiding rule was to 
 Main tools verified or configured:
 
 ```text
-Git:                 D:\Git
+Git:                 <local Git install>
 Git version:         2.54.0.windows.1
-Git Bash:            D:\Git\bin\bash.exe
+Git Bash:            <local Git Bash>
 Git Bash version:    GNU bash 5.3.9
 
-Rust cargo home:     D:\Rust\cargo
-Rust rustup home:    D:\Rust\rustup
+Rust cargo home:     <local Cargo home>
+Rust rustup home:    <local Rustup home>
 Rust toolchain:      stable-x86_64-pc-windows-msvc
 rustc:               1.95.0
 cargo:               1.95.0
 Rust targets:        x86_64-pc-windows-msvc, wasm32-unknown-unknown
 wasm-pack:           0.14.0
 
-Node installed path: D:\nodejs-24.15.0
+Node installed path: <local Node.js install>
 Node installed ver.: 24.15.0
 npm installed ver.:  11.12.1
 
-Playwright browsers: D:\ms-playwright
+Playwright browsers: <local Playwright browser cache>
 VS Build Tools:      C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools
 VS Build version:    17.14.36717.8 / 17.14.21
 ```
 
-One operational detail remains important: the already-running Codex/PowerShell process may still resolve the old `D:\nodejs` and WSL `bash.exe`, because process PATH is fixed at launch time. The user PATH has been updated to put these entries first:
+One operational detail remains important: the already-running Codex/PowerShell process may still resolve the old `<local Node.js install>` and WSL `bash.exe`, because process PATH is fixed at launch time. The user PATH has been updated to put these entries first:
 
 ```text
-D:\nodejs-24.15.0
-D:\Rust\cargo\bin
-D:\Git\cmd
-D:\Git\bin
-D:\Git\usr\bin
+<local Node.js install>
+<local Cargo bin>
+<local Git cmd>
+<local Git bin>
+<local Git usr bin>
 ```
 
 New PowerShell windows, VS Code terminals, or reloaded development sessions should pick up the newer Node, Rust, and Git Bash. npm `script-shell` is set to:
 
 ```text
-D:\Git\bin\bash.exe
+<local Git Bash>
 ```
 
 So scripts such as `npm run build:engine-wasm` and `npm run verify`, which call `bash scripts/*.sh`, should use Git Bash instead of WSL bash.
@@ -178,7 +178,7 @@ git config --global core.eol lf
 git config core.filemode false
 ```
 
-These settings avoid CRLF churn, avoid NTFS/WSL file-mode noise, and make `D:\chemcore` the main Windows-native development directory instead of editing the old WSL copy through `\\wsl$`.
+These settings avoid CRLF churn, avoid NTFS/WSL file-mode noise, and make `<repo>` the main Windows-native development directory instead of editing the old WSL copy through `\\wsl$`.
 
 VS Code's built-in Git support is enough for tracking status; no extension is required. `%APPDATA%\Code\User\settings.json` was updated with:
 
@@ -189,7 +189,7 @@ VS Code's built-in Git support is enough for tracking status; no extension is re
 }
 ```
 
-GitLens is optional, not required. If VS Code still does not show Git status, verify that it opened local `D:\chemcore` rather than a WSL remote window, then reload VS Code.
+GitLens is optional, not required. If VS Code still does not show Git status, verify that it opened local `<repo>` rather than a WSL remote window, then reload VS Code.
 
 The Windows copy contained WSL/Windows metadata filenames using a private-use colon glyph, such as `*Zone.Identifier` and `*mshield`. Those untracked files under `compare/` were removed, and `.gitignore` now ignores:
 
@@ -236,7 +236,7 @@ So the difference is stable, not random. `npm run verify` passed its tests, WASM
 
 ### Local Server And Viewer State
 
-A local static file server was started from `D:\chemcore`:
+A local static file server was started from `<repo>`:
 
 ```text
 URL:      http://127.0.0.1:8766/viewer/
@@ -314,7 +314,7 @@ Meaning of each change:
 
 ### Follow-Up Notes
 
-Windows development should happen directly in `D:\chemcore`. The old WSL copy can remain as a reference backup, but dual-track uncommitted development should be avoided. Commit or explicitly back up before switching environments.
+Windows development should happen directly in `<repo>`. The old WSL copy can remain as a reference backup, but dual-track uncommitted development should be avoided. Commit or explicitly back up before switching environments.
 
 If Windows shows massive line-ending diffs, stop and confirm `core.autocrlf=false` and `core.eol=lf` before continuing. If massive file-mode diffs appear, confirm local repo `core.filemode=false`.
 

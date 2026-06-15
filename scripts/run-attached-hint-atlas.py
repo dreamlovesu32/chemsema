@@ -11,8 +11,11 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
+from chemcore_script_env import python_executable
+
 
 ROOT = Path(__file__).resolve().parents[1]
+PYTHON = python_executable()
 
 
 def run(cmd: list[str], env: dict[str, str] | None = None) -> None:
@@ -207,8 +210,8 @@ def main() -> None:
                 env=common_env,
             )
             extract_image1(raw_docx, baseline_emf)
-        run(["D:\\anaconda3\\python.exe", str(ROOT / "scripts" / "patch-docx-image1.py"), str(template_docx), str(baseline_emf), str(out_dir / "baseline.shell.docx")])
-        run(["D:\\anaconda3\\python.exe", str(ROOT / "scripts" / "patch-docx-image1-frame.py"), str(out_dir / "baseline.shell.docx"), str(baseline_docx), "--frame", frame])
+        run([PYTHON, str(ROOT / "scripts" / "patch-docx-image1.py"), str(template_docx), str(baseline_emf), str(out_dir / "baseline.shell.docx")])
+        run([PYTHON, str(ROOT / "scripts" / "patch-docx-image1-frame.py"), str(out_dir / "baseline.shell.docx"), str(baseline_docx), "--frame", frame])
         run(["powershell", "-ExecutionPolicy", "Bypass", "-File", str(ROOT / "scripts" / "word-copy-inline-shape.ps1"), "-InputDocx", str(baseline_docx), "-OutputPng", str(baseline_png)])
         baseline_best = best_shift(load_mask(baseline_png), load_mask(reference_png))
         baseline_best_path.write_text(json.dumps(baseline_best, indent=2), encoding="utf-8")
@@ -240,8 +243,8 @@ def main() -> None:
             env=variant_env,
         )
         extract_image1(raw_docx, raw_emf)
-        run(["D:\\anaconda3\\python.exe", str(ROOT / "scripts" / "patch-docx-image1.py"), str(template_docx), str(raw_emf), str(shell_docx)])
-        run(["D:\\anaconda3\\python.exe", str(ROOT / "scripts" / "patch-docx-image1-frame.py"), str(shell_docx), str(fg3_docx), "--frame", frame])
+        run([PYTHON, str(ROOT / "scripts" / "patch-docx-image1.py"), str(template_docx), str(raw_emf), str(shell_docx)])
+        run([PYTHON, str(ROOT / "scripts" / "patch-docx-image1-frame.py"), str(shell_docx), str(fg3_docx), "--frame", frame])
         run(["powershell", "-ExecutionPolicy", "Bypass", "-File", str(ROOT / "scripts" / "word-copy-inline-shape.ps1"), "-InputDocx", str(fg3_docx), "-OutputPng", str(wordcopy_png)])
 
         ours_mask = load_mask(wordcopy_png)

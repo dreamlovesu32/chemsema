@@ -334,6 +334,36 @@ pub fn canonical_abbreviation_uses_whole_label_layout(canonical_label: &str) -> 
     first.is_ascii_lowercase() && chars.any(|character| character.is_ascii_uppercase())
 }
 
+pub fn label_group_abbreviation_prefix_len(text: &str) -> Option<usize> {
+    let prefix_len = TERMINAL_FRAGMENTS
+        .iter()
+        .copied()
+        .filter(|fragment| fragment_is_label_group_abbreviation(*fragment))
+        .filter_map(|fragment| {
+            std::iter::once(fragment.label)
+                .chain(fragment.aliases.iter().copied())
+                .filter(|candidate| text.starts_with(candidate))
+                .map(str::len)
+                .max()
+        })
+        .max()?;
+    let digit_suffix_len = text[prefix_len..]
+        .chars()
+        .take_while(|character| character.is_ascii_digit())
+        .map(char::len_utf8)
+        .sum::<usize>();
+    Some(prefix_len + digit_suffix_len)
+}
+
+fn fragment_is_label_group_abbreviation(fragment: FragmentDef) -> bool {
+    // Formula-like fragments such as CF3 still split by element; named groups stay atomic.
+    fragment
+        .label
+        .chars()
+        .any(|character| character.is_ascii_lowercase())
+        || matches!(fragment.label, "R" | "TMS" | "TBDMS" | "TBDPS")
+}
+
 pub fn invalid_abbreviation_meta(label: &str) -> Value {
     json!({
         "kind": "functional-label",

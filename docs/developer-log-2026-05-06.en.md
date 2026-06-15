@@ -6,7 +6,7 @@ Time range: 2026-05-06 00:00 to 2026-05-06 23:59, Asia/Shanghai
 
 Baseline commit: `f21d60f Add selection resize handles`
 
-Workspace: `D:\chemcore`
+Workspace: `<repo>`
 
 ### Summary
 

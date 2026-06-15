@@ -1,5 +1,6 @@
 use super::*;
 use serde::Serialize;
+use serde_json::Value as JsonValue;
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -39,6 +40,15 @@ impl Engine {
                 continue;
             }
             if node.is_placeholder || node.atomic_number == 0 || node.element.trim().is_empty() {
+                if add_label_expansion_to_summary(
+                    node,
+                    &mut counts,
+                    &mut formula_weight,
+                    &mut exact_mass,
+                    &mut atom_count,
+                ) {
+                    continue;
+                }
                 continue;
             }
             let Some(mass) = node_element_mass(node.element.as_str(), node.atomic_number) else {
@@ -73,6 +83,75 @@ impl Engine {
             atom_count,
         })
     }
+}
+
+fn add_label_expansion_to_summary(
+    node: &crate::Node,
+    counts: &mut BTreeMap<String, u32>,
+    formula_weight: &mut f64,
+    exact_mass: &mut f64,
+    atom_count: &mut u32,
+) -> bool {
+    let Some(expansion) = label_recognition_expansion(node) else {
+        return false;
+    };
+    if expansion.get("complete").and_then(JsonValue::as_bool) != Some(true) {
+        return false;
+    }
+    let Some(atoms) = expansion.get("atoms").and_then(JsonValue::as_array) else {
+        return false;
+    };
+    if atoms.is_empty() {
+        return false;
+    }
+
+    let mut local_counts = BTreeMap::<String, u32>::new();
+    let mut local_formula_weight = 0.0;
+    let mut local_exact_mass = 0.0;
+    let mut local_atom_count = 0_u32;
+    for atom in atoms {
+        let Some(element) = atom.get("element").and_then(JsonValue::as_str) else {
+            return false;
+        };
+        let Some((_, atomic_number)) = super::text_edit::element_symbol_info(element) else {
+            return false;
+        };
+        let Some(mass) = node_element_mass(element, atomic_number) else {
+            return false;
+        };
+        add_formula_count(&mut local_counts, element, 1);
+        local_formula_weight += mass.average;
+        local_exact_mass += mass.exact;
+        local_atom_count += 1;
+
+        let hydrogens = atom
+            .get("numHydrogens")
+            .and_then(JsonValue::as_u64)
+            .and_then(|value| u32::try_from(value).ok())
+            .unwrap_or(0);
+        if hydrogens > 0 {
+            let hydrogen = hydrogen_mass();
+            add_formula_count(&mut local_counts, "H", hydrogens);
+            local_formula_weight += hydrogen.average * hydrogens as f64;
+            local_exact_mass += hydrogen.exact * hydrogens as f64;
+            local_atom_count += hydrogens;
+        }
+    }
+
+    for (symbol, count) in local_counts {
+        add_formula_count(counts, &symbol, count);
+    }
+    *formula_weight += local_formula_weight;
+    *exact_mass += local_exact_mass;
+    *atom_count += local_atom_count;
+    true
+}
+
+fn label_recognition_expansion(node: &crate::Node) -> Option<&JsonValue> {
+    node.meta
+        .get("labelRecognition")
+        .or_else(|| node.label.as_ref()?.meta.get("labelRecognition"))?
+        .get("expansion")
 }
 
 fn selected_atom_node_ids(selection: &SelectionState) -> BTreeSet<&str> {

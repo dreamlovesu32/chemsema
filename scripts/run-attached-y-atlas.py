@@ -11,8 +11,11 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
+from chemcore_script_env import python_executable
+
 
 ROOT = Path(__file__).resolve().parents[1]
+PYTHON = python_executable()
 
 
 def run(cmd: list[str], env: dict[str, str] | None = None) -> None:
@@ -209,7 +212,7 @@ def main() -> None:
             extract_image1(raw_docx, baseline_emf)
         run(
             [
-                "D:\\anaconda3\\python.exe",
+                PYTHON,
                 str(ROOT / "scripts" / "patch-docx-image1.py"),
                 str(template_docx),
                 str(baseline_emf),
@@ -218,7 +221,7 @@ def main() -> None:
         )
         run(
             [
-                "D:\\anaconda3\\python.exe",
+                PYTHON,
                 str(ROOT / "scripts" / "patch-docx-image1-frame.py"),
                 str(out_dir / "baseline.shell.docx"),
                 str(baseline_docx),
@@ -288,7 +291,7 @@ def main() -> None:
                 extract_image1(raw_docx, raw_emf)
                 run(
                     [
-                        "D:\\anaconda3\\python.exe",
+                        PYTHON,
                         str(ROOT / "scripts" / "patch-docx-image1.py"),
                         str(template_docx),
                         str(raw_emf),
@@ -297,7 +300,7 @@ def main() -> None:
                 )
                 run(
                     [
-                        "D:\\anaconda3\\python.exe",
+                        PYTHON,
                         str(ROOT / "scripts" / "patch-docx-image1-frame.py"),
                         str(shell_docx),
                         str(fg3_docx),

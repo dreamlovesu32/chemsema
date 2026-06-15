@@ -1586,6 +1586,61 @@ fn right_side_cf3_label_renders_reversed_but_anchors_on_carbon() {
 }
 
 #[test]
+fn right_side_otms_label_keeps_tms_as_single_reversed_group() {
+    let mut engine = Engine::new();
+    assert!(engine.add_bond_between(
+        free_anchor(px_point(300.0, 260.0)),
+        free_anchor(px_point(340.0, 260.0)),
+        1,
+    ));
+    let left_node = engine
+        .state()
+        .document
+        .editable_fragment()
+        .expect("editable fragment should exist")
+        .fragment
+        .nodes
+        .iter()
+        .min_by(|left, right| left.position[0].total_cmp(&right.position[0]))
+        .expect("left node should exist")
+        .clone();
+    let session = engine
+        .begin_text_edit(Point::new(left_node.position[0], left_node.position[1]))
+        .expect("endpoint session should be created");
+    assert!(engine.apply_text_edit(chemcore_engine::TextEditSession {
+        text: "OTMS".to_string(),
+        source_runs: Vec::new(),
+        ..session
+    }));
+
+    let node = engine
+        .state()
+        .document
+        .editable_fragment()
+        .expect("editable fragment should exist")
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == left_node.id)
+        .expect("left node should still exist");
+    let label = node.label.as_ref().expect("label should exist");
+    assert_eq!(label.source_text.as_deref(), Some("OTMS"));
+    assert_eq!(label.text, "TMSO");
+    assert_eq!(
+        node.meta
+            .get("labelRecognition")
+            .and_then(|value| value.get("status"))
+            .and_then(serde_json::Value::as_str),
+        Some("recognized")
+    );
+    let expected_anchor = glyph_anchor(label, 3);
+    let reopened = engine
+        .begin_text_edit(Point::new(node.position[0], node.position[1]))
+        .expect("endpoint session should reopen");
+    assert_endpoint_target_near(&reopened, expected_anchor);
+}
+
+#[test]
 fn right_side_whole_labels_do_not_reverse_and_anchor_on_last_glyph() {
     for text in ["t-Bu", "XYZ"] {
         let mut engine = Engine::new();

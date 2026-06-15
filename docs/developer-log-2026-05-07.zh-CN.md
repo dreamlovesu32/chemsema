@@ -8,7 +8,7 @@
 
 基线提交：`9496e9f Improve Office OLE preview fidelity`
 
-工作目录：`D:\chemcore`
+工作目录：`<repo>`
 
 ### 总结
 

@@ -39,7 +39,7 @@
   },
   "keywords": [],
   "author": "Jiajun Zhang",
-  "license": "ISC",
+  "license": "Apache-2.0",
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.0",
     "opentype.js": "^2.0.0",

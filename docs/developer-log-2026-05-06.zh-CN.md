@@ -6,7 +6,7 @@
 
 基线提交：`f21d60f Add selection resize handles`
 
-工作目录：`D:\chemcore`
+工作目录：`<repo>`
 
 ### 总结
 

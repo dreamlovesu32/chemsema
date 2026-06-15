@@ -12,9 +12,11 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from scipy.interpolate import CubicSpline
 
+from chemcore_script_env import tmp_input_path, windows_font_path
+
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_CDXML = Path(r"C:\Users\Dream\OneDrive\Desktop\untitled.cdxml")
+DEFAULT_CDXML = tmp_input_path("chemdraw-n-clip-source.cdxml")
 DEFAULT_OUT_PNG = ROOT / "tmp" / "chemdraw-n-clip-fit-from-cdxml.png"
 DEFAULT_OUT_JSON = ROOT / "tmp" / "chemdraw-n-clip-fit-from-cdxml.json"
 
@@ -121,7 +123,7 @@ def draw_fit(center: tuple[float, float], samples: list[tuple[float, float]], n_
         draw.ellipse((px - 3.2, py - 3.2, px + 3.2, py + 3.2), fill=(220, 38, 38, 255))
 
     font_size = max(12, int(round(n_text["font_size"] * scale)))
-    font = ImageFont.truetype(r"C:\Windows\Fonts\arial.ttf", font_size)
+    font = ImageFont.truetype(str(windows_font_path("arial.ttf")), font_size)
     tx, ty = map_pt(n_text["x"], n_text["y"])
     draw.text((tx, ty - font_size), "N", font=font, fill=(0, 0, 0, 255))
 

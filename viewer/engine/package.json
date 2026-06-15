@@ -5,7 +5,7 @@
     "Jiajun Zhang"
   ],
   "version": "1.0.0-beta",
-  "license": "ISC",
+  "license": "Apache-2.0",
   "files": [
     "chemcore_engine_bg.wasm",
     "chemcore_engine.js",

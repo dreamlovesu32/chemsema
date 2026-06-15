@@ -791,6 +791,60 @@ fn selection_chemistry_summary_counts_implicit_carbon_hydrogens() {
     assert!((summary["exactMass"].as_f64().unwrap() - 30.046_950_193_38).abs() < 1.0e-9);
 }
 
+#[test]
+fn selection_chemistry_summary_counts_complete_label_expansions() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, px(300.0), px(260.0));
+    let left_node = engine
+        .state()
+        .document
+        .editable_fragment()
+        .expect("editable fragment should exist")
+        .fragment
+        .nodes
+        .iter()
+        .min_by(|left, right| left.position[0].total_cmp(&right.position[0]))
+        .expect("left node should exist")
+        .clone();
+    let session = engine
+        .begin_text_edit(Point::new(left_node.position[0], left_node.position[1]))
+        .expect("endpoint session should be created");
+    assert!(engine.apply_text_edit(chemcore_engine::TextEditSession {
+        text: "OTMS".to_string(),
+        source_runs: Vec::new(),
+        ..session
+    }));
+
+    let label_center = {
+        let entry = engine
+            .state()
+            .document
+            .editable_fragment()
+            .expect("editable fragment should exist");
+        let node = entry
+            .fragment
+            .nodes
+            .iter()
+            .find(|node| node.id == left_node.id)
+            .expect("left node should still exist");
+        assert!(node.is_placeholder);
+        let label = node.label.as_ref().expect("label should exist");
+        assert_eq!(label.source_text.as_deref(), Some("OTMS"));
+        assert_eq!(label.text, "TMSO");
+        let bbox = label.bbox().expect("label should have a bbox");
+        Point::new((bbox[0] + bbox[2]) * 0.5, (bbox[1] + bbox[3]) * 0.5)
+    };
+    engine.select_at_point(label_center, false);
+
+    let summary: serde_json::Value =
+        serde_json::from_str(&engine.selection_chemistry_summary_json()).unwrap();
+    assert_eq!(summary["formula"], "C3H9OSi");
+    assert_eq!(summary["atomCount"], 14);
+    assert!((summary["formulaWeight"].as_f64().unwrap() - 89.189).abs() < 1.0e-9);
+    assert!((summary["exactMass"].as_f64().unwrap() - 89.042_266_444_29).abs() < 1.0e-9);
+}
+
 fn hover(engine: &mut Engine, x: f64, y: f64) {
     engine.pointer_move(PointerEvent {
         x,

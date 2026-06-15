@@ -1,6 +1,12 @@
 # Keep repo-authored source and documentation files on LF across platforms.
 /.gitattributes text eol=lf
+/CODE_OF_CONDUCT.md text eol=lf
+/CONTRIBUTING.md text eol=lf
+/LICENSE text eol=lf
+/NOTICE text eol=lf
+/SECURITY.md text eol=lf
 *.md text eol=lf
+*.py text eol=lf
 *.rs text eol=lf
 *.js text eol=lf
 *.mjs text eol=lf

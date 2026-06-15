@@ -8,7 +8,7 @@
 
 基线提交：`970c4fc Add May 11 developer log`
 
-工作目录：`D:\Projects\chemcore`
+工作目录：`<repo>`
 
 ## 总结
 

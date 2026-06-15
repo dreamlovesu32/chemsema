@@ -8,7 +8,7 @@ Note: By today's working rhythm, the commits made shortly after midnight on 2026
 
 Baseline commit: `9496e9f Improve Office OLE preview fidelity`
 
-Workspace: `D:\chemcore`
+Workspace: `<repo>`
 
 ### Summary
 

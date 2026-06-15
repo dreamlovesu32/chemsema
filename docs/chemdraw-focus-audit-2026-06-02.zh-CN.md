@@ -14,7 +14,7 @@
 
 新增脚本：
 
-- [scripts/chemdraw-focus-capture.ps1](D:/Projects/chemcore/scripts/chemdraw-focus-capture.ps1:1)
+- [scripts/chemdraw-focus-capture.ps1](../scripts/chemdraw-focus-capture.ps1:1)
 
 调用方式：
 
@@ -40,7 +40,7 @@ npm run chemdraw:focus-capture -- `
 
 样本：
 
-- [orbital-selected.png](D:/Projects/chemcore/tmp/chemdraw-focus/orbital-selected.png:1)
+- [orbital-selected.png](../tmp/chemdraw-focus/orbital-selected.png:1)
 
 观察结果：
 
@@ -54,7 +54,7 @@ npm run chemdraw:focus-capture -- `
 
 样本：
 
-- [rest-wavy-selected.png](D:/Projects/chemcore/tmp/chemdraw-focus/rest-wavy-selected.png:1)
+- [rest-wavy-selected.png](../tmp/chemdraw-focus/rest-wavy-selected.png:1)
 
 观察结果：
 
@@ -66,7 +66,7 @@ npm run chemdraw:focus-capture -- `
 
 样本：
 
-- [rest-hollow-wedge-selected.png](D:/Projects/chemcore/tmp/chemdraw-focus/rest-hollow-wedge-selected.png:1)
+- [rest-hollow-wedge-selected.png](../tmp/chemdraw-focus/rest-hollow-wedge-selected.png:1)
 
 观察结果：
 
@@ -77,7 +77,7 @@ npm run chemdraw:focus-capture -- `
 
 样本：
 
-- [rest-table-selected.png](D:/Projects/chemcore/tmp/chemdraw-focus/rest-table-selected.png:1)
+- [rest-table-selected.png](../tmp/chemdraw-focus/rest-table-selected.png:1)
 
 观察结果：
 
@@ -90,7 +90,7 @@ npm run chemdraw:focus-capture -- `
 
 样本：
 
-- [tlcplate-only-normalized-selected.png](D:/Projects/chemcore/tmp/chemdraw-focus/tlcplate-only-normalized-selected.png:1)
+- [tlcplate-only-normalized-selected.png](../tmp/chemdraw-focus/tlcplate-only-normalized-selected.png:1)
 
 观察结果：
 
@@ -111,17 +111,17 @@ npm run chemdraw:focus-capture -- `
 
 - 已经通过 `TLC plate` 的选中框反推出一版视图缩放/偏移。
 - 基于这版映射对首个 `spot` 做了真实单击抓图：
-  - [tlcspot-normalized-click-mapped.png](D:/Projects/chemcore/tmp/chemdraw-focus/tlcspot-normalized-click-mapped.png:1)
+  - [tlcspot-normalized-click-mapped.png](../tmp/chemdraw-focus/tlcspot-normalized-click-mapped.png:1)
 - 基于同一条映射链，又补了两种交互：
   - 右键：
-    - [tlcspot-normalized-rightclick.png](D:/Projects/chemcore/tmp/chemdraw-focus/tlcspot-normalized-rightclick.png:1)
+    - [tlcspot-normalized-rightclick.png](../tmp/chemdraw-focus/tlcspot-normalized-rightclick.png:1)
   - 短距离竖直拖动：
-    - [tlcspot-normalized-drag.png](D:/Projects/chemcore/tmp/chemdraw-focus/tlcspot-normalized-drag.png:1)
+    - [tlcspot-normalized-drag.png](../tmp/chemdraw-focus/tlcspot-normalized-drag.png:1)
 - 另外还做了两张“直接按屏幕黑点中心点”的手工验证：
   - 单击：
-    - [tlcspot-manualclick-678-548.png](D:/Projects/chemcore/tmp/chemdraw-focus/tlcspot-manualclick-678-548.png:1)
+    - [tlcspot-manualclick-678-548.png](../tmp/chemdraw-focus/tlcspot-manualclick-678-548.png:1)
   - 拖动：
-    - [tlcspot-manualdrag-678-548-to-500.png](D:/Projects/chemcore/tmp/chemdraw-focus/tlcspot-manualdrag-678-548-to-500.png:1)
+    - [tlcspot-manualdrag-678-548-to-500.png](../tmp/chemdraw-focus/tlcspot-manualdrag-678-548-to-500.png:1)
 - 这几轮里都没有出现明显局部焦点框，`ShowRf` 也没有自动变为 `true`。
 
 当前判断：
