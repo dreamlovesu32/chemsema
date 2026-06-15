@@ -58,7 +58,7 @@ The current clipping scheme is intentionally data-driven and deterministic:
 
 The detailed uppercase anchor rules are documented in:
 
-- [docs/glyph-clip-polygons.zh-CN.md](./glyph-clip-polygons.zh-CN.md)
+- [docs/glyph-clip-polygons.md](./glyph-clip-polygons.md)
 
 ## Manifest Generation
 
