@@ -34,7 +34,6 @@ if (status.status !== 0) {
   process.exit(status.status ?? 1);
 }
 const generatedChanges = status.stdout
-  .trim()
   .split(/\r?\n/)
   .filter(Boolean);
 const blockingChanges = generatedChanges.filter((line) => {

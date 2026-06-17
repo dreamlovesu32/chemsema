@@ -511,6 +511,99 @@ impl Engine {
         }
     }
 
+    pub fn apply_bracket_label_text(&mut self, bracket_id: &str, session: TextEditSession) -> bool {
+        self.with_command(
+            EditorCommand::ApplyTextEdit {
+                target: TextEditCommandTarget::TextObject { object_id: None },
+            },
+            |engine| engine.apply_bracket_label_text_untracked(bracket_id, &session),
+        )
+    }
+
+    fn apply_bracket_label_text_untracked(
+        &mut self,
+        bracket_id: &str,
+        session: &TextEditSession,
+    ) -> bool {
+        let text = session.text.replace("\r\n", "\n").replace('\r', "\n");
+        if text.trim().is_empty() {
+            return false;
+        }
+        let (x, y) = match &session.target {
+            TextEditTarget::TextObject { x, y, .. } => (*x, *y),
+            _ => return false,
+        };
+        if !self
+            .state
+            .document
+            .find_scene_object(bracket_id)
+            .is_some_and(|object| object.object_type == "bracket")
+        {
+            return false;
+        }
+
+        let source_runs = normalize_source_runs(session, &text);
+        let session_font_size = session
+            .font_size_world_pt()
+            .unwrap_or(WorldPt(DEFAULT_TEXT_FONT_SIZE))
+            .value();
+        let session_line_height = session
+            .line_height_world_pt()
+            .unwrap_or(WorldPt(DEFAULT_TEXT_BLOCK_LINE_HEIGHT))
+            .value();
+        let display_runs = display_runs_from_source_runs(
+            &source_runs,
+            session.font_family.as_deref().unwrap_or("Arial"),
+            session_font_size,
+            session.fill.as_deref().unwrap_or("#000000"),
+        );
+        let (estimated_width, estimated_height) =
+            estimate_text_block_size(&display_runs, session_font_size, session_line_height);
+        let width = round2(
+            session
+                .box_value
+                .map(|bbox| bbox[2].max(0.0))
+                .unwrap_or(0.0)
+                .max(estimated_width),
+        );
+        let height = round2(
+            session
+                .box_value
+                .map(|bbox| bbox[3].max(0.0))
+                .unwrap_or(0.0)
+                .max(estimated_height),
+        );
+
+        self.push_undo_snapshot();
+        let text_z_index = self.next_text_z_index();
+        let text_id = self.next_id("obj_text");
+        let mut text_object = make_text_object(
+            &text_id,
+            x,
+            y,
+            &text,
+            source_runs,
+            display_runs,
+            session,
+            width,
+            height,
+            text_z_index,
+        );
+        text_object.meta = json!({
+            "source": "chemcore-editor",
+            "role": "bracket-label",
+        });
+        self.state.document.objects.push(text_object);
+        self.link_bracket_text_objects_untracked(bracket_id, &text_id);
+        self.state.selection = crate::SelectionState::default();
+        self.clear_interaction();
+        self.note_pending_select_target(PendingSelectTarget::SceneObjects {
+            arrow_objects: vec![bracket_id.to_string()],
+            text_objects: vec![text_id],
+        });
+        true
+    }
+
     pub fn preview_text_runs(&self, session: &TextEditSession) -> (Vec<LabelRun>, Vec<LabelRun>) {
         let text = if !session.source_runs.is_empty() {
             runs_text(&session.source_runs)
@@ -753,9 +846,8 @@ impl Engine {
         let object = self
             .state
             .document
-            .objects
-            .iter()
-            .find(|object| object.id == object_id && object.object_type == "text")?;
+            .find_scene_object(object_id)
+            .filter(|object| object.object_type == "text")?;
         let payload = &object.payload;
         let source_runs = payload
             .extra
@@ -931,49 +1023,50 @@ impl Engine {
 
         self.push_undo_snapshot();
         let mut changed_text_object_id = target_object_id.clone();
-        let changed =
-            if let Some(target_object_id) = target_object_id {
-                let Some(object) =
-                    self.state.document.objects.iter_mut().find(|object| {
-                        object.id == target_object_id && object.object_type == "text"
-                    })
-                else {
-                    self.undo_stack.pop();
-                    return false;
-                };
-                update_text_object_fields(
-                    object,
-                    x,
-                    y,
-                    &text,
-                    source_runs,
-                    display_runs,
-                    session,
-                    width,
-                    height,
-                )
-            } else {
-                let next_id = self.next_id("obj_text");
-                changed_text_object_id = Some(next_id.clone());
-                let object = make_text_object(
-                    &next_id,
-                    x,
-                    y,
-                    &text,
-                    source_runs,
-                    display_runs,
-                    session,
-                    width,
-                    height,
-                    self.next_text_z_index(),
-                );
-                self.state.document.objects.push(object);
-                true
+        let changed = if let Some(target_object_id) = target_object_id {
+            let Some(object) = self
+                .state
+                .document
+                .find_scene_object_mut(&target_object_id)
+                .filter(|object| object.object_type == "text")
+            else {
+                self.undo_stack.pop();
+                return false;
             };
+            update_text_object_fields(
+                object,
+                x,
+                y,
+                &text,
+                source_runs,
+                display_runs,
+                session,
+                width,
+                height,
+            )
+        } else {
+            let next_id = self.next_id("obj_text");
+            changed_text_object_id = Some(next_id.clone());
+            let object = make_text_object(
+                &next_id,
+                x,
+                y,
+                &text,
+                source_runs,
+                display_runs,
+                session,
+                width,
+                height,
+                self.next_text_z_index(),
+            );
+            self.state.document.objects.push(object);
+            true
+        };
         if !changed {
             self.undo_stack.pop();
             return false;
         }
+        crate::refresh_repeating_units(&mut self.state.document);
         self.state.selection = crate::SelectionState::default();
         self.clear_interaction();
         if let Some(object_id) = changed_text_object_id {
@@ -1057,17 +1150,13 @@ impl Engine {
         let Some(object_id) = object_id else {
             return false;
         };
-        let Some(index) = self
-            .state
-            .document
-            .objects
-            .iter()
-            .position(|object| object.id == object_id && object.object_type == "text")
-        else {
-            return false;
-        };
         self.push_undo_snapshot();
-        self.state.document.objects.remove(index);
+        if !remove_text_object_from_siblings(&mut self.state.document.objects, object_id) {
+            self.undo_stack.pop();
+            return false;
+        }
+        clear_bracket_links_to_text(&mut self.state.document.objects, object_id);
+        crate::refresh_repeating_units(&mut self.state.document);
         self.state.selection = crate::SelectionState::default();
         self.clear_interaction();
         true
@@ -1076,7 +1165,7 @@ impl Engine {
     pub(super) fn hit_test_text_object(&self, point: Point) -> Option<(String, [f64; 4])> {
         let mut best: Option<(i32, usize, String)> = None;
         let mut best_bounds: Option<[f64; 4]> = None;
-        for (index, object) in self.state.document.objects.iter().enumerate() {
+        for (index, object) in self.state.document.scene_objects().into_iter().enumerate() {
             if object.object_type != "text" || !object.visible {
                 continue;
             }
@@ -1134,6 +1223,51 @@ impl Engine {
             .unwrap_or(10)
             + 10
     }
+}
+
+fn remove_text_object_from_siblings(
+    siblings: &mut Vec<crate::SceneObject>,
+    object_id: &str,
+) -> bool {
+    if let Some(index) = siblings
+        .iter()
+        .position(|object| object.id == object_id && object.object_type == "text")
+    {
+        siblings.remove(index);
+        return true;
+    }
+    siblings
+        .iter_mut()
+        .any(|object| remove_text_object_from_siblings(&mut object.children, object_id))
+}
+
+fn clear_bracket_links_to_text(objects: &mut [crate::SceneObject], text_object_id: &str) -> bool {
+    let mut changed = false;
+    for object in objects {
+        if object.object_type == "bracket"
+            && object
+                .meta
+                .get("linkedTextObjectId")
+                .and_then(Value::as_str)
+                == Some(text_object_id)
+        {
+            changed |= remove_meta_field(&mut object.meta, "linkedTextObjectId");
+            changed |= remove_meta_field(&mut object.meta, "bracketLabelTextObjectId");
+        }
+        changed |= clear_bracket_links_to_text(&mut object.children, text_object_id);
+    }
+    changed
+}
+
+fn remove_meta_field(meta_value: &mut Value, key: &str) -> bool {
+    let Some(object) = meta_value.as_object_mut() else {
+        return false;
+    };
+    let changed = object.remove(key).is_some();
+    if object.is_empty() {
+        *meta_value = Value::Null;
+    }
+    changed
 }
 
 pub(super) fn apply_node_label_replacement(

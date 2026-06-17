@@ -81,6 +81,22 @@ export class WasmEngine {
         return ret !== 0;
     }
     /**
+     * @param {string} bracket_id
+     * @param {string} session_json
+     * @returns {boolean}
+     */
+    applyBracketLabelText(bracket_id, session_json) {
+        const ptr0 = passStringToWasm0(bracket_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(session_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmengine_applyBracketLabelText(this.__wbg_ptr, ptr0, len0, ptr1, len1);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return ret[0] !== 0;
+    }
+    /**
      * @param {string} color
      * @returns {boolean}
      */
@@ -885,6 +901,13 @@ export class WasmEngine {
         }
     }
     /**
+     * @returns {boolean}
+     */
+    linkSelection() {
+        const ret = wasm.wasmengine_linkSelection(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
      * @param {Uint8Array} cdx
      */
     loadDocumentCdx(cdx) {
@@ -992,6 +1015,21 @@ export class WasmEngine {
             throw takeFromExternrefTable0(ret[1]);
         }
         return ret[0] !== 0;
+    }
+    /**
+     * @returns {string}
+     */
+    pendingGraphicObjectId() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmengine_pendingGraphicObjectId(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
     }
     /**
      * @param {number} x
@@ -1207,6 +1245,20 @@ export class WasmEngine {
         }
     }
     /**
+     * @returns {boolean}
+     */
+    selectionCanLinkBracketText() {
+        const ret = wasm.wasmengine_selectionCanLinkBracketText(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
+     * @returns {boolean}
+     */
+    selectionCanUnlinkBracketText() {
+        const ret = wasm.wasmengine_selectionCanUnlinkBracketText(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
      * @returns {string}
      */
     selectionChemistrySummaryJson() {
@@ -1228,6 +1280,13 @@ export class WasmEngine {
      */
     selectionContainsPoint(x, y) {
         const ret = wasm.wasmengine_selectionContainsPoint(this.__wbg_ptr, x, y);
+        return ret !== 0;
+    }
+    /**
+     * @returns {boolean}
+     */
+    selectionHasRepeatUnitGroups() {
+        const ret = wasm.wasmengine_selectionHasRepeatUnitGroups(this.__wbg_ptr);
         return ret !== 0;
     }
     /**
@@ -1534,6 +1593,13 @@ export class WasmEngine {
      */
     ungroupSelection() {
         const ret = wasm.wasmengine_ungroupSelection(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
+     * @returns {boolean}
+     */
+    unlinkSelection() {
+        const ret = wasm.wasmengine_unlinkSelection(this.__wbg_ptr);
         return ret !== 0;
     }
     /**

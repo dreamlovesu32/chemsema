@@ -2,8 +2,8 @@ use chemcore_engine::{
     angle_between, direction_from_angle, line_object_points, parse_document_json, ArrowCurve,
     ArrowEndpointStyle, ArrowHeadSize, ArrowNoGo, ArrowVariant, BondLinePattern, BondLineWeight,
     BondVariant, BracketKind, DoubleBondPlacement, Engine, Point, PointerEvent, RenderPrimitive,
-    RenderRole, ShapeKind, ShapeStyle, Tool, ToolState, DEFAULT_BOND_LENGTH, DEFAULT_BOND_STROKE,
-    ENDPOINT_FOCUS_RADIUS,
+    RenderRole, ShapeKind, ShapeStyle, TextEditSession, TextEditTarget, Tool, ToolState,
+    DEFAULT_BOND_LENGTH, DEFAULT_BOND_STROKE, ENDPOINT_FOCUS_RADIUS,
 };
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -1135,6 +1135,8 @@ fn arrow_hover_curve_drag_updates_curve_with_snap_and_selected_arrows_do_not_hov
     assert!(engine.update_hover_arrow_edit(Point::new(50.0, -30.0), false));
     assert_eq!(engine.active_arrow_edit_degrees(), 120.0);
     assert!(engine.finish_hover_arrow_edit(Point::new(50.0, -30.0), false));
+    assert!(engine.state().overlay.hover_arrow.is_none());
+    assert!(engine.state().overlay.hover_shape.is_none());
 
     let object = engine
         .state()
@@ -6796,6 +6798,8 @@ fn shape_tool_circle_edge_handle_resizes_existing_circle_without_drawing_new_sha
         button: Some(0),
         alt_key: false,
     });
+    assert!(engine.state().overlay.hover_shape.is_none());
+    assert_eq!(hover_shape_handle_count(&engine), 0);
 
     assert_eq!(shape_object_count(&engine), 1);
     assert_point_close(
@@ -7263,6 +7267,48 @@ fn select_tool_shift_click_adds_to_selection() {
     engine.select_at_point(Point::new(FIRST_START_X, FIRST_START_Y), true);
 
     assert_eq!(engine.state().selection.nodes.len(), 2);
+}
+
+#[test]
+fn switching_from_select_tool_to_drawing_tool_clears_selection() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, px(300.0), px(260.0));
+    engine.set_tool_state(select_tool());
+
+    engine.select_at_point(Point::new(FIRST_CENTER_X, FIRST_CENTER_Y), false);
+    assert!(!engine.state().selection.is_empty());
+    assert!(engine.render_list().iter().any(|primitive| {
+        matches!(
+            primitive,
+            RenderPrimitive::Rect {
+                role: RenderRole::SelectionBond,
+                ..
+            } | RenderPrimitive::Circle {
+                role: RenderRole::SelectionBondDot,
+                ..
+            }
+        )
+    }));
+
+    engine.set_tool_state(bond_tool());
+
+    assert!(engine.state().selection.is_empty());
+    assert!(engine.render_list().iter().all(|primitive| {
+        !matches!(
+            primitive,
+            RenderPrimitive::Rect {
+                role: RenderRole::SelectionBox
+                    | RenderRole::SelectionBond
+                    | RenderRole::SelectionNode
+                    | RenderRole::SelectionTextBox,
+                ..
+            } | RenderPrimitive::Circle {
+                role: RenderRole::SelectionBondDot,
+                ..
+            }
+        )
+    }));
 }
 
 #[test]
@@ -9990,6 +10036,7 @@ fn bracketed_multiple_group_stores_repeating_unit_expansion_when_legal() {
                 "locked": false,
                 "zIndex": 20,
                 "transform": {"translate": [15.0, -10.0], "rotate": 0.0, "scale": [1.0, 1.0]},
+                "meta": {"linkedTextObjectId": "obj_text_1"},
                 "payload": {"bbox": [0.0, 0.0, 30.0, 20.0], "kind": "square"}
             },
             {
@@ -9999,6 +10046,7 @@ fn bracketed_multiple_group_stores_repeating_unit_expansion_when_legal() {
                 "locked": false,
                 "zIndex": 30,
                 "transform": {"translate": [45.0, 5.0], "rotate": 0.0, "scale": [1.0, 1.0]},
+                "meta": {"linkKind": "bracket-label", "linkedBracketObjectId": "obj_bracket_1"},
                 "payload": {"bbox": [0.0, 0.0, 8.0, 10.0], "text": "3"}
             },
             {
@@ -10036,6 +10084,14 @@ fn bracketed_multiple_group_stores_repeating_unit_expansion_when_legal() {
     engine
         .load_document_json(&document.to_string())
         .expect("repeat fixture should load");
+
+    assert!(engine.select_all());
+    let summary: serde_json::Value =
+        serde_json::from_str(&engine.selection_chemistry_summary_json()).unwrap();
+    assert_eq!(summary["formula"], "C8H15");
+    assert_eq!(summary["atomCount"], 23);
+    assert!((summary["formulaWeight"].as_f64().unwrap() - 111.208).abs() < 1.0e-9);
+    assert!((summary["exactMass"].as_f64().unwrap() - 111.117_375_483_45).abs() < 1.0e-9);
 
     let fragment = engine
         .state()
@@ -10079,6 +10135,248 @@ fn bracketed_multiple_group_stores_repeating_unit_expansion_when_legal() {
         first_atom["electronSymbols"][0]["sourceSymbolObjectId"],
         "obj_symbol_1"
     );
+}
+
+#[test]
+fn bracket_label_count_links_with_bracket_and_selects_with_component() {
+    let mut engine = Engine::new();
+    engine
+        .load_document_json(&repeat_unit_chain_document().to_string())
+        .expect("repeat fixture should load");
+
+    assert!(engine.apply_bracket_label_text("obj_bracket_1", bracket_label_session("3")));
+    assert!(
+        engine.state().selection.is_empty(),
+        "committing a bracket label should not select it until the Select tool consumes the pending target"
+    );
+    assert!(engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .all(|object| object.object_type != "group"));
+    let count_text = engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "text")
+        .expect("bracket label commit should create text");
+    assert_eq!(
+        count_text
+            .meta
+            .get("linkKind")
+            .and_then(|value| value.as_str()),
+        Some("bracket-label")
+    );
+    assert_eq!(
+        count_text
+            .meta
+            .get("linkedBracketObjectId")
+            .and_then(|value| value.as_str()),
+        Some("obj_bracket_1")
+    );
+    let text_id = count_text.id.clone();
+    let bracket = engine
+        .state()
+        .document
+        .find_scene_object("obj_bracket_1")
+        .expect("bracket should remain a top-level object");
+    assert_eq!(
+        bracket
+            .meta
+            .get("linkedTextObjectId")
+            .and_then(|value| value.as_str()),
+        Some(text_id.as_str())
+    );
+
+    assert!(engine.select_component_at_point(Point::new(20.0, 0.0), false));
+    assert!(engine
+        .state()
+        .selection
+        .arrow_objects
+        .contains(&"obj_bracket_1".to_string()));
+    assert!(engine.state().selection.text_objects.contains(&text_id));
+    assert_eq!(engine.state().selection.nodes.len(), 4);
+    assert_eq!(engine.state().selection.bonds.len(), 3);
+
+    let fragment = engine
+        .state()
+        .document
+        .editable_fragment()
+        .unwrap()
+        .fragment;
+    let units = fragment
+        .meta
+        .get("repeatingUnits")
+        .and_then(|value| value.as_array())
+        .expect("numeric bracket label should create repeatingUnits");
+    assert_eq!(units.len(), 1);
+    assert_eq!(units[0]["bracketObjectId"], "obj_bracket_1");
+    assert!(units[0]["countTextObjectId"]
+        .as_str()
+        .is_some_and(|object_id| object_id.starts_with("obj_text")));
+}
+
+#[test]
+fn unlinking_repeat_unit_link_detaches_count_label() {
+    let mut engine = Engine::new();
+    engine
+        .load_document_json(&repeat_unit_chain_document().to_string())
+        .expect("repeat fixture should load");
+    assert!(engine.apply_bracket_label_text("obj_bracket_1", bracket_label_session("3")));
+    assert!(engine.select_component_at_point(Point::new(20.0, 0.0), false));
+    assert!(engine.selection_can_unlink_bracket_text());
+
+    assert!(engine.unlink_selection());
+    assert!(!engine.selection_can_unlink_bracket_text());
+    let fragment = engine
+        .state()
+        .document
+        .editable_fragment()
+        .unwrap()
+        .fragment;
+    assert!(fragment.meta.get("repeatingUnits").is_none());
+    let count_text = engine
+        .state()
+        .document
+        .scene_objects()
+        .into_iter()
+        .find(|object| object.object_type == "text")
+        .expect("unlink should keep the count text object");
+    assert!(count_text.meta.get("linkKind").is_none());
+    assert!(count_text.meta.get("linkedBracketObjectId").is_none());
+    let bracket = engine
+        .state()
+        .document
+        .scene_objects()
+        .into_iter()
+        .find(|object| object.id == "obj_bracket_1")
+        .expect("unlink should keep the bracket object");
+    assert!(bracket.meta.get("repeatUnitId").is_none());
+    assert!(bracket.meta.get("linkedTextObjectId").is_none());
+}
+
+#[test]
+fn editing_linked_repeat_count_refreshes_repeat_unit_semantics() {
+    let mut engine = Engine::new();
+    engine
+        .load_document_json(&repeat_unit_chain_document().to_string())
+        .expect("repeat fixture should load");
+    assert!(engine.apply_bracket_label_text("obj_bracket_1", bracket_label_session("3")));
+    let text_id = engine
+        .state()
+        .document
+        .scene_objects()
+        .into_iter()
+        .find(|object| object.object_type == "text")
+        .expect("linked count text should exist")
+        .id
+        .clone();
+
+    let session = engine
+        .begin_text_edit(Point::new(46.0, 6.0))
+        .expect("linked count text should stay independently editable");
+    match &session.target {
+        TextEditTarget::TextObject { object_id, .. } => {
+            assert_eq!(object_id.as_deref(), Some(text_id.as_str()));
+        }
+        _ => panic!("linked repeat count should edit as a text object"),
+    }
+    assert!(engine.apply_text_edit(TextEditSession {
+        text: "4".to_string(),
+        ..session
+    }));
+
+    let fragment = engine
+        .state()
+        .document
+        .editable_fragment()
+        .expect("fragment should still be editable")
+        .fragment;
+    let units = fragment
+        .meta
+        .get("repeatingUnits")
+        .and_then(|value| value.as_array())
+        .expect("linked count edit should refresh repeatingUnits");
+    assert_eq!(units.len(), 1);
+    assert_eq!(units[0]["bracketObjectId"], "obj_bracket_1");
+    assert_eq!(units[0]["countTextObjectId"], text_id);
+    assert_eq!(units[0]["repeatCount"]["value"], 4);
+}
+
+fn bracket_label_session(text: &str) -> TextEditSession {
+    TextEditSession {
+        target: TextEditTarget::TextObject {
+            object_id: None,
+            x: 45.0,
+            y: 5.0,
+        },
+        text: text.to_string(),
+        source_runs: Vec::new(),
+        font_family: Some("Arial".to_string()),
+        font_size: Some(7.5),
+        fill: Some("#000000".to_string()),
+        align: Some("left".to_string()),
+        line_height: Some(9.0),
+        box_value: None,
+        anchor_offset: None,
+        preserve_lines: true,
+        default_chemical: false,
+    }
+}
+
+fn repeat_unit_chain_document() -> serde_json::Value {
+    json!({
+        "format": {"name": "chemcore", "version": "0.1", "unit": "pt"},
+        "document": {
+            "id": "doc_repeat_label",
+            "title": "repeat label",
+            "page": {"width": 200.0, "height": 120.0, "background": "#ffffff"}
+        },
+        "styles": {},
+        "objects": [
+            {
+                "id": "obj_mol_1",
+                "type": "molecule",
+                "visible": true,
+                "locked": false,
+                "zIndex": 10,
+                "transform": {"translate": [0.0, 0.0], "rotate": 0.0, "scale": [1.0, 1.0]},
+                "payload": {"resourceRef": "mol_1", "bbox": [0.0, 0.0, 80.0, 20.0]}
+            },
+            {
+                "id": "obj_bracket_1",
+                "type": "bracket",
+                "visible": true,
+                "locked": false,
+                "zIndex": 20,
+                "transform": {"translate": [15.0, -10.0], "rotate": 0.0, "scale": [1.0, 1.0]},
+                "payload": {"bbox": [0.0, 0.0, 30.0, 20.0], "kind": "square"}
+            }
+        ],
+        "resources": {
+            "mol_1": {
+                "type": "molecule_fragment2d",
+                "encoding": "chemcore.molecule.fragment2d",
+                "data": {
+                    "schema": "chemcore.molecule.fragment2d",
+                    "bbox": [0.0, -10.0, 70.0, 20.0],
+                    "nodes": [
+                        {"id": "n1", "element": "C", "atomicNumber": 6, "position": [0.0, 0.0], "charge": 0, "numHydrogens": 0},
+                        {"id": "n2", "element": "C", "atomicNumber": 6, "position": [20.0, 0.0], "charge": 0, "numHydrogens": 0},
+                        {"id": "n3", "element": "C", "atomicNumber": 6, "position": [40.0, 0.0], "charge": 0, "numHydrogens": 0},
+                        {"id": "n4", "element": "C", "atomicNumber": 6, "position": [60.0, 0.0], "charge": 0, "numHydrogens": 0}
+                    ],
+                    "bonds": [
+                        {"id": "b1", "begin": "n1", "end": "n2", "order": 1},
+                        {"id": "b2", "begin": "n2", "end": "n3", "order": 1},
+                        {"id": "b3", "begin": "n3", "end": "n4", "order": 1}
+                    ]
+                }
+            }
+        }
+    })
 }
 
 #[test]

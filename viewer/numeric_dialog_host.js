@@ -53,9 +53,10 @@ class NumericDialog {
       this.backdrop.className = "numeric-dialog";
       const field = this.payload.field || {};
       this.backdrop.innerHTML = `
+        <div class="desktop-modal-window-drag-strip" data-desktop-window-drag-region aria-hidden="true"></div>
         <div class="numeric-dialog-backdrop" data-numeric-dialog-close></div>
         <form class="numeric-dialog-panel" aria-label="${escapeHtml(this.payload.title || "Value")}">
-          <div class="numeric-dialog-title">${escapeHtml(this.payload.title || "Value")}</div>
+          <div class="numeric-dialog-title" data-desktop-window-drag-region>${escapeHtml(this.payload.title || "Value")}</div>
           <label class="numeric-dialog-field">
             <span>${escapeHtml(field.label || "Value")}</span>
             <input name="value" type="text" inputmode="decimal" value="${escapeHtml(formatNumber(field.value))}">

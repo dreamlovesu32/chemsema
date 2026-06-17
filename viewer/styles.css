@@ -175,6 +175,30 @@ body.desktop-shell .desktop-titlebar {
   min-width: 24px;
 }
 
+.desktop-modal-window-drag-strip,
+.desktop-dialog-panel-drag-strip {
+  display: none;
+}
+
+body.desktop-shell .desktop-modal-window-drag-strip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  display: block;
+  height: 42px;
+}
+
+body.desktop-shell .desktop-dialog-panel-drag-strip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: block;
+  height: 14px;
+}
+
 .window-controls {
   flex: 0 0 138px;
   display: grid;
@@ -1254,6 +1278,8 @@ body.browser-shell .document-tabbar {
 }
 
 .color-dialog {
+  position: relative;
+  z-index: 3;
   width: min(828px, calc(100vw - 24px));
   max-height: calc(100vh - 24px);
   overflow: auto;
@@ -1759,6 +1785,7 @@ body.browser-shell .document-tabbar {
 
 .object-settings-panel {
   position: relative;
+  z-index: 3;
   width: min(460px, calc(100vw - 32px));
   padding: 14px;
   border: 1px solid #c9ced6;
@@ -1871,6 +1898,7 @@ body.browser-shell .document-tabbar {
 
 .numeric-dialog-panel {
   position: relative;
+  z-index: 3;
   width: min(320px, calc(100vw - 32px));
   padding: 14px;
   border: 1px solid #c9ced6;
@@ -1949,6 +1977,7 @@ body.browser-shell .document-tabbar {
 
 .unsaved-changes-panel {
   position: relative;
+  z-index: 3;
   width: min(420px, calc(100vw - 32px));
   padding: 16px;
   border: 1px solid #c9ced6;
@@ -1992,6 +2021,96 @@ body.browser-shell .document-tabbar {
 }
 
 .unsaved-changes-actions button.is-primary {
+  border-color: #245ed0;
+  background: #2f6fed;
+  color: #ffffff;
+}
+
+.repeat-unit-ungroup-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  color: #111318;
+  font-size: 14px;
+}
+
+.repeat-unit-ungroup-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(17, 19, 24, 0.22);
+}
+
+.repeat-unit-ungroup-panel {
+  position: relative;
+  z-index: 3;
+  width: min(460px, calc(100vw - 32px));
+  padding: 16px;
+  border: 1px solid #c9ced6;
+  border-radius: 6px;
+  background: #ffffff;
+  box-shadow: 0 16px 42px rgba(17, 19, 24, 0.22);
+}
+
+.repeat-unit-ungroup-title {
+  margin: 0 0 10px;
+  font-size: 16px;
+  line-height: 1.25;
+}
+
+.repeat-unit-ungroup-message {
+  margin: 0;
+  color: #384250;
+  line-height: 1.45;
+}
+
+.repeat-unit-ungroup-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.repeat-unit-ungroup-remember {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #384250;
+  line-height: 1.2;
+  user-select: none;
+}
+
+.repeat-unit-ungroup-remember input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+}
+
+.repeat-unit-ungroup-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.repeat-unit-ungroup-actions button {
+  min-width: 86px;
+  height: 31px;
+  padding: 0 12px;
+  border: 1px solid #aeb7c2;
+  border-radius: 3px;
+  background: #f5f6f8;
+  color: #111318;
+}
+
+.repeat-unit-ungroup-actions button:focus-visible,
+.repeat-unit-ungroup-remember input:focus-visible {
+  outline: 2px solid rgba(47, 111, 237, 0.45);
+  outline-offset: 2px;
+}
+
+.repeat-unit-ungroup-actions button.is-primary {
   border-color: #245ed0;
   background: #2f6fed;
   color: #ffffff;

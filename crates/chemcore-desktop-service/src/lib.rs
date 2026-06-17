@@ -1013,6 +1013,14 @@ impl DesktopDocumentService {
         Ok(self.session_mut(session_id)?.ungroup_selection())
     }
 
+    pub fn link_selection(&mut self, session_id: SessionId) -> Result<bool, String> {
+        Ok(self.session_mut(session_id)?.link_selection())
+    }
+
+    pub fn unlink_selection(&mut self, session_id: SessionId) -> Result<bool, String> {
+        Ok(self.session_mut(session_id)?.unlink_selection())
+    }
+
     pub fn join_selection(&mut self, session_id: SessionId) -> Result<bool, String> {
         Ok(self.session_mut(session_id)?.join_selection())
     }
@@ -1235,6 +1243,27 @@ impl DesktopDocumentService {
         let session: TextEditSession =
             serde_json::from_str(session_json).map_err(|error| error.to_string())?;
         Ok(self.session_mut(session_id)?.apply_text_edit(session))
+    }
+
+    pub fn apply_bracket_label_text(
+        &mut self,
+        session_id: SessionId,
+        bracket_id: &str,
+        session_json: &str,
+    ) -> Result<bool, String> {
+        let session: TextEditSession =
+            serde_json::from_str(session_json).map_err(|error| error.to_string())?;
+        Ok(self
+            .session_mut(session_id)?
+            .apply_bracket_label_text(bracket_id, session))
+    }
+
+    pub fn pending_graphic_object_id(&self, session_id: SessionId) -> Result<String, String> {
+        Ok(self
+            .session(session_id)?
+            .pending_graphic_object_id()
+            .unwrap_or_default()
+            .to_string())
     }
 
     pub fn preview_text_runs(

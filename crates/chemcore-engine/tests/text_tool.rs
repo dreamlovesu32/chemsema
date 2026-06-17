@@ -2774,3 +2774,76 @@ fn endpoint_text_editor_preview_expands_right_even_for_reversed_labels() {
         .collect::<String>();
     assert_eq!(line_text, "CO2Et");
 }
+
+#[test]
+fn text_tool_edits_grouped_scene_text_object() {
+    let mut engine = Engine::new();
+    let document = json!({
+        "format": {"name": "chemcore", "version": "0.1", "unit": "pt"},
+        "document": {
+            "id": "doc_grouped_text",
+            "title": "grouped text",
+            "page": {"width": 100.0, "height": 100.0, "background": "#ffffff"}
+        },
+        "styles": {},
+        "objects": [
+            {
+                "id": "grp_1",
+                "type": "group",
+                "visible": true,
+                "locked": false,
+                "zIndex": 10,
+                "transform": {"translate": [0.0, 0.0], "rotate": 0.0, "scale": [1.0, 1.0]},
+                "payload": {},
+                "children": [
+                    {
+                        "id": "obj_text_1",
+                        "type": "text",
+                        "visible": true,
+                        "locked": false,
+                        "zIndex": 20,
+                        "transform": {"translate": [20.0, 20.0], "rotate": 0.0, "scale": [1.0, 1.0]},
+                        "payload": {
+                            "bbox": [0.0, 0.0, 16.0, 10.0],
+                            "text": "3",
+                            "box": [0.0, 0.0, 16.0, 10.0],
+                            "fontSize": 7.5,
+                            "lineHeight": 9.0,
+                            "preserveLines": true
+                        }
+                    }
+                ]
+            }
+        ],
+        "resources": {}
+    });
+    engine
+        .load_document_json(&document.to_string())
+        .expect("grouped text fixture should load");
+
+    let session = engine
+        .begin_text_edit(Point::new(24.0, 24.0))
+        .expect("grouped text should be editable");
+    match &session.target {
+        TextEditTarget::TextObject { object_id, .. } => {
+            assert_eq!(object_id.as_deref(), Some("obj_text_1"));
+        }
+        _ => panic!("grouped text should open a text-object session"),
+    }
+    assert!(engine.apply_text_edit(chemcore_engine::TextEditSession {
+        text: "4".to_string(),
+        ..session
+    }));
+    let text = engine
+        .state()
+        .document
+        .find_scene_object("obj_text_1")
+        .expect("text object should remain inside the group");
+    assert_eq!(
+        text.payload
+            .extra
+            .get("text")
+            .and_then(serde_json::Value::as_str),
+        Some("4")
+    );
+}

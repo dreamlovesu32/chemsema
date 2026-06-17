@@ -58,9 +58,10 @@ class ObjectSettingsDialog {
 
   html() {
     return `
+      <div class="desktop-modal-window-drag-strip" data-desktop-window-drag-region aria-hidden="true"></div>
       <div class="object-settings-backdrop" data-object-settings-close="cancel"></div>
       <form class="object-settings-panel" aria-label="Object settings">
-        <div class="object-settings-titlebar">
+        <div class="object-settings-titlebar" data-desktop-window-drag-region>
           <div class="object-settings-title">Object Settings</div>
           <label class="object-settings-unit">
             <span>Unit</span>

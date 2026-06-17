@@ -26,16 +26,25 @@ impl Engine {
 
     pub fn selection_chemistry_summary(&self) -> Option<SelectionChemistrySummary> {
         let selected_node_ids = selected_atom_node_ids(&self.state.selection);
-        if selected_node_ids.is_empty() {
-            return None;
-        }
         let entry = self.state.document.editable_fragment()?;
         let mut counts = BTreeMap::<String, u32>::new();
         let mut formula_weight = 0.0;
         let mut exact_mass = 0.0;
         let mut atom_count = 0_u32;
+        let repeating_atom_ids = add_selected_repeating_units_to_summary(
+            &entry.fragment.meta,
+            &self.state.selection,
+            &selected_node_ids,
+            &mut counts,
+            &mut formula_weight,
+            &mut exact_mass,
+            &mut atom_count,
+        );
 
         for node in &entry.fragment.nodes {
+            if repeating_atom_ids.contains(node.id.as_str()) {
+                continue;
+            }
             if !selected_node_ids.contains(node.id.as_str()) {
                 continue;
             }
@@ -85,6 +94,85 @@ impl Engine {
     }
 }
 
+fn add_selected_repeating_units_to_summary(
+    fragment_meta: &JsonValue,
+    selection: &SelectionState,
+    selected_node_ids: &BTreeSet<&str>,
+    counts: &mut BTreeMap<String, u32>,
+    formula_weight: &mut f64,
+    exact_mass: &mut f64,
+    atom_count: &mut u32,
+) -> BTreeSet<String> {
+    let mut source_atom_ids = BTreeSet::<String>::new();
+    let Some(units) = fragment_meta
+        .get("repeatingUnits")
+        .and_then(JsonValue::as_array)
+    else {
+        return source_atom_ids;
+    };
+
+    let selected_text_ids: BTreeSet<&str> =
+        selection.text_objects.iter().map(String::as_str).collect();
+    let selected_object_ids: BTreeSet<&str> =
+        selection.arrow_objects.iter().map(String::as_str).collect();
+
+    for unit in units {
+        let atom_ids = unit_atom_ids(unit);
+        if atom_ids.is_empty()
+            || !selected_repeating_unit_is_complete(
+                unit,
+                &atom_ids,
+                selected_node_ids,
+                &selected_text_ids,
+                &selected_object_ids,
+            )
+        {
+            continue;
+        }
+        let Some(expansion) = unit.get("expansion") else {
+            continue;
+        };
+        if !add_expansion_atoms_to_summary(
+            expansion,
+            counts,
+            formula_weight,
+            exact_mass,
+            atom_count,
+        ) {
+            continue;
+        }
+        source_atom_ids.extend(atom_ids.into_iter().map(ToString::to_string));
+    }
+
+    source_atom_ids
+}
+
+fn unit_atom_ids(unit: &JsonValue) -> Vec<&str> {
+    unit.get("atomIds")
+        .and_then(JsonValue::as_array)
+        .map(|atoms| atoms.iter().filter_map(JsonValue::as_str).collect())
+        .unwrap_or_default()
+}
+
+fn selected_repeating_unit_is_complete(
+    unit: &JsonValue,
+    atom_ids: &[&str],
+    selected_node_ids: &BTreeSet<&str>,
+    selected_text_ids: &BTreeSet<&str>,
+    selected_object_ids: &BTreeSet<&str>,
+) -> bool {
+    let bracket_selected = unit
+        .get("bracketObjectId")
+        .and_then(JsonValue::as_str)
+        .is_some_and(|id| selected_object_ids.contains(id));
+    let count_selected = unit
+        .get("countTextObjectId")
+        .and_then(JsonValue::as_str)
+        .is_some_and(|id| selected_text_ids.contains(id));
+    let atoms_selected = atom_ids.iter().all(|id| selected_node_ids.contains(id));
+    bracket_selected || count_selected || atoms_selected
+}
+
 fn add_label_expansion_to_summary(
     node: &crate::Node,
     counts: &mut BTreeMap<String, u32>,
@@ -105,6 +193,26 @@ fn add_label_expansion_to_summary(
         return false;
     }
 
+    add_expansion_atoms_to_summary(expansion, counts, formula_weight, exact_mass, atom_count)
+}
+
+fn add_expansion_atoms_to_summary(
+    expansion: &JsonValue,
+    counts: &mut BTreeMap<String, u32>,
+    formula_weight: &mut f64,
+    exact_mass: &mut f64,
+    atom_count: &mut u32,
+) -> bool {
+    if expansion.get("complete").and_then(JsonValue::as_bool) != Some(true) {
+        return false;
+    }
+    let Some(atoms) = expansion.get("atoms").and_then(JsonValue::as_array) else {
+        return false;
+    };
+    if atoms.is_empty() {
+        return false;
+    }
+
     let mut local_counts = BTreeMap::<String, u32>::new();
     let mut local_formula_weight = 0.0;
     let mut local_exact_mass = 0.0;
@@ -113,9 +221,12 @@ fn add_label_expansion_to_summary(
         let Some(element) = atom.get("element").and_then(JsonValue::as_str) else {
             return false;
         };
-        let Some((_, atomic_number)) = super::text_edit::element_symbol_info(element) else {
-            return false;
-        };
+        let atomic_number = atom
+            .get("atomicNumber")
+            .and_then(JsonValue::as_u64)
+            .and_then(|value| u8::try_from(value).ok())
+            .or_else(|| super::text_edit::element_symbol_info(element).map(|(_, number)| number))
+            .unwrap_or(0);
         let Some(mass) = node_element_mass(element, atomic_number) else {
             return false;
         };

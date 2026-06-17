@@ -175,6 +175,12 @@ pub enum EditorCommand {
     UngroupSelection {
         object_ids: Vec<String>,
     },
+    LinkSelection {
+        object_ids: Vec<String>,
+    },
+    UnlinkSelection {
+        object_ids: Vec<String>,
+    },
     JoinSelection,
     MoveSelection,
     RotateSelection,

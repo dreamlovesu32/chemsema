@@ -3125,25 +3125,46 @@ fn parse_cdxml_unescapes_text_entities() {
 }
 
 #[test]
-fn parse_cdxml_skips_bracketusage_objecttag_text() {
+fn parse_cdxml_preserves_bracketusage_repeat_count() {
     let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
 <CDXML BondLength="14.40" LineWidth="0.60" BoldWidth="2" HashSpacing="2.50">
   <page id="1">
-    <graphic id="2" BoundingBox="20 10 20 70" GraphicType="Bracket" BracketType="Square">
+    <graphic id="2" BoundingBox="20 70 20 10" GraphicType="Bracket" BracketType="Square"/>
+    <graphic id="3" BoundingBox="80 10 80 70" GraphicType="Bracket" BracketType="Square">
       <objecttag id="1" Name="bracketusage">
         <t p="0 0" BoundingBox="0 -6.30 4.17 0"><s font="3" size="7.5" color="0">2</s></t>
       </objecttag>
       <objecttag id="2" Name="parameterizedBracketLabel" Visible="no">
-        <t p="24 74" BoundingBox="24 68 42 74" Visible="no"><s font="3" size="7.5" color="0">abc</s></t>
+        <t p="84 74" BoundingBox="84 68 102 74" Visible="no"><s font="3" size="7.5" color="0">abc</s></t>
       </objecttag>
     </graphic>
+    <bracketedgroup id="4" BracketUsage="MultipleGroup" RepeatCount="2">
+      <bracketattachment id="5" GraphicID="2"/>
+      <bracketattachment id="6" GraphicID="3"/>
+    </bracketedgroup>
   </page>
 </CDXML>"##;
     let document = parse_cdxml_document(cdxml, Some("bracket text")).expect("cdxml should parse");
-    let texts: Vec<_> = document
+    let bracket = document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "bracket")
+        .expect("paired bracket should import");
+    assert_eq!(
+        bracket
+            .meta
+            .get("repeatCount")
+            .and_then(|value| value.as_u64()),
+        Some(2)
+    );
+
+    let text_objects: Vec<_> = document
         .objects
         .iter()
         .filter(|object| object.object_type == "text")
+        .collect();
+    let texts: Vec<_> = text_objects
+        .iter()
         .filter_map(|object| {
             object
                 .payload
@@ -3153,6 +3174,159 @@ fn parse_cdxml_skips_bracketusage_objecttag_text() {
         })
         .collect();
     assert_eq!(texts, vec!["abc"]);
+    let roles: Vec<_> = text_objects
+        .iter()
+        .filter_map(|object| object.meta.get("role").and_then(|value| value.as_str()))
+        .collect();
+    assert_eq!(roles, vec!["parameterized_bracket_label"]);
+}
+
+#[test]
+fn load_cdxml_bracketusage_repeat_count_feeds_selection_summary() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML BondLength="20" LineWidth="0.60" BoldWidth="2" HashSpacing="2.50">
+  <page id="1">
+    <fragment id="f1" BoundingBox="0 -10 60 10">
+      <n id="n1" p="0 0"/>
+      <n id="n2" p="20 0"/>
+      <n id="n3" p="40 0"/>
+      <n id="n4" p="60 0"/>
+      <b id="b1" B="n1" E="n2" Order="1"/>
+      <b id="b2" B="n2" E="n3" Order="1"/>
+      <b id="b3" B="n3" E="n4" Order="1"/>
+    </fragment>
+    <graphic id="g1" BoundingBox="15 10 15 -10" GraphicType="Bracket" BracketType="Square"/>
+    <graphic id="g2" BoundingBox="45 -10 45 10" GraphicType="Bracket" BracketType="Square">
+      <objecttag id="ot1" Name="bracketusage">
+        <t p="0 0" BoundingBox="0 -6.30 4.17 0"><s font="3" size="7.5" color="0">3</s></t>
+      </objecttag>
+    </graphic>
+    <bracketedgroup id="bg1" BracketUsage="MultipleGroup" RepeatCount="3">
+      <bracketattachment id="ba1" GraphicID="g1"/>
+      <bracketattachment id="ba2" GraphicID="g2"/>
+    </bracketedgroup>
+  </page>
+</CDXML>"##;
+    let mut engine = Engine::new();
+    engine
+        .load_cdxml_document(cdxml)
+        .expect("bracketed cdxml should load");
+
+    let fragment = engine
+        .state()
+        .document
+        .editable_fragment()
+        .expect("editable fragment should exist")
+        .fragment;
+    let units = fragment
+        .meta
+        .get("repeatingUnits")
+        .and_then(|value| value.as_array())
+        .expect("repeat count should produce a repeating unit");
+    assert_eq!(units.len(), 1);
+    assert_eq!(units[0]["repeatCount"]["value"], 3);
+    assert!(units[0]["countTextObjectId"].is_null());
+
+    assert!(engine.select_all());
+    let summary: serde_json::Value =
+        serde_json::from_str(&engine.selection_chemistry_summary_json()).unwrap();
+    assert_eq!(summary["formula"], "C8H18");
+    assert_eq!(summary["atomCount"], 26);
+    assert!((summary["formulaWeight"].as_f64().unwrap() - 114.232).abs() < 1.0e-9);
+    assert!((summary["exactMass"].as_f64().unwrap() - 114.140_850_580_14).abs() < 1.0e-9);
+}
+
+#[test]
+fn parse_cdxml_bracket_label_fixtures_match_chemdraw_offsets() {
+    for fixture in [
+        "manual/desktop/kuohao.cdxml",
+        "manual/desktop/kuohao-acs.cdxml",
+    ] {
+        let cdxml = read_cdxml_fixture(fixture);
+        let document = parse_cdxml_document(&cdxml, Some(fixture)).expect("fixture should parse");
+        let brackets: Vec<_> = document
+            .objects
+            .iter()
+            .filter(|object| object.object_type == "bracket")
+            .collect();
+        let labels: Vec<_> = document
+            .objects
+            .iter()
+            .filter(|object| object.object_type == "text")
+            .filter(|object| {
+                object
+                    .payload
+                    .extra
+                    .get("text")
+                    .and_then(|value| value.as_str())
+                    == Some("apple")
+            })
+            .collect();
+        assert_eq!(
+            brackets.len(),
+            3,
+            "{fixture} should import three bracket pairs"
+        );
+        assert_eq!(
+            labels.len(),
+            3,
+            "{fixture} should import three bracket labels"
+        );
+
+        for label in labels {
+            let style = document
+                .styles
+                .get(
+                    label
+                        .style_ref
+                        .as_ref()
+                        .expect("label should have text style"),
+                )
+                .expect("label style should exist");
+            assert_eq!(
+                style.get("fontSize").and_then(|value| value.as_f64()),
+                Some(7.5)
+            );
+            assert_eq!(
+                label
+                    .payload
+                    .extra
+                    .get("fontSize")
+                    .and_then(|value| value.as_f64()),
+                Some(7.5)
+            );
+
+            let label_anchor_y = label.transform.translate[1]
+                + label
+                    .payload
+                    .extra
+                    .get("baselineOffset")
+                    .and_then(|value| value.as_f64())
+                    .expect("label should keep CDXML baseline offset");
+            let mut closest = None::<(f64, f64, f64)>;
+            for bracket in &brackets {
+                let bbox = bracket.payload.bbox.expect("bracket should have bbox");
+                let right = bracket.transform.translate[0] + bbox[2];
+                let bottom = bracket.transform.translate[1] + bbox[3];
+                let dx = label.transform.translate[0] - right;
+                let dy = label_anchor_y - bottom;
+                let score = (dx - 3.12).abs() + (dy - 2.4).abs();
+                closest = match closest {
+                    Some((best_score, _, _)) if best_score <= score => closest,
+                    _ => Some((score, dx, dy)),
+                };
+            }
+            let (_, dx, dy) = closest.expect("label should match a right bracket");
+            assert!(
+                (dx - 3.12).abs() < 0.02,
+                "{fixture} bracket label x offset should be 3.12 pt, got {dx}"
+            );
+            assert!(
+                (2.30..=2.50).contains(&dy),
+                "{fixture} bracket label baseline y offset should be about 2.4 pt, got {dy}"
+            );
+        }
+    }
 }
 
 #[test]
