@@ -1,6 +1,6 @@
 use super::{EditorCommand, Engine};
-use crate::{ObjectPayload, SceneObject, SelectionState, Transform};
-use serde_json::json;
+use crate::{refresh_repeating_units, ObjectPayload, SceneObject, SelectionState, Transform};
+use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
 const STACK_STEP: i32 = 10;
@@ -59,6 +59,7 @@ impl Engine {
             self.undo_stack.pop();
             return false;
         }
+        refresh_repeating_units(&mut self.state.document);
         let mut selection = SelectionState::default();
         for object in ungrouped {
             if object.object_type == "text" {
@@ -69,6 +70,10 @@ impl Engine {
         }
         self.state.selection = selection;
         true
+    }
+
+    pub fn selection_has_repeat_unit_groups(&self) -> bool {
+        false
     }
 
     pub fn join_selection(&mut self) -> bool {
@@ -123,6 +128,20 @@ fn group_selected_in_siblings(
     selected_ids: &BTreeSet<String>,
     group_id: String,
 ) -> Option<SceneObject> {
+    group_selected_in_siblings_with_meta(
+        siblings,
+        selected_ids,
+        group_id,
+        json!({"source": "chemcore-editor"}),
+    )
+}
+
+fn group_selected_in_siblings_with_meta(
+    siblings: &mut Vec<SceneObject>,
+    selected_ids: &BTreeSet<String>,
+    group_id: String,
+    meta: Value,
+) -> Option<SceneObject> {
     let selected_indices: Vec<usize> = siblings
         .iter()
         .enumerate()
@@ -149,7 +168,7 @@ fn group_selected_in_siblings(
             z_index,
             transform: Transform::identity(),
             style_ref: None,
-            meta: json!({"source": "chemcore-editor"}),
+            meta,
             payload: ObjectPayload {
                 resource_ref: None,
                 bbox: None,
@@ -161,9 +180,12 @@ fn group_selected_in_siblings(
         return Some(group);
     }
     for object in siblings {
-        if let Some(group) =
-            group_selected_in_siblings(&mut object.children, selected_ids, group_id.clone())
-        {
+        if let Some(group) = group_selected_in_siblings_with_meta(
+            &mut object.children,
+            selected_ids,
+            group_id.clone(),
+            meta.clone(),
+        ) {
             return Some(group);
         }
     }

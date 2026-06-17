@@ -2,19 +2,20 @@ use crate::{ChemcoreDocument, MoleculeFragment, Node, Point, SceneObject};
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 
-const COUNT_LABEL_SEARCH_PAD: f64 = 50.0;
 const BOUNDS_EPSILON: f64 = 1e-6;
 
 #[derive(Debug, Clone)]
 struct BracketCandidate {
     object_id: String,
     kind: String,
+    repeat_count: Option<u32>,
     bounds: [f64; 4],
 }
 
 #[derive(Debug, Clone)]
-struct TextCountCandidate {
-    object_id: String,
+struct RepeatCountCandidate {
+    object_id: Option<String>,
+    linked_bracket_object_id: Option<String>,
     text: String,
     value: u32,
     bounds: [f64; 4],
@@ -34,7 +35,7 @@ struct RepeatingUnitPlan {
     unit_id: String,
     bracket_object_id: String,
     bracket_kind: String,
-    count_text_object_id: String,
+    count_text_object_id: Option<String>,
     count_text: String,
     repeat_count: u32,
     atom_ids: Vec<String>,
@@ -49,36 +50,38 @@ pub fn refresh_repeating_units(document: &mut ChemcoreDocument) -> bool {
     let next_units: Vec<Value> = plans.iter().map(repeating_unit_json).collect();
     let mut changed = false;
 
-    for object in &mut document.objects {
+    for_each_scene_object_mut(&mut document.objects, &mut |object| {
         if matches!(object.object_type.as_str(), "bracket" | "text") {
             changed |= set_meta_object_field(&mut object.meta, "repeatUnitId", None);
             changed |= set_meta_object_field(&mut object.meta, "repeatUnitRole", None);
         }
-    }
+        if object.object_type == "group" {
+            changed |= set_meta_object_field(&mut object.meta, "repeatUnitId", None);
+            changed |= set_meta_object_field(&mut object.meta, "repeatUnitGroup", None);
+            changed |= set_meta_object_field(&mut object.meta, "repeatUnitBracketObjectId", None);
+            changed |= set_meta_object_field(&mut object.meta, "repeatUnitCountTextObjectId", None);
+        }
+    });
 
     for plan in &plans {
-        if let Some(object) = document
-            .objects
-            .iter_mut()
-            .find(|object| object.id == plan.bracket_object_id)
-        {
+        if let Some(object) = document.find_scene_object_mut(&plan.bracket_object_id) {
             changed |=
                 set_meta_object_field(&mut object.meta, "repeatUnitId", Some(json!(plan.unit_id)));
             changed |=
                 set_meta_object_field(&mut object.meta, "repeatUnitRole", Some(json!("bracket")));
         }
-        if let Some(object) = document
-            .objects
-            .iter_mut()
-            .find(|object| object.id == plan.count_text_object_id)
-        {
-            changed |=
-                set_meta_object_field(&mut object.meta, "repeatUnitId", Some(json!(plan.unit_id)));
-            changed |=
-                set_meta_object_field(&mut object.meta, "repeatUnitRole", Some(json!("count")));
+        if let Some(count_text_object_id) = plan.count_text_object_id.as_deref() {
+            if let Some(object) = document.find_scene_object_mut(count_text_object_id) {
+                changed |= set_meta_object_field(
+                    &mut object.meta,
+                    "repeatUnitId",
+                    Some(json!(plan.unit_id)),
+                );
+                changed |=
+                    set_meta_object_field(&mut object.meta, "repeatUnitRole", Some(json!("count")));
+            }
         }
     }
-
     if let Some(entry) = document.editable_fragment_mut() {
         changed |= set_meta_object_field(
             &mut entry.fragment.meta,
@@ -106,14 +109,30 @@ fn detect_repeating_units(document: &ChemcoreDocument) -> Vec<RepeatingUnitPlan>
     let mut plans = Vec::new();
 
     for bracket in brackets {
-        let Some(count) = best_count_label_for_bracket(&bracket, &counts, &used_count_texts) else {
+        let inline_count;
+        let count = if let Some(count) =
+            best_count_label_for_bracket(&bracket, &counts, &used_count_texts)
+        {
+            count
+        } else if let Some(value) = bracket.repeat_count {
+            inline_count = RepeatCountCandidate {
+                object_id: None,
+                linked_bracket_object_id: None,
+                text: value.to_string(),
+                value,
+                bounds: bracket.bounds,
+            };
+            &inline_count
+        } else {
             continue;
         };
         let Some(plan) = build_repeating_unit_plan(fragment, object_translate, &bracket, count)
         else {
             continue;
         };
-        used_count_texts.insert(count.object_id.clone());
+        if let Some(object_id) = count.object_id.as_deref() {
+            used_count_texts.insert(object_id.to_string());
+        }
         plans.push(plan);
     }
 
@@ -122,26 +141,40 @@ fn detect_repeating_units(document: &ChemcoreDocument) -> Vec<RepeatingUnitPlan>
 
 fn bracket_candidates(document: &ChemcoreDocument) -> Vec<BracketCandidate> {
     document
-        .objects
-        .iter()
+        .scene_objects()
+        .into_iter()
         .filter(|object| object.object_type == "bracket" && object.visible)
         .filter_map(|object| {
             let bounds = object_world_bounds(object)?;
             Some(BracketCandidate {
                 object_id: object.id.clone(),
                 kind: payload_string(object, "kind").unwrap_or_else(|| "round".to_string()),
+                repeat_count: object
+                    .meta
+                    .get("repeatCount")
+                    .and_then(Value::as_u64)
+                    .and_then(|value| u32::try_from(value).ok())
+                    .filter(|value| *value >= 2),
                 bounds,
             })
         })
         .collect()
 }
 
-fn text_count_candidates(document: &ChemcoreDocument) -> Vec<TextCountCandidate> {
+fn text_count_candidates(document: &ChemcoreDocument) -> Vec<RepeatCountCandidate> {
     document
-        .objects
-        .iter()
+        .scene_objects()
+        .into_iter()
         .filter(|object| object.object_type == "text" && object.visible)
         .filter_map(|object| {
+            if object.meta.get("linkKind").and_then(Value::as_str) != Some("bracket-label") {
+                return None;
+            }
+            let linked_bracket_object_id = object
+                .meta
+                .get("linkedBracketObjectId")
+                .and_then(Value::as_str)
+                .map(ToString::to_string)?;
             let text = payload_string(object, "text")?;
             let trimmed = text.trim();
             if trimmed.is_empty() || !trimmed.chars().all(|character| character.is_ascii_digit()) {
@@ -151,8 +184,9 @@ fn text_count_candidates(document: &ChemcoreDocument) -> Vec<TextCountCandidate>
             if value < 2 {
                 return None;
             }
-            Some(TextCountCandidate {
-                object_id: object.id.clone(),
+            Some(RepeatCountCandidate {
+                object_id: Some(object.id.clone()),
+                linked_bracket_object_id: Some(linked_bracket_object_id),
                 text: trimmed.to_string(),
                 value,
                 bounds: object_world_bounds(object)?,
@@ -163,34 +197,28 @@ fn text_count_candidates(document: &ChemcoreDocument) -> Vec<TextCountCandidate>
 
 fn best_count_label_for_bracket<'a>(
     bracket: &BracketCandidate,
-    counts: &'a [TextCountCandidate],
+    counts: &'a [RepeatCountCandidate],
     used_count_texts: &BTreeSet<String>,
-) -> Option<&'a TextCountCandidate> {
-    let [left, top, right, bottom] = bracket.bounds;
-    let min_x = right - ((right - left).abs() * 0.35).max(16.0);
-    let max_x = right + COUNT_LABEL_SEARCH_PAD;
-    let min_y = bottom - ((bottom - top).abs() * 0.35).max(16.0);
-    let max_y = bottom + COUNT_LABEL_SEARCH_PAD;
+) -> Option<&'a RepeatCountCandidate> {
     counts
         .iter()
-        .filter(|count| !used_count_texts.contains(&count.object_id))
         .filter(|count| {
-            let center = bounds_center(count.bounds);
-            center.x >= min_x && center.x <= max_x && center.y >= min_y && center.y <= max_y
+            count
+                .object_id
+                .as_ref()
+                .is_some_and(|object_id| !used_count_texts.contains(object_id))
         })
-        .min_by(|left_count, right_count| {
-            let anchor = Point::new(right, bottom);
-            bounds_center(left_count.bounds)
-                .distance(anchor)
-                .total_cmp(&bounds_center(right_count.bounds).distance(anchor))
+        .filter(|count| {
+            count.linked_bracket_object_id.as_deref() == Some(bracket.object_id.as_str())
         })
+        .min_by(|left_count, right_count| left_count.bounds[0].total_cmp(&right_count.bounds[0]))
 }
 
 fn build_repeating_unit_plan(
     fragment: &MoleculeFragment,
     object_translate: [f64; 2],
     bracket: &BracketCandidate,
-    count: &TextCountCandidate,
+    count: &RepeatCountCandidate,
 ) -> Option<RepeatingUnitPlan> {
     let internal_atom_ids: Vec<String> = fragment
         .nodes
@@ -305,7 +333,7 @@ fn build_repeating_unit_expansion(
                 "element": node.element,
                 "atomicNumber": node.atomic_number,
                 "charge": node.charge,
-                "numHydrogens": crate::node_effective_num_hydrogens(node),
+                "numHydrogens": crate::engine::formula_hydrogen_count_for_node(fragment, node.id.as_str()),
                 "radicalCount": crate::node_radical_count(node),
                 "electronSymbols": crate::node_attached_electron_symbols(node),
                 "sourceAtomId": node.id,
@@ -476,8 +504,14 @@ fn segment_crosses_vertical_between_y(
     y >= min_y - BOUNDS_EPSILON && y <= max_y + BOUNDS_EPSILON
 }
 
-fn bounds_center(bounds: [f64; 4]) -> Point {
-    Point::new((bounds[0] + bounds[2]) * 0.5, (bounds[1] + bounds[3]) * 0.5)
+fn for_each_scene_object_mut(
+    objects: &mut [SceneObject],
+    visit: &mut impl FnMut(&mut SceneObject),
+) {
+    for object in objects {
+        visit(object);
+        for_each_scene_object_mut(&mut object.children, visit);
+    }
 }
 
 fn expanded_atom_id(source_atom_id: &str, repeat_index: u32) -> String {

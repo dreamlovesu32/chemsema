@@ -597,7 +597,7 @@ impl Engine {
             .map(|drag| (drag.changed, drag.object_id.clone()))
             .unwrap_or((false, String::new()));
         self.shape_edit_drag = None;
-        self.refresh_shape_hover(point);
+        self.clear_overlay();
         if changed {
             self.note_pending_select_target(PendingSelectTarget::GraphicObject(object_id));
         }
@@ -701,7 +701,9 @@ impl Engine {
 
     fn shape_hover_target_at_point(&self, point: Point) -> Option<ShapeTarget> {
         let orbital_tool = self.state.tool.active_tool == Tool::Orbital;
-        for object in self.state.document.objects.iter().rev() {
+        let mut objects = self.state.document.scene_objects();
+        objects.sort_by_key(|object| object.z_index);
+        for object in objects.into_iter().rev() {
             if object.object_type != "shape" || !object.visible {
                 continue;
             }

@@ -239,6 +239,9 @@ function bindKeyboard(options) {
         await options.finishActiveTextEditor(false);
         event.preventDefault();
       }
+      if (shouldSuppressBrowserShortcut(event)) {
+        event.preventDefault();
+      }
       return;
     }
     if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement) {
@@ -248,6 +251,10 @@ function bindKeyboard(options) {
     if (command && options.isEditingRustDocument()) {
       event.preventDefault();
       await options.runEditorCommand(command);
+      return;
+    }
+    if (shouldSuppressBrowserShortcut(event)) {
+      event.preventDefault();
       return;
     }
     if (await runHoverEndpointShortcut(event, options)) {
@@ -322,6 +329,12 @@ function keyboardCommand(event) {
   if (commandKey && event.shiftKey && event.key.toLowerCase() === "g") {
     return "ungroup-selection";
   }
+  if (commandKey && !event.shiftKey && event.key.toLowerCase() === "l") {
+    return "link-selection";
+  }
+  if (commandKey && event.shiftKey && event.key.toLowerCase() === "l") {
+    return "unlink-selection";
+  }
   if (commandKey && !event.shiftKey && event.key.toLowerCase() === "j") {
     return "join-selection";
   }
@@ -335,6 +348,18 @@ function keyboardCommand(event) {
     return "delete";
   }
   return null;
+}
+
+function shouldSuppressBrowserShortcut(event) {
+  if (event.key === "F5") {
+    return true;
+  }
+  const commandKey = event.ctrlKey || event.metaKey;
+  if (!commandKey || event.altKey) {
+    return false;
+  }
+  const key = event.key.toLowerCase();
+  return ["l", "r", "f", "p", "d", "h", "e", "+", "=", "-", "0"].includes(key);
 }
 
 function hoverEndpointShortcutLabelForEvent(event, options) {

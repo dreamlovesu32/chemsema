@@ -8,6 +8,7 @@ mod context_menu;
 mod context_styles;
 mod delete;
 mod groups;
+mod links;
 mod orbitals;
 mod palettes;
 mod presets;
@@ -27,7 +28,7 @@ use self::text_edit::{
     refresh_element_valence_recognition_for_all_nodes, standalone_element_hydrogen_count,
 };
 pub(crate) use self::text_edit::{
-    refresh_attached_node_label_geometry_for_all_nodes,
+    formula_hydrogen_count_for_node, refresh_attached_node_label_geometry_for_all_nodes,
     refresh_attached_node_label_geometry_for_node,
 };
 pub use self::text_edit::{
@@ -368,6 +369,10 @@ enum SymbolOrbitMode {
 #[derive(Debug, Clone)]
 enum PendingSelectTarget {
     GraphicObject(String),
+    SceneObjects {
+        arrow_objects: Vec<String>,
+        text_objects: Vec<String>,
+    },
     TextObject(String),
     MoleculeNode(String),
     MoleculeBond(String),
@@ -499,8 +504,11 @@ impl Engine {
 
     fn load_imported_document(&mut self, mut document: ChemcoreDocument) -> Result<(), String> {
         refresh_repeating_units(&mut document);
-        let options = editor_options_from_imported_cdxml_document(&document);
         self.state.document = document;
+        self.next_id = self.infer_next_id();
+        self.link_imported_repeat_unit_labels_untracked();
+        refresh_repeating_units(&mut self.state.document);
+        let options = editor_options_from_imported_cdxml_document(&self.state.document);
         self.options = options;
         self.document_style_preset = DEFAULT_DOCUMENT_STYLE_PRESET.to_string();
         self.refresh_symbol_chemistry();
@@ -829,6 +837,9 @@ impl Engine {
         let next_tool = tool.active_tool;
         let changed_tool = previous_tool != next_tool;
         self.state.tool = tool;
+        if changed_tool && previous_tool == Tool::Select && next_tool != Tool::Select {
+            self.state.selection = SelectionState::default();
+        }
         self.clear_interaction();
         if changed_tool && next_tool == Tool::Select {
             self.select_pending_target_for_select_tool();
@@ -1284,6 +1295,13 @@ impl Engine {
         self.pending_select_target = Some(target);
     }
 
+    pub fn pending_graphic_object_id(&self) -> Option<&str> {
+        match self.pending_select_target.as_ref() {
+            Some(PendingSelectTarget::GraphicObject(object_id)) => Some(object_id.as_str()),
+            _ => None,
+        }
+    }
+
     fn select_pending_target_for_select_tool(&mut self) {
         let Some(target) = self.pending_select_target.take() else {
             return;
@@ -1306,6 +1324,33 @@ impl Engine {
                     arrow_objects: vec![object_id.clone()],
                     ..SelectionState::default()
                 }),
+            PendingSelectTarget::SceneObjects {
+                arrow_objects,
+                text_objects,
+            } => {
+                let mut selection = SelectionState::default();
+                for object_id in arrow_objects {
+                    if self
+                        .state
+                        .document
+                        .find_scene_object(object_id)
+                        .is_some_and(|object| object.object_type != "text")
+                    {
+                        selection.arrow_objects.push(object_id.clone());
+                    }
+                }
+                for object_id in text_objects {
+                    if self
+                        .state
+                        .document
+                        .find_scene_object(object_id)
+                        .is_some_and(|object| object.object_type == "text")
+                    {
+                        selection.text_objects.push(object_id.clone());
+                    }
+                }
+                (!selection.is_empty()).then_some(selection)
+            }
             PendingSelectTarget::TextObject(object_id) => self
                 .state
                 .document
@@ -1881,6 +1926,16 @@ impl Engine {
                     ..SelectionState::default()
                 };
                 self.ungroup_selection()
+            }
+            EditorCommand::LinkSelection { object_ids } => {
+                self.state.selection =
+                    scene_object_selection_from_ids(&self.state.document, &object_ids);
+                self.link_selection()
+            }
+            EditorCommand::UnlinkSelection { object_ids } => {
+                self.state.selection =
+                    scene_object_selection_from_ids(&self.state.document, &object_ids);
+                self.unlink_selection()
             }
             EditorCommand::JoinSelection => self.join_selection(),
             EditorCommand::ScaleSelection { percent } => self.scale_selection(percent),
@@ -2574,6 +2629,25 @@ fn bond_anchor_from_command(anchor: CommandAnchor) -> BondAnchor {
     }
 }
 
+fn scene_object_selection_from_ids(
+    document: &ChemcoreDocument,
+    object_ids: &[String],
+) -> SelectionState {
+    let selected: BTreeSet<&str> = object_ids.iter().map(String::as_str).collect();
+    let mut selection = SelectionState::default();
+    for object in document.scene_objects() {
+        if !selected.contains(object.id.as_str()) {
+            continue;
+        }
+        if object.object_type == "text" {
+            selection.text_objects.push(object.id.clone());
+        } else {
+            selection.arrow_objects.push(object.id.clone());
+        }
+    }
+    selection
+}
+
 fn editor_command_type_name(command: &EditorCommand) -> &'static str {
     match command {
         EditorCommand::Undo => "undo",
@@ -2609,6 +2683,8 @@ fn editor_command_type_name(command: &EditorCommand) -> &'static str {
         EditorCommand::CenterSelectionOnPage => "center-selection-on-page",
         EditorCommand::GroupSelection { .. } => "group-selection",
         EditorCommand::UngroupSelection { .. } => "ungroup-selection",
+        EditorCommand::LinkSelection { .. } => "link-selection",
+        EditorCommand::UnlinkSelection { .. } => "unlink-selection",
         EditorCommand::JoinSelection => "join-selection",
         EditorCommand::MoveSelection => "move-selection",
         EditorCommand::RotateSelection => "rotate-selection",

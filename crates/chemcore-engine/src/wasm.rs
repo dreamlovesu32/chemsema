@@ -631,6 +631,31 @@ impl WasmEngine {
         self.inner.ungroup_selection()
     }
 
+    #[wasm_bindgen(js_name = linkSelection)]
+    pub fn link_selection(&mut self) -> bool {
+        self.inner.link_selection()
+    }
+
+    #[wasm_bindgen(js_name = unlinkSelection)]
+    pub fn unlink_selection(&mut self) -> bool {
+        self.inner.unlink_selection()
+    }
+
+    #[wasm_bindgen(js_name = selectionCanLinkBracketText)]
+    pub fn selection_can_link_bracket_text(&self) -> bool {
+        self.inner.selection_can_link_bracket_text()
+    }
+
+    #[wasm_bindgen(js_name = selectionCanUnlinkBracketText)]
+    pub fn selection_can_unlink_bracket_text(&self) -> bool {
+        self.inner.selection_can_unlink_bracket_text()
+    }
+
+    #[wasm_bindgen(js_name = selectionHasRepeatUnitGroups)]
+    pub fn selection_has_repeat_unit_groups(&self) -> bool {
+        self.inner.selection_has_repeat_unit_groups()
+    }
+
     #[wasm_bindgen(js_name = joinSelection)]
     pub fn join_selection(&mut self) -> bool {
         self.inner.join_selection()
@@ -814,6 +839,25 @@ impl WasmEngine {
         let session: crate::TextEditSession = serde_json::from_str(session_json)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
         Ok(self.inner.apply_text_edit(session))
+    }
+
+    #[wasm_bindgen(js_name = applyBracketLabelText)]
+    pub fn apply_bracket_label_text(
+        &mut self,
+        bracket_id: &str,
+        session_json: &str,
+    ) -> Result<bool, JsValue> {
+        let session: crate::TextEditSession = serde_json::from_str(session_json)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        Ok(self.inner.apply_bracket_label_text(bracket_id, session))
+    }
+
+    #[wasm_bindgen(js_name = pendingGraphicObjectId)]
+    pub fn pending_graphic_object_id(&self) -> String {
+        self.inner
+            .pending_graphic_object_id()
+            .unwrap_or_default()
+            .to_string()
     }
 
     #[wasm_bindgen(js_name = previewTextRuns)]

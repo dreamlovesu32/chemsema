@@ -818,6 +818,24 @@ pub(crate) fn desktop_engine_ungroup_selection(
 }
 
 #[tauri::command]
+pub(crate) fn desktop_engine_link_selection(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+) -> Result<bool, String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.link_selection(session_id)
+}
+
+#[tauri::command]
+pub(crate) fn desktop_engine_unlink_selection(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+) -> Result<bool, String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.unlink_selection(session_id)
+}
+
+#[tauri::command]
 pub(crate) fn desktop_engine_join_selection(
     state: tauri::State<'_, DesktopState>,
     session_id: SessionId,
@@ -1102,6 +1120,26 @@ pub(crate) fn desktop_engine_apply_text_edit(
 ) -> Result<bool, String> {
     let mut service = state.service.lock().map_err(|error| error.to_string())?;
     service.apply_text_edit(session_id, &session_json)
+}
+
+#[tauri::command]
+pub(crate) fn desktop_engine_apply_bracket_label_text(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    bracket_id: String,
+    session_json: String,
+) -> Result<bool, String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.apply_bracket_label_text(session_id, &bracket_id, &session_json)
+}
+
+#[tauri::command]
+pub(crate) fn desktop_engine_pending_graphic_object_id(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+) -> Result<String, String> {
+    let service = state.service.lock().map_err(|error| error.to_string())?;
+    service.pending_graphic_object_id(session_id)
 }
 
 #[tauri::command]

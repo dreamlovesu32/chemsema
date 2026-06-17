@@ -634,11 +634,17 @@ pub(super) fn selected_component_summaries(engine: &Engine) -> Vec<ComponentSele
     components
 }
 
+#[derive(Default)]
+pub(super) struct BracketComponentObjectSelection {
+    pub arrow_object_ids: Vec<String>,
+    pub text_object_ids: Vec<String>,
+}
+
 pub(super) fn bracket_object_ids_containing_component(
     document: &crate::ChemcoreDocument,
     entry: &crate::EditableFragment<'_>,
     component_node_ids: &[String],
-) -> Vec<String> {
+) -> BracketComponentObjectSelection {
     let mut sample_points = Vec::new();
     for node_id in component_node_ids {
         if let Some(node) = entry.fragment.nodes.iter().find(|node| node.id == *node_id) {
@@ -666,22 +672,90 @@ pub(super) fn bracket_object_ids_containing_component(
         ));
     }
 
-    document
-        .objects
-        .iter()
-        .filter(|object| object.object_type == "bracket" && object.visible)
-        .filter_map(|object| {
-            let bounds = object_bbox_selection_bounds(object)?;
-            if sample_points
-                .iter()
-                .any(|point| point_in_bounds(*point, bounds))
-            {
-                Some(object.id.clone())
-            } else {
-                None
+    let mut object_ids = BracketComponentObjectSelection::default();
+    collect_bracket_object_ids_containing_points(
+        &document.objects,
+        &sample_points,
+        document,
+        &mut object_ids,
+    );
+    object_ids
+}
+
+fn collect_bracket_object_ids_containing_points(
+    objects: &[crate::SceneObject],
+    sample_points: &[Point],
+    document: &crate::ChemcoreDocument,
+    out: &mut BracketComponentObjectSelection,
+) {
+    for object in objects {
+        if !object.visible {
+            continue;
+        }
+        if object.object_type == "bracket" {
+            if let Some(bounds) = object_bbox_selection_bounds(object) {
+                if sample_points
+                    .iter()
+                    .any(|point| point_in_bounds(*point, bounds))
+                {
+                    push_unique_string(&mut out.arrow_object_ids, object.id.clone());
+                    collect_linked_bracket_count_text_ids(
+                        document,
+                        &object.id,
+                        &mut out.text_object_ids,
+                    );
+                }
             }
-        })
-        .collect()
+        }
+        collect_bracket_object_ids_containing_points(
+            &object.children,
+            sample_points,
+            document,
+            out,
+        );
+    }
+}
+
+fn collect_linked_bracket_count_text_ids(
+    document: &crate::ChemcoreDocument,
+    bracket_id: &str,
+    out: &mut Vec<String>,
+) {
+    for object in document.scene_objects() {
+        if object.object_type != "text" || !object.visible {
+            continue;
+        }
+        if object
+            .meta
+            .get("linkKind")
+            .and_then(serde_json::Value::as_str)
+            != Some("bracket-label")
+        {
+            continue;
+        }
+        if object
+            .meta
+            .get("linkedBracketObjectId")
+            .and_then(serde_json::Value::as_str)
+            != Some(bracket_id)
+        {
+            continue;
+        }
+        if object
+            .meta
+            .get("repeatUnitRole")
+            .and_then(serde_json::Value::as_str)
+            == Some("count")
+        {
+            push_unique_string(out, object.id.clone());
+        }
+    }
+}
+
+fn push_unique_string(values: &mut Vec<String>, value: String) {
+    if !values.iter().any(|existing| existing == &value) {
+        values.push(value);
+    }
 }
 
 pub(super) fn component_selection_bounds_fast(

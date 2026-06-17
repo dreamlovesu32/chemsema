@@ -103,6 +103,10 @@ export function createEditorCommandController(options) {
       changed = await executeDocumentCommand("group-selection", () => state.editorEngine.groupSelection?.());
     } else if (command === "ungroup-selection") {
       changed = await executeDocumentCommand("ungroup-selection", () => state.editorEngine.ungroupSelection?.());
+    } else if (command === "link-selection") {
+      changed = await executeDocumentCommand("link-selection", () => state.editorEngine.linkSelection?.());
+    } else if (command === "unlink-selection") {
+      changed = await executeDocumentCommand("unlink-selection", () => state.editorEngine.unlinkSelection?.());
     } else if (command === "join-selection") {
       changed = await executeDocumentCommand("join-selection", () => state.editorEngine.joinSelection?.());
     } else if (command === "bring-front" || command === "send-back") {

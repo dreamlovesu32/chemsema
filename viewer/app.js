@@ -159,6 +159,11 @@ document.body.classList.toggle("desktop-shell", isDesktopShell);
 document.body.classList.toggle("browser-shell", !isDesktopShell);
 
 const DEFAULT_TEXT_FONT_SIZE = 10;
+const BRACKET_LABEL_FONT_SIZE = 7.5;
+const BRACKET_LABEL_LINE_HEIGHT = BRACKET_LABEL_FONT_SIZE * 1.2;
+const BRACKET_LABEL_OFFSET_X = 3.12;
+const BRACKET_LABEL_BASELINE_OFFSET_Y = 2.4;
+const BRACKET_LABEL_OFFSET_Y = BRACKET_LABEL_BASELINE_OFFSET_Y - BRACKET_LABEL_FONT_SIZE * 0.82;
 const BOND_STROKE = 1.0;
 const CHEMDRAW_PAGE_BACKGROUND = "#ffffff";
 const DEFAULT_WORKSPACE_WIDTH = 900;
@@ -293,12 +298,14 @@ const UNSAVED_CLOSE_DECISION = {
   DISCARD: "discard",
   CANCEL: "cancel",
 };
+const REPEAT_UNIT_UNGROUP_WARNING_KEY = "chemcore:hide-repeat-unit-ungroup-warning";
 const BROWSER_PENDING_DOCUMENT_KEY_PREFIX = "chemcore:pending-browser-document:";
 const BROWSER_PENDING_DOCUMENT_PARAM = "chemcorePendingDocument";
 let activeTitlebarTabDrag = null;
 let detachingDocumentTabId = null;
 let suppressNextDocumentTabClick = false;
 let activeUnsavedChangesDialog = null;
+let activeRepeatUnitUngroupDialog = null;
 let windowCloseGuardInProgress = false;
 let forceWindowClose = false;
 let activeDocumentPreviewObjectIds = new Set();
@@ -528,6 +535,27 @@ function markCurrentDocumentSaved() {
 
 function activeTextEditorIsDirty() {
   return Boolean(activeTextEditor?.hasUserEdited);
+}
+
+function activeTextEditorIsNewTextObject() {
+  const target = activeTextEditor?.session?.target;
+  if (target?.kind !== "text-object") {
+    return false;
+  }
+  return !(target.objectId || target.object_id);
+}
+
+function activeTextEditorHasVisibleText() {
+  const text = String(activeTextEditor?.plainText || "");
+  return text.trim().length > 0;
+}
+
+async function closeActiveTextEditorForToolAction() {
+  if (!activeTextEditor) {
+    return false;
+  }
+  const shouldCommit = !activeTextEditorIsNewTextObject() || activeTextEditorHasVisibleText();
+  return finishActiveTextEditor(shouldCommit);
 }
 
 function currentDocumentIsDirty() {
@@ -938,6 +966,7 @@ function bindDesktopWindowChrome() {
       }
     });
   });
+  document.addEventListener("pointerdown", handleDesktopWindowDragPointerDown, true);
   desktopTitlebar?.querySelectorAll("[data-titlebar-drag-region]").forEach((region) => {
     region.addEventListener("dblclick", async (event) => {
       event.preventDefault();
@@ -955,6 +984,30 @@ function bindDesktopWindowChrome() {
     syncDesktopMaximizedState();
   }, { passive: true });
   syncDesktopMaximizedState();
+}
+
+function desktopWindowDragRegionFromEvent(event) {
+  if (!isDesktopShell || !desktopFileHost?.available || !event.target?.closest) {
+    return null;
+  }
+  const region = event.target.closest("[data-desktop-window-drag-region]");
+  if (!region) {
+    return null;
+  }
+  const interactive = event.target.closest(
+    "button, input, select, textarea, a, [role='button'], [contenteditable='true']",
+  );
+  return interactive && region.contains(interactive) ? null : region;
+}
+
+async function handleDesktopWindowDragPointerDown(event) {
+  const region = desktopWindowDragRegionFromEvent(event);
+  if (!region || event.button !== 0 || event.detail > 1) {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  await desktopFileHost.startWindowDrag?.();
 }
 
 async function syncDesktopMaximizedState() {
@@ -991,8 +1044,16 @@ function showUnsavedChangesDialog(title) {
 
     const backdrop = document.createElement("div");
     backdrop.className = "unsaved-changes-backdrop";
+    const windowDragStrip = document.createElement("div");
+    windowDragStrip.className = "desktop-modal-window-drag-strip";
+    windowDragStrip.dataset.desktopWindowDragRegion = "true";
+    windowDragStrip.setAttribute("aria-hidden", "true");
     const panel = document.createElement("section");
     panel.className = "unsaved-changes-panel";
+    const panelDragStrip = document.createElement("div");
+    panelDragStrip.className = "desktop-dialog-panel-drag-strip";
+    panelDragStrip.dataset.desktopWindowDragRegion = "true";
+    panelDragStrip.setAttribute("aria-hidden", "true");
 
     const heading = document.createElement("h2");
     heading.id = "unsaved-changes-title";
@@ -1010,8 +1071,8 @@ function showUnsavedChangesDialog(title) {
     const discardButton = makeUnsavedChangesButton("Don't Save", UNSAVED_CLOSE_DECISION.DISCARD);
     const cancelButton = makeUnsavedChangesButton("Cancel", UNSAVED_CLOSE_DECISION.CANCEL);
     actions.append(saveButton, discardButton, cancelButton);
-    panel.append(heading, message, actions);
-    root.append(backdrop, panel);
+    panel.append(panelDragStrip, heading, message, actions);
+    root.append(backdrop, windowDragStrip, panel);
 
     const finish = (decision) => {
       root.remove();
@@ -1040,6 +1101,130 @@ function showUnsavedChangesDialog(title) {
     saveButton.focus({ preventScroll: true });
   });
   return activeUnsavedChangesDialog;
+}
+
+function repeatUnitUngroupWarningHidden() {
+  try {
+    return localStorage.getItem(REPEAT_UNIT_UNGROUP_WARNING_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function setRepeatUnitUngroupWarningHidden(hidden) {
+  try {
+    if (hidden) {
+      localStorage.setItem(REPEAT_UNIT_UNGROUP_WARNING_KEY, "true");
+    } else {
+      localStorage.removeItem(REPEAT_UNIT_UNGROUP_WARNING_KEY);
+    }
+  } catch {
+    // Preferences are best-effort; the document command should not depend on storage.
+  }
+}
+
+function showRepeatUnitUngroupDialog() {
+  if (activeRepeatUnitUngroupDialog) {
+    return activeRepeatUnitUngroupDialog;
+  }
+  activeRepeatUnitUngroupDialog = new Promise((resolve) => {
+    const previousFocus = document.activeElement;
+    const root = document.createElement("div");
+    root.className = "repeat-unit-ungroup-dialog";
+    root.setAttribute("role", "alertdialog");
+    root.setAttribute("aria-modal", "true");
+    root.setAttribute("aria-labelledby", "repeat-unit-ungroup-title");
+    root.setAttribute("aria-describedby", "repeat-unit-ungroup-message");
+
+    const backdrop = document.createElement("div");
+    backdrop.className = "repeat-unit-ungroup-backdrop";
+    const windowDragStrip = document.createElement("div");
+    windowDragStrip.className = "desktop-modal-window-drag-strip";
+    windowDragStrip.dataset.desktopWindowDragRegion = "true";
+    windowDragStrip.setAttribute("aria-hidden", "true");
+    const panel = document.createElement("section");
+    panel.className = "repeat-unit-ungroup-panel";
+    const panelDragStrip = document.createElement("div");
+    panelDragStrip.className = "desktop-dialog-panel-drag-strip";
+    panelDragStrip.dataset.desktopWindowDragRegion = "true";
+    panelDragStrip.setAttribute("aria-hidden", "true");
+
+    const heading = document.createElement("h2");
+    heading.id = "repeat-unit-ungroup-title";
+    heading.className = "repeat-unit-ungroup-title";
+    heading.textContent = "Ungroup repeat unit?";
+
+    const message = document.createElement("p");
+    message.id = "repeat-unit-ungroup-message";
+    message.className = "repeat-unit-ungroup-message";
+    message.textContent = "Ungrouping will remove the repeat-count link from the number label. The bracket remains part of the molecule.";
+
+    const footer = document.createElement("div");
+    footer.className = "repeat-unit-ungroup-footer";
+    const rememberLabel = document.createElement("label");
+    rememberLabel.className = "repeat-unit-ungroup-remember";
+    const rememberCheckbox = document.createElement("input");
+    rememberCheckbox.type = "checkbox";
+    rememberCheckbox.value = "1";
+    rememberLabel.append(rememberCheckbox, document.createTextNode("Don't show again"));
+
+    const actions = document.createElement("div");
+    actions.className = "repeat-unit-ungroup-actions";
+    const ungroupButton = document.createElement("button");
+    ungroupButton.type = "button";
+    ungroupButton.className = "is-primary";
+    ungroupButton.dataset.repeatUnitUngroupDecision = "confirm";
+    ungroupButton.textContent = "Ungroup";
+    const cancelButton = document.createElement("button");
+    cancelButton.type = "button";
+    cancelButton.dataset.repeatUnitUngroupDecision = "cancel";
+    cancelButton.textContent = "Cancel";
+    actions.append(ungroupButton, cancelButton);
+    footer.append(rememberLabel, actions);
+    panel.append(panelDragStrip, heading, message, footer);
+    root.append(backdrop, windowDragStrip, panel);
+
+    const finish = (confirmed) => {
+      if (confirmed && rememberCheckbox.checked) {
+        setRepeatUnitUngroupWarningHidden(true);
+      }
+      root.remove();
+      document.removeEventListener("keydown", onKeyDown, true);
+      activeRepeatUnitUngroupDialog = null;
+      if (previousFocus && typeof previousFocus.focus === "function") {
+        previousFocus.focus({ preventScroll: true });
+      }
+      resolve(confirmed);
+    };
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        finish(false);
+      }
+    };
+    actions.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-repeat-unit-ungroup-decision]");
+      if (!button) {
+        return;
+      }
+      finish(button.dataset.repeatUnitUngroupDecision === "confirm");
+    });
+    document.addEventListener("keydown", onKeyDown, true);
+    document.body.append(root);
+    ungroupButton.focus({ preventScroll: true });
+  });
+  return activeRepeatUnitUngroupDialog;
+}
+
+async function confirmRepeatUnitUngroupIfNeeded() {
+  if (repeatUnitUngroupWarningHidden()) {
+    return true;
+  }
+  const hasRepeatUnitGroup = !!state.editorEngine?.selectionHasRepeatUnitGroups?.();
+  if (!hasRepeatUnitGroup) {
+    return true;
+  }
+  return showRepeatUnitUngroupDialog();
 }
 
 async function prepareDocumentTabForDirtyCheck(tab) {
@@ -2299,6 +2484,7 @@ canvasContextMenuHost = createCanvasContextMenuHost({
   openTextEditorAt,
   renderEditorOverlay,
   refreshCommandAvailability,
+  confirmRepeatUnitUngroup: confirmRepeatUnitUngroupIfNeeded,
 });
 canvasContextMenu = canvasContextMenuHost.canvasContextMenu;
 document.body.appendChild(canvasContextMenu);
@@ -2317,6 +2503,7 @@ const editorPointerController = createEditorPointerController({
   routeEditorPointerEvents,
   isEditingRustDocument,
   openTextEditorAt,
+  closeActiveTextEditorForToolAction,
   syncSelectCursorForPoint,
   syncArrowAwareCursorForPoint,
   syncDocumentFromEngine,
@@ -2349,6 +2536,10 @@ const editorPointerController = createEditorPointerController({
   syncCanvasCursor,
   commandEngine,
   bracketLabelAnchorPoint,
+  bracketLabelTextOptions: () => ({
+    fontSize: BRACKET_LABEL_FONT_SIZE,
+    lineHeight: BRACKET_LABEL_LINE_HEIGHT,
+  }),
   angleBetweenPoints: (from, to) => {
     const raw = Math.atan2(to.y - from.y, to.x - from.x) * 180 / Math.PI;
     return ((raw % 360) + 360) % 360;
@@ -2563,11 +2754,12 @@ async function activateEditorTool(nextTool) {
     return false;
   }
   editorState.elementPlacementActive = false;
-  if (editorState.activeTool === "text" && nextTool !== "text") {
-    await finishActiveTextEditor(true);
+  if (activeTextEditor && nextTool !== "element") {
+    await closeActiveTextEditorForToolAction();
   }
   if (editorState.activeTool === "select" && nextTool !== "select") {
     activeSelectionGesture = null;
+    await state.editorEngine?.clearSelection?.();
   }
   if (nextTool !== "bracket") {
     state.activeBracketDragStart = null;
@@ -2733,18 +2925,7 @@ function cursorForShapeAction(action) {
 }
 
 function activeToolCanDragSelection() {
-  return editorState.activeTool === "select"
-    || editorState.activeTool === "bond"
-    || editorState.activeTool === "arrow"
-    || editorState.activeTool === "bracket"
-    || editorState.activeTool === "symbol"
-    || editorState.activeTool === "element"
-    || editorState.activeTool === "text"
-    || editorState.activeTool === "shape"
-    || editorState.activeTool === "tlc-plate"
-    || editorState.activeTool === "orbital"
-    || editorState.activeTool === "templates"
-    || editorState.activeTool === "chain";
+  return editorState.activeTool === "select";
 }
 
 async function syncArrowAwareCursorForPoint(point) {
@@ -3215,7 +3396,7 @@ function focusActiveTextEditor() {
   textEditorController.focusActiveTextEditor();
 }
 
-async function openTextEditorAt(point) {
+async function openTextEditorAt(point, options = {}) {
   await finishActiveTextEditor(true);
   const sessionJson = await state.editorEngine?.beginTextEdit?.(point.x, point.y);
   const session = parseEngineJson(sessionJson, null);
@@ -3223,8 +3404,20 @@ async function openTextEditorAt(point) {
     renderEditorOverlay(currentEditorRenderList());
     return;
   }
+  const nextSession = { ...session };
+  const fontSize = Number(options.fontSize);
+  if (Number.isFinite(fontSize) && fontSize > 0) {
+    nextSession.fontSize = fontSize;
+  }
+  const lineHeight = Number(options.lineHeight);
+  if (Number.isFinite(lineHeight) && lineHeight > 0) {
+    nextSession.lineHeight = lineHeight;
+  }
   renderEditorOverlay(currentEditorRenderList());
-  openTextEditorSession(session);
+  openTextEditorSession(nextSession);
+  if (options.bracketObjectId && activeTextEditor) {
+    activeTextEditor.bracketLabelObjectId = String(options.bracketObjectId);
+  }
   if (state.pendingTextSymbol) {
     const symbol = state.pendingTextSymbol;
     state.pendingTextSymbol = null;
@@ -3641,20 +3834,25 @@ async function finishActiveTextEditor(commit = true) {
   const selection = window.getSelection?.();
   selection?.removeAllRanges?.();
   const nextSession = buildCommittedTextSession(session, root);
+  const bracketLabelObjectId = activeTextEditor?.bracketLabelObjectId || null;
   textEditorLayer.replaceChildren();
   activeTextEditor = null;
   if (!commit) {
     renderDocument();
     return false;
   }
+  const engineSessionJson = JSON.stringify(editorSessionToEngineSession(nextSession));
   const result = await commandEngine.executeEngineCommand(
     {
-      type: "apply-text-edit",
+      type: bracketLabelObjectId ? "apply-bracket-label-text" : "apply-text-edit",
       payload: {
         target: nextSession.target || null,
+        bracketObjectId: bracketLabelObjectId,
       },
     },
-    () => state.editorEngine?.applyTextEdit?.(JSON.stringify(editorSessionToEngineSession(nextSession))),
+    () => bracketLabelObjectId
+      ? state.editorEngine?.applyBracketLabelText?.(bracketLabelObjectId, engineSessionJson)
+      : state.editorEngine?.applyTextEdit?.(engineSessionJson),
   );
   renderDocument();
   return Boolean(result.changed);
@@ -4772,23 +4970,12 @@ async function applyArrowOptionsToSelection() {
   return changed;
 }
 
-function bracketLabelAnchorPoint(start, end, kind = editorState.bracketKind) {
-  const left = Math.min(start.x, end.x);
+function bracketLabelAnchorPoint(start, end) {
   const right = Math.max(start.x, end.x);
   const bottom = Math.max(start.y, end.y);
-  const width = Math.abs(end.x - start.x);
-  const height = Math.abs(end.y - start.y);
-  let nominalRight = right;
-  if (kind === "round") {
-    const depth = Math.max(1, Math.min(height * (1 - Math.sqrt(3) * 0.5), width * 0.22));
-    nominalRight = right - depth;
-  } else if (kind === "curly") {
-    const depth = Math.max(2, Math.min(height * 0.14423, width * 0.24));
-    nominalRight = right - depth * 0.5;
-  }
   return {
-    x: nominalRight + 8.0,
-    y: bottom - 8.0,
+    x: right + BRACKET_LABEL_OFFSET_X,
+    y: bottom + BRACKET_LABEL_OFFSET_Y,
   };
 }
 

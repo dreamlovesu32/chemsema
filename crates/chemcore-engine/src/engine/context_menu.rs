@@ -94,6 +94,19 @@ impl Engine {
                 item("Scale...", "scale-dialog", ""),
                 separator(),
                 self.color_menu(),
+            ]);
+            if self.selection_can_link_bracket_text() {
+                items.extend([
+                    separator(),
+                    json!({"label": "Link", "command": "link", "shortcut": "Ctrl+L"}),
+                ]);
+            } else if self.selection_can_unlink_bracket_text() {
+                items.extend([
+                    separator(),
+                    json!({"label": "Unlink", "command": "unlink", "shortcut": "Ctrl+Shift+L"}),
+                ]);
+            }
+            items.extend([
                 group_menu(
                     selected_types.contains("group"),
                     self.selected_scene_object_count(),

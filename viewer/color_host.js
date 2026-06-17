@@ -58,8 +58,9 @@ class ChemcoreColorDialog {
 
   html() {
     return `
+      <div class="desktop-modal-window-drag-strip" data-desktop-window-drag-region aria-hidden="true"></div>
       <div class="color-dialog" role="dialog" aria-modal="true" aria-label="${escapeHtml(this.palette.title)}">
-        <div class="color-dialog-titlebar">
+        <div class="color-dialog-titlebar" data-desktop-window-drag-region>
           <span>${escapeHtml(this.palette.title)}</span>
           <button class="color-dialog-close" type="button" aria-label="${escapeHtml(this.labels.close)}">x</button>
         </div>

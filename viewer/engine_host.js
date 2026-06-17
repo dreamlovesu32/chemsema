@@ -659,6 +659,14 @@ class TauriEngineSession {
     return this.invokeMutation("desktop_engine_ungroup_selection");
   }
 
+  linkSelection() {
+    return this.invokeMutation("desktop_engine_link_selection");
+  }
+
+  unlinkSelection() {
+    return this.invokeMutation("desktop_engine_unlink_selection");
+  }
+
   joinSelection() {
     return this.invokeMutation("desktop_engine_join_selection");
   }
@@ -780,6 +788,19 @@ class TauriEngineSession {
 
   applyTextEdit(sessionJson) {
     return this.invokeMutation("desktop_engine_apply_text_edit", { sessionJson }, { refresh: "all" });
+  }
+
+  applyBracketLabelText(bracketId, sessionJson) {
+    return this.invokeMutation(
+      "desktop_engine_apply_bracket_label_text",
+      { bracketId, sessionJson },
+      { refresh: "all" },
+    );
+  }
+
+  async pendingGraphicObjectId() {
+    await this.ready();
+    return this.invoke("desktop_engine_pending_graphic_object_id", { sessionId: this.sessionId });
   }
 
   previewTextRuns(sessionJson) {

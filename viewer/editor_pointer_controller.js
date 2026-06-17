@@ -238,7 +238,6 @@ export function createEditorPointerController(options) {
       || tool === "bracket"
       || tool === "symbol"
       || tool === "element"
-      || tool === "text"
       || tool === "shape"
       || tool === "tlc-plate"
       || tool === "orbital"
@@ -475,6 +474,9 @@ export function createEditorPointerController(options) {
     const point = options.svgPointFromEvent(event);
     options.setLastEditFocusPoint(point);
     const editorState = options.editorState();
+    if (editorState.activeTool !== "text" && !editorState.elementPlacementActive) {
+      await options.closeActiveTextEditorForToolAction?.();
+    }
     if (editorState.elementPlacementActive) {
       event.preventDefault();
       options.viewerSvg().setPointerCapture?.(event.pointerId);
@@ -910,12 +912,21 @@ export function createEditorPointerController(options) {
       },
       () => options.state().editorEngine.pointerUp(point.x, point.y, event.altKey),
     );
+    const pendingGraphicObjectId = await Promise.resolve(
+      options.state().editorEngine.pendingGraphicObjectId?.() || "",
+    );
     options.renderDocument();
     if (options.editorState().activeTool === "bracket") {
       const start = options.activeBracketDragStart();
       options.setActiveBracketDragStart(null);
       if (start && options.pointDistance(start, point) >= options.cssPxToPt(4)) {
-        await options.openTextEditorAt(options.bracketLabelAnchorPoint(start, point));
+        await options.openTextEditorAt(
+          options.bracketLabelAnchorPoint(start, point),
+          {
+            ...(options.bracketLabelTextOptions?.() || {}),
+            bracketObjectId: pendingGraphicObjectId,
+          },
+        );
       }
     }
   }

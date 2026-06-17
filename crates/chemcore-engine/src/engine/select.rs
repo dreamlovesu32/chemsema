@@ -381,7 +381,7 @@ impl Engine {
                 drag.object_id.clone(),
             ));
         }
-        self.hover_select_target(point);
+        clear_select_hover_overlay(self);
         changed
     }
 
@@ -1063,8 +1063,11 @@ impl Engine {
         for node_id in label_node_ids {
             push_unique(&mut selection.label_nodes, node_id);
         }
-        for object_id in bracket_ids {
+        for object_id in bracket_ids.arrow_object_ids {
             push_unique(&mut selection.arrow_objects, object_id);
+        }
+        for object_id in bracket_ids.text_object_ids {
+            push_unique(&mut selection.text_objects, object_id);
         }
         self.state.selection = selection;
         self.clear_interaction();

@@ -867,6 +867,7 @@ struct PendingCdxmlBracket {
     bbox: [f64; 4],
     z_index: i32,
     graphic_id: Option<String>,
+    repeat_count: Option<u32>,
     stroke: String,
 }
 
@@ -878,6 +879,7 @@ pub(super) fn append_bracket_objects(
 ) {
     let mut brackets = Vec::new();
     let mut symbol_index = 1;
+    let repeat_counts = bracket_repeat_counts_by_graphic_id(root);
     for node in descendants(root) {
         if !node.is("graphic") || node.attr("SupersededBy").is_some() {
             continue;
@@ -887,6 +889,11 @@ pub(super) fn append_bracket_objects(
                 let Some(bbox) = parse_bbox(node.attr("BoundingBox")) else {
                     continue;
                 };
+                let graphic_id = node.attr("id").map(ToString::to_string);
+                let repeat_count = graphic_id
+                    .as_deref()
+                    .and_then(|id| repeat_counts.get(id).copied())
+                    .or_else(|| bracket_usage_count(node));
                 brackets.push(PendingCdxmlBracket {
                     kind: match node.attr("BracketType").unwrap_or("") {
                         "Square" => "square",
@@ -896,7 +903,8 @@ pub(super) fn append_bracket_objects(
                     .to_string(),
                     bbox,
                     z_index: parse_i32(node.attr("Z")).unwrap_or(15),
-                    graphic_id: node.attr("id").map(ToString::to_string),
+                    graphic_id,
+                    repeat_count,
                     stroke: colors.resolve(node.attr("color")),
                 });
             }
@@ -1008,6 +1016,13 @@ pub(super) fn append_bracket_objects(
         extra.insert("stroke".to_string(), json!(left.stroke.clone()));
         extra.insert("strokeWidth".to_string(), json!(1.0));
         extra.insert("lipSize".to_string(), json!(60));
+        let mut meta = json!({
+            "source": "cdxml",
+            "graphicIds": [left.graphic_id.clone(), right.graphic_id.clone()],
+        });
+        if let Some(repeat_count) = left.repeat_count.or(right.repeat_count) {
+            meta["repeatCount"] = json!(repeat_count);
+        }
         objects.push(SceneObject {
             id: format!("obj_bracket_{object_index:03}"),
             object_type: "bracket".to_string(),
@@ -1021,10 +1036,7 @@ pub(super) fn append_bracket_objects(
                 scale: [1.0, 1.0],
             },
             style_ref: None,
-            meta: json!({
-                "source": "cdxml",
-                "graphicIds": [left.graphic_id, right.graphic_id],
-            }),
+            meta,
             payload: ObjectPayload {
                 resource_ref: None,
                 bbox: Some([0.0, 0.0, round2(max_x - min_x), round2(max_y - min_y)]),
@@ -1034,6 +1046,37 @@ pub(super) fn append_bracket_objects(
         });
         object_index += 1;
     }
+}
+
+fn bracket_repeat_counts_by_graphic_id(root: &XmlNode) -> BTreeMap<String, u32> {
+    let mut counts = BTreeMap::new();
+    for node in descendants(root) {
+        if !node.is("bracketedgroup") {
+            continue;
+        }
+        let Some(count) = parse_u32(node.attr("RepeatCount")).filter(|value| *value >= 2) else {
+            continue;
+        };
+        for attachment in node.direct_children("bracketattachment") {
+            if let Some(graphic_id) = attachment.attr("GraphicID") {
+                counts.insert(graphic_id.to_string(), count);
+            }
+        }
+    }
+    counts
+}
+
+fn bracket_usage_count(node: &XmlNode) -> Option<u32> {
+    node.direct_children("objecttag")
+        .filter(|tag| tag.attr("Name") == Some("bracketusage"))
+        .flat_map(descendants)
+        .find_map(|tag_node| {
+            tag_node
+                .is("t")
+                .then(|| tag_node.full_text().trim().parse::<u32>().ok())
+                .flatten()
+        })
+        .filter(|value| *value >= 2)
 }
 
 fn cdxml_symbol_center(kind: &str, bbox: [f64; 4]) -> [f64; 2] {
@@ -1100,6 +1143,7 @@ pub(super) fn append_text_objects(
         false,
         0,
         None,
+        CdxmlTextObjectRole::FreeText,
         &mut index,
         objects,
         styles,
@@ -1115,6 +1159,7 @@ pub(super) fn append_text_objects_recursive(
     skip_text: bool,
     placeholder_depth: usize,
     inherited_z: Option<i32>,
+    text_role: CdxmlTextObjectRole,
     index: &mut usize,
     objects: &mut Vec<SceneObject>,
     styles: &mut BTreeMap<String, Value>,
@@ -1145,11 +1190,26 @@ pub(super) fn append_text_objects_recursive(
     } else {
         0
     };
+    let next_text_role = if node.is("objecttag") {
+        match node.attr("Name") {
+            Some("bracketusage") => CdxmlTextObjectRole::BracketUsage,
+            Some("parameterizedBracketLabel") => CdxmlTextObjectRole::ParameterizedBracketLabel,
+            _ => text_role,
+        }
+    } else {
+        text_role
+    };
     let current_z = parse_i32(node.attr("Z")).or(inherited_z);
     if node.is("t") && !skip_text && placeholder_depth <= 1 {
-        if let Some(object) =
-            text_object(node, *index, current_z.unwrap_or(30), styles, colors, fonts)
-        {
+        if let Some(object) = text_object(
+            node,
+            *index,
+            current_z.unwrap_or(30),
+            next_text_role,
+            styles,
+            colors,
+            fonts,
+        ) {
             objects.push(object);
             *index += 1;
         }
@@ -1160,6 +1220,7 @@ pub(super) fn append_text_objects_recursive(
             next_skip_text,
             next_placeholder_depth,
             current_z,
+            next_text_role,
             index,
             objects,
             styles,
@@ -1171,10 +1232,28 @@ pub(super) fn append_text_objects_recursive(
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum CdxmlTextObjectRole {
+    FreeText,
+    BracketUsage,
+    ParameterizedBracketLabel,
+}
+
+impl CdxmlTextObjectRole {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::FreeText => "free_text",
+            Self::BracketUsage => "bracket_usage",
+            Self::ParameterizedBracketLabel => "parameterized_bracket_label",
+        }
+    }
+}
+
 fn text_object(
     node: &XmlNode,
     index: usize,
     z_index: i32,
+    role: CdxmlTextObjectRole,
     styles: &mut BTreeMap<String, Value>,
     colors: &CdxmlColorTable,
     fonts: &BTreeMap<String, String>,
@@ -1297,7 +1376,7 @@ fn text_object(
             scale: [1.0, 1.0],
         },
         style_ref: Some(style_id),
-        meta: json!({"source": "cdxml", "role": "free_text", "textId": node.attr("id")}),
+        meta: json!({"source": "cdxml", "role": role.as_str(), "textId": node.attr("id")}),
         payload: ObjectPayload {
             resource_ref: None,
             bbox: None,

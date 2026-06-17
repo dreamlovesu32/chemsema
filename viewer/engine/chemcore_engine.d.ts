@@ -9,6 +9,7 @@ export class WasmEngine {
     applyArrowOptionsToSelection(variant: string, head_size: string, head: boolean, tail: boolean, bold: boolean): boolean;
     applyBondStyleToSelection(style: string): boolean;
     applyBracketKindToSelection(kind: string): boolean;
+    applyBracketLabelText(bracket_id: string, session_json: string): boolean;
     applyColorToSelection(color: string): boolean;
     applyElementPaletteJson(selection_json: string): boolean;
     applyHoveredBondStyle(style: string): boolean;
@@ -70,6 +71,7 @@ export class WasmEngine {
     interactionRenderListJson(): string;
     joinSelection(): boolean;
     lastCommandResultJson(): string;
+    linkSelection(): boolean;
     loadDocumentCdx(cdx: Uint8Array): void;
     loadDocumentCdxml(cdxml: string): void;
     loadDocumentJson(json: string): void;
@@ -79,6 +81,7 @@ export class WasmEngine {
     orbitalToolIconSvg(template: string, style: string, phase: string): string;
     pasteClipboard(): boolean;
     pasteClipboardJson(json: string): boolean;
+    pendingGraphicObjectId(): string;
     pointerDown(x: number, y: number, alt_key: boolean): void;
     pointerMove(x: number, y: number, alt_key: boolean): void;
     pointerUp(x: number, y: number, alt_key: boolean): void;
@@ -97,8 +100,11 @@ export class WasmEngine {
     selectInPolygon(points_json: string, additive: boolean): void;
     selectInRect(x1: number, y1: number, x2: number, y2: number, additive: boolean): void;
     selectionBoundsJson(): string;
+    selectionCanLinkBracketText(): boolean;
+    selectionCanUnlinkBracketText(): boolean;
     selectionChemistrySummaryJson(): string;
     selectionContainsPoint(x: number, y: number): boolean;
+    selectionHasRepeatUnitGroups(): boolean;
     selectionNumericDialogJson(kind: string): string;
     setArrowEndpointOptions(variant: string, head_size: string, curve: string, head_style: string, tail_style: string, no_go: string, bold: boolean): void;
     setArrowOptions(variant: string, head_size: string, head: boolean, tail: boolean, bold: boolean): void;
@@ -121,6 +127,7 @@ export class WasmEngine {
     toolbarColorPaletteJson(custom_colors_json: string): string;
     undo(): boolean;
     ungroupSelection(): boolean;
+    unlinkSelection(): boolean;
     updateHoverArrowEdit(x: number, y: number, alt_key: boolean): boolean;
     updateHoverShapeEdit(x: number, y: number, alt_key: boolean): boolean;
     updateSelectionMove(x: number, y: number, alt_key: boolean): boolean;
@@ -139,6 +146,7 @@ export interface InitOutput {
     readonly wasmengine_applyArrowOptionsToSelection: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => number;
     readonly wasmengine_applyBondStyleToSelection: (a: number, b: number, c: number) => number;
     readonly wasmengine_applyBracketKindToSelection: (a: number, b: number, c: number) => number;
+    readonly wasmengine_applyBracketLabelText: (a: number, b: number, c: number, d: number, e: number) => [number, number, number];
     readonly wasmengine_applyColorToSelection: (a: number, b: number, c: number) => number;
     readonly wasmengine_applyElementPaletteJson: (a: number, b: number, c: number) => [number, number, number];
     readonly wasmengine_applyHoveredBondStyle: (a: number, b: number, c: number) => number;
@@ -200,6 +208,7 @@ export interface InitOutput {
     readonly wasmengine_interactionRenderListJson: (a: number) => [number, number, number, number];
     readonly wasmengine_joinSelection: (a: number) => number;
     readonly wasmengine_lastCommandResultJson: (a: number) => [number, number, number, number];
+    readonly wasmengine_linkSelection: (a: number) => number;
     readonly wasmengine_loadDocumentCdx: (a: number, b: number, c: number) => [number, number];
     readonly wasmengine_loadDocumentCdxml: (a: number, b: number, c: number) => [number, number];
     readonly wasmengine_loadDocumentJson: (a: number, b: number, c: number) => [number, number];
@@ -209,6 +218,7 @@ export interface InitOutput {
     readonly wasmengine_orbitalToolIconSvg: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number];
     readonly wasmengine_pasteClipboard: (a: number) => number;
     readonly wasmengine_pasteClipboardJson: (a: number, b: number, c: number) => [number, number, number];
+    readonly wasmengine_pendingGraphicObjectId: (a: number) => [number, number];
     readonly wasmengine_pointerDown: (a: number, b: number, c: number, d: number) => void;
     readonly wasmengine_pointerMove: (a: number, b: number, c: number, d: number) => void;
     readonly wasmengine_pointerUp: (a: number, b: number, c: number, d: number) => void;
@@ -227,8 +237,11 @@ export interface InitOutput {
     readonly wasmengine_selectInPolygon: (a: number, b: number, c: number, d: number) => [number, number];
     readonly wasmengine_selectInRect: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly wasmengine_selectionBoundsJson: (a: number) => [number, number];
+    readonly wasmengine_selectionCanLinkBracketText: (a: number) => number;
+    readonly wasmengine_selectionCanUnlinkBracketText: (a: number) => number;
     readonly wasmengine_selectionChemistrySummaryJson: (a: number) => [number, number];
     readonly wasmengine_selectionContainsPoint: (a: number, b: number, c: number) => number;
+    readonly wasmengine_selectionHasRepeatUnitGroups: (a: number) => number;
     readonly wasmengine_selectionNumericDialogJson: (a: number, b: number, c: number) => [number, number];
     readonly wasmengine_setArrowEndpointOptions: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number) => void;
     readonly wasmengine_setArrowOptions: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
@@ -251,6 +264,7 @@ export interface InitOutput {
     readonly wasmengine_toolbarColorPaletteJson: (a: number, b: number, c: number) => [number, number];
     readonly wasmengine_undo: (a: number) => number;
     readonly wasmengine_ungroupSelection: (a: number) => number;
+    readonly wasmengine_unlinkSelection: (a: number) => number;
     readonly wasmengine_updateHoverArrowEdit: (a: number, b: number, c: number, d: number) => number;
     readonly wasmengine_updateHoverShapeEdit: (a: number, b: number, c: number, d: number) => number;
     readonly wasmengine_updateSelectionMove: (a: number, b: number, c: number, d: number) => number;
