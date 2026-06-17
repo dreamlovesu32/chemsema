@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync, rmSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -40,6 +40,11 @@ function wasmBuildEnv() {
   };
 }
 
+function normalizeGeneratedJson(filePath) {
+  const content = readFileSync(filePath, "utf8").replace(/\r\n/g, "\n");
+  writeFileSync(filePath, content.endsWith("\n") ? content : `${content}\n`);
+}
+
 run("wasm-pack", [
   "build",
   join(rootDir, "crates", "chemcore-engine"),
@@ -54,6 +59,7 @@ run("wasm-pack", [
 // wasm-pack writes an ignore-all file for publishable packages. In this repo the
 // viewer consumes these runtime artifacts directly, so they need to stay tracked.
 rmSync(join(rootDir, "viewer", "engine", ".gitignore"), { force: true });
+normalizeGeneratedJson(join(rootDir, "viewer", "engine", "package.json"));
 
 const viewerSharedDir = join(rootDir, "viewer", "shared");
 mkdirSync(viewerSharedDir, { recursive: true });
