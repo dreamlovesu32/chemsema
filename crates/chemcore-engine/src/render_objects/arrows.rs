@@ -39,6 +39,18 @@ fn arrow_axis(from: Point, to: Point) -> Option<(Vector, Vector, f64)> {
     Some((unit, normal, length))
 }
 
+fn rendered_arrow_stroke_width(
+    stroke_width: f64,
+    arrow_head: ArrowHeadGeometry,
+    default_bold_width: f64,
+) -> f64 {
+    if arrow_head.bold && stroke_width <= crate::DEFAULT_BOND_STROKE + crate::EPSILON {
+        stroke_width.max(default_bold_width)
+    } else {
+        stroke_width
+    }
+}
+
 fn hollow_arrow_outline_points(
     start: Point,
     end: Point,
@@ -352,11 +364,7 @@ fn render_curved_solid_arrow_line(
     if points.len() < 2 {
         return;
     }
-    let line_width = if arrow_head.bold {
-        stroke_width.max(4.0)
-    } else {
-        stroke_width
-    };
+    let line_width = rendered_arrow_stroke_width(stroke_width, arrow_head, 4.0);
     let start_trim = curved_arrow_endpoint_shaft_trim(tail_style, arrow_head);
     let end_trim = curved_arrow_endpoint_shaft_trim(head_style, arrow_head);
     if let Some(path) = curved_arrow_path(start, arrow_head.curve, arrow_arc, start_trim, end_trim)
@@ -960,11 +968,7 @@ fn render_equilibrium_arrow_line(
     let Some((unit, normal, length)) = arrow_axis(start, end) else {
         return;
     };
-    let line_width = if arrow_head.bold {
-        stroke_width.max(4.0)
-    } else {
-        stroke_width
-    };
+    let line_width = rendered_arrow_stroke_width(stroke_width, arrow_head, 4.0);
     let spacing = arrow_head.shaft_spacing.max(line_width);
     let primary_offset =
         normal.scaled(equilibrium_primary_offset_sign(head_style, tail_style) * spacing * 0.5);
@@ -1044,11 +1048,7 @@ fn render_curved_equilibrium_arrow_line(
     if points.len() < 2 {
         return;
     }
-    let line_width = if arrow_head.bold {
-        stroke_width.max(4.0)
-    } else {
-        stroke_width
-    };
+    let line_width = rendered_arrow_stroke_width(stroke_width, arrow_head, 4.0);
     let spacing = arrow_head.shaft_spacing.max(line_width);
     let primary_offset = equilibrium_primary_offset_sign(head_style, tail_style) * spacing * 0.5;
     let fallback = if primary_offset >= 0.0 {
@@ -1232,11 +1232,7 @@ fn render_solid_arrow_line(
     let Some((unit, _normal, length)) = arrow_axis(start, end) else {
         return;
     };
-    let line_width = if arrow_head.bold {
-        stroke_width.max(4.0)
-    } else {
-        stroke_width
-    };
+    let line_width = rendered_arrow_stroke_width(stroke_width, arrow_head, 4.0);
     let start_shaft = start.translated(
         unit.scaled(arrow_endpoint_shaft_trim(tail_style, arrow_head).min(length * 0.45)),
     );
@@ -1713,11 +1709,7 @@ fn render_hollow_arrow_line(
         points,
         "none",
         stroke,
-        if arrow_head.bold {
-            stroke_width.max(2.0)
-        } else {
-            stroke_width
-        },
+        rendered_arrow_stroke_width(stroke_width, arrow_head, 2.0),
         RenderRole::DocumentGraphic,
         object_id,
     );
@@ -1747,11 +1739,7 @@ fn render_curved_hollow_arrow_line(
         outline.d,
         outline.points,
         stroke,
-        if arrow_head.bold {
-            stroke_width.max(2.0)
-        } else {
-            stroke_width
-        },
+        rendered_arrow_stroke_width(stroke_width, arrow_head, 2.0),
         Vec::new(),
         Some("butt".to_string()),
         Some("round".to_string()),
@@ -1778,11 +1766,7 @@ fn render_open_arrow_line(
     let Some((unit, normal, length)) = arrow_axis(start, end) else {
         return;
     };
-    let line_width = if arrow_head.bold {
-        stroke_width.max(2.0)
-    } else {
-        stroke_width
-    };
+    let line_width = rendered_arrow_stroke_width(stroke_width, arrow_head, 2.0);
     let shaft_half_width = open_arrow_shaft_half_width(arrow_head);
     let head_length = arrow_head.length.min(length * 0.45);
     let neck_offset = (head_length * 0.5).min(length * 0.3);

@@ -2918,7 +2918,7 @@ fn cdxml_arrow_line_width_scales_arrow_head_ratios() {
 }
 
 #[test]
-fn cdxml_arrow_element_defaults_missing_head_position_to_full() {
+fn cdxml_arrow_type_without_endpoint_does_not_enable_head() {
     let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >
 <CDXML LineWidth="0.6" BondLength="14.4" color="0" bgcolor="1">
@@ -2941,19 +2941,90 @@ fn cdxml_arrow_element_defaults_missing_head_position_to_full() {
         .expect("arrow should keep cdxml arrow payload");
     assert_eq!(
         arrow_head.get("head").and_then(|value| value.as_str()),
-        Some("full")
+        Some("none")
     );
 
-    assert!(render_document(&document).iter().any(|primitive| {
-        matches!(
+    let primitives = render_document(&document);
+    assert!(
+        primitives.iter().any(|primitive| matches!(
+            primitive,
+            RenderPrimitive::Polyline {
+                role: RenderRole::DocumentGraphic,
+                object_id,
+                ..
+            } if object_id.as_deref() == Some(arrow.id.as_str())
+        )),
+        "arrow element should still render its shaft"
+    );
+    assert!(
+        !primitives.iter().any(|primitive| matches!(
             primitive,
             RenderPrimitive::FilledPath {
                 role: RenderRole::DocumentGraphic,
                 object_id,
                 ..
             } if object_id.as_deref() == Some(arrow.id.as_str())
-        )
-    }));
+        )),
+        "ArrowheadType alone describes the head kind, not an enabled endpoint"
+    );
+}
+
+#[test]
+fn cdxml_bold_line_uses_imported_bold_width_without_render_floor() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >
+<CDXML LineWidth="0.57" BoldWidth="1.91" BondLength="13.78" color="0" bgcolor="1">
+  <page id="1" BoundingBox="0 0 360 80">
+    <arrow id="2" Head3D="340 40 0" Tail3D="20 40 0" Z="1"
+      LineType="Bold" FillType="None" ArrowheadType="Solid"
+      HeadSize="2000" ArrowheadCenterSize="1750" ArrowheadWidth="500"/>
+  </page>
+</CDXML>"#;
+    let document = parse_cdxml_document(cdxml, Some("bold line")).expect("cdxml should parse");
+    let line = document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "line")
+        .expect("bold line should import as line object");
+    let style = line
+        .style_ref
+        .as_ref()
+        .and_then(|style_ref| document.styles.get(style_ref))
+        .expect("line should use imported bold-width style");
+    assert_eq!(
+        style.get("strokeWidth").and_then(|value| value.as_f64()),
+        Some(1.91)
+    );
+
+    let primitives = render_document(&document);
+    let shaft_width = primitives
+        .iter()
+        .find_map(|primitive| match primitive {
+            RenderPrimitive::Polyline {
+                role,
+                object_id,
+                stroke_width,
+                ..
+            } if *role == RenderRole::DocumentGraphic
+                && object_id.as_deref() == Some(line.id.as_str()) =>
+            {
+                Some(*stroke_width)
+            }
+            _ => None,
+        })
+        .expect("bold line shaft should render");
+    assert!((shaft_width - 1.91).abs() <= 0.001);
+    assert!(
+        !primitives.iter().any(|primitive| matches!(
+            primitive,
+            RenderPrimitive::FilledPath {
+                role: RenderRole::DocumentGraphic,
+                object_id,
+                ..
+            } if object_id.as_deref() == Some(line.id.as_str())
+        )),
+        "line should not gain an arrowhead without ArrowheadHead or ArrowheadTail"
+    );
 }
 
 #[test]

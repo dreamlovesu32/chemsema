@@ -236,7 +236,7 @@ fn cdxml_arrow_head_enabled(node: &XmlNode) -> bool {
     {
         return true;
     }
-    node.is("arrow") && node.attr("ArrowheadType").is_some()
+    false
 }
 
 fn canonical_arrow_endpoint(value: &str) -> &'static str {
