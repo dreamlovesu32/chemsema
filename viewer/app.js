@@ -222,10 +222,15 @@ const {
 let canvasContextMenuHost = null;
 let canvasContextMenu = null;
 let textSymbolPalette = null;
+let resolveAppInitialDocumentReady = null;
+const appInitialDocumentReady = new Promise((resolve) => {
+  resolveAppInitialDocumentReady = resolve;
+});
 registerChemcoreDebug({
   state,
   getEngineState: () => currentEditorEngineState(),
   getActiveTextEditor: () => activeTextEditor,
+  getActiveSelectionGesture: () => activeSelectionGesture,
   getDisplayMetrics: () => state.displayMetrics,
   engineHost,
   desktopFileHost,
@@ -244,6 +249,18 @@ registerChemcoreDebug({
     await syncDocumentFromEngine();
     renderDocument();
     return state.currentDocument;
+  },
+  async loadDocumentForTest(documentData) {
+    await appInitialDocumentReady;
+    await loadJsonDocumentIntoEditor(documentData, "test-large-drag.ccjs", null);
+    fitView();
+    return state.currentDocument;
+  },
+  renderStats: {
+    documentRenderCount: 0,
+  },
+  getRenderListJson() {
+    return state.editorEngine?.renderListJson?.() || "[]";
   },
   setDisplayScale(scale = null) {
     return applyDisplayScaleOverride(scale);
@@ -2872,10 +2889,7 @@ function scheduleDeferredDocumentSync() {
   if (deferredDocumentSyncHandle) {
     return;
   }
-  const schedule = window.requestIdleCallback
-    ? (callback) => window.requestIdleCallback(callback, { timeout: 1200 })
-    : (callback) => window.setTimeout(callback, 120);
-  deferredDocumentSyncHandle = schedule(async () => {
+  deferredDocumentSyncHandle = window.setTimeout(async () => {
     deferredDocumentSyncHandle = 0;
     if (activeSelectionGesture) {
       scheduleDeferredDocumentSync();
@@ -2885,13 +2899,19 @@ function scheduleDeferredDocumentSync() {
     saveActiveDocumentTabState();
     renderDocumentTabs();
     syncWindowTitle();
-  });
+  }, 1200);
 }
 
-async function renderSelectionOnlyUpdate(point, syncCursor = syncSelectCursorForPoint) {
-  renderEditorOverlay(syncEditorSelectionRenderListFromEngine());
-  if (point) {
+async function renderSelectionOnlyUpdate(point, syncCursor = syncSelectCursorForPoint, options = {}) {
+  const renderList = options.useInteractionList === false
+    ? currentEditorRenderList()
+    : syncEditorSelectionRenderListFromEngine();
+  renderEditorOverlay(renderList);
+  if (point && typeof syncCursor === "function") {
     await syncCursor(point);
+  }
+  if (options.deferEngineReads) {
+    return;
   }
   syncSelectionChemistrySummary();
   refreshCommandAvailability();
@@ -5312,11 +5332,63 @@ function restoreDocumentPreviewElementVisibility(element) {
 }
 
 function clearDocumentPartialBondPreview() {
-  viewerSvg.querySelector('[data-layer="document-partial-bond-preview"]')?.remove();
+  viewerSvg.querySelectorAll('[data-layer="document-partial-bond-preview"]').forEach((layer) => layer.remove());
   for (const element of activeDocumentPreviewHiddenElements) {
     restoreDocumentPreviewElementVisibility(element);
   }
   activeDocumentPreviewHiddenElements = new Set();
+}
+
+function commitDocumentPartialBondPreview() {
+  const layer = viewerSvg.querySelector('[data-layer="document-partial-bond-preview"]');
+  if (!layer) {
+    return false;
+  }
+  const previewByBondId = new Map();
+  for (const preview of [...layer.children]) {
+    const bondId = preview.getAttribute("data-bond-id") || "";
+    if (!bondId) {
+      continue;
+    }
+    if (!previewByBondId.has(bondId)) {
+      previewByBondId.set(bondId, []);
+    }
+    previewByBondId.get(bondId).push(preview.cloneNode(true));
+  }
+  const originalsByBondId = new Map();
+  for (const element of activeDocumentPreviewHiddenElements) {
+    const bondId = element.getAttribute?.("data-bond-id") || "";
+    if (!bondId || !previewByBondId.has(bondId)) {
+      continue;
+    }
+    if (!originalsByBondId.has(bondId)) {
+      originalsByBondId.set(bondId, []);
+    }
+    originalsByBondId.get(bondId).push(element);
+  }
+  const committed = new Set();
+  for (const [bondId, originals] of originalsByBondId) {
+    const previews = previewByBondId.get(bondId) || [];
+    const anchor = originals.find((element) => element.parentNode);
+    if (!anchor?.parentNode || !previews.length) {
+      continue;
+    }
+    for (const preview of previews) {
+      anchor.parentNode.insertBefore(preview, anchor);
+    }
+    for (const original of originals) {
+      committed.add(original);
+      original.remove();
+    }
+  }
+  layer.remove();
+  if (!committed.size) {
+    return false;
+  }
+  activeDocumentPreviewHiddenElements = new Set(
+    [...activeDocumentPreviewHiddenElements].filter((element) => !committed.has(element)),
+  );
+  return true;
 }
 
 function removeDocumentPreviewBatchLayer() {
@@ -5375,7 +5447,7 @@ function commitDocumentObjectPreviewTransform() {
     clearDocumentObjectPreviewTransform();
     return false;
   }
-  clearDocumentPartialBondPreview();
+  commitDocumentPartialBondPreview();
   removeDocumentPreviewBatchLayer();
   if (activeDocumentPreviewLayer) {
     for (const child of [...documentLayer?.children || []]) {
@@ -5400,7 +5472,14 @@ function commitDocumentObjectPreviewTransform() {
 }
 
 function canCommitDocumentObjectPreviewTransform() {
-  return !!activeDocumentPreviewBatchLayer?.isConnected;
+  return !!activeDocumentPreviewTransform
+    && (
+      !!activeDocumentPreviewBatchLayer?.isConnected
+      || activeDocumentPreviewLayer
+      || activeDocumentPreviewObjectIds.size > 0
+      || activeDocumentPreviewPrimitiveElements.size > 0
+      || !!viewerSvg.querySelector('[data-layer="document-partial-bond-preview"]')
+    );
 }
 
 function selectionGestureDelta(gesture) {
@@ -5850,6 +5929,13 @@ viewerSvg?.addEventListener("dblclick", editorPointerController.handleEditorDoub
 viewerSvg?.addEventListener("pointercancel", async () => {
   await editorPointerController.handleEditorPointerCancel();
 });
+window.addEventListener("pointerup", () => {
+  queueMicrotask(() => {
+    if (!activeSelectionGesture) {
+      clearDocumentObjectPreviewTransform();
+    }
+  });
+});
 viewerSvg?.addEventListener("pointerleave", editorPointerController.handleEditorPointerLeave);
 viewerContainer?.addEventListener("wheel", handleViewerWheel, { passive: false });
 viewerContainer?.addEventListener("contextmenu", openCanvasContextMenu);
@@ -5888,6 +5974,9 @@ function renderDocument() {
   const documentData = state.currentDocument;
   if (!documentData) {
     return;
+  }
+  if (window.__chemcoreDebug?.renderStats) {
+    window.__chemcoreDebug.renderStats.documentRenderCount += 1;
   }
 
   const page = documentData.document.page;
@@ -6005,7 +6094,9 @@ async function loadInitialDocumentTabs() {
 try {
   await appRuntimeReady;
   await loadInitialDocumentTabs();
+  resolveAppInitialDocumentReady?.();
 } catch (error) {
+  resolveAppInitialDocumentReady?.();
   viewerTitle.textContent = "Runtime load failed";
   viewerStats.textContent = "";
   docMeta.textContent = String(error);

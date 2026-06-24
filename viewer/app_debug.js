@@ -2,12 +2,16 @@ export function registerChemcoreDebug({
   state,
   getEngineState,
   getActiveTextEditor,
+  getActiveSelectionGesture,
   getDisplayMetrics,
   engineHost,
   desktopFileHost,
   commandEngine,
   insertEditorText,
   syncDocument,
+  loadDocumentForTest,
+  renderStats,
+  getRenderListJson,
   worldToClient,
 }) {
   if (typeof window === "undefined") {
@@ -25,6 +29,9 @@ export function registerChemcoreDebug({
     get activeTextEditor() {
       return getActiveTextEditor();
     },
+    get activeSelectionGesture() {
+      return getActiveSelectionGesture();
+    },
     get displayMetrics() {
       return getDisplayMetrics();
     },
@@ -39,6 +46,9 @@ export function registerChemcoreDebug({
     },
     insertEditorText,
     syncDocument,
+    loadDocumentForTest,
+    renderStats,
+    getRenderListJson,
     worldToClient,
   };
 }

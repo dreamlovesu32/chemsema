@@ -919,13 +919,21 @@ export function createEditorPointerController(options) {
         suppressHoverUntilPointerLeavesPoint(commitPoint);
         if (commitPreviewDom && result.changed) {
           options.commitDocumentObjectPreviewTransform();
+          options.clearDocumentObjectPreviewTransform();
         } else {
           options.clearDocumentObjectPreviewTransform();
         }
-        await clearEngineHoverOverlay();
+        if (commitPreviewDom && result.changed) {
+          clearEditorOverlayRoot();
+        } else {
+          await clearEngineHoverOverlay();
+        }
         options.syncCanvasCursor?.();
         if (commitPreviewDom && result.changed) {
-          await options.renderSelectionOnlyUpdate(commitPoint);
+          await options.renderSelectionOnlyUpdate(commitPoint, null, {
+            deferEngineReads: true,
+            useInteractionList: false,
+          });
           options.scheduleDeferredDocumentSync?.();
         } else {
           options.renderDocumentChange?.(result) || options.renderDocument();
@@ -1000,13 +1008,19 @@ export function createEditorPointerController(options) {
             commitPreviewDom ? { sync: false, deferDocumentSync: true } : {},
           );
           suppressHoverUntilPointerLeavesPoint(commitPoint);
-          await clearEngineHoverOverlay();
-          options.syncCanvasCursor?.();
           if (commitPreviewDom && result.changed) {
             options.commitDocumentObjectPreviewTransform();
-            await options.renderSelectionOnlyUpdate(commitPoint);
+            options.clearDocumentObjectPreviewTransform();
+            clearEditorOverlayRoot();
+            options.syncCanvasCursor?.();
+            await options.renderSelectionOnlyUpdate(commitPoint, null, {
+              deferEngineReads: true,
+              useInteractionList: false,
+            });
             options.scheduleDeferredDocumentSync?.();
           } else {
+            await clearEngineHoverOverlay();
+            options.syncCanvasCursor?.();
             options.clearDocumentObjectPreviewTransform();
             options.renderDocumentChange?.(result) || options.renderDocument();
           }
