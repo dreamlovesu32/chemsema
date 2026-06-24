@@ -4983,12 +4983,28 @@ function selectedStructurePreviewBondIds(selection, nodeIds = selectedStructureP
   }
   for (const fragment of currentDocumentMoleculeFragments()) {
     for (const bond of fragment.bonds || []) {
-      if (nodeIds.has(bond.begin) || nodeIds.has(bond.end)) {
+      if (nodeIds.has(bond.begin) && nodeIds.has(bond.end)) {
         bondIds.add(bond.id);
       }
     }
   }
   return bondIds;
+}
+
+function selectionHasPartiallyMovingStructureBonds(selection, nodeIds = selectedStructurePreviewNodeIds(selection)) {
+  if (!nodeIds?.size) {
+    return false;
+  }
+  for (const fragment of currentDocumentMoleculeFragments()) {
+    for (const bond of fragment.bonds || []) {
+      const beginMoves = nodeIds.has(bond.begin);
+      const endMoves = nodeIds.has(bond.end);
+      if (beginMoves !== endMoves) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 function selectedDocumentPreviewPrimitiveElements() {
@@ -5129,6 +5145,11 @@ function selectionGestureTransform(gesture) {
 function applyDocumentObjectPreviewTransform() {
   const transform = selectionGestureTransform(activeSelectionGesture);
   if (!transform) {
+    clearDocumentObjectPreviewTransform();
+    return false;
+  }
+  const selection = currentEditorEngineState()?.selection;
+  if (selectionHasPartiallyMovingStructureBonds(selection)) {
     clearDocumentObjectPreviewTransform();
     return false;
   }
