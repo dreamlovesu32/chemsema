@@ -2179,6 +2179,66 @@ fn cdxml_generic_r_prime_labels_do_not_render_invalid_markers() {
 }
 
 #[test]
+fn parse_cdxml_skips_cached_fragments_inside_placeholder_nodes() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >
+<CDXML BondLength="18" LineWidth="0.6" LabelSize="10">
+  <page id="1" BoundingBox="0 0 140 60">
+    <fragment id="visible" BoundingBox="0 0 120 50">
+      <n id="n1" p="20 25" NodeType="Nickname">
+        <fragment id="cached_bn" BoundingBox="-10 10 40 55">
+          <n id="c1" p="0 20"/>
+          <n id="c2" p="20 20"/>
+          <b id="cb1" B="c1" E="c2"/>
+        </fragment>
+        <t p="20 29" BoundingBox="8 18 20 30" LabelJustification="Right" Justification="Right">
+          <s font="3" size="10" face="97">Bn</s>
+        </t>
+      </n>
+      <n id="n2" p="50 25"/>
+      <n id="n3" p="80 25" NodeType="Fragment">
+        <fragment id="cached_frag" BoundingBox="70 10 110 45">
+          <n id="f1" p="80 20"/>
+          <n id="f2" p="100 20"/>
+          <b id="fb1" B="f1" E="f2"/>
+        </fragment>
+        <t p="80 29" BoundingBox="80 18 100 30" LabelJustification="Left">
+          <s font="3" size="10" face="97">OMe</s>
+        </t>
+      </n>
+      <b id="b1" B="n1" E="n2"/>
+      <b id="b2" B="n2" E="n3"/>
+    </fragment>
+  </page>
+</CDXML>"#;
+    let document =
+        parse_cdxml_document(cdxml, Some("cached fragments")).expect("cdxml should parse");
+    let fragments: Vec<_> = document
+        .resources
+        .values()
+        .filter_map(|resource| resource.data.as_fragment())
+        .collect();
+    assert_eq!(
+        fragments.len(),
+        1,
+        "cached child fragments under placeholder nodes should not import as visible molecules"
+    );
+    let fragment = fragments[0];
+    assert_eq!(fragment.nodes.len(), 3);
+    assert_eq!(fragment.bonds.len(), 2);
+    assert!(fragment.nodes.iter().any(|node| {
+        node.label
+            .as_ref()
+            .is_some_and(|label| label.source_text.as_deref() == Some("Bn"))
+    }));
+    assert!(fragment.nodes.iter().any(|node| {
+        node.label
+            .as_ref()
+            .is_some_and(|label| label.source_text.as_deref() == Some("OMe"))
+    }));
+}
+
+#[test]
 fn load_cdxml_document_preserves_imported_acs_drawing_options() {
     let Some(cdxml) = read_optional_cdxml_fixture("db-acs.cdxml") else {
         return;

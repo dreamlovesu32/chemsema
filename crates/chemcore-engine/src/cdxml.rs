@@ -778,15 +778,38 @@ fn cdxml_font_table(root: &XmlNode) -> BTreeMap<String, String> {
 }
 
 fn display_fragments(root: &XmlNode) -> Vec<&XmlNode> {
-    descendants(root)
-        .into_iter()
-        .filter(|node| {
-            node.is("fragment")
-                && node.attr("BoundingBox").is_some()
-                && node.direct_children("n").count() >= 2
-                && node.direct_children("b").next().is_some()
-        })
-        .collect()
+    let mut fragments = Vec::new();
+    collect_display_fragments(root, false, &mut fragments);
+    fragments
+}
+
+fn collect_display_fragments<'a>(
+    node: &'a XmlNode,
+    inside_placeholder_node: bool,
+    fragments: &mut Vec<&'a XmlNode>,
+) {
+    if !inside_placeholder_node && cdxml_node_is_display_fragment(node) {
+        fragments.push(node);
+    }
+    let next_inside_placeholder = inside_placeholder_node || cdxml_node_has_cached_fragment(node);
+    for child in &node.children {
+        collect_display_fragments(child, next_inside_placeholder, fragments);
+    }
+}
+
+fn cdxml_node_is_display_fragment(node: &XmlNode) -> bool {
+    node.is("fragment")
+        && node.attr("BoundingBox").is_some()
+        && node.direct_children("n").count() >= 2
+        && node.direct_children("b").next().is_some()
+}
+
+fn cdxml_node_has_cached_fragment(node: &XmlNode) -> bool {
+    node.is("n")
+        && matches!(
+            node.attr("NodeType").unwrap_or(""),
+            "Fragment" | "Nickname" | "GenericNickname" | "Unspecified"
+        )
 }
 
 fn cdxml_bonded_node_ids(root: &XmlNode) -> BTreeSet<String> {
