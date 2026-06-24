@@ -4319,6 +4319,14 @@ fn drag_preview_interaction_render_list_only_contains_preview_geometry() {
         primitive,
         RenderPrimitive::Circle { role, .. } if *role == RenderRole::PreviewEnd
     )));
+    assert!(interaction.iter().any(|primitive| matches!(
+        primitive,
+        RenderPrimitive::Circle {
+            role: RenderRole::PreviewEnd,
+            fill,
+            ..
+        } if fill == "none"
+    )));
     assert!(interaction.iter().all(|primitive| !matches!(
         primitive,
         RenderPrimitive::Path { role, .. }
@@ -4330,6 +4338,46 @@ fn drag_preview_interaction_render_list_only_contains_preview_geometry() {
         interaction.len() <= 8,
         "preview interaction list should stay small: {interaction:?}"
     );
+}
+
+#[test]
+fn bond_tool_endpoint_hover_and_preview_handles_do_not_fill_over_bonds() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, px(300.0), px(260.0));
+
+    hover(&mut engine, FIRST_END_X, FIRST_END_Y);
+    let render_list = engine.render_list();
+    assert!(render_list.iter().any(|primitive| matches!(
+        primitive,
+        RenderPrimitive::Circle {
+            role: RenderRole::HoverEndpoint,
+            fill,
+            ..
+        } if fill == "none"
+    )));
+
+    engine.pointer_down(PointerEvent {
+        x: FIRST_END_X,
+        y: FIRST_END_Y,
+        button: Some(0),
+        alt_key: false,
+    });
+    engine.pointer_move(PointerEvent {
+        x: px(370.0),
+        y: px(292.0),
+        button: None,
+        alt_key: false,
+    });
+    let interaction = engine.interaction_render_list();
+    assert!(interaction.iter().any(|primitive| matches!(
+        primitive,
+        RenderPrimitive::Circle {
+            role: RenderRole::PreviewEnd,
+            fill,
+            ..
+        } if fill == "none"
+    )));
 }
 
 #[test]
