@@ -48,10 +48,10 @@ Ordinary text layout metrics are defined by `glyph_profiles.json`; `glyph_clip_p
 Clipping polygons for ASCII uppercase letters `A-Z` are generated offline by this fixed process:
 
 1. Start from real `Arial` glyph outlines.
-2. Apply natural dilation: `0.30 * glyph height`.
+2. Apply natural dilation: `0.18 * glyph height`.
 3. Collect glyph anchor points.
 4. Offset anchors inward uniformly by `0.22 * glyph height`.
-5. Add circular reinforcement centered on the offset point, with radius `0.60 * glyph height`.
+5. Add circular reinforcement centered on the offset point, with radius `0.36 * glyph height`.
 6. Take the union of the natural dilation region and the circular reinforcement region.
 7. Discretize the result into normalized polygons and write them to `shared/glyph_clip_polygons.json`.
 
@@ -59,14 +59,14 @@ Clipping polygons for ASCII uppercase letters `A-Z` are generated offline by thi
 
 Visible characters other than ASCII uppercase letters use uniform natural dilation:
 
-- natural dilation: `0.30 * glyph height`
+- natural dilation: `0.18 * glyph height`
 
 ### 4. Unknown Character Fallback
 
 If a character is visible but absent from `glyph_clip_polygons.json`, the runtime fallback geometry is:
 
 - based on the ink box
-- expanded uniformly on all sides by `0.30 * glyph height`
+- expanded uniformly on all sides by `0.216 * glyph height`
 - emitted as a conservative rectangle
 
 ## Uppercase Anchor Table
