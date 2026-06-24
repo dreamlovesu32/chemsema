@@ -480,7 +480,7 @@ export function createEditorOverlayRenderer(options) {
     if (!primitive) {
       return false;
     }
-    if (primitive.role === "preview-bond" || primitive.role === "preview-end") {
+    if (primitive.role === "preview-bond") {
       return true;
     }
     return primitiveObjectId(primitive).startsWith("__preview_")
