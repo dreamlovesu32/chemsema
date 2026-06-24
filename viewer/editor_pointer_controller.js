@@ -608,7 +608,7 @@ export function createEditorPointerController(options) {
           return;
         }
       }
-      if (overSelection && await beginSelectionMoveGesture(point, event, options.syncSelectCursorForPoint)) {
+      if (await beginSelectionMoveGesture(point, event, options.syncSelectCursorForPoint)) {
         return;
       }
       options.setActiveSelectionGesture({
