@@ -118,6 +118,12 @@ impl ChemcoreDocument {
         Some(EditableFragment { object, fragment })
     }
 
+    pub fn editable_fragments(&self) -> Vec<EditableFragment<'_>> {
+        let mut out = Vec::new();
+        collect_editable_fragments(&self.objects, &self.resources, &mut out);
+        out
+    }
+
     pub fn scene_objects(&self) -> Vec<&SceneObject> {
         let mut out = Vec::new();
         collect_scene_objects(&self.objects, &mut out);
@@ -144,6 +150,26 @@ fn collect_scene_objects<'a>(objects: &'a [SceneObject], out: &mut Vec<&'a Scene
     for object in objects {
         out.push(object);
         collect_scene_objects(&object.children, out);
+    }
+}
+
+fn collect_editable_fragments<'a>(
+    objects: &'a [SceneObject],
+    resources: &'a BTreeMap<String, Resource>,
+    out: &mut Vec<EditableFragment<'a>>,
+) {
+    for object in objects {
+        if object.object_type == "molecule" && object.visible {
+            if let Some(resource_ref) = object.payload.resource_ref.as_ref() {
+                if let Some(fragment) = resources
+                    .get(resource_ref)
+                    .and_then(|resource| resource.data.as_fragment())
+                {
+                    out.push(EditableFragment { object, fragment });
+                }
+            }
+        }
+        collect_editable_fragments(&object.children, resources, out);
     }
 }
 

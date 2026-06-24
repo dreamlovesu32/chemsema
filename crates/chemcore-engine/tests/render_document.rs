@@ -69,6 +69,92 @@ fn fragment_document(nodes: serde_json::Value, bonds: serde_json::Value) -> Chem
     .expect("document should deserialize")
 }
 
+fn grouped_two_fragment_document() -> ChemcoreDocument {
+    serde_json::from_value(json!({
+        "format": { "name": "chemcore", "version": "0.1" },
+        "document": {
+            "id": "doc_test",
+            "title": "test",
+            "page": { "width": 300.0, "height": 200.0, "background": "#ffffff" }
+        },
+        "styles": {
+            "style_molecule_default": {
+                "kind": "molecule",
+                "stroke": "#000000",
+                "strokeWidth": 0.85,
+                "fontFamily": "Arial",
+                "fontSize": 11.0
+            }
+        },
+        "objects": [{
+            "id": "obj_molecule_first",
+            "type": "molecule",
+            "visible": true,
+            "zIndex": 10,
+            "transform": { "translate": [0.0, 0.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+            "styleRef": "style_molecule_default",
+            "payload": { "resourceRef": "mol_first", "bbox": [0.0, 0.0, 40.0, 0.0] }
+        }, {
+            "id": "obj_group",
+            "type": "group",
+            "visible": true,
+            "zIndex": 20,
+            "transform": { "translate": [0.0, 0.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+            "payload": { "bbox": [100.0, 20.0, 40.0, 0.0] },
+            "children": [{
+                "id": "obj_molecule_grouped",
+                "type": "molecule",
+                "visible": true,
+                "zIndex": 30,
+                "transform": { "translate": [100.0, 20.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+                "styleRef": "style_molecule_default",
+                "payload": { "resourceRef": "mol_grouped", "bbox": [0.0, 0.0, 40.0, 0.0] }
+            }]
+        }],
+        "resources": {
+            "mol_first": {
+                "type": "molecule_fragment2d",
+                "encoding": "chemcore.molecule.fragment2d",
+                "data": {
+                    "schema": "chemcore.molecule.fragment2d",
+                    "bbox": [0.0, 0.0, 40.0, 0.0],
+                    "nodes": [
+                        { "id": "n_first_1", "element": "C", "atomicNumber": 6, "position": [0.0, 0.0], "charge": 0, "numHydrogens": 0 },
+                        { "id": "n_first_2", "element": "C", "atomicNumber": 6, "position": [40.0, 0.0], "charge": 0, "numHydrogens": 0 }
+                    ],
+                    "bonds": [{ "id": "b_first", "begin": "n_first_1", "end": "n_first_2", "order": 1 }]
+                }
+            },
+            "mol_grouped": {
+                "type": "molecule_fragment2d",
+                "encoding": "chemcore.molecule.fragment2d",
+                "data": {
+                    "schema": "chemcore.molecule.fragment2d",
+                    "bbox": [0.0, 0.0, 40.0, 0.0],
+                    "nodes": [
+                        { "id": "n_grouped_1", "element": "C", "atomicNumber": 6, "position": [0.0, 0.0], "charge": 0, "numHydrogens": 0 },
+                        { "id": "n_grouped_2", "element": "C", "atomicNumber": 6, "position": [40.0, 0.0], "charge": 0, "numHydrogens": 0 }
+                    ],
+                    "bonds": [{ "id": "b_grouped", "begin": "n_grouped_1", "end": "n_grouped_2", "order": 1 }]
+                }
+            }
+        }
+    }))
+    .expect("document should deserialize")
+}
+
+#[test]
+fn hit_testing_checks_grouped_molecule_fragments() {
+    let document = grouped_two_fragment_document();
+    assert_eq!(document.editable_fragments().len(), 2);
+    let first_hit = hit_test_bond_center(&document, Point::new(20.0, 0.0), 5.0)
+        .expect("first molecule bond should be hoverable");
+    assert_eq!(first_hit.bond_id, "b_first");
+    let hit = hit_test_bond_center(&document, Point::new(120.0, 20.0), 5.0)
+        .expect("grouped molecule bond should be hoverable");
+    assert_eq!(hit.bond_id, "b_grouped");
+}
+
 fn primitive_polygon_bounds(points: &[Point]) -> [f64; 4] {
     points.iter().fold(
         [

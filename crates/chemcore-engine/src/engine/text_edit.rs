@@ -1193,23 +1193,25 @@ impl Engine {
     }
 
     pub(super) fn hit_test_endpoint_label_box(&self, point: Point) -> Option<(String, [f64; 4])> {
-        let entry = self.state.document.editable_fragment()?;
         let mut best: Option<(f64, String, [f64; 4])> = None;
-        for node in &entry.fragment.nodes {
-            let Some(bounds) = endpoint_label_world_bounds(node, entry.object.transform.translate)
-            else {
-                continue;
-            };
-            if point.x < bounds[0]
-                || point.x > bounds[2]
-                || point.y < bounds[1]
-                || point.y > bounds[3]
-            {
-                continue;
-            }
-            let area = (bounds[2] - bounds[0]).abs() * (bounds[3] - bounds[1]).abs();
-            if best.as_ref().is_none_or(|current| area < current.0) {
-                best = Some((area, node.id.clone(), bounds));
+        for entry in self.state.document.editable_fragments() {
+            for node in &entry.fragment.nodes {
+                let Some(bounds) =
+                    endpoint_label_world_bounds(node, entry.object.transform.translate)
+                else {
+                    continue;
+                };
+                if point.x < bounds[0]
+                    || point.x > bounds[2]
+                    || point.y < bounds[1]
+                    || point.y > bounds[3]
+                {
+                    continue;
+                }
+                let area = (bounds[2] - bounds[0]).abs() * (bounds[3] - bounds[1]).abs();
+                if best.as_ref().is_none_or(|current| area < current.0) {
+                    best = Some((area, node.id.clone(), bounds));
+                }
             }
         }
         best.map(|(_, node_id, bounds)| (node_id, bounds))
