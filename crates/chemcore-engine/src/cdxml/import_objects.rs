@@ -933,7 +933,7 @@ pub(super) fn append_bracket_objects(
                 let Some(kind) = cdxml_symbol_kind(symbol_type) else {
                     continue;
                 };
-                let Some(raw_bbox) = parse_bbox(node.attr("BoundingBox")) else {
+                let Some(raw_bbox) = parse_ordered_bbox(node.attr("BoundingBox")) else {
                     continue;
                 };
                 let style = crate::cdxml_symbol_style_from_line_width(defaults.line_width);
@@ -1105,16 +1105,20 @@ fn bracket_usage_count(node: &XmlNode) -> Option<u32> {
         .filter(|value| *value >= 2)
 }
 
-fn cdxml_symbol_center(kind: &str, bbox: [f64; 4]) -> [f64; 2] {
-    let center_x = (bbox[0] + bbox[2]) * 0.5;
-    let center_y = if kind == "electron" {
-        // ChemDraw treats the top endpoint of an electron symbol's vertical anchor
-        // as the dot center; the rest of the bbox stores the anchor height.
-        bbox[1]
-    } else {
-        (bbox[1] + bbox[3]) * 0.5
-    };
-    [center_x, center_y]
+fn cdxml_symbol_center(_kind: &str, bbox: [f64; 4]) -> [f64; 2] {
+    // For CDXML Symbol graphics, the first BoundingBox point is the symbol
+    // center; the second point stores the ChemDraw anchor extent/direction.
+    [bbox[0], bbox[1]]
+}
+
+fn parse_ordered_bbox(value: Option<&str>) -> Option<[f64; 4]> {
+    let mut parts = value?.split_whitespace();
+    Some([
+        parts.next()?.parse().ok()?,
+        parts.next()?.parse().ok()?,
+        parts.next()?.parse().ok()?,
+        parts.next()?.parse().ok()?,
+    ])
 }
 
 fn normalized_bbox(bbox: [f64; 4]) -> [f64; 4] {

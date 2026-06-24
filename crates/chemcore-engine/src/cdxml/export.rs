@@ -1005,21 +1005,8 @@ impl<'a> CdxmlDocumentWriter<'a> {
                 .unwrap_or_else(|| crate::cdxml_symbol_anchor_height(&kind));
             let center_x = (bbox[0] + bbox[2]) * 0.5;
             let center_y = (bbox[1] + bbox[3]) * 0.5;
-            let symbol_bbox = if kind == "electron" {
-                [
-                    center_x - anchor_width * 0.5,
-                    center_y,
-                    center_x + anchor_width * 0.5,
-                    center_y + anchor_height,
-                ]
-            } else {
-                [
-                    center_x - anchor_width * 0.5,
-                    center_y - anchor_height * 0.5,
-                    center_x + anchor_width * 0.5,
-                    center_y + anchor_height * 0.5,
-                ]
-            };
+            let symbol_bbox =
+                cdxml_symbol_anchor_bbox(center_x, center_y, anchor_width, anchor_height);
             write_empty_tag(
                 out,
                 4,
@@ -1778,6 +1765,21 @@ fn cdxml_arrow_fill_type(value: &str) -> Option<&'static str> {
         "solid" => Some("Solid"),
         "shaded" => Some("Shaded"),
         _ => None,
+    }
+}
+
+fn cdxml_symbol_anchor_bbox(
+    center_x: f64,
+    center_y: f64,
+    anchor_width: f64,
+    anchor_height: f64,
+) -> [f64; 4] {
+    if anchor_width.abs() > crate::EPSILON {
+        [center_x, center_y, center_x - anchor_width, center_y]
+    } else if anchor_height.abs() > crate::EPSILON {
+        [center_x, center_y, center_x, center_y + anchor_height]
+    } else {
+        [center_x, center_y, center_x, center_y]
     }
 }
 

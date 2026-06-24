@@ -4416,6 +4416,59 @@ fn cdxml_electron_symbol_uses_chemdraw_top_anchor_and_color() {
 }
 
 #[test]
+fn cdxml_charge_symbols_use_first_bbox_point_as_center() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML BondLength="14.40" LineWidth="0.60" color="0" bgcolor="1">
+  <page id="1">
+    <graphic id="2" BoundingBox="94.25 102.47 86.75 102.47" Z="1" GraphicType="Symbol" SymbolType="Minus"/>
+    <graphic id="3" BoundingBox="97.99 113.04 90.49 113.04" Z="2" GraphicType="Symbol" SymbolType="Plus"/>
+  </page>
+</CDXML>"##;
+    let mut engine = Engine::new();
+    engine
+        .load_cdxml_document(cdxml)
+        .expect("charge symbol cdxml should load");
+    let document = &engine.state().document;
+    assert_symbol_center(document, "minus", [94.25, 102.47]);
+    assert_symbol_center(document, "plus", [97.99, 113.04]);
+
+    let exported = document_to_cdxml(document);
+    let reimported =
+        parse_cdxml_document(&exported, Some("charge symbol export")).expect("export should parse");
+    assert_symbol_center(&reimported, "minus", [94.25, 102.47]);
+    assert_symbol_center(&reimported, "plus", [97.99, 113.04]);
+}
+
+fn assert_symbol_center(document: &ChemcoreDocument, kind: &str, expected: [f64; 2]) {
+    let symbol = document
+        .objects
+        .iter()
+        .find(|object| {
+            object.object_type == "symbol"
+                && object
+                    .payload
+                    .extra
+                    .get("kind")
+                    .and_then(|value| value.as_str())
+                    == Some(kind)
+        })
+        .unwrap_or_else(|| panic!("{kind} symbol should import"));
+    let [_, _, width, height] = symbol.payload.bbox.expect("symbol should have bbox");
+    let center = [
+        symbol.transform.translate[0] + width * 0.5,
+        symbol.transform.translate[1] + height * 0.5,
+    ];
+    assert!(
+        (center[0] - expected[0]).abs() < 0.01,
+        "{kind} center x should use first CDXML bbox point, got {center:?}"
+    );
+    assert!(
+        (center[1] - expected[1]).abs() < 0.01,
+        "{kind} center y should use first CDXML bbox point, got {center:?}"
+    );
+}
+
+#[test]
 fn cdxml_represented_radical_symbol_does_not_double_count_node_radical() {
     let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
 <CDXML BondLength="14.40" LineWidth="0.60" color="0" bgcolor="1">
