@@ -147,7 +147,8 @@ export function createEditorPointerController(options) {
   }
 
   function clearInteractionOverlayNow() {
-    void clearEngineHoverOverlay();
+    cancelScheduledHoverMove();
+    clearEditorOverlayRoot();
   }
 
   function scheduleDocumentPreviewFrame() {
@@ -913,8 +914,7 @@ export function createEditorPointerController(options) {
         suppressHoverUntilPointerLeavesPoint(commitPoint);
         options.clearDocumentObjectPreviewTransform();
         await clearEngineHoverOverlay();
-        await options.syncArrowAwareCursorForPoint(commitPoint);
-        await clearEngineHoverOverlay();
+        options.syncCanvasCursor?.();
         options.renderDocumentChange?.(result) || options.renderDocument();
         clearEditorOverlayRoot();
       } else if (options.editorState().activeTool === "select") {
@@ -983,8 +983,7 @@ export function createEditorPointerController(options) {
           );
           suppressHoverUntilPointerLeavesPoint(commitPoint);
           await clearEngineHoverOverlay();
-          await options.syncSelectCursorForPoint(commitPoint);
-          await clearEngineHoverOverlay();
+          options.syncCanvasCursor?.();
           options.clearDocumentObjectPreviewTransform();
           options.renderDocumentChange?.(result) || options.renderDocument();
           clearEditorOverlayRoot();
