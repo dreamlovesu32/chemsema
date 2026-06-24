@@ -193,7 +193,74 @@ async function verifyLargeDragTarget(page, target, kind) {
   await page.mouse.move(target.x, target.y);
   await page.mouse.down();
   await page.mouse.move(target.x + 24, target.y + 12, { steps: 6 });
-  await page.waitForTimeout(100);
+  const backendDomMatches = (nodeId) => {
+    const doc = window.__chemcoreDebug.document;
+    const connectedBonds = new Set();
+    const visit = (object, out = []) => {
+      if (!object) {
+        return out;
+      }
+      out.push(object);
+      for (const child of object.children || []) {
+        visit(child, out);
+      }
+      return out;
+    };
+    for (const object of (doc.objects || []).flatMap((candidate) => visit(candidate, []))) {
+      const resourceRef = object.payload?.resourceRef || object.payload?.resource_ref;
+      const fragment = resourceRef ? doc.resources?.[resourceRef]?.data : object.payload?.fragment;
+      for (const bond of fragment?.bonds || []) {
+        if (bond.begin === nodeId || bond.end === nodeId) {
+          connectedBonds.add(bond.id);
+        }
+      }
+    }
+    const renderList = JSON.parse(window.__chemcoreDebug.state.editorEngine.renderTargetsJson(JSON.stringify({
+      nodes: [nodeId],
+      bonds: [...connectedBonds],
+    })));
+    const backendCount = renderList
+      .filter((primitive) => (
+        primitive.role !== "document-knockout"
+        && primitive.role !== "document_knockout"
+        && (
+          primitive.nodeId === nodeId
+          || primitive.node_id === nodeId
+          || connectedBonds.has(primitive.bondId || primitive.bond_id)
+        )
+      ))
+      .length;
+    const selectors = [
+      `[data-node-id="${CSS.escape(nodeId)}"]`,
+      ...[...connectedBonds].map((bondId) => `[data-bond-id="${CSS.escape(bondId)}"]`),
+    ];
+    const domCount = [...document.querySelectorAll(`[data-layer="document-content"] ${selectors.join(",")}`)].length;
+    return {
+      connectedBonds: [...connectedBonds],
+      backendCount,
+      domCount,
+      matches: backendCount > 0 && backendCount === domCount,
+      partialChildren: document.querySelector('[data-layer="document-partial-bond-preview"]')?.childElementCount || 0,
+      gesture: window.__chemcoreDebug.activeSelectionGesture || null,
+    };
+  };
+  await page.evaluate((source) => {
+    window.__viewerSmokeBackendDomMatches = eval(`(${source})`);
+  }, backendDomMatches.toString());
+  try {
+    await page.waitForFunction((nodeId) => {
+      return (window.__viewerSmokeBackendDomMatches || (() => ({ matches: false })))(nodeId).matches;
+    }, target.id, { timeout: 5000 });
+  } catch (error) {
+    const diagnostics = await page.evaluate(
+      ([nodeId, source]) => {
+        window.__viewerSmokeBackendDomMatches = eval(`(${source})`);
+        return window.__viewerSmokeBackendDomMatches(nodeId);
+      },
+      [target.id, backendDomMatches.toString()],
+    );
+    throw new Error(`${kind} backend DOM did not match: ${JSON.stringify(diagnostics).slice(0, 1600)}`);
+  }
   const during = await page.evaluate(() => {
     const overlay = document.querySelector('[data-layer="editor-overlay"]');
     const partial = document.querySelector('[data-layer="document-partial-bond-preview"]');
@@ -211,10 +278,10 @@ async function verifyLargeDragTarget(page, target, kind) {
       previews: overlay?.querySelectorAll('[data-role^="preview-"]').length || 0,
       partial: !!document.querySelector('[data-layer="document-partial-bond-preview"]'),
       transformed: document.querySelectorAll(".is-preview-transforming").length,
-      gesture: window.__chemcoreDebug.state.activeSelectionGesture || null,
+      gesture: window.__chemcoreDebug.activeSelectionGesture || null,
     };
   });
-  assert(during.partialChildren > 0, `${kind} drag did not use partial bond preview.`);
+  assert(during.partialChildren === 0, `${kind} drag used front-end partial bond preview.`);
   assert(!during.hasDocumentMask, `${kind} drag fell back to full document preview mask.`);
   assert(!after.partial, `${kind} drag left partial bond preview behind.`);
   assert(after.transformed === 0, `${kind} drag left transformed document nodes behind.`);

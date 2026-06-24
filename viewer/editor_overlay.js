@@ -488,6 +488,10 @@ export function createEditorOverlayRenderer(options) {
       || primitiveBondId(primitive).startsWith("__preview_");
   }
 
+  function gestureUsesFullDocumentMask(gesture) {
+    return ["move", "resize", "rotate"].includes(gesture?.kind);
+  }
+
   function renderEditorOverlay(renderList = null) {
     const viewerSvg = options.viewerSvg();
     if (!options.isEditingRustDocument()) {
@@ -507,6 +511,7 @@ export function createEditorOverlayRenderer(options) {
     const previewActive = options.activeGestureUsesDocumentPreview();
     const editorState = options.editorState();
     const activeSelectionGesture = options.activeSelectionGesture();
+    const previewMaskActive = previewActive && gestureUsesFullDocumentMask(activeSelectionGesture);
     const hasSelectionOverlayPrimitives = primitives
       .some((primitive) => String(primitive?.role || "").startsWith("selection-"));
     const selectionBounds = hasSelectionOverlayPrimitives
@@ -517,7 +522,7 @@ export function createEditorOverlayRenderer(options) {
     const visibleResizeHandles = hideSelectionOverlayDuringGesture
       ? []
       : selectionResizeHandles(primitives);
-    if (previewActive) {
+    if (previewMaskActive) {
       const viewBox = options.activeViewBox();
       const pageBackground = normalizeDisplayColor(
         options.currentPageBackground(),

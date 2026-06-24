@@ -222,10 +222,15 @@ const {
 let canvasContextMenuHost = null;
 let canvasContextMenu = null;
 let textSymbolPalette = null;
+let resolveAppInitialDocumentReady = null;
+const appInitialDocumentReady = new Promise((resolve) => {
+  resolveAppInitialDocumentReady = resolve;
+});
 registerChemcoreDebug({
   state,
   getEngineState: () => currentEditorEngineState(),
   getActiveTextEditor: () => activeTextEditor,
+  getActiveSelectionGesture: () => activeSelectionGesture,
   getDisplayMetrics: () => state.displayMetrics,
   engineHost,
   desktopFileHost,
@@ -244,6 +249,21 @@ registerChemcoreDebug({
     await syncDocumentFromEngine();
     renderDocument();
     return state.currentDocument;
+  },
+  async loadDocumentForTest(documentData) {
+    await appInitialDocumentReady;
+    await loadJsonDocumentIntoEditor(documentData, "test-large-drag.ccjs", null);
+    fitView();
+    return state.currentDocument;
+  },
+  renderStats: {
+    captureRenderListStacks: false,
+    documentRenderCount: 0,
+    renderListJsonCount: 0,
+    lastRenderListJsonStack: "",
+  },
+  getRenderListJson() {
+    return state.editorEngine?.renderListJson?.() || "[]";
   },
   setDisplayScale(scale = null) {
     return applyDisplayScaleOverride(scale);
@@ -314,9 +334,14 @@ let forceWindowClose = false;
 let activeDocumentPreviewObjectIds = new Set();
 let activeDocumentPreviewPrimitiveElements = new Set();
 let activeDocumentPreviewHiddenElements = new Set();
+let activeDocumentEditPreviewHiddenElements = new Set();
 let activeDocumentPreviewLayer = false;
+let activeDocumentPreviewBatchLayer = null;
 let activeDocumentPreviewTransform = "";
+let documentPrimitiveNodeElements = new Map();
+let documentPrimitiveBondElements = new Map();
 let documentMoleculeTopologyCache = null;
+const DOCUMENT_PREVIEW_BATCH_ELEMENT_THRESHOLD = 96;
 const editorEngineReadCache = {
   engine: null,
   revision: null,
@@ -418,6 +443,7 @@ const editorState = {
 let activeSelectionGesture = null;
 let activeTlcSpotHover = null;
 let activeTlcLaneHover = null;
+let deferredDocumentSyncHandle = 0;
 
 const TAB_STATE_KEYS = [
   "currentPath",
@@ -700,6 +726,19 @@ async function autoSaveAllOleEditDocumentTabs() {
 }
 
 async function handleDocumentCommandCommitted(event) {
+  if (event.deferDocumentSync) {
+    scheduleDeferredDocumentSync();
+    renderDocumentTabs();
+    syncWindowTitle();
+    refreshCommandAvailability();
+    console.debug?.("[chemcore] document command committed", {
+      type: event.commandType,
+      revision: event.revision,
+      source: event.source,
+      deferredSync: true,
+    });
+    return;
+  }
   saveActiveDocumentTabState();
   const tab = activeDocumentTab();
   if (tab) {
@@ -2100,6 +2139,12 @@ function currentEditorRenderList() {
     return [];
   }
   if (!cache.renderList) {
+    if (window.__chemcoreDebug?.renderStats) {
+      window.__chemcoreDebug.renderStats.renderListJsonCount += 1;
+      if (window.__chemcoreDebug.renderStats.captureRenderListStacks) {
+        window.__chemcoreDebug.renderStats.lastRenderListJsonStack = new Error().stack || "";
+      }
+    }
     cache.renderListJson = state.editorEngine.renderListJson?.() || "[]";
     cache.renderList = parseEngineJson(cache.renderListJson, []) || [];
   }
@@ -2112,10 +2157,7 @@ function currentEditorInteractionRenderList() {
     return [];
   }
   if (!cache.interactionRenderList) {
-    cache.interactionRenderListJson = state.editorEngine.interactionRenderListJson?.()
-      || cache.renderListJson
-      || state.editorEngine.renderListJson?.()
-      || "[]";
+    cache.interactionRenderListJson = state.editorEngine.interactionRenderListJson?.() || "[]";
     cache.interactionRenderList = parseEngineJson(cache.interactionRenderListJson, []) || [];
   }
   return cache.interactionRenderList;
@@ -2513,11 +2555,19 @@ function targetIdsFromCommandResult(result, key) {
   return ids;
 }
 
-function commandResultHasStyleOnlyChanges(result) {
-  return targetIdsFromCommandResult(result, "styles").size > 0
-    && targetIdsFromCommandResult(result, "objects").size === 0
-    && targetIdsFromCommandResult(result, "nodes").size === 0
-    && targetIdsFromCommandResult(result, "bonds").size === 0;
+function objectStyleRef(object) {
+  return object?.styleRef || object?.style_ref || "";
+}
+
+function addObjectIdsForStyleTargets(objectIds, styleIds, objectMap = currentDocumentSceneObjectMap()) {
+  if (!styleIds.size) {
+    return;
+  }
+  for (const [objectId, object] of objectMap) {
+    if (styleIds.has(objectStyleRef(object))) {
+      objectIds.add(objectId);
+    }
+  }
 }
 
 function addObjectIdsForPrimitiveTargets(objectIds, nodeIds, bondIds) {
@@ -2548,12 +2598,11 @@ function addObjectIdsForPrimitiveTargets(objectIds, nodeIds, bondIds) {
     }
     addFromPrimitive(primitive);
   }
-  const documentLayer = viewerSvg.querySelector('[data-layer="document-content"]');
   const addFromExistingDom = (attribute, id, remaining) => {
-    if (!documentLayer || !remaining.has(id)) {
+    if (!remaining.has(id)) {
       return;
     }
-    const element = documentLayer.querySelector(`[${attribute}="${CSS.escape(id)}"]`);
+    const element = documentPrimitiveElementsForId(attribute, id)[0];
     const objectElement = element?.closest?.("[data-object-id]");
     const objectId = objectElement?.dataset?.objectId || element?.dataset?.objectId || "";
     if (objectId) {
@@ -2593,10 +2642,14 @@ function expandObjectIdsWithDescendants(objectIds, objectMap = currentDocumentSc
 }
 
 function objectIdsForCommandResultPatch(result) {
-  if (!result?.changed || commandResultHasStyleOnlyChanges(result)) {
+  if (!result?.changed) {
     return new Set();
   }
   const objectIds = targetIdsFromCommandResult(result, "objects");
+  addObjectIdsForStyleTargets(
+    objectIds,
+    targetIdsFromCommandResult(result, "styles"),
+  );
   addObjectIdsForPrimitiveTargets(
     objectIds,
     targetIdsFromCommandResult(result, "nodes"),
@@ -2625,10 +2678,15 @@ function removeDocumentObjectDom(documentLayer, objectId) {
   }
 }
 
+function renderTargetObjectPrimitives(objectId) {
+  return parseEngineJson(state.editorEngine?.renderTargetsJson?.(JSON.stringify({
+    objects: [objectId],
+  })) || "[]", []);
+}
+
 function renderDocumentObjectPatchNode(objectId, objectMap) {
   const object = objectMap.get(objectId);
-  const primitives = (state.coreRenderList || [])
-    .filter((primitive) => primitiveObjectId(primitive) === objectId);
+  const primitives = renderTargetObjectPrimitives(objectId);
   if (!object && !primitives.length) {
     return null;
   }
@@ -2675,9 +2733,11 @@ function renderDocumentChange(result = null) {
   }
   const documentLayer = viewerSvg.querySelector('[data-layer="document-content"]');
   const objectIds = objectIdsForCommandResultPatch(result);
-  if (!documentLayer || !objectIds.size) {
-    renderDocument();
+  if (!documentLayer) {
     return true;
+  }
+  if (!objectIds.size) {
+    return renderDocumentPrimitiveChange(result) || true;
   }
   clearDocumentObjectPreviewTransform();
   const objectMap = currentDocumentSceneObjectMap();
@@ -2698,10 +2758,236 @@ function renderDocumentChange(result = null) {
     const anchor = findDocumentPatchAnchor(documentLayer, objectId, objectIds, paintOrder);
     documentLayer.insertBefore(node, anchor);
   }
+  rebuildDocumentPrimitiveIndex(documentLayer);
   syncViewerStats();
   renderEditorOverlay();
   positionActiveTextEditor();
   return true;
+}
+
+function commandTargetSet(values) {
+  return [...(values || [])].filter(Boolean);
+}
+
+function primitiveDomIndexForAttribute(attribute) {
+  if (attribute === "data-node-id") {
+    return documentPrimitiveNodeElements;
+  }
+  if (attribute === "data-bond-id") {
+    return documentPrimitiveBondElements;
+  }
+  return null;
+}
+
+function resetDocumentPrimitiveIndex() {
+  documentPrimitiveNodeElements = new Map();
+  documentPrimitiveBondElements = new Map();
+}
+
+function addDocumentPrimitiveIndexEntry(index, id, element) {
+  if (!id || !index) {
+    return;
+  }
+  let elements = index.get(id);
+  if (!elements) {
+    elements = new Set();
+    index.set(id, elements);
+  }
+  elements.add(element);
+}
+
+function removeDocumentPrimitiveIndexEntry(index, id, element) {
+  if (!id || !index) {
+    return;
+  }
+  const elements = index.get(id);
+  if (!elements) {
+    return;
+  }
+  elements.delete(element);
+  if (!elements.size) {
+    index.delete(id);
+  }
+}
+
+function indexDocumentPrimitiveElement(element) {
+  addDocumentPrimitiveIndexEntry(documentPrimitiveNodeElements, element.getAttribute("data-node-id"), element);
+  addDocumentPrimitiveIndexEntry(documentPrimitiveBondElements, element.getAttribute("data-bond-id"), element);
+}
+
+function unindexDocumentPrimitiveElement(element) {
+  removeDocumentPrimitiveIndexEntry(documentPrimitiveNodeElements, element.getAttribute("data-node-id"), element);
+  removeDocumentPrimitiveIndexEntry(documentPrimitiveBondElements, element.getAttribute("data-bond-id"), element);
+}
+
+function indexDocumentPrimitiveTree(root) {
+  if (!root?.querySelectorAll) {
+    return;
+  }
+  if (root.nodeType === Node.ELEMENT_NODE) {
+    indexDocumentPrimitiveElement(root);
+  }
+  root
+    .querySelectorAll("[data-node-id], [data-bond-id]")
+    .forEach(indexDocumentPrimitiveElement);
+}
+
+function rebuildDocumentPrimitiveIndex(documentLayer) {
+  resetDocumentPrimitiveIndex();
+  indexDocumentPrimitiveTree(documentLayer);
+}
+
+function documentPrimitiveElementsForId(attribute, id) {
+  const index = primitiveDomIndexForAttribute(attribute);
+  return index ? [...(index.get(id) || [])].filter((element) => element.isConnected) : [];
+}
+
+function collectDocumentPrimitiveTargetElements(documentLayer, nodeIds, bondIds) {
+  const elements = new Set();
+  for (const nodeId of nodeIds) {
+    documentPrimitiveElementsForId("data-node-id", nodeId).forEach((element) => elements.add(element));
+  }
+  for (const bondId of bondIds) {
+    documentPrimitiveElementsForId("data-bond-id", bondId).forEach((element) => elements.add(element));
+  }
+  return elements;
+}
+
+function renderDocumentPrimitivePatch(primitives, nodeIds, bondIds) {
+  const documentLayer = viewerSvg.querySelector('[data-layer="document-content"]');
+  if (!documentLayer || !Array.isArray(primitives)) {
+    return false;
+  }
+  const targetElements = [...collectDocumentPrimitiveTargetElements(documentLayer, nodeIds, bondIds)];
+  const targetElementSet = new Set(targetElements);
+  let anchor = null;
+  let seenTarget = false;
+  for (const child of [...documentLayer.children]) {
+    if (targetElementSet.has(child)) {
+      seenTarget = true;
+      continue;
+    }
+    if (seenTarget) {
+      anchor = child;
+      break;
+    }
+  }
+  for (const element of targetElements) {
+    unindexDocumentPrimitiveElement(element);
+    element.remove();
+  }
+  const fragment = document.createDocumentFragment();
+  for (const primitive of primitives) {
+    renderCorePrimitive(fragment, primitive, corePrimitiveRenderOptions());
+  }
+  if (!fragment.childNodes.length) {
+    return false;
+  }
+  indexDocumentPrimitiveTree(fragment);
+  documentLayer.insertBefore(fragment, anchor);
+  syncViewerStats();
+  positionActiveTextEditor();
+  return true;
+}
+
+function renderDocumentPrimitiveChange(result = null) {
+  if (!isEditingRustDocument() || !state.currentDocument || !result?.changed) {
+    return false;
+  }
+  const nodeIds = targetIdsFromCommandResult(result, "nodes");
+  const bondIds = targetIdsFromCommandResult(result, "bonds");
+  if (!nodeIds.size && !bondIds.size) {
+    return false;
+  }
+  if (targetIdsFromCommandResult(result, "styles").size > 0) {
+    return false;
+  }
+  const primitives = parseEngineJson(state.editorEngine?.renderTargetsJson?.(JSON.stringify({
+    nodes: commandTargetSet(nodeIds),
+    bonds: commandTargetSet(bondIds),
+  })) || "[]", []);
+  clearDocumentObjectPreviewTransform();
+  return renderDocumentPrimitivePatch(primitives, nodeIds, bondIds);
+}
+
+function structurePreviewTargetIds(selection = currentEditorEngineState()?.selection) {
+  const nodeIds = activeStructurePreviewNodeIds(selection);
+  const bondIds = selectedStructurePreviewBondIds(selection, nodeIds);
+  const topology = currentDocumentMoleculeTopology();
+  for (const nodeId of nodeIds) {
+    for (const entry of topology.bondsByNode.get(nodeId) || []) {
+      if (entry.bond?.id) {
+        bondIds.add(entry.bond.id);
+      }
+    }
+  }
+  return { nodeIds, bondIds };
+}
+
+function selectionNeedsBackendMovePreview(selection = currentEditorEngineState()?.selection) {
+  const targets = structurePreviewTargetIds(selection);
+  return targets.nodeIds.size > 0 || targets.bondIds.size > 0;
+}
+
+function recordBackendMovePreviewTiming(sample) {
+  const debug = window.__chemcoreDebug;
+  if (!debug) {
+    return;
+  }
+  const stats = debug.backendMovePreviewStats || { samples: [] };
+  stats.samples.push(sample);
+  if (stats.samples.length > 240) {
+    stats.samples.splice(0, stats.samples.length - 240);
+  }
+  stats.last = sample;
+  debug.backendMovePreviewStats = stats;
+}
+
+async function applyBackendSelectionMovePreview(point, altKey = false) {
+  const gesture = activeSelectionGesture;
+  const selection = gesture?.previewSelection || currentEditorEngineState()?.selection;
+  if (gesture?.kind !== "move" || !point || !selectionNeedsBackendMovePreview(selection)) {
+    return false;
+  }
+  gesture.previewSelection = selection;
+  const targets = structurePreviewTargetIds(selection);
+  const started = performance.now();
+  const moveResult = state.editorEngine.updateSelectionMove?.(point.x, point.y, altKey);
+  const changed = moveResult && typeof moveResult.then === "function" ? await moveResult : moveResult;
+  const updatedAt = performance.now();
+  if (!changed) {
+    recordBackendMovePreviewTiming({
+      updateMs: updatedAt - started,
+      renderTargetsMs: 0,
+      patchMs: 0,
+      totalMs: updatedAt - started,
+      primitiveCount: 0,
+      nodeCount: targets.nodeIds.size,
+      bondCount: targets.bondIds.size,
+      patched: false,
+      changed: false,
+    });
+    return true;
+  }
+  const primitives = parseEngineJson(state.editorEngine.renderTargetsJson?.(JSON.stringify({
+    nodes: commandTargetSet(targets.nodeIds),
+    bonds: commandTargetSet(targets.bondIds),
+  })) || "[]", []);
+  const renderedAt = performance.now();
+  const patched = renderDocumentPrimitivePatch(primitives, targets.nodeIds, targets.bondIds);
+  const patchedAt = performance.now();
+  recordBackendMovePreviewTiming({
+    updateMs: updatedAt - started,
+    renderTargetsMs: renderedAt - updatedAt,
+    patchMs: patchedAt - renderedAt,
+    totalMs: patchedAt - started,
+    primitiveCount: primitives.length,
+    nodeCount: targets.nodeIds.size,
+    bondCount: targets.bondIds.size,
+    patched,
+    changed: true,
+  });
+  return patched;
 }
 
 function syncViewerStats() {
@@ -2714,7 +3000,13 @@ function syncViewerStats() {
     .join(" | ");
 }
 
-const renderEditorOverlay = (...args) => editorOverlayRenderer.renderEditorOverlay(...args);
+function renderEditorOverlay(renderList = null) {
+  const effectiveRenderList = activeGestureUsesObjectEditPreview() && !renderList
+    ? currentEditorInteractionRenderList()
+    : renderList;
+  syncObjectEditPreviewHiddenElements(effectiveRenderList || []);
+  editorOverlayRenderer.renderEditorOverlay(effectiveRenderList);
+}
 const currentSelectionRotateHandle = (...args) => editorOverlayRenderer.currentSelectionRotateHandle(...args);
 const selectionResizeHandleHit = (...args) => editorOverlayRenderer.selectionResizeHandleHit(...args);
 const selectionResizeGestureScale = (...args) => editorOverlayRenderer.selectionResizeGestureScale(...args);
@@ -2788,6 +3080,7 @@ const editorPointerController = createEditorPointerController({
   syncDocumentFromEngine,
   renderDocument,
   renderDocumentChange,
+  renderDocumentPrimitiveChange,
   renderSelectionOnlyUpdate,
   selectionResizeHandleHit,
   selectionRotateHandleHit,
@@ -2803,8 +3096,13 @@ const editorPointerController = createEditorPointerController({
   selectionHasLargeOverlay: () => currentSelectionItemCount() >= 80,
   selectionBoundsContainsPoint: currentSelectionBoundsContainsPoint,
   selectionHitContainsPoint: currentSelectionHitContainsPoint,
+  selectionNeedsBackendMovePreview,
+  applyBackendSelectionMovePreview,
   applyDocumentObjectPreviewTransform,
   clearDocumentObjectPreviewTransform,
+  commitDocumentObjectPreviewTransform,
+  canCommitDocumentObjectPreviewTransform,
+  scheduleDeferredDocumentSync,
   syncEditorRenderListFromEngine,
   updateTlcSpotHover,
   clearTlcHoverState,
@@ -2833,26 +3131,55 @@ const editorPointerController = createEditorPointerController({
   setActiveBracketDragStart: (value) => { state.activeBracketDragStart = value; },
 });
 
-async function syncDocumentFromEngine() {
+async function syncDocumentFromEngine(options = {}) {
   if (!state.editorEngine) {
     return;
+  }
+  const syncRenderList = options.syncRenderList ?? true;
+  if (!syncRenderList && typeof state.editorEngine.refreshSnapshot === "function") {
+    await state.editorEngine.refreshSnapshot("documentState");
   }
   const documentData = parseEngineJson(state.editorEngine.documentJson());
   if (documentData) {
     state.currentDocument = documentData;
     documentMoleculeTopologyCache = null;
     currentDocumentMoleculeTopology();
-    await syncCoreRenderListFromCurrentDocument();
-    maybeAutoExpandEditorViewport(state.coreRenderList || []);
+    if (syncRenderList) {
+      await syncCoreRenderListFromCurrentDocument();
+      maybeAutoExpandEditorViewport(state.coreRenderList || []);
+    }
   }
   syncSelectionChemistrySummary();
   refreshCommandAvailability();
 }
 
-async function renderSelectionOnlyUpdate(point, syncCursor = syncSelectCursorForPoint) {
-  renderEditorOverlay(syncEditorSelectionRenderListFromEngine());
-  if (point) {
+function scheduleDeferredDocumentSync() {
+  if (deferredDocumentSyncHandle) {
+    return;
+  }
+  deferredDocumentSyncHandle = window.setTimeout(async () => {
+    deferredDocumentSyncHandle = 0;
+    if (activeSelectionGesture) {
+      scheduleDeferredDocumentSync();
+      return;
+    }
+    await syncDocumentFromEngine();
+    saveActiveDocumentTabState();
+    renderDocumentTabs();
+    syncWindowTitle();
+  }, 1200);
+}
+
+async function renderSelectionOnlyUpdate(point, syncCursor = syncSelectCursorForPoint, options = {}) {
+  const renderList = options.useInteractionList === false
+    ? currentEditorRenderList()
+    : syncEditorSelectionRenderListFromEngine();
+  renderEditorOverlay(renderList);
+  if (point && typeof syncCursor === "function") {
     await syncCursor(point);
+  }
+  if (options.deferEngineReads) {
+    return;
   }
   syncSelectionChemistrySummary();
   refreshCommandAvailability();
@@ -3279,6 +3606,10 @@ async function syncArrowAwareCursorForPoint(point) {
     viewerSvg.style.cursor = "move";
     return;
   }
+  if (arrowAction === "head-style" || arrowAction === "tail-style") {
+    viewerSvg.style.cursor = "nwse-resize";
+    return;
+  }
   if (arrowAction === "curve") {
     viewerSvg.style.cursor = "nesw-resize";
     return;
@@ -3683,7 +4014,7 @@ async function openTextEditorAt(point, options = {}) {
   const sessionJson = await state.editorEngine?.beginTextEdit?.(point.x, point.y);
   const session = parseEngineJson(sessionJson, null);
   if (!session) {
-    renderEditorOverlay(currentEditorRenderList());
+    renderEditorOverlay(currentEditorInteractionRenderList());
     return;
   }
   const nextSession = { ...session };
@@ -3695,7 +4026,7 @@ async function openTextEditorAt(point, options = {}) {
   if (Number.isFinite(lineHeight) && lineHeight > 0) {
     nextSession.lineHeight = lineHeight;
   }
-  renderEditorOverlay(currentEditorRenderList());
+  renderEditorOverlay(currentEditorInteractionRenderList());
   openTextEditorSession(nextSession);
   if (options.bracketObjectId && activeTextEditor) {
     activeTextEditor.bracketLabelObjectId = String(options.bracketObjectId);
@@ -3714,7 +4045,7 @@ function openTextEditorSession(session) {
   if (targetResult) {
     renderDocumentChange(targetResult);
   } else {
-    renderEditorOverlay(currentEditorRenderList());
+    renderEditorOverlay(currentEditorInteractionRenderList());
   }
 }
 
@@ -5273,16 +5604,109 @@ function restoreDocumentPreviewElementVisibility(element) {
 }
 
 function clearDocumentPartialBondPreview() {
-  viewerSvg.querySelector('[data-layer="document-partial-bond-preview"]')?.remove();
+  viewerSvg.querySelectorAll('[data-layer="document-partial-bond-preview"]').forEach((layer) => layer.remove());
   for (const element of activeDocumentPreviewHiddenElements) {
     restoreDocumentPreviewElementVisibility(element);
   }
   activeDocumentPreviewHiddenElements = new Set();
+  activeDocumentEditPreviewHiddenElements = new Set();
+}
+
+function activeGestureUsesObjectEditPreview() {
+  return ["arrow-endpoint", "arrow-curve", "shape-resize"].includes(activeSelectionGesture?.kind);
+}
+
+function objectIdsFromDocumentPreviewPrimitives(renderList = []) {
+  const ids = new Set();
+  for (const primitive of renderList || []) {
+    const objectId = primitiveObjectId(primitive);
+    if (objectId && isDocumentPreviewPrimitive(primitive)) {
+      ids.add(objectId);
+    }
+  }
+  return ids;
+}
+
+function syncObjectEditPreviewHiddenElements(renderList = []) {
+  const nextElements = new Set();
+  if (activeGestureUsesObjectEditPreview()) {
+    for (const objectId of objectIdsFromDocumentPreviewPrimitives(renderList)) {
+      for (const element of documentObjectElements(objectId)) {
+        hideDocumentPreviewElement(element);
+        nextElements.add(element);
+      }
+    }
+  }
+  for (const element of activeDocumentEditPreviewHiddenElements) {
+    if (!nextElements.has(element)) {
+      restoreDocumentPreviewElementVisibility(element);
+      activeDocumentPreviewHiddenElements.delete(element);
+    }
+  }
+  activeDocumentEditPreviewHiddenElements = nextElements;
+}
+
+function commitDocumentPartialBondPreview() {
+  const layer = viewerSvg.querySelector('[data-layer="document-partial-bond-preview"]');
+  if (!layer) {
+    return false;
+  }
+  const previewByBondId = new Map();
+  for (const preview of [...layer.children]) {
+    const bondId = preview.getAttribute("data-bond-id") || "";
+    if (!bondId) {
+      continue;
+    }
+    if (!previewByBondId.has(bondId)) {
+      previewByBondId.set(bondId, []);
+    }
+    previewByBondId.get(bondId).push(preview.cloneNode(true));
+  }
+  const originalsByBondId = new Map();
+  for (const element of activeDocumentPreviewHiddenElements) {
+    const bondId = element.getAttribute?.("data-bond-id") || "";
+    if (!bondId || !previewByBondId.has(bondId)) {
+      continue;
+    }
+    if (!originalsByBondId.has(bondId)) {
+      originalsByBondId.set(bondId, []);
+    }
+    originalsByBondId.get(bondId).push(element);
+  }
+  const committed = new Set();
+  for (const [bondId, originals] of originalsByBondId) {
+    const previews = previewByBondId.get(bondId) || [];
+    const anchor = originals.find((element) => element.parentNode);
+    if (!anchor?.parentNode || !previews.length) {
+      continue;
+    }
+    for (const preview of previews) {
+      anchor.parentNode.insertBefore(preview, anchor);
+    }
+    for (const original of originals) {
+      committed.add(original);
+      original.remove();
+    }
+  }
+  layer.remove();
+  if (!committed.size) {
+    return false;
+  }
+  activeDocumentPreviewHiddenElements = new Set(
+    [...activeDocumentPreviewHiddenElements].filter((element) => !committed.has(element)),
+  );
+  return true;
+}
+
+function removeDocumentPreviewBatchLayer() {
+  activeDocumentPreviewBatchLayer?.remove();
+  activeDocumentPreviewBatchLayer = null;
 }
 
 function clearDocumentObjectPreviewTransform() {
   const documentLayer = viewerSvg.querySelector('[data-layer="document-content"]');
   clearDocumentPartialBondPreview();
+  removeDocumentPreviewBatchLayer();
   if (activeDocumentPreviewLayer) {
     documentLayer?.removeAttribute("transform");
     activeDocumentPreviewLayer = false;
@@ -5302,6 +5726,67 @@ function clearDocumentObjectPreviewTransform() {
   }
   activeDocumentPreviewPrimitiveElements = new Set();
   activeDocumentPreviewTransform = "";
+}
+
+function commitDocumentPreviewElementTransform(element, transform = activeDocumentPreviewTransform) {
+  if (!element || !transform) {
+    return;
+  }
+  const baseTransform = element.dataset.previewBaseTransform;
+  const committedTransform = baseTransform !== undefined
+    ? element.getAttribute("transform") || (baseTransform ? `${transform} ${baseTransform}` : transform)
+    : transform
+      ? `${transform}${element.getAttribute("transform") ? ` ${element.getAttribute("transform")}` : ""}`
+      : element.getAttribute("transform") || "";
+  if (committedTransform) {
+    element.setAttribute("transform", committedTransform);
+  } else {
+    element.removeAttribute("transform");
+  }
+  delete element.dataset.previewBaseTransform;
+  element.classList.remove("is-preview-transforming");
+}
+
+function commitDocumentObjectPreviewTransform() {
+  const documentLayer = viewerSvg.querySelector('[data-layer="document-content"]');
+  const transform = activeDocumentPreviewTransform;
+  if (!transform) {
+    clearDocumentObjectPreviewTransform();
+    return false;
+  }
+  commitDocumentPartialBondPreview();
+  removeDocumentPreviewBatchLayer();
+  if (activeDocumentPreviewLayer) {
+    for (const child of [...documentLayer?.children || []]) {
+      commitDocumentPreviewElementTransform(child, transform);
+    }
+    documentLayer?.removeAttribute("transform");
+    activeDocumentPreviewLayer = false;
+  }
+  for (const objectId of activeDocumentPreviewObjectIds) {
+    for (const element of documentObjectElements(objectId)) {
+      commitDocumentPreviewElementTransform(element, transform);
+    }
+  }
+  for (const element of activeDocumentPreviewPrimitiveElements) {
+    restoreDocumentPreviewElementVisibility(element);
+    commitDocumentPreviewElementTransform(element, transform);
+  }
+  activeDocumentPreviewObjectIds = new Set();
+  activeDocumentPreviewPrimitiveElements = new Set();
+  activeDocumentPreviewTransform = "";
+  return true;
+}
+
+function canCommitDocumentObjectPreviewTransform() {
+  return !!activeDocumentPreviewTransform
+    && (
+      !!activeDocumentPreviewBatchLayer?.isConnected
+      || activeDocumentPreviewLayer
+      || activeDocumentPreviewObjectIds.size > 0
+      || activeDocumentPreviewPrimitiveElements.size > 0
+      || !!viewerSvg.querySelector('[data-layer="document-partial-bond-preview"]')
+    );
 }
 
 function selectionGestureDelta(gesture) {
@@ -5390,6 +5875,54 @@ function ensureDocumentPartialBondPreviewLayer() {
     viewerSvg.insertBefore(layer, documentLayer.nextSibling);
   }
   return layer;
+}
+
+function ensureDocumentPreviewBatchLayer() {
+  if (activeDocumentPreviewBatchLayer?.isConnected) {
+    return activeDocumentPreviewBatchLayer;
+  }
+  const documentLayer = viewerSvg.querySelector('[data-layer="document-content"]');
+  if (!documentLayer) {
+    return null;
+  }
+  const layer = makeSvgNode("g", {
+    "data-layer": "document-batch-preview",
+    "pointer-events": "none",
+  });
+  const partialPreviewLayer = viewerSvg.querySelector('[data-layer="document-partial-bond-preview"]');
+  const editorOverlay = viewerSvg.querySelector('[data-layer="editor-overlay"]');
+  if (partialPreviewLayer) {
+    viewerSvg.insertBefore(layer, partialPreviewLayer);
+  } else if (editorOverlay) {
+    viewerSvg.insertBefore(layer, editorOverlay);
+  } else {
+    viewerSvg.insertBefore(layer, documentLayer.nextSibling);
+  }
+  activeDocumentPreviewBatchLayer = layer;
+  return layer;
+}
+
+function applyDocumentPrimitiveBatchPreview(primitiveElements, transform) {
+  if (!transform || primitiveElements.length < DOCUMENT_PREVIEW_BATCH_ELEMENT_THRESHOLD) {
+    return false;
+  }
+  const layer = ensureDocumentPreviewBatchLayer();
+  if (!layer) {
+    return false;
+  }
+  if (layer.dataset.sourceCount !== String(primitiveElements.length)) {
+    layer.replaceChildren();
+    for (const element of primitiveElements) {
+      hideDocumentPreviewElement(element);
+      layer.appendChild(element.cloneNode(true));
+    }
+    layer.dataset.sourceCount = String(primitiveElements.length);
+  }
+  layer.setAttribute("transform", transform);
+  activeDocumentPreviewObjectIds = new Set();
+  activeDocumentPreviewPrimitiveElements = new Set(primitiveElements);
+  activeDocumentPreviewTransform = transform;
+  return true;
 }
 
 function renderFallbackPartialBondPreview(layer, bondPreview, delta, primitive = null) {
@@ -5528,6 +6061,22 @@ function applyDocumentObjectPreviewTransform() {
   }
   activeSelectionGesture.previewObjectIds = objectIds;
   activeSelectionGesture.previewPrimitiveElements = primitiveElements;
+  if (
+    !objectIds.length
+    && applyDocumentPrimitiveBatchPreview(primitiveElements, transform)
+  ) {
+    if (activeDocumentPreviewLayer) {
+      documentLayer?.removeAttribute("transform");
+      activeDocumentPreviewLayer = false;
+    }
+    if (hasPartialBonds) {
+      renderPartialMovingStructureBondPreview(partialBondState, partialBondDelta);
+    } else {
+      clearDocumentPartialBondPreview();
+    }
+    return true;
+  }
+  removeDocumentPreviewBatchLayer();
   const nextIds = new Set(objectIds);
   const nextPrimitiveElements = new Set(primitiveElements);
   const allGroups = hasCachedObjectIds || hasCachedPrimitiveElements
@@ -5687,6 +6236,13 @@ viewerSvg?.addEventListener("dblclick", editorPointerController.handleEditorDoub
 viewerSvg?.addEventListener("pointercancel", async () => {
   await editorPointerController.handleEditorPointerCancel();
 });
+window.addEventListener("pointerup", () => {
+  queueMicrotask(() => {
+    if (!activeSelectionGesture) {
+      clearDocumentObjectPreviewTransform();
+    }
+  });
+});
 viewerSvg?.addEventListener("pointerleave", editorPointerController.handleEditorPointerLeave);
 viewerContainer?.addEventListener("wheel", handleViewerWheel, { passive: false });
 viewerContainer?.addEventListener("contextmenu", openCanvasContextMenu);
@@ -5726,6 +6282,9 @@ function renderDocument() {
   if (!documentData) {
     return;
   }
+  if (window.__chemcoreDebug?.renderStats) {
+    window.__chemcoreDebug.renderStats.documentRenderCount += 1;
+  }
 
   const page = documentData.document.page;
   const viewBox = activeViewBox();
@@ -5733,7 +6292,9 @@ function renderDocument() {
   activeDocumentPreviewObjectIds = new Set();
   activeDocumentPreviewPrimitiveElements = new Set();
   activeDocumentPreviewHiddenElements = new Set();
+  activeDocumentEditPreviewHiddenElements = new Set();
   activeDocumentPreviewLayer = false;
+  activeDocumentPreviewBatchLayer = null;
   activeDocumentPreviewTransform = "";
   applyViewerViewport();
   const pageBackground = normalizeDisplayColor(page.background, CHEMDRAW_PAGE_BACKGROUND);
@@ -5756,6 +6317,7 @@ function renderDocument() {
       sceneRenderer.renderSceneObject(documentLayer, object, documentData);
     }
   }
+  rebuildDocumentPrimitiveIndex(documentLayer);
 
   syncViewerStats();
   renderEditorOverlay();
@@ -5841,7 +6403,9 @@ async function loadInitialDocumentTabs() {
 try {
   await appRuntimeReady;
   await loadInitialDocumentTabs();
+  resolveAppInitialDocumentReady?.();
 } catch (error) {
+  resolveAppInitialDocumentReady?.();
   viewerTitle.textContent = "Runtime load failed";
   viewerStats.textContent = "";
   docMeta.textContent = String(error);

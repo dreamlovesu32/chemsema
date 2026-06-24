@@ -5,15 +5,19 @@ export function createEditorPointerController(options) {
   let hoverMoveVersion = 0;
   let selectionHoverSuppressionActive = false;
   let documentPreviewFrame = 0;
+  let documentPreviewRunning = false;
   let postCommitHoverBlockPoint = null;
 
   async function executeDocumentCommand(command, apply, executeOptions = {}) {
     if (options.commandEngine?.executeEngineCommand) {
       return options.commandEngine.executeEngineCommand(command, apply, executeOptions);
     }
-    const rawResult = await apply();
+    const applyResult = apply();
+    const rawResult = applyResult && typeof applyResult.then === "function" ? await applyResult : applyResult;
     if (rawResult) {
-      await options.syncDocumentFromEngine();
+      await options.syncDocumentFromEngine({
+        syncRenderList: executeOptions.syncRenderList !== false,
+      });
     }
     return {
       changed: !!rawResult,
@@ -152,17 +156,48 @@ export function createEditorPointerController(options) {
   }
 
   function scheduleDocumentPreviewFrame() {
-    if (documentPreviewFrame) {
+    if (documentPreviewFrame || documentPreviewRunning) {
       return;
     }
-    documentPreviewFrame = requestAnimationFrame(() => {
+    documentPreviewFrame = requestAnimationFrame(async () => {
       documentPreviewFrame = 0;
+      documentPreviewRunning = true;
       const gesture = options.activeSelectionGesture();
-      if (!gesture || !gesture.localDocumentPreviewActive) {
+      if (!gesture || (!gesture.localDocumentPreviewActive && !gesture.backendDocumentPreviewActive)) {
+        documentPreviewRunning = false;
         return;
       }
-      if (options.applyDocumentObjectPreviewTransform()) {
-        clearEditorOverlayRoot();
+      try {
+        if (gesture.backendDocumentPreviewActive) {
+          if (window.__chemcoreDebug) {
+            const stats = window.__chemcoreDebug.backendPreviewSchedulerStats || { runs: 0, backendRuns: 0, errors: [] };
+            stats.runs += 1;
+            stats.backendRuns += 1;
+            window.__chemcoreDebug.backendPreviewSchedulerStats = stats;
+          }
+          await options.applyBackendSelectionMovePreview?.(gesture.current, gesture.altKey);
+          clearEditorOverlayRoot();
+        } else if (options.applyDocumentObjectPreviewTransform()) {
+          if (window.__chemcoreDebug) {
+            const stats = window.__chemcoreDebug.backendPreviewSchedulerStats || { runs: 0, backendRuns: 0, errors: [] };
+            stats.runs += 1;
+            window.__chemcoreDebug.backendPreviewSchedulerStats = stats;
+          }
+          clearEditorOverlayRoot();
+        }
+      } catch (error) {
+        if (window.__chemcoreDebug) {
+          const stats = window.__chemcoreDebug.backendPreviewSchedulerStats || { runs: 0, backendRuns: 0, errors: [] };
+          stats.errors.push(String(error?.stack || error?.message || error));
+          window.__chemcoreDebug.backendPreviewSchedulerStats = stats;
+        }
+        throw error;
+      } finally {
+        documentPreviewRunning = false;
+        if (options.activeSelectionGesture() === gesture && gesture.previewDirty) {
+          gesture.previewDirty = false;
+          scheduleDocumentPreviewFrame();
+        }
       }
     });
   }
@@ -288,8 +323,7 @@ export function createEditorPointerController(options) {
     if (hoverMoveStale(version)) {
       return;
     }
-    const renderList = options.currentEditorInteractionRenderList?.() || options.currentEditorRenderList();
-    options.renderEditorOverlay(renderList);
+    options.renderEditorOverlay(currentInteractionRenderList());
     options.positionActiveTextEditor();
     if (editorState.elementPlacementActive) {
       options.syncCanvasCursor();
@@ -325,7 +359,14 @@ export function createEditorPointerController(options) {
   }
 
   async function beginSelectionMoveGesture(point, event, syncCursor = options.syncSelectCursorForPoint) {
-    if (!await options.state().editorEngine.beginSelectionMove?.(point.x, point.y, !!event.shiftKey, event.altKey)) {
+    const beginResult = options.state().editorEngine.beginSelectionMove?.(
+      point.x,
+      point.y,
+      !!event.shiftKey,
+      event.altKey,
+    );
+    const began = beginResult && typeof beginResult.then === "function" ? await beginResult : beginResult;
+    if (!began) {
       return false;
     }
     invalidateEngineReadCache();
@@ -402,15 +443,24 @@ export function createEditorPointerController(options) {
     options.invalidateEditorEngineReadCache?.();
   }
 
+  function currentInteractionRenderList() {
+    return options.currentEditorInteractionRenderList?.() || [];
+  }
+
+  async function refreshHoverOverlayAtPoint(point, event) {
+    await options.state().editorEngine.pointerMove(point.x, point.y, event?.altKey || false);
+    invalidateEngineReadCache();
+    options.renderEditorOverlay(currentInteractionRenderList());
+    await options.syncArrowAwareCursorForPoint(point);
+  }
+
   async function updateEngineDragPreview(point, event) {
     event.preventDefault();
     cancelScheduledHoverMove();
     leaveSelectionHoverSuppression(point);
     await options.state().editorEngine.pointerMove(point.x, point.y, event.altKey);
     invalidateEngineReadCache();
-    options.renderEditorOverlay(
-      options.currentEditorInteractionRenderList?.() || options.syncEditorRenderListFromEngine(),
-    );
+    options.renderEditorOverlay(currentInteractionRenderList());
     options.positionActiveTextEditor();
   }
 
@@ -440,7 +490,7 @@ export function createEditorPointerController(options) {
         );
         if (hit) {
           gesture.hit = hit;
-          await options.syncDocumentFromEngine();
+          await options.syncDocumentFromEngine({ syncRenderList: false });
         }
         await options.syncSelectCursorForPoint(point);
         if (hit?.objectId) {
@@ -464,7 +514,7 @@ export function createEditorPointerController(options) {
           gesture.angle = options.state().editorEngine.activeArrowEditDegrees?.() || 0;
         }
         await options.syncArrowAwareCursorForPoint(point);
-        options.renderEditorOverlay(options.currentEditorInteractionRenderList?.() || options.syncEditorRenderListFromEngine());
+        options.renderEditorOverlay(currentInteractionRenderList());
         return;
       }
       if (gesture.kind === "shape-resize") {
@@ -475,7 +525,7 @@ export function createEditorPointerController(options) {
         await options.state().editorEngine.updateHoverShapeEdit?.(point.x, point.y, event.altKey);
         invalidateEngineReadCache();
         await options.syncArrowAwareCursorForPoint(point);
-        options.renderEditorOverlay(options.currentEditorInteractionRenderList?.() || options.syncEditorRenderListFromEngine());
+        options.renderEditorOverlay(currentInteractionRenderList());
         return;
       }
       if (gesture.kind === "rotate") {
@@ -489,7 +539,7 @@ export function createEditorPointerController(options) {
         await options.state().editorEngine.updateSelectionRotate(point.x, point.y, event.altKey);
         invalidateEngineReadCache();
         await options.syncSelectCursorForPoint(point);
-        options.renderEditorOverlay(options.syncEditorRenderListFromEngine());
+        options.renderEditorOverlay(currentInteractionRenderList());
         return;
       }
       if (gesture.kind === "resize") {
@@ -503,7 +553,7 @@ export function createEditorPointerController(options) {
         await options.state().editorEngine.updateSelectionResize?.(point.x, point.y);
         invalidateEngineReadCache();
         await options.syncSelectCursorForPoint(point);
-        options.renderEditorOverlay(options.syncEditorRenderListFromEngine());
+        options.renderEditorOverlay(currentInteractionRenderList());
         return;
       }
       if (gesture.kind === "move") {
@@ -511,6 +561,14 @@ export function createEditorPointerController(options) {
           gesture.dragged = true;
         }
         gesture.current = point;
+        gesture.altKey = event.altKey;
+        if (options.selectionNeedsBackendMovePreview?.()) {
+          gesture.backendDocumentPreviewActive = true;
+          gesture.previewDirty = true;
+          scheduleDocumentPreviewFrame();
+          clearEditorOverlayRoot();
+          return;
+        }
         if (gesture.localDocumentPreviewActive) {
           scheduleDocumentPreviewFrame();
           return;
@@ -523,7 +581,7 @@ export function createEditorPointerController(options) {
         await options.state().editorEngine.updateSelectionMove(point.x, point.y, event.altKey);
         invalidateEngineReadCache();
         await options.syncSelectCursorForPoint(point);
-        options.renderEditorOverlay(options.syncEditorRenderListFromEngine());
+        options.renderEditorOverlay(currentInteractionRenderList());
         return;
       }
       if (options.pointDistance(gesture.start, point) >= options.cssPxToPt(3)) {
@@ -574,7 +632,7 @@ export function createEditorPointerController(options) {
       event.preventDefault();
       options.viewerSvg().setPointerCapture?.(event.pointerId);
       await options.state().editorEngine.pointerDown(point.x, point.y, event.altKey);
-      await options.syncDocumentFromEngine();
+      await options.syncDocumentFromEngine({ syncRenderList: false });
       options.renderEditorOverlay();
       return;
     }
@@ -634,7 +692,7 @@ export function createEditorPointerController(options) {
           additive: !!event.shiftKey,
         });
         await options.syncArrowAwareCursorForPoint(point);
-        options.renderEditorOverlay(options.currentEditorInteractionRenderList?.() || options.currentEditorRenderList());
+        options.renderEditorOverlay(currentInteractionRenderList());
         return;
       }
       const arrowEditAction = await options.state().editorEngine.beginHoverArrowEdit?.(point.x, point.y) || "";
@@ -649,7 +707,7 @@ export function createEditorPointerController(options) {
           angle: 0,
         });
         await options.syncArrowAwareCursorForPoint(point);
-        options.renderEditorOverlay(options.currentEditorInteractionRenderList?.() || options.currentEditorRenderList());
+        options.renderEditorOverlay(currentInteractionRenderList());
         return;
       }
       const rotateHandle = options.selectionRotateHandleHit(point);
@@ -715,7 +773,7 @@ export function createEditorPointerController(options) {
           angle: 0,
         });
         await options.syncArrowAwareCursorForPoint(point);
-        options.renderEditorOverlay(options.currentEditorInteractionRenderList?.() || options.currentEditorRenderList());
+        options.renderEditorOverlay(currentInteractionRenderList());
         return;
       }
     }
@@ -742,7 +800,7 @@ export function createEditorPointerController(options) {
           options.setActiveTlcSpotHover(tlcSpotHit);
           options.setActiveTlcLaneHover(null);
           await options.syncArrowAwareCursorForPoint(point);
-          options.renderEditorOverlay(options.currentEditorInteractionRenderList?.() || options.currentEditorRenderList());
+          options.renderEditorOverlay(currentInteractionRenderList());
           return;
         }
       }
@@ -757,7 +815,7 @@ export function createEditorPointerController(options) {
           dragged: false,
         });
         await options.syncArrowAwareCursorForPoint(point);
-        options.renderEditorOverlay(options.currentEditorInteractionRenderList?.() || options.currentEditorRenderList());
+        options.renderEditorOverlay(currentInteractionRenderList());
         return;
       }
     }
@@ -774,12 +832,12 @@ export function createEditorPointerController(options) {
       pointerDownResult?.changed
       && Number(pointerDownResult.beforeRevision ?? pointerDownResult.before_revision ?? -1) === beforeRevision
     ) {
-      await options.syncDocumentFromEngine();
+      await options.syncDocumentFromEngine({ syncRenderList: false });
       options.renderDocumentChange?.(pointerDownResult) || options.renderDocument();
       return;
     }
     invalidateEngineReadCache();
-    options.renderEditorOverlay(options.currentEditorInteractionRenderList?.() || []);
+    options.renderEditorOverlay(currentInteractionRenderList());
   }
 
   async function handleEditorPointerUp(event) {
@@ -835,11 +893,9 @@ export function createEditorPointerController(options) {
         },
         async () => {
           const changed = !!(await options.state().editorEngine.finishHoverArrowEdit?.(point.x, point.y, event.altKey));
-          if (changed) {
-            await options.state().editorEngine.refreshRenderState?.();
-          }
           return changed;
         },
+        { syncRenderList: false },
       );
       const changed = !!result.changed;
       if (!changed && !gesture.dragged && options.editorState().activeTool === "select") {
@@ -849,8 +905,8 @@ export function createEditorPointerController(options) {
         return;
       }
       if (changed) {
-        await options.syncArrowAwareCursorForPoint(point);
         options.renderDocumentChange?.(result) || options.renderDocument();
+        await refreshHoverOverlayAtPoint(point, event);
       } else {
         options.clearDocumentObjectPreviewTransform();
         await options.renderSelectionOnlyUpdate(point, options.syncArrowAwareCursorForPoint);
@@ -875,11 +931,9 @@ export function createEditorPointerController(options) {
         },
         async () => {
           const changed = !!(await options.state().editorEngine.finishHoverShapeEdit?.(point.x, point.y, event.altKey));
-          if (changed) {
-            await options.state().editorEngine.refreshRenderState?.();
-          }
           return changed;
         },
+        { syncRenderList: false },
       );
       const changed = !!result.changed;
       if (!changed && !gesture.dragged && options.editorState().activeTool === "select") {
@@ -889,8 +943,8 @@ export function createEditorPointerController(options) {
         return;
       }
       if (changed) {
-        await options.syncArrowAwareCursorForPoint(point);
         options.renderDocumentChange?.(result) || options.renderDocument();
+        await refreshHoverOverlayAtPoint(point, event);
       } else {
         options.clearDocumentObjectPreviewTransform();
         await options.renderSelectionOnlyUpdate(point, options.syncArrowAwareCursorForPoint);
@@ -901,6 +955,11 @@ export function createEditorPointerController(options) {
       options.setActiveSelectionGesture(null);
       if (gesture.dragged) {
         const commitPoint = gesture.current || point;
+        const commitPreviewDom = !!gesture.localDocumentPreviewActive
+          && !!options.canCommitDocumentObjectPreviewTransform?.()
+          && typeof options.commitDocumentObjectPreviewTransform === "function";
+        const commitBackendPreview = !!gesture.backendDocumentPreviewActive
+          && typeof options.renderDocumentPrimitiveChange === "function";
         const result = await executeDocumentCommand(
           {
             type: "move-selection",
@@ -911,12 +970,33 @@ export function createEditorPointerController(options) {
             },
           },
           () => options.state().editorEngine.finishSelectionMove(commitPoint.x, commitPoint.y, event.altKey),
+          (commitPreviewDom || commitBackendPreview) ? { sync: false, deferDocumentSync: true } : {},
         );
         suppressHoverUntilPointerLeavesPoint(commitPoint);
-        options.clearDocumentObjectPreviewTransform();
-        await clearEngineHoverOverlay();
+        if (commitBackendPreview && result.changed) {
+          options.renderDocumentPrimitiveChange(result);
+          options.clearDocumentObjectPreviewTransform();
+        } else if (commitPreviewDom && result.changed) {
+          options.commitDocumentObjectPreviewTransform();
+          options.clearDocumentObjectPreviewTransform();
+        } else {
+          options.clearDocumentObjectPreviewTransform();
+        }
+        if ((commitPreviewDom || commitBackendPreview) && result.changed) {
+          clearEditorOverlayRoot();
+        } else {
+          await clearEngineHoverOverlay();
+        }
         options.syncCanvasCursor?.();
-        options.renderDocumentChange?.(result) || options.renderDocument();
+        if ((commitPreviewDom || commitBackendPreview) && result.changed) {
+          await options.renderSelectionOnlyUpdate(commitPoint, null, {
+            deferEngineReads: true,
+            useInteractionList: false,
+          });
+          options.scheduleDeferredDocumentSync?.();
+        } else {
+          options.renderDocumentChange?.(result) || options.renderDocument();
+        }
         clearEditorOverlayRoot();
       } else if (options.editorState().activeTool === "select") {
         await options.selectClickTarget(gesture.start || point, gesture.additive);
@@ -971,6 +1051,11 @@ export function createEditorPointerController(options) {
       if (gesture.kind === "move") {
         if (gesture.dragged) {
           const commitPoint = gesture.current || point;
+          const commitPreviewDom = !!gesture.localDocumentPreviewActive
+            && !!options.canCommitDocumentObjectPreviewTransform?.()
+            && typeof options.commitDocumentObjectPreviewTransform === "function";
+          const commitBackendPreview = !!gesture.backendDocumentPreviewActive
+            && typeof options.renderDocumentPrimitiveChange === "function";
           const result = await executeDocumentCommand(
             {
               type: "move-selection",
@@ -981,12 +1066,35 @@ export function createEditorPointerController(options) {
               },
             },
             () => options.state().editorEngine.finishSelectionMove(commitPoint.x, commitPoint.y, event.altKey),
+            (commitPreviewDom || commitBackendPreview) ? { sync: false, deferDocumentSync: true } : {},
           );
           suppressHoverUntilPointerLeavesPoint(commitPoint);
-          await clearEngineHoverOverlay();
-          options.syncCanvasCursor?.();
-          options.clearDocumentObjectPreviewTransform();
-          options.renderDocumentChange?.(result) || options.renderDocument();
+          if (commitBackendPreview && result.changed) {
+            options.renderDocumentPrimitiveChange(result);
+            options.clearDocumentObjectPreviewTransform();
+            clearEditorOverlayRoot();
+            options.syncCanvasCursor?.();
+            await options.renderSelectionOnlyUpdate(commitPoint, null, {
+              deferEngineReads: true,
+              useInteractionList: false,
+            });
+            options.scheduleDeferredDocumentSync?.();
+          } else if (commitPreviewDom && result.changed) {
+            options.commitDocumentObjectPreviewTransform();
+            options.clearDocumentObjectPreviewTransform();
+            clearEditorOverlayRoot();
+            options.syncCanvasCursor?.();
+            await options.renderSelectionOnlyUpdate(commitPoint, null, {
+              deferEngineReads: true,
+              useInteractionList: false,
+            });
+            options.scheduleDeferredDocumentSync?.();
+          } else {
+            await clearEngineHoverOverlay();
+            options.syncCanvasCursor?.();
+            options.clearDocumentObjectPreviewTransform();
+            options.renderDocumentChange?.(result) || options.renderDocument();
+          }
           clearEditorOverlayRoot();
         } else {
           await options.selectClickTarget(gesture.start || point, gesture.additive);
@@ -1023,6 +1131,7 @@ export function createEditorPointerController(options) {
         },
       },
       () => options.state().editorEngine.pointerUp(point.x, point.y, event.altKey),
+      { syncRenderList: false },
     );
     const pendingGraphicObjectId = await Promise.resolve(
       options.state().editorEngine.pendingGraphicObjectId?.() || "",
