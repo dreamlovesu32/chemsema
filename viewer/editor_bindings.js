@@ -223,7 +223,7 @@ function bindFileInput(options) {
 }
 
 function bindBrowserFileDrop(options) {
-  if (options.desktopFileHost?.available || !options.openDocumentFileInTab) {
+  if (!options.openDocumentFileInTab) {
     return;
   }
   const hasFiles = (event) => {
@@ -237,7 +237,23 @@ function bindBrowserFileDrop(options) {
     if (Array.from(transfer.items || []).some((item) => item.kind === "file")) {
       return true;
     }
+    if (typeof transfer.types?.contains === "function" && transfer.types.contains("Files")) {
+      return true;
+    }
+    if (typeof transfer.types?.includes === "function" && transfer.types.includes("Files")) {
+      return true;
+    }
     return Array.from(transfer.types || []).some((type) => String(type).toLowerCase() === "files");
+  };
+  const droppedFiles = (transfer) => {
+    const files = Array.from(transfer?.files || []);
+    if (files.length) {
+      return files;
+    }
+    return Array.from(transfer?.items || [])
+      .filter((item) => item.kind === "file")
+      .map((item) => item.getAsFile?.())
+      .filter(Boolean);
   };
   const preventFileNavigation = (event) => {
     if (!hasFiles(event)) {
@@ -261,14 +277,32 @@ function bindBrowserFileDrop(options) {
     if (!hasFiles(event)) {
       return;
     }
-    const files = Array.from(event.dataTransfer?.files || []);
+    const files = droppedFiles(event.dataTransfer);
     preventFileNavigation(event);
+    window.__chemcoreDebug = window.__chemcoreDebug || {};
+    window.__chemcoreDebug.lastFileDrop = {
+      count: files.length,
+      names: files.map((file) => file.name || ""),
+      timestamp: Date.now(),
+      types: Array.from(event.dataTransfer?.types || []),
+    };
+    console.info("[chemcore] file drop", window.__chemcoreDebug.lastFileDrop);
+    if (!files.length) {
+      return;
+    }
     for (const file of files) {
-      await runSafe(
-        () => openDroppedFile(file),
-        "Open failed",
-        "Failed to open dropped document",
-      );
+      try {
+        await openDroppedFile(file);
+      } catch (error) {
+        if (!options.isAbortError(error)) {
+          console.error("Failed to open dropped document", error);
+          void options.desktopFileHost?.traceEvent?.("editorBindings.browserDrop.error", {
+            fileName: file.name || null,
+            error,
+          });
+          window.alert?.(`Open failed: ${error.message || error}`);
+        }
+      }
     }
   };
   for (const target of bindTargets) {

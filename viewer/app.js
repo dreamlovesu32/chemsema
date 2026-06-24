@@ -12,7 +12,7 @@ import { createObjectSettingsHost } from "./object_settings_host.js";
 import { createNumericDialogHost } from "./numeric_dialog_host.js";
 import { createDesktopFileHost, normalizeDesktopPath } from "./desktop_file_host.js";
 import { createEngineHost } from "./engine_host.js";
-import { bindEditorControls, openColorDialog } from "./editor_bindings.js";
+import { bindEditorControls, openColorDialog } from "./editor_bindings.js?v=20260624-drop-hardened";
 import { createDocumentFlow } from "./document_flow.js";
 import {
   chemcoreOpenAcceptTypes,
