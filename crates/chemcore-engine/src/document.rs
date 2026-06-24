@@ -983,42 +983,57 @@ fn imported_node_label_side_anchor_point(
     label: &NodeLabel,
     anchor_side: ImportedLabelAnchorSide,
 ) -> Option<[f64; 2]> {
-    let characters: Vec<char> = label.text.chars().collect();
-    let candidate = match anchor_side {
-        ImportedLabelAnchorSide::Left => label
-            .glyph_polygons
-            .iter()
-            .enumerate()
-            .find(|(index, _)| {
-                characters
-                    .get(*index)
-                    .is_some_and(|ch| ch.is_ascii_alphabetic())
-            })
-            .map(|(_, polygon)| polygon)
-            .or_else(|| {
-                label.glyph_polygons.iter().min_by(|left, right| {
-                    glyph_polygon_center_x(left).total_cmp(&glyph_polygon_center_x(right))
-                })
-            }),
-        ImportedLabelAnchorSide::Right => label
-            .glyph_polygons
-            .iter()
-            .enumerate()
-            .rev()
-            .find(|(index, _)| {
-                characters
-                    .get(*index)
-                    .is_some_and(|ch| ch.is_ascii_alphabetic())
-            })
-            .map(|(_, polygon)| polygon)
-            .or_else(|| {
-                label.glyph_polygons.iter().max_by(|left, right| {
-                    glyph_polygon_center_x(left).total_cmp(&glyph_polygon_center_x(right))
-                })
-            }),
-    }?;
+    let candidate = imported_node_label_side_anchor_candidate(label, anchor_side, true)
+        .or_else(|| imported_node_label_side_anchor_candidate(label, anchor_side, false))?;
     glyph_single_polygon_bounds(candidate)
         .map(|bounds| [(bounds[0] + bounds[2]) * 0.5, (bounds[1] + bounds[3]) * 0.5])
+}
+
+fn imported_node_label_side_anchor_candidate(
+    label: &NodeLabel,
+    anchor_side: ImportedLabelAnchorSide,
+    baseline_only: bool,
+) -> Option<&Vec<[f64; 2]>> {
+    let candidates = label
+        .glyph_polygons
+        .iter()
+        .enumerate()
+        .filter_map(|(index, polygon)| {
+            (!baseline_only || node_label_glyph_is_baseline(label, index)).then_some(polygon)
+        });
+    match anchor_side {
+        ImportedLabelAnchorSide::Left => candidates.min_by(|left, right| {
+            glyph_polygon_center_x(left).total_cmp(&glyph_polygon_center_x(right))
+        }),
+        ImportedLabelAnchorSide::Right => candidates.max_by(|left, right| {
+            glyph_polygon_center_x(left).total_cmp(&glyph_polygon_center_x(right))
+        }),
+    }
+}
+
+fn node_label_glyph_is_baseline(label: &NodeLabel, glyph_index: usize) -> bool {
+    !matches!(
+        node_label_glyph_script(label, glyph_index),
+        Some("subscript" | "superscript")
+    )
+}
+
+fn node_label_glyph_script(label: &NodeLabel, glyph_index: usize) -> Option<&str> {
+    let mut remaining = glyph_index;
+    let line_runs = label.line_runs.iter().flat_map(|line| line.iter());
+    let runs: Box<dyn Iterator<Item = &LabelRun> + '_> = if label.line_runs.is_empty() {
+        Box::new(label.runs.iter())
+    } else {
+        Box::new(line_runs)
+    };
+    for run in runs {
+        let run_len = run.text.chars().count();
+        if remaining < run_len {
+            return run.script.as_deref();
+        }
+        remaining -= run_len;
+    }
+    None
 }
 
 fn glyph_polygon_center_x(polygon: &[[f64; 2]]) -> f64 {
@@ -1587,7 +1602,7 @@ mod tests {
                 "document": {
                     "id": "doc_anchor_side",
                     "title": "anchor side",
-                    "page": { "width": 80.0, "height": 40.0, "background": "#ffffff" }
+                    "page": { "width": 90.0, "height": 40.0, "background": "#ffffff" }
                 },
                 "objects": [{
                     "id": "obj_molecule_001",
@@ -1602,7 +1617,7 @@ mod tests {
                         "encoding": "chemcore.molecule.fragment2d",
                         "data": {
                             "schema": "chemcore.molecule.fragment2d",
-                            "bbox": [0.0, 0.0, 80.0, 40.0],
+                            "bbox": [0.0, 0.0, 90.0, 40.0],
                             "nodes": [{
                                 "id": "left_label",
                                 "element": "C",
@@ -1634,27 +1649,27 @@ mod tests {
                                 "id": "right_label",
                                 "element": "C",
                                 "atomicNumber": 6,
-                                "position": [50.0, 10.0],
+                                "position": [54.0, 10.0],
                                 "charge": 0,
                                 "numHydrogens": 0,
                                 "label": {
-                                    "text": "Ph",
-                                    "sourceText": "Ph",
-                                    "position": [46.78, 13.63],
-                                    "box": [46.78, 5.43, 59.08, 15.93],
-                                    "runs": [{ "text": "Ph", "fontFamily": "Arial", "fontSize": 10.0 }],
+                                    "text": "2-NP",
+                                    "sourceText": "2-NP",
+                                    "position": [50.78, 13.63],
+                                    "box": [50.78, 5.43, 73.58, 15.93],
+                                    "runs": [{ "text": "2-NP", "fontFamily": "Arial", "fontSize": 10.0 }],
                                     "align": "left",
                                     "anchor": "start",
                                     "attachment": "node",
                                     "fontFamily": "Arial",
                                     "fontSize": 10.0,
-                                    "meta": { "import": { "cdxml": { "boundingBox": [46.78, 5.43, 59.08, 15.93] } } }
+                                    "meta": { "import": { "cdxml": { "boundingBox": [50.78, 5.43, 73.58, 15.93] } } }
                                 }
                             }, {
                                 "id": "right_neighbor",
                                 "element": "C",
                                 "atomicNumber": 6,
-                                "position": [36.0, 10.0],
+                                "position": [40.0, 10.0],
                                 "charge": 0,
                                 "numHydrogens": 0
                             }],
@@ -1700,7 +1715,7 @@ mod tests {
         );
         assert!(
             glyph_center(right_label, 0).distance(right_label_node.point()) < 0.01,
-            "left-side bond should anchor Ph on P: node={right_label_node:?}, label={right_label:?}"
+            "left-side bond should anchor 2-NP on 2: node={right_label_node:?}, label={right_label:?}"
         );
     }
 
