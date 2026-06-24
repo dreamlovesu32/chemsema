@@ -104,6 +104,11 @@ export function createEditorPointerController(options) {
     }
   }
 
+  function clearEditorOverlayRoot() {
+    const viewerSvg = options.viewerSvg?.();
+    viewerSvg?.querySelector('[data-layer="editor-overlay"]')?.remove();
+  }
+
   function clearInteractionOverlayNow() {
     clearVisibleHoverOverlay();
     options.renderEditorOverlay?.([]);
@@ -274,7 +279,7 @@ export function createEditorPointerController(options) {
       additive: !!event.shiftKey,
     });
     await syncCursor(point);
-    options.renderEditorOverlay([]);
+    clearEditorOverlayRoot();
     return true;
   }
 
@@ -420,7 +425,7 @@ export function createEditorPointerController(options) {
         gesture.angle = options.selectionRotateAngleForGesture(gesture, point, event.altKey);
         if (options.applyDocumentObjectPreviewTransform()) {
           await options.syncSelectCursorForPoint(point);
-          options.renderEditorOverlay([]);
+          clearEditorOverlayRoot();
           return;
         }
         await options.state().editorEngine.updateSelectionRotate(point.x, point.y, event.altKey);
@@ -434,7 +439,7 @@ export function createEditorPointerController(options) {
         gesture.scale = options.selectionResizeGestureScale(gesture, point);
         if (options.applyDocumentObjectPreviewTransform()) {
           await options.syncSelectCursorForPoint(point);
-          options.renderEditorOverlay([]);
+          clearEditorOverlayRoot();
           return;
         }
         await options.state().editorEngine.updateSelectionResize?.(point.x, point.y);
@@ -450,7 +455,7 @@ export function createEditorPointerController(options) {
         gesture.current = point;
         if (options.applyDocumentObjectPreviewTransform()) {
           await options.syncSelectCursorForPoint(point);
-          options.renderEditorOverlay([]);
+          clearEditorOverlayRoot();
           return;
         }
         await options.state().editorEngine.updateSelectionMove(point.x, point.y, event.altKey);
@@ -547,7 +552,7 @@ export function createEditorPointerController(options) {
           scale: 1,
         });
         await options.syncSelectCursorForPoint(point);
-        options.renderEditorOverlay([]);
+        clearEditorOverlayRoot();
         return;
       }
       const overSelection = !!options.state().editorEngine.selectionContainsPoint?.(point.x, point.y);
@@ -605,7 +610,7 @@ export function createEditorPointerController(options) {
             angle: 0,
           });
           await options.syncSelectCursorForPoint(point);
-          options.renderEditorOverlay([]);
+          clearEditorOverlayRoot();
           return;
         }
       }
@@ -842,9 +847,14 @@ export function createEditorPointerController(options) {
           },
           () => options.state().editorEngine.finishSelectionMove(commitPoint.x, commitPoint.y, event.altKey),
         );
+        await options.state().editorEngine.clearInteraction?.();
+        invalidateEngineReadCache();
         options.clearDocumentObjectPreviewTransform();
         await options.syncArrowAwareCursorForPoint(commitPoint);
+        await options.state().editorEngine.clearInteraction?.();
+        invalidateEngineReadCache();
         options.renderDocumentChange?.(result) || options.renderDocument();
+        clearVisibleHoverOverlay();
       } else if (options.editorState().activeTool === "select") {
         await options.selectClickTarget(gesture.start || point, gesture.additive);
         options.clearDocumentObjectPreviewTransform();
@@ -909,9 +919,14 @@ export function createEditorPointerController(options) {
             },
             () => options.state().editorEngine.finishSelectionMove(commitPoint.x, commitPoint.y, event.altKey),
           );
+          await options.state().editorEngine.clearInteraction?.();
+          invalidateEngineReadCache();
           await options.syncSelectCursorForPoint(commitPoint);
+          await options.state().editorEngine.clearInteraction?.();
+          invalidateEngineReadCache();
           options.clearDocumentObjectPreviewTransform();
           options.renderDocumentChange?.(result) || options.renderDocument();
+          clearVisibleHoverOverlay();
         } else {
           await options.selectClickTarget(gesture.start || point, gesture.additive);
           options.clearDocumentObjectPreviewTransform();

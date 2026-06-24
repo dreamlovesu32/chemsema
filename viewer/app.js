@@ -2151,7 +2151,8 @@ function currentSelectionBoundsContainsPoint(point, padding = 0) {
   if (!isEditingRustDocument()) {
     return false;
   }
-  const selection = currentEditorEngineState()?.selection;
+  const selection = activeSelectionGesture?.previewSelection
+    || currentEditorEngineState()?.selection;
   if (!editorSelectionHasItems(selection)) {
     return false;
   }
@@ -2162,7 +2163,8 @@ function currentSelectionHitContainsPoint(point) {
   if (!isEditingRustDocument() || !point) {
     return false;
   }
-  const selection = currentEditorEngineState()?.selection;
+  const selection = activeSelectionGesture?.previewSelection
+    || currentEditorEngineState()?.selection;
   if (!editorSelectionHasItems(selection)) {
     return false;
   }
@@ -4993,8 +4995,7 @@ function currentDocumentMoleculeTopology() {
   return documentMoleculeTopologyCache;
 }
 
-function selectedDocumentPreviewObjectIds() {
-  const selection = currentEditorEngineState()?.selection;
+function selectedDocumentPreviewObjectIds(selection = currentEditorEngineState()?.selection) {
   if (!selection || editorSelectionHasItems(selection) === false) {
     return [];
   }
@@ -5124,8 +5125,7 @@ function partialMovingStructureBondPreviewState(selection, nodeIds = selectedStr
   return previewState;
 }
 
-function selectedDocumentPreviewPrimitiveElements() {
-  const selection = currentEditorEngineState()?.selection;
+function selectedDocumentPreviewPrimitiveElements(selection = currentEditorEngineState()?.selection) {
   if (!selection || editorSelectionHasItems(selection) === false) {
     return [];
   }
@@ -5153,8 +5153,10 @@ function selectedDocumentPreviewPrimitiveElements() {
   return [...elements];
 }
 
-function selectionCoversRenderedDocument(renderList = state.coreRenderList || currentEditorRenderList()) {
-  const selection = currentEditorEngineState()?.selection;
+function selectionCoversRenderedDocument(
+  selection = currentEditorEngineState()?.selection,
+  renderList = state.coreRenderList || currentEditorRenderList(),
+) {
   if (!selection || editorSelectionHasItems(selection) === false) {
     return false;
   }
@@ -5430,7 +5432,9 @@ function applyDocumentObjectPreviewTransform() {
     clearDocumentObjectPreviewTransform();
     return false;
   }
-  const selection = currentEditorEngineState()?.selection;
+  const selection = activeSelectionGesture.previewSelection
+    || currentEditorEngineState()?.selection;
+  activeSelectionGesture.previewSelection = selection;
   const nodeIds = activeStructurePreviewNodeIds(selection);
   const partialBondState = partialMovingStructureBondPreviewState(selection, nodeIds);
   const hasPartialBonds = partialBondState.partialBonds.length > 0;
@@ -5452,7 +5456,7 @@ function applyDocumentObjectPreviewTransform() {
     activeDocumentPreviewTransform = transform;
     return true;
   }
-  if (!hasPartialBonds && selectionCoversRenderedDocument()) {
+  if (!hasPartialBonds && selectionCoversRenderedDocument(selection)) {
     if (!documentLayer) {
       clearDocumentObjectPreviewTransform();
       return false;
@@ -5475,8 +5479,8 @@ function applyDocumentObjectPreviewTransform() {
   }
   const hasCachedObjectIds = Array.isArray(activeSelectionGesture.previewObjectIds);
   const hasCachedPrimitiveElements = Array.isArray(activeSelectionGesture.previewPrimitiveElements);
-  const objectIds = activeSelectionGesture.previewObjectIds || selectedDocumentPreviewObjectIds();
-  const primitiveElements = activeSelectionGesture.previewPrimitiveElements || selectedDocumentPreviewPrimitiveElements();
+  const objectIds = activeSelectionGesture.previewObjectIds || selectedDocumentPreviewObjectIds(selection);
+  const primitiveElements = activeSelectionGesture.previewPrimitiveElements || selectedDocumentPreviewPrimitiveElements(selection);
   if (!objectIds.length && !primitiveElements.length) {
     clearDocumentObjectPreviewTransform();
     return false;
