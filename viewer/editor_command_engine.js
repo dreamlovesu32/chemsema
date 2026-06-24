@@ -102,6 +102,7 @@ export function createEditorCommandEngine(options = {}) {
         command: result.command || kernelCommandFrom(normalized),
         commandType: normalized.type,
         rawResult,
+        deferDocumentSync: !!executeOptions.deferDocumentSync,
       });
       return {
         ...result,
@@ -118,6 +119,7 @@ export function createEditorCommandEngine(options = {}) {
       source: executeOptions.source || normalized.meta?.source || "ui",
       label: executeOptions.label || normalized.label || normalized.type,
       rawResult,
+      deferDocumentSync: !!executeOptions.deferDocumentSync,
     };
     await emit("command-executed", event);
     await emit("document-committed", event);

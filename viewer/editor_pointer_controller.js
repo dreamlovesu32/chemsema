@@ -901,6 +901,9 @@ export function createEditorPointerController(options) {
       options.setActiveSelectionGesture(null);
       if (gesture.dragged) {
         const commitPoint = gesture.current || point;
+        const commitPreviewDom = !!gesture.localDocumentPreviewActive
+          && !!options.canCommitDocumentObjectPreviewTransform?.()
+          && typeof options.commitDocumentObjectPreviewTransform === "function";
         const result = await executeDocumentCommand(
           {
             type: "move-selection",
@@ -911,12 +914,22 @@ export function createEditorPointerController(options) {
             },
           },
           () => options.state().editorEngine.finishSelectionMove(commitPoint.x, commitPoint.y, event.altKey),
+          commitPreviewDom ? { sync: false, deferDocumentSync: true } : {},
         );
         suppressHoverUntilPointerLeavesPoint(commitPoint);
-        options.clearDocumentObjectPreviewTransform();
+        if (commitPreviewDom && result.changed) {
+          options.commitDocumentObjectPreviewTransform();
+        } else {
+          options.clearDocumentObjectPreviewTransform();
+        }
         await clearEngineHoverOverlay();
         options.syncCanvasCursor?.();
-        options.renderDocumentChange?.(result) || options.renderDocument();
+        if (commitPreviewDom && result.changed) {
+          await options.renderSelectionOnlyUpdate(commitPoint);
+          options.scheduleDeferredDocumentSync?.();
+        } else {
+          options.renderDocumentChange?.(result) || options.renderDocument();
+        }
         clearEditorOverlayRoot();
       } else if (options.editorState().activeTool === "select") {
         await options.selectClickTarget(gesture.start || point, gesture.additive);
@@ -971,6 +984,9 @@ export function createEditorPointerController(options) {
       if (gesture.kind === "move") {
         if (gesture.dragged) {
           const commitPoint = gesture.current || point;
+          const commitPreviewDom = !!gesture.localDocumentPreviewActive
+            && !!options.canCommitDocumentObjectPreviewTransform?.()
+            && typeof options.commitDocumentObjectPreviewTransform === "function";
           const result = await executeDocumentCommand(
             {
               type: "move-selection",
@@ -981,12 +997,19 @@ export function createEditorPointerController(options) {
               },
             },
             () => options.state().editorEngine.finishSelectionMove(commitPoint.x, commitPoint.y, event.altKey),
+            commitPreviewDom ? { sync: false, deferDocumentSync: true } : {},
           );
           suppressHoverUntilPointerLeavesPoint(commitPoint);
           await clearEngineHoverOverlay();
           options.syncCanvasCursor?.();
-          options.clearDocumentObjectPreviewTransform();
-          options.renderDocumentChange?.(result) || options.renderDocument();
+          if (commitPreviewDom && result.changed) {
+            options.commitDocumentObjectPreviewTransform();
+            await options.renderSelectionOnlyUpdate(commitPoint);
+            options.scheduleDeferredDocumentSync?.();
+          } else {
+            options.clearDocumentObjectPreviewTransform();
+            options.renderDocumentChange?.(result) || options.renderDocument();
+          }
           clearEditorOverlayRoot();
         } else {
           await options.selectClickTarget(gesture.start || point, gesture.additive);

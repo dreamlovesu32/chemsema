@@ -315,8 +315,10 @@ let activeDocumentPreviewObjectIds = new Set();
 let activeDocumentPreviewPrimitiveElements = new Set();
 let activeDocumentPreviewHiddenElements = new Set();
 let activeDocumentPreviewLayer = false;
+let activeDocumentPreviewBatchLayer = null;
 let activeDocumentPreviewTransform = "";
 let documentMoleculeTopologyCache = null;
+const DOCUMENT_PREVIEW_BATCH_ELEMENT_THRESHOLD = 96;
 const editorEngineReadCache = {
   engine: null,
   revision: null,
@@ -418,6 +420,7 @@ const editorState = {
 let activeSelectionGesture = null;
 let activeTlcSpotHover = null;
 let activeTlcLaneHover = null;
+let deferredDocumentSyncHandle = 0;
 
 const TAB_STATE_KEYS = [
   "currentPath",
@@ -700,6 +703,19 @@ async function autoSaveAllOleEditDocumentTabs() {
 }
 
 async function handleDocumentCommandCommitted(event) {
+  if (event.deferDocumentSync) {
+    scheduleDeferredDocumentSync();
+    renderDocumentTabs();
+    syncWindowTitle();
+    refreshCommandAvailability();
+    console.debug?.("[chemcore] document command committed", {
+      type: event.commandType,
+      revision: event.revision,
+      source: event.source,
+      deferredSync: true,
+    });
+    return;
+  }
   saveActiveDocumentTabState();
   const tab = activeDocumentTab();
   if (tab) {
@@ -2805,6 +2821,9 @@ const editorPointerController = createEditorPointerController({
   selectionHitContainsPoint: currentSelectionHitContainsPoint,
   applyDocumentObjectPreviewTransform,
   clearDocumentObjectPreviewTransform,
+  commitDocumentObjectPreviewTransform,
+  canCommitDocumentObjectPreviewTransform,
+  scheduleDeferredDocumentSync,
   syncEditorRenderListFromEngine,
   updateTlcSpotHover,
   clearTlcHoverState,
@@ -2847,6 +2866,26 @@ async function syncDocumentFromEngine() {
   }
   syncSelectionChemistrySummary();
   refreshCommandAvailability();
+}
+
+function scheduleDeferredDocumentSync() {
+  if (deferredDocumentSyncHandle) {
+    return;
+  }
+  const schedule = window.requestIdleCallback
+    ? (callback) => window.requestIdleCallback(callback, { timeout: 1200 })
+    : (callback) => window.setTimeout(callback, 120);
+  deferredDocumentSyncHandle = schedule(async () => {
+    deferredDocumentSyncHandle = 0;
+    if (activeSelectionGesture) {
+      scheduleDeferredDocumentSync();
+      return;
+    }
+    await syncDocumentFromEngine();
+    saveActiveDocumentTabState();
+    renderDocumentTabs();
+    syncWindowTitle();
+  });
 }
 
 async function renderSelectionOnlyUpdate(point, syncCursor = syncSelectCursorForPoint) {
@@ -5280,9 +5319,15 @@ function clearDocumentPartialBondPreview() {
   activeDocumentPreviewHiddenElements = new Set();
 }
 
+function removeDocumentPreviewBatchLayer() {
+  activeDocumentPreviewBatchLayer?.remove();
+  activeDocumentPreviewBatchLayer = null;
+}
+
 function clearDocumentObjectPreviewTransform() {
   const documentLayer = viewerSvg.querySelector('[data-layer="document-content"]');
   clearDocumentPartialBondPreview();
+  removeDocumentPreviewBatchLayer();
   if (activeDocumentPreviewLayer) {
     documentLayer?.removeAttribute("transform");
     activeDocumentPreviewLayer = false;
@@ -5302,6 +5347,60 @@ function clearDocumentObjectPreviewTransform() {
   }
   activeDocumentPreviewPrimitiveElements = new Set();
   activeDocumentPreviewTransform = "";
+}
+
+function commitDocumentPreviewElementTransform(element, transform = activeDocumentPreviewTransform) {
+  if (!element || !transform) {
+    return;
+  }
+  const baseTransform = element.dataset.previewBaseTransform;
+  const committedTransform = baseTransform !== undefined
+    ? element.getAttribute("transform") || (baseTransform ? `${transform} ${baseTransform}` : transform)
+    : transform
+      ? `${transform}${element.getAttribute("transform") ? ` ${element.getAttribute("transform")}` : ""}`
+      : element.getAttribute("transform") || "";
+  if (committedTransform) {
+    element.setAttribute("transform", committedTransform);
+  } else {
+    element.removeAttribute("transform");
+  }
+  delete element.dataset.previewBaseTransform;
+  element.classList.remove("is-preview-transforming");
+}
+
+function commitDocumentObjectPreviewTransform() {
+  const documentLayer = viewerSvg.querySelector('[data-layer="document-content"]');
+  const transform = activeDocumentPreviewTransform;
+  if (!transform) {
+    clearDocumentObjectPreviewTransform();
+    return false;
+  }
+  clearDocumentPartialBondPreview();
+  removeDocumentPreviewBatchLayer();
+  if (activeDocumentPreviewLayer) {
+    for (const child of [...documentLayer?.children || []]) {
+      commitDocumentPreviewElementTransform(child, transform);
+    }
+    documentLayer?.removeAttribute("transform");
+    activeDocumentPreviewLayer = false;
+  }
+  for (const objectId of activeDocumentPreviewObjectIds) {
+    for (const element of documentObjectElements(objectId)) {
+      commitDocumentPreviewElementTransform(element, transform);
+    }
+  }
+  for (const element of activeDocumentPreviewPrimitiveElements) {
+    restoreDocumentPreviewElementVisibility(element);
+    commitDocumentPreviewElementTransform(element, transform);
+  }
+  activeDocumentPreviewObjectIds = new Set();
+  activeDocumentPreviewPrimitiveElements = new Set();
+  activeDocumentPreviewTransform = "";
+  return true;
+}
+
+function canCommitDocumentObjectPreviewTransform() {
+  return !!activeDocumentPreviewBatchLayer?.isConnected;
 }
 
 function selectionGestureDelta(gesture) {
@@ -5390,6 +5489,54 @@ function ensureDocumentPartialBondPreviewLayer() {
     viewerSvg.insertBefore(layer, documentLayer.nextSibling);
   }
   return layer;
+}
+
+function ensureDocumentPreviewBatchLayer() {
+  if (activeDocumentPreviewBatchLayer?.isConnected) {
+    return activeDocumentPreviewBatchLayer;
+  }
+  const documentLayer = viewerSvg.querySelector('[data-layer="document-content"]');
+  if (!documentLayer) {
+    return null;
+  }
+  const layer = makeSvgNode("g", {
+    "data-layer": "document-batch-preview",
+    "pointer-events": "none",
+  });
+  const partialPreviewLayer = viewerSvg.querySelector('[data-layer="document-partial-bond-preview"]');
+  const editorOverlay = viewerSvg.querySelector('[data-layer="editor-overlay"]');
+  if (partialPreviewLayer) {
+    viewerSvg.insertBefore(layer, partialPreviewLayer);
+  } else if (editorOverlay) {
+    viewerSvg.insertBefore(layer, editorOverlay);
+  } else {
+    viewerSvg.insertBefore(layer, documentLayer.nextSibling);
+  }
+  activeDocumentPreviewBatchLayer = layer;
+  return layer;
+}
+
+function applyDocumentPrimitiveBatchPreview(primitiveElements, transform) {
+  if (!transform || primitiveElements.length < DOCUMENT_PREVIEW_BATCH_ELEMENT_THRESHOLD) {
+    return false;
+  }
+  const layer = ensureDocumentPreviewBatchLayer();
+  if (!layer) {
+    return false;
+  }
+  if (layer.dataset.sourceCount !== String(primitiveElements.length)) {
+    layer.replaceChildren();
+    for (const element of primitiveElements) {
+      hideDocumentPreviewElement(element);
+      layer.appendChild(element.cloneNode(true));
+    }
+    layer.dataset.sourceCount = String(primitiveElements.length);
+  }
+  layer.setAttribute("transform", transform);
+  activeDocumentPreviewObjectIds = new Set();
+  activeDocumentPreviewPrimitiveElements = new Set(primitiveElements);
+  activeDocumentPreviewTransform = transform;
+  return true;
 }
 
 function renderFallbackPartialBondPreview(layer, bondPreview, delta, primitive = null) {
@@ -5528,6 +5675,22 @@ function applyDocumentObjectPreviewTransform() {
   }
   activeSelectionGesture.previewObjectIds = objectIds;
   activeSelectionGesture.previewPrimitiveElements = primitiveElements;
+  if (
+    !objectIds.length
+    && applyDocumentPrimitiveBatchPreview(primitiveElements, transform)
+  ) {
+    if (activeDocumentPreviewLayer) {
+      documentLayer?.removeAttribute("transform");
+      activeDocumentPreviewLayer = false;
+    }
+    if (hasPartialBonds) {
+      renderPartialMovingStructureBondPreview(partialBondState, partialBondDelta);
+    } else {
+      clearDocumentPartialBondPreview();
+    }
+    return true;
+  }
+  removeDocumentPreviewBatchLayer();
   const nextIds = new Set(objectIds);
   const nextPrimitiveElements = new Set(primitiveElements);
   const allGroups = hasCachedObjectIds || hasCachedPrimitiveElements
@@ -5734,6 +5897,7 @@ function renderDocument() {
   activeDocumentPreviewPrimitiveElements = new Set();
   activeDocumentPreviewHiddenElements = new Set();
   activeDocumentPreviewLayer = false;
+  activeDocumentPreviewBatchLayer = null;
   activeDocumentPreviewTransform = "";
   applyViewerViewport();
   const pageBackground = normalizeDisplayColor(page.background, CHEMDRAW_PAGE_BACKGROUND);
