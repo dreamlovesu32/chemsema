@@ -176,6 +176,13 @@ function assertNoFullRefresh(label, stats) {
   assert(stats.renderListJsonCount === 0, `${label} called full renderListJson(): ${JSON.stringify(stats)}`);
 }
 
+async function assertNoPreviewMask(page, label) {
+  const maskCount = await page.evaluate(() => (
+    document.querySelectorAll('[data-role="preview-document-mask"]').length
+  ));
+  assert(maskCount === 0, `${label} displayed full-page preview mask: ${maskCount}`);
+}
+
 async function drawCurvedArrow(page) {
   await page.locator('button[data-tool="arrow"]').click();
   await page.evaluate(() => {
@@ -213,8 +220,8 @@ async function drawCurvedArrow(page) {
   return result.objectId;
 }
 
-async function findArrowCurveHandle(page, objectId) {
-  const handle = await page.evaluate((id) => {
+async function findArrowHandle(page, objectId, action) {
+  const handle = await page.evaluate(({ id, expectedAction }) => {
     const elements = Array.from(document.querySelectorAll(`[data-object-id="${CSS.escape(id)}"]`));
     const rects = elements
       .map((element) => element.getBoundingClientRect())
@@ -249,24 +256,28 @@ async function findArrowCurveHandle(page, objectId) {
     }
     for (const point of candidates) {
       const world = new DOMPoint(point.x, point.y).matrixTransform(matrix);
-      if (window.__chemcoreDebug.state.editorEngine.hoverArrowAction(world.x, world.y) === "curve") {
+      if (window.__chemcoreDebug.state.editorEngine.hoverArrowAction(world.x, world.y) === expectedAction) {
         return point;
       }
     }
     return null;
-  }, objectId);
-  assert(handle, `Could not find curve handle for ${objectId}`);
+  }, { id: objectId, expectedAction: action });
+  assert(handle, `Could not find ${action} handle for ${objectId}`);
   return handle;
 }
 
 async function dragArrowCurve(page, objectId) {
   await page.locator('button[data-tool="select"]').click();
   await page.evaluate(() => window.__chemcoreDebug.state.editorEngine.clearSelection?.());
-  const handle = await findArrowCurveHandle(page, objectId);
+  const handle = await findArrowHandle(page, objectId, "curve");
   await resetRenderStats(page);
   await page.mouse.move(handle.x, handle.y);
   await page.mouse.down();
+  await page.waitForTimeout(80);
+  await assertNoPreviewMask(page, "arrow curve pointerdown");
+  assertNoFullRefresh("arrow curve pointerdown", await renderStats(page));
   await page.mouse.move(handle.x, handle.y + 70, { steps: 12 });
+  await assertNoPreviewMask(page, "arrow curve drag");
   await page.mouse.up();
   await page.waitForTimeout(500);
   const result = await page.evaluate((id) => {
@@ -280,6 +291,78 @@ async function dragArrowCurve(page, objectId) {
   assert(result.domCount > 0, `Arrow curve DOM disappeared: ${JSON.stringify(result)}`);
   assert(result.curve !== null, `Arrow curve did not remain editable: ${JSON.stringify(result)}`);
   assertNoFullRefresh("arrow curve drag", await renderStats(page));
+}
+
+async function assertArrowEndpointPointerDown(page, objectId) {
+  await page.locator('button[data-tool="select"]').click();
+  await page.evaluate(() => window.__chemcoreDebug.state.editorEngine.clearSelection?.());
+  const handle = await findArrowHandle(page, objectId, "head");
+  await resetRenderStats(page);
+  await page.mouse.move(handle.x, handle.y);
+  await page.mouse.down();
+  await page.waitForTimeout(80);
+  await assertNoPreviewMask(page, "arrow endpoint pointerdown");
+  assertNoFullRefresh("arrow endpoint pointerdown", await renderStats(page));
+  await page.mouse.up();
+}
+
+async function findShapeHandle(page, objectId) {
+  const handle = await page.evaluate((id) => {
+    const elements = Array.from(document.querySelectorAll(`[data-object-id="${CSS.escape(id)}"]`));
+    const rects = elements
+      .map((element) => element.getBoundingClientRect())
+      .filter((rect) => rect.width > 0 || rect.height > 0);
+    const rect = rects.length
+      ? {
+          left: Math.min(...rects.map((candidate) => candidate.left)),
+          right: Math.max(...rects.map((candidate) => candidate.right)),
+          top: Math.min(...rects.map((candidate) => candidate.top)),
+          bottom: Math.max(...rects.map((candidate) => candidate.bottom)),
+        }
+      : null;
+    if (!rect) {
+      return null;
+    }
+    rect.width = rect.right - rect.left;
+    rect.height = rect.bottom - rect.top;
+    const svg = elements[0]?.ownerSVGElement;
+    const matrix = svg?.getScreenCTM?.()?.inverse?.();
+    if (!matrix) {
+      return null;
+    }
+    const candidates = [
+      { x: rect.left, y: rect.top },
+      { x: rect.right, y: rect.top },
+      { x: rect.left, y: rect.bottom },
+      { x: rect.right, y: rect.bottom },
+      { x: rect.left + rect.width * 0.5, y: rect.top },
+      { x: rect.right, y: rect.top + rect.height * 0.5 },
+      { x: rect.left + rect.width * 0.5, y: rect.bottom },
+      { x: rect.left, y: rect.top + rect.height * 0.5 },
+    ];
+    for (const point of candidates) {
+      const world = new DOMPoint(point.x, point.y).matrixTransform(matrix);
+      if (window.__chemcoreDebug.state.editorEngine.hoverShapeAction(world.x, world.y)) {
+        return point;
+      }
+    }
+    return null;
+  }, objectId);
+  assert(handle, `Could not find shape handle for ${objectId}`);
+  return handle;
+}
+
+async function assertShapePointerDown(page, objectId) {
+  await page.locator('button[data-tool="select"]').click();
+  await page.evaluate(() => window.__chemcoreDebug.state.editorEngine.clearSelection?.());
+  const handle = await findShapeHandle(page, objectId);
+  await resetRenderStats(page);
+  await page.mouse.move(handle.x, handle.y);
+  await page.mouse.down();
+  await page.waitForTimeout(80);
+  await assertNoPreviewMask(page, "shape handle pointerdown");
+  assertNoFullRefresh("shape handle pointerdown", await renderStats(page));
+  await page.mouse.up();
 }
 
 async function drawShape(page) {
@@ -305,6 +388,7 @@ async function drawShape(page) {
   assert(result.objectId, `Shape was not created: ${JSON.stringify(result)}`);
   assert(result.domCount > 0, `Shape DOM was not patched: ${JSON.stringify(result)}`);
   assertNoFullRefresh("shape draw", await renderStats(page));
+  return result.objectId;
 }
 
 let server = null;
@@ -314,8 +398,10 @@ try {
   browser = await chromium.launch({ headless: true });
   const { page, errors } = await openViewer(browser);
   const arrowId = await drawCurvedArrow(page);
+  await assertArrowEndpointPointerDown(page, arrowId);
   await dragArrowCurve(page, arrowId);
-  await drawShape(page);
+  const shapeId = await drawShape(page);
+  await assertShapePointerDown(page, shapeId);
   await page.close();
   assert(!errors.length, `Viewer console errors:\n${errors.join("\n")}`);
   console.log(`[large-object-operation-regression] ok (${nodeCount} nodes)`);

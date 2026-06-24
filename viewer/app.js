@@ -2156,10 +2156,7 @@ function currentEditorInteractionRenderList() {
     return [];
   }
   if (!cache.interactionRenderList) {
-    cache.interactionRenderListJson = state.editorEngine.interactionRenderListJson?.()
-      || cache.renderListJson
-      || state.editorEngine.renderListJson?.()
-      || "[]";
+    cache.interactionRenderListJson = state.editorEngine.interactionRenderListJson?.() || "[]";
     cache.interactionRenderList = parseEngineJson(cache.interactionRenderListJson, []) || [];
   }
   return cache.interactionRenderList;

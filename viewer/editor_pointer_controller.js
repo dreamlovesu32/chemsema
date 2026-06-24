@@ -323,8 +323,7 @@ export function createEditorPointerController(options) {
     if (hoverMoveStale(version)) {
       return;
     }
-    const renderList = options.currentEditorInteractionRenderList?.() || options.currentEditorRenderList();
-    options.renderEditorOverlay(renderList);
+    options.renderEditorOverlay(currentInteractionRenderList());
     options.positionActiveTextEditor();
     if (editorState.elementPlacementActive) {
       options.syncCanvasCursor();
@@ -444,15 +443,17 @@ export function createEditorPointerController(options) {
     options.invalidateEditorEngineReadCache?.();
   }
 
+  function currentInteractionRenderList() {
+    return options.currentEditorInteractionRenderList?.() || [];
+  }
+
   async function updateEngineDragPreview(point, event) {
     event.preventDefault();
     cancelScheduledHoverMove();
     leaveSelectionHoverSuppression(point);
     await options.state().editorEngine.pointerMove(point.x, point.y, event.altKey);
     invalidateEngineReadCache();
-    options.renderEditorOverlay(
-      options.currentEditorInteractionRenderList?.() || options.syncEditorRenderListFromEngine(),
-    );
+    options.renderEditorOverlay(currentInteractionRenderList());
     options.positionActiveTextEditor();
   }
 
@@ -506,7 +507,7 @@ export function createEditorPointerController(options) {
           gesture.angle = options.state().editorEngine.activeArrowEditDegrees?.() || 0;
         }
         await options.syncArrowAwareCursorForPoint(point);
-        options.renderEditorOverlay(options.currentEditorInteractionRenderList?.() || options.syncEditorRenderListFromEngine());
+        options.renderEditorOverlay(currentInteractionRenderList());
         return;
       }
       if (gesture.kind === "shape-resize") {
@@ -517,7 +518,7 @@ export function createEditorPointerController(options) {
         await options.state().editorEngine.updateHoverShapeEdit?.(point.x, point.y, event.altKey);
         invalidateEngineReadCache();
         await options.syncArrowAwareCursorForPoint(point);
-        options.renderEditorOverlay(options.currentEditorInteractionRenderList?.() || options.syncEditorRenderListFromEngine());
+        options.renderEditorOverlay(currentInteractionRenderList());
         return;
       }
       if (gesture.kind === "rotate") {
@@ -531,7 +532,7 @@ export function createEditorPointerController(options) {
         await options.state().editorEngine.updateSelectionRotate(point.x, point.y, event.altKey);
         invalidateEngineReadCache();
         await options.syncSelectCursorForPoint(point);
-        options.renderEditorOverlay(options.syncEditorRenderListFromEngine());
+        options.renderEditorOverlay(currentInteractionRenderList());
         return;
       }
       if (gesture.kind === "resize") {
@@ -545,7 +546,7 @@ export function createEditorPointerController(options) {
         await options.state().editorEngine.updateSelectionResize?.(point.x, point.y);
         invalidateEngineReadCache();
         await options.syncSelectCursorForPoint(point);
-        options.renderEditorOverlay(options.syncEditorRenderListFromEngine());
+        options.renderEditorOverlay(currentInteractionRenderList());
         return;
       }
       if (gesture.kind === "move") {
@@ -573,7 +574,7 @@ export function createEditorPointerController(options) {
         await options.state().editorEngine.updateSelectionMove(point.x, point.y, event.altKey);
         invalidateEngineReadCache();
         await options.syncSelectCursorForPoint(point);
-        options.renderEditorOverlay(options.syncEditorRenderListFromEngine());
+        options.renderEditorOverlay(currentInteractionRenderList());
         return;
       }
       if (options.pointDistance(gesture.start, point) >= options.cssPxToPt(3)) {
@@ -684,7 +685,7 @@ export function createEditorPointerController(options) {
           additive: !!event.shiftKey,
         });
         await options.syncArrowAwareCursorForPoint(point);
-        options.renderEditorOverlay(options.currentEditorInteractionRenderList?.() || options.currentEditorRenderList());
+        options.renderEditorOverlay(currentInteractionRenderList());
         return;
       }
       const arrowEditAction = await options.state().editorEngine.beginHoverArrowEdit?.(point.x, point.y) || "";
@@ -699,7 +700,7 @@ export function createEditorPointerController(options) {
           angle: 0,
         });
         await options.syncArrowAwareCursorForPoint(point);
-        options.renderEditorOverlay(options.currentEditorInteractionRenderList?.() || options.currentEditorRenderList());
+        options.renderEditorOverlay(currentInteractionRenderList());
         return;
       }
       const rotateHandle = options.selectionRotateHandleHit(point);
@@ -765,7 +766,7 @@ export function createEditorPointerController(options) {
           angle: 0,
         });
         await options.syncArrowAwareCursorForPoint(point);
-        options.renderEditorOverlay(options.currentEditorInteractionRenderList?.() || options.currentEditorRenderList());
+        options.renderEditorOverlay(currentInteractionRenderList());
         return;
       }
     }
@@ -792,7 +793,7 @@ export function createEditorPointerController(options) {
           options.setActiveTlcSpotHover(tlcSpotHit);
           options.setActiveTlcLaneHover(null);
           await options.syncArrowAwareCursorForPoint(point);
-          options.renderEditorOverlay(options.currentEditorInteractionRenderList?.() || options.currentEditorRenderList());
+          options.renderEditorOverlay(currentInteractionRenderList());
           return;
         }
       }
@@ -807,7 +808,7 @@ export function createEditorPointerController(options) {
           dragged: false,
         });
         await options.syncArrowAwareCursorForPoint(point);
-        options.renderEditorOverlay(options.currentEditorInteractionRenderList?.() || options.currentEditorRenderList());
+        options.renderEditorOverlay(currentInteractionRenderList());
         return;
       }
     }
@@ -829,7 +830,7 @@ export function createEditorPointerController(options) {
       return;
     }
     invalidateEngineReadCache();
-    options.renderEditorOverlay(options.currentEditorInteractionRenderList?.() || []);
+    options.renderEditorOverlay(currentInteractionRenderList());
   }
 
   async function handleEditorPointerUp(event) {
