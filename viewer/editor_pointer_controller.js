@@ -94,9 +94,9 @@ export function createEditorPointerController(options) {
   function clearVisibleHoverOverlay() {
     const viewerSvg = options.viewerSvg?.();
     const overlay = viewerSvg?.querySelector('[data-layer="editor-overlay"]');
-    if (overlay?.querySelector('[data-role^="hover-"], [data-role="preview-end"], [data-role="preview-document-mask"]')) {
+    if (overlay?.querySelector('[data-role^="hover-"], [data-role^="preview-"]')) {
       overlay
-        .querySelectorAll('[data-role^="hover-"], [data-role="preview-end"], [data-role="preview-document-mask"]')
+        .querySelectorAll('[data-role^="hover-"], [data-role^="preview-"]')
         .forEach((node) => node.remove());
       if (!overlay.childNodes.length) {
         overlay.remove();
@@ -717,6 +717,7 @@ export function createEditorPointerController(options) {
     const point = options.svgPointFromEvent(event);
     options.setLastEditFocusPoint(point);
     event.preventDefault();
+    cancelScheduledHoverMove();
     options.viewerSvg().releasePointerCapture?.(event.pointerId);
     const gesture = options.activeSelectionGesture();
     if (gesture?.kind === "tlc-spot-drag") {
@@ -929,6 +930,7 @@ export function createEditorPointerController(options) {
       await options.renderSelectionOnlyUpdate(point);
       return;
     }
+    clearVisibleHoverOverlay();
     const result = await executeDocumentCommand(
       {
         type: pointerCommitCommandType(),
