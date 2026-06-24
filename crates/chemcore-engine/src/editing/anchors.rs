@@ -4,6 +4,7 @@ pub fn anchor_from_point(document: &ChemcoreDocument, point: Point) -> Option<Bo
     if let Some(hit) = hit_test_endpoint(document, point, ENDPOINT_HIT_RADIUS) {
         return Some(BondAnchor {
             node_id: Some(hit.node_id),
+            object_id: Some(hit.object_id),
             point: hit.point,
             label_anchor: hit.label_anchor,
         });
@@ -11,9 +12,37 @@ pub fn anchor_from_point(document: &ChemcoreDocument, point: Point) -> Option<Bo
     document.editable_fragment()?;
     Some(BondAnchor {
         node_id: None,
+        object_id: document
+            .editable_fragment()
+            .map(|entry| entry.object.id.clone()),
         point,
         label_anchor: None,
     })
+}
+
+fn editable_fragment_for_anchor<'a>(
+    document: &'a ChemcoreDocument,
+    anchor: &BondAnchor,
+) -> Option<EditableFragment<'a>> {
+    if let Some(object_id) = anchor.object_id.as_deref() {
+        if let Some(entry) = document
+            .editable_fragments()
+            .into_iter()
+            .find(|entry| entry.object.id == object_id)
+        {
+            return Some(entry);
+        }
+    }
+    if let Some(node_id) = anchor.node_id.as_deref() {
+        if let Some(entry) = document
+            .editable_fragments()
+            .into_iter()
+            .find(|entry| entry.fragment.nodes.iter().any(|node| node.id == node_id))
+        {
+            return Some(entry);
+        }
+    }
+    document.editable_fragment()
 }
 
 pub fn adjacent_directions(entry: &EditableFragment<'_>, node_id: &str) -> Vec<f64> {
@@ -52,7 +81,7 @@ pub(super) fn default_angle_for_anchor_with_single_neighbor_delta(
     let Some(node_id) = &anchor.node_id else {
         return BLANK_CANVAS_DEFAULT_ANGLE;
     };
-    let Some(entry) = document.editable_fragment() else {
+    let Some(entry) = editable_fragment_for_anchor(document, anchor) else {
         return BLANK_CANVAS_DEFAULT_ANGLE;
     };
     let directions = adjacent_directions(&entry, node_id);
@@ -234,7 +263,7 @@ pub fn default_angle_for_anchor_for_variant(
 ) -> f64 {
     if bond_variant == BondVariant::Triple {
         if let Some(node_id) = &anchor.node_id {
-            if let Some(entry) = document.editable_fragment() {
+            if let Some(entry) = editable_fragment_for_anchor(document, anchor) {
                 let directions = adjacent_directions(&entry, node_id);
                 if directions.len() == 1 {
                     return normalize_angle(directions[0] + 180.0);
@@ -260,8 +289,7 @@ pub fn snapped_angle_for_anchor(
         .node_id
         .as_ref()
         .and_then(|node_id| {
-            document
-                .editable_fragment()
+            editable_fragment_for_anchor(document, anchor)
                 .map(|entry| adjacent_directions(&entry, node_id))
         })
         .unwrap_or_default();

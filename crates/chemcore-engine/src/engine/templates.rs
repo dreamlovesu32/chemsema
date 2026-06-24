@@ -119,6 +119,7 @@ impl Engine {
                 current: point,
                 anchor: TemplateAnchor::Endpoint(BondAnchor {
                     node_id: Some(endpoint.node_id),
+                    object_id: Some(endpoint.object_id),
                     point: endpoint.point,
                     label_anchor: endpoint.label_anchor,
                 }),
@@ -259,6 +260,7 @@ impl Engine {
                         ring_size,
                         &BondAnchor {
                             node_id: None,
+                            object_id: None,
                             point: *center,
                             label_anchor: None,
                         },
@@ -324,6 +326,7 @@ impl Engine {
                     Some(chair_plan_from_anchor(
                         &BondAnchor {
                             node_id: None,
+                            object_id: None,
                             point: *center,
                             label_anchor: None,
                         },
@@ -355,6 +358,7 @@ impl Engine {
             TemplateAnchor::Center(center) => Some(chain_plan_from_anchor(
                 &BondAnchor {
                     node_id: None,
+                    object_id: None,
                     point: *center,
                     label_anchor: None,
                 },
@@ -396,6 +400,7 @@ impl Engine {
                     .unwrap_or_else(|| "__template_anchor".to_string());
                 self.state.overlay.hover_endpoint = Some(EndpointHit {
                     node_id,
+                    object_id: anchor.object_id.clone().unwrap_or_default(),
                     point: anchor.point,
                     distance: 0.0,
                     label_anchor: anchor.label_anchor.clone(),
@@ -404,6 +409,7 @@ impl Engine {
             TemplateAnchor::Center(point) => {
                 self.state.overlay.hover_endpoint = Some(EndpointHit {
                     node_id: "__template_anchor".to_string(),
+                    object_id: String::new(),
                     point: *point,
                     distance: 0.0,
                     label_anchor: None,

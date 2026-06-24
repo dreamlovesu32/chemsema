@@ -61,11 +61,12 @@ use crate::{
     render_primitives_bounds, round2, snapped_angle_for_anchor, ArrowCurve, ArrowEndpointStyle,
     ArrowHeadSize, ArrowNoGo, ArrowVariant, Bond, BondAnchor, BondLinePattern, BondLineStyles,
     BondLineWeight, BondLineWeights, BondPreview, BondStereo, BondVariant, ChemcoreDocument,
-    DoubleBond, DoubleBondPlacement, DragState, EditorOptions, EndpointHit, HoverShape,
-    HoverTextBox, OrbitalPhase, OrbitalStyle, OrbitalTemplate, OverlayState, Point, PointerEvent,
-    RenderPrimitive, RenderRole, SceneObject, SelectionState, ShapeKind, ShapeStyle, Tool,
-    ToolState, BOND_CENTER_FOCUS_WIDTH, BOND_CENTER_HIT_RADIUS, DRAG_START_THRESHOLD,
-    ENDPOINT_FOCUS_RADIUS, ENDPOINT_HIT_RADIUS, GLOBAL_SNAP_ANGLES,
+    DoubleBond, DoubleBondPlacement, DragState, EditableFragment, EditableFragmentMut,
+    EditorOptions, EndpointHit, HoverShape, HoverTextBox, OrbitalPhase, OrbitalStyle,
+    OrbitalTemplate, OverlayState, Point, PointerEvent, RenderPrimitive, RenderRole, SceneObject,
+    SelectionState, ShapeKind, ShapeStyle, Tool, ToolState, BOND_CENTER_FOCUS_WIDTH,
+    BOND_CENTER_HIT_RADIUS, DRAG_START_THRESHOLD, ENDPOINT_FOCUS_RADIUS, ENDPOINT_HIT_RADIUS,
+    GLOBAL_SNAP_ANGLES,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value as JsonValue};
@@ -1059,6 +1060,7 @@ impl Engine {
                     self.state.overlay.hover_endpoint = Some(target.clone());
                     drag.target = Some(BondAnchor {
                         node_id: Some(target.node_id.clone()),
+                        object_id: Some(target.object_id.clone()),
                         point: target.point,
                         label_anchor: target.label_anchor.clone(),
                     });
@@ -1233,6 +1235,7 @@ impl Engine {
             self.drag = Some(DragState {
                 anchor: BondAnchor {
                     node_id: Some(endpoint.node_id),
+                    object_id: Some(endpoint.object_id),
                     point: endpoint.point,
                     label_anchor: endpoint.label_anchor,
                 },
@@ -1302,6 +1305,7 @@ impl Engine {
             } else if drag.free_length {
                 BondAnchor {
                     node_id: None,
+                    object_id: drag.anchor.object_id.clone(),
                     point: drag.preview_end.unwrap_or_else(|| event.point()),
                     label_anchor: None,
                 }
@@ -1318,6 +1322,7 @@ impl Engine {
                 });
                 BondAnchor {
                     node_id: None,
+                    object_id: drag.anchor.object_id.clone(),
                     point: end,
                     label_anchor: None,
                 }
@@ -1337,6 +1342,7 @@ impl Engine {
             self.endpoint_anchor_near(&drag.anchor, end)
                 .unwrap_or(BondAnchor {
                     node_id: None,
+                    object_id: drag.anchor.object_id.clone(),
                     point: end,
                     label_anchor: None,
                 })
@@ -1485,9 +1491,10 @@ impl Engine {
 
     pub fn add_single_bond(&mut self, anchor: BondAnchor, end: Point) {
         self.add_bond_between(
-            anchor,
+            anchor.clone(),
             BondAnchor {
                 node_id: None,
+                object_id: anchor.object_id.clone(),
                 point: end,
                 label_anchor: None,
             },
@@ -1517,35 +1524,57 @@ impl Engine {
         end: BondAnchor,
         order: u8,
     ) -> bool {
+        if anchor
+            .object_id
+            .as_ref()
+            .zip(end.object_id.as_ref())
+            .is_some_and(|(left, right)| left != right)
+        {
+            return false;
+        }
+        let target_anchor = if anchor.node_id.is_some() || anchor.object_id.is_some() {
+            &anchor
+        } else {
+            &end
+        };
         if let (Some(begin_id), Some(end_id)) = (&anchor.node_id, &end.node_id) {
-            if begin_id == end_id || self.bond_exists(begin_id, end_id) {
+            if begin_id == end_id || self.bond_exists_for_anchor(target_anchor, begin_id, end_id) {
                 return false;
             }
         }
         self.push_undo_snapshot();
         self.state.selection = SelectionState::default();
-        let begin_id = match anchor.node_id {
-            Some(node_id) => node_id,
-            None => self.insert_carbon(anchor.point),
+        let begin_id = match &anchor.node_id {
+            Some(node_id) => node_id.clone(),
+            None => self.insert_carbon_for_anchor(target_anchor, anchor.point),
         };
-        let end_id = match end.node_id {
-            Some(node_id) => node_id,
-            None => self.insert_carbon(end.point),
+        let end_id = match &end.node_id {
+            Some(node_id) => node_id.clone(),
+            None => self.insert_carbon_for_anchor(target_anchor, end.point),
         };
-        if begin_id == end_id || self.bond_exists(&begin_id, &end_id) {
+        if begin_id == end_id || self.bond_exists_for_anchor(target_anchor, &begin_id, &end_id) {
             self.undo_stack.pop();
             return false;
         }
         let bond_id = self.next_id("b");
-        let pending_double =
-            self.pending_double_state_for_new_bond(&begin_id, &end_id, order.max(1));
         let pending_line_styles = self.pending_line_styles();
         let pending_line_weights = self.pending_line_weights();
         let pending_stereo = self.pending_bond_stereo();
+        let pending_double = self.pending_double_state_for_new_bond_in_anchor_fragment(
+            target_anchor,
+            &begin_id,
+            &end_id,
+            order.max(1),
+        );
+        let stroke_width = self.options.bond_stroke_world_pt().value();
+        let bold_width = self.options.bold_bond_width_world_pt().value();
+        let wedge_width = self.options.wedge_width_world_pt().value();
+        let label_clip_margin = self.options.label_clip_margin_world_pt().value();
+        let hash_spacing = self.options.hash_spacing_world_pt().value();
+        let bond_spacing = self.options.bond_spacing_percent();
+        let margin_width = self.options.margin_width_world_pt().value();
         let mut entry = self
-            .state
-            .document
-            .editable_fragment_mut()
+            .editable_fragment_mut_for_anchor(target_anchor)
             .expect("blank document always has an editable fragment");
         entry.fragment.bonds.push(Bond {
             id: bond_id.clone(),
@@ -1554,14 +1583,14 @@ impl Engine {
             order: order.max(1),
             double: pending_double,
             stereo: pending_stereo,
-            stroke_width: self.options.bond_stroke_world_pt().value(),
+            stroke_width,
             stroke: None,
-            bold_width: Some(self.options.bold_bond_width_world_pt().value()),
-            wedge_width: Some(self.options.wedge_width_world_pt().value()),
-            label_clip_margin: Some(self.options.label_clip_margin_world_pt().value()),
-            hash_spacing: Some(self.options.hash_spacing_world_pt().value()),
-            bond_spacing: Some(self.options.bond_spacing_percent()),
-            margin_width: Some(self.options.margin_width_world_pt().value()),
+            bold_width: Some(bold_width),
+            wedge_width: Some(wedge_width),
+            label_clip_margin: Some(label_clip_margin),
+            hash_spacing: Some(hash_spacing),
+            bond_spacing: Some(bond_spacing),
+            margin_width: Some(margin_width),
             line_styles: pending_line_styles,
             line_weights: pending_line_weights,
             meta: serde_json::Value::Null,
@@ -1580,14 +1609,14 @@ impl Engine {
             entry.fragment,
             entry.object.transform.translate,
             &begin_id,
-            self.options.bond_stroke_world_pt().value(),
+            stroke_width,
         );
         if end_id != begin_id {
             refresh_attached_node_label_geometry_for_node(
                 entry.fragment,
                 entry.object.transform.translate,
                 &end_id,
-                self.options.bond_stroke_world_pt().value(),
+                stroke_width,
             );
         }
         entry.update_bounds();
@@ -1630,6 +1659,7 @@ impl Engine {
         } else {
             BondAnchor {
                 node_id: None,
+                object_id: drag.anchor.object_id.clone(),
                 point: drag.preview_end?,
                 label_anchor: None,
             }
@@ -2096,13 +2126,60 @@ impl Engine {
         let target = self.drag_target_endpoint(anchor, point)?;
         Some(BondAnchor {
             node_id: Some(target.node_id),
+            object_id: Some(target.object_id),
             point: target.point,
             label_anchor: target.label_anchor,
         })
     }
 
-    fn bond_exists(&self, begin_id: &str, end_id: &str) -> bool {
-        self.bond_exists_in_document(&self.state.document, begin_id, end_id)
+    fn editable_fragment_for_anchor(&self, anchor: &BondAnchor) -> Option<EditableFragment<'_>> {
+        if let Some(object_id) = anchor.object_id.as_deref() {
+            if let Some(entry) = self
+                .state
+                .document
+                .editable_fragments()
+                .into_iter()
+                .find(|entry| entry.object.id == object_id)
+            {
+                return Some(entry);
+            }
+        }
+        if let Some(node_id) = anchor.node_id.as_deref() {
+            if let Some(entry) = self
+                .state
+                .document
+                .editable_fragments()
+                .into_iter()
+                .find(|entry| entry.fragment.nodes.iter().any(|node| node.id == node_id))
+            {
+                return Some(entry);
+            }
+        }
+        self.state.document.editable_fragment()
+    }
+
+    fn editable_fragment_object_id_for_anchor(&self, anchor: &BondAnchor) -> Option<String> {
+        self.editable_fragment_for_anchor(anchor)
+            .map(|entry| entry.object.id.clone())
+    }
+
+    fn editable_fragment_mut_for_anchor(
+        &mut self,
+        anchor: &BondAnchor,
+    ) -> Option<EditableFragmentMut<'_>> {
+        let object_id = self.editable_fragment_object_id_for_anchor(anchor)?;
+        if self.state.document.find_scene_object(&object_id).is_some() {
+            self.state
+                .document
+                .editable_fragment_mut_for_object(&object_id)
+        } else {
+            self.state.document.editable_fragment_mut()
+        }
+    }
+
+    fn bond_exists_for_anchor(&self, anchor: &BondAnchor, begin_id: &str, end_id: &str) -> bool {
+        self.editable_fragment_for_anchor(anchor)
+            .is_some_and(|entry| self.bond_exists_in_fragment(entry.fragment, begin_id, end_id))
     }
 
     fn bond_exists_in_document(
@@ -2129,12 +2206,10 @@ impl Engine {
         })
     }
 
-    fn insert_carbon(&mut self, point: Point) -> String {
+    fn insert_carbon_for_anchor(&mut self, anchor: &BondAnchor, point: Point) -> String {
         let node_id = self.next_id("n");
         let entry = self
-            .state
-            .document
-            .editable_fragment_mut()
+            .editable_fragment_mut_for_anchor(anchor)
             .expect("blank document always has an editable fragment");
         let local = entry.local_point(point);
         entry
@@ -2385,7 +2460,7 @@ impl Engine {
                 }
             }
         }
-        if let Some(entry) = self.state.document.editable_fragment() {
+        for entry in self.state.document.editable_fragments() {
             for id in entry
                 .fragment
                 .nodes
@@ -2458,6 +2533,41 @@ impl Engine {
                     DoubleBondPlacement::Center
                 } else {
                     let entry = self.state.document.editable_fragment()?;
+                    automatic_double_bond_placement_for_segment(
+                        entry.fragment,
+                        begin_id,
+                        end_id,
+                        None,
+                    )
+                };
+                Some(DoubleBond {
+                    placement,
+                    center_exit_side: None,
+                    frozen: false,
+                })
+            }
+            _ => None,
+        }
+    }
+
+    fn pending_double_state_for_new_bond_in_anchor_fragment(
+        &self,
+        anchor: &BondAnchor,
+        begin_id: &str,
+        end_id: &str,
+        order: u8,
+    ) -> Option<DoubleBond> {
+        match self.state.tool.bond_variant {
+            BondVariant::Double | BondVariant::DashedDouble if order >= 2 => {
+                let entry = self.editable_fragment_for_anchor(anchor)?;
+                let placement = if should_default_center_double_bond_for_segment(
+                    entry.fragment,
+                    begin_id,
+                    end_id,
+                    None,
+                ) {
+                    DoubleBondPlacement::Center
+                } else {
                     automatic_double_bond_placement_for_segment(
                         entry.fragment,
                         begin_id,
@@ -2734,6 +2844,7 @@ fn point_from_command(anchor: &CommandAnchor) -> Point {
 fn bond_anchor_from_command(anchor: CommandAnchor) -> BondAnchor {
     BondAnchor {
         node_id: anchor.node_id,
+        object_id: anchor.object_id,
         point: Point::new(anchor.x, anchor.y),
         label_anchor: None,
     }

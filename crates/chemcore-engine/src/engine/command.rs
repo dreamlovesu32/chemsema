@@ -11,6 +11,8 @@ use std::collections::BTreeMap;
 pub struct CommandAnchor {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub node_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub object_id: Option<String>,
     pub x: f64,
     pub y: f64,
 }
@@ -19,6 +21,7 @@ impl From<&BondAnchor> for CommandAnchor {
     fn from(anchor: &BondAnchor) -> Self {
         Self {
             node_id: anchor.node_id.clone(),
+            object_id: anchor.object_id.clone(),
             x: anchor.point.x,
             y: anchor.point.y,
         }
@@ -29,6 +32,7 @@ impl From<Point> for CommandAnchor {
     fn from(point: Point) -> Self {
         Self {
             node_id: None,
+            object_id: None,
             x: point.x,
             y: point.y,
         }

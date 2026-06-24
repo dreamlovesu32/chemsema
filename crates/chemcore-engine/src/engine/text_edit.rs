@@ -758,6 +758,7 @@ impl Engine {
         self.state.overlay.hover_text_box = None;
         self.state.overlay.hover_endpoint = Some(EndpointHit {
             node_id: node_id.to_string(),
+            object_id: entry.object.id.clone(),
             point: hover_point,
             distance: 0.0,
             label_anchor: None,
@@ -1140,6 +1141,7 @@ impl Engine {
         self.state.overlay.preview = None;
         self.state.overlay.hover_endpoint = Some(EndpointHit {
             node_id: node_id.to_string(),
+            object_id: entry.object.id.clone(),
             point: hover_point,
             distance: 0.0,
             label_anchor: None,

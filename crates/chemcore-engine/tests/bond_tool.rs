@@ -3397,11 +3397,13 @@ fn template_click_reuses_existing_endpoint_at_generated_ring_vertex() {
     engine.add_single_bond_between(
         chemcore_engine::BondAnchor {
             node_id: None,
+            object_id: None,
             point: reusable_point,
             label_anchor: None,
         },
         chemcore_engine::BondAnchor {
             node_id: None,
+            object_id: None,
             point: reusable_point
                 .translated(direction_from_angle(37.0).scaled(DEFAULT_BOND_LENGTH * 1.7)),
             label_anchor: None,
@@ -4328,6 +4330,137 @@ fn drag_preview_interaction_render_list_only_contains_preview_geometry() {
         interaction.len() <= 8,
         "preview interaction list should stay small: {interaction:?}"
     );
+}
+
+#[test]
+fn bond_tool_edits_endpoint_fragment_inside_nonfirst_molecule_object() {
+    let document = json!({
+        "format": { "name": "chemcore", "version": "0.1", "unit": "pt" },
+        "document": {
+            "id": "doc",
+            "title": "Two molecules",
+            "page": { "width": 500.0, "height": 300.0, "background": "#ffffff" }
+        },
+        "styles": {
+            "style_molecule_default": {
+                "kind": "molecule",
+                "stroke": "#000000",
+                "strokeWidth": DEFAULT_BOND_STROKE,
+                "fontFamily": "Arial",
+                "fontSize": 10.0
+            }
+        },
+        "objects": [
+            {
+                "id": "obj_first",
+                "type": "molecule",
+                "visible": true,
+                "zIndex": 1,
+                "transform": { "translate": [0.0, 0.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+                "styleRef": "style_molecule_default",
+                "payload": { "resourceRef": "mol_first", "bbox": [0.0, 0.0, 20.0, 20.0] }
+            },
+            {
+                "id": "group_parent",
+                "type": "group",
+                "visible": true,
+                "zIndex": 2,
+                "transform": { "translate": [0.0, 0.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+                "payload": {},
+                "children": [
+                    {
+                        "id": "obj_second",
+                        "type": "molecule",
+                        "visible": true,
+                        "zIndex": 1,
+                        "transform": { "translate": [100.0, 20.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+                        "styleRef": "style_molecule_default",
+                        "payload": { "resourceRef": "mol_second", "bbox": [0.0, 0.0, 20.0, 20.0] }
+                    }
+                ]
+            }
+        ],
+        "resources": {
+            "mol_first": {
+                "type": "molecule_fragment2d",
+                "encoding": "chemcore.molecule.fragment2d",
+                "data": {
+                    "schema": "chemcore.molecule.fragment2d",
+                    "bbox": [0.0, 0.0, 20.0, 20.0],
+                    "nodes": [
+                        { "id": "first_a", "element": "C", "atomicNumber": 6, "position": [0.0, 0.0], "charge": 0, "numHydrogens": 0 }
+                    ],
+                    "bonds": []
+                }
+            },
+            "mol_second": {
+                "type": "molecule_fragment2d",
+                "encoding": "chemcore.molecule.fragment2d",
+                "data": {
+                    "schema": "chemcore.molecule.fragment2d",
+                    "bbox": [0.0, 0.0, 20.0, 20.0],
+                    "nodes": [
+                        { "id": "second_a", "element": "C", "atomicNumber": 6, "position": [0.0, 0.0], "charge": 0, "numHydrogens": 0 }
+                    ],
+                    "bonds": []
+                }
+            }
+        }
+    });
+    let mut engine = Engine::new();
+    engine
+        .load_document_json(&document.to_string())
+        .expect("document should load");
+    engine.set_tool_state(bond_tool());
+
+    let anchor = Point::new(100.0, 20.0);
+    engine.pointer_down(PointerEvent {
+        x: anchor.x,
+        y: anchor.y,
+        button: Some(0),
+        alt_key: false,
+    });
+    engine.pointer_move(PointerEvent {
+        x: anchor.x + 30.0,
+        y: anchor.y,
+        button: None,
+        alt_key: false,
+    });
+    assert!(engine
+        .interaction_render_list()
+        .iter()
+        .any(|primitive| matches!(
+            primitive,
+            RenderPrimitive::Path { role, .. }
+                | RenderPrimitive::Polygon { role, .. }
+                | RenderPrimitive::FilledPath { role, .. }
+                if *role == RenderRole::PreviewBond
+        )));
+    engine.pointer_up(PointerEvent {
+        x: anchor.x,
+        y: anchor.y,
+        button: Some(0),
+        alt_key: false,
+    });
+
+    let document = parse_document_json(&engine.document_json().expect("document json"))
+        .expect("document should parse");
+    let first = document
+        .resources
+        .get("mol_first")
+        .and_then(|resource| resource.data.as_fragment())
+        .expect("first fragment");
+    let second = document
+        .resources
+        .get("mol_second")
+        .and_then(|resource| resource.data.as_fragment())
+        .expect("second fragment");
+    assert_eq!(first.bonds.len(), 0);
+    assert_eq!(second.bonds.len(), 1);
+    assert!(second
+        .bonds
+        .iter()
+        .any(|bond| bond.begin == "second_a" || bond.end == "second_a"));
 }
 
 #[test]
@@ -5777,6 +5910,7 @@ fn click_extension_reuses_endpoint_at_default_angle() {
     engine.add_single_bond(
         chemcore_engine::BondAnchor {
             node_id: None,
+            object_id: None,
             point: px_point(200.0, 200.0),
             label_anchor: None,
         },
@@ -8756,6 +8890,7 @@ fn double_tool_defaults_to_center_on_three_connected_node() {
     engine.add_single_bond(
         chemcore_engine::BondAnchor {
             node_id: None,
+            object_id: None,
             point: px_point(300.0, 260.0),
             label_anchor: None,
         },
@@ -8764,11 +8899,13 @@ fn double_tool_defaults_to_center_on_three_connected_node() {
     engine.add_single_bond_between(
         chemcore_engine::BondAnchor {
             node_id: Some("n_2".to_string()),
+            object_id: None,
             point: chemcore_engine::Point::new(FIRST_END_X, FIRST_END_Y),
             label_anchor: None,
         },
         chemcore_engine::BondAnchor {
             node_id: None,
+            object_id: None,
             point: chemcore_engine::Point::new(
                 FIRST_END_SINGLE_EXTEND_X,
                 FIRST_END_SINGLE_EXTEND_Y,
@@ -8779,11 +8916,13 @@ fn double_tool_defaults_to_center_on_three_connected_node() {
     engine.add_single_bond_between(
         chemcore_engine::BondAnchor {
             node_id: Some("n_2".to_string()),
+            object_id: None,
             point: chemcore_engine::Point::new(FIRST_END_X, FIRST_END_Y),
             label_anchor: None,
         },
         chemcore_engine::BondAnchor {
             node_id: None,
+            object_id: None,
             point: px_point(331.18, 278.0),
             label_anchor: None,
         },
@@ -8821,6 +8960,7 @@ fn double_tool_does_not_default_to_center_when_each_endpoint_has_one_same_side_s
     engine.add_single_bond(
         chemcore_engine::BondAnchor {
             node_id: None,
+            object_id: None,
             point: px_point(300.0, 260.0),
             label_anchor: None,
         },
@@ -8829,11 +8969,13 @@ fn double_tool_does_not_default_to_center_when_each_endpoint_has_one_same_side_s
     engine.add_single_bond_between(
         chemcore_engine::BondAnchor {
             node_id: Some("n_1".to_string()),
+            object_id: None,
             point: px_point(300.0, 260.0),
             label_anchor: None,
         },
         chemcore_engine::BondAnchor {
             node_id: None,
+            object_id: None,
             point: px_point(268.82, 242.0),
             label_anchor: None,
         },
@@ -8841,11 +8983,13 @@ fn double_tool_does_not_default_to_center_when_each_endpoint_has_one_same_side_s
     engine.add_single_bond_between(
         chemcore_engine::BondAnchor {
             node_id: Some("n_2".to_string()),
+            object_id: None,
             point: chemcore_engine::Point::new(FIRST_END_X, FIRST_END_Y),
             label_anchor: None,
         },
         chemcore_engine::BondAnchor {
             node_id: None,
+            object_id: None,
             point: px_point(300.0, 242.0),
             label_anchor: None,
         },
@@ -8883,6 +9027,7 @@ fn double_tool_defaults_to_side_when_substituents_span_both_sides() {
     engine.add_single_bond(
         chemcore_engine::BondAnchor {
             node_id: None,
+            object_id: None,
             point: px_point(300.0, 260.0),
             label_anchor: None,
         },
@@ -8891,11 +9036,13 @@ fn double_tool_defaults_to_side_when_substituents_span_both_sides() {
     engine.add_single_bond_between(
         chemcore_engine::BondAnchor {
             node_id: Some("n_1".to_string()),
+            object_id: None,
             point: px_point(300.0, 260.0),
             label_anchor: None,
         },
         chemcore_engine::BondAnchor {
             node_id: None,
+            object_id: None,
             point: px_point(268.82, 242.0),
             label_anchor: None,
         },
@@ -8903,11 +9050,13 @@ fn double_tool_defaults_to_side_when_substituents_span_both_sides() {
     engine.add_single_bond_between(
         chemcore_engine::BondAnchor {
             node_id: Some("n_2".to_string()),
+            object_id: None,
             point: chemcore_engine::Point::new(FIRST_END_X, FIRST_END_Y),
             label_anchor: None,
         },
         chemcore_engine::BondAnchor {
             node_id: None,
+            object_id: None,
             point: chemcore_engine::Point::new(
                 FIRST_END_SINGLE_EXTEND_X,
                 FIRST_END_SINGLE_EXTEND_Y,
@@ -8948,6 +9097,7 @@ fn collinear_attachment_does_not_trigger_centered_double_default() {
     engine.add_single_bond(
         chemcore_engine::BondAnchor {
             node_id: None,
+            object_id: None,
             point: px_point(300.0, 260.0),
             label_anchor: None,
         },
@@ -8956,11 +9106,13 @@ fn collinear_attachment_does_not_trigger_centered_double_default() {
     engine.add_single_bond_between(
         chemcore_engine::BondAnchor {
             node_id: Some("n_1".to_string()),
+            object_id: None,
             point: px_point(300.0, 260.0),
             label_anchor: None,
         },
         chemcore_engine::BondAnchor {
             node_id: None,
+            object_id: None,
             point: px_point(268.82, 242.0),
             label_anchor: None,
         },
@@ -8968,11 +9120,13 @@ fn collinear_attachment_does_not_trigger_centered_double_default() {
     engine.add_single_bond_between(
         chemcore_engine::BondAnchor {
             node_id: Some("n_2".to_string()),
+            object_id: None,
             point: chemcore_engine::Point::new(FIRST_END_X, FIRST_END_Y),
             label_anchor: None,
         },
         chemcore_engine::BondAnchor {
             node_id: None,
+            object_id: None,
             point: chemcore_engine::Point::new(
                 FIRST_END_TRIPLE_EXTEND_X,
                 FIRST_END_TRIPLE_EXTEND_Y,
@@ -9013,6 +9167,7 @@ fn adding_fourth_bond_to_unfrozen_center_double_moves_to_last_drawn_side_on_tie(
     engine.add_single_bond(
         chemcore_engine::BondAnchor {
             node_id: None,
+            object_id: None,
             point: px_point(300.0, 260.0),
             label_anchor: None,
         },
@@ -9021,11 +9176,13 @@ fn adding_fourth_bond_to_unfrozen_center_double_moves_to_last_drawn_side_on_tie(
     engine.add_single_bond_between(
         chemcore_engine::BondAnchor {
             node_id: Some("n_1".to_string()),
+            object_id: None,
             point: px_point(300.0, 260.0),
             label_anchor: None,
         },
         chemcore_engine::BondAnchor {
             node_id: None,
+            object_id: None,
             point: px_point(268.82, 242.0),
             label_anchor: None,
         },
@@ -9033,11 +9190,13 @@ fn adding_fourth_bond_to_unfrozen_center_double_moves_to_last_drawn_side_on_tie(
     engine.add_single_bond_between(
         chemcore_engine::BondAnchor {
             node_id: Some("n_2".to_string()),
+            object_id: None,
             point: chemcore_engine::Point::new(FIRST_END_X, FIRST_END_Y),
             label_anchor: None,
         },
         chemcore_engine::BondAnchor {
             node_id: None,
+            object_id: None,
             point: chemcore_engine::Point::new(
                 FIRST_END_SINGLE_EXTEND_X,
                 FIRST_END_SINGLE_EXTEND_Y,
@@ -9057,11 +9216,13 @@ fn adding_fourth_bond_to_unfrozen_center_double_moves_to_last_drawn_side_on_tie(
     engine.add_single_bond_between(
         chemcore_engine::BondAnchor {
             node_id: Some("n_1".to_string()),
+            object_id: None,
             point: px_point(300.0, 260.0),
             label_anchor: None,
         },
         chemcore_engine::BondAnchor {
             node_id: None,
+            object_id: None,
             point: chemcore_engine::Point::new(ROOT_SINGLE_BRANCH_X, ROOT_SINGLE_BRANCH_Y),
             label_anchor: None,
         },
@@ -9069,11 +9230,13 @@ fn adding_fourth_bond_to_unfrozen_center_double_moves_to_last_drawn_side_on_tie(
     engine.add_single_bond_between(
         chemcore_engine::BondAnchor {
             node_id: Some("n_2".to_string()),
+            object_id: None,
             point: chemcore_engine::Point::new(FIRST_END_X, FIRST_END_Y),
             label_anchor: None,
         },
         chemcore_engine::BondAnchor {
             node_id: None,
+            object_id: None,
             point: px_point(331.18, 278.0),
             label_anchor: None,
         },
@@ -9097,6 +9260,7 @@ fn adding_cis_substituent_to_unfrozen_monosubstituted_double_moves_to_inner_side
     engine.add_single_bond(
         chemcore_engine::BondAnchor {
             node_id: None,
+            object_id: None,
             point: px_point(300.0, 260.0),
             label_anchor: None,
         },
@@ -9105,11 +9269,13 @@ fn adding_cis_substituent_to_unfrozen_monosubstituted_double_moves_to_inner_side
     engine.add_single_bond_between(
         chemcore_engine::BondAnchor {
             node_id: Some("n_1".to_string()),
+            object_id: None,
             point: px_point(300.0, 260.0),
             label_anchor: None,
         },
         chemcore_engine::BondAnchor {
             node_id: None,
+            object_id: None,
             point: px_point(268.82, 242.0),
             label_anchor: None,
         },
@@ -9139,11 +9305,13 @@ fn adding_cis_substituent_to_unfrozen_monosubstituted_double_moves_to_inner_side
     engine.add_single_bond_between(
         chemcore_engine::BondAnchor {
             node_id: Some("n_2".to_string()),
+            object_id: None,
             point: chemcore_engine::Point::new(FIRST_END_X, FIRST_END_Y),
             label_anchor: None,
         },
         chemcore_engine::BondAnchor {
             node_id: None,
+            object_id: None,
             point: chemcore_engine::Point::new(
                 FIRST_END_SINGLE_EXTEND_X,
                 FIRST_END_SINGLE_EXTEND_Y,
@@ -9170,6 +9338,7 @@ fn frozen_double_bond_keeps_manual_style_after_new_attachment() {
     engine.add_single_bond(
         chemcore_engine::BondAnchor {
             node_id: None,
+            object_id: None,
             point: px_point(300.0, 260.0),
             label_anchor: None,
         },
@@ -9178,11 +9347,13 @@ fn frozen_double_bond_keeps_manual_style_after_new_attachment() {
     engine.add_single_bond_between(
         chemcore_engine::BondAnchor {
             node_id: Some("n_1".to_string()),
+            object_id: None,
             point: px_point(300.0, 260.0),
             label_anchor: None,
         },
         chemcore_engine::BondAnchor {
             node_id: None,
+            object_id: None,
             point: px_point(268.82, 242.0),
             label_anchor: None,
         },
@@ -9190,11 +9361,13 @@ fn frozen_double_bond_keeps_manual_style_after_new_attachment() {
     engine.add_single_bond_between(
         chemcore_engine::BondAnchor {
             node_id: Some("n_2".to_string()),
+            object_id: None,
             point: chemcore_engine::Point::new(FIRST_END_X, FIRST_END_Y),
             label_anchor: None,
         },
         chemcore_engine::BondAnchor {
             node_id: None,
+            object_id: None,
             point: chemcore_engine::Point::new(
                 FIRST_END_SINGLE_EXTEND_X,
                 FIRST_END_SINGLE_EXTEND_Y,
@@ -9238,11 +9411,13 @@ fn frozen_double_bond_keeps_manual_style_after_new_attachment() {
     engine.add_single_bond_between(
         chemcore_engine::BondAnchor {
             node_id: Some("n_1".to_string()),
+            object_id: None,
             point: px_point(300.0, 260.0),
             label_anchor: None,
         },
         chemcore_engine::BondAnchor {
             node_id: None,
+            object_id: None,
             point: chemcore_engine::Point::new(ROOT_SINGLE_BRANCH_X, ROOT_SINGLE_BRANCH_Y),
             label_anchor: None,
         },

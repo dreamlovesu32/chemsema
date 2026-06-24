@@ -113,11 +113,13 @@ impl Engine {
         let center = Point::new(12.0, 12.0);
         let anchor = BondAnchor {
             node_id: None,
+            object_id: None,
             point: Point::new(center.x - half_axis.x, center.y - half_axis.y),
             label_anchor: None,
         };
         let end = BondAnchor {
             node_id: None,
+            object_id: None,
             point: Point::new(center.x + half_axis.x, center.y + half_axis.y),
             label_anchor: None,
         };
@@ -164,7 +166,18 @@ impl Engine {
                 return None;
             }
         }
-        let mut entry = document.editable_fragment_mut()?;
+        let preview_object_id = self
+            .editable_fragment_for_anchor(anchor)
+            .map(|entry| entry.object.id.clone());
+        let mut entry = if let Some(object_id) = preview_object_id.as_deref() {
+            if document.find_scene_object(object_id).is_some() {
+                document.editable_fragment_mut_for_object(object_id)?
+            } else {
+                document.editable_fragment_mut()?
+            }
+        } else {
+            document.editable_fragment_mut()?
+        };
         let begin_id = match &anchor.node_id {
             Some(node_id) => node_id.clone(),
             None => {
@@ -242,6 +255,7 @@ impl Engine {
         } else {
             BondAnchor {
                 node_id: None,
+                object_id: drag.anchor.object_id.clone(),
                 point: drag.preview_end?,
                 label_anchor: None,
             }
@@ -259,7 +273,7 @@ impl Engine {
         end: &BondAnchor,
         order: u8,
     ) -> Option<ChemcoreDocument> {
-        let source = self.state.document.editable_fragment()?;
+        let source = self.editable_fragment_for_anchor(anchor)?;
         if let (Some(begin_id), Some(end_id)) = (&anchor.node_id, &end.node_id) {
             if begin_id == end_id || self.bond_exists_in_fragment(source.fragment, begin_id, end_id)
             {
@@ -348,7 +362,12 @@ impl Engine {
             begin: begin_id.clone(),
             end: end_id.clone(),
             order: order.max(1),
-            double: self.pending_double_state_for_new_bond(&begin_id, &end_id, order.max(1)),
+            double: self.pending_double_state_for_new_bond_in_anchor_fragment(
+                anchor,
+                &begin_id,
+                &end_id,
+                order.max(1),
+            ),
             stereo: self.pending_bond_stereo(),
             stroke_width,
             stroke: None,

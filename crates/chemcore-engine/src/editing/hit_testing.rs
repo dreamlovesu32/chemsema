@@ -39,6 +39,7 @@ pub fn hit_test_endpoint_excluding(
                     }
                     let candidate = EndpointHit {
                         node_id: node.id.clone(),
+                        object_id: entry.object.id.clone(),
                         point: anchor.glyph_point,
                         distance,
                         label_anchor: Some(anchor),
@@ -55,6 +56,7 @@ pub fn hit_test_endpoint_excluding(
                 best = Some((
                     EndpointHit {
                         node_id: node.id.clone(),
+                        object_id: entry.object.id.clone(),
                         point: node_point,
                         distance,
                         label_anchor: None,

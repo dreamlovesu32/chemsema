@@ -214,6 +214,7 @@ impl Engine {
         self.state.overlay.preview = None;
         self.state.overlay.hover_endpoint = Some(crate::EndpointHit {
             node_id: node_id.to_string(),
+            object_id: entry.object.id.clone(),
             point: crate::Point::new(
                 object_translate[0] + node_position[0],
                 object_translate[1] + node_position[1],

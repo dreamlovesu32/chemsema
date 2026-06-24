@@ -56,6 +56,7 @@ fn select_tool_state() -> ToolState {
 fn free_anchor(point: Point) -> BondAnchor {
     BondAnchor {
         node_id: None,
+        object_id: None,
         point,
         label_anchor: None,
     }
@@ -64,6 +65,7 @@ fn free_anchor(point: Point) -> BondAnchor {
 fn node_anchor(node_id: &str, point: Point) -> BondAnchor {
     BondAnchor {
         node_id: Some(node_id.to_string()),
+        object_id: None,
         point,
         label_anchor: None,
     }

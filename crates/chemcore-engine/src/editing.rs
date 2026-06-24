@@ -496,6 +496,7 @@ impl PointerEvent {
 #[serde(rename_all = "camelCase")]
 pub struct EndpointHit {
     pub node_id: String,
+    pub object_id: String,
     pub point: Point,
     pub distance: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -551,6 +552,8 @@ impl SelectionState {
 #[serde(rename_all = "camelCase")]
 pub struct BondAnchor {
     pub node_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub object_id: Option<String>,
     pub point: Point,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label_anchor: Option<LabelAnchorGeometry>,
