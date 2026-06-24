@@ -49,6 +49,10 @@ pub fn split_label_groups(text: &str) -> Vec<String> {
     // Labels are mirrored as chemistry groups, not as raw characters. Known
     // abbreviations such as TMS must stay atomic when OTMS flips to TMSO.
     let compact = compact_label_text(text);
+    split_compact_label_groups(&compact)
+}
+
+fn split_compact_label_groups(compact: &str) -> Vec<String> {
     if compact.is_empty() {
         return Vec::new();
     }
@@ -57,6 +61,16 @@ pub fn split_label_groups(text: &str) -> Vec<String> {
     let mut index = 0usize;
     while index < compact.len() {
         let rest = &compact[index..];
+        if rest.starts_with('(') {
+            if let Some(group_len) = parenthesized_label_group_len(rest) {
+                if !current.is_empty() {
+                    groups.push(std::mem::take(&mut current));
+                }
+                groups.push(rest[..group_len].to_string());
+                index += group_len;
+                continue;
+            }
+        }
         if let Some(prefix_len) = crate::label_group_abbreviation_prefix_len(rest) {
             if !current.is_empty() {
                 groups.push(std::mem::take(&mut current));
@@ -81,9 +95,59 @@ pub fn split_label_groups(text: &str) -> Vec<String> {
 }
 
 pub fn reverse_label_groups(text: &str) -> String {
-    let mut groups = split_label_groups(text);
+    let mut groups = split_label_groups(text)
+        .into_iter()
+        .map(|group| reverse_label_group_for_display(&group))
+        .collect::<Vec<_>>();
     groups.reverse();
     groups.concat()
+}
+
+fn reverse_label_group_for_display(group: &str) -> String {
+    let Some((inner, suffix)) = parenthesized_label_group_parts(group) else {
+        return group.to_string();
+    };
+    format!("({}){suffix}", reverse_label_groups(inner))
+}
+
+fn parenthesized_label_group_len(text: &str) -> Option<usize> {
+    let close = matching_close_paren(text)?;
+    let after_close = close + 1;
+    let suffix_len = text[after_close..]
+        .chars()
+        .take_while(|character| character.is_ascii_digit())
+        .map(char::len_utf8)
+        .sum::<usize>();
+    Some(after_close + suffix_len)
+}
+
+fn parenthesized_label_group_parts(group: &str) -> Option<(&str, &str)> {
+    if !group.starts_with('(') {
+        return None;
+    }
+    let close = matching_close_paren(group)?;
+    let suffix = &group[close + 1..];
+    if !suffix.chars().all(|character| character.is_ascii_digit()) {
+        return None;
+    }
+    Some((&group[1..close], suffix))
+}
+
+fn matching_close_paren(text: &str) -> Option<usize> {
+    let mut depth = 0usize;
+    for (index, character) in text.char_indices() {
+        match character {
+            '(' => depth += 1,
+            ')' => {
+                depth = depth.checked_sub(1)?;
+                if depth == 0 {
+                    return Some(index);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 pub fn terminal_letter_anchor_offset(group: &str) -> usize {
@@ -229,7 +293,11 @@ pub fn layout_label_text(text: &str, decision: &LabelLayoutDecision) -> LabelLay
             }
         }
         LabelFlow::Reverse => {
-            let rendered_groups = groups.iter().rev().cloned().collect::<Vec<_>>();
+            let rendered_groups = groups
+                .iter()
+                .rev()
+                .map(|group| reverse_label_group_for_display(group))
+                .collect::<Vec<_>>();
             let rendered_text = rendered_groups.concat();
             let anchor_char = match decision.anchor {
                 LabelAnchorPolicy::WholeLabel => rendered_text.chars().count().saturating_sub(1),
@@ -308,6 +376,7 @@ mod tests {
         assert_eq!(split_label_groups("OCH3"), vec!["O", "CH3"]);
         assert_eq!(split_label_groups("TMSOPh"), vec!["TMS", "O", "Ph"]);
         assert_eq!(split_label_groups("CF3"), vec!["C", "F3"]);
+        assert_eq!(split_label_groups("N(PhSO2)2"), vec!["N", "(PhSO2)2"]);
     }
 
     #[test]
@@ -320,6 +389,7 @@ mod tests {
         assert_eq!(reverse_label_groups("OCH3"), "CH3O");
         assert_eq!(reverse_label_groups("TMSOPh"), "PhOTMS");
         assert_eq!(reverse_label_groups("CF3"), "F3C");
+        assert_eq!(reverse_label_groups("N(PhSO2)2"), "(O2SPh)2N");
     }
 
     #[test]
@@ -357,6 +427,11 @@ mod tests {
         assert_eq!(layout.lines, vec!["Ph2F3Cu"]);
         assert_eq!(layout.anchor_line, 0);
         assert_eq!(layout.anchor_char, 6);
+
+        let parenthesized = layout_label_text("N(PhSO2)2", &decision);
+        assert_eq!(parenthesized.lines, vec!["(O2SPh)2N"]);
+        assert_eq!(parenthesized.anchor_line, 0);
+        assert_eq!(parenthesized.anchor_char, 8);
     }
 
     #[test]

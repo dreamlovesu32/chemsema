@@ -5253,6 +5253,78 @@ fn parse_cdxml_normal_face_attached_label_uses_group_layout() {
 }
 
 #[test]
+fn parse_cdxml_parenthesized_attached_label_reverses_inner_groups() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >
+<CDXML BondLength="14.40" LineWidth="0.99" BoldWidth="2.01" HashSpacing="2.49" BondSpacing="18" LabelSize="10">
+  <page id="p1" BoundingBox="0 0 92 44">
+    <fragment id="f1" BoundingBox="0 0 92 44">
+      <n id="n1" p="20 16" NodeType="Fragment">
+        <t p="20.00 19.90" BoundingBox="-34.00 8.40 20.00 19.90" LabelJustification="Right" Justification="Right" LabelAlignment="Right" UTF8Text="N(PhSO2)2">
+          <s font="3" size="10" color="0" face="96">N(PhSO2)2</s>
+        </t>
+      </n>
+      <n id="n2" p="36 16"/>
+      <b id="b1" B="n1" E="n2"/>
+    </fragment>
+  </page>
+</CDXML>"#;
+    let document =
+        parse_cdxml_document(cdxml, Some("parenthesized label")).expect("cdxml should parse");
+    let fragment = document
+        .resources
+        .values()
+        .find_map(|resource| resource.data.as_fragment())
+        .expect("fragment should import");
+    let node = fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == "n1")
+        .expect("N(PhSO2)2 node should import");
+    let label = node.label.as_ref().expect("N(PhSO2)2 label should import");
+
+    assert_eq!(label.source_text.as_deref(), Some("N(PhSO2)2"));
+    assert_eq!(label.text, "(O2SPh)2N");
+    let display_text: String = label.runs.iter().map(|run| run.text.as_str()).collect();
+    assert_eq!(display_text, "(O2SPh)2N");
+    assert_eq!(
+        label
+            .meta
+            .pointer("/labelRecognition/canonicalLabel")
+            .and_then(serde_json::Value::as_str),
+        Some("N(PhSO2)2")
+    );
+    assert_eq!(
+        label
+            .meta
+            .pointer("/labelRecognition/anchorAtom")
+            .and_then(serde_json::Value::as_str),
+        Some("N")
+    );
+    let nitrogen_polygon = label.glyph_polygons.get(8).expect("N glyph should exist");
+    let bounds = nitrogen_polygon.iter().fold(
+        [
+            f64::INFINITY,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            f64::NEG_INFINITY,
+        ],
+        |mut bounds, point| {
+            bounds[0] = bounds[0].min(point[0]);
+            bounds[1] = bounds[1].min(point[1]);
+            bounds[2] = bounds[2].max(point[0]);
+            bounds[3] = bounds[3].max(point[1]);
+            bounds
+        },
+    );
+    let nitrogen_center = Point::new((bounds[0] + bounds[2]) * 0.5, (bounds[1] + bounds[3]) * 0.5);
+    assert!(
+        nitrogen_center.distance(Point::new(node.position[0], node.position[1])) < 0.01,
+        "right-side N(PhSO2)2 labels should keep the original N glyph anchored to the node: label={label:?}, node={node:?}"
+    );
+}
+
+#[test]
 fn parse_cdxml_attached_sulfur_label_uses_elliptical_clip_geometry() {
     let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >

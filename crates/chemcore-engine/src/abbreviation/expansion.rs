@@ -1002,6 +1002,62 @@ mod tests {
     }
 
     #[test]
+    fn valence_parser_attaches_parenthesized_sulfonyl_groups() {
+        let recognition = recognize_abbreviation_label("N(PhSO2)2").unwrap();
+        assert_eq!(recognition.kind, "valence-fragment");
+        assert_eq!(recognition.anchor_atom, "N");
+        assert_eq!(
+            labels(&recognition),
+            vec!["N", "S", "Ph", "O", "O", "S", "Ph", "O", "O"]
+        );
+        assert_eq!(recognition.components[1].parent_index, Some(0));
+        assert_eq!(recognition.components[2].parent_index, Some(1));
+        assert_eq!(recognition.components[3].parent_index, Some(1));
+        assert_eq!(recognition.components[3].bond_order_to_parent, Some(2));
+        assert_eq!(recognition.components[5].parent_index, Some(0));
+        assert_eq!(recognition.components[6].parent_index, Some(5));
+        assert_eq!(recognition.components[7].parent_index, Some(5));
+        assert_eq!(recognition.components[7].bond_order_to_parent, Some(2));
+
+        let expansion = recognized_abbreviation_meta("N(PhSO2)2").unwrap()["expansion"].clone();
+        let atoms = expansion["atoms"].as_array().unwrap();
+        assert_eq!(
+            atoms
+                .iter()
+                .filter(|atom| atom["element"].as_str() == Some("N"))
+                .count(),
+            1
+        );
+        assert_eq!(
+            atoms
+                .iter()
+                .filter(|atom| atom["element"].as_str() == Some("S"))
+                .count(),
+            2
+        );
+        assert_eq!(
+            atoms
+                .iter()
+                .filter(|atom| atom["element"].as_str() == Some("O"))
+                .count(),
+            4
+        );
+        let bonds = expansion["bonds"].as_array().unwrap();
+        assert!(bonds
+            .iter()
+            .any(|bond| bond["begin"] == "n1" && bond["end"] == "s1" && bond["order"] == 1));
+        assert!(bonds
+            .iter()
+            .any(|bond| bond["begin"] == "n1" && bond["end"] == "s2" && bond["order"] == 1));
+        assert!(bonds
+            .iter()
+            .any(|bond| bond["begin"] == "s1" && bond["end"] == "o1" && bond["order"] == 2));
+        assert!(bonds
+            .iter()
+            .any(|bond| bond["begin"] == "s2" && bond["end"] == "o3" && bond["order"] == 2));
+    }
+
+    #[test]
     fn valence_parser_allows_one_open_valence_only_inside_parenthesized_groups() {
         assert!(recognize_abbreviation_label("B(OH)2").is_some());
         assert!(recognize_abbreviation_label("CH2(OH)").is_some());

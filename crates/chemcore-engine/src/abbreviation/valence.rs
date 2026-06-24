@@ -248,10 +248,39 @@ fn parse_valence_tokens_from(
 fn parse_valence_group_for_attachment(
     group_tokens: &[ValenceToken],
 ) -> Option<(Vec<AbbreviationComponent>, Vec<ValenceNodeState>)> {
-    // Parenthesized groups are first parsed as standalone. Only if the first
+    parse_valence_group_tokens_for_attachment(group_tokens).or_else(|| {
+        reordered_leading_terminal_group_tokens(group_tokens)
+            .and_then(|tokens| parse_valence_group_tokens_for_attachment(&tokens))
+    })
+}
+
+fn parse_valence_group_tokens_for_attachment(
+    group_tokens: &[ValenceToken],
+) -> Option<(Vec<AbbreviationComponent>, Vec<ValenceNodeState>)> {
+    // Parenthesized groups are first parsed as standalone. Only if the root
     // atom has exactly one spare valence do we reparse it as attached.
     parse_valence_fragment_tokens(group_tokens, 0, 1)?;
     parse_valence_fragment_tokens(group_tokens, 1, 0)
+}
+
+fn reordered_leading_terminal_group_tokens(
+    group_tokens: &[ValenceToken],
+) -> Option<Vec<ValenceToken>> {
+    let root_index = group_tokens
+        .iter()
+        .position(|token| matches!(token.kind, ValenceTokenKind::Atom { .. }))?;
+    if root_index == 0
+        || !group_tokens[..root_index]
+            .iter()
+            .all(|token| matches!(token.kind, ValenceTokenKind::Terminal { .. }))
+    {
+        return None;
+    }
+    let mut reordered = Vec::with_capacity(group_tokens.len());
+    reordered.push(group_tokens[root_index].clone());
+    reordered.extend(group_tokens[..root_index].iter().cloned());
+    reordered.extend(group_tokens[root_index + 1..].iter().cloned());
+    Some(reordered)
 }
 
 fn append_attached_valence_group(
