@@ -2059,11 +2059,12 @@ function currentEditorEngineReadCache() {
     return null;
   }
   const revision = editorEngineRevision(engine);
-  const stateJson = engine.stateJson?.() || "";
+  const canTrustRevision = typeof engine.revision === "function";
+  const stateJson = canTrustRevision ? null : engine.stateJson?.() || "";
   if (
     editorEngineReadCache.engine !== engine
     || editorEngineReadCache.revision !== revision
-    || editorEngineReadCache.stateJson !== stateJson
+    || (!canTrustRevision && editorEngineReadCache.stateJson !== stateJson)
   ) {
     editorEngineReadCache.engine = engine;
     editorEngineReadCache.revision = revision;
@@ -2083,6 +2084,9 @@ function currentEditorEngineState() {
   const cache = currentEditorEngineReadCache();
   if (!cache) {
     return null;
+  }
+  if (cache.stateJson === null) {
+    cache.stateJson = state.editorEngine.stateJson?.() || "";
   }
   if (cache.parsedState === undefined) {
     cache.parsedState = parseEngineJson(cache.stateJson, null);
@@ -2539,6 +2543,9 @@ function addObjectIdsForPrimitiveTargets(objectIds, nodeIds, bondIds) {
     }
   };
   for (const primitive of state.coreRenderList || []) {
+    if (!remainingNodeIds.size && !remainingBondIds.size) {
+      break;
+    }
     addFromPrimitive(primitive);
   }
   const documentLayer = viewerSvg.querySelector('[data-layer="document-content"]');
@@ -5043,13 +5050,19 @@ function activeStructurePreviewNodeIds(selection) {
 
 function selectedStructurePreviewBondIds(selection, nodeIds = selectedStructurePreviewNodeIds(selection)) {
   const bondIds = new Set(selection?.bonds || []);
-  if (!nodeIds?.size) {
+  if (!nodeIds?.size || nodeIds.size < 2) {
     return bondIds;
   }
-  for (const fragment of currentDocumentMoleculeFragments()) {
-    for (const bond of fragment.bonds || []) {
-      if (nodeIds.has(bond.begin) && nodeIds.has(bond.end)) {
-        bondIds.add(bond.id);
+  const seen = new Set();
+  const topology = currentDocumentMoleculeTopology();
+  for (const nodeId of nodeIds) {
+    for (const entry of topology.bondsByNode.get(nodeId) || []) {
+      if (seen.has(entry.key)) {
+        continue;
+      }
+      seen.add(entry.key);
+      if (nodeIds.has(entry.bond.begin) && nodeIds.has(entry.bond.end)) {
+        bondIds.add(entry.bond.id);
       }
     }
   }
@@ -5153,11 +5166,26 @@ function selectedDocumentPreviewPrimitiveElements(selection = currentEditorEngin
   return [...elements];
 }
 
+function selectedPreviewAnchorCount(selection) {
+  if (!selection) {
+    return 0;
+  }
+  return (selection.textObjects?.length || 0)
+    + (selection.arrowObjects?.length || 0)
+    + (selection.nodes?.length || 0)
+    + (selection.labelNodes?.length || 0)
+    + (selection.bonds?.length || 0);
+}
+
 function selectionCoversRenderedDocument(
   selection = currentEditorEngineState()?.selection,
   renderList = state.coreRenderList || currentEditorRenderList(),
 ) {
   if (!selection || editorSelectionHasItems(selection) === false) {
+    return false;
+  }
+  const selectedAnchorCount = selectedPreviewAnchorCount(selection);
+  if (!selectedAnchorCount) {
     return false;
   }
   let selectableCount = 0;
@@ -5166,6 +5194,9 @@ function selectionCoversRenderedDocument(
       continue;
     }
     selectableCount += 1;
+    if (selectableCount > selectedAnchorCount) {
+      return false;
+    }
     if (!documentPrimitiveSelectedByState(primitive, selection)) {
       return false;
     }
