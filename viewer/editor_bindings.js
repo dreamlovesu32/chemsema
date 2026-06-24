@@ -226,7 +226,19 @@ function bindBrowserFileDrop(options) {
   if (options.desktopFileHost?.available || !options.openDocumentFileInTab) {
     return;
   }
-  const hasFiles = (event) => Array.from(event.dataTransfer?.types || []).includes("Files");
+  const hasFiles = (event) => {
+    const transfer = event.dataTransfer;
+    if (!transfer) {
+      return false;
+    }
+    if (transfer.files?.length) {
+      return true;
+    }
+    if (Array.from(transfer.items || []).some((item) => item.kind === "file")) {
+      return true;
+    }
+    return Array.from(transfer.types || []).some((type) => String(type).toLowerCase() === "files");
+  };
   const preventFileNavigation = (event) => {
     if (!hasFiles(event)) {
       return;
@@ -237,14 +249,15 @@ function bindBrowserFileDrop(options) {
       event.dataTransfer.dropEffect = "copy";
     }
   };
-  window.addEventListener("dragover", preventFileNavigation);
-  window.addEventListener("dragenter", preventFileNavigation);
+  const captureOptions = { capture: true };
+  window.addEventListener("dragover", preventFileNavigation, captureOptions);
+  window.addEventListener("dragenter", preventFileNavigation, captureOptions);
   window.addEventListener("drop", async (event) => {
     if (!hasFiles(event)) {
       return;
     }
-    preventFileNavigation(event);
     const files = Array.from(event.dataTransfer?.files || []);
+    preventFileNavigation(event);
     for (const file of files) {
       await runSafe(
         () => options.openDocumentFileInTab(file),
@@ -252,7 +265,7 @@ function bindBrowserFileDrop(options) {
         "Failed to open dropped document",
       );
     }
-  });
+  }, captureOptions);
 }
 
 function bindZoomInput(options) {
