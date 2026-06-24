@@ -313,6 +313,7 @@ let windowCloseGuardInProgress = false;
 let forceWindowClose = false;
 let activeDocumentPreviewObjectIds = new Set();
 let activeDocumentPreviewPrimitiveElements = new Set();
+let activeDocumentPreviewHiddenElements = new Set();
 let activeDocumentPreviewLayer = false;
 let activeDocumentPreviewTransform = "";
 const editorEngineReadCache = {
@@ -4851,6 +4852,7 @@ function activeGestureUsesDocumentPreview() {
   if (
     activeDocumentPreviewObjectIds.size
     || activeDocumentPreviewPrimitiveElements.size
+    || activeDocumentPreviewHiddenElements.size
     || activeDocumentPreviewLayer
   ) {
     return false;
@@ -4931,11 +4933,17 @@ function collectCurrentDocumentSceneObjects() {
 }
 
 function currentDocumentMoleculeFragments() {
+  return currentDocumentMoleculeEntries()
+    .map((entry) => entry.fragment);
+}
+
+function currentDocumentMoleculeEntries() {
   return collectCurrentDocumentSceneObjects()
-    .filter((object) => object?.type === "molecule")
+    .filter((object) => object?.type === "molecule" || object?.object_type === "molecule")
     .map((object) => {
       const resourceRef = object.payload?.resourceRef || object.payload?.resource_ref;
-      return resourceRef ? state.currentDocument?.resources?.[resourceRef]?.data : null;
+      const fragment = resourceRef ? state.currentDocument?.resources?.[resourceRef]?.data : null;
+      return fragment ? { object, fragment } : null;
     })
     .filter(Boolean);
 }
@@ -4991,20 +4999,26 @@ function selectedStructurePreviewBondIds(selection, nodeIds = selectedStructureP
   return bondIds;
 }
 
-function selectionHasPartiallyMovingStructureBonds(selection, nodeIds = selectedStructurePreviewNodeIds(selection)) {
+function partiallyMovingStructureBonds(selection, nodeIds = selectedStructurePreviewNodeIds(selection)) {
+  const bonds = [];
   if (!nodeIds?.size) {
-    return false;
+    return bonds;
   }
-  for (const fragment of currentDocumentMoleculeFragments()) {
-    for (const bond of fragment.bonds || []) {
+  for (const entry of currentDocumentMoleculeEntries()) {
+    const nodeById = new Map((entry.fragment.nodes || []).map((node) => [node.id, node]));
+    for (const bond of entry.fragment.bonds || []) {
       const beginMoves = nodeIds.has(bond.begin);
       const endMoves = nodeIds.has(bond.end);
       if (beginMoves !== endMoves) {
-        return true;
+        const begin = worldPointForFragmentNode(entry.object, nodeById.get(bond.begin));
+        const end = worldPointForFragmentNode(entry.object, nodeById.get(bond.end));
+        if (begin && end) {
+          bonds.push({ bond, begin, end, beginMoves, endMoves });
+        }
       }
     }
   }
-  return false;
+  return bonds;
 }
 
 function selectedDocumentPreviewPrimitiveElements() {
@@ -5099,8 +5113,40 @@ function applyDocumentPreviewElementTransform(element, transform) {
   element.classList.add("is-preview-transforming");
 }
 
+function hideDocumentPreviewElement(element) {
+  if (!element) {
+    return;
+  }
+  if (element.dataset.previewBaseVisibility === undefined) {
+    element.dataset.previewBaseVisibility = element.style.visibility || "";
+  }
+  element.style.visibility = "hidden";
+  activeDocumentPreviewHiddenElements.add(element);
+}
+
+function restoreDocumentPreviewElementVisibility(element) {
+  if (!element) {
+    return;
+  }
+  if (element.dataset.previewBaseVisibility !== undefined) {
+    element.style.visibility = element.dataset.previewBaseVisibility;
+    delete element.dataset.previewBaseVisibility;
+  } else {
+    element.style.visibility = "";
+  }
+}
+
+function clearDocumentPartialBondPreview() {
+  viewerSvg.querySelector('[data-layer="document-partial-bond-preview"]')?.remove();
+  for (const element of activeDocumentPreviewHiddenElements) {
+    restoreDocumentPreviewElementVisibility(element);
+  }
+  activeDocumentPreviewHiddenElements = new Set();
+}
+
 function clearDocumentObjectPreviewTransform() {
   const documentLayer = viewerSvg.querySelector('[data-layer="document-content"]');
+  clearDocumentPartialBondPreview();
   if (activeDocumentPreviewLayer) {
     documentLayer?.removeAttribute("transform");
     activeDocumentPreviewLayer = false;
@@ -5120,6 +5166,142 @@ function clearDocumentObjectPreviewTransform() {
   }
   activeDocumentPreviewPrimitiveElements = new Set();
   activeDocumentPreviewTransform = "";
+}
+
+function selectionGestureDelta(gesture) {
+  if (gesture?.kind !== "move") {
+    return null;
+  }
+  return {
+    x: (gesture.current?.x ?? gesture.start?.x ?? 0) - (gesture.start?.x ?? 0),
+    y: (gesture.current?.y ?? gesture.start?.y ?? 0) - (gesture.start?.y ?? 0),
+  };
+}
+
+function addPointDelta(point, delta, weight = 1) {
+  return {
+    ...point,
+    x: Number(point?.x || 0) + delta.x * weight,
+    y: Number(point?.y || 0) + delta.y * weight,
+  };
+}
+
+function partialBondPointMoveWeight(point, bondPreview) {
+  const dx = bondPreview.end.x - bondPreview.begin.x;
+  const dy = bondPreview.end.y - bondPreview.begin.y;
+  const len2 = dx * dx + dy * dy;
+  if (len2 <= 0.000001) {
+    return 1;
+  }
+  const t = Math.max(0, Math.min(1, (
+    ((Number(point?.x || 0) - bondPreview.begin.x) * dx)
+    + ((Number(point?.y || 0) - bondPreview.begin.y) * dy)
+  ) / len2));
+  return bondPreview.beginMoves ? 1 - t : t;
+}
+
+function movePartialBondPreviewPoint(point, bondPreview, delta) {
+  return addPointDelta(point, delta, partialBondPointMoveWeight(point, bondPreview));
+}
+
+function translatedPartialBondPrimitive(primitive, bondPreview, delta) {
+  if (!primitive) {
+    return null;
+  }
+  if (primitive.kind === "line" && primitive.from && primitive.to) {
+    return {
+      ...primitive,
+      from: movePartialBondPreviewPoint(primitive.from, bondPreview, delta),
+      to: movePartialBondPreviewPoint(primitive.to, bondPreview, delta),
+    };
+  }
+  if ((primitive.kind === "polyline" || primitive.kind === "polygon") && Array.isArray(primitive.points)) {
+    return {
+      ...primitive,
+      points: primitive.points.map((point) => movePartialBondPreviewPoint(point, bondPreview, delta)),
+    };
+  }
+  if ((primitive.kind === "circle" || primitive.kind === "ellipse") && primitive.center) {
+    return {
+      ...primitive,
+      center: movePartialBondPreviewPoint(primitive.center, bondPreview, delta),
+    };
+  }
+  return null;
+}
+
+function ensureDocumentPartialBondPreviewLayer() {
+  let layer = viewerSvg.querySelector('[data-layer="document-partial-bond-preview"]');
+  if (layer) {
+    layer.replaceChildren();
+    return layer;
+  }
+  const documentLayer = viewerSvg.querySelector('[data-layer="document-content"]');
+  if (!documentLayer) {
+    return null;
+  }
+  layer = makeSvgNode("g", {
+    "data-layer": "document-partial-bond-preview",
+    "pointer-events": "none",
+  });
+  const editorOverlay = viewerSvg.querySelector('[data-layer="editor-overlay"]');
+  if (editorOverlay) {
+    viewerSvg.insertBefore(layer, editorOverlay);
+  } else {
+    viewerSvg.insertBefore(layer, documentLayer.nextSibling);
+  }
+  return layer;
+}
+
+function renderFallbackPartialBondPreview(layer, bondPreview, delta, primitive = null) {
+  const begin = bondPreview.beginMoves ? addPointDelta(bondPreview.begin, delta) : bondPreview.begin;
+  const end = bondPreview.endMoves ? addPointDelta(bondPreview.end, delta) : bondPreview.end;
+  layer.appendChild(makeSvgNode("line", {
+    x1: begin.x,
+    y1: begin.y,
+    x2: end.x,
+    y2: end.y,
+    stroke: primitive?.stroke || "#000000",
+    "stroke-width": primitiveStrokeWidthValue(primitive, editorBondStrokeWidth()),
+    "stroke-linecap": "round",
+    "data-role": "document-bond",
+    "data-bond-id": bondPreview.bond.id,
+  }));
+}
+
+function renderPartialMovingStructureBondPreview(partialBonds, delta) {
+  clearDocumentPartialBondPreview();
+  if (!partialBonds.length || !delta) {
+    return;
+  }
+  const documentLayer = viewerSvg.querySelector('[data-layer="document-content"]');
+  const previewLayer = ensureDocumentPartialBondPreviewLayer();
+  if (!documentLayer || !previewLayer) {
+    return;
+  }
+  const primitives = state.coreRenderList || currentEditorRenderList();
+  for (const bondPreview of partialBonds) {
+    const escapedBondId = CSS.escape(bondPreview.bond.id);
+    for (const element of documentLayer.querySelectorAll(`[data-bond-id="${escapedBondId}"]`)) {
+      hideDocumentPreviewElement(element);
+    }
+    const bondPrimitives = primitives.filter((primitive) => primitiveBondId(primitive) === bondPreview.bond.id);
+    if (!bondPrimitives.length) {
+      renderFallbackPartialBondPreview(previewLayer, bondPreview, delta);
+      continue;
+    }
+    let rendered = false;
+    for (const primitive of bondPrimitives) {
+      const translated = translatedPartialBondPrimitive(primitive, bondPreview, delta);
+      if (translated) {
+        renderCorePrimitive(previewLayer, translated, corePrimitiveRenderOptions());
+        rendered = true;
+      }
+    }
+    if (!rendered) {
+      renderFallbackPartialBondPreview(previewLayer, bondPreview, delta, bondPrimitives[0]);
+    }
+  }
 }
 
 function selectionGestureTransform(gesture) {
@@ -5149,12 +5331,16 @@ function applyDocumentObjectPreviewTransform() {
     return false;
   }
   const selection = currentEditorEngineState()?.selection;
-  if (selectionHasPartiallyMovingStructureBonds(selection)) {
+  const nodeIds = selectedStructurePreviewNodeIds(selection);
+  const partialBonds = partiallyMovingStructureBonds(selection, nodeIds);
+  const hasPartialBonds = partialBonds.length > 0;
+  const partialBondDelta = hasPartialBonds ? selectionGestureDelta(activeSelectionGesture) : null;
+  if (hasPartialBonds && !partialBondDelta) {
     clearDocumentObjectPreviewTransform();
     return false;
   }
   const documentLayer = viewerSvg.querySelector('[data-layer="document-content"]');
-  if (activeSelectionGesture.previewUsesLayer) {
+  if (activeSelectionGesture.previewUsesLayer && !hasPartialBonds) {
     if (!documentLayer) {
       clearDocumentObjectPreviewTransform();
       return false;
@@ -5166,7 +5352,7 @@ function applyDocumentObjectPreviewTransform() {
     activeDocumentPreviewTransform = transform;
     return true;
   }
-  if (selectionCoversRenderedDocument()) {
+  if (!hasPartialBonds && selectionCoversRenderedDocument()) {
     if (!documentLayer) {
       clearDocumentObjectPreviewTransform();
       return false;
@@ -5265,6 +5451,11 @@ function applyDocumentObjectPreviewTransform() {
   activeDocumentPreviewObjectIds = nextIds;
   activeDocumentPreviewPrimitiveElements = nextPrimitiveElements;
   activeDocumentPreviewTransform = transform;
+  if (hasPartialBonds) {
+    renderPartialMovingStructureBondPreview(partialBonds, partialBondDelta);
+  } else {
+    clearDocumentPartialBondPreview();
+  }
   return true;
 }
 
@@ -5396,6 +5587,7 @@ function renderDocument() {
   viewerSvg.innerHTML = "";
   activeDocumentPreviewObjectIds = new Set();
   activeDocumentPreviewPrimitiveElements = new Set();
+  activeDocumentPreviewHiddenElements = new Set();
   activeDocumentPreviewLayer = false;
   activeDocumentPreviewTransform = "";
   applyViewerViewport();
