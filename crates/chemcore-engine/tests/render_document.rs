@@ -5112,6 +5112,39 @@ fn parse_cdxml_node_labels_use_internal_attached_layout() {
         !label.glyph_polygons.is_empty(),
         "internal glyph geometry should be generated"
     );
+    let glyph_center = |index: usize| {
+        let polygon = label
+            .glyph_polygons
+            .get(index)
+            .expect("expected glyph polygon");
+        let bounds = polygon.iter().fold(
+            [
+                f64::INFINITY,
+                f64::INFINITY,
+                f64::NEG_INFINITY,
+                f64::NEG_INFINITY,
+            ],
+            |mut bounds, point| {
+                bounds[0] = bounds[0].min(point[0]);
+                bounds[1] = bounds[1].min(point[1]);
+                bounds[2] = bounds[2].max(point[0]);
+                bounds[3] = bounds[3].max(point[1]);
+                bounds
+            },
+        );
+        Point::new((bounds[0] + bounds[2]) * 0.5, (bounds[1] + bounds[3]) * 0.5)
+    };
+    let hydrogen_center = glyph_center(0);
+    let nitrogen_center = glyph_center(1);
+    assert!(
+        nitrogen_center.distance(Point::new(node.position[0], node.position[1])) < 0.01,
+        "stacked NH labels should anchor the original first atom glyph to the node: H={hydrogen_center:?}, N={nitrogen_center:?}, node={:?}",
+        node.position
+    );
+    assert!(
+        hydrogen_center.y < nitrogen_center.y,
+        "hydrogen should render above nitrogen for an above-stacked NH label"
+    );
     let box_value = label.box_value.expect("internal label box should exist");
     assert!(
         box_value[2] - box_value[0] < 30.0 && box_value[3] - box_value[1] < 30.0,

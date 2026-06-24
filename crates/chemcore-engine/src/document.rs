@@ -898,6 +898,9 @@ fn imported_node_label_anchor_point(
     if label.glyph_polygons.is_empty() {
         return None;
     }
+    if let Some(anchor_point) = imported_node_label_stacked_anchor_point(label) {
+        return Some(anchor_point);
+    }
     if label.align.as_deref() == Some("center") && label.glyph_polygons.len() > 1 {
         let x = label
             .bbox()
@@ -916,6 +919,64 @@ fn imported_node_label_anchor_point(
     };
     glyph_single_polygon_bounds(polygon)
         .map(|bounds| [(bounds[0] + bounds[2]) * 0.5, (bounds[1] + bounds[3]) * 0.5])
+}
+
+fn imported_node_label_stacked_anchor_point(label: &NodeLabel) -> Option<[f64; 2]> {
+    let anchor_line = imported_node_label_stacked_anchor_line(label)?;
+    let polygon_index = imported_node_label_line_anchor_polygon_index(label, anchor_line, 0)?;
+    let polygon = label.glyph_polygons.get(polygon_index)?;
+    glyph_single_polygon_bounds(polygon)
+        .map(|bounds| [(bounds[0] + bounds[2]) * 0.5, (bounds[1] + bounds[3]) * 0.5])
+}
+
+fn imported_node_label_stacked_anchor_line(label: &NodeLabel) -> Option<usize> {
+    let line_count = if !label.line_runs.is_empty() {
+        label.line_runs.len()
+    } else if !label.lines.is_empty() {
+        label.lines.len()
+    } else {
+        return None;
+    };
+    if line_count < 2 {
+        return None;
+    }
+    let cdxml_alignment = label
+        .meta
+        .pointer("/import/cdxml/labelAlignment")
+        .and_then(Value::as_str);
+    match (label.layout.as_deref(), cdxml_alignment) {
+        (Some("attached-group-above"), _) | (_, Some("Above")) => Some(line_count - 1),
+        (Some("attached-group-below"), _) | (_, Some("Below")) => Some(0),
+        _ => None,
+    }
+}
+
+fn imported_node_label_line_anchor_polygon_index(
+    label: &NodeLabel,
+    anchor_line: usize,
+    anchor_char: usize,
+) -> Option<usize> {
+    if !label.line_runs.is_empty() {
+        let mut index = 0usize;
+        for (line_index, runs) in label.line_runs.iter().enumerate() {
+            let line_len: usize = runs.iter().map(|run| run.text.chars().count()).sum();
+            if line_index == anchor_line {
+                return (anchor_char < line_len).then_some(index + anchor_char);
+            }
+            index += line_len;
+        }
+        return None;
+    }
+
+    let mut index = 0usize;
+    for (line_index, line) in label.lines.iter().enumerate() {
+        let line_len = line.chars().count();
+        if line_index == anchor_line {
+            return (anchor_char < line_len).then_some(index + anchor_char);
+        }
+        index += line_len;
+    }
+    None
 }
 
 fn imported_node_label_side_anchor_point(
