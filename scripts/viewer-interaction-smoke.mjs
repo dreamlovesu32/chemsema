@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import net from "node:net";
-import { dirname, resolve } from "node:path";
+import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 
@@ -10,7 +10,7 @@ const host = "127.0.0.1";
 const port = Number(process.env.CHEMCORE_DESKTOP_DEV_PORT || 8767);
 const baseUrl = `http://${host}:${port}/viewer/`;
 const edgePath = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
-const defaultLargeCdxml = "C:\\Users\\Dream\\OneDrive\\Desktop\\钯催化-jjb.cdxml";
+const defaultLargeCdxml = `C:\\Users\\Dream\\OneDrive\\Desktop\\${"\u94af\u50ac\u5316-jjb.cdxml"}`;
 const largeCdxml = process.env.CHEMCORE_INTERACTION_SMOKE_CDXML || defaultLargeCdxml;
 
 function waitForPort(timeoutMs = 5000) {
@@ -104,21 +104,63 @@ async function verifyBondDrawing(browser) {
   assert(hadPreview, "Bond drag did not show a preview.");
   assert(!result.previewLeft, "Bond preview remained after pointerup.");
   assert(result.bondWords >= 2 && result.hasRenderedBond, "Bond drag did not commit a rendered bond.");
-  assert(!errors.length, `Viewer console errors during bond drawing: ${errors.join("\\n")}`);
+  assert(!errors.length, `Viewer console errors during bond drawing: ${errors.join("\n")}`);
 }
 
-async function verifyLargeFileHoverAndDrag(browser) {
-  if (!existsSync(largeCdxml)) {
-    console.log(`[viewer-interaction-smoke] skipping large-file hover; missing ${largeCdxml}`);
-    return;
+function largeFileTargetFinder() {
+  const doc = window.__chemcoreDebug.document;
+  const visit = (object, out = []) => {
+    if (!object) {
+      return out;
+    }
+    out.push(object);
+    for (const child of object.children || []) {
+      visit(child, out);
+    }
+    return out;
+  };
+  const objectType = (object) => object?.type || object?.objectType || object?.object_type;
+  const entries = [];
+  for (const object of (doc.objects || []).flatMap((candidate) => visit(candidate, []))) {
+    if (objectType(object) !== "molecule") {
+      continue;
+    }
+    const resourceRef = object.payload?.resourceRef || object.payload?.resource_ref;
+    const fragment = resourceRef ? doc.resources?.[resourceRef]?.data : object.payload?.fragment;
+    if (!fragment?.nodes?.length) {
+      continue;
+    }
+    const degree = new Map();
+    for (const bond of fragment.bonds || []) {
+      degree.set(bond.begin, (degree.get(bond.begin) || 0) + 1);
+      degree.set(bond.end, (degree.get(bond.end) || 0) + 1);
+    }
+    const translate = object.transform?.translate || [0, 0];
+    for (const node of fragment.nodes || []) {
+      if (!Array.isArray(node.position) || !degree.get(node.id)) {
+        continue;
+      }
+      const x = Number(translate[0] || 0) + Number(node.position[0] || 0);
+      const y = Number(translate[1] || 0) + Number(node.position[1] || 0);
+      const client = window.__chemcoreDebug.worldToClient(x, y);
+      if (!client
+        || client.x <= 80
+        || client.x >= innerWidth - 80
+        || client.y <= 120
+        || client.y >= innerHeight - 80) {
+        continue;
+      }
+      entries.push({
+        id: node.id,
+        x: client.x,
+        y: client.y,
+        label: node.label?.text || node.label?.sourceText || "",
+        element: node.element || "",
+        degree: degree.get(node.id) || 0,
+      });
+    }
   }
-  const { page, errors } = await openViewer(browser);
-  await page.locator('input[type="file"]').setInputFiles(largeCdxml);
-  await page.waitForFunction(() => (window.__chemcoreDebug?.document?.objects?.length || 0) > 0, null, {
-    timeout: 60000,
-  });
-  await page.locator('button[data-tool="select"]').click();
-  const target = await page.evaluate(() => [...document.querySelectorAll("[data-node-id]")]
+  const hover = [...document.querySelectorAll("[data-node-id]")]
     .map((element) => {
       const rect = element.getBoundingClientRect();
       return {
@@ -134,10 +176,69 @@ async function verifyLargeFileHoverAndDrag(browser) {
       && entry.x > 80
       && entry.x < innerWidth - 80
       && entry.y > 120
-      && entry.y < innerHeight - 80)[0]);
-  assert(target, "Large CDXML did not expose a visible node target.");
+      && entry.y < innerHeight - 80)[0] || null;
+  return {
+    hover,
+    label: entries.find((entry) => entry.label && entry.degree > 0) || null,
+    atom: entries.find((entry) => !entry.label && (!entry.element || entry.element === "C") && entry.degree > 0) || null,
+  };
+}
 
+async function verifyLargeDragTarget(page, target, kind) {
+  await page.keyboard.press("Escape").catch(() => {});
+  await page.locator('button[data-tool="select"]').click();
   await page.mouse.move(target.x, target.y);
+  await page.mouse.click(target.x, target.y);
+  await page.waitForTimeout(120);
+  await page.mouse.move(target.x, target.y);
+  await page.mouse.down();
+  await page.mouse.move(target.x + 24, target.y + 12, { steps: 6 });
+  await page.waitForTimeout(100);
+  const during = await page.evaluate(() => {
+    const overlay = document.querySelector('[data-layer="editor-overlay"]');
+    const partial = document.querySelector('[data-layer="document-partial-bond-preview"]');
+    return {
+      partialChildren: partial?.childElementCount || 0,
+      hasDocumentMask: !!overlay?.querySelector('[data-role="preview-document-mask"]'),
+      transformed: document.querySelectorAll(".is-preview-transforming").length,
+    };
+  });
+  await page.mouse.up();
+  await page.waitForTimeout(250);
+  const after = await page.evaluate(() => {
+    const overlay = document.querySelector('[data-layer="editor-overlay"]');
+    return {
+      previews: overlay?.querySelectorAll('[data-role^="preview-"]').length || 0,
+      partial: !!document.querySelector('[data-layer="document-partial-bond-preview"]'),
+      transformed: document.querySelectorAll(".is-preview-transforming").length,
+      gesture: window.__chemcoreDebug.state.activeSelectionGesture || null,
+    };
+  });
+  assert(during.partialChildren > 0, `${kind} drag did not use partial bond preview.`);
+  assert(!during.hasDocumentMask, `${kind} drag fell back to full document preview mask.`);
+  assert(!after.partial, `${kind} drag left partial bond preview behind.`);
+  assert(after.transformed === 0, `${kind} drag left transformed document nodes behind.`);
+  assert(after.previews === 0, `${kind} drag left preview overlay behind.`);
+  assert(after.gesture === null, `${kind} drag left an active selection gesture behind.`);
+}
+
+async function verifyLargeFileHoverAndDrag(browser) {
+  if (!existsSync(largeCdxml)) {
+    console.log(`[viewer-interaction-smoke] skipping large-file hover; missing ${largeCdxml}`);
+    return;
+  }
+  const { page, errors } = await openViewer(browser);
+  await page.locator('input[type="file"]').setInputFiles(largeCdxml);
+  await page.waitForFunction(() => (window.__chemcoreDebug?.document?.objects?.length || 0) > 0, null, {
+    timeout: 60000,
+  });
+  await page.locator('button[data-tool="select"]').click();
+  const targets = await page.evaluate(largeFileTargetFinder);
+  assert(targets.hover, "Large CDXML did not expose a visible hover target.");
+  assert(targets.label, "Large CDXML did not expose a draggable label node target.");
+  assert(targets.atom, "Large CDXML did not expose a draggable atom node target.");
+
+  await page.mouse.move(targets.hover.x, targets.hover.y);
   await page.waitForTimeout(250);
   const hover = await page.evaluate(() => {
     const overlay = document.querySelector('[data-layer="editor-overlay"]');
@@ -145,22 +246,10 @@ async function verifyLargeFileHoverAndDrag(browser) {
   });
   assert(hover > 0, "Large CDXML select hover did not render a hover overlay.");
 
-  await page.mouse.down();
-  await page.mouse.move(target.x + 24, target.y + 12, { steps: 6 });
-  await page.mouse.up();
-  await page.waitForTimeout(250);
-  const afterDrag = await page.evaluate(() => {
-    const overlay = document.querySelector('[data-layer="editor-overlay"]');
-    return {
-      hovers: overlay?.querySelectorAll('[data-role^="hover-"]').length || 0,
-      previews: overlay?.querySelectorAll('[data-role^="preview-"]').length || 0,
-      gesture: window.__chemcoreDebug.state.activeSelectionGesture || null,
-    };
-  });
+  await verifyLargeDragTarget(page, targets.label, "Label");
+  await verifyLargeDragTarget(page, targets.atom, "Atom");
   await page.close();
-  assert(afterDrag.previews === 0, "Drag left preview overlay behind.");
-  assert(afterDrag.gesture === null, "Drag left an active selection gesture behind.");
-  assert(!errors.length, `Viewer console errors during large-file hover: ${errors.join("\\n")}`);
+  assert(!errors.length, `Viewer console errors during large-file hover: ${errors.join("\n")}`);
 }
 
 let server = null;

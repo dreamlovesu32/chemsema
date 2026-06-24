@@ -5333,7 +5333,10 @@ function partialBondPointMoveWeight(point, bondPreview) {
     ((Number(point?.x || 0) - bondPreview.begin.x) * dx)
     + ((Number(point?.y || 0) - bondPreview.begin.y) * dy)
   ) / len2));
-  return bondPreview.beginMoves ? 1 - t : t;
+  if (bondPreview.beginMoves) {
+    return t <= 0.5 ? 1 : 0;
+  }
+  return t >= 0.5 ? 1 : 0;
 }
 
 function movePartialBondPreviewPoint(point, bondPreview, delta) {
@@ -5513,6 +5516,13 @@ function applyDocumentObjectPreviewTransform() {
   const objectIds = activeSelectionGesture.previewObjectIds || selectedDocumentPreviewObjectIds(selection);
   const primitiveElements = activeSelectionGesture.previewPrimitiveElements || selectedDocumentPreviewPrimitiveElements(selection);
   if (!objectIds.length && !primitiveElements.length) {
+    if (hasPartialBonds) {
+      activeDocumentPreviewObjectIds = new Set();
+      activeDocumentPreviewPrimitiveElements = new Set();
+      activeDocumentPreviewTransform = transform;
+      renderPartialMovingStructureBondPreview(partialBondState, partialBondDelta);
+      return true;
+    }
     clearDocumentObjectPreviewTransform();
     return false;
   }
