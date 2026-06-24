@@ -316,6 +316,7 @@ let activeDocumentPreviewPrimitiveElements = new Set();
 let activeDocumentPreviewHiddenElements = new Set();
 let activeDocumentPreviewLayer = false;
 let activeDocumentPreviewTransform = "";
+let documentMoleculeTopologyCache = null;
 const editorEngineReadCache = {
   engine: null,
   revision: null,
@@ -2830,6 +2831,8 @@ async function syncDocumentFromEngine() {
   const documentData = parseEngineJson(state.editorEngine.documentJson());
   if (documentData) {
     state.currentDocument = documentData;
+    documentMoleculeTopologyCache = null;
+    currentDocumentMoleculeTopology();
     await syncCoreRenderListFromCurrentDocument();
     maybeAutoExpandEditorViewport(state.coreRenderList || []);
   }
@@ -4933,7 +4936,7 @@ function collectCurrentDocumentSceneObjects() {
 }
 
 function currentDocumentMoleculeFragments() {
-  return currentDocumentMoleculeEntries()
+  return currentDocumentMoleculeTopology().entries
     .map((entry) => entry.fragment);
 }
 
@@ -4946,6 +4949,48 @@ function currentDocumentMoleculeEntries() {
       return fragment ? { object, fragment } : null;
     })
     .filter(Boolean);
+}
+
+function currentDocumentMoleculeTopology() {
+  if (documentMoleculeTopologyCache?.document === state.currentDocument) {
+    return documentMoleculeTopologyCache;
+  }
+  const entries = currentDocumentMoleculeEntries();
+  const bondsByNode = new Map();
+  for (const entry of entries) {
+    const nodeById = new Map((entry.fragment.nodes || []).map((node) => [node.id, node]));
+    for (const bond of entry.fragment.bonds || []) {
+      const begin = worldPointForFragmentNode(entry.object, nodeById.get(bond.begin));
+      const end = worldPointForFragmentNode(entry.object, nodeById.get(bond.end));
+      if (!begin || !end) {
+        continue;
+      }
+      const bondEntry = {
+        key: `${entry.object.id || ""}:${bond.id}`,
+        bond,
+        begin,
+        end,
+      };
+      if (bond.begin) {
+        if (!bondsByNode.has(bond.begin)) {
+          bondsByNode.set(bond.begin, []);
+        }
+        bondsByNode.get(bond.begin).push(bondEntry);
+      }
+      if (bond.end && bond.end !== bond.begin) {
+        if (!bondsByNode.has(bond.end)) {
+          bondsByNode.set(bond.end, []);
+        }
+        bondsByNode.get(bond.end).push(bondEntry);
+      }
+    }
+  }
+  documentMoleculeTopologyCache = {
+    document: state.currentDocument,
+    entries,
+    bondsByNode,
+  };
+  return documentMoleculeTopologyCache;
 }
 
 function selectedDocumentPreviewObjectIds() {
@@ -4984,6 +5029,17 @@ function selectedStructurePreviewNodeIds(selection) {
   return nodeIds;
 }
 
+function activeStructurePreviewNodeIds(selection) {
+  if (activeSelectionGesture?.previewNodeIds) {
+    return activeSelectionGesture.previewNodeIds;
+  }
+  const nodeIds = selectedStructurePreviewNodeIds(selection);
+  if (activeSelectionGesture) {
+    activeSelectionGesture.previewNodeIds = nodeIds;
+  }
+  return nodeIds;
+}
+
 function selectedStructurePreviewBondIds(selection, nodeIds = selectedStructurePreviewNodeIds(selection)) {
   const bondIds = new Set(selection?.bonds || []);
   if (!nodeIds?.size) {
@@ -5004,21 +5060,68 @@ function partiallyMovingStructureBonds(selection, nodeIds = selectedStructurePre
   if (!nodeIds?.size) {
     return bonds;
   }
-  for (const entry of currentDocumentMoleculeEntries()) {
-    const nodeById = new Map((entry.fragment.nodes || []).map((node) => [node.id, node]));
-    for (const bond of entry.fragment.bonds || []) {
-      const beginMoves = nodeIds.has(bond.begin);
-      const endMoves = nodeIds.has(bond.end);
+  const seen = new Set();
+  const topology = currentDocumentMoleculeTopology();
+  for (const nodeId of nodeIds) {
+    for (const entry of topology.bondsByNode.get(nodeId) || []) {
+      if (seen.has(entry.key)) {
+        continue;
+      }
+      seen.add(entry.key);
+      const beginMoves = nodeIds.has(entry.bond.begin);
+      const endMoves = nodeIds.has(entry.bond.end);
       if (beginMoves !== endMoves) {
-        const begin = worldPointForFragmentNode(entry.object, nodeById.get(bond.begin));
-        const end = worldPointForFragmentNode(entry.object, nodeById.get(bond.end));
-        if (begin && end) {
-          bonds.push({ bond, begin, end, beginMoves, endMoves });
-        }
+        bonds.push({
+          bond: entry.bond,
+          begin: entry.begin,
+          end: entry.end,
+          beginMoves,
+          endMoves,
+        });
       }
     }
   }
   return bonds;
+}
+
+function partialMovingStructureBondPreviewState(selection, nodeIds = selectedStructurePreviewNodeIds(selection)) {
+  if (activeSelectionGesture?.previewPartialBondState) {
+    return activeSelectionGesture.previewPartialBondState;
+  }
+  const partialBonds = partiallyMovingStructureBonds(selection, nodeIds);
+  const documentLayer = viewerSvg.querySelector('[data-layer="document-content"]');
+  const primitives = state.coreRenderList || currentEditorRenderList();
+  const primitivesByBondId = new Map();
+  const elementsByBondId = new Map();
+  const partialBondIds = new Set(partialBonds.map((bondPreview) => bondPreview.bond.id));
+  for (const bondPreview of partialBonds) {
+    const bondId = bondPreview.bond.id;
+    primitivesByBondId.set(bondId, []);
+    if (documentLayer) {
+      const escapedBondId = CSS.escape(bondId);
+      elementsByBondId.set(
+        bondId,
+        [...documentLayer.querySelectorAll(`[data-bond-id="${escapedBondId}"]`)],
+      );
+    } else {
+      elementsByBondId.set(bondId, []);
+    }
+  }
+  for (const primitive of primitives) {
+    const bondId = primitiveBondId(primitive);
+    if (partialBondIds.has(bondId)) {
+      primitivesByBondId.get(bondId)?.push(primitive);
+    }
+  }
+  const previewState = {
+    partialBonds,
+    primitivesByBondId,
+    elementsByBondId,
+  };
+  if (activeSelectionGesture) {
+    activeSelectionGesture.previewPartialBondState = previewState;
+  }
+  return previewState;
 }
 
 function selectedDocumentPreviewPrimitiveElements() {
@@ -5039,7 +5142,7 @@ function selectedDocumentPreviewPrimitiveElements() {
       elements.add(element);
     }
   };
-  const nodeIds = selectedStructurePreviewNodeIds(selection);
+  const nodeIds = activeStructurePreviewNodeIds(selection);
   for (const nodeId of nodeIds) {
     addElementsByDataId("data-node-id", nodeId);
   }
@@ -5269,23 +5372,20 @@ function renderFallbackPartialBondPreview(layer, bondPreview, delta, primitive =
   }));
 }
 
-function renderPartialMovingStructureBondPreview(partialBonds, delta) {
-  clearDocumentPartialBondPreview();
-  if (!partialBonds.length || !delta) {
+function renderPartialMovingStructureBondPreview(previewState, delta) {
+  if (!previewState?.partialBonds?.length || !delta) {
     return;
   }
-  const documentLayer = viewerSvg.querySelector('[data-layer="document-content"]');
   const previewLayer = ensureDocumentPartialBondPreviewLayer();
-  if (!documentLayer || !previewLayer) {
+  if (!previewLayer) {
     return;
   }
-  const primitives = state.coreRenderList || currentEditorRenderList();
-  for (const bondPreview of partialBonds) {
-    const escapedBondId = CSS.escape(bondPreview.bond.id);
-    for (const element of documentLayer.querySelectorAll(`[data-bond-id="${escapedBondId}"]`)) {
+  for (const bondPreview of previewState.partialBonds) {
+    const bondId = bondPreview.bond.id;
+    for (const element of previewState.elementsByBondId.get(bondId) || []) {
       hideDocumentPreviewElement(element);
     }
-    const bondPrimitives = primitives.filter((primitive) => primitiveBondId(primitive) === bondPreview.bond.id);
+    const bondPrimitives = previewState.primitivesByBondId.get(bondId) || [];
     if (!bondPrimitives.length) {
       renderFallbackPartialBondPreview(previewLayer, bondPreview, delta);
       continue;
@@ -5331,9 +5431,9 @@ function applyDocumentObjectPreviewTransform() {
     return false;
   }
   const selection = currentEditorEngineState()?.selection;
-  const nodeIds = selectedStructurePreviewNodeIds(selection);
-  const partialBonds = partiallyMovingStructureBonds(selection, nodeIds);
-  const hasPartialBonds = partialBonds.length > 0;
+  const nodeIds = activeStructurePreviewNodeIds(selection);
+  const partialBondState = partialMovingStructureBondPreviewState(selection, nodeIds);
+  const hasPartialBonds = partialBondState.partialBonds.length > 0;
   const partialBondDelta = hasPartialBonds ? selectionGestureDelta(activeSelectionGesture) : null;
   if (hasPartialBonds && !partialBondDelta) {
     clearDocumentObjectPreviewTransform();
@@ -5452,7 +5552,7 @@ function applyDocumentObjectPreviewTransform() {
   activeDocumentPreviewPrimitiveElements = nextPrimitiveElements;
   activeDocumentPreviewTransform = transform;
   if (hasPartialBonds) {
-    renderPartialMovingStructureBondPreview(partialBonds, partialBondDelta);
+    renderPartialMovingStructureBondPreview(partialBondState, partialBondDelta);
   } else {
     clearDocumentPartialBondPreview();
   }
