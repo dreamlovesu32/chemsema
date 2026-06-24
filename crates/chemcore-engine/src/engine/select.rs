@@ -160,6 +160,7 @@ struct SelectionArrangeItem {
 
 #[derive(Clone)]
 struct NodeMoveOriginal {
+    object_id: String,
     node_id: String,
     position: [f64; 2],
     label: Option<crate::NodeLabel>,
@@ -185,7 +186,6 @@ pub(super) struct SelectionMoveDrag {
     start: Point,
     node_originals: Vec<NodeMoveOriginal>,
     text_originals: Vec<TextMoveOriginal>,
-    fragment_bbox_original: Option<[f64; 4]>,
     mode: SelectionMoveMode,
     preserve_selection_after_drag: bool,
     undo_pushed: bool,
@@ -427,8 +427,8 @@ impl Engine {
         let object = self
             .state
             .document
-            .objects
-            .iter()
+            .scene_objects()
+            .into_iter()
             .find(|object| object.id == hover.object_id)?;
         let points = line_object_points(object);
         if points.len() < 2 {
@@ -802,13 +802,19 @@ impl Engine {
         let selected_graphics: BTreeSet<String> =
             self.state.selection.arrow_objects.iter().cloned().collect();
         let mut changed = false;
-        for index in 0..self.state.document.objects.len() {
-            let object_type = self.state.document.objects[index].object_type.clone();
-            let object_id = self.state.document.objects[index].id.clone();
+        let selected_object_ids = self
+            .state
+            .document
+            .scene_objects()
+            .into_iter()
+            .map(|object| (object.id.clone(), object.object_type.clone()))
+            .collect::<Vec<_>>();
+        for (object_id, object_type) in selected_object_ids {
             if selected_text.contains(&object_id) && object_type == "text" {
-                changed |= self.apply_color_to_object(index, color, ColorTarget::Text);
+                changed |= self.apply_color_to_object_by_id(&object_id, color, ColorTarget::Text);
             } else if selected_graphics.contains(&object_id) {
-                changed |= self.apply_color_to_object(index, color, ColorTarget::Graphic);
+                changed |=
+                    self.apply_color_to_object_by_id(&object_id, color, ColorTarget::Graphic);
             }
         }
         changed |= self.apply_color_to_selected_fragment(color);
@@ -829,61 +835,71 @@ impl Engine {
         let selected_nodes: BTreeSet<String> = self.state.selection.nodes.iter().cloned().collect();
         let selected_bonds: BTreeSet<String> = self.state.selection.bonds.iter().cloned().collect();
         let mut changed = false;
-        if let Some(entry) = self.state.document.editable_fragment_mut() {
-            for node in &mut entry.fragment.nodes {
-                if !selected_labels.contains(&node.id) && !selected_nodes.contains(&node.id) {
-                    continue;
-                }
-                if let Some(label) = &mut node.label {
-                    if label.fill.as_deref() != Some(color) {
-                        label.fill = Some(color.to_string());
-                        changed = true;
+        let object_ids = self
+            .state
+            .document
+            .editable_fragments()
+            .into_iter()
+            .map(|entry| entry.object.id.clone())
+            .collect::<Vec<_>>();
+        for object_id in object_ids {
+            let mut color_molecule_object = false;
+            if let Some(entry) = self
+                .state
+                .document
+                .editable_fragment_mut_for_object(&object_id)
+            {
+                for node in &mut entry.fragment.nodes {
+                    if !selected_labels.contains(&node.id) && !selected_nodes.contains(&node.id) {
+                        continue;
                     }
-                    for run in &mut label.runs {
-                        if run.fill.as_deref() != Some(color) {
-                            run.fill = Some(color.to_string());
+                    color_molecule_object = true;
+                    if let Some(label) = &mut node.label {
+                        if label.fill.as_deref() != Some(color) {
+                            label.fill = Some(color.to_string());
                             changed = true;
                         }
-                    }
-                    for line in &mut label.line_runs {
-                        for run in line {
+                        for run in &mut label.runs {
                             if run.fill.as_deref() != Some(color) {
                                 run.fill = Some(color.to_string());
                                 changed = true;
                             }
                         }
+                        for line in &mut label.line_runs {
+                            for run in line {
+                                if run.fill.as_deref() != Some(color) {
+                                    run.fill = Some(color.to_string());
+                                    changed = true;
+                                }
+                            }
+                        }
                     }
                 }
-            }
-            for bond in &mut entry.fragment.bonds {
-                if !selected_bonds.contains(&bond.id) || bond.stroke.as_deref() == Some(color) {
-                    continue;
+                for bond in &mut entry.fragment.bonds {
+                    if !selected_bonds.contains(&bond.id) || bond.stroke.as_deref() == Some(color) {
+                        continue;
+                    }
+                    bond.stroke = Some(color.to_string());
+                    changed = true;
                 }
-                bond.stroke = Some(color.to_string());
-                changed = true;
             }
-            if !selected_nodes.is_empty() {
-                let object_id = entry.object.id.clone();
-                drop(entry);
-                if let Some(index) = self
-                    .state
-                    .document
-                    .objects
-                    .iter()
-                    .position(|object| object.id == object_id)
-                {
-                    changed |= self.apply_color_to_object(index, color, ColorTarget::Molecule);
-                }
+            if color_molecule_object {
+                changed |=
+                    self.apply_color_to_object_by_id(&object_id, color, ColorTarget::Molecule);
             }
         }
         changed
     }
 
-    fn apply_color_to_object(&mut self, index: usize, color: &str, target: ColorTarget) -> bool {
-        let Some(object) = self.state.document.objects.get(index) else {
+    fn apply_color_to_object_by_id(
+        &mut self,
+        object_id: &str,
+        color: &str,
+        target: ColorTarget,
+    ) -> bool {
+        let Some(object) = self.state.document.find_scene_object(object_id) else {
             return false;
         };
-        let object_id = object.id.clone();
         let object_type = object.object_type.clone();
         let source_style_ref = object.style_ref.clone();
         let style_id = format!("style_{object_id}_color");
@@ -897,7 +913,7 @@ impl Engine {
         match target {
             ColorTarget::Text => {
                 changed |= set_style_string(&mut style, "fill", color);
-                changed |= self.apply_color_to_text_object_runs(index, color);
+                changed |= self.apply_color_to_text_object_runs(object_id, color);
             }
             ColorTarget::Molecule => {
                 changed |= set_style_string(&mut style, "stroke", color);
@@ -920,7 +936,7 @@ impl Engine {
                     changed |= set_style_string(&mut style, "fill", color);
                 }
                 changed |=
-                    self.apply_color_to_graphic_payload(index, color, color_stroke, color_fill);
+                    self.apply_color_to_graphic_payload(object_id, color, color_stroke, color_fill);
             }
         }
         if !changed {
@@ -930,7 +946,7 @@ impl Engine {
             .document
             .styles
             .insert(style_id.clone(), JsonValue::Object(style));
-        if let Some(object) = self.state.document.objects.get_mut(index) {
+        if let Some(object) = self.state.document.find_scene_object_mut(object_id) {
             object.style_ref = Some(style_id);
         }
         true
@@ -938,12 +954,12 @@ impl Engine {
 
     fn apply_color_to_graphic_payload(
         &mut self,
-        index: usize,
+        object_id: &str,
         color: &str,
         color_stroke: bool,
         color_fill: bool,
     ) -> bool {
-        let Some(object) = self.state.document.objects.get_mut(index) else {
+        let Some(object) = self.state.document.find_scene_object_mut(object_id) else {
             return false;
         };
         let mut changed = false;
@@ -966,8 +982,8 @@ impl Engine {
         changed
     }
 
-    fn apply_color_to_text_object_runs(&mut self, index: usize, color: &str) -> bool {
-        let Some(object) = self.state.document.objects.get_mut(index) else {
+    fn apply_color_to_text_object_runs(&mut self, object_id: &str, color: &str) -> bool {
+        let Some(object) = self.state.document.find_scene_object_mut(object_id) else {
             return false;
         };
         let Some(runs) = object
@@ -1013,18 +1029,55 @@ impl Engine {
         let Some(hit) = self.select_hit_at_point(point) else {
             return false;
         };
-        let Some(entry) = self.state.document.editable_fragment() else {
-            return false;
-        };
-        let seed_node_id = match hit {
-            SelectHit::Label { node_id } | SelectHit::Node { node_id } => node_id,
+        if let Some(group_id) = self.ancestor_group_id_for_hit(&hit) {
+            let mut selection = if additive {
+                self.state.selection.clone()
+            } else {
+                SelectionState::default()
+            };
+            selection.region = false;
+            push_unique(&mut selection.arrow_objects, group_id);
+            self.state.selection = selection;
+            self.clear_interaction();
+            return true;
+        }
+        let seed_node_id = match &hit {
+            SelectHit::Label { node_id } | SelectHit::Node { node_id } => node_id.clone(),
             SelectHit::Bond { bond_id } => {
-                let Some(bond) = entry.fragment.bonds.iter().find(|bond| bond.id == bond_id) else {
+                let Some(begin) = self
+                    .state
+                    .document
+                    .editable_fragments()
+                    .into_iter()
+                    .find_map(|entry| {
+                        entry
+                            .fragment
+                            .bonds
+                            .iter()
+                            .find(|bond| bond.id == *bond_id)
+                            .map(|bond| bond.begin.clone())
+                    })
+                else {
                     return false;
                 };
-                bond.begin.clone()
+                begin
             }
             SelectHit::TextObject { .. } | SelectHit::ArrowObject { .. } => return false,
+        };
+        let Some(entry) = self
+            .state
+            .document
+            .editable_fragments()
+            .into_iter()
+            .find(|entry| {
+                entry
+                    .fragment
+                    .nodes
+                    .iter()
+                    .any(|node| node.id == seed_node_id.as_str())
+            })
+        else {
+            return false;
         };
         let component_node_ids = connected_component_node_ids(entry.fragment, &seed_node_id);
         let component_bond_ids: Vec<String> = entry
@@ -1074,6 +1127,37 @@ impl Engine {
         true
     }
 
+    fn ancestor_group_id_for_hit(&self, hit: &SelectHit) -> Option<String> {
+        match hit {
+            SelectHit::TextObject { object_id } | SelectHit::ArrowObject { object_id } => self
+                .state
+                .document
+                .ancestor_group_id_for_scene_object(object_id),
+            SelectHit::Label { node_id } | SelectHit::Node { node_id } => self
+                .state
+                .document
+                .editable_fragments()
+                .into_iter()
+                .find(|entry| entry.fragment.nodes.iter().any(|node| node.id == *node_id))
+                .and_then(|entry| {
+                    self.state
+                        .document
+                        .ancestor_group_id_for_scene_object(&entry.object.id)
+                }),
+            SelectHit::Bond { bond_id } => self
+                .state
+                .document
+                .editable_fragments()
+                .into_iter()
+                .find(|entry| entry.fragment.bonds.iter().any(|bond| bond.id == *bond_id))
+                .and_then(|entry| {
+                    self.state
+                        .document
+                        .ancestor_group_id_for_scene_object(&entry.object.id)
+                }),
+        }
+    }
+
     pub fn select_in_rect(&mut self, start: Point, end: Point, additive: bool) {
         let bounds = AxisBounds::new(start.x, start.y, end.x, end.y);
         let selection = self.collect_region_selection(
@@ -1120,7 +1204,7 @@ impl Engine {
                 _ => {}
             }
         }
-        if let Some(entry) = self.state.document.editable_fragment() {
+        for entry in self.state.document.editable_fragments() {
             selection
                 .nodes
                 .extend(entry.fragment.nodes.iter().map(|node| node.id.clone()));
@@ -1294,10 +1378,8 @@ impl Engine {
         let mut objects = self.state.document.scene_objects();
         objects.sort_by(|a, b| b.z_index.cmp(&a.z_index).then_with(|| b.id.cmp(&a.id)));
         for object in objects {
-            if !matches!(
-                object.object_type.as_str(),
-                "bracket" | "symbol" | "shape" | "group"
-            ) || !object.visible
+            if !matches!(object.object_type.as_str(), "bracket" | "symbol" | "shape")
+                || !object.visible
             {
                 continue;
             }
@@ -1380,40 +1462,38 @@ impl Engine {
             }
         }
 
-        let Some(entry) = self.state.document.editable_fragment() else {
-            return selection;
-        };
-
-        for node in &entry.fragment.nodes {
-            if let Some(bounds) =
-                endpoint_label_world_bounds(node, entry.object.transform.translate)
-            {
-                if bounds_selected(AxisBounds::from_array(bounds)) {
-                    selection.label_nodes.push(node.id.clone());
+        for entry in self.state.document.editable_fragments() {
+            for node in &entry.fragment.nodes {
+                if let Some(bounds) =
+                    endpoint_label_world_bounds(node, entry.object.transform.translate)
+                {
+                    if bounds_selected(AxisBounds::from_array(bounds)) {
+                        selection.label_nodes.push(node.id.clone());
+                    }
+                }
+                let node_point = entry.world_point_for_node(node);
+                if point_inside(node_point) {
+                    selection.nodes.push(node.id.clone());
                 }
             }
-            let node_point = entry.world_point_for_node(node);
-            if point_inside(node_point) {
-                selection.nodes.push(node.id.clone());
-            }
-        }
 
-        for bond in &entry.fragment.bonds {
-            let Some(begin) = entry
-                .fragment
-                .nodes
-                .iter()
-                .find(|node| node.id == bond.begin)
-            else {
-                continue;
-            };
-            let Some(end) = entry.fragment.nodes.iter().find(|node| node.id == bond.end) else {
-                continue;
-            };
-            let begin_point = entry.world_point_for_node(begin);
-            let end_point = entry.world_point_for_node(end);
-            if segment_selected(begin_point, end_point) {
-                selection.bonds.push(bond.id.clone());
+            for bond in &entry.fragment.bonds {
+                let Some(begin) = entry
+                    .fragment
+                    .nodes
+                    .iter()
+                    .find(|node| node.id == bond.begin)
+                else {
+                    continue;
+                };
+                let Some(end) = entry.fragment.nodes.iter().find(|node| node.id == bond.end) else {
+                    continue;
+                };
+                let begin_point = entry.world_point_for_node(begin);
+                let end_point = entry.world_point_for_node(end);
+                if segment_selected(begin_point, end_point) {
+                    selection.bonds.push(bond.id.clone());
+                }
             }
         }
         selection
@@ -1456,15 +1536,15 @@ impl Engine {
             }
         }
 
-        let Some(entry) = self.state.document.editable_fragment() else {
-            return bounds;
-        };
-        if overlay.hides_object(&entry.object.id) {
-            return bounds;
-        }
-        for component in selected_component_summaries(self) {
-            if let Some(component_bounds) = component_selection_bounds_fast(&entry, &component) {
-                bounds.push(component_bounds);
+        for entry in self.state.document.editable_fragments() {
+            if overlay.hides_object(&entry.object.id) {
+                continue;
+            }
+            for component in selected_component_summaries_for_entry(self, &entry) {
+                if let Some(component_bounds) = component_selection_bounds_fast(&entry, &component)
+                {
+                    bounds.push(component_bounds);
+                }
             }
         }
         bounds
@@ -1503,35 +1583,33 @@ impl Engine {
             });
         }
 
-        let Some(entry) = self.state.document.editable_fragment() else {
-            return items;
-        };
-        for component in selected_component_summaries(self) {
-            let fragment_items =
-                component_selection_items(&self.state.document, &entry, &component);
-            if fragment_items.is_empty() {
-                continue;
-            }
-            let bounds =
-                fragment_items
-                    .iter()
-                    .skip(1)
-                    .fold(fragment_items[0].bounds, |mut acc, item| {
+        for entry in self.state.document.editable_fragments() {
+            for component in selected_component_summaries_for_entry(self, &entry) {
+                let fragment_items =
+                    component_selection_items(&self.state.document, &entry, &component);
+                if fragment_items.is_empty() {
+                    continue;
+                }
+                let bounds = fragment_items.iter().skip(1).fold(
+                    fragment_items[0].bounds,
+                    |mut acc, item| {
                         acc.include_bounds(item.bounds);
                         acc
-                    });
-            let node_ids = component_movable_node_ids(entry.fragment, &component);
-            if node_ids.is_empty() {
-                continue;
+                    },
+                );
+                let node_ids = component_movable_node_ids(entry.fragment, &component);
+                if node_ids.is_empty() {
+                    continue;
+                }
+                items.push(SelectionArrangeItem {
+                    original_bounds: bounds,
+                    bounds,
+                    node_ids,
+                    text_object_ids: Vec::new(),
+                    mirror_x: None,
+                    mirror_y: None,
+                });
             }
-            items.push(SelectionArrangeItem {
-                original_bounds: bounds,
-                bounds,
-                node_ids,
-                text_object_ids: Vec::new(),
-                mirror_x: None,
-                mirror_y: None,
-            });
         }
         items
     }
@@ -1550,31 +1628,23 @@ impl Engine {
             return None;
         }
 
-        let mut node_originals = Vec::new();
-        let mut fragment_bbox_original = None;
         let mut mode = SelectionMoveMode::Translate;
-        if let Some(entry) = self.state.document.editable_fragment() {
-            node_ids.sort();
-            let selected_node_ids: BTreeSet<&str> = node_ids.iter().map(String::as_str).collect();
-            if !entry.fragment.nodes.is_empty()
-                && entry
-                    .fragment
-                    .nodes
-                    .iter()
-                    .all(|node| selected_node_ids.contains(node.id.as_str()))
+        node_ids.sort();
+        let node_originals = node_move_originals_for_ids(&self.state.document, &node_ids);
+        if node_ids.len() == 1 && text_ids.is_empty() && self.state.selection.bonds.is_empty() {
+            if let Some(entry) =
+                self.state
+                    .document
+                    .editable_fragments()
+                    .into_iter()
+                    .find(|entry| {
+                        entry
+                            .fragment
+                            .nodes
+                            .iter()
+                            .any(|node| node.id == node_ids[0])
+                    })
             {
-                fragment_bbox_original = Some(entry.fragment.bbox);
-            }
-            for node_id in &node_ids {
-                if let Some(node) = entry.fragment.nodes.iter().find(|node| &node.id == node_id) {
-                    node_originals.push(NodeMoveOriginal {
-                        node_id: node.id.clone(),
-                        position: node.position,
-                        label: node.label.clone(),
-                    });
-                }
-            }
-            if node_ids.len() == 1 && text_ids.is_empty() && self.state.selection.bonds.is_empty() {
                 if let Some((pivot, length)) = terminal_node_drag_axis(entry, &node_ids[0]) {
                     mode = SelectionMoveMode::TerminalNode {
                         node_id: node_ids[0].clone(),
@@ -1603,7 +1673,6 @@ impl Engine {
             start,
             node_originals,
             text_originals,
-            fragment_bbox_original,
             mode,
             preserve_selection_after_drag,
             undo_pushed: false,
@@ -1643,19 +1712,8 @@ impl Engine {
                 (bounds.min_y + bounds.max_y) * 0.5,
             )
         })?;
-        let mut node_originals = Vec::new();
-        if let Some(entry) = self.state.document.editable_fragment() {
-            node_ids.sort();
-            for node_id in &node_ids {
-                if let Some(node) = entry.fragment.nodes.iter().find(|node| &node.id == node_id) {
-                    node_originals.push(NodeMoveOriginal {
-                        node_id: node.id.clone(),
-                        position: node.position,
-                        label: node.label.clone(),
-                    });
-                }
-            }
-        }
+        node_ids.sort();
+        let node_originals = node_move_originals_for_ids(&self.state.document, &node_ids);
 
         let mut text_originals = Vec::new();
         for object in self.state.document.scene_objects() {
@@ -1717,19 +1775,8 @@ impl Engine {
             return None;
         }
 
-        let mut node_originals = Vec::new();
-        if let Some(entry) = self.state.document.editable_fragment() {
-            node_ids.sort();
-            for node_id in &node_ids {
-                if let Some(node) = entry.fragment.nodes.iter().find(|node| &node.id == node_id) {
-                    node_originals.push(NodeMoveOriginal {
-                        node_id: node.id.clone(),
-                        position: node.position,
-                        label: node.label.clone(),
-                    });
-                }
-            }
-        }
+        node_ids.sort();
+        let node_originals = node_move_originals_for_ids(&self.state.document, &node_ids);
 
         let object_originals = self
             .state
@@ -2001,15 +2048,14 @@ impl Engine {
                 include_optional_bounds(&mut out, bounds);
             }
         }
-        let Some(entry) = self.state.document.editable_fragment() else {
-            return out;
-        };
-        if overlay.hides_object(&entry.object.id) {
-            return out;
-        }
-        for component in selected_component_summaries(self) {
-            for item in component_selection_items(&self.state.document, &entry, &component) {
-                include_optional_bounds(&mut out, item.bounds);
+        for entry in self.state.document.editable_fragments() {
+            if overlay.hides_object(&entry.object.id) {
+                continue;
+            }
+            for component in selected_component_summaries_for_entry(self, &entry) {
+                for item in component_selection_items(&self.state.document, &entry, &component) {
+                    include_optional_bounds(&mut out, item.bounds);
+                }
             }
         }
         out
@@ -2058,4 +2104,26 @@ fn set_payload_string(payload: &mut BTreeMap<String, JsonValue>, key: &str, valu
     }
     payload.insert(key.to_string(), JsonValue::String(value.to_string()));
     true
+}
+
+fn node_move_originals_for_ids(
+    document: &crate::ChemcoreDocument,
+    node_ids: &[String],
+) -> Vec<NodeMoveOriginal> {
+    let selected_node_ids: BTreeSet<&str> = node_ids.iter().map(String::as_str).collect();
+    let mut originals = Vec::new();
+    for entry in document.editable_fragments() {
+        for node in &entry.fragment.nodes {
+            if !selected_node_ids.contains(node.id.as_str()) {
+                continue;
+            }
+            originals.push(NodeMoveOriginal {
+                object_id: entry.object.id.clone(),
+                node_id: node.id.clone(),
+                position: node.position,
+                label: node.label.clone(),
+            });
+        }
+    }
+    originals
 }

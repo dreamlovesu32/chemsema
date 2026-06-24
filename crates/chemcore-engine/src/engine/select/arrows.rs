@@ -16,25 +16,22 @@ pub(super) fn selected_text_object_ids(engine: &Engine) -> BTreeSet<String> {
 
 pub(super) fn selected_movable_node_ids(engine: &Engine) -> Vec<String> {
     let overlay = group_selection_overlay(engine);
-    if engine
-        .state
-        .document
-        .editable_fragment()
-        .is_some_and(|entry| overlay.selected_group_hides_object(&entry.object.id))
-    {
-        return Vec::new();
-    }
     let mut node_ids: BTreeSet<String> = engine.state.selection.nodes.iter().cloned().collect();
     node_ids.extend(engine.state.selection.label_nodes.iter().cloned());
-    let Some(entry) = engine.state.document.editable_fragment() else {
-        return node_ids.into_iter().collect();
-    };
-    for bond_id in &engine.state.selection.bonds {
-        let Some(bond) = entry.fragment.bonds.iter().find(|bond| &bond.id == bond_id) else {
+    for entry in engine.state.document.editable_fragments() {
+        if overlay.selected_group_hides_object(&entry.object.id) {
+            for node in &entry.fragment.nodes {
+                node_ids.remove(&node.id);
+            }
             continue;
-        };
-        node_ids.insert(bond.begin.clone());
-        node_ids.insert(bond.end.clone());
+        }
+        for bond_id in &engine.state.selection.bonds {
+            let Some(bond) = entry.fragment.bonds.iter().find(|bond| &bond.id == bond_id) else {
+                continue;
+            };
+            node_ids.insert(bond.begin.clone());
+            node_ids.insert(bond.end.clone());
+        }
     }
     node_ids.into_iter().collect()
 }
@@ -116,9 +113,8 @@ pub(super) fn update_arrow_object_points(
     let Some(object) = engine
         .state
         .document
-        .objects
-        .iter_mut()
-        .find(|object| object.id == object_id && object.object_type == "line")
+        .find_scene_object_mut(object_id)
+        .filter(|object| object.object_type == "line")
     else {
         return false;
     };
@@ -140,9 +136,8 @@ pub(super) fn update_arrow_object_curve(engine: &mut Engine, object_id: &str, cu
     let Some(object) = engine
         .state
         .document
-        .objects
-        .iter_mut()
-        .find(|object| object.id == object_id && object.object_type == "line")
+        .find_scene_object_mut(object_id)
+        .filter(|object| object.object_type == "line")
     else {
         return false;
     };

@@ -110,6 +110,20 @@ impl ChemcoreDocument {
         Some(EditableFragmentMut { object, fragment })
     }
 
+    pub fn editable_fragment_mut_for_object(
+        &mut self,
+        object_id: &str,
+    ) -> Option<EditableFragmentMut<'_>> {
+        let object = find_scene_object_mut(&mut self.objects, object_id)?;
+        if object.object_type != "molecule" || !object.visible {
+            return None;
+        }
+        let resource_ref = object.payload.resource_ref.clone()?;
+        let resource = self.resources.get_mut(&resource_ref)?;
+        let fragment = resource.data.as_fragment_mut()?;
+        Some(EditableFragmentMut { object, fragment })
+    }
+
     pub fn editable_fragment(&self) -> Option<EditableFragment<'_>> {
         let object = first_molecule_object(&self.objects)?;
         let resource_ref = object.payload.resource_ref.as_ref()?;
@@ -136,6 +150,10 @@ impl ChemcoreDocument {
 
     pub fn find_scene_object_mut(&mut self, object_id: &str) -> Option<&mut SceneObject> {
         find_scene_object_mut(&mut self.objects, object_id)
+    }
+
+    pub fn ancestor_group_id_for_scene_object(&self, object_id: &str) -> Option<String> {
+        find_ancestor_group_id(&self.objects, object_id, None)
     }
 
     pub fn remove_scene_objects_by_id(
@@ -194,6 +212,27 @@ fn find_scene_object_mut<'a>(
             return Some(object);
         }
         if let Some(found) = find_scene_object_mut(&mut object.children, object_id) {
+            return Some(found);
+        }
+    }
+    None
+}
+
+fn find_ancestor_group_id(
+    objects: &[SceneObject],
+    object_id: &str,
+    ancestor_group_id: Option<&str>,
+) -> Option<String> {
+    for object in objects {
+        if object.id == object_id {
+            return ancestor_group_id.map(str::to_string);
+        }
+        let next_ancestor = if object.object_type == "group" {
+            Some(object.id.as_str())
+        } else {
+            ancestor_group_id
+        };
+        if let Some(found) = find_ancestor_group_id(&object.children, object_id, next_ancestor) {
             return Some(found);
         }
     }

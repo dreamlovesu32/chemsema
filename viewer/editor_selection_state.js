@@ -61,10 +61,31 @@ export function createEditorSelectionState(options) {
     return collectSceneObjects(options.state().currentDocument?.objects || []);
   }
 
-  function currentEditableFragment() {
+  function collectEditableFragments(objects = [], resources, out = []) {
+    for (const object of objects || []) {
+      if (object?.visible === false) {
+        continue;
+      }
+      if (object?.type === "molecule" && object.payload?.resourceRef) {
+        const fragment = resources?.[object.payload.resourceRef]?.data || null;
+        if (fragment) {
+          out.push(fragment);
+        }
+      }
+      if (Array.isArray(object?.children)) {
+        collectEditableFragments(object.children, resources, out);
+      }
+    }
+    return out;
+  }
+
+  function currentEditableFragments() {
     const documentData = options.state().currentDocument;
-    const molecule = documentData?.objects?.find((object) => object.type === "molecule" && object.payload?.resourceRef);
-    return molecule ? documentData.resources?.[molecule.payload.resourceRef]?.data || null : null;
+    return collectEditableFragments(documentData?.objects || [], documentData?.resources || {});
+  }
+
+  function currentEditableFragment() {
+    return currentEditableFragments()[0] || null;
   }
 
   function currentSelectionInfo() {
@@ -72,20 +93,27 @@ export function createEditorSelectionState(options) {
     const objectMap = currentSceneObjectMap();
     const textObjects = (selection.textObjects || []).map((id) => objectMap.get(id)).filter(Boolean);
     const graphicObjects = (selection.arrowObjects || []).map((id) => objectMap.get(id)).filter(Boolean);
-    const fragment = currentEditableFragment();
+    const fragments = currentEditableFragments();
     const nodeIds = selection.nodes || [];
     const bondIds = selection.bonds || [];
     const labelNodeIds = selection.labelNodes || [];
+    const findNode = (id) => fragments
+      .map((fragment) => fragment?.nodes?.find((node) => node.id === id))
+      .find(Boolean);
+    const findBond = (id) => fragments
+      .map((fragment) => fragment?.bonds?.find((bond) => bond.id === id))
+      .find(Boolean);
     return {
       selection,
       objectMap,
       textObjects,
       graphicObjects,
       sceneObjects: textObjects.concat(graphicObjects),
-      fragment,
-      nodes: nodeIds.map((id) => fragment?.nodes?.find((node) => node.id === id)).filter(Boolean),
-      bonds: bondIds.map((id) => fragment?.bonds?.find((bond) => bond.id === id)).filter(Boolean),
-      labelNodes: labelNodeIds.map((id) => fragment?.nodes?.find((node) => node.id === id)).filter(Boolean),
+      fragment: fragments[0] || null,
+      fragments,
+      nodes: nodeIds.map(findNode).filter(Boolean),
+      bonds: bondIds.map(findBond).filter(Boolean),
+      labelNodes: labelNodeIds.map(findNode).filter(Boolean),
     };
   }
 
@@ -142,6 +170,7 @@ export function createEditorSelectionState(options) {
     activeDocumentTabIsBlankUntitled,
     currentSceneObjectMap,
     currentEditableFragment,
+    currentEditableFragments,
     currentSelectionInfo,
     clearTlcHoverState,
     updateTlcSpotHover,

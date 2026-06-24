@@ -466,47 +466,46 @@ pub(super) fn render_selected_fragment_content(
     overlay: &GroupSelectionOverlay,
     out: &mut Vec<RenderPrimitive>,
 ) {
-    let Some(entry) = engine.state.document.editable_fragment() else {
-        return;
-    };
-    if overlay.hides_object(&entry.object.id) {
-        return;
-    }
-
-    for component in selected_component_summaries(engine) {
-        let items = component_selection_items(&engine.state.document, &entry, &component);
-        if items.is_empty() {
+    for entry in engine.state.document.editable_fragments() {
+        if overlay.hides_object(&entry.object.id) {
             continue;
         }
-        if component.complete {
+
+        for component in selected_component_summaries_for_entry(engine, &entry) {
+            let items = component_selection_items(&engine.state.document, &entry, &component);
+            if items.is_empty() {
+                continue;
+            }
+            if component.complete {
+                let group_bounds = items.iter().skip(1).fold(items[0].bounds, |mut acc, item| {
+                    acc.include_bounds(item.bounds);
+                    acc
+                });
+                push_selection_box(out, group_bounds, RenderRole::SelectionBox);
+                continue;
+            }
+            if items.len() == 1 {
+                let item = items[0];
+                push_selection_item_box(out, item);
+                push_selection_bond_dot(out, item.center);
+                continue;
+            }
             let group_bounds = items.iter().skip(1).fold(items[0].bounds, |mut acc, item| {
                 acc.include_bounds(item.bounds);
                 acc
             });
             push_selection_box(out, group_bounds, RenderRole::SelectionBox);
-            continue;
-        }
-        if items.len() == 1 {
-            let item = items[0];
-            push_selection_item_box(out, item);
-            push_selection_bond_dot(out, item.center);
-            continue;
-        }
-        let group_bounds = items.iter().skip(1).fold(items[0].bounds, |mut acc, item| {
-            acc.include_bounds(item.bounds);
-            acc
-        });
-        push_selection_box(out, group_bounds, RenderRole::SelectionBox);
-        for item in items {
-            push_selection_bond_dot(out, item.center);
+            for item in items {
+                push_selection_bond_dot(out, item.center);
+            }
         }
     }
 }
 
-pub(super) fn selected_component_summaries(engine: &Engine) -> Vec<ComponentSelection> {
-    let Some(entry) = engine.state.document.editable_fragment() else {
-        return Vec::new();
-    };
+pub(super) fn selected_component_summaries_for_entry(
+    engine: &Engine,
+    entry: &crate::EditableFragment<'_>,
+) -> Vec<ComponentSelection> {
     if engine.state.selection.nodes.is_empty()
         && engine.state.selection.label_nodes.is_empty()
         && engine.state.selection.bonds.is_empty()

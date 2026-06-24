@@ -81,14 +81,16 @@ pub(super) fn apply_selection_drag_to_document(
         }
     }
 
-    let stroke_width = engine.options.bond_stroke_world_pt().value();
-    let Some(mut entry) = engine.state.document.editable_fragment_mut() else {
-        return;
-    };
-    let object_translate = entry.object.transform.translate;
     match &drag.mode {
         SelectionMoveMode::Translate => {
             for original in &drag.node_originals {
+                let Some(entry) = engine
+                    .state
+                    .document
+                    .editable_fragment_mut_for_object(&original.object_id)
+                else {
+                    continue;
+                };
                 if let Some(node) = entry
                     .fragment
                     .nodes
@@ -112,37 +114,55 @@ pub(super) fn apply_selection_drag_to_document(
             length,
         } => {
             let target = terminal_drag_target(*pivot, *length, point, alt_key);
-            if let Some(node) = entry
-                .fragment
-                .nodes
-                .iter_mut()
-                .find(|node| node.id == *node_id)
-            {
-                node.position = [
-                    round2(target.x - object_translate[0]),
-                    round2(target.y - object_translate[1]),
-                ];
+            for original in &drag.node_originals {
+                if original.node_id != *node_id {
+                    continue;
+                }
+                let Some(entry) = engine
+                    .state
+                    .document
+                    .editable_fragment_mut_for_object(&original.object_id)
+                else {
+                    continue;
+                };
+                let object_translate = entry.object.transform.translate;
+                if let Some(node) = entry
+                    .fragment
+                    .nodes
+                    .iter_mut()
+                    .find(|node| node.id == *node_id)
+                {
+                    node.position = [
+                        round2(target.x - object_translate[0]),
+                        round2(target.y - object_translate[1]),
+                    ];
+                }
             }
         }
     }
-    match drag.mode {
-        SelectionMoveMode::Translate => {
-            if let Some(bbox) = drag.fragment_bbox_original {
-                let translated = translate_size_bbox(bbox, delta_x, delta_y);
-                entry.fragment.bbox = translated;
-                entry.object.payload.bbox = Some(translated);
-            } else {
-                entry.update_bounds();
-            }
-        }
-        SelectionMoveMode::TerminalNode { .. } => {
+    let stroke_width = engine.options.bond_stroke_world_pt().value();
+    let touched_object_ids: BTreeSet<String> = drag
+        .node_originals
+        .iter()
+        .map(|original| original.object_id.clone())
+        .collect();
+    for object_id in touched_object_ids {
+        let Some(mut entry) = engine
+            .state
+            .document
+            .editable_fragment_mut_for_object(&object_id)
+        else {
+            continue;
+        };
+        let object_translate = entry.object.transform.translate;
+        if matches!(drag.mode, SelectionMoveMode::TerminalNode { .. }) {
             refresh_attached_node_label_geometry_for_all_nodes(
                 entry.fragment,
                 object_translate,
                 stroke_width,
             );
-            entry.update_bounds();
         }
+        entry.update_bounds();
     }
 }
 
@@ -196,12 +216,15 @@ pub(super) fn apply_selection_rotation_to_document(
         *object = rotated_scene_object(&original.object, drag.center, angle);
     }
 
-    let stroke_width = engine.options.bond_stroke_world_pt().value();
-    let Some(mut entry) = engine.state.document.editable_fragment_mut() else {
-        return;
-    };
-    let object_translate = entry.object.transform.translate;
     for original in &drag.node_originals {
+        let Some(entry) = engine
+            .state
+            .document
+            .editable_fragment_mut_for_object(&original.object_id)
+        else {
+            continue;
+        };
+        let object_translate = entry.object.transform.translate;
         let original_world = Point::new(
             object_translate[0] + original.position[0],
             object_translate[1] + original.position[1],
@@ -219,12 +242,7 @@ pub(super) fn apply_selection_rotation_to_document(
             ];
         }
     }
-    refresh_attached_node_label_geometry_for_all_nodes(
-        entry.fragment,
-        object_translate,
-        stroke_width,
-    );
-    entry.update_bounds();
+    refresh_touched_fragments(engine, &drag.node_originals);
 }
 
 fn rotated_scene_object(original: &SceneObject, center: Point, degrees: f64) -> SceneObject {
@@ -519,12 +537,15 @@ pub(super) fn apply_selection_scale_to_document(
         *object = resized_scene_object(&original.object, pivot, scale_x, scale_y);
     }
 
-    let stroke_width = engine.options.bond_stroke_world_pt().value();
-    let Some(mut entry) = engine.state.document.editable_fragment_mut() else {
-        return;
-    };
-    let object_translate = entry.object.transform.translate;
     for original in node_originals {
+        let Some(entry) = engine
+            .state
+            .document
+            .editable_fragment_mut_for_object(&original.object_id)
+        else {
+            continue;
+        };
+        let object_translate = entry.object.transform.translate;
         let original_world = Point::new(
             object_translate[0] + original.position[0],
             object_translate[1] + original.position[1],
@@ -542,14 +563,32 @@ pub(super) fn apply_selection_scale_to_document(
             ];
         }
     }
-    refresh_attached_node_label_geometry_for_all_nodes(
-        entry.fragment,
-        object_translate,
-        stroke_width,
-    );
-    entry.update_bounds();
-    drop(entry);
+    refresh_touched_fragments(engine, node_originals);
     engine.refresh_symbol_chemistry();
+}
+
+fn refresh_touched_fragments(engine: &mut Engine, node_originals: &[NodeMoveOriginal]) {
+    let stroke_width = engine.options.bond_stroke_world_pt().value();
+    let touched_object_ids: BTreeSet<String> = node_originals
+        .iter()
+        .map(|original| original.object_id.clone())
+        .collect();
+    for object_id in touched_object_ids {
+        let Some(mut entry) = engine
+            .state
+            .document
+            .editable_fragment_mut_for_object(&object_id)
+        else {
+            continue;
+        };
+        let object_translate = entry.object.transform.translate;
+        refresh_attached_node_label_geometry_for_all_nodes(
+            entry.fragment,
+            object_translate,
+            stroke_width,
+        );
+        entry.update_bounds();
+    }
 }
 
 fn selection_resize_pivot(handle: SelectionResizeHandle, bounds: AxisBounds) -> Point {
@@ -793,15 +832,6 @@ fn translate_box(bounds: &mut [f64; 4], delta_x: f64, delta_y: f64) {
     bounds[1] = round2(bounds[1] + delta_y);
     bounds[2] = round2(bounds[2] + delta_x);
     bounds[3] = round2(bounds[3] + delta_y);
-}
-
-fn translate_size_bbox(bounds: [f64; 4], delta_x: f64, delta_y: f64) -> [f64; 4] {
-    [
-        round2(bounds[0] + delta_x),
-        round2(bounds[1] + delta_y),
-        bounds[2],
-        bounds[3],
-    ]
 }
 
 fn object_transform_participates_in_render(object: &SceneObject) -> bool {

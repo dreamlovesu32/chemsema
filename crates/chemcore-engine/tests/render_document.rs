@@ -362,7 +362,7 @@ fn cdxml_group_import_preserves_tree_and_z_order() {
 }
 
 #[test]
-fn grouped_scene_objects_render_and_select_as_one_tight_box() {
+fn grouped_scene_object_child_click_selects_child_not_group() {
     let document: ChemcoreDocument = serde_json::from_value(json!({
         "format": { "name": "chemcore", "version": "0.1", "unit": "pt" },
         "document": {
@@ -410,6 +410,11 @@ fn grouped_scene_objects_render_and_select_as_one_tight_box() {
         .load_document_json(&serde_json::to_string(&document).unwrap())
         .expect("document should load");
     engine.select_at_point(Point::new(20.0, 15.0), false);
+    assert_eq!(engine.state().selection.arrow_objects, vec!["shape_a"]);
+    let hit: serde_json::Value =
+        serde_json::from_str(&engine.context_hit_test_json(Point::new(20.0, 15.0))).unwrap();
+    assert_eq!(hit["objectId"], "shape_a");
+    assert_eq!(hit["objectType"], "shape");
     let selection_boxes: Vec<_> = engine
         .render_list()
         .into_iter()
@@ -434,11 +439,14 @@ fn grouped_scene_objects_render_and_select_as_one_tight_box() {
         } => {
             assert!((*x - 9.5).abs() < 0.1);
             assert!((*y - 9.5).abs() < 0.1);
-            assert!((*width - 71.0).abs() < 0.2);
-            assert!((*height - 41.0).abs() < 0.2);
+            assert!((*width - 21.0).abs() < 0.2);
+            assert!((*height - 11.0).abs() < 0.2);
         }
         _ => unreachable!(),
     }
+
+    assert!(engine.select_component_at_point(Point::new(20.0, 15.0), false));
+    assert_eq!(engine.state().selection.arrow_objects, vec!["grp_1"]);
 }
 
 #[test]
@@ -677,6 +685,22 @@ fn moving_selected_grouped_molecule_does_not_move_nodes_twice() {
         .expect("fragment should still exist");
     assert_eq!(fragment.nodes[0].position, [10.0, 20.0]);
     assert_eq!(fragment.nodes[1].position, [60.0, 20.0]);
+}
+
+#[test]
+fn double_click_grouped_molecule_bond_selects_group() {
+    let document = grouped_two_fragment_document();
+    let mut engine = Engine::new();
+    engine
+        .load_document_json(&serde_json::to_string(&document).unwrap())
+        .expect("document should load");
+
+    engine.select_at_point(Point::new(120.0, 20.0), false);
+    assert_eq!(engine.state().selection.bonds, vec!["b_grouped"]);
+
+    assert!(engine.select_component_at_point(Point::new(120.0, 20.0), false));
+    assert_eq!(engine.state().selection.arrow_objects, vec!["obj_group"]);
+    assert!(engine.state().selection.bonds.is_empty());
 }
 
 #[test]
