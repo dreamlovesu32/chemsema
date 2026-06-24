@@ -55,6 +55,7 @@ const HOVER_BOND_SHORTCUT_STYLES = {
 export function bindEditorControls(options) {
   bindCommandButtons(options);
   bindFileInput(options);
+  bindBrowserFileDrop(options);
   bindZoomInput(options);
   bindKeyboard(options);
   bindDesktopCommands(options);
@@ -217,6 +218,39 @@ function bindFileInput(options) {
     } catch (error) {
       console.error("Failed to open document", error);
       window.alert?.(`Open failed: ${error.message || error}`);
+    }
+  });
+}
+
+function bindBrowserFileDrop(options) {
+  if (options.desktopFileHost?.available || !options.openDocumentFileInTab) {
+    return;
+  }
+  const hasFiles = (event) => Array.from(event.dataTransfer?.types || []).includes("Files");
+  const preventFileNavigation = (event) => {
+    if (!hasFiles(event)) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = "copy";
+    }
+  };
+  window.addEventListener("dragover", preventFileNavigation);
+  window.addEventListener("dragenter", preventFileNavigation);
+  window.addEventListener("drop", async (event) => {
+    if (!hasFiles(event)) {
+      return;
+    }
+    preventFileNavigation(event);
+    const files = Array.from(event.dataTransfer?.files || []);
+    for (const file of files) {
+      await runSafe(
+        () => options.openDocumentFileInTab(file),
+        "Open failed",
+        "Failed to open dropped document",
+      );
     }
   });
 }
