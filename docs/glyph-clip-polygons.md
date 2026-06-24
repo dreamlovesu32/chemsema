@@ -61,13 +61,9 @@ Visible characters other than ASCII uppercase letters use uniform natural dilati
 
 - natural dilation: `0.18 * glyph height`
 
-### 4. Unknown Character Fallback
+### 4. Manifest Completeness
 
-If a character is visible but absent from `glyph_clip_polygons.json`, the runtime fallback geometry is:
-
-- based on the ink box
-- expanded uniformly on all sides by `0.216 * glyph height`
-- emitted as a conservative rectangle
+Every visible character listed in `glyph_profiles.json` must have a generated polygon in `glyph_clip_polygons.json`. Runtime label clipping does not synthesize replacement geometry for a missing visible glyph; missing coverage is a manifest-generation/test failure.
 
 ## Uppercase Anchor Table
 

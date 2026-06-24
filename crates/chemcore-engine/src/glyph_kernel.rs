@@ -4,7 +4,6 @@ use std::collections::HashMap;
 use std::fmt::Write;
 use std::sync::OnceLock;
 
-const LABEL_GLYPH_FALLBACK_OUTSET_HEIGHT_RATIO: f64 = 0.216;
 const CHEMDRAW_BOLD_SUBSCRIPT_SHIFT_DOWN_EM: f64 = 0.215;
 
 #[derive(Debug, Clone, Copy)]
@@ -670,23 +669,16 @@ fn shape_polygon(placement: &GlyphPlacement) -> Option<Vec<[f64; 2]>> {
     if !placement.visible {
         return None;
     }
-    if !placement.codepoint.is_ascii_uppercase() {
-        return Some(fallback_natural_outset_polygon(placement.ink_box_px));
-    }
     // The shared manifest stores normalized glyph outlines. Height-centered
     // mapping keeps narrow capitals such as I from losing their side margin.
     let manifest = shared_glyph_clip_polygons();
-    manifest
-        .glyphs
-        .get(&placement.codepoint)
-        .map(|polygon| {
-            map_normalized_polygon(
-                &polygon.points,
-                placement.ink_box_px,
-                manifest.coordinate_system,
-            )
-        })
-        .or_else(|| Some(fallback_natural_outset_polygon(placement.ink_box_px)))
+    manifest.glyphs.get(&placement.codepoint).map(|polygon| {
+        map_normalized_polygon(
+            &polygon.points,
+            placement.ink_box_px,
+            manifest.coordinate_system,
+        )
+    })
 }
 
 fn map_normalized_polygon(
@@ -710,19 +702,6 @@ fn map_normalized_polygon(
                 .collect()
         }
     }
-}
-
-fn fallback_natural_outset_polygon(ink_box: [f64; 4]) -> Vec<[f64; 2]> {
-    let [x1, y1, x2, y2] = ink_box;
-    let height = (y2 - y1).max(0.1);
-    let manifest_ratio = shared_glyph_clip_polygons().natural_outset_ratio;
-    let outset = height * manifest_ratio.max(LABEL_GLYPH_FALLBACK_OUTSET_HEIGHT_RATIO);
-    vec![
-        [x1 - outset, y1 - outset],
-        [x2 + outset, y1 - outset],
-        [x2 + outset, y2 + outset],
-        [x1 - outset, y2 + outset],
-    ]
 }
 
 fn make_preview_row(
@@ -1264,15 +1243,22 @@ mod tests {
     }
 
     #[test]
-    fn plus_symbol_uses_natural_outset_without_manifest_circle() {
+    fn plus_symbol_uses_manifest_clip_polygon() {
         let placement = layout_glyph('+', ScriptKind::Normal, LayoutConfig::default(), 0.0, 0.0);
         let polygon = shape_polygon(&placement).expect("+ should have clip geometry");
-        let bounds = polygon_bounds(&polygon);
-        assert_eq!(
-            polygon,
-            fallback_natural_outset_polygon(placement.ink_box_px)
+        let manifest = shared_glyph_clip_polygons();
+        let manifest_polygon = manifest
+            .glyphs
+            .get(&'+')
+            .expect("+ should be present in the clip manifest");
+        let expected = map_normalized_polygon(
+            &manifest_polygon.points,
+            placement.ink_box_px,
+            manifest.coordinate_system,
         );
-        assert_eq!(polygon.len(), 4, "{polygon:?}");
+        let bounds = polygon_bounds(&polygon);
+        assert_eq!(polygon, expected);
+        assert!(polygon.len() >= 4, "{polygon:?}");
         assert!(
             bounds[0] < placement.ink_box_px[0],
             "{bounds:?} vs {:?}",
@@ -1296,37 +1282,21 @@ mod tests {
     }
 
     #[test]
-    fn unknown_visible_characters_fall_back_to_rectangular_natural_outset() {
-        let placement = layout_glyph(
-            '\u{1F9EA}',
-            ScriptKind::Normal,
-            LayoutConfig::default(),
-            0.0,
-            0.0,
-        );
-        assert!(!shared_glyph_clip_polygons()
-            .glyphs
-            .contains_key(&placement.codepoint));
-        let polygon = shape_polygon(&placement).expect("fallback glyph should have clip geometry");
-        assert_eq!(polygon.len(), 4, "{polygon:?}");
-        let bounds = polygon_bounds(&polygon);
-        let outset = (placement.ink_box_px[3] - placement.ink_box_px[1])
-            * LABEL_GLYPH_FALLBACK_OUTSET_HEIGHT_RATIO;
-        assert!(
-            (bounds[0] - (placement.ink_box_px[0] - outset)).abs() < 1e-9,
-            "{bounds:?}"
-        );
-        assert!(
-            (bounds[1] - (placement.ink_box_px[1] - outset)).abs() < 1e-9,
-            "{bounds:?}"
-        );
-        assert!(
-            (bounds[2] - (placement.ink_box_px[2] + outset)).abs() < 1e-9,
-            "{bounds:?}"
-        );
-        assert!(
-            (bounds[3] - (placement.ink_box_px[3] + outset)).abs() < 1e-9,
-            "{bounds:?}"
-        );
+    fn clip_manifest_covers_every_visible_special_glyph() {
+        let profiles = shared_glyph_profiles();
+        let manifest = shared_glyph_clip_polygons();
+        let mut missing: Vec<char> = profiles
+            .specials
+            .iter()
+            .filter_map(|(character, profile)| {
+                if profile.visible && !manifest.glyphs.contains_key(character) {
+                    Some(*character)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        missing.sort_unstable();
+        assert!(missing.is_empty(), "missing clip polygons: {missing:?}");
     }
 }
