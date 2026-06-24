@@ -363,7 +363,14 @@ export function createEditorPointerController(options) {
           await options.syncDocumentFromEngine();
         }
         await options.syncSelectCursorForPoint(point);
-        options.renderDocument();
+        if (hit?.objectId) {
+          options.renderDocumentChange?.({
+            changed: true,
+            targets: { objects: [hit.objectId] },
+          }) || options.renderDocument();
+        } else {
+          options.renderEditorOverlay(options.currentEditorOverlayRenderList());
+        }
         return;
       }
       if (gesture.kind === "arrow-endpoint" || gesture.kind === "arrow-curve") {
@@ -712,7 +719,7 @@ export function createEditorPointerController(options) {
       } else {
         await options.syncArrowAwareCursorForPoint(point);
       }
-      options.renderDocument();
+      options.renderDocumentChange?.(result) || options.renderDocument();
       return;
     }
     if ((options.editorState().activeTool === "select" || options.editorState().activeTool === "arrow")
@@ -745,7 +752,7 @@ export function createEditorPointerController(options) {
       }
       if (changed) {
         await options.syncArrowAwareCursorForPoint(point);
-        options.renderDocument();
+        options.renderDocumentChange?.(result) || options.renderDocument();
       } else {
         options.clearDocumentObjectPreviewTransform();
         await options.renderSelectionOnlyUpdate(point, options.syncArrowAwareCursorForPoint);
@@ -785,7 +792,7 @@ export function createEditorPointerController(options) {
       }
       if (changed) {
         await options.syncArrowAwareCursorForPoint(point);
-        options.renderDocument();
+        options.renderDocumentChange?.(result) || options.renderDocument();
       } else {
         options.clearDocumentObjectPreviewTransform();
         await options.renderSelectionOnlyUpdate(point, options.syncArrowAwareCursorForPoint);
@@ -796,7 +803,7 @@ export function createEditorPointerController(options) {
       options.setActiveSelectionGesture(null);
       if (gesture.dragged) {
         const commitPoint = gesture.current || point;
-        await executeDocumentCommand(
+        const result = await executeDocumentCommand(
           {
             type: "move-selection",
             payload: {
@@ -809,7 +816,7 @@ export function createEditorPointerController(options) {
         );
         options.clearDocumentObjectPreviewTransform();
         await options.syncArrowAwareCursorForPoint(commitPoint);
-        options.renderDocument();
+        options.renderDocumentChange?.(result) || options.renderDocument();
       } else if (options.editorState().activeTool === "select") {
         await options.selectClickTarget(point, gesture.additive);
         options.clearDocumentObjectPreviewTransform();
@@ -827,7 +834,7 @@ export function createEditorPointerController(options) {
         return;
       }
       if (gesture.kind === "rotate") {
-        await executeDocumentCommand(
+        const result = await executeDocumentCommand(
           {
             type: "rotate-selection",
             payload: {
@@ -840,11 +847,11 @@ export function createEditorPointerController(options) {
         );
         await options.syncSelectCursorForPoint(point);
         options.clearDocumentObjectPreviewTransform();
-        options.renderDocument();
+        options.renderDocumentChange?.(result) || options.renderDocument();
         return;
       }
       if (gesture.kind === "resize") {
-        await executeDocumentCommand(
+        const result = await executeDocumentCommand(
           {
             type: "resize-selection",
             payload: {
@@ -857,13 +864,13 @@ export function createEditorPointerController(options) {
         );
         await options.syncSelectCursorForPoint(point);
         options.clearDocumentObjectPreviewTransform();
-        options.renderDocument();
+        options.renderDocumentChange?.(result) || options.renderDocument();
         return;
       }
       if (gesture.kind === "move") {
         if (gesture.dragged) {
           const commitPoint = gesture.current || point;
-          await executeDocumentCommand(
+          const result = await executeDocumentCommand(
             {
               type: "move-selection",
               payload: {
@@ -876,7 +883,7 @@ export function createEditorPointerController(options) {
           );
           await options.syncSelectCursorForPoint(commitPoint);
           options.clearDocumentObjectPreviewTransform();
-          options.renderDocument();
+          options.renderDocumentChange?.(result) || options.renderDocument();
         } else {
           await options.selectClickTarget(point, gesture.additive);
           options.clearDocumentObjectPreviewTransform();
@@ -901,7 +908,7 @@ export function createEditorPointerController(options) {
       await options.renderSelectionOnlyUpdate(point);
       return;
     }
-    await executeDocumentCommand(
+    const result = await executeDocumentCommand(
       {
         type: pointerCommitCommandType(),
         payload: {
@@ -915,7 +922,7 @@ export function createEditorPointerController(options) {
     const pendingGraphicObjectId = await Promise.resolve(
       options.state().editorEngine.pendingGraphicObjectId?.() || "",
     );
-    options.renderDocument();
+    options.renderDocumentChange?.(result) || options.renderDocument();
     if (options.editorState().activeTool === "bracket") {
       const start = options.activeBracketDragStart();
       options.setActiveBracketDragStart(null);

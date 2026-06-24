@@ -79,8 +79,7 @@ export function createCanvasContextMenuHost(options) {
     }
     activeContextMenuState = null;
     if (await options.state().editorEngine?.clearSelection?.()) {
-      await options.syncDocumentFromEngine();
-      options.renderDocument();
+      await options.renderSelectionOnlyUpdate?.();
     }
   }
 
@@ -269,14 +268,14 @@ export function createCanvasContextMenuHost(options) {
       if (options.commandEngine?.executeEngineCommand) {
         const result = await options.commandEngine.executeEngineCommand(chemcoreCommand, apply);
         if (result.changed) {
-          options.renderDocument();
+          options.renderDocumentChange?.(result) || options.renderDocument();
         }
         return !!result.changed;
       }
       const fallbackChanged = !!(await apply());
       if (fallbackChanged) {
         await options.syncDocumentFromEngine();
-        options.renderDocument();
+        options.renderDocumentChange?.({ changed: true }) || options.renderDocument();
       }
       return fallbackChanged;
     };

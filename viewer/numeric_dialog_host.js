@@ -28,7 +28,7 @@ export function createNumericDialogHost({ root = document.body, engine, commandE
             : { changed: !!(await targetEngine.applySelectionNumericDialogJson(payloadJson)) };
           const changed = !!result.changed;
           if (changed) {
-            await onApply?.();
+            await onApply?.(result);
           }
           return changed;
         },

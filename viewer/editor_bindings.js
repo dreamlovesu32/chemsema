@@ -393,7 +393,7 @@ async function runHoverEndpointShortcut(event, options) {
   if (!changed) {
     return false;
   }
-  options.renderDocument();
+  options.renderDocumentChange?.(result) || options.renderDocument();
   return true;
 }
 
@@ -422,7 +422,7 @@ async function runHoverBondShortcut(event, options) {
   if (!usesCommandEngine) {
     await options.syncDocumentFromEngine?.();
   }
-  options.renderDocument();
+  options.renderDocumentChange?.(result) || options.renderDocument();
   return true;
 }
 

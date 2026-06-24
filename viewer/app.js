@@ -139,16 +139,16 @@ const objectSettingsHost = createObjectSettingsHost({
   root: document.body,
   engine: () => state.editorEngine,
   commandEngine,
-  onApply: async () => {
-    renderDocument();
+  onApply: async (result) => {
+    renderDocumentChange(result);
   },
 });
 const numericDialogHost = createNumericDialogHost({
   root: document.body,
   engine: () => state.editorEngine,
   commandEngine,
-  onApply: async () => {
-    renderDocument();
+  onApply: async (result) => {
+    renderDocumentChange(result);
   },
 });
 const isDesktopShell = !!desktopFileHost?.available;
@@ -2437,6 +2437,255 @@ function currentDocumentHasTlcPlate() {
   });
 }
 
+function sceneObjectType(object) {
+  return object?.type || object?.objectType || object?.object_type || "object";
+}
+
+function currentDocumentSceneObjectMap() {
+  const objects = new Map();
+  const visit = (object) => {
+    if (!object?.id) {
+      return;
+    }
+    objects.set(object.id, object);
+    for (const child of object.children || []) {
+      visit(child);
+    }
+  };
+  for (const object of state.currentDocument?.objects || []) {
+    visit(object);
+  }
+  return objects;
+}
+
+function currentDocumentObjectIdsInPaintOrder() {
+  const order = [];
+  const seen = new Set();
+  const add = (objectId) => {
+    if (objectId && !seen.has(objectId)) {
+      seen.add(objectId);
+      order.push(objectId);
+    }
+  };
+  for (const primitive of state.coreRenderList || []) {
+    add(primitiveObjectId(primitive));
+  }
+  for (const object of collectCurrentDocumentSceneObjects()) {
+    add(object.id);
+  }
+  return order;
+}
+
+function targetIdsFromCommandResult(result, key) {
+  const ids = new Set();
+  for (const bucket of ["targets", "created", "updated", "deleted"]) {
+    for (const id of result?.[bucket]?.[key] || []) {
+      if (id) {
+        ids.add(id);
+      }
+    }
+  }
+  return ids;
+}
+
+function commandResultHasStyleOnlyChanges(result) {
+  return targetIdsFromCommandResult(result, "styles").size > 0
+    && targetIdsFromCommandResult(result, "objects").size === 0
+    && targetIdsFromCommandResult(result, "nodes").size === 0
+    && targetIdsFromCommandResult(result, "bonds").size === 0;
+}
+
+function addObjectIdsForPrimitiveTargets(objectIds, nodeIds, bondIds) {
+  if (!nodeIds.size && !bondIds.size) {
+    return;
+  }
+  const remainingNodeIds = new Set(nodeIds);
+  const remainingBondIds = new Set(bondIds);
+  const addFromPrimitive = (primitive) => {
+    const objectId = primitiveObjectId(primitive);
+    if (!objectId) {
+      return;
+    }
+    const nodeId = primitiveNodeId(primitive);
+    const bondId = primitiveBondId(primitive);
+    if (nodeId && remainingNodeIds.has(nodeId)) {
+      objectIds.add(objectId);
+      remainingNodeIds.delete(nodeId);
+    }
+    if (bondId && remainingBondIds.has(bondId)) {
+      objectIds.add(objectId);
+      remainingBondIds.delete(bondId);
+    }
+  };
+  for (const primitive of state.coreRenderList || []) {
+    addFromPrimitive(primitive);
+  }
+  const documentLayer = viewerSvg.querySelector('[data-layer="document-content"]');
+  const addFromExistingDom = (attribute, id, remaining) => {
+    if (!documentLayer || !remaining.has(id)) {
+      return;
+    }
+    const element = documentLayer.querySelector(`[${attribute}="${CSS.escape(id)}"]`);
+    const objectElement = element?.closest?.("[data-object-id]");
+    const objectId = objectElement?.dataset?.objectId || element?.dataset?.objectId || "";
+    if (objectId) {
+      objectIds.add(objectId);
+      remaining.delete(id);
+    }
+  };
+  for (const nodeId of [...remainingNodeIds]) {
+    addFromExistingDom("data-node-id", nodeId, remainingNodeIds);
+  }
+  for (const bondId of [...remainingBondIds]) {
+    addFromExistingDom("data-bond-id", bondId, remainingBondIds);
+  }
+  if (remainingNodeIds.size || remainingBondIds.size) {
+    for (const object of collectCurrentDocumentSceneObjects()) {
+      if (sceneObjectType(object) === "molecule") {
+        objectIds.add(object.id);
+      }
+    }
+  }
+}
+
+function expandObjectIdsWithDescendants(objectIds, objectMap = currentDocumentSceneObjectMap()) {
+  const expanded = new Set(objectIds);
+  const visit = (object) => {
+    for (const child of object?.children || []) {
+      if (child?.id) {
+        expanded.add(child.id);
+      }
+      visit(child);
+    }
+  };
+  for (const objectId of [...objectIds]) {
+    visit(objectMap.get(objectId));
+  }
+  return expanded;
+}
+
+function objectIdsForCommandResultPatch(result) {
+  if (!result?.changed || commandResultHasStyleOnlyChanges(result)) {
+    return new Set();
+  }
+  const objectIds = targetIdsFromCommandResult(result, "objects");
+  addObjectIdsForPrimitiveTargets(
+    objectIds,
+    targetIdsFromCommandResult(result, "nodes"),
+    targetIdsFromCommandResult(result, "bonds"),
+  );
+  return expandObjectIdsWithDescendants(objectIds);
+}
+
+function removeDocumentObjectDom(documentLayer, objectId) {
+  const selector = `[data-object-id="${CSS.escape(objectId)}"]`;
+  const nodes = [...documentLayer.querySelectorAll(selector)];
+  const nodeSet = new Set(nodes);
+  for (const node of nodes) {
+    let parent = node.parentElement;
+    let hasRemovedAncestor = false;
+    while (parent && parent !== documentLayer) {
+      if (nodeSet.has(parent)) {
+        hasRemovedAncestor = true;
+        break;
+      }
+      parent = parent.parentElement;
+    }
+    if (!hasRemovedAncestor) {
+      node.remove();
+    }
+  }
+}
+
+function renderDocumentObjectPatchNode(objectId, objectMap) {
+  const object = objectMap.get(objectId);
+  const primitives = (state.coreRenderList || [])
+    .filter((primitive) => primitiveObjectId(primitive) === objectId);
+  if (!object && !primitives.length) {
+    return null;
+  }
+  const group = makeSvgNode("g", {
+    "data-object-id": objectId,
+    "data-object-type": sceneObjectType(object),
+    "data-renderer": primitives.length ? "core-patch" : "scene-patch",
+  });
+  if (primitives.length) {
+    for (const primitive of primitives) {
+      renderCorePrimitive(group, primitive, corePrimitiveRenderOptions());
+    }
+  } else if (object) {
+    const wrapper = makeSvgNode("g", {});
+    sceneRenderer.renderSceneObject(wrapper, object, state.currentDocument);
+    group.append(...wrapper.childNodes);
+  }
+  return group.childNodes.length ? group : null;
+}
+
+function findDocumentPatchAnchor(documentLayer, objectId, patchedObjectIds, paintOrder) {
+  const startIndex = paintOrder.indexOf(objectId);
+  if (startIndex < 0) {
+    return null;
+  }
+  const laterObjectIds = new Set(
+    paintOrder.slice(startIndex + 1).filter((candidate) => !patchedObjectIds.has(candidate)),
+  );
+  for (const child of documentLayer.children) {
+    const childObjectId = child.dataset?.objectId
+      || child.querySelector?.("[data-object-id]")?.dataset?.objectId
+      || "";
+    if (laterObjectIds.has(childObjectId)) {
+      return child;
+    }
+  }
+  return null;
+}
+
+function renderDocumentChange(result = null) {
+  if (!isEditingRustDocument() || !state.currentDocument || !result?.changed) {
+    renderDocument();
+    return true;
+  }
+  const documentLayer = viewerSvg.querySelector('[data-layer="document-content"]');
+  const objectIds = objectIdsForCommandResultPatch(result);
+  if (!documentLayer || !objectIds.size) {
+    renderDocument();
+    return true;
+  }
+  clearDocumentObjectPreviewTransform();
+  const objectMap = currentDocumentSceneObjectMap();
+  const paintOrder = currentDocumentObjectIdsInPaintOrder();
+  const orderedObjectIds = [...objectIds].sort((a, b) => {
+    const ai = paintOrder.indexOf(a);
+    const bi = paintOrder.indexOf(b);
+    return (ai < 0 ? Number.MAX_SAFE_INTEGER : ai) - (bi < 0 ? Number.MAX_SAFE_INTEGER : bi);
+  });
+  for (const objectId of orderedObjectIds) {
+    removeDocumentObjectDom(documentLayer, objectId);
+  }
+  for (const objectId of orderedObjectIds) {
+    const node = renderDocumentObjectPatchNode(objectId, objectMap);
+    if (!node) {
+      continue;
+    }
+    const anchor = findDocumentPatchAnchor(documentLayer, objectId, objectIds, paintOrder);
+    documentLayer.insertBefore(node, anchor);
+  }
+  syncViewerStats();
+  renderEditorOverlay();
+  positionActiveTextEditor();
+  return true;
+}
+
+function syncViewerStats() {
+  const counts = {};
+  for (const object of state.currentDocument?.objects || []) {
+    counts[object.type] = (counts[object.type] || 0) + 1;
+  }
+  viewerStats.textContent = Object.entries(counts)
+    .map(([type, count]) => `${type}: ${count}`)
+    .join(" | ");
+}
+
 const renderEditorOverlay = (...args) => editorOverlayRenderer.renderEditorOverlay(...args);
 const currentSelectionRotateHandle = (...args) => editorOverlayRenderer.currentSelectionRotateHandle(...args);
 const selectionResizeHandleHit = (...args) => editorOverlayRenderer.selectionResizeHandleHit(...args);
@@ -2450,6 +2699,7 @@ const editorCommandController = createEditorCommandController({
   isEditingRustDocument,
   syncDocumentFromEngine,
   renderDocument,
+  renderDocumentChange,
   renderEditorOverlay,
   refreshCommandAvailability,
   activateEditorTool,
@@ -2475,6 +2725,7 @@ canvasContextMenuHost = createCanvasContextMenuHost({
   renderSelectionOnlyUpdate,
   syncDocumentFromEngine,
   renderDocument,
+  renderDocumentChange,
   runEditorCommand,
   applySelectionColor,
   applyArrowOptionsToSelection,
@@ -2508,6 +2759,7 @@ const editorPointerController = createEditorPointerController({
   syncArrowAwareCursorForPoint,
   syncDocumentFromEngine,
   renderDocument,
+  renderDocumentChange,
   renderSelectionOnlyUpdate,
   selectionResizeHandleHit,
   selectionRotateHandleHit,
@@ -3428,7 +3680,27 @@ async function openTextEditorAt(point, options = {}) {
 
 function openTextEditorSession(session) {
   textEditorController.openTextEditorSession(engineSessionToEditorSession(session));
-  renderDocument();
+  const targetResult = commandResultForTextEditorTarget(activeTextEditor?.session?.target);
+  if (targetResult) {
+    renderDocumentChange(targetResult);
+  } else {
+    renderEditorOverlay(currentEditorRenderList());
+  }
+}
+
+function commandResultForTextEditorTarget(target) {
+  if (!target) {
+    return null;
+  }
+  if (target.kind === "text-object") {
+    const objectId = target.objectId || target.object_id || null;
+    return objectId ? { changed: true, targets: { objects: [objectId] } } : null;
+  }
+  if (target.kind === "endpoint-label") {
+    const nodeId = target.nodeId || target.node_id || null;
+    return nodeId ? { changed: true, targets: { nodes: [nodeId] } } : null;
+  }
+  return null;
 }
 
 function textEditPrimitiveNodeId(primitive) {
@@ -3830,6 +4102,7 @@ async function finishActiveTextEditor(commit = true) {
     return false;
   }
   const { root, session, input } = activeTextEditor;
+  const activeTextTargetResult = commandResultForTextEditorTarget(session?.target);
   input?.blur?.();
   const selection = window.getSelection?.();
   selection?.removeAllRanges?.();
@@ -3838,7 +4111,11 @@ async function finishActiveTextEditor(commit = true) {
   textEditorLayer.replaceChildren();
   activeTextEditor = null;
   if (!commit) {
-    renderDocument();
+    if (activeTextTargetResult) {
+      renderDocumentChange(activeTextTargetResult);
+    } else {
+      renderEditorOverlay(currentEditorRenderList());
+    }
     return false;
   }
   const engineSessionJson = JSON.stringify(editorSessionToEngineSession(nextSession));
@@ -3854,7 +4131,7 @@ async function finishActiveTextEditor(commit = true) {
       ? state.editorEngine?.applyBracketLabelText?.(bracketLabelObjectId, engineSessionJson)
       : state.editorEngine?.applyTextEdit?.(engineSessionJson),
   );
-  renderDocument();
+  renderDocumentChange(result);
   return Boolean(result.changed);
 }
 
@@ -3926,7 +4203,7 @@ async function applySelectionColor(color) {
   if (!changed) {
     return false;
   }
-  renderDocument();
+  renderDocumentChange(result);
   return true;
 }
 
@@ -4434,6 +4711,7 @@ bindEditorControls({
   syncEngineToolState,
   syncDocumentFromEngine,
   renderDocument,
+  renderDocumentChange,
   renderEditorOverlay,
   currentEditorRenderList,
   renderSecondaryToolbar,
@@ -4922,7 +5200,7 @@ async function applySelectionArrangeCommand(command) {
   if (!changed) {
     return false;
   }
-  renderDocument();
+  renderDocumentChange(result);
   return true;
 }
 
@@ -4965,7 +5243,7 @@ async function applyArrowOptionsToSelection() {
   );
   const changed = !!result.changed;
   if (changed) {
-    renderDocument();
+    renderDocumentChange(result);
   }
   return changed;
 }
@@ -5055,13 +5333,7 @@ function renderDocument() {
     }
   }
 
-  const counts = {};
-  for (const object of documentData.objects) {
-    counts[object.type] = (counts[object.type] || 0) + 1;
-  }
-  viewerStats.textContent = Object.entries(counts)
-    .map(([type, count]) => `${type}: ${count}`)
-    .join(" | ");
+  syncViewerStats();
   renderEditorOverlay();
   positionActiveTextEditor();
 }

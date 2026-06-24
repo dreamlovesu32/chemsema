@@ -37,13 +37,13 @@ export function createEditorCommandController(options) {
     try {
       const payload = await options.desktopFileHost.readClipboard();
       if (payload?.chemcoreFragmentJson) {
-        return !!(await executeDocumentCommand(
+        return await executeDocumentCommand(
           {
             type: "paste-clipboard",
             payload: { source: "native" },
           },
           () => state.editorEngine.pasteClipboardJson(payload.chemcoreFragmentJson),
-        ));
+        );
       }
     } catch (error) {
       console.warn("Failed to read native clipboard", error);
@@ -54,9 +54,13 @@ export function createEditorCommandController(options) {
   async function executeDocumentCommand(command, apply, executeOptions = {}) {
     if (options.commandEngine?.executeEngineCommand) {
       const result = await options.commandEngine.executeEngineCommand(command, apply, executeOptions);
-      return !!result.changed;
+      return result;
     }
-    return !!(await apply());
+    const changed = !!(await apply());
+    if (changed) {
+      await options.syncDocumentFromEngine?.();
+    }
+    return { changed };
   }
 
   async function runEditorCommand(command) {
@@ -65,7 +69,7 @@ export function createEditorCommandController(options) {
       return false;
     }
     let changed = false;
-    let shouldRenderDocument = false;
+    const commandChanged = (value) => value?.changed ?? Boolean(value);
     if (command === "undo") {
       changed = await executeDocumentCommand("undo", () => state.editorEngine.undo());
     } else if (command === "redo") {
@@ -75,16 +79,19 @@ export function createEditorCommandController(options) {
       const documentJson = await state.editorEngine.clipboardDocumentJson?.() || null;
       changed = !!(await state.editorEngine.copySelection?.());
       changed = await writeNativeClipboardFromSelection(fragmentJson, documentJson) || changed;
+      options.renderEditorOverlay();
+      options.refreshCommandAvailability();
+      return changed;
     } else if (command === "cut") {
       const fragmentJson = await state.editorEngine.clipboardSelectionJson?.() || null;
       const documentJson = await state.editorEngine.clipboardDocumentJson?.() || null;
       changed = await executeDocumentCommand("cut-selection", () => state.editorEngine.cutSelection?.());
-      if (changed) {
+      if (commandChanged(changed)) {
         await writeNativeClipboardFromSelection(fragmentJson, documentJson);
       }
     } else if (command === "paste") {
       changed = await pasteFromNativeClipboard();
-      if (!changed) {
+      if (!commandChanged(changed)) {
         changed = await executeDocumentCommand(
           {
             type: "paste-clipboard",
@@ -97,8 +104,10 @@ export function createEditorCommandController(options) {
       changed = await executeDocumentCommand("delete-selection", () => state.editorEngine.deleteSelection());
     } else if (command === "select-all") {
       await options.activateEditorTool("select");
-      changed = !!(await state.editorEngine.selectAll?.());
-      shouldRenderDocument = true;
+      changed = { changed: !!(await state.editorEngine.selectAll?.()) };
+      options.renderEditorOverlay();
+      options.refreshCommandAvailability();
+      return changed.changed;
     } else if (command === "group-selection") {
       changed = await executeDocumentCommand("group-selection", () => state.editorEngine.groupSelection?.());
     } else if (command === "ungroup-selection") {
@@ -117,9 +126,8 @@ export function createEditorCommandController(options) {
     } else {
       return false;
     }
-    if (changed || shouldRenderDocument) {
-      await options.syncDocumentFromEngine();
-      options.renderDocument();
+    if (commandChanged(changed)) {
+      options.renderDocumentChange?.(changed) || options.renderDocument();
     } else {
       options.renderEditorOverlay();
       options.refreshCommandAvailability();

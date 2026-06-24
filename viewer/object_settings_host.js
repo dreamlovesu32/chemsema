@@ -22,7 +22,7 @@ export function createObjectSettingsHost({ root = document.body, engine, command
             : { changed: !!(await targetEngine.applyObjectSettingsDialogJson(settingsJson)) };
           const changed = !!result.changed;
           if (changed) {
-            await onApply?.();
+            await onApply?.(result);
           }
           return changed;
         },

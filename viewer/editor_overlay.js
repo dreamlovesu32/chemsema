@@ -10,8 +10,23 @@ const SELECTION_RESIZE_HANDLE_SCREEN_PX = 1.5;
 const SELECTION_ROTATE_HANDLE_RADIUS_SCREEN_PX = 2.0;
 const SELECTION_ROTATE_HANDLE_OFFSET_SCREEN_PX = 18;
 const SELECTION_CENTER_CROSS_HALF_SCREEN_PX = 5;
+const EDITOR_OVERLAY_LAYER_SELECTOR = '[data-layer="editor-overlay"]';
 
 export function createEditorOverlayRenderer(options) {
+  function ensureEditorOverlayRoot(viewerSvg) {
+    let overlay = viewerSvg?.querySelector(EDITOR_OVERLAY_LAYER_SELECTOR);
+    if (!overlay && viewerSvg) {
+      overlay = makeSvgNode("g", { "data-layer": "editor-overlay", "pointer-events": "none" });
+      viewerSvg.appendChild(overlay);
+    }
+    return overlay;
+  }
+
+  function resetEditorOverlayRoot(overlay) {
+    overlay.replaceChildren();
+    overlay.removeAttribute("transform");
+  }
+
   function appendTlcRfLabel(overlay, hit) {
     if (!hit?.center) {
       return;
@@ -451,12 +466,16 @@ export function createEditorOverlayRenderer(options) {
 
   function renderEditorOverlay(renderList = null) {
     const viewerSvg = options.viewerSvg();
-    viewerSvg?.querySelector('[data-layer="editor-overlay"]')?.remove();
     if (!options.isEditingRustDocument()) {
+      viewerSvg?.querySelector(EDITOR_OVERLAY_LAYER_SELECTOR)?.remove();
       return;
     }
+    const overlay = ensureEditorOverlayRoot(viewerSvg);
+    if (!overlay) {
+      return;
+    }
+    resetEditorOverlayRoot(overlay);
     const primitives = renderList || options.currentEditorRenderList();
-    const overlay = makeSvgNode("g", { "data-layer": "editor-overlay", "pointer-events": "none" });
     const previewTransform = options.activeDocumentPreviewTransform();
     if (previewTransform) {
       overlay.setAttribute("transform", previewTransform);
@@ -654,8 +673,8 @@ export function createEditorOverlayRenderer(options) {
         }));
       }
     }
-    if (overlay.childNodes.length) {
-      viewerSvg.appendChild(overlay);
+    if (!overlay.childNodes.length) {
+      overlay.remove();
     }
   }
 
