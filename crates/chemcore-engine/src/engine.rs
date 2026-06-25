@@ -979,10 +979,10 @@ impl Engine {
         bond_ids: &BTreeSet<String>,
         object_ids: &BTreeSet<String>,
     ) -> Vec<RenderPrimitive> {
-        let document = self
-            .preview_document()
-            .unwrap_or_else(|| self.state.document.clone());
-        render_document_targets(&document, node_ids, bond_ids, object_ids)
+        if let Some(preview_document) = self.preview_document() {
+            return render_document_targets(&preview_document, node_ids, bond_ids, object_ids);
+        }
+        render_document_targets(&self.state.document, node_ids, bond_ids, object_ids)
     }
 
     pub fn set_tool_state(&mut self, tool: ToolState) {

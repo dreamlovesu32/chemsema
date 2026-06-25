@@ -543,10 +543,22 @@ class TauriEngineSession {
   }
 
   revision() {
+    if (this.layoutEngine?.revision) {
+      const revision = Number(this.layoutEngine.revision()) || 0;
+      this.cache.revision = revision;
+      return revision;
+    }
     return this.cache.revision || 0;
   }
 
   lastCommandResultJson() {
+    if (this.layoutEngine?.lastCommandResultJson) {
+      const resultJson = this.layoutEngine.lastCommandResultJson();
+      if (typeof resultJson === "string") {
+        this.cache.lastCommandResultJson = resultJson;
+        return resultJson;
+      }
+    }
     return this.cache.lastCommandResultJson || "null";
   }
 

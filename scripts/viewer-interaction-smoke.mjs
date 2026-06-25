@@ -1049,7 +1049,15 @@ async function measureCommitLatency(page, label, action, predicate, predicateArg
   await page.waitForFunction(predicate, predicateArg, { timeout: 1500 });
   const waitMs = Date.now() - waitStarted;
   const elapsed = await page.evaluate((start) => performance.now() - start, started);
-  assert(elapsed < thresholdMs, `${label} committed too slowly: ${elapsed.toFixed(1)}ms (action=${actionMs}ms wait=${waitMs}ms)`);
+  if (elapsed >= thresholdMs) {
+    const diagnostics = await page.evaluate((start) => ({
+      measureStartedAt: start,
+      measureEndedAt: performance.now(),
+      commitTiming: window.__chemcoreDebug?.creationCommitStats?.last || null,
+      lastCommandResult: JSON.parse(window.__chemcoreDebug?.state?.editorEngine?.lastCommandResultJson?.() || "null"),
+    }), started);
+    assert(false, `${label} committed too slowly: ${elapsed.toFixed(1)}ms (action=${actionMs}ms wait=${waitMs}ms) ${JSON.stringify(diagnostics)}`);
+  }
   return elapsed;
 }
 

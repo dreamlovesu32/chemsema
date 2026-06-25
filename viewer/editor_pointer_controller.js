@@ -15,23 +15,11 @@ export function createEditorPointerController(options) {
 
   async function executeDocumentCommand(command, apply, executeOptions = {}) {
     if (options.commandEngine?.executeEngineCommand) {
-      const result = await options.commandEngine.executeEngineCommand(command, apply, executeOptions);
-      if (executeOptions.sync === false && executeOptions.deferDocumentSync && result?.changed) {
-        await options.syncDocumentFromEngine?.({
-          syncRenderList: false,
-          refreshSnapshot: false,
-        });
-      }
-      return result;
+      return options.commandEngine.executeEngineCommand(command, apply, executeOptions);
     }
     const applyResult = apply();
     const rawResult = applyResult && typeof applyResult.then === "function" ? await applyResult : applyResult;
-    if (rawResult && executeOptions.sync === false && executeOptions.deferDocumentSync) {
-      await options.syncDocumentFromEngine?.({
-        syncRenderList: false,
-        refreshSnapshot: false,
-      });
-    } else if (rawResult) {
+    if (rawResult && !(executeOptions.sync === false && executeOptions.deferDocumentSync)) {
       await options.syncDocumentFromEngine({
         syncRenderList: executeOptions.syncRenderList !== false,
       });
@@ -185,7 +173,7 @@ export function createEditorPointerController(options) {
     await options.state().editorEngine?.clearInteraction?.();
     invalidateEngineReadCache();
     if (keepSelectionOverlay) {
-      options.renderEditorOverlay?.(options.currentEditorRenderList?.() || []);
+      await options.renderSelectionOnlyUpdate?.(null, null);
     } else {
       clearEditorOverlayRoot();
     }
@@ -196,6 +184,10 @@ export function createEditorPointerController(options) {
     clearEditorOverlayRoot();
   }
 
+  function clearInteractionOverlayBeforeCommit() {
+    clearInteractionOverlayNow();
+  }
+
   async function clearPostCommitInteraction(point = null) {
     suppressHoverUntilPointerLeavesPoint(point);
     await options.state().editorEngine?.clearInteraction?.();
@@ -203,6 +195,20 @@ export function createEditorPointerController(options) {
     clearEditorOverlayRoot();
     options.clearTlcHoverState?.();
     options.syncCanvasCursor?.();
+  }
+
+  function recordCreationCommitTiming(sample) {
+    const debug = window.__chemcoreDebug;
+    if (!debug) {
+      return;
+    }
+    const stats = debug.creationCommitStats || { samples: [] };
+    stats.samples.push(sample);
+    if (stats.samples.length > 120) {
+      stats.samples.splice(0, stats.samples.length - 120);
+    }
+    stats.last = sample;
+    debug.creationCommitStats = stats;
   }
 
   function scheduleDocumentPreviewFrame() {
@@ -1065,9 +1071,6 @@ export function createEditorPointerController(options) {
     event.preventDefault();
     cancelScheduledHoverMove();
     cancelDocumentPreviewFrame();
-    if (!options.activeSelectionGesture() && toolUsesEngineDragPreview(options.editorState().activeTool)) {
-      await updateEngineDragPreview(point, event);
-    }
     cancelEngineDragPreviewFrame();
     if (engineDragPreviewRunning) {
       await drainEngineDragPreviewFrame();
@@ -1339,7 +1342,8 @@ export function createEditorPointerController(options) {
       await options.renderSelectionOnlyUpdate(point);
       return;
     }
-    clearInteractionOverlayNow();
+    clearInteractionOverlayBeforeCommit();
+    const commitStarted = performance.now();
     const result = await executeDocumentCommand(
       {
         type: pointerCommitCommandType(),
@@ -1352,18 +1356,43 @@ export function createEditorPointerController(options) {
       () => options.state().editorEngine.pointerUp(point.x, point.y, event.altKey),
       { sync: false, deferDocumentSync: true },
     );
+    const executedAt = performance.now();
     let commitResult = result;
     if (!commitResult?.changed && engineCreationDrag?.start) {
       commitResult = await executeCreationCommand(
         creationCommandForDrag(engineCreationDrag.tool, engineCreationDrag.start, point),
       ) || commitResult;
     }
+    const fallbackAt = performance.now();
     const pendingGraphicObjectId = await Promise.resolve(
       options.state().editorEngine.pendingGraphicObjectId?.() || "",
     ) || commitResult?.targets?.objects?.[0] || commitResult?.created?.objects?.[0] || "";
     options.renderDocumentChange?.(commitResult) || options.renderDocument();
+    const renderedAt = performance.now();
+    await options.ensureDocumentObjectDomForCommandResult?.(commitResult);
+    const ensuredAt = performance.now();
     invalidateEngineReadCache();
     await clearPostCommitInteraction(point);
+    const clearedAt = performance.now();
+    recordCreationCommitTiming({
+      tool: options.editorState().activeTool,
+      changed: !!commitResult?.changed,
+      commandType: commitResult?.commandType || pointerCommitCommandType(),
+      executeMs: executedAt - commitStarted,
+      fallbackMs: fallbackAt - executedAt,
+      renderMs: renderedAt - fallbackAt,
+      ensureDomMs: ensuredAt - renderedAt,
+      clearMs: clearedAt - ensuredAt,
+      totalMs: clearedAt - commitStarted,
+      commitStartedAt: commitStarted,
+      executedAt,
+      fallbackAt,
+      renderedAt,
+      ensuredAt,
+      clearedAt,
+      targets: commitResult?.targets || null,
+      created: commitResult?.created || null,
+    });
     if (options.editorState().activeTool === "bracket") {
       const start = options.activeBracketDragStart();
       options.setActiveBracketDragStart(null);

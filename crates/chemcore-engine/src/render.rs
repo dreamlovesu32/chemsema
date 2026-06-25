@@ -164,17 +164,47 @@ pub fn render_document_targets(
     object_ids: &BTreeSet<String>,
 ) -> Vec<RenderPrimitive> {
     let mut out = Vec::new();
-    for object in document.scene_objects() {
-        if !object.visible {
-            continue;
-        }
-        if object.object_type == "molecule" && (!node_ids.is_empty() || !bond_ids.is_empty()) {
-            render_molecule_object_targets(&mut out, document, object, node_ids, bond_ids);
-        } else if object_ids.contains(&object.id) {
-            render_scene_object(&mut out, document, object);
-        }
+    for object in &document.objects {
+        render_scene_object_targets(
+            &mut out, document, object, node_ids, bond_ids, object_ids, false,
+        );
     }
     out
+}
+
+fn render_scene_object_targets(
+    out: &mut Vec<RenderPrimitive>,
+    document: &ChemcoreDocument,
+    object: &SceneObject,
+    node_ids: &BTreeSet<String>,
+    bond_ids: &BTreeSet<String>,
+    object_ids: &BTreeSet<String>,
+    ancestor_targeted: bool,
+) {
+    if !object.visible {
+        return;
+    }
+    let directly_targeted = object_ids.contains(&object.id);
+    let object_targeted =
+        directly_targeted || (ancestor_targeted && object.object_type != "molecule");
+    if object.object_type == "molecule" && (!node_ids.is_empty() || !bond_ids.is_empty()) {
+        render_molecule_object_targets(out, document, object, node_ids, bond_ids);
+    } else if object.object_type == "molecule" && directly_targeted {
+        render_scene_object(out, document, object);
+    } else if object_targeted && object.object_type != "group" {
+        render_scene_object(out, document, object);
+    }
+    for child in &object.children {
+        render_scene_object_targets(
+            out,
+            document,
+            child,
+            node_ids,
+            bond_ids,
+            object_ids,
+            object_targeted,
+        );
+    }
 }
 
 struct LayeredPrimitive {

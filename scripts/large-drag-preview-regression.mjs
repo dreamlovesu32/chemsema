@@ -206,14 +206,17 @@ async function main() {
 
     phase.name = "select";
     await page.evaluate(() => { window.__chemcoreRegressionPhase = "select"; });
-    const target = await page.evaluate(() => {
-      const node = window.__chemcoreDebug.document.resources.mol_large.data.nodes[700];
-      const client = window.__chemcoreDebug.worldToClient(node.position[0], node.position[1]);
-      return { id: node.id, x: client.x, y: client.y };
+    const selectionRect = await page.evaluate(() => {
+      const start = window.__chemcoreDebug.worldToClient(560, 500);
+      const end = window.__chemcoreDebug.worldToClient(690, 550);
+      const center = window.__chemcoreDebug.worldToClient(625, 528);
+      return { start, end, center };
     });
 
-    await page.mouse.move(target.x, target.y);
-    await page.mouse.click(target.x, target.y);
+    await page.mouse.move(selectionRect.start.x, selectionRect.start.y);
+    await page.mouse.down();
+    await page.mouse.move(selectionRect.end.x, selectionRect.end.y, { steps: 8 });
+    await page.mouse.up();
     await page.waitForTimeout(80);
     const before = await page.evaluate(() => ({
       renderCount: window.__chemcoreDebug.renderStats.documentRenderCount,
@@ -228,6 +231,7 @@ async function main() {
       window.__chemcoreDebug.backendMovePreviewStats = { samples: [] };
       window.__chemcoreDebug.backendPreviewSchedulerStats = { runs: 0, backendRuns: 0, errors: [] };
     });
+    const target = { id: "selection-center", x: selectionRect.center.x, y: selectionRect.center.y };
     await page.mouse.move(target.x, target.y);
     await page.mouse.down();
     const started = performance.now();

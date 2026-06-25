@@ -635,8 +635,12 @@ function tabDocumentFingerprint(tab) {
 }
 
 function tabDocumentRevision(tab) {
-  const revision = tab?.editorEngine?.revision?.();
-  return Number.isFinite(Number(revision)) ? Number(revision) : null;
+  try {
+    const revision = tab?.editorEngine?.revision?.();
+    return Number.isFinite(Number(revision)) ? Number(revision) : null;
+  } catch {
+    return null;
+  }
 }
 
 function documentTabIsDirty(tab) {
@@ -2900,7 +2904,10 @@ function renderDocumentChange(result = null) {
     renderDocument();
     return true;
   }
-  if (result.deferDocumentSync && renderDocumentPrimitiveChange(result)) {
+  if (result.deferDocumentSync && (
+    renderDocumentObjectPrimitiveChange(result)
+    || renderDocumentPrimitiveChange(result)
+  )) {
     renderEditorOverlay();
     return true;
   }
@@ -2944,16 +2951,33 @@ function renderDocumentChange(result = null) {
 
 function renderDocumentObjectPrimitiveChange(result = null) {
   const objectIds = targetIdsFromCommandResult(result, "objects");
+  const debugSample = {
+    commandType: result?.commandType || result?.command?.type || null,
+    objectIds: [...objectIds],
+    entries: [],
+    patched: false,
+  };
   if (!objectIds.size) {
+    if (window.__chemcoreDebug) {
+      window.__chemcoreDebug.objectPrimitivePatchStats = debugSample;
+    }
     return false;
   }
   const documentLayer = viewerSvg.querySelector('[data-layer="document-content"]');
   if (!documentLayer) {
+    if (window.__chemcoreDebug) {
+      window.__chemcoreDebug.objectPrimitivePatchStats = {
+        ...debugSample,
+        missingDocumentLayer: true,
+      };
+    }
     return false;
   }
   let patched = false;
   for (const objectId of objectIds) {
     const primitives = renderTargetObjectPrimitives(objectId);
+    const entry = { objectId, primitiveCount: primitives.length, appended: false };
+    debugSample.entries.push(entry);
     if (!primitives.length) {
       continue;
     }
@@ -2967,7 +2991,14 @@ function renderDocumentObjectPrimitiveChange(result = null) {
     }
     documentLayer.appendChild(group);
     indexDocumentPrimitiveTree(group);
+    entry.appended = true;
+    entry.childCount = group.childNodes.length;
+    entry.domCount = documentLayer.querySelectorAll(`[data-object-id="${cssEscape(objectId)}"]`).length;
     patched = true;
+  }
+  debugSample.patched = patched;
+  if (window.__chemcoreDebug) {
+    window.__chemcoreDebug.objectPrimitivePatchStats = debugSample;
   }
   if (!patched) {
     return false;
@@ -3157,6 +3188,39 @@ function renderDocumentPrimitiveChange(result = null) {
     patched = renderDocumentPrimitivePatch(primitives, nodeIds, bondIds) || patched;
   }
   patched = renderDocumentObjectIdPatch(objectIds) || patched;
+  return patched;
+}
+
+function cssEscape(value) {
+  return window.CSS?.escape
+    ? window.CSS.escape(String(value))
+    : String(value).replace(/["\\]/g, "\\$&");
+}
+
+async function ensureDocumentObjectDomForCommandResult(result = null) {
+  if (!isEditingRustDocument() || !result?.changed) {
+    return false;
+  }
+  const objectIds = targetIdsFromCommandResult(result, "objects");
+  if (!objectIds.size) {
+    return false;
+  }
+  const documentLayer = viewerSvg.querySelector('[data-layer="document-content"]');
+  if (!documentLayer) {
+    return false;
+  }
+  const existingCount = [...objectIds].reduce(
+    (count, objectId) => count + documentLayer.querySelectorAll(`[data-object-id="${cssEscape(objectId)}"]`).length,
+    0,
+  );
+  if (existingCount > 0) {
+    return true;
+  }
+  await syncDocumentFromEngine({ syncRenderList: false, refreshSnapshot: false });
+  const patched = renderDocumentObjectIdPatch(objectIds);
+  if (patched) {
+    renderEditorOverlay();
+  }
   return patched;
 }
 
@@ -3423,6 +3487,7 @@ const editorPointerController = createEditorPointerController({
   renderDocument,
   renderDocumentChange,
   renderDocumentPrimitiveChange,
+  ensureDocumentObjectDomForCommandResult,
   renderSelectionOnlyUpdate,
   selectionResizeHandleHit,
   selectionRotateHandleHit,

@@ -74,7 +74,7 @@ export function createEditorCommandEngine(options = {}) {
           refreshSnapshot: executeOptions.refreshSnapshot !== false,
         });
       }
-      result = readEngineResult();
+      result = parseCommandResultJson(rawResult) || readEngineResult();
     } else if (activeEngine?.executeCommandJson) {
       const commandJson = JSON.stringify(kernelCommandFrom(normalized));
       const resultJson = await activeEngine.executeCommandJson(commandJson);

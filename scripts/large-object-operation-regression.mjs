@@ -146,7 +146,8 @@ async function openViewer(browser) {
       errors.push(message.text());
     }
   });
-  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("pageerror", (error) => errors.push(error.stack || error.message));
+  page.__chemcoreErrors = errors;
   await page.goto(`${baseUrl}?v=${Date.now()}`, { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => !!window.__chemcoreDebug?.loadDocumentForTest, null, { timeout: 20000 });
   await page.evaluate((doc) => window.__chemcoreDebug.loadDocumentForTest(doc), makeLargeChainDocument(nodeCount));
@@ -210,6 +211,7 @@ async function assertObjectEditPreviewVisible(page, objectId, label) {
 
 async function drawCurvedArrow(page) {
   await page.locator('button[data-tool="arrow"]').click();
+  await page.waitForFunction(() => getComputedStyle(document.querySelector("#viewer-svg")).pointerEvents === "none");
   await page.evaluate(() => {
     window.__chemcoreDebug.state.editorEngine.setArrowEndpointOptions(
       "curved",
@@ -233,14 +235,23 @@ async function drawCurvedArrow(page) {
     return {
       objectId,
       changed: !!command?.changed,
+      command,
+      activeTool: window.__chemcoreDebug.engineState?.tool?.activeTool
+        || window.__chemcoreDebug.engineState?.tool?.active_tool
+        || null,
+      activeGesture: window.__chemcoreDebug.activeSelectionGesture || null,
       primitiveCount: objectId
         ? JSON.parse(window.__chemcoreDebug.state.editorEngine.renderTargetsJson(JSON.stringify({ objects: [objectId] })) || "[]").length
         : 0,
       domCount: objectId
         ? document.querySelectorAll(`[data-object-id="${CSS.escape(objectId)}"]`).length
         : 0,
+      patchStats: window.__chemcoreDebug.objectPrimitivePatchStats || null,
+      commitStats: window.__chemcoreDebug.creationCommitStats?.last || null,
+      scriptSrc: document.querySelector('script[type="module"]')?.src || "",
     };
   });
+  result.errors = page.__chemcoreErrors || [];
   assert(result.changed && result.objectId, `Curved arrow was not created: ${JSON.stringify(result)}`);
   assert(result.domCount > 0, `Curved arrow DOM was not patched: ${JSON.stringify(result)}`);
   assertNoFullRefresh("curved arrow draw", await renderStats(page));
@@ -473,21 +484,20 @@ async function drawBracketOpensTextEditor(page) {
   await page.waitForFunction(() => !!window.__chemcoreDebug.activeTextEditor, null, { timeout: 1000 });
   const elapsed = performance.now() - started;
   const result = await page.evaluate(() => {
-    const isBracketLike = (object) => {
-      const type = object.type || object.objectType || object.object_type;
-      return type === "bracket" || (type === "group" && object.meta?.kind === "bracket-group");
-    };
-    const brackets = (window.__chemcoreDebug.document.objects || [])
-      .filter(isBracketLike);
+    const command = JSON.parse(window.__chemcoreDebug.state.editorEngine.lastCommandResultJson?.() || "null");
+    const objectId = command?.targets?.objects?.[0] || command?.created?.objects?.[0] || null;
     return {
-      bracketCount: brackets.length,
+      objectId,
+      domCount: objectId
+        ? document.querySelectorAll(`[data-layer="document-content"] [data-object-id="${CSS.escape(objectId)}"]`).length
+        : 0,
       activeTextEditor: !!window.__chemcoreDebug.activeTextEditor,
       bracketLabelObjectId: window.__chemcoreDebug.activeTextEditor?.bracketLabelObjectId || null,
       documentRenderCount: window.__chemcoreDebug.renderStats.documentRenderCount || 0,
       renderListJsonCount: window.__chemcoreDebug.renderStats.renderListJsonCount || 0,
     };
   });
-  assert(result.bracketCount > 0, `Bracket was not created: ${JSON.stringify(result)}`);
+  assert(result.domCount > 0, `Bracket DOM was not patched: ${JSON.stringify(result)}`);
   assert(result.activeTextEditor, `Bracket text editor did not open: ${JSON.stringify(result)}`);
   assert(result.bracketLabelObjectId, `Bracket text editor is not linked to bracket: ${JSON.stringify(result)}`);
   assert(elapsed < 350, `Bracket text editor opened too slowly: ${elapsed.toFixed(1)}ms`);
