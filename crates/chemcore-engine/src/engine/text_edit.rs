@@ -301,10 +301,12 @@ fn make_text_payload(
 }
 
 pub(crate) fn text_object_world_bounds(object: &crate::SceneObject) -> Option<[f64; 4]> {
-    let local_box = payload_box(&object.payload).or(object
-        .payload
-        .bbox
-        .map(|bbox| [bbox[0], bbox[1], bbox[2], bbox[3]]))?;
+    let local_box = rendered_text_object_local_bounds(object)
+        .or_else(|| payload_box(&object.payload))
+        .or(object
+            .payload
+            .bbox
+            .map(|bbox| [bbox[0], bbox[1], bbox[2], bbox[3]]))?;
     let x = object.transform.translate[0] + local_box[0];
     let y = object.transform.translate[1] + local_box[1];
     if object.transform.rotate.abs() > crate::EPSILON {
@@ -329,6 +331,67 @@ pub(crate) fn text_object_world_bounds(object: &crate::SceneObject) -> Option<[f
         return Some([min_x, min_y, max_x, max_y]);
     }
     Some([x, y, x + local_box[2], y + local_box[3]])
+}
+
+fn payload_number(payload: &crate::ObjectPayload, key: &str) -> Option<f64> {
+    payload
+        .extra
+        .get(key)?
+        .as_f64()
+        .filter(|value| value.is_finite())
+}
+
+fn payload_bool(payload: &crate::ObjectPayload, key: &str) -> Option<bool> {
+    payload.extra.get(key)?.as_bool()
+}
+
+fn payload_runs_line_count(payload: &crate::ObjectPayload) -> usize {
+    let Some(value) = payload.extra.get("runs").cloned() else {
+        return 0;
+    };
+    let Ok(runs) = serde_json::from_value::<Vec<LabelRun>>(value) else {
+        return 0;
+    };
+    if runs.is_empty() {
+        return 0;
+    }
+    let mut count = 1usize;
+    for run in runs {
+        count += run.text.matches('\n').count();
+    }
+    count
+}
+
+fn payload_text_line_count(payload: &crate::ObjectPayload) -> usize {
+    payload
+        .extra
+        .get("text")
+        .and_then(Value::as_str)
+        .map(|text| {
+            text.split('\n')
+                .filter(|line| !line.trim().is_empty())
+                .count()
+        })
+        .unwrap_or(0)
+}
+
+fn rendered_text_object_local_bounds(object: &crate::SceneObject) -> Option<[f64; 4]> {
+    if !payload_bool(&object.payload, "preserveLines").unwrap_or(false) {
+        return None;
+    }
+    let box_value = payload_box(&object.payload)?;
+    let font_size = payload_number(&object.payload, "fontSize")?;
+    let line_height = payload_number(&object.payload, "lineHeight")?;
+    let baseline_offset =
+        payload_number(&object.payload, "baselineOffset").unwrap_or(font_size * 0.82);
+    let line_count = payload_runs_line_count(&object.payload)
+        .max(payload_text_line_count(&object.payload))
+        .max(1) as f64;
+    let top = 0.0;
+    let bottom = baseline_offset
+        + (line_count - 1.0) * line_height
+        + (font_size - baseline_offset).max(font_size * 0.25);
+    Some([box_value[0], top, box_value[2], bottom.max(box_value[3])])
 }
 
 fn rotate_text_bounds_point(

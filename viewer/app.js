@@ -2439,6 +2439,146 @@ function currentDocumentBoundsContainsPoint(point, paddingPx = 0) {
   return pointInAxisBounds(point, bounds, screenPxToWorld(paddingPx));
 }
 
+function rotatePointAround(point, center, degrees) {
+  const radians = degrees * Math.PI / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  const dx = point.x - center.x;
+  const dy = point.y - center.y;
+  return {
+    x: center.x + dx * cos - dy * sin,
+    y: center.y + dx * sin + dy * cos,
+  };
+}
+
+function pointToSegmentDistance(point, start, end) {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const lengthSq = dx * dx + dy * dy;
+  if (lengthSq <= 1e-9) {
+    return pointDistance(point, start);
+  }
+  const t = Math.max(0, Math.min(1, (((point.x - start.x) * dx) + ((point.y - start.y) * dy)) / lengthSq));
+  return pointDistance(point, {
+    x: start.x + dx * t,
+    y: start.y + dy * t,
+  });
+}
+
+function bracketPairLip(width, height) {
+  return Math.max(0, Math.min(height * 0.07248, width * 0.22));
+}
+
+function bracketPairDepth(width, height, kind) {
+  if (kind === "curly") {
+    return Math.max(0, Math.min(height * 0.14423, width * 0.24));
+  }
+  return Math.max(0, Math.min(height * (1 - Math.sqrt(3) * 0.5), width * 0.22));
+}
+
+function bracketPairLocalHit(point, x, y, width, height, kind, pad) {
+  const right = x + width;
+  const bottom = y + height;
+  if (kind === "square") {
+    const lip = bracketPairLip(width, height);
+    return pointToSegmentDistance(point, { x, y }, { x, y: bottom }) <= pad
+      || pointToSegmentDistance(point, { x: right, y }, { x: right, y: bottom }) <= pad
+      || pointToSegmentDistance(point, { x, y }, { x: x + lip, y }) <= pad
+      || pointToSegmentDistance(point, { x, y: bottom }, { x: x + lip, y: bottom }) <= pad
+      || pointToSegmentDistance(point, { x: right - lip, y }, { x: right, y }) <= pad
+      || pointToSegmentDistance(point, { x: right - lip, y: bottom }, { x: right, y: bottom }) <= pad;
+  }
+  const depth = bracketPairDepth(width, height, kind);
+  return (point.x >= x - depth - pad
+      && point.x <= x + depth + pad
+      && point.y >= y - pad
+      && point.y <= bottom + pad)
+    || (point.x >= right - depth - pad
+      && point.x <= right + depth + pad
+      && point.y >= y - pad
+      && point.y <= bottom + pad);
+}
+
+function fastBracketHoverAtPoint(point) {
+  if (!isEditingRustDocument() || !point) {
+    return null;
+  }
+  const objects = collectCurrentDocumentSceneObjects()
+    .filter((object) => sceneObjectType(object) === "bracket" && object.visible !== false)
+    .sort((a, b) => (Number(b.zIndex ?? b.z_index ?? 0) - Number(a.zIndex ?? a.z_index ?? 0)));
+  const pad = screenPxToWorld(9);
+  for (const object of objects) {
+    const bbox = object.payload?.bbox;
+    if (!Array.isArray(bbox) || bbox.length < 4) {
+      continue;
+    }
+    const [x, y, width, height] = bbox.map(Number);
+    if (width <= 0 || height <= 0) {
+      continue;
+    }
+    const translate = object.transform?.translate || [0, 0];
+    const tx = Number(translate[0] || 0) + x;
+    const ty = Number(translate[1] || 0) + y;
+    const rotate = Number(object.transform?.rotate || 0);
+    const center = { x: tx + width * 0.5, y: ty + height * 0.5 };
+    const local = rotatePointAround(point, center, -rotate);
+    const kind = object.payload?.kind || object.payload?.extra?.kind || "round";
+    const side = object.payload?.side || object.payload?.extra?.side || "";
+    const contains = side
+      ? local.x >= tx - pad && local.x <= tx + width + pad && local.y >= ty - pad && local.y <= ty + height + pad
+      : bracketPairLocalHit(local, tx, ty, width, height, kind, pad);
+    if (!contains) {
+      continue;
+    }
+    const depth = kind === "round" && !side ? bracketPairDepth(width, height, kind) : 0;
+    const leftX = tx - depth;
+    const rightX = tx + width + depth;
+    const handlePoints = side
+      ? [
+        { x: side === "right" ? tx + width : tx, y: ty },
+        { x: side === "right" ? tx + width : tx, y: ty + height },
+      ]
+      : [
+        { x: leftX, y: ty },
+        { x: leftX, y: ty + height },
+        { x: rightX, y: ty },
+        { x: rightX, y: ty + height },
+      ];
+    return {
+      objectId: object.id,
+      handles: handlePoints.map((handle) => rotatePointAround(handle, center, rotate)),
+    };
+  }
+  return null;
+}
+
+function renderFastSelectHover(point) {
+  if (window.__chemcoreDebug) {
+    window.__chemcoreDebug.fastSelectHoverStats = window.__chemcoreDebug.fastSelectHoverStats || { calls: 0, hits: 0, last: null };
+    window.__chemcoreDebug.fastSelectHoverStats.calls += 1;
+    window.__chemcoreDebug.fastSelectHoverStats.last = { point };
+  }
+  const hover = fastBracketHoverAtPoint(point);
+  if (!hover) {
+    return false;
+  }
+  if (window.__chemcoreDebug) {
+    window.__chemcoreDebug.fastSelectHoverStats.hits += 1;
+    window.__chemcoreDebug.fastSelectHoverStats.last = { point, hover };
+  }
+  renderEditorOverlay(hover.handles.map((center) => ({
+    kind: "circle",
+    role: "hover-shape-handle",
+    objectId: hover.objectId,
+    center,
+    radius: screenPxToWorld(2),
+    fill: "#ffffff",
+    stroke: "rgba(47,111,237,0.82)",
+    strokeWidth: screenPxToWorld(1),
+  })));
+  return true;
+}
+
 function shouldHidePrimitiveForActiveEndpointEditor(primitive) {
   if (primitiveMatchesActiveTextEditorTarget(primitive)) {
     return true;
@@ -2957,24 +3097,62 @@ function renderDocumentPrimitivePatch(primitives, nodeIds, bondIds) {
   return true;
 }
 
+function renderDocumentObjectIdPatch(objectIds = new Set()) {
+  const documentLayer = viewerSvg.querySelector('[data-layer="document-content"]');
+  if (!documentLayer || !objectIds.size) {
+    return false;
+  }
+  const objectMap = currentDocumentSceneObjectMap();
+  const patchIds = [...objectIds]
+    .filter((objectId) => sceneObjectType(objectMap.get(objectId)) !== "molecule");
+  if (!patchIds.length) {
+    return false;
+  }
+  const patchSet = new Set(patchIds);
+  const paintOrder = currentDocumentObjectIdsInPaintOrder();
+  const orderedObjectIds = patchIds.sort((a, b) => {
+    const ai = paintOrder.indexOf(a);
+    const bi = paintOrder.indexOf(b);
+    return (ai < 0 ? Number.MAX_SAFE_INTEGER : ai) - (bi < 0 ? Number.MAX_SAFE_INTEGER : bi);
+  });
+  for (const objectId of orderedObjectIds) {
+    removeDocumentObjectDom(documentLayer, objectId);
+  }
+  for (const objectId of orderedObjectIds) {
+    const node = renderDocumentObjectPatchNode(objectId, objectMap);
+    if (!node) {
+      continue;
+    }
+    const anchor = findDocumentPatchAnchor(documentLayer, objectId, patchSet, paintOrder);
+    documentLayer.insertBefore(node, anchor);
+  }
+  rebuildDocumentPrimitiveIndex(documentLayer);
+  syncViewerStats();
+  positionActiveTextEditor();
+  return true;
+}
+
 function renderDocumentPrimitiveChange(result = null) {
   if (!isEditingRustDocument() || !state.currentDocument || !result?.changed) {
     return false;
   }
   const nodeIds = targetIdsFromCommandResult(result, "nodes");
   const bondIds = targetIdsFromCommandResult(result, "bonds");
-  if (!nodeIds.size && !bondIds.size) {
-    return false;
-  }
   if (targetIdsFromCommandResult(result, "styles").size > 0) {
     return false;
   }
-  const primitives = parseEngineJson(state.editorEngine?.renderTargetsJson?.(JSON.stringify({
-    nodes: commandTargetSet(nodeIds),
-    bonds: commandTargetSet(bondIds),
-  })) || "[]", []);
+  const objectIds = targetIdsFromCommandResult(result, "objects");
   clearDocumentObjectPreviewTransform();
-  return renderDocumentPrimitivePatch(primitives, nodeIds, bondIds);
+  let patched = false;
+  if (nodeIds.size || bondIds.size) {
+    const primitives = parseEngineJson(state.editorEngine?.renderTargetsJson?.(JSON.stringify({
+      nodes: commandTargetSet(nodeIds),
+      bonds: commandTargetSet(bondIds),
+    })) || "[]", []);
+    patched = renderDocumentPrimitivePatch(primitives, nodeIds, bondIds) || patched;
+  }
+  patched = renderDocumentObjectIdPatch(objectIds) || patched;
+  return patched;
 }
 
 function structurePreviewTargetIds(selection = currentEditorEngineState()?.selection) {
@@ -2994,6 +3172,57 @@ function structurePreviewTargetIds(selection = currentEditorEngineState()?.selec
 function selectionNeedsBackendMovePreview(selection = currentEditorEngineState()?.selection) {
   const targets = structurePreviewTargetIds(selection);
   return targets.nodeIds.size > 0 || targets.bondIds.size > 0;
+}
+
+function applyDocumentObjectOnlyPreviewTransform(selection, transform) {
+  if (!transform) {
+    return false;
+  }
+  const documentLayer = viewerSvg.querySelector('[data-layer="document-content"]');
+  if (!documentLayer) {
+    return false;
+  }
+  const objectIds = selectedDocumentPreviewObjectIds(selection);
+  if (!objectIds.length) {
+    return false;
+  }
+  removeDocumentPreviewBatchLayer();
+  if (activeDocumentPreviewLayer) {
+    documentLayer.removeAttribute("transform");
+    activeDocumentPreviewLayer = false;
+  }
+  for (const element of activeDocumentPreviewPrimitiveElements) {
+    restoreDocumentPreviewElementTransform(element);
+  }
+  activeDocumentPreviewPrimitiveElements = new Set();
+
+  const nextIds = new Set(objectIds);
+  for (const objectId of activeDocumentPreviewObjectIds) {
+    if (!nextIds.has(objectId)) {
+      for (const element of documentObjectElements(objectId)) {
+        restoreDocumentPreviewElementTransform(element);
+      }
+    }
+  }
+  const nextObjectElements = new Map();
+  for (const objectId of nextIds) {
+    const elements = documentObjectElements(objectId);
+    if (!elements.length) {
+      continue;
+    }
+    nextObjectElements.set(objectId, elements);
+  }
+  if (!nextObjectElements.size) {
+    return false;
+  }
+  for (const elements of nextObjectElements.values()) {
+    for (const element of elements) {
+      applyDocumentPreviewElementTransform(element, transform);
+    }
+  }
+  activeDocumentPreviewObjectIds = new Set(nextObjectElements.keys());
+  activeDocumentPreviewTransform = transform;
+  return true;
 }
 
 function recordBackendMovePreviewTiming(sample) {
@@ -3023,19 +3252,23 @@ async function applyBackendSelectionMovePreview(point, altKey = false) {
   const moveResult = state.editorEngine.updateSelectionMove?.(point.x, point.y, altKey);
   const changed = moveResult && typeof moveResult.then === "function" ? await moveResult : moveResult;
   const updatedAt = performance.now();
+  const objectPreviewed = applyDocumentObjectOnlyPreviewTransform(
+    selection,
+    selectionGestureTransform(gesture),
+  );
   if (!changed) {
     recordBackendMovePreviewTiming({
       updateMs: updatedAt - started,
       renderTargetsMs: 0,
-      patchMs: 0,
-      totalMs: updatedAt - started,
+      patchMs: performance.now() - updatedAt,
+      totalMs: performance.now() - started,
       primitiveCount: 0,
       nodeCount: targets.nodeIds.size,
       bondCount: targets.bondIds.size,
-      patched: false,
+      patched: objectPreviewed,
       changed: false,
     });
-    return true;
+    return objectPreviewed;
   }
   const primitives = parseEngineJson(state.editorEngine.renderTargetsJson?.(JSON.stringify({
     nodes: commandTargetSet(targets.nodeIds),
@@ -3053,7 +3286,7 @@ async function applyBackendSelectionMovePreview(point, altKey = false) {
     primitiveCount: primitives.length,
     nodeCount: targets.nodeIds.size,
     bondCount: targets.bondIds.size,
-    patched,
+    patched: patched || objectPreviewed,
     changed: true,
   });
   return patched;
@@ -3197,13 +3430,13 @@ const editorPointerController = createEditorPointerController({
   currentEditorOverlayRenderList,
   renderEditorOverlay,
   invalidateEditorEngineReadCache,
-  selectionHasLargeOverlay: () => currentSelectionItemCount() >= 80,
   selectionBoundsContainsPoint: currentSelectionBoundsContainsPoint,
   selectionHitContainsPoint: currentSelectionHitContainsPoint,
   documentBoundsContainsPoint: currentDocumentBoundsContainsPoint,
   selectionNeedsBackendMovePreview,
   applyBackendSelectionMovePreview,
   applyDocumentObjectPreviewTransform,
+  hideDocumentDiagnosticsForPreview,
   clearDocumentObjectPreviewTransform,
   commitDocumentObjectPreviewTransform,
   canCommitDocumentObjectPreviewTransform,
@@ -3217,10 +3450,11 @@ const editorPointerController = createEditorPointerController({
   selectClickTarget,
   cursorForShapeAction,
   syncCanvasCursor,
+  renderFastSelectHover,
   hoverPointerMoveDelayMs: (tool) => (
     tool === "select"
     && (viewerSvg?.querySelector('[data-layer="document-content"]')?.childElementCount || 0) > 1000
-      ? 120
+      ? 60
       : 0
   ),
   awaitPendingToolActivation: () => activeToolActivationPromise,
@@ -3284,7 +3518,7 @@ function scheduleDeferredDocumentSync() {
   }
   deferredDocumentSyncHandle = window.setTimeout(async () => {
     deferredDocumentSyncHandle = 0;
-    const recentlyActive = performance.now() - lastEditorPointerActivityAt < 1000;
+    const recentlyActive = performance.now() - lastEditorPointerActivityAt < 2500;
     if (activeSelectionGesture || activeTextEditor || recentlyActive) {
       scheduleDeferredDocumentSync();
       return;
@@ -3293,7 +3527,7 @@ function scheduleDeferredDocumentSync() {
     saveActiveDocumentTabState();
     renderDocumentTabs();
     syncWindowTitle();
-  }, 1200);
+  }, 3000);
 }
 
 async function renderSelectionOnlyUpdate(point, syncCursor = syncSelectCursorForPoint, options = {}) {
@@ -5545,15 +5779,15 @@ function selectedDocumentPreviewObjectIds(selection = currentEditorEngineState()
     return [];
   }
   return [
-    ...(selection.textObjects || []),
-    ...(selection.arrowObjects || []),
+    ...(selection.textObjects || selection.text_objects || []),
+    ...(selection.arrowObjects || selection.arrow_objects || []),
   ];
 }
 
 function selectedStructurePreviewNodeIds(selection) {
   const nodeIds = new Set([
     ...(selection?.nodes || []),
-    ...(selection?.labelNodes || []),
+    ...(selection?.labelNodes || selection?.label_nodes || []),
   ]);
   const selectedBondIds = new Set(selection?.bonds || []);
   if (!selectedBondIds.size) {

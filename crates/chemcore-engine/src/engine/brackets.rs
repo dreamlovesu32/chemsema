@@ -561,9 +561,6 @@ impl Engine {
             if object.object_type != "bracket" || !object.visible {
                 continue;
             }
-            if bracket_side(object).is_none() {
-                continue;
-            }
             let Some(hit) = bracket_side_hover(object, point) else {
                 continue;
             };
@@ -709,13 +706,16 @@ fn bracket_kind(object: &SceneObject) -> &str {
 }
 
 fn bracket_side_hover(object: &SceneObject, point: Point) -> Option<BracketHoverHit> {
-    let (handles, handle_defs) = bracket_side_handle_points(object)?;
+    let (handles, handle_defs) = bracket_handle_points(object)?;
+    let supports_handle_edit = bracket_side(object).is_some();
     let nearest = handles
         .iter()
         .zip(handle_defs.iter().copied())
         .map(|(handle_point, handle)| (handle_point.distance(point), handle))
         .min_by(|left, right| left.0.total_cmp(&right.0));
-    let active_handle = nearest
+    let active_handle = supports_handle_edit
+        .then_some(nearest)
+        .flatten()
         .filter(|(distance, _)| *distance <= ENDPOINT_HIT_RADIUS)
         .map(|(_, handle)| handle);
     if active_handle.is_some() || bracket_side_contains_point(object, point) {
@@ -725,6 +725,13 @@ fn bracket_side_hover(object: &SceneObject, point: Point) -> Option<BracketHover
         });
     }
     None
+}
+
+fn bracket_handle_points(object: &SceneObject) -> Option<(Vec<Point>, Vec<BracketEditHandle>)> {
+    if bracket_side(object).is_some() {
+        return bracket_side_handle_points(object);
+    }
+    bracket_pair_handle_points(object)
 }
 
 fn bracket_side_handle_points(
@@ -756,6 +763,50 @@ fn bracket_side_handle_points(
     ))
 }
 
+fn bracket_pair_handle_points(
+    object: &SceneObject,
+) -> Option<(Vec<Point>, Vec<BracketEditHandle>)> {
+    let [x, y, width, height] = object.payload.bbox?;
+    if width <= crate::EPSILON || height <= crate::EPSILON {
+        return None;
+    }
+    let kind = bracket_kind(object);
+    let tx = object.transform.translate[0] + x;
+    let ty = object.transform.translate[1] + y;
+    let center = Point::new(tx + width * 0.5, ty + height * 0.5);
+    let left_x = match kind {
+        "round" => tx - round_bracket_pair_depth(width, height),
+        _ => tx,
+    };
+    let right_x = match kind {
+        "round" => tx + width + round_bracket_pair_depth(width, height),
+        _ => tx + width,
+    };
+    let points = vec![
+        rotate_point_around(Point::new(left_x, ty), center, object.transform.rotate),
+        rotate_point_around(
+            Point::new(left_x, ty + height),
+            center,
+            object.transform.rotate,
+        ),
+        rotate_point_around(Point::new(right_x, ty), center, object.transform.rotate),
+        rotate_point_around(
+            Point::new(right_x, ty + height),
+            center,
+            object.transform.rotate,
+        ),
+    ];
+    Some((
+        points,
+        vec![
+            BracketEditHandle::Top,
+            BracketEditHandle::Bottom,
+            BracketEditHandle::Top,
+            BracketEditHandle::Bottom,
+        ],
+    ))
+}
+
 fn bracket_side_contains_point(object: &SceneObject, point: Point) -> bool {
     let Some([x, y, width, height]) = object.payload.bbox else {
         return false;
@@ -765,10 +816,88 @@ fn bracket_side_contains_point(object: &SceneObject, point: Point) -> bool {
     let center = Point::new(tx + width * 0.5, ty + height * 0.5);
     let local = rotate_point_around(point, center, -object.transform.rotate);
     let pad = ENDPOINT_HIT_RADIUS;
+    if bracket_side(object).is_none() {
+        return bracket_pair_contains_local_point(
+            local,
+            tx,
+            ty,
+            width,
+            height,
+            bracket_kind(object),
+            pad,
+        );
+    }
     local.x >= tx - pad
         && local.x <= tx + width + pad
         && local.y >= ty - pad
         && local.y <= ty + height + pad
+}
+
+fn bracket_pair_contains_local_point(
+    point: Point,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    kind: &str,
+    pad: f64,
+) -> bool {
+    let right = x + width;
+    let bottom = y + height;
+    match kind {
+        "square" => {
+            let lip = square_bracket_pair_lip(width, height);
+            point_to_segment_distance_local(point, Point::new(x, y), Point::new(x, bottom)) <= pad
+                || point_to_segment_distance_local(
+                    point,
+                    Point::new(right, y),
+                    Point::new(right, bottom),
+                ) <= pad
+                || point_to_segment_distance_local(point, Point::new(x, y), Point::new(x + lip, y))
+                    <= pad
+                || point_to_segment_distance_local(
+                    point,
+                    Point::new(x, bottom),
+                    Point::new(x + lip, bottom),
+                ) <= pad
+                || point_to_segment_distance_local(
+                    point,
+                    Point::new(right - lip, y),
+                    Point::new(right, y),
+                ) <= pad
+                || point_to_segment_distance_local(
+                    point,
+                    Point::new(right - lip, bottom),
+                    Point::new(right, bottom),
+                ) <= pad
+        }
+        _ => {
+            let side_width = if kind == "curly" {
+                curly_bracket_pair_depth(width, height)
+            } else {
+                round_bracket_pair_depth(width, height)
+            };
+            (point.x >= x - side_width - pad
+                && point.x <= x + side_width + pad
+                && point.y >= y - pad
+                && point.y <= bottom + pad)
+                || (point.x >= right - side_width - pad
+                    && point.x <= right + side_width + pad
+                    && point.y >= y - pad
+                    && point.y <= bottom + pad)
+        }
+    }
+}
+
+fn point_to_segment_distance_local(point: Point, start: Point, end: Point) -> f64 {
+    let dx = end.x - start.x;
+    let dy = end.y - start.y;
+    let length_sq = dx * dx + dy * dy;
+    if length_sq <= crate::EPSILON {
+        return point.distance(start);
+    }
+    let t = (((point.x - start.x) * dx + (point.y - start.y) * dy) / length_sq).clamp(0.0, 1.0);
+    point.distance(Point::new(start.x + dx * t, start.y + dy * t))
 }
 
 fn bracket_side_handle_x(kind: &str, side: BracketSide, width: f64) -> f64 {
@@ -782,6 +911,20 @@ fn bracket_side_handle_x(kind: &str, side: BracketSide, width: f64) -> f64 {
             BracketSide::Right => 0.0,
         },
     }
+}
+
+fn square_bracket_pair_lip(width: f64, height: f64) -> f64 {
+    (height * 0.07248).min(width * 0.22).max(0.0)
+}
+
+fn round_bracket_pair_depth(width: f64, height: f64) -> f64 {
+    (height * (1.0 - 3.0_f64.sqrt() * 0.5))
+        .min(width * 0.22)
+        .max(0.0)
+}
+
+fn curly_bracket_pair_depth(width: f64, height: f64) -> f64 {
+    (height * 0.14423).min(width * 0.24).max(0.0)
 }
 
 fn resized_bracket_side_object(

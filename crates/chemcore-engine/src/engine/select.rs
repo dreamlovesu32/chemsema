@@ -42,6 +42,15 @@ use self::drag::*;
 use self::geometry::*;
 use self::render::*;
 
+fn selection_state_has_items(selection: &SelectionState) -> bool {
+    selection.region
+        || !selection.nodes.is_empty()
+        || !selection.bonds.is_empty()
+        || !selection.label_nodes.is_empty()
+        || !selection.arrow_objects.is_empty()
+        || !selection.text_objects.is_empty()
+}
+
 #[derive(Clone)]
 enum SelectHit {
     TextObject { object_id: String },
@@ -549,12 +558,12 @@ impl Engine {
                 return false;
             };
             preserve_selection_after_drag = selection_contains_hit(&self.state.selection, &hit);
-            let mut selection = if additive {
+            let mut selection = if additive || preserve_selection_after_drag {
                 self.state.selection.clone()
             } else {
                 SelectionState::default()
             };
-            if !additive {
+            if !additive && !preserve_selection_after_drag {
                 selection.region = false;
             }
             add_hit_to_selection(&mut selection, hit);
@@ -1338,12 +1347,28 @@ impl Engine {
         self.state.overlay.hover_endpoint = None;
         self.state.overlay.preview = None;
         self.pointer_bond_target = None;
-        if let Some(hit) = self.select_hit_at_point(point) {
-            if selection_contains_hit(&self.state.selection, &hit) {
-                if let SelectHit::Bond { bond_id } = hit {
-                    self.pointer_bond_target = Some(bond_id);
+        if let Some(hover_shape) = self
+            .bracket_hover_at_point(point)
+            .or_else(|| self.shape_hover_at_point(point))
+        {
+            if !self
+                .state
+                .selection
+                .arrow_objects
+                .contains(&hover_shape.object_id)
+            {
+                self.state.overlay.hover_shape = Some(hover_shape);
+            }
+            return;
+        }
+        if selection_state_has_items(&self.state.selection) {
+            if let Some(hit) = self.select_hit_at_point(point) {
+                if selection_contains_hit(&self.state.selection, &hit) {
+                    if let SelectHit::Bond { bond_id } = hit {
+                        self.pointer_bond_target = Some(bond_id);
+                    }
+                    return;
                 }
-                return;
             }
         }
         if self
@@ -1351,6 +1376,17 @@ impl Engine {
             .map(|bounds| point_in_bounds(point, AxisBounds::from_array(bounds)))
             .unwrap_or(false)
         {
+            return;
+        }
+        if let Some((object_id, bounds)) = self.hit_test_text_object(point) {
+            if self.state.selection.text_objects.contains(&object_id) {
+                return;
+            }
+            self.state.overlay.hover_text_box = Some(HoverTextBox {
+                bounds,
+                object_id: Some(object_id),
+                node_id: None,
+            });
             return;
         }
         if let Some((node_id, bounds)) = self.hit_test_endpoint_label_box(point) {
@@ -1363,17 +1399,6 @@ impl Engine {
                 bounds,
                 object_id: None,
                 node_id: Some(node_id),
-            });
-            return;
-        }
-        if let Some((object_id, bounds)) = self.hit_test_text_object(point) {
-            if self.state.selection.text_objects.contains(&object_id) {
-                return;
-            }
-            self.state.overlay.hover_text_box = Some(HoverTextBox {
-                bounds,
-                object_id: Some(object_id),
-                node_id: None,
             });
             return;
         }
@@ -1401,17 +1426,14 @@ impl Engine {
             }
             return;
         }
-        self.state.overlay.hover_shape = self
-            .bracket_hover_at_point(point)
-            .or_else(|| self.shape_hover_at_point(point));
     }
 
     fn select_hit_at_point(&self, point: Point) -> Option<SelectHit> {
-        if let Some((node_id, _)) = self.hit_test_endpoint_label_box(point) {
-            return Some(SelectHit::Label { node_id });
-        }
         if let Some((object_id, _)) = self.hit_test_text_object(point) {
             return Some(SelectHit::TextObject { object_id });
+        }
+        if let Some((node_id, _)) = self.hit_test_endpoint_label_box(point) {
+            return Some(SelectHit::Label { node_id });
         }
         if let Some(endpoint) = hit_test_endpoint(&self.state.document, point, ENDPOINT_HIT_RADIUS)
         {

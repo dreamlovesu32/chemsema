@@ -412,12 +412,14 @@ export function createEditorPointerController(options) {
       return false;
     }
     invalidateEngineReadCache();
+    const previewSelection = options.currentEditorEngineState?.()?.selection || null;
     options.setActiveSelectionGesture({
       kind: "move",
       start: point,
       current: point,
       dragged: false,
       additive: !!event.shiftKey,
+      previewSelection,
     });
     await syncCursor(point);
     clearEditorOverlayRoot();
@@ -450,19 +452,6 @@ export function createEditorPointerController(options) {
       y: bounds.minY - options.cssPxToPt(18),
     };
     return options.pointDistance(point, rotateHandle) <= rotatePad;
-  }
-
-  async function beginLargeSelectionMoveFastPath(point, event) {
-    if (!options.selectionHasLargeOverlay?.()) {
-      return false;
-    }
-    if (!options.selectionHitContainsPoint?.(point)) {
-      return false;
-    }
-    if (selectionHandleZoneContainsPoint(point)) {
-      return false;
-    }
-    return beginSelectionMoveGesture(point, event, options.syncSelectCursorForPoint);
   }
 
   function toolUsesEngineDragPreview(tool) {
@@ -709,9 +698,10 @@ export function createEditorPointerController(options) {
         }
         gesture.current = point;
         gesture.altKey = event.altKey;
-        if (options.selectionNeedsBackendMovePreview?.()) {
+        if (options.selectionNeedsBackendMovePreview?.(gesture.previewSelection)) {
           gesture.backendDocumentPreviewActive = true;
           gesture.previewDirty = true;
+          options.hideDocumentDiagnosticsForPreview?.();
           scheduleDocumentPreviewFrame();
           clearEditorOverlayRoot();
           return;
@@ -755,6 +745,23 @@ export function createEditorPointerController(options) {
       } else {
         scheduleEngineDragPreview(point, event);
       }
+      return;
+    }
+    if (
+      primaryButtonIsDown(event)
+      && editorState.activeTool === "select"
+      && options.routeEditorPointerEvents()
+      && await beginSelectionMoveGesture(point, event, options.syncSelectCursorForPoint)
+    ) {
+      event.preventDefault();
+      return;
+    }
+    if (
+      editorState.activeTool === "select"
+      && options.renderFastSelectHover?.(point)
+    ) {
+      cancelScheduledHoverMove();
+      leaveSelectionHoverSuppression(point);
       return;
     }
     const selectionHoverSuppression = selectionHoverSuppressionState(point);
@@ -840,9 +847,6 @@ export function createEditorPointerController(options) {
         options.setActiveTlcLaneHover(null);
         await options.selectClickTarget(point, !!event.shiftKey);
         await options.renderSelectionOnlyUpdate(point);
-        return;
-      }
-      if (await beginLargeSelectionMoveFastPath(point, event)) {
         return;
       }
       const resizeHandle = options.selectionResizeHandleHit(point);

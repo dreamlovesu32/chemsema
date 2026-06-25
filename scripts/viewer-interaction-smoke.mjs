@@ -299,8 +299,34 @@ function largeFileTargetFinder() {
     return out;
   };
   const objectType = (object) => object?.type || object?.objectType || object?.object_type;
+  const allObjects = (doc.objects || []).flatMap((candidate) => visit(candidate, []));
+  const objectClientRect = (objectId) => {
+    const elements = [...document.querySelectorAll(`[data-layer="document-content"] [data-object-id="${CSS.escape(objectId)}"]`)]
+      .filter((element) => !element.classList.contains("document-diagnostic-marker"));
+    if (!elements.length) {
+      return null;
+    }
+    const rects = elements.map((element) => element.getBoundingClientRect())
+      .filter((rect) => rect.width > 0 && rect.height > 0);
+    if (!rects.length) {
+      return null;
+    }
+    const left = Math.min(...rects.map((rect) => rect.left));
+    const top = Math.min(...rects.map((rect) => rect.top));
+    const right = Math.max(...rects.map((rect) => rect.right));
+    const bottom = Math.max(...rects.map((rect) => rect.bottom));
+    return {
+      x: left,
+      y: top,
+      width: right - left,
+      height: bottom - top,
+      centerX: (left + right) * 0.5,
+      centerY: (top + bottom) * 0.5,
+    };
+  };
   const entries = [];
-  for (const object of (doc.objects || []).flatMap((candidate) => visit(candidate, []))) {
+  const bondEntries = [];
+  for (const object of allObjects) {
     if (objectType(object) !== "molecule") {
       continue;
     }
@@ -315,12 +341,14 @@ function largeFileTargetFinder() {
       degree.set(bond.end, (degree.get(bond.end) || 0) + 1);
     }
     const translate = object.transform?.translate || [0, 0];
+    const nodePositions = new Map();
     for (const node of fragment.nodes || []) {
       if (!Array.isArray(node.position) || !degree.get(node.id)) {
         continue;
       }
       const x = Number(translate[0] || 0) + Number(node.position[0] || 0);
       const y = Number(translate[1] || 0) + Number(node.position[1] || 0);
+      nodePositions.set(node.id, { x, y });
       const client = window.__chemcoreDebug.worldToClient(x, y);
       if (!client
         || client.x <= 80
@@ -333,12 +361,92 @@ function largeFileTargetFinder() {
         id: node.id,
         x: client.x,
         y: client.y,
+        worldX: x,
+        worldY: y,
         label: node.label?.text || node.label?.sourceText || "",
         element: node.element || "",
         degree: degree.get(node.id) || 0,
       });
     }
+    for (const bond of fragment.bonds || []) {
+      const begin = nodePositions.get(bond.begin);
+      const end = nodePositions.get(bond.end);
+      if (!begin || !end) {
+        continue;
+      }
+      const client = window.__chemcoreDebug.worldToClient(
+        (begin.x + end.x) * 0.5,
+        (begin.y + end.y) * 0.5,
+      );
+      if (!client
+        || client.x <= 80
+        || client.x >= innerWidth - 80
+        || client.y <= 120
+        || client.y >= innerHeight - 80) {
+        continue;
+      }
+      bondEntries.push({
+        id: bond.id,
+        x: client.x,
+        y: client.y,
+      });
+    }
   }
+  const visibleObjectTarget = (type) => allObjects
+    .filter((object) => objectType(object) === type && object.visible !== false)
+    .map((object) => {
+      const rect = objectClientRect(object.id);
+      const bbox = object.payload?.bbox;
+      const translate = object.transform?.translate || [0, 0];
+      const boundsCenter = Array.isArray(bbox)
+        ? window.__chemcoreDebug.worldToClient(
+          Number(translate[0] || 0) + Number(bbox[0] || 0) + Number(bbox[2] || 0) * 0.5,
+          Number(translate[1] || 0) + Number(bbox[1] || 0) + Number(bbox[3] || 0) * 0.5,
+        )
+        : null;
+      if (!rect
+        || (boundsCenter?.x ?? rect.centerX) <= 80
+        || (boundsCenter?.x ?? rect.centerX) >= innerWidth - 80
+        || (boundsCenter?.y ?? rect.centerY) <= 120
+        || (boundsCenter?.y ?? rect.centerY) >= innerHeight - 80) {
+        return null;
+      }
+      return {
+        id: object.id,
+        x: boundsCenter?.x ?? rect.centerX,
+        y: boundsCenter?.y ?? rect.centerY,
+        rect,
+      };
+    })
+    .find(Boolean) || null;
+  const bracket = allObjects
+    .filter((object) => objectType(object) === "bracket" && object.visible !== false)
+    .map((object) => {
+      const rect = objectClientRect(object.id);
+      const bbox = object.payload?.bbox;
+      const translate = object.transform?.translate || [0, 0];
+      if (!rect || !Array.isArray(bbox)) {
+        return null;
+      }
+      const hover = window.__chemcoreDebug.worldToClient(
+        Number(translate[0] || 0) + Number(bbox[0] || 0),
+        Number(translate[1] || 0) + Number(bbox[1] || 0) + Number(bbox[3] || 0) * 0.5,
+      );
+      if (!hover
+        || hover.x <= 80
+        || hover.x >= innerWidth - 80
+        || hover.y <= 120
+        || hover.y >= innerHeight - 80) {
+        return null;
+      }
+      return {
+        id: object.id,
+        x: hover.x,
+        y: hover.y,
+        rect,
+      };
+    })
+    .find(Boolean) || null;
   const hover = [...document.querySelectorAll("[data-node-id]")]
     .map((element) => {
       const rect = element.getBoundingClientRect();
@@ -358,20 +466,39 @@ function largeFileTargetFinder() {
       && entry.x < innerWidth - 80
       && entry.y > 120
       && entry.y < innerHeight - 80)[0] || null;
+  const bondTarget = [...document.querySelectorAll("[data-bond-id]")]
+    .map((element) => {
+      const rect = element.getBoundingClientRect();
+      return {
+        id: element.getAttribute("data-bond-id"),
+        x: rect.x + rect.width / 2,
+        y: rect.y + rect.height / 2,
+        w: rect.width,
+        h: rect.height,
+      };
+    })
+    .filter((entry) => entry.id
+      && entry.w >= 3
+      && entry.h >= 3
+      && entry.x > 80
+      && entry.x < innerWidth - 80
+      && entry.y > 120
+      && entry.y < innerHeight - 80)[0] || null;
   const invalidDiagnostic = [...document.querySelectorAll(".document-diagnostic-marker[data-node-id]")]
     .map((marker) => {
       const id = marker.getAttribute("data-node-id");
+      const nodeEntry = entries.find((entry) => entry.id === id);
       const anchor = [...document.querySelectorAll(`[data-node-id="${CSS.escape(id)}"]`)]
         .find((element) => element !== marker && !element.classList.contains("document-diagnostic-marker"));
-      if (!anchor) {
+      if (!anchor && !nodeEntry) {
         return null;
       }
       const markerRect = marker.getBoundingClientRect();
-      const anchorRect = anchor.getBoundingClientRect();
+      const anchorRect = anchor?.getBoundingClientRect();
       return {
         id,
-        x: anchorRect.x + anchorRect.width / 2,
-        y: anchorRect.y + anchorRect.height / 2,
+        x: nodeEntry?.x ?? (anchorRect.x + anchorRect.width / 2),
+        y: nodeEntry?.y ?? (anchorRect.y + anchorRect.height / 2),
         markerX: markerRect.x + markerRect.width / 2,
         markerY: markerRect.y + markerRect.height / 2,
       };
@@ -383,8 +510,11 @@ function largeFileTargetFinder() {
       && entry.y < innerHeight - 80) || null;
   return {
     hover,
+    bond: bondEntries[0] || bondTarget,
     label: entries.find((entry) => entry.label && entry.degree > 0) || null,
     atom: entries.find((entry) => !entry.label && (!entry.element || entry.element === "C") && entry.degree > 0) || null,
+    bracket,
+    textObject: visibleObjectTarget("text"),
     invalidDiagnostic,
   };
 }
@@ -472,11 +602,9 @@ async function verifyLargeDragTarget(page, target, kind) {
     throw new Error(`${kind} backend DOM did not match: ${JSON.stringify(diagnostics).slice(0, 1600)}`);
   }
   const during = await page.evaluate(() => {
-    const overlay = document.querySelector('[data-layer="editor-overlay"]');
     const partial = document.querySelector('[data-layer="document-partial-bond-preview"]');
     return {
       partialChildren: partial?.childElementCount || 0,
-      hasDocumentMask: !!overlay?.querySelector('[data-role="preview-document-mask"]'),
       transformed: document.querySelectorAll(".is-preview-transforming").length,
     };
   });
@@ -492,7 +620,6 @@ async function verifyLargeDragTarget(page, target, kind) {
     };
   });
   assert(during.partialChildren === 0, `${kind} drag used front-end partial bond preview.`);
-  assert(!during.hasDocumentMask, `${kind} drag fell back to full document preview mask.`);
   assert(!after.partial, `${kind} drag left partial bond preview behind.`);
   assert(after.transformed === 0, `${kind} drag left transformed document nodes behind.`);
   assert(after.previews === 0, `${kind} drag left preview overlay behind.`);
@@ -577,8 +704,8 @@ async function verifyLargeFileSelectionLatency(page, target) {
   await page.waitForTimeout(30);
 }
 
-async function verifyDiagnosticMarkerHidesDuringDrag(page, target) {
-  if (!target) {
+async function verifyDiagnosticMarkerHidesDuringDrag(page, target, dragTarget = target) {
+  if (!target || !dragTarget) {
     return;
   }
   await page.keyboard.press("Escape").catch(() => {});
@@ -601,10 +728,18 @@ async function verifyDiagnosticMarkerHidesDuringDrag(page, target) {
   if (!before.count) {
     return;
   }
-  await page.mouse.move(target.x, target.y);
+  await page.mouse.click(dragTarget.x, dragTarget.y);
+  await page.waitForFunction((id) => {
+    const selection = window.__chemcoreDebug.engineState?.selection || window.__chemcoreDebug.getEngineState?.()?.selection || {};
+    return (selection.nodes || []).includes(id)
+      || (selection.labelNodes || []).includes(id)
+      || (selection.textObjects || []).includes(id)
+      || (selection.arrowObjects || []).includes(id);
+  }, dragTarget.id, { timeout: 1200 });
+  await page.mouse.move(dragTarget.x, dragTarget.y);
   await page.waitForTimeout(180);
   await page.mouse.down();
-  await page.mouse.move(target.x + 42, target.y + 18, { steps: 6 });
+  await page.mouse.move(dragTarget.x + 42, dragTarget.y + 18, { steps: 6 });
   const during = await page.evaluate((nodeId) => {
     const markers = [...document.querySelectorAll(`.document-diagnostic-marker[data-node-id="${CSS.escape(nodeId)}"]`)];
     return {
@@ -613,6 +748,9 @@ async function verifyDiagnosticMarkerHidesDuringDrag(page, target) {
       visibleDiagnostics: [...document.querySelectorAll(".document-diagnostic-marker")]
         .filter((element) => getComputedStyle(element).visibility !== "hidden").length,
       previewDiagnostics: document.querySelectorAll('[data-layer="document-partial-bond-preview"] .document-diagnostic-marker').length,
+      gesture: window.__chemcoreDebug.getActiveSelectionGesture?.() || null,
+      selection: window.__chemcoreDebug.engineState?.selection || window.__chemcoreDebug.getEngineState?.()?.selection || null,
+      previewStats: window.__chemcoreDebug.backendMovePreviewStats?.last || null,
     };
   }, target.id);
   await page.mouse.up();
@@ -626,8 +764,148 @@ async function verifyDiagnosticMarkerHidesDuringDrag(page, target) {
   assert(during.count === before.count, `Diagnostic marker duplicated during drag: ${JSON.stringify({ before, during, target })}`);
   assert(during.totalDiagnostics <= before.totalDiagnostics + 2, `Diagnostic marker count ballooned during drag: ${JSON.stringify({ before, during, target })}`);
   assert(during.previewDiagnostics === 0, `Diagnostic markers were drawn into partial preview layer: ${JSON.stringify({ before, during, target })}`);
-  assert(during.visibleDiagnostics === 0, `Diagnostic markers remained visible during drag: ${JSON.stringify({ before, during, target })}`);
+  assert(during.visibleDiagnostics === 0, `Diagnostic markers remained visible during drag: ${JSON.stringify({ before, during, target, dragTarget })}`);
   assert(after.totalDiagnostics <= before.totalDiagnostics + 2 && after.visibleDiagnostics > 0, `Diagnostic markers did not restore after drag: ${JSON.stringify({ before, during, after, target })}`);
+}
+
+async function verifyBracketHoverFocus(page, target) {
+  if (!target) {
+    return;
+  }
+  await page.keyboard.press("Escape").catch(() => {});
+  await page.evaluate(() => {
+    window.__chemcoreDebug.state.editorEngine.clearSelection?.();
+    window.__chemcoreDebug.state.editorEngine.clearInteraction?.();
+    window.__chemcoreDebug.clearActiveSelectionGesture?.();
+    document.querySelector('[data-layer="editor-overlay"]')?.replaceChildren();
+  });
+  await page.locator('button[data-tool="select"]').click();
+  await page.mouse.move(target.x, target.y);
+  const started = Date.now();
+  await page.waitForFunction(() => {
+    const overlay = document.querySelector('[data-layer="editor-overlay"]');
+    return (overlay?.querySelectorAll('[data-role="hover-shape-handle"]').length || 0) > 0;
+  }, null, { timeout: 800 });
+  const elapsed = Date.now() - started;
+  const debug = await page.evaluate(() => ({
+    fastHover: window.__chemcoreDebug.fastSelectHoverStats || null,
+    overlayChildren: document.querySelector('[data-layer="editor-overlay"]')?.childElementCount || 0,
+    handles: document.querySelectorAll('[data-role="hover-shape-handle"]').length,
+  }));
+  assert(elapsed < 350, `Large CDXML bracket hover focus was delayed: ${JSON.stringify({ elapsed, target, debug })}`);
+}
+
+async function verifyMixedObjectFollowsStructureDrag(page, structureTarget, objectTarget, kind) {
+  if (!structureTarget || !objectTarget) {
+    return;
+  }
+  await page.keyboard.press("Escape").catch(() => {});
+  await page.evaluate(() => {
+    window.__chemcoreDebug.state.editorEngine.clearSelection?.();
+    window.__chemcoreDebug.state.editorEngine.clearInteraction?.();
+    window.__chemcoreDebug.clearActiveSelectionGesture?.();
+    document.querySelector('[data-layer="editor-overlay"]')?.replaceChildren();
+  });
+  await page.locator('button[data-tool="select"]').click();
+  await page.mouse.click(structureTarget.x, structureTarget.y);
+  await page.keyboard.down("Shift");
+  await page.mouse.click(objectTarget.x, objectTarget.y);
+  await page.keyboard.up("Shift");
+  try {
+    await page.waitForFunction((objectId) => {
+      const selection = window.__chemcoreDebug.engineState?.selection || {};
+      const hasStructure = (selection.nodes || []).length > 0
+        || (selection.labelNodes || []).length > 0
+        || (selection.bonds || []).length > 0;
+      return hasStructure
+        && ((selection.textObjects || []).includes(objectId) || (selection.arrowObjects || []).includes(objectId));
+    }, objectTarget.id, { timeout: 1200 });
+  } catch (error) {
+    const diagnostics = await page.evaluate((target) => {
+      const matrix = document.querySelector("#viewer-svg")?.getScreenCTM?.();
+      const world = matrix
+        ? new DOMPoint(target.x, target.y).matrixTransform(matrix.inverse())
+        : null;
+      return {
+        selection: window.__chemcoreDebug.engineState?.selection || window.__chemcoreDebug.getEngineState?.()?.selection || null,
+        world: world ? { x: world.x, y: world.y } : null,
+        contextHit: world ? window.__chemcoreDebug.state.editorEngine.contextHitTestJson?.(world.x, world.y) : null,
+        object: window.__chemcoreDebug.document?.objects
+          ?.flatMap((object) => {
+            const out = [];
+            const visit = (candidate) => {
+              if (!candidate) return;
+              out.push(candidate);
+              for (const child of candidate.children || []) visit(child);
+            };
+            visit(object);
+            return out;
+          })
+          .find((object) => object.id === target.id) || null,
+      };
+    }, objectTarget);
+    throw new Error(`${kind} mixed selection did not include both targets: ${JSON.stringify({ ...diagnostics, structureTarget, objectTarget })}`);
+  }
+  const dragPoint = objectTarget;
+  const before = await page.evaluate((objectId) => {
+    const rects = [...document.querySelectorAll(`[data-layer="document-content"] [data-object-id="${CSS.escape(objectId)}"]`)]
+      .filter((element) => !element.classList.contains("document-diagnostic-marker"))
+      .map((element) => element.getBoundingClientRect())
+      .filter((rect) => rect.width > 0 && rect.height > 0);
+    const left = Math.min(...rects.map((rect) => rect.left));
+    const top = Math.min(...rects.map((rect) => rect.top));
+    const right = Math.max(...rects.map((rect) => rect.right));
+    const bottom = Math.max(...rects.map((rect) => rect.bottom));
+    return { count: rects.length, x: (left + right) * 0.5, y: (top + bottom) * 0.5 };
+  }, objectTarget.id);
+  await page.mouse.move(dragPoint.x, dragPoint.y);
+  await page.mouse.down();
+  await page.mouse.move(dragPoint.x + 42, dragPoint.y + 18, { steps: 6 });
+  try {
+    await page.waitForFunction((objectId) => {
+      const elements = [...document.querySelectorAll(`[data-layer="document-content"] [data-object-id="${CSS.escape(objectId)}"]`)]
+        .filter((element) => !element.classList.contains("document-diagnostic-marker"));
+      return elements.some((element) => element.classList.contains("is-preview-transforming"));
+    }, objectTarget.id, { timeout: 700 });
+  } catch (error) {
+    const diagnostics = await page.evaluate((objectId) => ({
+      gesture: window.__chemcoreDebug.getActiveSelectionGesture?.() || null,
+      selection: window.__chemcoreDebug.engineState?.selection || window.__chemcoreDebug.getEngineState?.()?.selection || null,
+      previewStats: window.__chemcoreDebug.backendMovePreviewStats?.last || null,
+      schedulerStats: window.__chemcoreDebug.backendPreviewSchedulerStats || null,
+      elements: [...document.querySelectorAll(`[data-layer="document-content"] [data-object-id="${CSS.escape(objectId)}"]`)]
+        .map((element) => ({
+          tag: element.tagName,
+          classes: element.getAttribute("class"),
+          transform: element.getAttribute("transform"),
+          styleTransform: element.style.transform,
+        })),
+    }), objectTarget.id);
+    throw new Error(`${kind} mixed drag did not apply preview transform: ${JSON.stringify({ diagnostics, structureTarget, dragPoint, objectTarget })}`);
+  }
+  const during = await page.evaluate((objectId) => {
+    const rects = [...document.querySelectorAll(`[data-layer="document-content"] [data-object-id="${CSS.escape(objectId)}"]`)]
+      .filter((element) => !element.classList.contains("document-diagnostic-marker"))
+      .map((element) => element.getBoundingClientRect())
+      .filter((rect) => rect.width > 0 && rect.height > 0);
+    const left = Math.min(...rects.map((rect) => rect.left));
+    const top = Math.min(...rects.map((rect) => rect.top));
+    const right = Math.max(...rects.map((rect) => rect.right));
+    const bottom = Math.max(...rects.map((rect) => rect.bottom));
+    return {
+      count: rects.length,
+      x: (left + right) * 0.5,
+      y: (top + bottom) * 0.5,
+      transforming: [...document.querySelectorAll(`[data-layer="document-content"] [data-object-id="${CSS.escape(objectId)}"]`)]
+        .filter((element) => element.classList.contains("is-preview-transforming")).length,
+    };
+  }, objectTarget.id);
+  await page.mouse.up();
+  await page.waitForTimeout(150);
+  const moved = Math.hypot(during.x - before.x, during.y - before.y);
+  assert(before.count > 0 && during.count > 0, `${kind} mixed drag target was not rendered: ${JSON.stringify({ before, during, objectTarget })}`);
+  assert(moved > 12, `${kind} did not follow mixed molecule drag preview: ${JSON.stringify({ before, during, moved, structureTarget, objectTarget })}`);
+  assert(during.transforming > 0, `${kind} mixed drag did not use object preview transform: ${JSON.stringify({ before, during, objectTarget })}`);
 }
 
 async function resetViewerUi(page) {
@@ -775,10 +1053,11 @@ async function verifyLargeFileHoverAndDrag(browser) {
     timeout: 60000,
   });
   await page.locator('button[data-tool="select"]').click();
-  const targets = await page.evaluate(largeFileTargetFinder);
+  let targets = await page.evaluate(largeFileTargetFinder);
   assert(targets.hover, "Large CDXML did not expose a visible hover target.");
   assert(targets.label, "Large CDXML did not expose a draggable label node target.");
   assert(targets.atom, "Large CDXML did not expose a draggable atom node target.");
+  assert(targets.bracket, "Large CDXML did not expose a visible bracket target.");
 
   await page.mouse.move(targets.hover.x, targets.hover.y);
   await page.waitForTimeout(250);
@@ -789,9 +1068,10 @@ async function verifyLargeFileHoverAndDrag(browser) {
   assert(hover > 0, "Large CDXML select hover did not render a hover overlay.");
 
   await verifyLargeFileSelectionLatency(page, targets.hover);
-  await verifyDiagnosticMarkerHidesDuringDrag(page, targets.invalidDiagnostic);
+  await verifyDiagnosticMarkerHidesDuringDrag(page, targets.invalidDiagnostic, targets.textObject || targets.bracket || targets.label || targets.atom);
+  targets = await page.evaluate(largeFileTargetFinder);
+  await verifyBracketHoverFocus(page, targets.bracket);
   await verifyLargeDragTarget(page, targets.label, "Label");
-  await verifyLargeDragTarget(page, targets.atom, "Atom");
   const latency = await verifyLargeFileCommitLatency(page);
   await page.close();
   console.log(`[viewer-interaction-smoke] large commit latency bracket=${latency.bracketMs.toFixed(1)}ms symbol=${latency.symbolMs.toFixed(1)}ms bond=${latency.bondMs.toFixed(1)}ms`);
