@@ -605,6 +605,7 @@ function largeFileTargetFinder() {
         y: client.y,
         worldX: x,
         worldY: y,
+        objectId: object.id,
         label: node.label?.text || node.label?.sourceText || "",
         element: node.element || "",
         degree: degree.get(node.id) || 0,
@@ -885,6 +886,113 @@ async function verifyLargeDragTarget(page, target, kind) {
   assert(
     commandTargets.changed && commandTargets.nodeIncluded,
     `${kind} drag commit did not report the moved node for incremental rendering: ${JSON.stringify({ target, commandTargets })}`,
+  );
+}
+
+async function verifyLargeRegionSelectionDoesNotDragGroup(page, target) {
+  await page.keyboard.press("Escape").catch(() => {});
+  await page.evaluate(() => {
+    window.__chemcoreDebug.state.editorEngine.clearSelection?.();
+    window.__chemcoreDebug.state.editorEngine.clearInteraction?.();
+    window.__chemcoreDebug.clearActiveSelectionGesture?.();
+    document.querySelector('[data-layer="editor-overlay"]')?.replaceChildren();
+  });
+  await page.locator('button[data-tool="select"]').click();
+  const selected = await page.evaluate((regionTarget) => {
+    const engine = window.__chemcoreDebug.state.editorEngine;
+    const doc = JSON.parse(engine.documentJson());
+    const objectTypeById = new Map();
+    const visit = (object) => {
+      if (!object) {
+        return;
+      }
+      objectTypeById.set(object.id, object.type || object.objectType || object.object_type);
+      for (const child of object.children || []) {
+        visit(child);
+      }
+    };
+    for (const object of doc.objects || []) {
+      visit(object);
+    }
+    engine.selectInRect(
+      regionTarget.worldX - 24,
+      regionTarget.worldY - 24,
+      regionTarget.worldX + 24,
+      regionTarget.worldY + 24,
+      false,
+    );
+    const selection = JSON.parse(engine.stateJson()).selection || {};
+    return {
+      selection,
+      selectedGroups: (selection.arrowObjects || [])
+        .filter((objectId) => objectTypeById.get(objectId) === "group"),
+    };
+  }, target);
+  assert(
+    selected.selectedGroups.length === 0,
+    `Large CDXML region selection captured parent groups: ${JSON.stringify({ target, selected })}`,
+  );
+  assert(
+    (selected.selection.nodes || []).includes(target.id)
+      || (selected.selection.labelNodes || []).includes(target.id),
+    `Large CDXML region selection did not include target node: ${JSON.stringify({ target, selected })}`,
+  );
+
+  const moved = await page.evaluate((regionTarget) => {
+    const engine = window.__chemcoreDebug.state.editorEngine;
+    const nodePosition = (doc, nodeId) => {
+      for (const resource of Object.values(doc.resources || {})) {
+        for (const node of resource?.data?.nodes || []) {
+          if (node.id === nodeId) {
+            return node.position;
+          }
+        }
+      }
+      return null;
+    };
+    const groupTransforms = (doc) => {
+      const out = {};
+      const visit = (object) => {
+        if (!object) {
+          return;
+        }
+        const type = object.type || object.objectType || object.object_type;
+        if (type === "group") {
+          out[object.id] = object.transform?.translate || [0, 0];
+        }
+        for (const child of object.children || []) {
+          visit(child);
+        }
+      };
+      for (const object of doc.objects || []) {
+        visit(object);
+      }
+      return out;
+    };
+    const beforeDoc = JSON.parse(engine.documentJson());
+    const beforeNode = nodePosition(beforeDoc, regionTarget.id);
+    const beforeGroups = groupTransforms(beforeDoc);
+    const began = engine.beginSelectionMove(regionTarget.worldX, regionTarget.worldY, false, false);
+    const updated = engine.updateSelectionMove(regionTarget.worldX + 10, regionTarget.worldY, false);
+    const finished = engine.finishSelectionMove(regionTarget.worldX + 10, regionTarget.worldY, false);
+    const afterDoc = JSON.parse(engine.documentJson());
+    const afterNode = nodePosition(afterDoc, regionTarget.id);
+    const afterGroups = groupTransforms(afterDoc);
+    const command = JSON.parse(engine.lastCommandResultJson?.() || "null");
+    return { began, updated, finished, beforeNode, afterNode, beforeGroups, afterGroups, command };
+  }, target);
+  const dx = (moved.afterNode?.[0] ?? NaN) - (moved.beforeNode?.[0] ?? NaN);
+  assert(
+    moved.began && moved.updated && moved.finished && Math.abs(dx - 10) < 0.01,
+    `Large CDXML region-selected molecule node did not move correctly: ${JSON.stringify({ target, moved })}`,
+  );
+  assert(
+    JSON.stringify(moved.beforeGroups) === JSON.stringify(moved.afterGroups),
+    `Large CDXML region-selected molecule moved parent group transforms: ${JSON.stringify({ target, moved })}`,
+  );
+  assert(
+    (moved.command?.targets?.nodes || []).includes(target.id),
+    `Large CDXML region-selected molecule drag did not report moved node target: ${JSON.stringify({ target, moved })}`,
   );
 }
 
@@ -1392,6 +1500,8 @@ async function verifyLargeFileHoverAndDrag(browser) {
   await verifyDiagnosticMarkerHidesDuringDrag(page, targets.invalidDiagnostic, targets.textObject || targets.bracket || targets.label || targets.atom);
   targets = await page.evaluate(largeFileTargetFinder);
   await verifyBracketHoverFocus(page, targets.bracket);
+  await verifyLargeRegionSelectionDoesNotDragGroup(page, targets.atom);
+  targets = await page.evaluate(largeFileTargetFinder);
   await verifyLargeDragTarget(page, targets.label, "Label");
   const latency = await verifyLargeFileCommitLatency(page);
   await page.close();

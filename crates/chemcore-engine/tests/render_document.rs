@@ -514,6 +514,121 @@ fn region_selection_collapses_group_box_only_when_all_children_are_selected() {
 }
 
 #[test]
+fn region_selecting_grouped_molecule_moves_nodes_not_parent_group() {
+    let document: ChemcoreDocument = serde_json::from_value(json!({
+        "format": { "name": "chemcore", "version": "0.1", "unit": "pt" },
+        "document": {
+            "id": "doc_group_region_molecule",
+            "title": "group region molecule",
+            "page": { "width": 220.0, "height": 160.0, "background": "#ffffff" }
+        },
+        "styles": {
+            "style_molecule_default": {
+                "kind": "molecule",
+                "stroke": "#000000",
+                "strokeWidth": 0.85,
+                "fontFamily": "Arial",
+                "fontSize": 11.0
+            },
+            "style_bracket": {
+                "kind": "stroke",
+                "stroke": "#000000",
+                "strokeWidth": 1.0
+            }
+        },
+        "objects": [{
+            "id": "grp_1",
+            "type": "group",
+            "zIndex": 30,
+            "transform": { "translate": [0.0, 0.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+            "children": [
+                {
+                    "id": "obj_molecule_001",
+                    "type": "molecule",
+                    "visible": true,
+                    "zIndex": 10,
+                    "transform": { "translate": [10.0, 10.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+                    "styleRef": "style_molecule_default",
+                    "payload": { "resourceRef": "mol_001", "bbox": [0.0, 0.0, 80.0, 40.0] }
+                },
+                {
+                    "id": "bracket_1",
+                    "type": "bracket",
+                    "visible": true,
+                    "zIndex": 20,
+                    "transform": { "translate": [120.0, 20.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+                    "styleRef": "style_bracket",
+                    "payload": { "bbox": [0.0, 0.0, 30.0, 60.0], "kind": "square" }
+                }
+            ]
+        }],
+        "resources": {
+            "mol_001": {
+                "type": "molecule_fragment2d",
+                "encoding": "chemcore.molecule.fragment2d",
+                "data": {
+                    "schema": "chemcore.molecule.fragment2d",
+                    "bbox": [0.0, 0.0, 80.0, 40.0],
+                    "nodes": [
+                        { "id": "n1", "element": "C", "atomicNumber": 6, "position": [10.0, 20.0], "charge": 0, "numHydrogens": 0 },
+                        { "id": "n2", "element": "C", "atomicNumber": 6, "position": [60.0, 20.0], "charge": 0, "numHydrogens": 0 }
+                    ],
+                    "bonds": [
+                        { "id": "b1", "begin": "n1", "end": "n2", "order": 1, "strokeWidth": 0.85 }
+                    ]
+                }
+            }
+        }
+    }))
+    .expect("document should deserialize");
+
+    let mut engine = Engine::new();
+    engine
+        .load_document_json(&serde_json::to_string(&document).unwrap())
+        .expect("document should load");
+
+    engine.select_in_rect(Point::new(0.0, 0.0), Point::new(90.0, 60.0), false);
+    assert!(
+        !engine
+            .state()
+            .selection
+            .arrow_objects
+            .contains(&"grp_1".to_string()),
+        "region selection must not directly select the parent group: {:?}",
+        engine.state().selection
+    );
+    assert_eq!(engine.state().selection.bonds, vec!["b1"]);
+    assert!(engine.state().selection.nodes.contains(&"n1".to_string()));
+    assert!(engine.state().selection.nodes.contains(&"n2".to_string()));
+
+    assert!(engine.begin_selection_move_at_point(Point::new(30.0, 30.0), false, false));
+    assert!(engine.update_selection_move(Point::new(40.0, 30.0), false));
+    assert!(engine.finish_selection_move(Point::new(40.0, 30.0), false));
+
+    let group = engine
+        .state()
+        .document
+        .find_scene_object("grp_1")
+        .expect("group should remain");
+    assert_eq!(group.transform.translate, [0.0, 0.0]);
+    let bracket = engine
+        .state()
+        .document
+        .find_scene_object("bracket_1")
+        .expect("bracket should remain");
+    assert_eq!(bracket.transform.translate, [120.0, 20.0]);
+    let fragment = engine
+        .state()
+        .document
+        .resources
+        .get("mol_001")
+        .and_then(|resource| resource.data.as_fragment())
+        .expect("fragment should still exist");
+    assert_eq!(fragment.nodes[0].position, [20.0, 20.0]);
+    assert_eq!(fragment.nodes[1].position, [70.0, 20.0]);
+}
+
+#[test]
 fn select_all_collapses_grouped_molecule_and_text_to_one_group_box() {
     let document: ChemcoreDocument = serde_json::from_value(json!({
         "format": { "name": "chemcore", "version": "0.1", "unit": "pt" },

@@ -1520,10 +1520,8 @@ impl Engine {
             }
         }
         for object in self.state.document.scene_objects() {
-            if !matches!(
-                object.object_type.as_str(),
-                "bracket" | "symbol" | "shape" | "group"
-            ) || !object.visible
+            if !matches!(object.object_type.as_str(), "bracket" | "symbol" | "shape")
+                || !object.visible
             {
                 continue;
             }
