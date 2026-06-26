@@ -1467,6 +1467,120 @@ async function verifyMixedObjectFollowsStructureDrag(page, structureTarget, obje
   );
 }
 
+async function verifyObjectOnlySelectionDragPreview(page, target, kind) {
+  if (!target) {
+    return;
+  }
+  await page.keyboard.press("Escape").catch(() => {});
+  await page.evaluate(() => {
+    window.__chemcoreDebug.state.editorEngine.clearSelection?.();
+    window.__chemcoreDebug.state.editorEngine.clearInteraction?.();
+    window.__chemcoreDebug.clearActiveSelectionGesture?.();
+    document.querySelector('[data-layer="editor-overlay"]')?.replaceChildren();
+  });
+  await page.locator('button[data-tool="select"]').click();
+  await page.mouse.click(target.x, target.y);
+  const selected = await page.waitForFunction((targetId) => {
+    const selection = window.__chemcoreDebug.engineState?.selection
+      || window.__chemcoreDebug.getEngineState?.()?.selection
+      || {};
+    const objectId = (selection.textObjects || []).includes(targetId)
+      ? targetId
+      : (selection.arrowObjects || []).includes(targetId)
+      ? targetId
+      : (selection.textObjects || [])[0] || (selection.arrowObjects || [])[0] || "";
+    return objectId ? { selection, objectId } : false;
+  }, target.id, { timeout: 1200 }).then((handle) => handle.jsonValue());
+  const before = await page.evaluate((objectId) => {
+    const bounds = JSON.parse(window.__chemcoreDebug.state.editorEngine.selectionBoundsJson?.() || "null");
+    const center = bounds
+      ? window.__chemcoreDebug.worldToClient((bounds.minX + bounds.maxX) * 0.5, (bounds.minY + bounds.maxY) * 0.5)
+      : null;
+    const rects = [...document.querySelectorAll(`[data-layer="document-content"] [data-object-id="${CSS.escape(objectId)}"]`)]
+      .filter((element) => !element.classList.contains("document-diagnostic-marker"))
+      .map((element) => element.getBoundingClientRect())
+      .filter((rect) => rect.width > 0 || rect.height > 0);
+    const left = rects.length ? Math.min(...rects.map((rect) => rect.left)) : null;
+    const top = rects.length ? Math.min(...rects.map((rect) => rect.top)) : null;
+    const right = rects.length ? Math.max(...rects.map((rect) => rect.right)) : null;
+    const bottom = rects.length ? Math.max(...rects.map((rect) => rect.bottom)) : null;
+    return {
+      bounds,
+      dragStart: center,
+      count: rects.length,
+      x: rects.length ? (left + right) * 0.5 : null,
+      y: rects.length ? (top + bottom) * 0.5 : null,
+      centers: rects.slice(0, 240).map((rect) => ({
+        x: rect.left + rect.width * 0.5,
+        y: rect.top + rect.height * 0.5,
+      })),
+    };
+  }, selected.objectId);
+  assert(before.count > 0 && before.dragStart, `${kind} did not expose a selected object drag target: ${JSON.stringify({ target, selected, before })}`);
+
+  await page.mouse.move(before.dragStart.x, before.dragStart.y);
+  await page.waitForTimeout(140);
+  const cursor = await page.evaluate(() => ({
+    svg: getComputedStyle(document.querySelector("#viewer-svg")).cursor,
+    container: getComputedStyle(document.querySelector("#viewer-container")).cursor,
+    shield: getComputedStyle(document.querySelector(".canvas-pointer-shield")).cursor,
+  }));
+  assert(
+    [cursor.svg, cursor.container, cursor.shield].includes("grab"),
+    `${kind} selection box interior did not show grab cursor: ${JSON.stringify({ target, selected, before, cursor })}`,
+  );
+
+  await page.mouse.down();
+  await page.mouse.move(before.dragStart.x + 70, before.dragStart.y + 35, { steps: 8 });
+  await page.waitForTimeout(160);
+  const during = await page.evaluate(([objectId, beforeCenters]) => {
+    const elements = [...document.querySelectorAll(
+      `[data-layer="document-content"] [data-object-id="${CSS.escape(objectId)}"], [data-layer="document-batch-preview"] [data-object-id="${CSS.escape(objectId)}"]`,
+    )].filter((element) => !element.classList.contains("document-diagnostic-marker"));
+    const rects = elements
+      .filter((element) => {
+        const style = getComputedStyle(element);
+        return style.visibility !== "hidden" && style.display !== "none";
+      })
+      .map((element) => element.getBoundingClientRect())
+      .filter((rect) => rect.width > 0 || rect.height > 0);
+    const left = rects.length ? Math.min(...rects.map((rect) => rect.left)) : null;
+    const top = rects.length ? Math.min(...rects.map((rect) => rect.top)) : null;
+    const right = rects.length ? Math.max(...rects.map((rect) => rect.right)) : null;
+    const bottom = rects.length ? Math.max(...rects.map((rect) => rect.bottom)) : null;
+    const staleCenters = rects.filter((rect) => {
+      const cx = rect.left + rect.width * 0.5;
+      const cy = rect.top + rect.height * 0.5;
+      return (beforeCenters || []).some((before) => Math.hypot(cx - before.x, cy - before.y) < 2);
+    }).length;
+    return {
+      gesture: window.__chemcoreDebug.getActiveSelectionGesture?.() || null,
+      count: rects.length,
+      x: rects.length ? (left + right) * 0.5 : null,
+      y: rects.length ? (top + bottom) * 0.5 : null,
+      staleCenters,
+      transforming: elements.filter((element) => element.classList.contains("is-preview-transforming")).length,
+      transformSamples: elements
+        .filter((element) => element.classList.contains("is-preview-transforming"))
+        .map((element) => element.getAttribute("transform") || "")
+        .slice(0, 8),
+      batchChildren: document.querySelector('[data-layer="document-batch-preview"]')?.childElementCount || 0,
+    };
+  }, [selected.objectId, before.centers]);
+  await page.mouse.up();
+  await page.waitForTimeout(120);
+  const moved = before.x != null && during.x != null
+    ? Math.hypot(during.x - before.x, during.y - before.y)
+    : 0;
+  assert(
+    !during.transformSamples.some((transform) => /\bscale\(/.test(transform)),
+    `${kind} selection box drag used resize/scale preview instead of move: ${JSON.stringify({ target, selected, before, during })}`,
+  );
+  assert(during.count > 0 && moved > 12, `${kind} object-only drag did not visually move: ${JSON.stringify({ target, selected, before, during, moved })}`);
+  assert(during.transforming > 0 || during.batchChildren > 0, `${kind} object-only drag did not use document preview transform: ${JSON.stringify({ target, selected, before, during })}`);
+  assert(during.staleCenters === 0, `${kind} left visible object primitives at the drag origin: ${JSON.stringify({ target, selected, before, during })}`);
+}
+
 async function resetViewerUi(page) {
   await page.keyboard.press("Escape").catch(() => {});
   await page.keyboard.press("Escape").catch(() => {});
@@ -1677,6 +1791,10 @@ async function verifyLargeFileHoverAndDrag(browser) {
   await verifyLargeDragTarget(page, targets.label, "Label");
   targets = await page.evaluate(largeFileTargetFinder);
   await verifyMixedObjectFollowsStructureDrag(page, targets.atom || targets.label, targets.textObject || targets.bracket, "Large CDXML text/bracket");
+  targets = await page.evaluate(largeFileTargetFinder);
+  await verifyObjectOnlySelectionDragPreview(page, targets.textObject, "Large CDXML text object");
+  targets = await page.evaluate(largeFileTargetFinder);
+  await verifyObjectOnlySelectionDragPreview(page, targets.bracket, "Large CDXML bracket object");
   await page.close();
   const { page: latencyPage, errors: latencyErrors } = await openViewer(browser);
   await latencyPage.locator('input[type="file"]').setInputFiles(largeCdxml);

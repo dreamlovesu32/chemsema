@@ -11,7 +11,7 @@ import { createColorHost } from "./color_host.js";
 import { createObjectSettingsHost } from "./object_settings_host.js";
 import { createNumericDialogHost } from "./numeric_dialog_host.js";
 import { createDesktopFileHost, normalizeDesktopPath } from "./desktop_file_host.js";
-import { createEngineHost } from "./engine_host.js";
+import { createEngineHost } from "./engine_host.js?v=20260626-selection-drag-preview-3";
 import { bindEditorControls, openColorDialog } from "./editor_bindings.js?v=20260624-drop-hardened";
 import { createDocumentFlow } from "./document_flow.js";
 import {
@@ -59,7 +59,7 @@ import {
 import { createSceneRenderer } from "./scene_renderer.js";
 import { createEditorOverlayRenderer } from "./editor_overlay.js?v=20260626-interaction-feedback";
 import { createEditorSelectionState } from "./editor_selection_state.js";
-import { createEditorPointerController } from "./editor_pointer_controller.js?v=20260626-interaction-feedback";
+import { createEditorPointerController } from "./editor_pointer_controller.js?v=20260626-selection-drag-preview-4";
 import { createCanvasContextMenuHost } from "./editor_context_menu.js";
 import { createEditorCommandController } from "./editor_command_controller.js";
 import { createEditorCommandEngine } from "./editor_command_engine.js?v=20260626-interaction-feedback";
@@ -2233,13 +2233,38 @@ function currentSelectionHitContainsPoint(point) {
   return !!state.editorEngine?.selectionContainsPoint?.(point.x, point.y);
 }
 
+function currentSelectedContentHitContainsPoint(point) {
+  if (!isEditingRustDocument() || !point) {
+    return false;
+  }
+  const selection = activeSelectionGesture?.previewSelection
+    || currentEditorEngineState()?.selection;
+  if (!editorSelectionHasItems(selection)) {
+    return false;
+  }
+  const hit = parseEngineJson(state.editorEngine?.contextHitTestJson?.(point.x, point.y) || "null", null);
+  return hit?.selected === true;
+}
+
 function currentSelectionHandleZoneContainsPoint(point) {
   const bounds = currentRenderBounds("selection");
   if (!bounds) {
     return true;
   }
+  if (currentSelectedContentHitContainsPoint(point)) {
+    return false;
+  }
   const edgePad = screenPxToWorld(14);
   const rotatePad = screenPxToWorld(18);
+  const width = Math.max(0, Number(bounds.maxX || 0) - Number(bounds.minX || 0));
+  const height = Math.max(0, Number(bounds.maxY || 0) - Number(bounds.minY || 0));
+  const strictlyInsideBounds = point.x > bounds.minX
+    && point.x < bounds.maxX
+    && point.y > bounds.minY
+    && point.y < bounds.maxY;
+  if (strictlyInsideBounds && (width <= edgePad * 4 || height <= edgePad * 4)) {
+    return false;
+  }
   const insideExpandedBounds = point.x >= bounds.minX - edgePad
     && point.x <= bounds.maxX + edgePad
     && point.y >= bounds.minY - rotatePad
@@ -2388,6 +2413,30 @@ function currentSelectionItemCount(selection = currentEditorEngineState()?.selec
     + (selection.labelNodes?.length || selection.label_nodes?.length || 0)
     + (selection.textObjects?.length || selection.text_objects?.length || 0)
     + (selection.arrowObjects?.length || selection.arrow_objects?.length || 0);
+}
+
+function freshestPreviewSelection(cachedSelection = null) {
+  const currentSelection = parseEngineJson(state.editorEngine?.stateJson?.() || "", null)?.selection || null;
+  if (!cachedSelection) {
+    return currentSelection;
+  }
+  if (!currentSelection) {
+    return cachedSelection;
+  }
+  const cachedObjectIds = new Set([
+    ...(cachedSelection.textObjects || cachedSelection.text_objects || []),
+    ...(cachedSelection.arrowObjects || cachedSelection.arrow_objects || []),
+  ]);
+  const currentObjectIds = [
+    ...(currentSelection.textObjects || currentSelection.text_objects || []),
+    ...(currentSelection.arrowObjects || currentSelection.arrow_objects || []),
+  ];
+  if (currentObjectIds.some((objectId) => !cachedObjectIds.has(objectId))) {
+    return currentSelection;
+  }
+  return currentSelectionItemCount(currentSelection) > currentSelectionItemCount(cachedSelection)
+    ? currentSelection
+    : cachedSelection;
 }
 
 function corePrimitivesForObject(objectId) {
@@ -3360,7 +3409,7 @@ function recordBackendMovePreviewTiming(sample) {
 
 async function applyBackendSelectionMovePreview(point, altKey = false) {
   const gesture = activeSelectionGesture;
-  const selection = gesture?.previewSelection || currentEditorEngineState()?.selection;
+  let selection = freshestPreviewSelection(gesture?.previewSelection);
   if (gesture?.kind !== "move" || !point || !selectionNeedsBackendMovePreview(selection)) {
     return false;
   }
@@ -3371,9 +3420,13 @@ async function applyBackendSelectionMovePreview(point, altKey = false) {
   const moveResult = state.editorEngine.updateSelectionMove?.(point.x, point.y, altKey);
   const changed = moveResult && typeof moveResult.then === "function" ? await moveResult : moveResult;
   const updatedAt = performance.now();
+  selection = freshestPreviewSelection(selection);
+  gesture.previewSelection = selection;
+  const objectPreviewIds = selectedDocumentPreviewObjectIds(selection);
+  const previewTransform = selectionGestureTransform(gesture);
   const objectPreviewed = applyDocumentObjectOnlyPreviewTransform(
     selection,
-    selectionGestureTransform(gesture),
+    previewTransform,
   );
   if (!changed) {
     recordBackendMovePreviewTiming({
@@ -3384,6 +3437,10 @@ async function applyBackendSelectionMovePreview(point, altKey = false) {
       primitiveCount: 0,
       nodeCount: targets.nodeIds.size,
       bondCount: targets.bondIds.size,
+      objectPreviewed,
+      objectPreviewIds,
+      selection: previewSelectionDebugSummary(selection),
+      previewTransform,
       patched: objectPreviewed,
       changed: false,
     });
@@ -3405,6 +3462,10 @@ async function applyBackendSelectionMovePreview(point, altKey = false) {
     primitiveCount: primitives.length,
     nodeCount: targets.nodeIds.size,
     bondCount: targets.bondIds.size,
+    objectPreviewed,
+    objectPreviewIds,
+    selection: previewSelectionDebugSummary(selection),
+    previewTransform,
     patched: patched || objectPreviewed,
     changed: true,
   });
@@ -3527,6 +3588,7 @@ const editorPointerController = createEditorPointerController({
   parseEngineJson,
   pointDistance,
   cssPxToPt,
+  screenPxToWorld,
   routeEditorPointerEvents,
   isEditingRustDocument,
   openTextEditorAt,
@@ -3553,6 +3615,7 @@ const editorPointerController = createEditorPointerController({
   invalidateEditorEngineReadCache,
   selectionBoundsContainsPoint: currentSelectionBoundsContainsPoint,
   selectionHitContainsPoint: currentSelectionHitContainsPoint,
+  selectedContentHitContainsPoint: currentSelectedContentHitContainsPoint,
   documentBoundsContainsPoint: currentDocumentBoundsContainsPoint,
   selectionNeedsBackendMovePreview,
   applyBackendSelectionMovePreview,
@@ -4092,9 +4155,11 @@ async function syncArrowAwareCursorForPoint(point) {
     setCanvasCursorStyle("grab");
     return;
   }
+  const overSelectionBox = currentSelectionHitContainsPoint(point)
+    || currentSelectionBoundsContainsPoint(point);
   if (
     activeToolCanDragSelection()
-    && currentSelectionHitContainsPoint(point)
+    && overSelectionBox
     && !currentSelectionHandleZoneContainsPoint(point)
   ) {
     setCanvasCursorStyle("grab");
@@ -4111,7 +4176,7 @@ async function syncArrowAwareCursorForPoint(point) {
     setCanvasCursorStyle("grab");
     return;
   }
-  if (activeToolCanDragSelection() && currentSelectionHitContainsPoint(point)) {
+  if (activeToolCanDragSelection() && overSelectionBox) {
     setCanvasCursorStyle("grab");
     return;
   }
@@ -4128,7 +4193,7 @@ async function syncArrowAwareCursorForPoint(point) {
     setCanvasCursorStyle("nesw-resize");
     return;
   }
-  const overSelection = currentSelectionHitContainsPoint(point);
+  const overSelection = overSelectionBox;
   if ((editorState.activeTool === "select"
     || editorState.activeTool === "bond"
     || editorState.activeTool === "arrow"
@@ -5905,6 +5970,16 @@ function selectedDocumentPreviewObjectIds(selection = currentEditorEngineState()
   ];
 }
 
+function previewSelectionDebugSummary(selection) {
+  return {
+    nodes: [...(selection?.nodes || [])],
+    bonds: [...(selection?.bonds || [])],
+    labelNodes: [...(selection?.labelNodes || selection?.label_nodes || [])],
+    textObjects: [...(selection?.textObjects || selection?.text_objects || [])],
+    arrowObjects: [...(selection?.arrowObjects || selection?.arrow_objects || [])],
+  };
+}
+
 function selectedStructurePreviewNodeIds(selection) {
   const nodeIds = new Set([
     ...(selection?.nodes || []),
@@ -6590,10 +6665,10 @@ function applyDocumentObjectPreviewTransform() {
     return false;
   }
   hideDocumentDiagnosticsForPreview();
-  const selection = activeSelectionGesture.previewSelection
-    || currentEditorEngineState()?.selection;
+  const selection = freshestPreviewSelection(activeSelectionGesture.previewSelection);
   activeSelectionGesture.previewSelection = selection;
   const nodeIds = activeStructurePreviewNodeIds(selection);
+  const selectedObjectIds = selectedDocumentPreviewObjectIds(selection);
   const partialBondState = partialMovingStructureBondPreviewState(selection, nodeIds);
   const hasPartialBonds = partialBondState.partialBonds.length > 0;
   const partialBondDelta = hasPartialBonds ? selectionGestureDelta(activeSelectionGesture) : null;
@@ -6602,7 +6677,7 @@ function applyDocumentObjectPreviewTransform() {
     return false;
   }
   const documentLayer = viewerSvg.querySelector('[data-layer="document-content"]');
-  if (activeSelectionGesture.previewUsesLayer && !hasPartialBonds) {
+  if (activeSelectionGesture.previewUsesLayer && !hasPartialBonds && !selectedObjectIds.length) {
     if (!documentLayer) {
       clearDocumentObjectPreviewTransform();
       return false;
@@ -6614,7 +6689,7 @@ function applyDocumentObjectPreviewTransform() {
     activeDocumentPreviewTransform = transform;
     return true;
   }
-  if (!hasPartialBonds && selectionCoversRenderedDocument(selection)) {
+  if (!hasPartialBonds && !selectedObjectIds.length && selectionCoversRenderedDocument(selection)) {
     if (!documentLayer) {
       clearDocumentObjectPreviewTransform();
       return false;
@@ -6637,8 +6712,14 @@ function applyDocumentObjectPreviewTransform() {
   }
   const hasCachedObjectIds = Array.isArray(activeSelectionGesture.previewObjectIds);
   const hasCachedPrimitiveElements = Array.isArray(activeSelectionGesture.previewPrimitiveElements);
-  const objectIds = activeSelectionGesture.previewObjectIds || selectedDocumentPreviewObjectIds(selection);
-  const primitiveElements = activeSelectionGesture.previewPrimitiveElements || selectedDocumentPreviewPrimitiveElements(selection);
+  const freshObjectIds = selectedObjectIds;
+  const freshPrimitiveElements = selectedDocumentPreviewPrimitiveElements(selection);
+  const objectIds = activeSelectionGesture.previewObjectIds
+    ? [...new Set([...activeSelectionGesture.previewObjectIds, ...freshObjectIds])]
+    : freshObjectIds;
+  const primitiveElements = activeSelectionGesture.previewPrimitiveElements
+    ? [...new Set([...activeSelectionGesture.previewPrimitiveElements, ...freshPrimitiveElements])]
+    : freshPrimitiveElements;
   if (!objectIds.length && !primitiveElements.length) {
     if (hasPartialBonds) {
       activeDocumentPreviewObjectIds = new Set();

@@ -267,6 +267,10 @@ export function createEditorPointerController(options) {
     if (!viewerSvg) {
       return;
     }
+    if ((state.overSelectionHit || state.overSelectionBounds) && !state.inHandleZone) {
+      viewerSvg.style.cursor = "grab";
+      return;
+    }
     if (options.editorState().activeTool === "select") {
       const resizeHandle = options.selectionResizeHandleHit(point);
       if (resizeHandle) {
@@ -278,11 +282,7 @@ export function createEditorPointerController(options) {
         return;
       }
     }
-    if (state.overSelectionHit) {
-      viewerSvg.style.cursor = "grab";
-    } else {
-      options.syncCanvasCursor?.();
-    }
+    options.syncCanvasCursor?.();
   }
 
   async function syncDeferredDocumentModelAfterCommit() {
@@ -452,7 +452,10 @@ export function createEditorPointerController(options) {
       return false;
     }
     invalidateEngineReadCache();
-    const previewSelection = options.currentEditorEngineState?.()?.selection || null;
+    const previewSelection = options.parseEngineJson(
+      options.state().editorEngine.stateJson?.() || "",
+      null,
+    )?.selection || options.currentEditorEngineState?.()?.selection || null;
     options.setActiveSelectionGesture({
       kind: "move",
       start: point,
@@ -471,8 +474,20 @@ export function createEditorPointerController(options) {
     if (!bounds) {
       return true;
     }
-    const edgePad = options.cssPxToPt(14);
-    const rotatePad = options.cssPxToPt(18);
+    if (options.selectedContentHitContainsPoint?.(point)) {
+      return false;
+    }
+    const edgePad = options.screenPxToWorld?.(14) ?? options.cssPxToPt(14);
+    const rotatePad = options.screenPxToWorld?.(18) ?? options.cssPxToPt(18);
+    const width = Math.max(0, Number(bounds.maxX || 0) - Number(bounds.minX || 0));
+    const height = Math.max(0, Number(bounds.maxY || 0) - Number(bounds.minY || 0));
+    const strictlyInsideBounds = point.x > bounds.minX
+      && point.x < bounds.maxX
+      && point.y > bounds.minY
+      && point.y < bounds.maxY;
+    if (strictlyInsideBounds && (width <= edgePad * 4 || height <= edgePad * 4)) {
+      return false;
+    }
     const insideExpandedBounds = point.x >= bounds.minX - edgePad
       && point.x <= bounds.maxX + edgePad
       && point.y >= bounds.minY - rotatePad
@@ -489,7 +504,7 @@ export function createEditorPointerController(options) {
     }
     const rotateHandle = {
       x: (bounds.minX + bounds.maxX) * 0.5,
-      y: bounds.minY - options.cssPxToPt(18),
+      y: bounds.minY - (options.screenPxToWorld?.(18) ?? options.cssPxToPt(18)),
     };
     return options.pointDistance(point, rotateHandle) <= rotatePad;
   }
@@ -896,6 +911,13 @@ export function createEditorPointerController(options) {
         await options.renderSelectionOnlyUpdate(point);
         return;
       }
+      const overSelectionInterior = (
+        !!options.selectionBoundsContainsPoint?.(point)
+        || !!options.selectionHitContainsPoint?.(point)
+      ) && !selectionHandleZoneContainsPoint(point);
+      if (!event.shiftKey && overSelectionInterior && await beginSelectionMoveGesture(point, event, options.syncSelectCursorForPoint)) {
+        return;
+      }
       const resizeHandle = options.selectionResizeHandleHit(point);
       if (resizeHandle && await options.state().editorEngine.beginSelectionResize?.(resizeHandle.name, point.x, point.y)) {
         options.setActiveSelectionGesture({
@@ -970,7 +992,7 @@ export function createEditorPointerController(options) {
           return;
         }
       }
-      if (await beginSelectionMoveGesture(point, event, options.syncSelectCursorForPoint)) {
+      if (!event.shiftKey && await beginSelectionMoveGesture(point, event, options.syncSelectCursorForPoint)) {
         return;
       }
       options.setActiveSelectionGesture({

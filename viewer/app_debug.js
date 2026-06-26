@@ -26,12 +26,15 @@ export function registerChemcoreDebug({
     get engineState() {
       return getEngineState();
     },
+    getEngineState,
     get activeTextEditor() {
       return getActiveTextEditor();
     },
+    getActiveTextEditor,
     get activeSelectionGesture() {
       return getActiveSelectionGesture();
     },
+    getActiveSelectionGesture,
     get displayMetrics() {
       return getDisplayMetrics();
     },

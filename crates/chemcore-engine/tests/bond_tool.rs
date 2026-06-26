@@ -8517,6 +8517,23 @@ fn select_tool_resizing_one_text_selection_box_scales_all_selected_text_objects(
 }
 
 #[test]
+fn select_tool_dragging_inside_combined_selection_box_moves_selection() {
+    let mut engine = Engine::new();
+    load_arrange_text_document(&mut engine);
+    select_all_arrange_text_objects(&mut engine);
+
+    let gap_inside_selection_box = Point::new(65.0, 5.0);
+    assert!(engine.selection_contains_point(gap_inside_selection_box));
+    assert!(engine.begin_selection_move_at_point(gap_inside_selection_box, false, false));
+    assert!(engine.update_selection_move(Point::new(75.0, 15.0), false));
+    assert!(engine.finish_selection_move(Point::new(75.0, 15.0), false));
+
+    assert_eq!(text_translate(&engine, "obj_text_a"), [10.0, 10.0]);
+    assert_eq!(text_translate(&engine, "obj_text_b"), [40.0, 30.0]);
+    assert_eq!(text_translate(&engine, "obj_text_c"), [110.0, 50.0]);
+}
+
+#[test]
 fn select_tool_corner_resize_is_proportional() {
     let mut engine = Engine::new();
     load_arrange_text_document(&mut engine);

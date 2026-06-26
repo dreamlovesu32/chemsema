@@ -305,9 +305,42 @@ pub(super) struct SelectionResizeDrag {
 
 impl Engine {
     pub fn selection_contains_point(&self, point: Point) -> bool {
-        self.selection_hit_bounds()
-            .into_iter()
-            .any(|bounds| point_in_bounds(point, bounds))
+        let mut hit_bounds = self.selection_hit_bounds();
+        hit_bounds.extend(self.explicit_selected_object_hit_bounds());
+        if hit_bounds
+            .iter()
+            .any(|bounds| point_in_bounds(point, *bounds))
+        {
+            return true;
+        }
+        let mut selection_bounds = None;
+        for bounds in hit_bounds {
+            include_optional_bounds(&mut selection_bounds, bounds);
+        }
+        selection_bounds.is_some_and(|bounds| point_in_bounds(point, bounds))
+    }
+
+    fn explicit_selected_object_hit_bounds(&self) -> Vec<AxisBounds> {
+        let mut bounds = Vec::new();
+        for object in self.state.document.scene_objects() {
+            if !object.visible {
+                continue;
+            }
+            if self.state.selection.text_objects.contains(&object.id) {
+                if let Some(text_bounds) = text_object_world_bounds(object) {
+                    bounds.push(AxisBounds::from_array(text_bounds));
+                }
+                continue;
+            }
+            if self.state.selection.arrow_objects.contains(&object.id) {
+                if let Some(object_bounds) =
+                    scene_object_selection_bounds(&self.state.document, object)
+                {
+                    bounds.push(object_bounds);
+                }
+            }
+        }
+        bounds
     }
 
     pub fn hover_arrow_action_at_point(&self, point: Point) -> &'static str {
