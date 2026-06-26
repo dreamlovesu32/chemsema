@@ -69,6 +69,16 @@ export function createEditorCommandEngine(options = {}) {
     if (typeof apply === "function") {
       rawResult = await apply(normalized);
       if (executeOptions.sync !== false && rawResult !== false) {
+        if (typeof window !== "undefined" && window.__chemcoreDebug?.renderStats) {
+          window.__chemcoreDebug.renderStats.lastCommandSync = {
+            commandType: normalized.type || null,
+            sync: executeOptions.sync,
+            syncRenderList: executeOptions.syncRenderList,
+            deferDocumentSync: executeOptions.deferDocumentSync,
+            refreshSnapshot: executeOptions.refreshSnapshot,
+            applyBranch: true,
+          };
+        }
         await options.syncDocumentFromEngine?.({
           syncRenderList: executeOptions.syncRenderList !== false,
           refreshSnapshot: executeOptions.refreshSnapshot !== false,
@@ -80,6 +90,16 @@ export function createEditorCommandEngine(options = {}) {
       const resultJson = await activeEngine.executeCommandJson(commandJson);
       result = parseCommandResultJson(resultJson);
       if (executeOptions.sync !== false && result?.changed) {
+        if (typeof window !== "undefined" && window.__chemcoreDebug?.renderStats) {
+          window.__chemcoreDebug.renderStats.lastCommandSync = {
+            commandType: normalized.type || null,
+            sync: executeOptions.sync,
+            syncRenderList: executeOptions.syncRenderList,
+            deferDocumentSync: executeOptions.deferDocumentSync,
+            refreshSnapshot: executeOptions.refreshSnapshot,
+            applyBranch: false,
+          };
+        }
         await options.syncDocumentFromEngine?.({
           syncRenderList: executeOptions.syncRenderList !== false,
           refreshSnapshot: executeOptions.refreshSnapshot !== false,

@@ -326,7 +326,7 @@ async function assertObjectControlHandleStyle(page, role, label) {
   assert(
     result.found
       && result.tagName === "circle"
-      && Math.abs(result.radiusPx - 1) < 0.2
+      && Math.abs(result.radiusPx - 1.5) < 0.2
       && (result.fill === "none" || result.fill === "rgba(0, 0, 0, 0)"),
     `${label} control handle style was not unified: ${JSON.stringify(result)}`,
   );
@@ -538,6 +538,116 @@ async function drawBracketOpensTextEditor(page) {
   assertNoFullRefresh("bracket draw text editor", result);
 }
 
+async function assertSquareBracketHandleDrag(page) {
+  const setup = await page.evaluate(async () => {
+    const svg = document.querySelector("#viewer-svg");
+    const matrix = svg?.getScreenCTM?.()?.inverse?.();
+    const clientToWorld = (x, y) => {
+      const point = new DOMPoint(x, y).matrixTransform(matrix);
+      return { x: point.x, y: point.y };
+    };
+    const begin = clientToWorld(900, 520);
+    const end = clientToWorld(1050, 700);
+    const command = {
+      type: "add-bracket",
+      kind: "square",
+      begin,
+      end,
+    };
+    const result = JSON.parse(await window.__chemcoreDebug.state.editorEngine.executeCommandJson(JSON.stringify(command)));
+    await window.__chemcoreDebug.syncDocument();
+    const visit = (object, parent = null, out = []) => {
+      out.push({ object, parent });
+      for (const child of object.children || []) {
+        visit(child, object, out);
+      }
+      return out;
+    };
+    const entries = (window.__chemcoreDebug.document.objects || []).flatMap((object) => visit(object));
+    const side = entries.find(({ object }) => (
+      (object.type || object.objectType || object.object_type) === "bracket"
+      && (object.payload?.kind || object.payload?.extra?.kind) === "square"
+      && (object.payload?.side || object.payload?.extra?.side)
+    ));
+    const object = side?.object;
+    const parent = side?.parent;
+    const bbox = object?.payload?.bbox || [];
+    const translate = object?.transform?.translate || [0, 0];
+    const rotate = Number(object?.transform?.rotate || 0);
+    const handleX = (object.payload?.side || object.payload?.extra?.side) === "right" ? Number(bbox[2] || 0) : 0;
+    const tx = Number(translate[0] || 0) + Number(bbox[0] || 0);
+    const ty = Number(translate[1] || 0) + Number(bbox[1] || 0);
+    const width = Number(bbox[2] || 0);
+    const height = Number(bbox[3] || 0);
+    const center = { x: tx + width * 0.5, y: ty + height * 0.5 };
+    const rotatePoint = (point, degrees) => {
+      const radians = degrees * Math.PI / 180;
+      const cos = Math.cos(radians);
+      const sin = Math.sin(radians);
+      const dx = point.x - center.x;
+      const dy = point.y - center.y;
+      return { x: center.x + dx * cos - dy * sin, y: center.y + dx * sin + dy * cos };
+    };
+    const top = rotatePoint({ x: tx + handleX, y: ty }, rotate);
+    const bottom = rotatePoint({ x: tx + handleX, y: ty + height }, rotate);
+    const client = window.__chemcoreDebug.worldToClient(top.x, top.y);
+    const domBefore = parent?.id
+      ? document.querySelector(`[data-layer="document-content"] [data-object-id="${CSS.escape(parent.id)}"]`)?.getBoundingClientRect()
+      : null;
+    return {
+      result,
+      parentId: parent?.id || "",
+      sideId: object?.id || "",
+      beforeHeight: height,
+      top,
+      bottom,
+      client,
+      domBefore: domBefore ? { x: domBefore.x, y: domBefore.y, width: domBefore.width, height: domBefore.height } : null,
+    };
+  });
+  assert(setup.parentId && setup.sideId && setup.client, `Square bracket test setup failed: ${JSON.stringify(setup)}`);
+  await page.locator('button[data-tool="select"]').click();
+  await page.waitForFunction(() => document.querySelector('button[data-tool="select"]')?.classList.contains("is-active"));
+  await page.waitForTimeout(50);
+  await resetRenderStats(page);
+  await page.mouse.move(setup.client.x, setup.client.y);
+  await page.mouse.down();
+  await page.mouse.move(setup.client.x, setup.client.y - 70, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForTimeout(250);
+  const result = await page.evaluate(({ sideId, parentId, beforeHeight }) => {
+    const documentData = JSON.parse(window.__chemcoreDebug.state.editorEngine.documentJson());
+    const objects = [];
+    const visit = (object, parent = null) => {
+      objects.push({ object, parent });
+      for (const child of object.children || []) {
+        visit(child, object);
+      }
+    };
+    for (const object of documentData.objects || []) {
+      visit(object);
+    }
+    const side = objects.find(({ object }) => object.id === sideId)?.object || null;
+    const domAfter = document.querySelector(`[data-layer="document-content"] [data-object-id="${CSS.escape(parentId)}"]`)?.getBoundingClientRect();
+    const command = JSON.parse(window.__chemcoreDebug.state.editorEngine.lastCommandResultJson?.() || "null");
+    return {
+      changed: !!command?.changed,
+      targets: command?.targets || null,
+      afterHeight: Number(side?.payload?.bbox?.[3] || 0),
+      beforeHeight,
+      domAfter: domAfter ? { x: domAfter.x, y: domAfter.y, width: domAfter.width, height: domAfter.height } : null,
+      documentRenderCount: window.__chemcoreDebug.renderStats.documentRenderCount || 0,
+      renderListJsonCount: window.__chemcoreDebug.renderStats.renderListJsonCount || 0,
+      lastRenderListJsonStack: window.__chemcoreDebug.renderStats.lastRenderListJsonStack || "",
+      lastCommandSync: window.__chemcoreDebug.renderStats.lastCommandSync || null,
+    };
+  }, setup);
+  assert(result.changed, `Square bracket handle drag did not commit: ${JSON.stringify({ setup, result })}`);
+  assert(Math.abs(result.afterHeight - result.beforeHeight) > 1, `Square bracket handle drag did not resize object: ${JSON.stringify({ setup, result })}`);
+  assert(result.domAfter?.height > 0, `Square bracket handle drag removed DOM: ${JSON.stringify({ setup, result })}`);
+  assertNoFullRefresh("square bracket handle drag", result);
+}
+
 let server = null;
 let browser = null;
 try {
@@ -551,6 +661,7 @@ try {
   const shapeId = await drawShape(page);
   await assertShapePointerDown(page, shapeId);
   await drawBracketOpensTextEditor(page);
+  await assertSquareBracketHandleDrag(page);
   await page.close();
   assert(!errors.length, `Viewer console errors:\n${errors.join("\n")}`);
   console.log(`[large-object-operation-regression] ok (${nodeCount} nodes)`);

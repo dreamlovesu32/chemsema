@@ -57,12 +57,12 @@ import {
   normalizeDisplayColor,
 } from "./render_support.js";
 import { createSceneRenderer } from "./scene_renderer.js";
-import { createEditorOverlayRenderer } from "./editor_overlay.js";
+import { createEditorOverlayRenderer } from "./editor_overlay.js?v=20260626-object-control-handles-15b";
 import { createEditorSelectionState } from "./editor_selection_state.js";
-import { createEditorPointerController } from "./editor_pointer_controller.js";
+import { createEditorPointerController } from "./editor_pointer_controller.js?v=20260626-object-control-handles-15b";
 import { createCanvasContextMenuHost } from "./editor_context_menu.js";
 import { createEditorCommandController } from "./editor_command_controller.js";
-import { createEditorCommandEngine } from "./editor_command_engine.js";
+import { createEditorCommandEngine } from "./editor_command_engine.js?v=20260626-object-control-handles-15b";
 import {
   editorScriptScale as computeEditorScriptScale,
   estimateTextRunsWidth as computeEstimateTextRunsWidth,
@@ -2579,7 +2579,7 @@ function renderFastSelectHover(point) {
       role: "hover-shape-handle",
       objectId: hover.objectId,
       center,
-      radius: screenPxToWorld(1),
+      radius: screenPxToWorld(1.5),
       fill: "#ffffff",
       stroke: "rgba(47,111,237,0.82)",
       strokeWidth: screenPxToWorld(1),
@@ -2698,6 +2698,25 @@ function currentDocumentSceneObjectMap() {
   return objects;
 }
 
+function currentDocumentSceneObjectParentMap() {
+  const parents = new Map();
+  const visit = (object, parent = null) => {
+    if (!object?.id) {
+      return;
+    }
+    if (parent?.id) {
+      parents.set(object.id, parent.id);
+    }
+    for (const child of object.children || []) {
+      visit(child, object);
+    }
+  };
+  for (const object of state.currentDocument?.objects || []) {
+    visit(object, null);
+  }
+  return parents;
+}
+
 function currentDocumentObjectIdsInPaintOrder() {
   const order = [];
   const seen = new Set();
@@ -2814,6 +2833,38 @@ function expandObjectIdsWithDescendants(objectIds, objectMap = currentDocumentSc
   return expanded;
 }
 
+function expandObjectIdsWithRenderableAncestors(objectIds, objectMap = currentDocumentSceneObjectMap()) {
+  const expanded = new Set(objectIds);
+  const parentMap = currentDocumentSceneObjectParentMap();
+  for (const objectId of [...objectIds]) {
+    let currentId = objectId;
+    while (parentMap.has(currentId)) {
+      const parentId = parentMap.get(currentId);
+      if (!parentId || expanded.has(parentId)) {
+        break;
+      }
+      expanded.add(parentId);
+      currentId = parentId;
+    }
+  }
+  return expandObjectIdsWithDescendants(expanded, objectMap);
+}
+
+function topmostObjectIds(objectIds) {
+  const ids = new Set(objectIds);
+  const parentMap = currentDocumentSceneObjectParentMap();
+  return [...ids].filter((objectId) => {
+    let currentId = objectId;
+    while (parentMap.has(currentId)) {
+      currentId = parentMap.get(currentId);
+      if (ids.has(currentId)) {
+        return false;
+      }
+    }
+    return true;
+  });
+}
+
 function objectIdsForCommandResultPatch(result) {
   if (!result?.changed) {
     return new Set();
@@ -2828,7 +2879,7 @@ function objectIdsForCommandResultPatch(result) {
     targetIdsFromCommandResult(result, "nodes"),
     targetIdsFromCommandResult(result, "bonds"),
   );
-  return expandObjectIdsWithDescendants(objectIds);
+  return expandObjectIdsWithRenderableAncestors(objectIds);
 }
 
 function removeDocumentObjectDom(documentLayer, objectId) {
@@ -2950,7 +3001,7 @@ function renderDocumentChange(result = null) {
 }
 
 function renderDocumentObjectPrimitiveChange(result = null) {
-  const objectIds = targetIdsFromCommandResult(result, "objects");
+  const objectIds = expandObjectIdsWithRenderableAncestors(targetIdsFromCommandResult(result, "objects"));
   const debugSample = {
     commandType: result?.commandType || result?.command?.type || null,
     objectIds: [...objectIds],
@@ -2974,7 +3025,7 @@ function renderDocumentObjectPrimitiveChange(result = null) {
     return false;
   }
   let patched = false;
-  for (const objectId of objectIds) {
+  for (const objectId of topmostObjectIds(objectIds)) {
     const primitives = renderTargetObjectPrimitives(objectId);
     const entry = { objectId, primitiveCount: primitives.length, appended: false };
     debugSample.entries.push(entry);

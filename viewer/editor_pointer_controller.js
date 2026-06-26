@@ -1158,7 +1158,7 @@ export function createEditorPointerController(options) {
           const changed = !!(await options.state().editorEngine.finishHoverShapeEdit?.(point.x, point.y, event.altKey));
           return changed;
         },
-        { syncRenderList: false },
+        { sync: false, deferDocumentSync: true },
       );
       const changed = !!result.changed;
       if (!changed && !gesture.dragged && options.editorState().activeTool === "select") {
@@ -1249,6 +1249,7 @@ export function createEditorPointerController(options) {
             },
           },
           () => options.state().editorEngine.finishSelectionRotate(point.x, point.y, event.altKey),
+          { sync: false, deferDocumentSync: true },
         );
         await options.syncSelectCursorForPoint(point);
         options.clearDocumentObjectPreviewTransform();
@@ -1266,6 +1267,7 @@ export function createEditorPointerController(options) {
             },
           },
           () => options.state().editorEngine.finishSelectionResize?.(point.x, point.y),
+          { sync: false, deferDocumentSync: true },
         );
         await options.syncSelectCursorForPoint(point);
         options.clearDocumentObjectPreviewTransform();

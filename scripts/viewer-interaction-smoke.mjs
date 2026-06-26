@@ -936,7 +936,7 @@ async function verifyBracketHoverFocus(page, target) {
   assert(elapsed < 350, `Large CDXML bracket hover focus was delayed: ${JSON.stringify({ elapsed, target, debug })}`);
   assert(
     debug.handleStyle?.tagName === "circle"
-      && Math.abs(debug.handleStyle.radiusPx - 1) < 0.2
+      && Math.abs(debug.handleStyle.radiusPx - 1.5) < 0.2
       && (debug.handleStyle.fill === "none" || debug.handleStyle.fill === "rgba(0, 0, 0, 0)"),
     `Large CDXML bracket hover control handle style was not unified: ${JSON.stringify({ target, debug })}`,
   );
