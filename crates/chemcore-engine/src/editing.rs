@@ -34,7 +34,7 @@ pub use self::hit_testing::{
     hit_test_endpoint_excluding, select_at,
 };
 
-pub const ENDPOINT_FOCUS_RADIUS_PT: WorldPt = world_pt(2.834_645_669_291_339);
+pub const ENDPOINT_FOCUS_RADIUS_PT: WorldPt = css_px(1.5).to_world_pt();
 pub const ENDPOINT_HIT_RADIUS_PT: WorldPt = css_px(10.0).to_world_pt();
 pub const BOND_HIT_RADIUS_PT: WorldPt = css_px(6.0).to_world_pt();
 pub const BOND_CENTER_FOCUS_LENGTH_PT: WorldPt = world_pt(22.677_165_354_330_71);

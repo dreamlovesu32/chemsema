@@ -949,7 +949,7 @@ fn template_pointer_down_clears_previous_hover_overlay() {
 
     engine.set_tool_state(templates_tool("chain"));
     hover(&mut engine, FIRST_END_HOVER_X, FIRST_END_HOVER_Y);
-    assert!(engine.state().overlay.hover_endpoint.is_some());
+    assert!(engine.state().overlay.hover_endpoint.is_none());
 
     engine.pointer_down(PointerEvent {
         x: FIRST_END_X,
@@ -9690,7 +9690,7 @@ fn bracket_symbol_click_creates_selectable_symbol_object() {
 }
 
 #[test]
-fn symbol_tool_focuses_endpoints_but_not_bonds() {
+fn symbol_tool_does_not_show_endpoint_or_bond_hover() {
     let mut engine = Engine::new();
     click(&mut engine, FIRST_START_X, FIRST_START_Y);
     engine.set_tool_state(ToolState {
@@ -9704,7 +9704,7 @@ fn symbol_tool_focuses_endpoints_but_not_bonds() {
     assert!(engine.state().overlay.hover_endpoint.is_none());
 
     hover(&mut engine, FIRST_END_X, FIRST_END_Y);
-    assert!(engine.state().overlay.hover_endpoint.is_some());
+    assert!(engine.state().overlay.hover_endpoint.is_none());
     assert!(engine.state().overlay.hover_bond_center.is_none());
 }
 

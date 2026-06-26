@@ -10,6 +10,7 @@ export function createEditorPointerController(options) {
   let engineDragPreviewFrame = 0;
   let engineDragPreviewRunning = false;
   let engineDragPreviewRequest = null;
+  let engineDragPreviewVersion = 0;
   let engineCreationDrag = null;
   let postCommitHoverBlockPoint = null;
 
@@ -80,6 +81,7 @@ export function createEditorPointerController(options) {
   }
 
   function cancelEngineDragPreviewFrame() {
+    engineDragPreviewVersion += 1;
     engineDragPreviewRequest = null;
     if (engineDragPreviewFrame) {
       cancelAnimationFrame(engineDragPreviewFrame);
@@ -190,9 +192,11 @@ export function createEditorPointerController(options) {
 
   async function clearPostCommitInteraction(point = null) {
     suppressHoverUntilPointerLeavesPoint(point);
+    cancelEngineDragPreviewFrame();
     await options.state().editorEngine?.clearInteraction?.();
     invalidateEngineReadCache();
     clearEditorOverlayRoot();
+    options.clearDragCapturePreview?.();
     options.clearTlcHoverState?.();
     options.syncCanvasCursor?.();
   }
@@ -573,11 +577,14 @@ export function createEditorPointerController(options) {
     await options.syncArrowAwareCursorForPoint(point);
   }
 
-  async function updateEngineDragPreview(point, event) {
+  async function updateEngineDragPreview(point, event, version = engineDragPreviewVersion) {
     cancelScheduledHoverMove();
     leaveSelectionHoverSuppression(point);
     await options.state().editorEngine.pointerMove(point.x, point.y, event.altKey);
     invalidateEngineReadCache();
+    if (version !== engineDragPreviewVersion) {
+      return;
+    }
     let renderList = currentInteractionRenderList();
     if (!renderList.length && engineCreationDrag?.start) {
       await options.state().editorEngine.clearInteraction?.();
@@ -588,6 +595,9 @@ export function createEditorPointerController(options) {
       );
       await options.state().editorEngine.pointerMove(point.x, point.y, event.altKey);
       invalidateEngineReadCache();
+      if (version !== engineDragPreviewVersion) {
+        return;
+      }
       renderList = currentInteractionRenderList();
     }
     if (engineCreationDrag?.start && options.renderDragCapturePreview) {
@@ -608,7 +618,7 @@ export function createEditorPointerController(options) {
       const request = engineDragPreviewRequest;
       engineDragPreviewRequest = null;
       if (request) {
-        await updateEngineDragPreview(request.point, request);
+        await updateEngineDragPreview(request.point, request, request.version);
       }
     } finally {
       engineDragPreviewRunning = false;
@@ -620,7 +630,7 @@ export function createEditorPointerController(options) {
 
   function scheduleEngineDragPreview(point, event) {
     event.preventDefault();
-    engineDragPreviewRequest = { point, altKey: event.altKey };
+    engineDragPreviewRequest = { point, altKey: event.altKey, version: engineDragPreviewVersion };
     if (!engineDragPreviewFrame && !engineDragPreviewRunning) {
       engineDragPreviewFrame = requestAnimationFrame(drainEngineDragPreviewFrame);
     }

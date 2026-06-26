@@ -89,23 +89,132 @@ async function verifyBondDrawing(browser) {
   await page.mouse.move(start.x, start.y);
   await page.mouse.down();
   await page.mouse.move(end.x, end.y, { steps: 8 });
-  const hadPreview = await page.evaluate(() => !!document.querySelector('[data-role="preview-bond"]'));
+  const previewState = await page.evaluate(() => {
+    const previewEnd = document.querySelector('[data-role="preview-end"]');
+    const matrix = previewEnd?.getScreenCTM?.();
+    const scale = matrix ? Math.hypot(matrix.a, matrix.b) : 1;
+    return {
+      hadPreview: !!document.querySelector('[data-role="preview-bond"]'),
+      previewEndRadiusPx: previewEnd ? Number(previewEnd.getAttribute("r") || 0) * scale : 0,
+    };
+  });
   await page.mouse.up();
   await page.waitForTimeout(250);
   const result = await page.evaluate(() => {
     const command = JSON.parse(window.__chemcoreDebug.state.editorEngine.lastCommandResultJson?.() || "null");
     return {
       previewLeft: !!document.querySelector('[data-role^="preview-"]'),
+      dragPreviewChildren: document.querySelector(".canvas-drag-preview-svg")?.childElementCount || 0,
       changed: !!command?.changed,
       bondTargets: command?.targets?.bonds?.length || command?.created?.bonds?.length || 0,
       hasRenderedBond: /data-bond-id=/.test(document.querySelector("#viewer-svg")?.outerHTML || ""),
     };
   });
   await page.close();
-  assert(hadPreview, "Bond drag did not show a preview.");
-  assert(!result.previewLeft, "Bond preview remained after pointerup.");
+  assert(previewState.hadPreview, "Bond drag did not show a preview.");
+  assert(
+    Math.abs(previewState.previewEndRadiusPx - 1.5) < 0.25,
+    `Bond preview endpoint radius was not unified: ${JSON.stringify(previewState)}`,
+  );
+  assert(!result.previewLeft && result.dragPreviewChildren === 0, `Bond preview remained after pointerup: ${JSON.stringify(result)}`);
   assert(result.changed && result.bondTargets > 0 && result.hasRenderedBond, "Bond drag did not commit a rendered bond.");
   assert(!errors.length, `Viewer console errors during bond drawing: ${errors.join("\n")}`);
+}
+
+async function visibleEndpointTarget(page) {
+  return page.evaluate(() => {
+    const doc = JSON.parse(window.__chemcoreDebug.state.editorEngine.documentJson?.() || "null")
+      || window.__chemcoreDebug.document;
+    const objectType = (object) => object?.type || object?.objectType || object?.object_type;
+    const visit = (object, out = []) => {
+      if (!object) {
+        return out;
+      }
+      out.push(object);
+      for (const child of object.children || []) {
+        visit(child, out);
+      }
+      return out;
+    };
+    for (const object of (doc.objects || []).flatMap((candidate) => visit(candidate, []))) {
+      if (objectType(object) !== "molecule") {
+        continue;
+      }
+      const resourceRef = object.payload?.resourceRef || object.payload?.resource_ref;
+      const fragment = resourceRef ? doc.resources?.[resourceRef]?.data : object.payload?.fragment;
+      const node = fragment?.nodes?.find((candidate) => Array.isArray(candidate.position));
+      if (!node) {
+        continue;
+      }
+      const translate = object.transform?.translate || [0, 0];
+      const x = Number(translate[0] || 0) + Number(node.position[0] || 0);
+      const y = Number(translate[1] || 0) + Number(node.position[1] || 0);
+      const client = window.__chemcoreDebug.worldToClient(x, y);
+      if (client) {
+        return { x: client.x, y: client.y, nodeId: node.id };
+      }
+    }
+    return null;
+  });
+}
+
+async function interactionFeedbackState(page) {
+  return page.evaluate(() => {
+    const endpoint = document.querySelector('[data-role="hover-endpoint"]');
+    const matrix = endpoint?.getScreenCTM?.();
+    const scale = matrix ? Math.hypot(matrix.a, matrix.b) : 1;
+    return {
+      hoverEndpointCount: document.querySelectorAll('[data-role="hover-endpoint"]').length,
+      previewEndCount: document.querySelectorAll('[data-role="preview-end"]').length,
+      hoverCount: document.querySelectorAll('[data-role^="hover-"]').length,
+      previewCount: document.querySelectorAll('[data-role^="preview-"]').length,
+      dragPreviewChildren: document.querySelector(".canvas-drag-preview-svg")?.childElementCount || 0,
+      endpointRadiusPx: endpoint ? Number(endpoint.getAttribute("r") || 0) * scale : 0,
+    };
+  });
+}
+
+async function verifyEndpointFeedbackRules(browser) {
+  const { page, errors } = await openViewer(browser);
+  const box = await page.locator("#viewer-container").boundingBox();
+  const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+
+  await page.locator('button[data-tool="bond"]').click();
+  await page.mouse.move(center.x - 90, center.y);
+  await page.mouse.down();
+  await page.mouse.move(center.x + 30, center.y, { steps: 6 });
+  await page.mouse.up();
+  await page.waitForTimeout(160);
+  const endpoint = await visibleEndpointTarget(page);
+  assert(endpoint, "Could not locate a visible endpoint target for feedback rules.");
+
+  await page.mouse.move(endpoint.x + 80, endpoint.y + 80);
+  await page.waitForTimeout(80);
+  await page.locator('button[data-tool="bond"]').click();
+  await page.mouse.move(endpoint.x, endpoint.y);
+  await page.waitForTimeout(120);
+  const bondHover = await interactionFeedbackState(page);
+  assert(bondHover.hoverEndpointCount > 0, `Bond tool did not show endpoint hover: ${JSON.stringify(bondHover)}`);
+  assert(
+    Math.abs(bondHover.endpointRadiusPx - 1.5) < 0.25,
+    `Endpoint hover radius was not unified: ${JSON.stringify(bondHover)}`,
+  );
+
+  for (const tool of ["arrow", "bracket", "symbol", "shape", "orbital", "templates"]) {
+    await page.locator(`button[data-tool="${tool}"]`).click();
+    await page.mouse.move(endpoint.x + 70, endpoint.y + 70);
+    await page.waitForTimeout(40);
+    await page.mouse.move(endpoint.x, endpoint.y);
+    await page.waitForTimeout(120);
+    const state = await interactionFeedbackState(page);
+    assert(
+      state.hoverEndpointCount === 0 && state.previewEndCount === 0,
+      `${tool} tool showed bond endpoint feedback over an atom: ${JSON.stringify(state)}`,
+    );
+  }
+
+  await page.close();
+  assert(!errors.length, `Viewer console errors during endpoint feedback rules: ${errors.join("\n")}`);
 }
 
 async function verifyCreationDragKeepsCanvasVisibleAfterToolSwitch(browser) {
@@ -176,10 +285,13 @@ async function verifyCreationDragKeepsCanvasVisibleAfterToolSwitch(browser) {
         hoverCount: overlay?.querySelectorAll('[data-role^="hover-"]').length || 0,
         previewCount: overlay?.querySelectorAll('[data-role^="preview-"]').length || 0,
         overlayChildren: overlay?.childElementCount || 0,
+        dragPreviewChildren: document.querySelector(".canvas-drag-preview-svg")?.childElementCount || 0,
       };
     });
     assert(
-      afterPointerUpOverlay.hoverCount === 0 && afterPointerUpOverlay.previewCount === 0,
+      afterPointerUpOverlay.hoverCount === 0
+        && afterPointerUpOverlay.previewCount === 0
+        && afterPointerUpOverlay.dragPreviewChildren === 0,
       `${item.tool} left hover/preview overlay after pointerup: ${JSON.stringify(afterPointerUpOverlay)}`,
     );
     await page.mouse.move(center.x - 260, center.y - 220);
@@ -190,10 +302,13 @@ async function verifyCreationDragKeepsCanvasVisibleAfterToolSwitch(browser) {
         hoverCount: overlay?.querySelectorAll('[data-role^="hover-"]').length || 0,
         previewCount: overlay?.querySelectorAll('[data-role^="preview-"]').length || 0,
         overlayChildren: overlay?.childElementCount || 0,
+        dragPreviewChildren: document.querySelector(".canvas-drag-preview-svg")?.childElementCount || 0,
       };
     });
     assert(
-      afterMoveOverlay.hoverCount === 0 && afterMoveOverlay.previewCount === 0,
+      afterMoveOverlay.hoverCount === 0
+        && afterMoveOverlay.previewCount === 0
+        && afterMoveOverlay.dragPreviewChildren === 0,
       `${item.tool} hover/preview followed the cursor after commit: ${JSON.stringify(afterMoveOverlay)}`,
     );
     await page.waitForTimeout(50);
@@ -1273,6 +1388,7 @@ try {
     executablePath: existsSync(edgePath) ? edgePath : undefined,
   });
   await verifyBondDrawing(browser);
+  await verifyEndpointFeedbackRules(browser);
   await verifyCreationDragKeepsCanvasVisibleAfterToolSwitch(browser);
   await verifySelectedObjectSuppressesHover(browser);
   await verifyDragHandleCursors(browser);

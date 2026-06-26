@@ -57,12 +57,12 @@ import {
   normalizeDisplayColor,
 } from "./render_support.js";
 import { createSceneRenderer } from "./scene_renderer.js";
-import { createEditorOverlayRenderer } from "./editor_overlay.js?v=20260626-object-control-handles-15b";
+import { createEditorOverlayRenderer } from "./editor_overlay.js?v=20260626-interaction-feedback";
 import { createEditorSelectionState } from "./editor_selection_state.js";
-import { createEditorPointerController } from "./editor_pointer_controller.js?v=20260626-object-control-handles-15b";
+import { createEditorPointerController } from "./editor_pointer_controller.js?v=20260626-interaction-feedback";
 import { createCanvasContextMenuHost } from "./editor_context_menu.js";
 import { createEditorCommandController } from "./editor_command_controller.js";
-import { createEditorCommandEngine } from "./editor_command_engine.js?v=20260626-object-control-handles-15b";
+import { createEditorCommandEngine } from "./editor_command_engine.js?v=20260626-interaction-feedback";
 import {
   editorScriptScale as computeEditorScriptScale,
   estimateTextRunsWidth as computeEstimateTextRunsWidth,

@@ -679,8 +679,6 @@ impl Engine {
                         object_id: None,
                         node_id: Some(endpoint.node_id),
                     });
-                } else {
-                    self.state.overlay.hover_endpoint = Some(endpoint);
                 }
             }
             return;
@@ -701,8 +699,6 @@ impl Engine {
                     object_id: None,
                     node_id: Some(endpoint.node_id),
                 });
-            } else {
-                self.state.overlay.hover_endpoint = Some(endpoint);
             }
         }
     }

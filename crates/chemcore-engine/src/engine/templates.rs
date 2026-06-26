@@ -94,11 +94,6 @@ impl Engine {
         self.state.overlay.hover_shape = None;
         self.state.overlay.hover_text_box = None;
         self.state.overlay.preview = None;
-        if let Some(endpoint) = hit_test_endpoint(&self.state.document, point, ENDPOINT_HIT_RADIUS)
-        {
-            self.state.overlay.hover_endpoint = Some(endpoint);
-            return;
-        }
         self.state.overlay.hover_bond_center =
             hit_test_bond_center(&self.state.document, point, BOND_CENTER_HIT_RADIUS);
     }

@@ -76,7 +76,7 @@ const HOVER_STROKE_WIDTH: f64 = crate::px_to_pt(1.1);
 const HOVER_LABEL_STROKE_WIDTH: f64 = crate::px_to_pt(1.1);
 const HOVER_ENDPOINT_STROKE_WIDTH: f64 = crate::px_to_pt(1.4);
 const HOVER_BOND_CENTER_STROKE_WIDTH: f64 = crate::px_to_pt(1.2);
-const PREVIEW_END_RADIUS: f64 = crate::px_to_pt(5.0);
+const PREVIEW_END_RADIUS: f64 = crate::px_to_pt(1.5);
 const PREVIEW_END_STROKE_WIDTH: f64 = crate::px_to_pt(1.2);
 const SYMBOL_CLICK_CLEARANCE: f64 = 2.5;
 const ELLIPSE_MINOR_AXIS_RATIO: f64 = 0.4;
@@ -865,17 +865,19 @@ impl Engine {
                 });
             }
         }
-        if let Some(preview) = &self.state.overlay.preview {
-            out.push(RenderPrimitive::Circle {
-                role: RenderRole::PreviewEnd,
-                object_id: None,
-                node_id: None,
-                center: preview.end,
-                radius: PREVIEW_END_RADIUS,
-                fill: "rgba(47,111,237,0.16)".to_string(),
-                stroke: "rgba(47,111,237,0.86)".to_string(),
-                stroke_width: PREVIEW_END_STROKE_WIDTH,
-            });
+        if self.state.tool.active_tool == Tool::Bond {
+            if let Some(preview) = &self.state.overlay.preview {
+                out.push(RenderPrimitive::Circle {
+                    role: RenderRole::PreviewEnd,
+                    object_id: None,
+                    node_id: None,
+                    center: preview.end,
+                    radius: PREVIEW_END_RADIUS,
+                    fill: "rgba(47,111,237,0.16)".to_string(),
+                    stroke: "rgba(47,111,237,0.86)".to_string(),
+                    stroke_width: PREVIEW_END_STROKE_WIDTH,
+                });
+            }
         }
         if let Some((point, count)) = self.template_chain_count_label() {
             out.push(RenderPrimitive::Text {
