@@ -285,6 +285,15 @@ export function createEditorPointerController(options) {
     }
   }
 
+  async function syncDeferredDocumentModelAfterCommit() {
+    invalidateEngineReadCache();
+    await options.syncDocumentFromEngine?.({
+      syncRenderList: false,
+      refreshSnapshot: false,
+    });
+    invalidateEngineReadCache();
+  }
+
   function enterSelectionHoverSuppression(point, state) {
     selectionHoverSuppressionActive = true;
     cancelScheduledHoverMove();
@@ -1226,6 +1235,7 @@ export function createEditorPointerController(options) {
         }
         options.syncCanvasCursor?.();
         if ((commitPreviewDom || commitBackendPreview) && result.changed) {
+          await syncDeferredDocumentModelAfterCommit();
           await options.renderSelectionOnlyUpdate(commitPoint, null, {
             deferEngineReads: true,
             useInteractionList: false,
@@ -1312,6 +1322,7 @@ export function createEditorPointerController(options) {
             options.clearDocumentObjectPreviewTransform();
             clearEditorOverlayRoot();
             options.syncCanvasCursor?.();
+            await syncDeferredDocumentModelAfterCommit();
             await options.renderSelectionOnlyUpdate(commitPoint, null, {
               deferEngineReads: true,
               useInteractionList: false,
@@ -1321,6 +1332,7 @@ export function createEditorPointerController(options) {
             options.clearDocumentObjectPreviewTransform();
             clearEditorOverlayRoot();
             options.syncCanvasCursor?.();
+            await syncDeferredDocumentModelAfterCommit();
             await options.renderSelectionOnlyUpdate(commitPoint, null, {
               deferEngineReads: true,
               useInteractionList: false,

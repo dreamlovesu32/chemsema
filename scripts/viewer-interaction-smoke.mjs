@@ -939,6 +939,63 @@ async function verifyLargeDragTarget(page, target, kind) {
     commandTargets.changed && commandTargets.nodeIncluded,
     `${kind} drag commit did not report the moved node for incremental rendering: ${JSON.stringify({ target, commandTargets })}`,
   );
+  const documentSync = await page.evaluate((nodeId) => {
+    const worldPositionForNode = (doc, wantedNodeId) => {
+      const objectType = (object) => object?.type || object?.objectType || object?.object_type;
+      const visit = (object, inheritedTranslate = [0, 0]) => {
+        if (!object) {
+          return null;
+        }
+        const translate = object.transform?.translate || object.transform?.translation || [0, 0];
+        const combinedTranslate = [
+          Number(inheritedTranslate[0] || 0) + Number(translate[0] || 0),
+          Number(inheritedTranslate[1] || 0) + Number(translate[1] || 0),
+        ];
+        if (objectType(object) === "molecule") {
+          const resourceRef = object.payload?.resourceRef || object.payload?.resource_ref;
+          const fragment = resourceRef ? doc.resources?.[resourceRef]?.data : object.payload?.fragment;
+          const node = fragment?.nodes?.find((candidate) => candidate.id === wantedNodeId);
+          if (node?.position) {
+            return {
+              x: Number(node.position[0] || 0) + combinedTranslate[0],
+              y: Number(node.position[1] || 0) + combinedTranslate[1],
+            };
+          }
+        }
+        for (const child of object.children || []) {
+          const found = visit(child, combinedTranslate);
+          if (found) {
+            return found;
+          }
+        }
+        return null;
+      };
+      for (const object of doc?.objects || []) {
+        const found = visit(object);
+        if (found) {
+          return found;
+        }
+      }
+      for (const resource of Object.values(doc?.resources || {})) {
+        for (const node of resource?.data?.nodes || []) {
+          if (node.id === wantedNodeId && node.position) {
+            return { x: Number(node.position[0] || 0), y: Number(node.position[1] || 0) };
+          }
+        }
+      }
+      return null;
+    };
+    const engineDoc = JSON.parse(window.__chemcoreDebug.state.editorEngine.documentJson?.() || "null");
+    const frontendDoc = window.__chemcoreDebug.document;
+    const engine = worldPositionForNode(engineDoc, nodeId);
+    const frontend = worldPositionForNode(frontendDoc, nodeId);
+    const distance = engine && frontend ? Math.hypot(engine.x - frontend.x, engine.y - frontend.y) : null;
+    return { engine, frontend, distance };
+  }, target.id);
+  assert(
+    documentSync.distance !== null && documentSync.distance < 0.01,
+    `${kind} drag left the front-end document model stale after commit: ${JSON.stringify({ target, documentSync })}`,
+  );
 }
 
 async function verifyLargeRegionSelectionDoesNotDragGroup(page, target) {
@@ -1368,6 +1425,46 @@ async function verifyMixedObjectFollowsStructureDrag(page, structureTarget, obje
   assert(moved > 12, `${kind} did not follow mixed molecule drag preview: ${JSON.stringify({ before, during, moved, structureTarget, objectTarget })}`);
   assert(during.transforming > 0, `${kind} mixed drag did not use object preview transform: ${JSON.stringify({ before, during, objectTarget })}`);
   assert(during.staleCenters === 0, `${kind} left stale object primitives at the drag origin: ${JSON.stringify({ before, during, structureTarget, objectTarget })}`);
+  const documentSync = await page.evaluate((objectId) => {
+    const translateForObject = (doc, wantedObjectId) => {
+      const visit = (object) => {
+        if (!object) {
+          return null;
+        }
+        if (object.id === wantedObjectId) {
+          const translate = object.transform?.translate || object.transform?.translation || [0, 0];
+          return {
+            x: Number(translate[0] || 0),
+            y: Number(translate[1] || 0),
+          };
+        }
+        for (const child of object.children || []) {
+          const found = visit(child);
+          if (found) {
+            return found;
+          }
+        }
+        return null;
+      };
+      for (const object of doc?.objects || []) {
+        const found = visit(object);
+        if (found) {
+          return found;
+        }
+      }
+      return null;
+    };
+    const engineDoc = JSON.parse(window.__chemcoreDebug.state.editorEngine.documentJson?.() || "null");
+    const frontendDoc = window.__chemcoreDebug.document;
+    const engine = translateForObject(engineDoc, objectId);
+    const frontend = translateForObject(frontendDoc, objectId);
+    const distance = engine && frontend ? Math.hypot(engine.x - frontend.x, engine.y - frontend.y) : null;
+    return { engine, frontend, distance };
+  }, objectTarget.id);
+  assert(
+    documentSync.distance !== null && documentSync.distance < 0.01,
+    `${kind} drag left the front-end object model stale after commit: ${JSON.stringify({ structureTarget, objectTarget, documentSync })}`,
+  );
 }
 
 async function resetViewerUi(page) {
