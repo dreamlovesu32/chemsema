@@ -6,21 +6,19 @@ All notable public changes to ChemCore are tracked here.
 
 Large-document interaction, CDXML fidelity, and agent-friendly CLI beta release.
 
-- Added the `chemcore-cli` crate for headless document inspection, conversion, export, blank-document generation, and JSON command execution.
-- Added direct engine commands for agent-style editing: text creation, text run replacement, node label run replacement, target deletion, target movement, target rotation, arrow geometry editing, shape geometry editing, document load/export/convert/inspect, and document style application.
-- Added structured CLI execution reports that record whether each command executed, whether it changed the document, created/updated/deleted target ids, command errors, per-command after snapshots, and final document state.
-- Added `--document-json` and `--inspect-after` CLI options so scripts and agents can inspect internal ChemCore JSON, molecule state, and object state without opening the GUI.
-- Improved `.json`/`.ccjs` handling in the desktop file format service so internal ChemCore JSON is easier to exchange.
-- Improved CDXML import/export fidelity for labels, arrows, symbols, bold line widths, radical valence, grouped arrows, stacked labels, attached-label group layout, numeric glyph anchors, cached fragments inside labels, and parenthesized sulfonyl labels.
-- Tightened glyph clipping and label geometry, including refreshed glyph clip polygon coverage, more conservative imported-label anchors, and updated synthetic SVG snapshots.
-- Reworked large-document interaction performance by making editor rendering updates more local, caching structure move preview inputs, avoiding unnecessary full refreshes, optimizing object creation latency, and adding deferred object creation synchronization before patching.
-- Rebuilt the selection and drag-preview pipeline for large structures, including local drawing previews, frame-local structure drag previews, backend target primitives for drag previews, frontend partial-bond previews, and more stable live selection previews.
-- Fixed hover, focus, and overlay lifecycle problems after drawing, pointer commits, object creation, selection drags, selected object drags, bracket handle edits, arrow handle edits, and multi-molecule drag operations.
-- Improved grouped-object and selection semantics, including grouped child editing, grouped molecule hover hit testing, preventing region selection from dragging parent groups, and fixing incremental render targets for multi-molecule drags.
-- Refined arrow, bracket, shape, and object control handles, including curved-arrow style/geometry previews, bracket handle resize refresh, consistent object control handle styling, and hidden diagnostic markers during selection drag.
-- Added browser file drag-and-drop support, opening dropped files in the current viewer, shared viewer display scale handling, and fast desktop/viewer development scripts.
-- Added regression and diagnostic coverage for viewer interactions, large drag previews, large object operations, glyph clip manifest coverage, SVG pixel comparisons, and PowerPoint/CDX render comparison workflows.
-- Added English and Chinese CLI command guides, public interaction-feedback rules, early project history notes, and README architecture updates describing the shared Rust engine, human-friendly UI, and agent-friendly CLI.
+- Added the `chemcore-cli` crate and direct engine commands for headless inspection, conversion, export, document editing, and structured JSON execution reports.
+- Added `--document-json`, `--inspect-after`, and improved `.json`/`.ccjs` handling so scripts and agents can exchange ChemCore documents without driving the GUI.
+- Improved CDXML import/export fidelity across labels, arrows, symbols, bold widths, radicals, grouped graphics, stacked/attached labels, cached fragments, and bracketed labels.
+- Imported CDXML bracket pairs as bracket groups with independently draggable left/right sides while preserving repeat-count and bracket-label semantics.
+- Tightened glyph clipping, label geometry, imported label anchors, and synthetic SVG snapshots.
+- Reworked large-document interaction performance with more local rendering updates, cached drag-preview inputs, fragment-bounds filtering, reduced full-refresh paths, and safer deferred document synchronization.
+- Rebuilt selection and drag previews so large structures, labels, arrows, shapes, brackets, and imported objects stay visually in sync during high-frequency editing.
+- Fixed drawing and commit refresh artifacts, including bond preview persistence, bond creation patching, and rectangular/near-horizontal bond rendering quality.
+- Unified Select-tool hover and cleaned up hover/focus/overlay lifecycle problems across drawing, object creation, selected-object drags, bracket/arrow edits, and multi-molecule operations.
+- Clarified grouped-object selection semantics: ordinary child-object dragging stays independent, explicit group selection still collapses to a group box, and selected objects move together only when actually selected.
+- Refined arrow, bracket, shape, and object handles, including bracket hit testing that ignores interior empty space, selected-object hover suppression, and consistent control styling.
+- Added browser file drag-and-drop/current-viewer opening, shared display-scale handling, faster desktop/viewer development scripts, and expanded interaction/performance regression coverage.
+- Added English and Chinese CLI command guides, public interaction-feedback rules, early project history notes, and README architecture updates.
 
 ## 1.0.0-beta.3
 

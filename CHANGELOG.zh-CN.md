@@ -6,21 +6,19 @@ ChemCore 的公开变更记录会保存在这里。
 
 大文件交互、CDXML 兼容和 agent-friendly CLI beta 版本。
 
-- 新增 `chemcore-cli` crate，支持 headless 文档检查、格式转换、导出、空白文档生成和 JSON 命令执行。
-- 新增适合 agent 调用的直接 engine 命令：文本创建、文本 runs 替换、原子标签 runs 替换、目标删除、目标移动、目标旋转、箭头几何编辑、图形几何编辑、文档 load/export/convert/inspect，以及文档样式应用。
-- 新增结构化 CLI 执行报告，记录每条命令是否执行、是否改变文档、新建/更新/删除了哪些 id、失败错误、每条命令后的 after 快照，以及最终文档状态。
-- 新增 `--document-json` 和 `--inspect-after` CLI 选项，方便脚本和 agent 在不打开 GUI 的情况下读取 ChemCore 内部 JSON、分子状态和对象状态。
-- 改进桌面文件格式服务中的 `.json`/`.ccjs` 处理，让 ChemCore 内部 JSON 更容易作为交换格式使用。
-- 改进 CDXML 导入导出保真度，覆盖标签、箭头、符号、粗线宽度、自由基价态、grouped arrows、堆叠标签、attached-label group layout、数字 glyph 锚点、标签内部缓存 fragment，以及带括号的 sulfonyl 标签。
-- 收紧 glyph clipping 和标签几何，包括更新 glyph clip polygon 覆盖、更保守的导入标签锚点，以及同步 synthetic SVG 快照。
-- 重构大文件交互性能：让编辑器渲染更新更局部化，缓存结构移动预览输入，避免不必要的整页刷新，优化对象创建延迟，并在 patch 前同步 deferred object creation。
-- 重建大结构选择和拖拽预览管线，包括本地绘制预览、frame-local structure drag preview、后端 target primitives、前端 partial-bond preview，以及更稳定的 live selection preview。
-- 修复绘制、pointer commit、对象创建、选择拖拽、已选对象拖拽、括号 handle 编辑、箭头 handle 编辑和多分子拖拽后的 hover、focus 与 overlay 生命周期问题。
-- 改进 grouped object 和选择语义，包括 group 内子对象编辑、grouped molecule hover hit testing、防止框选区域拖动父 group，以及修复多分子拖拽的增量渲染 target。
-- 优化箭头、括号、图形和对象控制点，包括弯箭头样式/几何预览、括号 handle resize refresh、统一对象控制点样式，以及拖拽选择时隐藏诊断 marker。
-- 新增浏览器文件拖拽打开能力，支持拖入文件在当前 viewer 中打开，补充 shared viewer display scale 处理，以及更快的桌面端/viewer 开发脚本。
-- 增加 viewer interaction、大文件拖拽预览、大对象操作、glyph clip manifest、SVG 像素对比和 PowerPoint/CDX 渲染对比相关的回归与诊断覆盖。
-- 新增中英文 CLI 命令指南、公开交互反馈规则、早期项目历史说明，并更新 README 架构说明，明确共享 Rust engine、对人友好的 UI 和对 agent 友好的 CLI。
+- 新增 `chemcore-cli` crate 和直接 engine 命令，支持 headless 文档检查、转换、导出、编辑，以及结构化 JSON 执行报告。
+- 新增 `--document-json`、`--inspect-after`，并改进 `.json`/`.ccjs` 处理，让脚本和 agent 可以不驱动 GUI 就交换 ChemCore 文档。
+- 改进 CDXML 导入导出保真度，覆盖标签、箭头、符号、粗线宽度、自由基价态、grouped graphics、堆叠/连接标签、标签内部缓存 fragment 和括号标签。
+- 将导入的 CDXML 成对括号表示为 bracket group，左右括号边可独立拖动，同时保留 repeat count 和括号标签语义。
+- 收紧 glyph clipping、标签几何、导入标签锚点，并同步 synthetic SVG 快照。
+- 重构大文件交互性能：局部化渲染更新、缓存拖拽预览输入、加入 fragment bbox 粗筛、减少整页刷新路径，并更安全地同步 deferred document update。
+- 重建选择和拖拽预览管线，让大结构、标签、箭头、图形、括号和导入对象在高频编辑时保持视觉同步。
+- 修复绘制提交后的刷新瑕疵，包括键预览保持、键创建 patching，以及矩形/近水平键的显示质量问题。
+- 统一选择工具 hover，并清理绘制、对象创建、已选对象拖拽、括号/箭头编辑和多分子操作后的 hover、focus 与 overlay 残留。
+- 明确 grouped object 选择语义：普通子对象拖拽保持独立，显式整组选中仍折叠为组选择框，只有真正被选中的对象才一起移动。
+- 优化箭头、括号、图形和对象控制点，包括忽略括号内部空白的命中测试、抑制已选对象 hover，以及统一控制点样式。
+- 新增浏览器文件拖拽/当前 viewer 打开、shared display scale 处理、更快的桌面端/viewer 开发脚本，并扩展交互和性能回归覆盖。
+- 新增中英文 CLI 命令指南、公开交互反馈规则、早期项目历史说明，并更新 README 架构说明。
 
 ## 1.0.0-beta.3
 
