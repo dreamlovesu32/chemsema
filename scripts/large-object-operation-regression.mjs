@@ -352,6 +352,10 @@ async function drawBondUsesPrimitivePatch(page) {
     const countTargetDom = (attribute, ids) => ids.reduce((count, id) => (
       count + document.querySelectorAll(`[${attribute}="${CSS.escape(id)}"]`).length
     ), 0);
+    const targetBondTags = targetBondIds.flatMap((id) => (
+      [...document.querySelectorAll(`[data-bond-id="${CSS.escape(id)}"]`)]
+        .map((element) => element.tagName.toLowerCase())
+    ));
     return {
       changed: !!commandResult?.changed,
       patched,
@@ -360,6 +364,7 @@ async function drawBondUsesPrimitivePatch(page) {
       commandMs,
       renderMs,
       targetBondDomCount: countTargetDom("data-bond-id", targetBondIds),
+      targetBondTags,
       targetNodeDomCount: countTargetDom("data-node-id", targetNodeIds),
       objectPrimitivePatchStats: debug.objectPrimitivePatchStats || null,
       documentRenderCount: debug.renderStats.documentRenderCount || 0,
@@ -376,6 +381,7 @@ async function drawBondUsesPrimitivePatch(page) {
   assert((result.targets?.nodes || []).length > 0, `Bond command did not target nodes: ${JSON.stringify(result)}`);
   assert((result.targets?.bonds || []).length > 0, `Bond command did not target bonds: ${JSON.stringify(result)}`);
   assert(result.targetBondDomCount > 0, `Bond primitive DOM was not patched: ${JSON.stringify(result)}`);
+  assert(result.targetBondTags.includes("line"), `Simple bond should render as a stroked line: ${JSON.stringify(result)}`);
   assert(
     !result.objectPrimitivePatchStats?.patched,
     `Bond creation repainted the molecule object instead of primitive targets: ${JSON.stringify(result.objectPrimitivePatchStats)}`,
@@ -429,6 +435,7 @@ async function drawBondWithMouseKeepsPreviewUntilPatch(page) {
     probe.running = false;
     const samples = probe.samples || [];
     const command = JSON.parse(window.__chemcoreDebug.state.editorEngine.lastCommandResultJson?.() || "null");
+    const targetBondIds = command?.targets?.bonds || [];
     const firstBondIndex = samples.findIndex((sample) => sample.bondCount > 0);
     const beforeBond = firstBondIndex >= 0 ? samples.slice(0, firstBondIndex) : samples;
     return {
@@ -437,6 +444,10 @@ async function drawBondWithMouseKeepsPreviewUntilPatch(page) {
       created: command?.created || null,
       sampleCount: samples.length,
       firstBondIndex,
+      targetBondTags: targetBondIds.flatMap((id) => (
+        [...document.querySelectorAll(`[data-bond-id="${CSS.escape(id)}"]`)]
+          .map((element) => element.tagName.toLowerCase())
+      )),
       gapSamples: beforeBond.filter((sample) => sample.previewCount === 0 && sample.bondCount === 0),
       overlapSamples: samples.filter((sample) => sample.previewCount > 0 && sample.bondCount > 0),
       firstSamples: samples.slice(0, 8),
@@ -450,6 +461,7 @@ async function drawBondWithMouseKeepsPreviewUntilPatch(page) {
   assert(result.changed, `Mouse bond was not created: ${JSON.stringify(result)}`);
   assert((result.targets?.bonds || []).length > 0, `Mouse bond did not target bonds: ${JSON.stringify(result)}`);
   assert(result.firstBondIndex >= 0, `Mouse bond never reached document DOM: ${JSON.stringify(result)}`);
+  assert(result.targetBondTags.includes("line"), `Mouse bond should render as a stroked line: ${JSON.stringify(result)}`);
   assert(
     result.gapSamples.length === 0,
     `Mouse bond preview disappeared before committed DOM was patched: ${JSON.stringify(result)}`,
