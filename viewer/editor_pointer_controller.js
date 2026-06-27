@@ -498,6 +498,7 @@ export function createEditorPointerController(options) {
   }
 
   async function beginSelectionMoveGesture(point, event, syncCursor = options.syncSelectCursorForPoint) {
+    const startedFromExistingSelection = !!options.state().editorEngine.selectionContainsPoint?.(point.x, point.y);
     const beginResult = options.state().editorEngine.beginSelectionMove?.(
       point.x,
       point.y,
@@ -520,6 +521,7 @@ export function createEditorPointerController(options) {
       dragged: false,
       additive: !!event.shiftKey,
       previewSelection,
+      cursor: startedFromExistingSelection ? "grabbing" : "default",
     });
     await syncCursor(point);
     clearEditorOverlayRoot();

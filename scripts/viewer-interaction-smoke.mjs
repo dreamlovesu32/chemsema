@@ -633,6 +633,10 @@ async function verifyDragHandleCursors(browser) {
       body,
       top: window.__chemcoreDebug.worldToClient(tx + handleX, ty),
       sideObjectId: sideObject?.id || "",
+      siblingObjectId: objects.find((object) => (
+        (object.type || object.objectType || object.object_type) === "bracket"
+        && object.id !== sideObject?.id
+      ))?.id || "",
     };
   });
   assert(bracketCursorTargets.sideObjectId && bracketCursorTargets.body && bracketCursorTargets.top, `Could not find bracket cursor targets: ${JSON.stringify(bracketCursorTargets)}`);
@@ -673,6 +677,67 @@ async function verifyDragHandleCursors(browser) {
     bracketCursorTargets.top.y,
     ["default"],
     "Unselected bracket endpoint",
+  );
+  const bracketDragBefore = await page.evaluate(({ sideObjectId, siblingObjectId }) => {
+    const documentData = JSON.parse(window.__chemcoreDebug.state.editorEngine.documentJson?.() || "null")
+      || window.__chemcoreDebug.document;
+    const visit = (object, out = []) => {
+      out.push(object);
+      for (const child of object.children || []) {
+        visit(child, out);
+      }
+      return out;
+    };
+    const objects = (documentData.objects || []).flatMap((object) => visit(object, []));
+    const side = objects.find((object) => object.id === sideObjectId);
+    const sibling = objects.find((object) => object.id === siblingObjectId);
+    return {
+      sideTranslate: side?.transform?.translate || null,
+      siblingTranslate: sibling?.transform?.translate || null,
+    };
+  }, bracketCursorTargets);
+  await page.mouse.move(bracketCursorTargets.body.x, bracketCursorTargets.body.y);
+  await page.mouse.down();
+  await page.mouse.move(bracketCursorTargets.body.x + 18, bracketCursorTargets.body.y + 9, { steps: 4 });
+  await waitForCanvasCursor(
+    page,
+    bracketCursorTargets.body.x + 18,
+    bracketCursorTargets.body.y + 9,
+    ["default"],
+    "Unselected bracket drag",
+  );
+  await page.mouse.up();
+  await page.waitForFunction((sideObjectId) => {
+    const state = JSON.parse(window.__chemcoreDebug?.state?.editorEngine?.stateJson?.() || "{}");
+    const selection = state.selection || {};
+    const arrowObjects = selection.arrowObjects || selection.arrow_objects || [];
+    return arrowObjects.length === 1 && arrowObjects[0] === sideObjectId;
+  }, bracketCursorTargets.sideObjectId);
+  const bracketDragAfter = await page.evaluate(({ sideObjectId, siblingObjectId }) => {
+    const documentData = JSON.parse(window.__chemcoreDebug.state.editorEngine.documentJson?.() || "null")
+      || window.__chemcoreDebug.document;
+    const visit = (object, out = []) => {
+      out.push(object);
+      for (const child of object.children || []) {
+        visit(child, out);
+      }
+      return out;
+    };
+    const objects = (documentData.objects || []).flatMap((object) => visit(object, []));
+    const side = objects.find((object) => object.id === sideObjectId);
+    const sibling = objects.find((object) => object.id === siblingObjectId);
+    return {
+      sideTranslate: side?.transform?.translate || null,
+      siblingTranslate: sibling?.transform?.translate || null,
+    };
+  }, bracketCursorTargets);
+  assert(
+    JSON.stringify(bracketDragAfter.sideTranslate) !== JSON.stringify(bracketDragBefore.sideTranslate),
+    `Unselected bracket drag did not move the hit side: ${JSON.stringify({ bracketDragBefore, bracketDragAfter, bracketCursorTargets })}`,
+  );
+  assert(
+    JSON.stringify(bracketDragAfter.siblingTranslate) === JSON.stringify(bracketDragBefore.siblingTranslate),
+    `Unselected bracket drag moved the sibling side: ${JSON.stringify({ bracketDragBefore, bracketDragAfter, bracketCursorTargets })}`,
   );
 
   await page.close();

@@ -4290,7 +4290,11 @@ function syncCanvasCursor() {
     setCanvasCursorStyle(activeSelectionGesture.cursor || "default");
     return;
   }
-  if (activeSelectionGesture?.kind === "move" || activeSelectionGesture?.kind === "rotate") {
+  if (activeSelectionGesture?.kind === "move") {
+    setCanvasCursorStyle(activeSelectionGesture.cursor || "grabbing");
+    return;
+  }
+  if (activeSelectionGesture?.kind === "rotate") {
     setCanvasCursorStyle("grabbing");
     return;
   }
@@ -4359,7 +4363,7 @@ async function syncArrowAwareCursorForPoint(point) {
     return;
   }
   if (activeSelectionGesture?.kind === "move") {
-    setCanvasCursorStyle("grabbing");
+    setCanvasCursorStyle(activeSelectionGesture.cursor || "grabbing");
     return;
   }
   if (activeSelectionGesture?.kind === "rotate") {

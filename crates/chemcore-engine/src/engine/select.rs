@@ -594,8 +594,9 @@ impl Engine {
         _alt_key: bool,
     ) -> bool {
         let mut preserve_selection_after_drag = true;
+        let direct_hit = self.select_hit_at_point(point);
         if self.state.selection.is_empty() || !self.selection_contains_point(point) {
-            let Some(hit) = self.select_hit_at_point(point) else {
+            let Some(hit) = direct_hit else {
                 return false;
             };
             preserve_selection_after_drag = selection_contains_hit(&self.state.selection, &hit);
@@ -806,15 +807,7 @@ impl Engine {
             .selection_drag
             .as_ref()
             .is_some_and(|drag| drag.changed);
-        let should_clear_selection = changed
-            && self
-                .selection_drag
-                .as_ref()
-                .is_some_and(|drag| !drag.preserve_selection_after_drag);
         self.selection_drag = None;
-        if should_clear_selection {
-            self.state.selection = SelectionState::default();
-        }
         if changed {
             clear_select_hover_overlay(self);
         } else {
@@ -2033,6 +2026,13 @@ impl Engine {
 
     pub(super) fn selection_render_list(&self) -> Vec<RenderPrimitive> {
         if self.selection_rotate_drag.is_some() {
+            return Vec::new();
+        }
+        if self
+            .selection_drag
+            .as_ref()
+            .is_some_and(|drag| !drag.preserve_selection_after_drag)
+        {
             return Vec::new();
         }
         let mut out = Vec::new();

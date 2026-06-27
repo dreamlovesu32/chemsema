@@ -2016,6 +2016,115 @@ fn dragging_one_bracket_side_in_group_does_not_move_other_side() {
 }
 
 #[test]
+fn dragging_one_side_of_selected_bracket_pair_moves_both_sides() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(ToolState {
+        active_tool: Tool::Bracket,
+        bracket_kind: BracketKind::Square,
+        ..ToolState::default()
+    });
+    drag(
+        &mut engine,
+        Point::new(120.0, 130.0),
+        Point::new(180.0, 220.0),
+    );
+    engine.set_tool_state(select_tool());
+
+    let group = engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "group")
+        .expect("bracket tool should create a group");
+    let left_id = group
+        .children
+        .iter()
+        .find(|object| {
+            object
+                .payload
+                .extra
+                .get("side")
+                .and_then(|value| value.as_str())
+                == Some("left")
+        })
+        .map(|object| object.id.clone())
+        .expect("left bracket should exist");
+    let right_id = group
+        .children
+        .iter()
+        .find(|object| {
+            object
+                .payload
+                .extra
+                .get("side")
+                .and_then(|value| value.as_str())
+                == Some("right")
+        })
+        .map(|object| object.id.clone())
+        .expect("right bracket should exist");
+    assert_eq!(
+        engine.state().selection.arrow_objects,
+        vec![left_id.clone(), right_id.clone()]
+    );
+    let left_before = engine
+        .state()
+        .document
+        .find_scene_object(&left_id)
+        .expect("left bracket should remain")
+        .clone();
+    let right_before = engine
+        .state()
+        .document
+        .find_scene_object(&right_id)
+        .expect("right bracket should remain")
+        .clone();
+    let left_height = left_before.payload.bbox.expect("left bracket bbox")[3];
+    let start = Point::new(
+        left_before.transform.translate[0] + 0.5,
+        left_before.transform.translate[1] + left_height * 0.5,
+    );
+    let end = Point::new(start.x + 12.0, start.y + 6.0);
+
+    assert!(engine.begin_selection_move_at_point(start, false, false));
+    assert_eq!(
+        engine.state().selection.arrow_objects,
+        vec![left_id.clone(), right_id.clone()]
+    );
+    assert!(engine.update_selection_move(end, false));
+    assert!(engine.finish_selection_move(end, false));
+
+    let left_after = engine
+        .state()
+        .document
+        .find_scene_object(&left_id)
+        .expect("left bracket should remain");
+    let right_after = engine
+        .state()
+        .document
+        .find_scene_object(&right_id)
+        .expect("right bracket should remain");
+    assert_eq!(
+        left_after.transform.translate,
+        [
+            round_to_2(left_before.transform.translate[0] + 12.0),
+            round_to_2(left_before.transform.translate[1] + 6.0)
+        ]
+    );
+    assert_eq!(
+        right_after.transform.translate,
+        [
+            round_to_2(right_before.transform.translate[0] + 12.0),
+            round_to_2(right_before.transform.translate[1] + 6.0)
+        ]
+    );
+    assert_eq!(
+        engine.state().selection.arrow_objects,
+        vec![left_id, right_id]
+    );
+}
+
+#[test]
 fn curved_arrow_path_uses_circular_arc_control_points() {
     let mut engine = Engine::new();
     engine.set_tool_state(ToolState {
@@ -8834,9 +8943,22 @@ fn select_tool_dragging_unselected_bond_focus_starts_move() {
     assert!(engine.state().selection.is_empty());
     assert!(engine.begin_selection_move_at_point(start, false, false));
     assert_eq!(engine.state().selection.bonds, vec!["b_3"]);
+    assert!(engine.render_list().iter().all(|primitive| !matches!(
+        primitive,
+        RenderPrimitive::Rect {
+            role: RenderRole::SelectionBox
+                | RenderRole::SelectionBond
+                | RenderRole::SelectionNode
+                | RenderRole::SelectionTextBox,
+            ..
+        } | RenderPrimitive::Circle {
+            role: RenderRole::SelectionBondDot,
+            ..
+        }
+    )));
     assert!(engine.update_selection_move(end, false));
     assert!(engine.finish_selection_move(end, false));
-    assert!(engine.state().selection.is_empty());
+    assert_eq!(engine.state().selection.bonds, vec!["b_3"]);
 
     let entry = engine.state().document.editable_fragment().unwrap();
     let n1 = entry
@@ -8940,17 +9062,17 @@ fn select_tool_dragging_single_terminal_endpoint_snaps_to_15_degrees() {
 }
 
 #[test]
-fn select_tool_dragging_unselected_single_terminal_endpoint_clears_temporary_selection() {
+fn select_tool_dragging_unselected_single_terminal_endpoint_selects_dragged_endpoint() {
     let mut engine = Engine::new();
     engine.set_tool_state(bond_tool());
     click(&mut engine, px(300.0), px(260.0));
     engine.set_tool_state(select_tool());
-    engine.select_at_point(Point::new(10000.0, 10000.0), false);
+    engine.select_at_point(Point::new(FIRST_START_X, FIRST_START_Y), false);
     let start = Point::new(FIRST_END_X, FIRST_END_Y);
     let target = Point::new(FIRST_START_X, FIRST_START_Y)
         .translated(direction_from_angle(22.0).scaled(DEFAULT_BOND_LENGTH * 1.4));
 
-    assert!(engine.state().selection.is_empty());
+    assert_eq!(engine.state().selection.nodes, vec!["n_1"]);
     assert!(engine.begin_selection_move_at_point(start, false, false));
     assert_eq!(engine.state().selection.nodes, vec!["n_2"]);
     assert!(engine.update_selection_move(target, false));
@@ -8967,7 +9089,7 @@ fn select_tool_dragging_unselected_single_terminal_endpoint_clears_temporary_sel
         .unwrap();
     assert!((n2.position[0] - round_to_2(expected.x)).abs() < 0.001);
     assert!((n2.position[1] - round_to_2(expected.y)).abs() < 0.001);
-    assert!(engine.state().selection.is_empty());
+    assert_eq!(engine.state().selection.nodes, vec!["n_2"]);
 }
 
 #[test]
