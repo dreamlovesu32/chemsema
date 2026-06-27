@@ -5,6 +5,7 @@ use chemcore_engine::{
 };
 use serde_json::json;
 use serde_json::Map;
+use std::collections::BTreeSet;
 
 mod support;
 use support::{cdxml_fixture_exists, read_cdxml_fixture, read_optional_cdxml_fixture};
@@ -136,6 +137,72 @@ fn grouped_two_fragment_document() -> ChemcoreDocument {
                         { "id": "n_grouped_2", "element": "C", "atomicNumber": 6, "position": [40.0, 0.0], "charge": 0, "numHydrogens": 0 }
                     ],
                     "bonds": [{ "id": "b_grouped", "begin": "n_grouped_1", "end": "n_grouped_2", "order": 1 }]
+                }
+            }
+        }
+    }))
+    .expect("document should deserialize")
+}
+
+fn grouped_labeled_molecule_document() -> ChemcoreDocument {
+    serde_json::from_value(json!({
+        "format": { "name": "chemcore", "version": "0.1", "unit": "pt" },
+        "document": {
+            "id": "doc_group_labeled_molecule",
+            "title": "group labeled molecule",
+            "page": { "width": 220.0, "height": 160.0, "background": "#ffffff" }
+        },
+        "styles": {
+            "style_molecule_default": {
+                "kind": "molecule",
+                "stroke": "#000000",
+                "strokeWidth": 0.85,
+                "fontFamily": "Arial",
+                "fontSize": 11.0
+            }
+        },
+        "objects": [{
+            "id": "grp_1",
+            "type": "group",
+            "zIndex": 30,
+            "children": [{
+                "id": "obj_molecule_001",
+                "type": "molecule",
+                "visible": true,
+                "zIndex": 10,
+                "transform": { "translate": [10.0, 10.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+                "styleRef": "style_molecule_default",
+                "payload": { "resourceRef": "mol_001", "bbox": [0.0, 0.0, 80.0, 40.0] }
+            }]
+        }],
+        "resources": {
+            "mol_001": {
+                "type": "molecule_fragment2d",
+                "encoding": "chemcore.molecule.fragment2d",
+                "data": {
+                    "schema": "chemcore.molecule.fragment2d",
+                    "bbox": [0.0, 0.0, 80.0, 40.0],
+                    "nodes": [
+                        { "id": "n1", "element": "C", "atomicNumber": 6, "position": [10.0, 20.0], "charge": 0, "numHydrogens": 0 },
+                        {
+                            "id": "n2",
+                            "element": "O",
+                            "atomicNumber": 8,
+                            "position": [60.0, 20.0],
+                            "charge": 0,
+                            "numHydrogens": 0,
+                            "label": {
+                                "text": "O",
+                                "sourceText": "O",
+                                "position": [60.0, 20.0],
+                                "box": [56.0, 12.0, 66.0, 24.0],
+                                "fontSize": 11.0
+                            }
+                        }
+                    ],
+                    "bonds": [
+                        { "id": "b1", "begin": "n1", "end": "n2", "order": 1, "strokeWidth": 0.85 }
+                    ]
                 }
             }
         }
@@ -800,6 +867,103 @@ fn moving_selected_grouped_molecule_does_not_move_nodes_twice() {
         .expect("fragment should still exist");
     assert_eq!(fragment.nodes[0].position, [10.0, 20.0]);
     assert_eq!(fragment.nodes[1].position, [60.0, 20.0]);
+}
+
+#[test]
+fn render_targets_for_selected_group_include_child_molecule_labels() {
+    let document = grouped_labeled_molecule_document();
+    let mut engine = Engine::new();
+    engine
+        .load_document_json(&serde_json::to_string(&document).unwrap())
+        .expect("document should load");
+
+    let primitives = engine.render_targets(
+        &BTreeSet::new(),
+        &BTreeSet::new(),
+        &BTreeSet::from(["grp_1".to_string()]),
+    );
+
+    assert!(
+        primitives.iter().any(|primitive| {
+            matches!(
+                primitive,
+                RenderPrimitive::Text {
+                    role: RenderRole::DocumentText,
+                    object_id,
+                    node_id,
+                    ..
+                } if object_id.as_deref() == Some("obj_molecule_001")
+                    && node_id.as_deref() == Some("n2")
+            )
+        }),
+        "rendering a selected group target must include child molecule label primitives"
+    );
+    assert!(
+        primitives.iter().any(|primitive| {
+            matches!(
+                primitive,
+                RenderPrimitive::Line {
+                    role: RenderRole::DocumentBond,
+                    object_id,
+                    bond_id,
+                    ..
+                }
+                | RenderPrimitive::Polygon {
+                    role: RenderRole::DocumentBond,
+                    object_id,
+                    bond_id,
+                    ..
+                } if object_id.as_deref() == Some("obj_molecule_001")
+                    && bond_id.as_deref() == Some("b1")
+            )
+        }),
+        "rendering a selected group target must include child molecule bond primitives"
+    );
+}
+
+#[test]
+fn moving_selected_grouped_molecule_moves_child_label_world_position() {
+    let document = grouped_labeled_molecule_document();
+    let mut engine = Engine::new();
+    engine
+        .load_document_json(&serde_json::to_string(&document).unwrap())
+        .expect("document should load");
+    assert!(engine.select_component_at_point(Point::new(70.0, 30.0), false));
+    assert_eq!(engine.state().selection.arrow_objects, vec!["grp_1"]);
+
+    let before_x = engine
+        .render_list()
+        .into_iter()
+        .find_map(|primitive| match primitive {
+            RenderPrimitive::Text {
+                role: RenderRole::DocumentText,
+                node_id,
+                x,
+                ..
+            } if node_id.as_deref() == Some("n2") => Some(x),
+            _ => None,
+        })
+        .expect("label should render before move");
+
+    assert!(engine.begin_selection_move_at_point(Point::new(70.0, 30.0), false, false));
+    assert!(engine.update_selection_move(Point::new(82.0, 35.0), false));
+    assert!(engine.finish_selection_move(Point::new(82.0, 35.0), false));
+
+    let after_x = engine
+        .render_list()
+        .into_iter()
+        .find_map(|primitive| match primitive {
+            RenderPrimitive::Text {
+                role: RenderRole::DocumentText,
+                node_id,
+                x,
+                ..
+            } if node_id.as_deref() == Some("n2") => Some(x),
+            _ => None,
+        })
+        .expect("label should render after move");
+
+    assert_close(after_x, before_x + 12.0);
 }
 
 #[test]

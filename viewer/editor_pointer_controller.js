@@ -236,6 +236,20 @@ export function createEditorPointerController(options) {
     debug.creationCommitStats = stats;
   }
 
+  function recordInteractionCommitTiming(sample) {
+    const debug = window.__chemcoreDebug;
+    if (!debug) {
+      return;
+    }
+    const stats = debug.interactionCommitStats || { samples: [] };
+    stats.samples.push(sample);
+    if (stats.samples.length > 120) {
+      stats.samples.splice(0, stats.samples.length - 120);
+    }
+    stats.last = sample;
+    debug.interactionCommitStats = stats;
+  }
+
   function scheduleDocumentPreviewFrame() {
     if (documentPreviewFrame || documentPreviewRunning) {
       return;
@@ -1169,6 +1183,7 @@ export function createEditorPointerController(options) {
     if ((options.editorState().activeTool === "select" || options.editorState().activeTool === "arrow")
       && (gesture?.kind === "arrow-endpoint" || gesture?.kind === "arrow-curve")) {
       options.setActiveSelectionGesture(null);
+      const commitStarted = performance.now();
       const result = await executeDocumentCommand(
         {
           type: "set-arrow-geometry",
@@ -1185,11 +1200,20 @@ export function createEditorPointerController(options) {
         },
         { syncRenderList: false },
       );
+      const executedAt = performance.now();
       const changed = !!result.changed;
       if (!changed && !gesture.dragged && options.editorState().activeTool === "select") {
         await options.selectClickTarget(point, gesture.additive);
         options.clearDocumentObjectPreviewTransform();
         await options.renderSelectionOnlyUpdate(point, options.syncArrowAwareCursorForPoint);
+        recordInteractionCommitTiming({
+          kind: gesture.kind,
+          commandType: result.commandType || "set-arrow-geometry",
+          changed,
+          executeMs: executedAt - commitStarted,
+          totalMs: performance.now() - commitStarted,
+          targets: result.targets || null,
+        });
         return;
       }
       if (changed) {
@@ -1199,6 +1223,14 @@ export function createEditorPointerController(options) {
         options.clearDocumentObjectPreviewTransform();
         await options.renderSelectionOnlyUpdate(point, options.syncArrowAwareCursorForPoint);
       }
+      recordInteractionCommitTiming({
+        kind: gesture.kind,
+        commandType: result.commandType || "set-arrow-geometry",
+        changed,
+        executeMs: executedAt - commitStarted,
+        totalMs: performance.now() - commitStarted,
+        targets: result.targets || null,
+      });
       return;
     }
     if ((options.editorState().activeTool === "select"
@@ -1208,6 +1240,7 @@ export function createEditorPointerController(options) {
       || options.editorState().activeTool === "orbital")
       && gesture?.kind === "shape-resize") {
       options.setActiveSelectionGesture(null);
+      const commitStarted = performance.now();
       const result = await executeDocumentCommand(
         {
           type: "set-shape-geometry",
@@ -1224,11 +1257,20 @@ export function createEditorPointerController(options) {
         },
         { sync: false, deferDocumentSync: true },
       );
+      const executedAt = performance.now();
       const changed = !!result.changed;
       if (!changed && !gesture.dragged && options.editorState().activeTool === "select") {
         await options.selectClickTarget(point, gesture.additive);
         options.clearDocumentObjectPreviewTransform();
         await options.renderSelectionOnlyUpdate(point, options.syncArrowAwareCursorForPoint);
+        recordInteractionCommitTiming({
+          kind: gesture.kind,
+          commandType: result.commandType || "set-shape-geometry",
+          changed,
+          executeMs: executedAt - commitStarted,
+          totalMs: performance.now() - commitStarted,
+          targets: result.targets || null,
+        });
         return;
       }
       if (changed) {
@@ -1238,6 +1280,14 @@ export function createEditorPointerController(options) {
         options.clearDocumentObjectPreviewTransform();
         await options.renderSelectionOnlyUpdate(point, options.syncArrowAwareCursorForPoint);
       }
+      recordInteractionCommitTiming({
+        kind: gesture.kind,
+        commandType: result.commandType || "set-shape-geometry",
+        changed,
+        executeMs: executedAt - commitStarted,
+        totalMs: performance.now() - commitStarted,
+        targets: result.targets || null,
+      });
       return;
     }
     if (gesture?.kind === "move") {
@@ -1249,6 +1299,7 @@ export function createEditorPointerController(options) {
           && typeof options.commitDocumentObjectPreviewTransform === "function";
         const commitBackendPreview = !!gesture.backendDocumentPreviewActive
           && typeof options.renderDocumentPrimitiveChange === "function";
+        const commitStarted = performance.now();
         const result = await executeDocumentCommand(
           {
             type: "move-selection",
@@ -1261,6 +1312,7 @@ export function createEditorPointerController(options) {
           () => options.state().editorEngine.finishSelectionMove(commitPoint.x, commitPoint.y, event.altKey),
           (commitPreviewDom || commitBackendPreview) ? { sync: false, deferDocumentSync: true } : {},
         );
+        const executedAt = performance.now();
         suppressHoverUntilPointerLeavesPoint(commitPoint);
         if (commitBackendPreview && result.changed) {
           options.renderDocumentPrimitiveChange(result);
@@ -1287,6 +1339,16 @@ export function createEditorPointerController(options) {
           options.renderDocumentChange?.(result) || options.renderDocument();
         }
         clearEditorOverlayRoot();
+        recordInteractionCommitTiming({
+          kind: gesture.kind,
+          commandType: result.commandType || "move-selection",
+          changed: !!result.changed,
+          previewDom: commitPreviewDom,
+          backendPreview: commitBackendPreview,
+          executeMs: executedAt - commitStarted,
+          totalMs: performance.now() - commitStarted,
+          targets: result.targets || null,
+        });
       } else if (options.editorState().activeTool === "select") {
         await options.selectClickTarget(gesture.start || point, gesture.additive);
         options.clearDocumentObjectPreviewTransform();
@@ -1304,6 +1366,7 @@ export function createEditorPointerController(options) {
         return;
       }
       if (gesture.kind === "rotate") {
+        const commitStarted = performance.now();
         const result = await executeDocumentCommand(
           {
             type: "rotate-selection",
@@ -1316,12 +1379,22 @@ export function createEditorPointerController(options) {
           () => options.state().editorEngine.finishSelectionRotate(point.x, point.y, event.altKey),
           { sync: false, deferDocumentSync: true },
         );
+        const executedAt = performance.now();
         await options.syncSelectCursorForPoint(point);
         options.clearDocumentObjectPreviewTransform();
         options.renderDocumentChange?.(result) || options.renderDocument();
+        recordInteractionCommitTiming({
+          kind: gesture.kind,
+          commandType: result.commandType || "rotate-selection",
+          changed: !!result.changed,
+          executeMs: executedAt - commitStarted,
+          totalMs: performance.now() - commitStarted,
+          targets: result.targets || null,
+        });
         return;
       }
       if (gesture.kind === "resize") {
+        const commitStarted = performance.now();
         const result = await executeDocumentCommand(
           {
             type: "resize-selection",
@@ -1334,9 +1407,18 @@ export function createEditorPointerController(options) {
           () => options.state().editorEngine.finishSelectionResize?.(point.x, point.y),
           { sync: false, deferDocumentSync: true },
         );
+        const executedAt = performance.now();
         await options.syncSelectCursorForPoint(point);
         options.clearDocumentObjectPreviewTransform();
         options.renderDocumentChange?.(result) || options.renderDocument();
+        recordInteractionCommitTiming({
+          kind: gesture.kind,
+          commandType: result.commandType || "resize-selection",
+          changed: !!result.changed,
+          executeMs: executedAt - commitStarted,
+          totalMs: performance.now() - commitStarted,
+          targets: result.targets || null,
+        });
         return;
       }
       if (gesture.kind === "move") {

@@ -2939,6 +2939,7 @@ function removeDocumentObjectDom(documentLayer, objectId) {
   const selector = `[data-object-id="${CSS.escape(objectId)}"]`;
   const nodes = [...documentLayer.querySelectorAll(selector)];
   const nodeSet = new Set(nodes);
+  let removed = 0;
   for (const node of nodes) {
     let parent = node.parentElement;
     let hasRemovedAncestor = false;
@@ -2951,8 +2952,46 @@ function removeDocumentObjectDom(documentLayer, objectId) {
     }
     if (!hasRemovedAncestor) {
       node.remove();
+      removed += 1;
     }
   }
+  return removed;
+}
+
+function removeDocumentObjectDomTree(documentLayer, objectId, objectMap = currentDocumentSceneObjectMap()) {
+  const removed = removeDocumentObjectDom(documentLayer, objectId);
+  if (removed > 0) {
+    return removed;
+  }
+  let descendantRemoved = 0;
+  const visit = (object) => {
+    for (const child of object?.children || []) {
+      descendantRemoved += removeDocumentObjectDomTree(documentLayer, child.id, objectMap);
+    }
+  };
+  visit(objectMap.get(objectId));
+  return descendantRemoved;
+}
+
+function highestPatchObjectIds(objectIds) {
+  const ids = new Set(objectIds);
+  const covered = new Set();
+  const visit = (object, hasPatchedAncestor = false) => {
+    if (!object?.id) {
+      return;
+    }
+    if (hasPatchedAncestor && ids.has(object.id)) {
+      covered.add(object.id);
+    }
+    const nextHasPatchedAncestor = hasPatchedAncestor || ids.has(object.id);
+    for (const child of object.children || []) {
+      visit(child, nextHasPatchedAncestor);
+    }
+  };
+  for (const object of state.currentDocument?.objects || []) {
+    visit(object, false);
+  }
+  return objectIds.filter((objectId) => !covered.has(objectId));
 }
 
 function renderTargetObjectPrimitives(objectId) {
@@ -3243,7 +3282,8 @@ function renderDocumentObjectIdPatch(objectIds = new Set()) {
     return false;
   }
   const objectMap = currentDocumentSceneObjectMap();
-  const patchIds = [...objectIds];
+  const patchIds = highestPatchObjectIds([...objectIds])
+    .filter((objectId) => sceneObjectType(objectMap.get(objectId)) !== "molecule");
   if (!patchIds.length) {
     return false;
   }
@@ -3255,7 +3295,7 @@ function renderDocumentObjectIdPatch(objectIds = new Set()) {
     return (ai < 0 ? Number.MAX_SAFE_INTEGER : ai) - (bi < 0 ? Number.MAX_SAFE_INTEGER : bi);
   });
   for (const objectId of orderedObjectIds) {
-    removeDocumentObjectDom(documentLayer, objectId);
+    removeDocumentObjectDomTree(documentLayer, objectId, objectMap);
   }
   for (const objectId of orderedObjectIds) {
     const node = renderDocumentObjectPatchNode(objectId, objectMap);
@@ -3387,8 +3427,13 @@ function applyDocumentObjectOnlyPreviewTransform(selection, transform) {
   if (!nextObjectElements.size) {
     return false;
   }
+  const appliedElements = new Set();
   for (const elements of nextObjectElements.values()) {
     for (const element of elements) {
+      if (appliedElements.has(element)) {
+        continue;
+      }
+      appliedElements.add(element);
       applyDocumentPreviewElementTransform(element, transform);
     }
   }
@@ -6388,7 +6433,29 @@ function documentObjectElements(objectId) {
   if (groups.length) {
     return groups;
   }
-  return [...documentLayer.querySelectorAll(`[data-object-id="${escapedId}"]`)];
+  const directElements = [...documentLayer.querySelectorAll(`[data-object-id="${escapedId}"]`)];
+  if (directElements.length) {
+    return directElements;
+  }
+  const object = currentDocumentSceneObjectMap().get(objectId);
+  if (!object?.children?.length) {
+    return [];
+  }
+  const descendantElements = new Set();
+  const visit = (child) => {
+    if (child?.id) {
+      for (const element of documentObjectElements(child.id)) {
+        descendantElements.add(element);
+      }
+    }
+    for (const grandchild of child?.children || []) {
+      visit(grandchild);
+    }
+  };
+  for (const child of object.children) {
+    visit(child);
+  }
+  return [...descendantElements];
 }
 
 function restoreDocumentPreviewElementTransform(element) {
@@ -7010,12 +7077,21 @@ function applyDocumentObjectPreviewTransform() {
     }
     nextObjectElements.set(objectId, elements);
   }
+  const appliedElements = new Set();
   for (const elements of nextObjectElements.values()) {
     for (const element of elements) {
+      if (appliedElements.has(element)) {
+        continue;
+      }
+      appliedElements.add(element);
       applyDocumentPreviewElementTransform(element, transform);
     }
   }
   for (const element of nextPrimitiveElements) {
+    if (appliedElements.has(element)) {
+      continue;
+    }
+    appliedElements.add(element);
     applyDocumentPreviewElementTransform(element, transform);
   }
   activeDocumentPreviewObjectIds = nextIds;

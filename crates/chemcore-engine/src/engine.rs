@@ -21,7 +21,7 @@ mod text_edit;
 pub use self::command::{
     CommandAnchor, CommandDelta, CommandResult, CommandTargetDelta, CommandTargetSet,
     CommandTargets, DocumentCommandFormat, EditorCommand, FocusedDeleteSource, HistoryEntry,
-    ObjectSettingsPatch, TextCommandContent, TextEditCommandTarget,
+    HistorySnapshot, ObjectSettingsPatch, TextCommandContent, TextEditCommandTarget,
 };
 use self::text_edit::{
     element_symbol_info, endpoint_label_world_bounds, implicit_hydrogen_label_text_for_count,
@@ -305,6 +305,7 @@ pub struct Engine {
     undo_stack: Vec<HistoryEntry>,
     redo_stack: Vec<HistoryEntry>,
     command_context: Vec<EditorCommand>,
+    command_before_snapshot: Option<ChemcoreDocument>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -510,6 +511,7 @@ impl Engine {
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
             command_context: Vec::new(),
+            command_before_snapshot: None,
         }
     }
 
@@ -1791,12 +1793,8 @@ impl Engine {
         };
         let before_revision = self.revision;
         let before_document = self.state.document.clone();
-        let after = entry
-            .after
-            .clone()
-            .unwrap_or_else(|| self.state.document.clone());
-        self.restore_document(entry.before.clone());
-        entry.after = Some(after);
+        self.capture_history_after_snapshot(&mut entry);
+        self.restore_history_before_snapshot(&entry);
         self.redo_stack.push(entry);
         self.commit_command_result(EditorCommand::Undo, before_revision, before_document);
         true
@@ -1806,12 +1804,12 @@ impl Engine {
         let Some(entry) = self.redo_stack.pop() else {
             return false;
         };
-        let Some(after) = entry.after.clone() else {
+        if !self.history_entry_has_after_snapshot(&entry) {
             return false;
-        };
+        }
         let before_revision = self.revision;
         let before_document = self.state.document.clone();
-        self.restore_document(after);
+        self.restore_history_after_snapshot(&entry);
         self.undo_stack.push(entry);
         self.commit_command_result(EditorCommand::Redo, before_revision, before_document);
         true
@@ -2280,14 +2278,12 @@ impl Engine {
         let before_revision = self.revision;
         let before_document = self.state.document.clone();
         self.load_document_content(format, content, bytes)?;
-        let changed = !documents_equivalent(&before_document, &self.state.document);
         let mut result = self.command_result_from_diff(
             Some(command),
             before_revision,
             &before_document,
             &self.state.document,
         );
-        result.changed = changed;
         result.output = Some(json!({
             "format": document_command_format_name(format),
             "summary": self.inspect_document_output(&["summary".to_string()])
@@ -2736,22 +2732,49 @@ impl Engine {
             return apply(self);
         }
         let before_revision = self.revision;
-        let before_document = self.state.document.clone();
+        let use_scene_object_history = self.command_can_use_scene_object_history(&command);
+        let before_document = if use_scene_object_history {
+            None
+        } else {
+            Some(self.state.document.clone())
+        };
         let before_redo_stack = self.redo_stack.clone();
         let undo_len = self.undo_stack.len();
         self.command_context.push(command.clone());
+        self.command_before_snapshot = before_document;
         let applied = apply(self);
         self.command_context.pop();
-        let command_before_document = self
-            .history_before_document_for_command(undo_len, &command)
-            .unwrap_or_else(|| before_document.clone());
-        let document_changed =
-            !documents_equivalent(&command_before_document, &self.state.document);
-        if applied && document_changed {
-            refresh_repeating_units(&mut self.state.document);
-            self.finalize_command_history(undo_len, command.clone());
-            self.commit_command_result(command, before_revision, command_before_document);
-            true
+        let command_before_snapshot = self.command_before_snapshot.take();
+        if applied {
+            let delta_scope = self.command_delta_scope(&command);
+            if self.command_needs_repeating_unit_refresh(&command, delta_scope) {
+                refresh_repeating_units(&mut self.state.document);
+            }
+            let delta = if use_scene_object_history {
+                let before_objects = self
+                    .history_before_scene_objects_for_command(undo_len, &command)
+                    .expect("changed scene-object command must have a before object snapshot");
+                scene_object_target_delta(before_objects, &self.state.document)
+            } else {
+                let command_before_document = self
+                    .history_before_document_for_command(undo_len, &command)
+                    .or(command_before_snapshot.as_ref())
+                    .expect("changed command must have a before document snapshot");
+                document_target_delta_with_scope(
+                    command_before_document,
+                    &self.state.document,
+                    delta_scope,
+                )
+            };
+            if command_target_delta_is_empty(&delta) {
+                self.cleanup_unchanged_command_history(undo_len, &command, before_redo_stack);
+                self.last_command_result = Some(self.unchanged_command_result());
+                false
+            } else {
+                self.finalize_command_history(undo_len, command.clone());
+                self.commit_command_result_delta(command, before_revision, delta);
+                true
+            }
         } else {
             self.cleanup_unchanged_command_history(undo_len, &command, before_redo_stack);
             self.last_command_result = Some(self.unchanged_command_result());
@@ -2775,37 +2798,53 @@ impl Engine {
     fn finalize_command_history(&mut self, undo_len: usize, command: EditorCommand) {
         if self.undo_stack.len() <= undo_len {
             if let Some(entry) = self.undo_stack.last_mut() {
-                if entry.command == command {
-                    entry.after = Some(self.state.document.clone());
+                if history_entry_is_open_for_command(entry, &command) {
+                    capture_history_after_snapshot_for_document(entry, &self.state.document);
                 }
             }
             return;
         }
-        let before = self.undo_stack[undo_len].before.clone();
-        self.undo_stack.truncate(undo_len);
-        self.undo_stack.push(HistoryEntry {
-            command,
-            before,
-            after: Some(self.state.document.clone()),
-        });
+        let mut entries = self.undo_stack.split_off(undo_len);
+        let mut entry = entries.remove(0);
+        entry.command = command;
+        capture_history_after_snapshot_for_document(&mut entry, &self.state.document);
+        self.undo_stack.push(entry);
     }
 
     fn history_before_document_for_command(
         &self,
         undo_len: usize,
         command: &EditorCommand,
-    ) -> Option<ChemcoreDocument> {
+    ) -> Option<&ChemcoreDocument> {
         if self.undo_stack.len() > undo_len {
             return self
                 .undo_stack
                 .get(undo_len)
-                .map(|entry| entry.before.clone());
+                .and_then(history_entry_before_document);
         }
         self.undo_stack
             .iter()
             .rev()
-            .find(|entry| entry.command == *command && entry.after.is_none())
-            .map(|entry| entry.before.clone())
+            .find(|entry| history_entry_is_open_for_command(entry, command))
+            .and_then(history_entry_before_document)
+    }
+
+    fn history_before_scene_objects_for_command(
+        &self,
+        undo_len: usize,
+        command: &EditorCommand,
+    ) -> Option<&[SceneObject]> {
+        if self.undo_stack.len() > undo_len {
+            return self
+                .undo_stack
+                .get(undo_len)
+                .and_then(history_entry_before_scene_objects);
+        }
+        self.undo_stack
+            .iter()
+            .rev()
+            .find(|entry| history_entry_is_open_for_command(entry, command))
+            .and_then(history_entry_before_scene_objects)
     }
 
     fn cleanup_unchanged_command_history(
@@ -2822,7 +2861,7 @@ impl Engine {
         if self
             .undo_stack
             .last()
-            .is_some_and(|entry| entry.command == *command && entry.after.is_none())
+            .is_some_and(|entry| history_entry_is_open_for_command(entry, command))
         {
             self.undo_stack.pop();
         }
@@ -2843,6 +2882,17 @@ impl Engine {
         ));
     }
 
+    fn commit_command_result_delta(
+        &mut self,
+        command: EditorCommand,
+        before_revision: u64,
+        delta: CommandTargetDelta,
+    ) {
+        self.revision = self.revision.saturating_add(1);
+        self.last_command_result =
+            Some(self.command_result_from_delta(Some(command), before_revision, delta));
+    }
+
     fn command_result_from_diff(
         &self,
         command: Option<EditorCommand>,
@@ -2851,6 +2901,15 @@ impl Engine {
         after_document: &ChemcoreDocument,
     ) -> CommandResult {
         let delta = document_target_delta(before_document, after_document);
+        self.command_result_from_delta(command, before_revision, delta)
+    }
+
+    fn command_result_from_delta(
+        &self,
+        command: Option<EditorCommand>,
+        before_revision: u64,
+        delta: CommandTargetDelta,
+    ) -> CommandResult {
         CommandResult {
             changed: !delta.created.is_empty()
                 || !delta.updated.is_empty()
@@ -2893,6 +2952,76 @@ impl Engine {
         )
     }
 
+    fn command_delta_scope(&self, command: &EditorCommand) -> CommandDeltaScope {
+        match command {
+            EditorCommand::AddArrow { .. }
+            | EditorCommand::ApplyArrowStyle { .. }
+            | EditorCommand::AddShape { .. }
+            | EditorCommand::AddBracket { .. }
+            | EditorCommand::AddSymbol { .. }
+            | EditorCommand::AddOrbital { .. }
+            | EditorCommand::EditArrowGeometry { .. }
+            | EditorCommand::EditShapeGeometry { .. }
+            | EditorCommand::ApplyShapeStyle { .. }
+            | EditorCommand::ApplyBracketKind { .. }
+            | EditorCommand::ApplyOrbitalTemplate { .. }
+            | EditorCommand::ApplyOrbitalStyle { .. }
+            | EditorCommand::ApplyOrbitalPhase { .. }
+            | EditorCommand::ApplyLineStyle { .. } => CommandDeltaScope::objects_and_styles(),
+            EditorCommand::MoveSelection
+            | EditorCommand::RotateSelection
+            | EditorCommand::ResizeSelection
+                if self.selection_targets_only_scene_objects() =>
+            {
+                CommandDeltaScope::objects_and_styles()
+            }
+            _ => CommandDeltaScope::all(),
+        }
+    }
+
+    fn selection_targets_only_scene_objects(&self) -> bool {
+        self.state.selection.nodes.is_empty()
+            && self.state.selection.bonds.is_empty()
+            && self.state.selection.label_nodes.is_empty()
+            && (!self.state.selection.arrow_objects.is_empty()
+                || !self.state.selection.text_objects.is_empty())
+    }
+
+    fn command_needs_repeating_unit_refresh(
+        &self,
+        command: &EditorCommand,
+        delta_scope: CommandDeltaScope,
+    ) -> bool {
+        if delta_scope.molecule_components {
+            return true;
+        }
+        match command {
+            EditorCommand::AddBracket { .. }
+            | EditorCommand::ApplyBracketKind { .. }
+            | EditorCommand::GroupSelection { .. }
+            | EditorCommand::UngroupSelection { .. }
+            | EditorCommand::LinkSelection { .. }
+            | EditorCommand::UnlinkSelection { .. }
+            | EditorCommand::JoinSelection => true,
+            EditorCommand::MoveSelection
+            | EditorCommand::RotateSelection
+            | EditorCommand::ResizeSelection => {
+                self.selected_scene_objects_need_repeating_unit_refresh()
+            }
+            _ => false,
+        }
+    }
+
+    fn selected_scene_objects_need_repeating_unit_refresh(&self) -> bool {
+        self.state
+            .selection
+            .arrow_objects
+            .iter()
+            .chain(self.state.selection.text_objects.iter())
+            .filter_map(|object_id| self.state.document.find_scene_object(object_id))
+            .any(scene_object_needs_repeating_unit_refresh)
+    }
+
     fn current_history_command(&self) -> EditorCommand {
         self.command_context
             .last()
@@ -2901,15 +3030,114 @@ impl Engine {
     }
 
     fn push_undo_snapshot(&mut self) {
-        self.undo_stack.push(HistoryEntry::new(
-            self.current_history_command(),
-            self.state.document.clone(),
-        ));
+        let command = self.current_history_command();
+        if self.command_can_use_scene_object_history(&command) {
+            let before_objects = self.history_scene_objects_for_command(&command);
+            if !before_objects.is_empty() {
+                self.undo_stack
+                    .push(HistoryEntry::new_scene_objects(command, before_objects));
+                self.redo_stack.clear();
+                return;
+            }
+        }
+        let before = self
+            .command_before_snapshot
+            .take()
+            .unwrap_or_else(|| self.state.document.clone());
+        self.undo_stack.push(HistoryEntry::new(command, before));
         self.redo_stack.clear();
     }
 
     fn restore_document(&mut self, document: ChemcoreDocument) {
         self.state.document = document;
+        self.state.selection = SelectionState::default();
+        self.clear_interaction();
+        self.pending_select_target = None;
+        self.next_id = self.infer_next_id();
+    }
+
+    fn capture_history_after_snapshot(&self, entry: &mut HistoryEntry) {
+        capture_history_after_snapshot_for_document(entry, &self.state.document);
+    }
+
+    fn restore_history_before_snapshot(&mut self, entry: &HistoryEntry) {
+        match &entry.snapshot {
+            HistorySnapshot::Document { before, .. } => self.restore_document(before.clone()),
+            HistorySnapshot::SceneObjects { before_objects, .. } => {
+                self.restore_scene_object_snapshots(before_objects);
+            }
+        }
+    }
+
+    fn restore_history_after_snapshot(&mut self, entry: &HistoryEntry) {
+        match &entry.snapshot {
+            HistorySnapshot::Document {
+                after: Some(after), ..
+            } => self.restore_document(after.clone()),
+            HistorySnapshot::SceneObjects {
+                after_objects: Some(after_objects),
+                ..
+            } => {
+                self.restore_scene_object_snapshots(after_objects);
+            }
+            _ => {}
+        }
+    }
+
+    fn history_entry_has_after_snapshot(&self, entry: &HistoryEntry) -> bool {
+        match &entry.snapshot {
+            HistorySnapshot::Document { after, .. } => after.is_some(),
+            HistorySnapshot::SceneObjects { after_objects, .. } => after_objects.is_some(),
+        }
+    }
+
+    fn command_can_use_scene_object_history(&self, command: &EditorCommand) -> bool {
+        match command {
+            EditorCommand::MoveSelection
+            | EditorCommand::RotateSelection
+            | EditorCommand::ResizeSelection => self.selection_targets_only_scene_objects(),
+            EditorCommand::EditArrowGeometry {
+                object_id: Some(_), ..
+            }
+            | EditorCommand::EditShapeGeometry {
+                object_id: Some(_), ..
+            } => true,
+            _ => false,
+        }
+    }
+
+    fn history_scene_objects_for_command(&self, command: &EditorCommand) -> Vec<SceneObject> {
+        let object_ids = match command {
+            EditorCommand::MoveSelection
+            | EditorCommand::RotateSelection
+            | EditorCommand::ResizeSelection => self
+                .state
+                .selection
+                .arrow_objects
+                .iter()
+                .chain(self.state.selection.text_objects.iter())
+                .cloned()
+                .collect::<BTreeSet<_>>(),
+            EditorCommand::EditArrowGeometry {
+                object_id: Some(object_id),
+                ..
+            }
+            | EditorCommand::EditShapeGeometry {
+                object_id: Some(object_id),
+                ..
+            } => BTreeSet::from([object_id.clone()]),
+            _ => BTreeSet::new(),
+        };
+        object_ids
+            .iter()
+            .filter_map(|object_id| self.state.document.find_scene_object(object_id).cloned())
+            .collect()
+    }
+
+    fn restore_scene_object_snapshots(&mut self, objects: &[SceneObject]) {
+        for object in objects {
+            replace_scene_object_snapshot(&mut self.state.document.objects, object);
+        }
         self.state.selection = SelectionState::default();
         self.clear_interaction();
         self.pending_select_target = None;
@@ -3176,12 +3404,114 @@ impl Engine {
     }
 }
 
+fn history_entry_is_open_for_command(entry: &HistoryEntry, command: &EditorCommand) -> bool {
+    if entry.command != *command {
+        return false;
+    }
+    match &entry.snapshot {
+        HistorySnapshot::Document { after, .. } => after.is_none(),
+        HistorySnapshot::SceneObjects { after_objects, .. } => after_objects.is_none(),
+    }
+}
+
+fn history_entry_before_document(entry: &HistoryEntry) -> Option<&ChemcoreDocument> {
+    match &entry.snapshot {
+        HistorySnapshot::Document { before, .. } => Some(before),
+        HistorySnapshot::SceneObjects { .. } => None,
+    }
+}
+
+fn history_entry_before_scene_objects(entry: &HistoryEntry) -> Option<&[SceneObject]> {
+    match &entry.snapshot {
+        HistorySnapshot::SceneObjects { before_objects, .. } => Some(before_objects),
+        HistorySnapshot::Document { .. } => None,
+    }
+}
+
+fn capture_history_after_snapshot_for_document(
+    entry: &mut HistoryEntry,
+    document: &ChemcoreDocument,
+) {
+    match &mut entry.snapshot {
+        HistorySnapshot::Document { after, .. } => {
+            *after = Some(document.clone());
+        }
+        HistorySnapshot::SceneObjects {
+            before_objects,
+            after_objects,
+        } => {
+            let ids = before_objects
+                .iter()
+                .map(|object| object.id.as_str())
+                .collect::<BTreeSet<_>>();
+            *after_objects = Some(
+                ids.iter()
+                    .filter_map(|object_id| document.find_scene_object(object_id).cloned())
+                    .collect(),
+            );
+        }
+    }
+}
+
+fn replace_scene_object_snapshot(objects: &mut [SceneObject], snapshot: &SceneObject) -> bool {
+    for object in objects {
+        if object.id == snapshot.id {
+            *object = snapshot.clone();
+            return true;
+        }
+        if replace_scene_object_snapshot(&mut object.children, snapshot) {
+            return true;
+        }
+    }
+    false
+}
+
+fn scene_object_target_delta(
+    before_objects: &[SceneObject],
+    after_document: &ChemcoreDocument,
+) -> CommandTargetDelta {
+    let mut delta = CommandTargetDelta::default();
+    for before in before_objects {
+        match after_document.find_scene_object(&before.id) {
+            Some(after) if before != after => delta.updated.objects.push(before.id.clone()),
+            None => delta.deleted.objects.push(before.id.clone()),
+            _ => {}
+        }
+    }
+    delta
+}
+
 #[derive(Default)]
-struct DocumentTargetMaps {
-    nodes: BTreeMap<String, JsonValue>,
-    bonds: BTreeMap<String, JsonValue>,
-    objects: BTreeMap<String, JsonValue>,
-    styles: BTreeMap<String, JsonValue>,
+struct DocumentTargetMaps<'a> {
+    nodes: BTreeMap<&'a str, &'a crate::Node>,
+    bonds: BTreeMap<&'a str, &'a Bond>,
+    objects: BTreeMap<&'a str, &'a SceneObject>,
+    styles: BTreeMap<&'a str, &'a JsonValue>,
+}
+
+#[derive(Clone, Copy)]
+struct CommandDeltaScope {
+    molecule_components: bool,
+    objects: bool,
+    styles: bool,
+}
+
+impl CommandDeltaScope {
+    const fn all() -> Self {
+        Self {
+            molecule_components: true,
+            objects: true,
+            styles: true,
+        }
+    }
+
+    const fn objects_and_styles() -> Self {
+        Self {
+            molecule_components: false,
+            objects: true,
+            styles: true,
+        }
+    }
 }
 
 fn document_from_command_content(
@@ -3237,24 +3567,40 @@ fn json_value_type_name(value: &JsonValue) -> &'static str {
     }
 }
 
-fn documents_equivalent(before: &ChemcoreDocument, after: &ChemcoreDocument) -> bool {
-    serde_json::to_value(before).ok() == serde_json::to_value(after).ok()
-}
-
 fn document_target_delta(
     before: &ChemcoreDocument,
     after: &ChemcoreDocument,
 ) -> CommandTargetDelta {
+    document_target_delta_with_scope(before, after, CommandDeltaScope::all())
+}
+
+fn document_target_delta_with_scope(
+    before: &ChemcoreDocument,
+    after: &ChemcoreDocument,
+    scope: CommandDeltaScope,
+) -> CommandTargetDelta {
     let before = document_target_maps(before);
     let after = document_target_maps(after);
-    let (created_nodes, updated_nodes, deleted_nodes) =
-        diff_target_map(&before.nodes, &after.nodes);
-    let (created_bonds, updated_bonds, deleted_bonds) =
-        diff_target_map(&before.bonds, &after.bonds);
-    let (created_objects, updated_objects, deleted_objects) =
-        diff_target_map(&before.objects, &after.objects);
-    let (created_styles, updated_styles, deleted_styles) =
-        diff_target_map(&before.styles, &after.styles);
+    let (created_nodes, updated_nodes, deleted_nodes) = if scope.molecule_components {
+        diff_target_map(&before.nodes, &after.nodes)
+    } else {
+        (Vec::new(), Vec::new(), Vec::new())
+    };
+    let (created_bonds, updated_bonds, deleted_bonds) = if scope.molecule_components {
+        diff_target_map(&before.bonds, &after.bonds)
+    } else {
+        (Vec::new(), Vec::new(), Vec::new())
+    };
+    let (created_objects, updated_objects, deleted_objects) = if scope.objects {
+        diff_target_map_by(&before.objects, &after.objects, scene_object_shallow_eq)
+    } else {
+        (Vec::new(), Vec::new(), Vec::new())
+    };
+    let (created_styles, updated_styles, deleted_styles) = if scope.styles {
+        diff_target_map(&before.styles, &after.styles)
+    } else {
+        (Vec::new(), Vec::new(), Vec::new())
+    };
 
     CommandTargetDelta {
         created: CommandTargets {
@@ -3278,54 +3624,80 @@ fn document_target_delta(
     }
 }
 
-fn document_target_maps(document: &ChemcoreDocument) -> DocumentTargetMaps {
+fn document_target_maps(document: &ChemcoreDocument) -> DocumentTargetMaps<'_> {
     let mut maps = DocumentTargetMaps::default();
     for object in document.scene_objects() {
-        maps.objects.insert(
-            object.id.clone(),
-            serde_json::to_value(object).unwrap_or(JsonValue::Null),
-        );
+        maps.objects.insert(object.id.as_str(), object);
     }
     for (style_id, style) in &document.styles {
-        maps.styles.insert(style_id.clone(), style.clone());
+        maps.styles.insert(style_id.as_str(), style);
     }
     for entry in document.editable_fragments() {
         for node in &entry.fragment.nodes {
-            maps.nodes.insert(
-                node.id.clone(),
-                serde_json::to_value(node).unwrap_or(JsonValue::Null),
-            );
+            maps.nodes.insert(node.id.as_str(), node);
         }
         for bond in &entry.fragment.bonds {
-            maps.bonds.insert(
-                bond.id.clone(),
-                serde_json::to_value(bond).unwrap_or(JsonValue::Null),
-            );
+            maps.bonds.insert(bond.id.as_str(), bond);
         }
     }
     maps
 }
 
-fn diff_target_map(
-    before: &BTreeMap<String, JsonValue>,
-    after: &BTreeMap<String, JsonValue>,
+fn diff_target_map<T: PartialEq>(
+    before: &BTreeMap<&str, &T>,
+    after: &BTreeMap<&str, &T>,
+) -> (Vec<String>, Vec<String>, Vec<String>) {
+    diff_target_map_by(before, after, |before, after| before == after)
+}
+
+fn diff_target_map_by<T>(
+    before: &BTreeMap<&str, &T>,
+    after: &BTreeMap<&str, &T>,
+    equivalent: impl Fn(&T, &T) -> bool,
 ) -> (Vec<String>, Vec<String>, Vec<String>) {
     let mut created = Vec::new();
     let mut updated = Vec::new();
     let mut deleted = Vec::new();
     for (id, value) in after {
         match before.get(id) {
-            Some(before_value) if before_value == value => {}
-            Some(_) => updated.push(id.clone()),
-            None => created.push(id.clone()),
+            Some(before_value) if equivalent(*before_value, *value) => {}
+            Some(_) => updated.push((*id).to_string()),
+            None => created.push((*id).to_string()),
         }
     }
     for id in before.keys() {
         if !after.contains_key(id) {
-            deleted.push(id.clone());
+            deleted.push((*id).to_string());
         }
     }
     (created, updated, deleted)
+}
+
+fn scene_object_shallow_eq(before: &SceneObject, after: &SceneObject) -> bool {
+    before.id == after.id
+        && before.object_type == after.object_type
+        && before.name == after.name
+        && before.visible == after.visible
+        && before.locked == after.locked
+        && before.z_index == after.z_index
+        && before.transform == after.transform
+        && before.style_ref == after.style_ref
+        && before.meta == after.meta
+        && before.payload == after.payload
+}
+
+fn scene_object_needs_repeating_unit_refresh(object: &SceneObject) -> bool {
+    matches!(
+        object.object_type.as_str(),
+        "bracket" | "group" | "molecule"
+    ) || object
+        .children
+        .iter()
+        .any(scene_object_needs_repeating_unit_refresh)
+}
+
+fn command_target_delta_is_empty(delta: &CommandTargetDelta) -> bool {
+    delta.created.is_empty() && delta.updated.is_empty() && delta.deleted.is_empty()
 }
 
 fn command_targets_union(delta: &CommandTargetDelta) -> CommandTargets {

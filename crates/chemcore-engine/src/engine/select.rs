@@ -724,7 +724,11 @@ impl Engine {
             .as_ref()
             .is_some_and(|drag| drag.changed);
         self.selection_rotate_drag = None;
-        self.hover_select_target(point);
+        if changed {
+            clear_select_hover_overlay(self);
+        } else {
+            self.hover_select_target(point);
+        }
         changed
     }
 
@@ -759,7 +763,11 @@ impl Engine {
             .as_ref()
             .is_some_and(|drag| drag.changed);
         self.selection_resize_drag = None;
-        self.hover_select_target(point);
+        if changed {
+            clear_select_hover_overlay(self);
+        } else {
+            self.hover_select_target(point);
+        }
         changed
     }
 
@@ -802,7 +810,11 @@ impl Engine {
         if should_clear_selection {
             self.state.selection = SelectionState::default();
         }
-        self.hover_select_target(point);
+        if changed {
+            clear_select_hover_overlay(self);
+        } else {
+            self.hover_select_target(point);
+        }
         changed
     }
 
@@ -1165,11 +1177,11 @@ impl Engine {
             SelectionState::default()
         };
         self.state.overlay.preview = None;
-        self.hover_select_target(point);
+        clear_select_hover_overlay(self);
     }
 
     pub fn select_component_at_point(&mut self, point: Point, additive: bool) -> bool {
-        let Some(hit) = self.select_hit_at_point(point) else {
+        let Some(hit) = self.component_select_hit_at_point(point) else {
             return false;
         };
         if let Some(group_id) = self.ancestor_group_id_for_hit(&hit) {
@@ -1514,6 +1526,18 @@ impl Engine {
     }
 
     fn select_hit_at_point(&self, point: Point) -> Option<SelectHit> {
+        if let Some(hit) = self.graphic_select_hit_at_point(point) {
+            return Some(hit);
+        }
+        self.chemistry_select_hit_at_point(point)
+    }
+
+    fn component_select_hit_at_point(&self, point: Point) -> Option<SelectHit> {
+        self.chemistry_select_hit_at_point(point)
+            .or_else(|| self.graphic_select_hit_at_point(point))
+    }
+
+    fn chemistry_select_hit_at_point(&self, point: Point) -> Option<SelectHit> {
         if let Some((object_id, _)) = self.hit_test_text_object(point) {
             return Some(SelectHit::TextObject { object_id });
         }
@@ -1533,6 +1557,10 @@ impl Engine {
                 bond_id: center.bond_id,
             });
         }
+        None
+    }
+
+    fn graphic_select_hit_at_point(&self, point: Point) -> Option<SelectHit> {
         let mut objects = self.state.document.scene_objects();
         objects.sort_by(|a, b| b.z_index.cmp(&a.z_index).then_with(|| b.id.cmp(&a.id)));
         for object in objects {

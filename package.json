@@ -39,6 +39,7 @@
     "regression:label-anchor": "node scripts/label-anchor-regression.mjs",
     "regression:large-object-operations": "node scripts/large-object-operation-regression.mjs",
     "regression:large-drag-preview": "node scripts/large-drag-preview-regression.mjs",
+    "regression:desktop-hybrid-latency": "node scripts/desktop-hybrid-latency-regression.mjs",
     "regression:text-editor": "node scripts/text-editor-regression.mjs",
     "regression:viewer-interactions": "node scripts/viewer-interaction-smoke.mjs",
     "verify": "node scripts/verify.mjs",

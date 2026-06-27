@@ -185,12 +185,11 @@ fn render_scene_object_targets(
         return;
     }
     let directly_targeted = object_ids.contains(&object.id);
-    let object_targeted =
-        directly_targeted || (ancestor_targeted && object.object_type != "molecule");
-    if object.object_type == "molecule" && (!node_ids.is_empty() || !bond_ids.is_empty()) {
-        render_molecule_object_targets(out, document, object, node_ids, bond_ids);
-    } else if object.object_type == "molecule" && directly_targeted {
+    let object_targeted = directly_targeted || ancestor_targeted;
+    if object.object_type == "molecule" && object_targeted {
         render_scene_object(out, document, object);
+    } else if object.object_type == "molecule" && (!node_ids.is_empty() || !bond_ids.is_empty()) {
+        render_molecule_object_targets(out, document, object, node_ids, bond_ids);
     } else if object_targeted && object.object_type != "group" {
         render_scene_object(out, document, object);
     }

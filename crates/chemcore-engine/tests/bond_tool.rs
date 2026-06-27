@@ -1746,6 +1746,76 @@ fn selected_bracket_and_symbol_boxes_wrap_visual_geometry() {
 }
 
 #[test]
+fn dragging_one_selected_bracket_does_not_move_sibling_brackets() {
+    let mut engine = Engine::new();
+    let document = json!({
+        "format": { "name": "chemcore", "version": "0.1", "unit": "pt" },
+        "document": {
+            "id": "doc_single_bracket_drag",
+            "title": "single bracket drag",
+            "page": { "width": 260.0, "height": 120.0, "background": "#ffffff" }
+        },
+        "objects": [
+            {
+                "id": "obj_bracket_a",
+                "type": "bracket",
+                "visible": true,
+                "zIndex": 10,
+                "transform": { "translate": [40.0, 20.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+                "payload": {
+                    "bbox": [0.0, 0.0, 18.0, 70.0],
+                    "kind": "round",
+                    "stroke": "#000000",
+                    "strokeWidth": 1.0
+                }
+            },
+            {
+                "id": "obj_bracket_b",
+                "type": "bracket",
+                "visible": true,
+                "zIndex": 11,
+                "transform": { "translate": [150.0, 20.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+                "payload": {
+                    "bbox": [0.0, 0.0, 18.0, 70.0],
+                    "kind": "round",
+                    "stroke": "#000000",
+                    "strokeWidth": 1.0
+                }
+            }
+        ],
+        "resources": {}
+    });
+    engine
+        .load_document_json(&document.to_string())
+        .expect("bracket drag document should load");
+    engine.set_tool_state(select_tool());
+
+    let start = Point::new(49.0, 55.0);
+    let end = Point::new(61.0, 61.0);
+    engine.select_at_point(start, false);
+    assert_eq!(
+        engine.state().selection.arrow_objects,
+        vec!["obj_bracket_a".to_string()]
+    );
+    assert!(engine.begin_selection_move_at_point(start, false, false));
+    assert!(engine.update_selection_move(end, false));
+    assert!(engine.finish_selection_move(end, false));
+
+    let bracket_a = engine
+        .state()
+        .document
+        .find_scene_object("obj_bracket_a")
+        .expect("selected bracket should remain");
+    let bracket_b = engine
+        .state()
+        .document
+        .find_scene_object("obj_bracket_b")
+        .expect("sibling bracket should remain");
+    assert_eq!(bracket_a.transform.translate, [52.0, 26.0]);
+    assert_eq!(bracket_b.transform.translate, [150.0, 20.0]);
+}
+
+#[test]
 fn curved_arrow_path_uses_circular_arc_control_points() {
     let mut engine = Engine::new();
     engine.set_tool_state(ToolState {
