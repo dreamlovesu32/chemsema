@@ -1154,7 +1154,11 @@ export function createEditorPointerController(options) {
       await drainEngineDragPreviewFrame();
     }
     options.viewerSvg().releasePointerCapture?.(event.pointerId);
-    const clearedDragCaptureOnPointerUp = !!options.setCanvasPointerShieldActive?.(false);
+    const keepCreationPreviewUntilCommit = !!engineCreationDrag?.start;
+    const clearedDragCaptureOnPointerUp = !!options.setCanvasPointerShieldActive?.(
+      false,
+      { clearPreview: !keepCreationPreviewUntilCommit },
+    );
     const gesture = options.activeSelectionGesture();
     if (gesture?.kind === "tlc-spot-drag") {
       const result = await executeDocumentCommand(
@@ -1493,8 +1497,9 @@ export function createEditorPointerController(options) {
       await options.renderSelectionOnlyUpdate(point);
       return;
     }
-    const clearedInteractionBeforeCommit = clearInteractionOverlayBeforeCommit()
-      || clearedDragCaptureOnPointerUp;
+    const clearedInteractionBeforeCommit = keepCreationPreviewUntilCommit
+      ? false
+      : (clearInteractionOverlayBeforeCommit() || clearedDragCaptureOnPointerUp);
     if (clearedInteractionBeforeCommit) {
       await waitForClearedInteractionPaint();
     }
@@ -1523,6 +1528,9 @@ export function createEditorPointerController(options) {
       options.state().editorEngine.pendingGraphicObjectId?.() || "",
     ) || commitResult?.targets?.objects?.[0] || commitResult?.created?.objects?.[0] || "";
     options.renderDocumentChange?.(commitResult) || options.renderDocument();
+    if (keepCreationPreviewUntilCommit) {
+      options.clearDragCapturePreview?.();
+    }
     const renderedAt = performance.now();
     await options.ensureDocumentObjectDomForCommandResult?.(commitResult);
     const ensuredAt = performance.now();

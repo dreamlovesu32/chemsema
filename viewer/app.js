@@ -3735,12 +3735,12 @@ const editorPointerController = createEditorPointerController({
   awaitPendingToolActivation: () => activeToolActivationPromise,
   renderDragCapturePreview: renderCanvasDragPreview,
   clearDragCapturePreview: clearCanvasDragPreview,
-  setCanvasPointerShieldActive: (active) => {
+  setCanvasPointerShieldActive: (active, options = {}) => {
     const enabled = Boolean(active);
     canvasPointerShieldActive = enabled;
     canvasPointerShield.classList.toggle("is-active", enabled);
     syncViewerSvgPointerEventMode();
-    if (!enabled) {
+    if (!enabled && options.clearPreview !== false) {
       return clearCanvasDragPreview();
     }
     return false;

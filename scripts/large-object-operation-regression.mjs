@@ -323,6 +323,7 @@ async function drawBondUsesPrimitivePatch(page) {
   const result = await page.evaluate(async () => {
     const debug = window.__chemcoreDebug;
     await debug.resetEditorEngine();
+    await debug.syncDocument();
     const engine = debug.state.editorEngine;
     debug.objectPrimitivePatchStats = null;
     debug.renderStats.captureRenderListStacks = true;
@@ -380,6 +381,89 @@ async function drawBondUsesPrimitivePatch(page) {
     `Bond creation repainted the molecule object instead of primitive targets: ${JSON.stringify(result.objectPrimitivePatchStats)}`,
   );
   assertNoFullRefresh("bond draw", result);
+  await page.evaluate((doc) => window.__chemcoreDebug.loadDocumentForTest(doc), makeLargeChainDocument(nodeCount));
+  await page.waitForFunction(() => window.__chemcoreDebug?.document?.resources?.mol_large?.data?.nodes?.length > 0);
+}
+
+async function drawBondWithMouseKeepsPreviewUntilPatch(page) {
+  await page.evaluate(async () => {
+    const debug = window.__chemcoreDebug;
+    await debug.resetEditorEngine();
+    await debug.syncDocument();
+  });
+  await page.locator('button[data-tool="bond"]').click();
+  const drag = await page.evaluate(() => ({
+    start: window.__chemcoreDebug.worldToClient(100, 100),
+    end: window.__chemcoreDebug.worldToClient(148, 100),
+  }));
+  await page.mouse.move(drag.start.x, drag.start.y);
+  await page.mouse.down();
+  await page.mouse.move(drag.end.x, drag.end.y, { steps: 6 });
+  await page.waitForFunction(() => (
+    document.querySelector(".canvas-drag-preview-svg")?.childElementCount > 0
+  ));
+  await resetRenderStats(page);
+  await resetCommitStats(page);
+  await page.evaluate(() => {
+    window.__chemcoreDebug.objectPrimitivePatchStats = null;
+    window.__chemcoreBondFlashProbe = { running: true, samples: [] };
+    const sample = () => {
+      const probe = window.__chemcoreBondFlashProbe;
+      if (!probe?.running) {
+        return;
+      }
+      probe.samples.push({
+        t: performance.now(),
+        previewCount: document.querySelector(".canvas-drag-preview-svg")?.childElementCount || 0,
+        bondCount: document.querySelectorAll('[data-layer="document-content"] [data-bond-id]').length,
+        shieldActive: !!document.querySelector(".canvas-pointer-shield.is-active"),
+      });
+      requestAnimationFrame(sample);
+    };
+    sample();
+  });
+  await page.mouse.up();
+  await page.waitForTimeout(120);
+  const result = await page.evaluate(() => {
+    const probe = window.__chemcoreBondFlashProbe || { samples: [] };
+    probe.running = false;
+    const samples = probe.samples || [];
+    const command = JSON.parse(window.__chemcoreDebug.state.editorEngine.lastCommandResultJson?.() || "null");
+    const firstBondIndex = samples.findIndex((sample) => sample.bondCount > 0);
+    const beforeBond = firstBondIndex >= 0 ? samples.slice(0, firstBondIndex) : samples;
+    return {
+      changed: !!command?.changed,
+      targets: command?.targets || null,
+      created: command?.created || null,
+      sampleCount: samples.length,
+      firstBondIndex,
+      gapSamples: beforeBond.filter((sample) => sample.previewCount === 0 && sample.bondCount === 0),
+      overlapSamples: samples.filter((sample) => sample.previewCount > 0 && sample.bondCount > 0),
+      firstSamples: samples.slice(0, 8),
+      lastSamples: samples.slice(-8),
+      objectPrimitivePatchStats: window.__chemcoreDebug.objectPrimitivePatchStats || null,
+      documentRenderCount: window.__chemcoreDebug.renderStats.documentRenderCount || 0,
+      renderListJsonCount: window.__chemcoreDebug.renderStats.renderListJsonCount || 0,
+      commitStats: window.__chemcoreDebug.creationCommitStats?.last || null,
+    };
+  });
+  assert(result.changed, `Mouse bond was not created: ${JSON.stringify(result)}`);
+  assert((result.targets?.bonds || []).length > 0, `Mouse bond did not target bonds: ${JSON.stringify(result)}`);
+  assert(result.firstBondIndex >= 0, `Mouse bond never reached document DOM: ${JSON.stringify(result)}`);
+  assert(
+    result.gapSamples.length === 0,
+    `Mouse bond preview disappeared before committed DOM was patched: ${JSON.stringify(result)}`,
+  );
+  assert(
+    result.overlapSamples.length === 0,
+    `Mouse bond preview remained visible after committed DOM was patched: ${JSON.stringify(result)}`,
+  );
+  assert(
+    !result.objectPrimitivePatchStats?.patched,
+    `Mouse bond repainted the molecule object instead of primitive targets: ${JSON.stringify(result.objectPrimitivePatchStats)}`,
+  );
+  recordCommitTiming("mouse bond draw", "creation", result.commitStats, maxCreationCommitMs);
+  assertNoFullRefresh("mouse bond draw", result);
   await page.evaluate((doc) => window.__chemcoreDebug.loadDocumentForTest(doc), makeLargeChainDocument(nodeCount));
   await page.waitForFunction(() => window.__chemcoreDebug?.document?.resources?.mol_large?.data?.nodes?.length > 0);
 }
@@ -890,6 +974,7 @@ try {
   browser = await chromium.launch({ headless: true });
   const { page, errors } = await openViewer(browser);
   await drawBondUsesPrimitivePatch(page);
+  await drawBondWithMouseKeepsPreviewUntilPatch(page);
   const arrowId = await drawCurvedArrow(page);
   await assertArrowEndpointPointerDown(page, arrowId);
   await dragArrowStyleHandle(page, arrowId);
