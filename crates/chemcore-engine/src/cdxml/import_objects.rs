@@ -1033,44 +1033,128 @@ pub(super) fn append_bracket_objects(
         let right = &brackets[right_index];
         let lb = normalized_bbox(left.bbox);
         let rb = normalized_bbox(right.bbox);
+        let (left_bracket, right_bracket, left_bounds, right_bounds) =
+            if center_x(lb) <= center_x(rb) {
+                (left, right, lb, rb)
+            } else {
+                (right, left, rb, lb)
+            };
         let min_x = lb[0].min(rb[0]);
         let min_y = lb[1].min(rb[1]);
         let max_x = lb[2].max(rb[2]);
         let max_y = lb[3].max(rb[3]);
-        let mut extra = BTreeMap::new();
-        extra.insert("kind".to_string(), json!(left.kind));
-        extra.insert("stroke".to_string(), json!(left.stroke.clone()));
-        extra.insert("strokeWidth".to_string(), json!(1.0));
-        extra.insert("lipSize".to_string(), json!(60));
+        let pair_width = round2(max_x - min_x);
+        let pair_height = round2(max_y - min_y);
+        let group_id = format!("obj_bracket_{object_index:03}");
         let mut meta = json!({
             "source": "cdxml",
-            "graphicIds": [left.graphic_id.clone(), right.graphic_id.clone()],
+            "kind": "bracket-group",
+            "graphicIds": [left_bracket.graphic_id.clone(), right_bracket.graphic_id.clone()],
         });
         if let Some(repeat_count) = left.repeat_count.or(right.repeat_count) {
             meta["repeatCount"] = json!(repeat_count);
         }
+        let left_child = cdxml_bracket_side_scene_object(
+            format!("{group_id}_left"),
+            "left",
+            left_bracket,
+            left_bounds,
+            min_x,
+            min_y,
+            pair_width,
+            pair_height,
+        );
+        let right_child = cdxml_bracket_side_scene_object(
+            format!("{group_id}_right"),
+            "right",
+            right_bracket,
+            right_bounds,
+            min_x,
+            min_y,
+            pair_width,
+            pair_height,
+        );
         objects.push(SceneObject {
-            id: format!("obj_bracket_{object_index:03}"),
-            object_type: "bracket".to_string(),
-            name: format!("bracket {object_index}"),
+            id: group_id,
+            object_type: "group".to_string(),
+            name: "bracket-group".to_string(),
             visible: true,
             locked: false,
             z_index: left.z_index.min(right.z_index),
-            transform: Transform {
-                translate: [round2(min_x), round2(min_y)],
-                rotate: 0.0,
-                scale: [1.0, 1.0],
-            },
+            transform: Transform::identity(),
             style_ref: None,
             meta,
             payload: ObjectPayload {
                 resource_ref: None,
-                bbox: Some([0.0, 0.0, round2(max_x - min_x), round2(max_y - min_y)]),
-                extra,
+                bbox: Some([round2(min_x), round2(min_y), pair_width, pair_height]),
+                extra: BTreeMap::new(),
             },
-            children: Vec::new(),
+            children: vec![left_child, right_child],
         });
         object_index += 1;
+    }
+}
+
+fn cdxml_bracket_side_scene_object(
+    object_id: String,
+    side: &str,
+    bracket: &PendingCdxmlBracket,
+    bounds: [f64; 4],
+    pair_x: f64,
+    pair_y: f64,
+    pair_width: f64,
+    pair_height: f64,
+) -> SceneObject {
+    let stroke_width = 1.0;
+    let side_width = cdxml_bracket_side_width(&bracket.kind, pair_width, pair_height)
+        .max(stroke_width)
+        .max(bounds[2] - bounds[0]);
+    let translate_x = match side {
+        "right" if bracket.kind == "round" => pair_x + pair_width,
+        "right" => pair_x + pair_width - side_width,
+        "left" if bracket.kind == "round" => pair_x - side_width,
+        _ => pair_x,
+    };
+    let mut extra = BTreeMap::new();
+    extra.insert("kind".to_string(), json!(bracket.kind.clone()));
+    extra.insert("side".to_string(), json!(side));
+    extra.insert("stroke".to_string(), json!(bracket.stroke.clone()));
+    extra.insert("strokeWidth".to_string(), json!(stroke_width));
+    extra.insert("lipSize".to_string(), json!(60));
+    SceneObject {
+        id: object_id,
+        object_type: "bracket".to_string(),
+        name: format!("bracket-{side}"),
+        visible: true,
+        locked: false,
+        z_index: bracket.z_index,
+        transform: Transform {
+            translate: [round2(translate_x), round2(pair_y)],
+            rotate: 0.0,
+            scale: [1.0, 1.0],
+        },
+        style_ref: None,
+        meta: json!({
+            "source": "cdxml",
+            "graphicId": bracket.graphic_id.clone(),
+            "bracketSide": side,
+        }),
+        payload: ObjectPayload {
+            resource_ref: None,
+            bbox: Some([0.0, 0.0, round2(side_width), round2(pair_height)]),
+            extra,
+        },
+        children: Vec::new(),
+    }
+}
+
+fn cdxml_bracket_side_width(kind: &str, pair_width: f64, height: f64) -> f64 {
+    match kind {
+        "square" => (height * 0.07248).min(pair_width * 0.22).max(0.0),
+        "curly" => (height * 0.14423).min(pair_width * 0.24).max(0.0),
+        _ => (height * (1.0 - 3.0_f64.sqrt() * 0.5))
+            .min(pair_width * 0.22)
+            .max(0.0),
     }
 }
 

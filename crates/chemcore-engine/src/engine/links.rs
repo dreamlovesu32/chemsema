@@ -226,7 +226,7 @@ fn imported_bracket_candidates(document: &ChemcoreDocument) -> Vec<ImportedBrack
     document
         .scene_objects()
         .into_iter()
-        .filter(|object| object.object_type == "bracket" && object.visible)
+        .filter(|object| scene_object_is_bracket_like(object) && object.visible)
         .filter_map(|object| {
             Some(ImportedBracketCandidate {
                 object_id: object.id.clone(),

@@ -1,7 +1,7 @@
 use chemcore_engine::{
     angular_distance, document_to_cdxml, document_to_svg, hit_test_bond_center,
     parse_cdxml_document, parse_document_json, render_document, render_primitives_bounds,
-    ChemcoreDocument, Engine, Point, RenderPrimitive, RenderRole, ResourceData,
+    ChemcoreDocument, Engine, Point, RenderPrimitive, RenderRole, ResourceData, Tool, ToolState,
 };
 use serde_json::json;
 use serde_json::Map;
@@ -26,6 +26,22 @@ fn assert_close(left: f64, right: f64) {
 fn assert_point_close(left: Point, right: Point) {
     assert_close(left.x, right.x);
     assert_close(left.y, right.y);
+}
+
+fn round_to_2(value: f64) -> f64 {
+    (value * 100.0).round() / 100.0
+}
+
+fn select_tool_state() -> ToolState {
+    ToolState {
+        active_tool: Tool::Select,
+        ..ToolState::default()
+    }
+}
+
+fn object_is_bracket_group(object: &chemcore_engine::SceneObject) -> bool {
+    object.object_type == "group"
+        && object.meta.get("kind").and_then(|value| value.as_str()) == Some("bracket-group")
 }
 
 fn fragment_document(nodes: serde_json::Value, bonds: serde_json::Value) -> ChemcoreDocument {
@@ -4026,18 +4042,40 @@ fn parse_cdxml_preserves_bracketusage_repeat_count() {
   </page>
 </CDXML>"##;
     let document = parse_cdxml_document(cdxml, Some("bracket text")).expect("cdxml should parse");
-    let bracket = document
-        .objects
-        .iter()
-        .find(|object| object.object_type == "bracket")
+    let bracket_group = document
+        .scene_objects()
+        .into_iter()
+        .find(|object| object_is_bracket_group(object))
         .expect("paired bracket should import");
     assert_eq!(
-        bracket
+        bracket_group
             .meta
             .get("repeatCount")
             .and_then(|value| value.as_u64()),
         Some(2)
     );
+    let sides: Vec<_> = bracket_group
+        .children
+        .iter()
+        .filter(|object| object.object_type == "bracket")
+        .collect();
+    assert_eq!(sides.len(), 2, "paired bracket should import as two sides");
+    assert!(sides.iter().any(|object| {
+        object
+            .payload
+            .extra
+            .get("side")
+            .and_then(|value| value.as_str())
+            == Some("left")
+    }));
+    assert!(sides.iter().any(|object| {
+        object
+            .payload
+            .extra
+            .get("side")
+            .and_then(|value| value.as_str())
+            == Some("right")
+    }));
 
     let text_objects: Vec<_> = document
         .objects
@@ -4060,6 +4098,106 @@ fn parse_cdxml_preserves_bracketusage_repeat_count() {
         .filter_map(|object| object.meta.get("role").and_then(|value| value.as_str()))
         .collect();
     assert_eq!(roles, vec!["parameterized_bracket_label"]);
+}
+
+#[test]
+fn load_cdxml_dragging_unselected_bracket_side_does_not_move_other_side() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML BondLength="20" LineWidth="0.60" BoldWidth="2" HashSpacing="2.50">
+  <page id="1">
+    <graphic id="g1" BoundingBox="40 90 40 20" GraphicType="Bracket" BracketType="Square"/>
+    <graphic id="g2" BoundingBox="150 20 150 90" GraphicType="Bracket" BracketType="Square"/>
+  </page>
+</CDXML>"##;
+    let mut engine = Engine::new();
+    engine
+        .load_cdxml_document(cdxml)
+        .expect("bracket pair cdxml should load");
+    engine.set_tool_state(select_tool_state());
+
+    let group = engine
+        .state()
+        .document
+        .scene_objects()
+        .into_iter()
+        .find(|object| object_is_bracket_group(object))
+        .expect("paired cdxml brackets should import as a bracket group");
+    let left_id = group
+        .children
+        .iter()
+        .find(|object| {
+            object
+                .payload
+                .extra
+                .get("side")
+                .and_then(|value| value.as_str())
+                == Some("left")
+        })
+        .map(|object| object.id.clone())
+        .expect("left side should import");
+    let right_id = group
+        .children
+        .iter()
+        .find(|object| {
+            object
+                .payload
+                .extra
+                .get("side")
+                .and_then(|value| value.as_str())
+                == Some("right")
+        })
+        .map(|object| object.id.clone())
+        .expect("right side should import");
+
+    let left_before = engine
+        .state()
+        .document
+        .find_scene_object(&left_id)
+        .expect("left side should remain")
+        .clone();
+    let right_before = engine
+        .state()
+        .document
+        .find_scene_object(&right_id)
+        .expect("right side should remain")
+        .clone();
+    let left_height = left_before.payload.bbox.expect("left side bbox")[3];
+    let start = Point::new(
+        left_before.transform.translate[0] + 0.5,
+        left_before.transform.translate[1] + left_height * 0.5,
+    );
+    let end = Point::new(start.x + 12.0, start.y + 6.0);
+
+    assert!(engine.begin_selection_move_at_point(start, false, false));
+    assert_eq!(
+        engine.state().selection.arrow_objects,
+        vec![left_id.clone()]
+    );
+    assert!(engine.update_selection_move(end, false));
+    assert!(engine.finish_selection_move(end, false));
+
+    let left_after = engine
+        .state()
+        .document
+        .find_scene_object(&left_id)
+        .expect("left side should remain");
+    let right_after = engine
+        .state()
+        .document
+        .find_scene_object(&right_id)
+        .expect("right side should remain");
+    assert_eq!(
+        left_after.transform.translate,
+        [
+            round_to_2(left_before.transform.translate[0] + 12.0),
+            round_to_2(left_before.transform.translate[1] + 6.0)
+        ]
+    );
+    assert_eq!(
+        right_after.transform.translate,
+        right_before.transform.translate
+    );
+    assert_eq!(engine.state().selection.arrow_objects, vec![left_id]);
 }
 
 #[test]
@@ -4125,14 +4263,14 @@ fn parse_cdxml_bracket_label_fixtures_match_chemdraw_offsets() {
     ] {
         let cdxml = read_cdxml_fixture(fixture);
         let document = parse_cdxml_document(&cdxml, Some(fixture)).expect("fixture should parse");
-        let brackets: Vec<_> = document
-            .objects
-            .iter()
-            .filter(|object| object.object_type == "bracket")
+        let bracket_groups: Vec<_> = document
+            .scene_objects()
+            .into_iter()
+            .filter(|object| object_is_bracket_group(object))
             .collect();
         let labels: Vec<_> = document
-            .objects
-            .iter()
+            .scene_objects()
+            .into_iter()
             .filter(|object| object.object_type == "text")
             .filter(|object| {
                 object
@@ -4144,7 +4282,7 @@ fn parse_cdxml_bracket_label_fixtures_match_chemdraw_offsets() {
             })
             .collect();
         assert_eq!(
-            brackets.len(),
+            bracket_groups.len(),
             3,
             "{fixture} should import three bracket pairs"
         );
@@ -4185,10 +4323,10 @@ fn parse_cdxml_bracket_label_fixtures_match_chemdraw_offsets() {
                     .and_then(|value| value.as_f64())
                     .expect("label should keep CDXML baseline offset");
             let mut closest = None::<(f64, f64, f64)>;
-            for bracket in &brackets {
+            for bracket in &bracket_groups {
                 let bbox = bracket.payload.bbox.expect("bracket should have bbox");
-                let right = bracket.transform.translate[0] + bbox[2];
-                let bottom = bracket.transform.translate[1] + bbox[3];
+                let right = bracket.transform.translate[0] + bbox[0] + bbox[2];
+                let bottom = bracket.transform.translate[1] + bbox[1] + bbox[3];
                 let dx = label.transform.translate[0] - right;
                 let dy = label_anchor_y - bottom;
                 let score = (dx - 3.12).abs() + (dy - 2.4).abs();

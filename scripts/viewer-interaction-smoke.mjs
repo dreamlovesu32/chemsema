@@ -1652,6 +1652,153 @@ async function verifyAllSquareBracketsHover(page) {
   assert(!failures.length, `Large CDXML square bracket hover failures: ${JSON.stringify(failures.slice(0, 5))}`);
 }
 
+async function verifyImportedBracketSideDragIsolation(page) {
+  await page.keyboard.press("Escape").catch(() => {});
+  await page.evaluate(() => {
+    window.__chemcoreDebug.state.editorEngine.clearSelection?.();
+    window.__chemcoreDebug.state.editorEngine.clearInteraction?.();
+    window.__chemcoreDebug.clearActiveSelectionGesture?.();
+    document.querySelector('[data-layer="editor-overlay"]')?.replaceChildren();
+  });
+  await page.locator('button[data-tool="select"]').click();
+  const target = await page.evaluate(() => {
+    const documentData = JSON.parse(window.__chemcoreDebug.state.editorEngine.documentJson?.() || "null")
+      || window.__chemcoreDebug.document;
+    const objectType = (object) => object?.type || object?.objectType || object?.object_type;
+    const payloadValue = (object, key) => object?.payload?.[key] || object?.payload?.extra?.[key] || "";
+    const hitTargetForSide = (object) => {
+      const bbox = object.payload?.bbox || [];
+      const translate = object.transform?.translate || [0, 0];
+      const tx = Number(translate[0] || 0) + Number(bbox[0] || 0);
+      const ty = Number(translate[1] || 0) + Number(bbox[1] || 0);
+      const width = Number(bbox[2] || 0);
+      const height = Number(bbox[3] || 0);
+      const side = payloadValue(object, "side");
+      const xCandidates = side === "right"
+        ? [tx + width - 0.5, tx + width, tx + width * 0.5]
+        : [tx + 0.5, tx, tx + width * 0.5];
+      const yCandidates = [ty + height * 0.5, ty + height * 0.25, ty + height * 0.75];
+      for (const x of xCandidates) {
+        for (const y of yCandidates) {
+          const client = window.__chemcoreDebug.worldToClient(x, y);
+          if (!client
+            || client.x <= 80
+            || client.x >= innerWidth - 80
+            || client.y <= 120
+            || client.y >= innerHeight - 80) {
+            continue;
+          }
+          const hit = JSON.parse(window.__chemcoreDebug.state.editorEngine.contextHitTestJson?.(x, y) || "null");
+          if (hit?.objectId === object.id) {
+            return { x: client.x, y: client.y, worldX: x, worldY: y };
+          }
+        }
+      }
+      return null;
+    };
+    const visit = (object, out = []) => {
+      if (!object) {
+        return out;
+      }
+      out.push(object);
+      for (const child of object.children || []) {
+        visit(child, out);
+      }
+      return out;
+    };
+    const allObjects = (documentData.objects || []).flatMap((object) => visit(object, []));
+    const groups = allObjects.filter((object) => (
+      objectType(object) === "group"
+      && (object.meta?.kind || object.meta?.extra?.kind) === "bracket-group"
+    ));
+    for (const group of groups) {
+      const left = (group.children || []).find((object) => objectType(object) === "bracket" && payloadValue(object, "side") === "left");
+      const right = (group.children || []).find((object) => objectType(object) === "bracket" && payloadValue(object, "side") === "right");
+      if (!left || !right) {
+        continue;
+      }
+      for (const [sideObject, siblingObject] of [[left, right], [right, left]]) {
+        const point = hitTargetForSide(sideObject);
+        if (!point) {
+          continue;
+        }
+        return {
+          groupId: group.id,
+          sideObjectId: sideObject.id,
+          siblingObjectId: siblingObject.id,
+          x: point.x,
+          y: point.y,
+          worldX: point.worldX,
+          worldY: point.worldY,
+        };
+      }
+    }
+    return null;
+  });
+  assert(target, "Large CDXML did not expose an imported bracket side drag target.");
+  const before = await page.evaluate(({ sideObjectId, siblingObjectId }) => {
+    const documentData = JSON.parse(window.__chemcoreDebug.state.editorEngine.documentJson?.() || "null")
+      || window.__chemcoreDebug.document;
+    const visit = (object, out = []) => {
+      if (!object) {
+        return out;
+      }
+      out.push(object);
+      for (const child of object.children || []) {
+        visit(child, out);
+      }
+      return out;
+    };
+    const byId = new Map((documentData.objects || []).flatMap((object) => visit(object, [])).map((object) => [object.id, object]));
+    return {
+      sideTranslate: byId.get(sideObjectId)?.transform?.translate || null,
+      siblingTranslate: byId.get(siblingObjectId)?.transform?.translate || null,
+    };
+  }, target);
+  await page.mouse.move(target.x, target.y);
+  await page.waitForTimeout(60);
+  await page.mouse.down();
+  await page.mouse.move(target.x + 18, target.y + 9, { steps: 4 });
+  await page.mouse.up();
+  await page.waitForTimeout(250);
+  const after = await page.evaluate(({ sideObjectId, siblingObjectId }) => {
+    const documentData = JSON.parse(window.__chemcoreDebug.state.editorEngine.documentJson?.() || "null")
+      || window.__chemcoreDebug.document;
+    const visit = (object, out = []) => {
+      if (!object) {
+        return out;
+      }
+      out.push(object);
+      for (const child of object.children || []) {
+        visit(child, out);
+      }
+      return out;
+    };
+    const byId = new Map((documentData.objects || []).flatMap((object) => visit(object, [])).map((object) => [object.id, object]));
+    const selection = window.__chemcoreDebug.engineState?.selection
+      || window.__chemcoreDebug.getEngineState?.()?.selection
+      || {};
+    const arrowObjects = selection.arrowObjects || selection.arrow_objects || [];
+    return {
+      sideTranslate: byId.get(sideObjectId)?.transform?.translate || null,
+      siblingTranslate: byId.get(siblingObjectId)?.transform?.translate || null,
+      arrowObjects,
+    };
+  }, target);
+  assert(
+    JSON.stringify(after.sideTranslate) !== JSON.stringify(before.sideTranslate),
+    `Imported bracket side did not move: ${JSON.stringify({ target, before, after })}`,
+  );
+  assert(
+    JSON.stringify(after.siblingTranslate) === JSON.stringify(before.siblingTranslate),
+    `Imported bracket side drag moved its sibling: ${JSON.stringify({ target, before, after })}`,
+  );
+  assert(
+    after.arrowObjects.length === 1 && after.arrowObjects[0] === target.sideObjectId,
+    `Imported bracket side drag did not leave only the dragged side selected: ${JSON.stringify({ target, after })}`,
+  );
+}
+
 async function verifyMixedObjectFollowsStructureDrag(page, structureTarget, objectTarget, kind) {
   if (!structureTarget || !objectTarget) {
     return;
@@ -2173,6 +2320,7 @@ async function verifyLargeFileHoverAndDrag(browser) {
   targets = await page.evaluate(largeFileTargetFinder);
   await verifyBracketHoverFocus(page, targets.bracket);
   await verifyAllSquareBracketsHover(page);
+  await verifyImportedBracketSideDragIsolation(page);
   await verifyLargeRegionSelectionDoesNotDragGroup(page, targets.atom);
   targets = await page.evaluate(largeFileTargetFinder);
   await verifyLargeDragTarget(page, targets.label, "Label");
