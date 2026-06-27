@@ -1,6 +1,7 @@
 export function registerChemcoreDebug({
   state,
   getEngineState,
+  getDocument,
   getActiveTextEditor,
   getActiveSelectionGesture,
   getDisplayMetrics,
@@ -23,7 +24,7 @@ export function registerChemcoreDebug({
   window.__chemcoreDebug = {
     state,
     get document() {
-      return state.currentDocument;
+      return getDocument?.() || state.currentDocument;
     },
     get engineState() {
       return getEngineState();

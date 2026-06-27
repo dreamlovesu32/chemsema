@@ -239,6 +239,7 @@ let lastEditorPointerActivityAt = 0;
 registerChemcoreDebug({
   state,
   getEngineState: () => currentEditorEngineState(),
+  getDocument: () => currentEditorDocumentData(),
   getActiveTextEditor: () => activeTextEditor,
   getActiveSelectionGesture: () => activeSelectionGesture,
   getDisplayMetrics: () => state.displayMetrics,
@@ -368,7 +369,7 @@ const editorEngineReadCache = {
   interactionRenderListJson: null,
   interactionRenderList: null,
   documentJson: null,
-  parsedDocument: null,
+  parsedDocument: undefined,
   boundsJsonByScope: new Map(),
   boundsByScope: new Map(),
 };
@@ -383,7 +384,7 @@ function invalidateEditorEngineReadCache() {
   editorEngineReadCache.interactionRenderListJson = null;
   editorEngineReadCache.interactionRenderList = null;
   editorEngineReadCache.documentJson = null;
-  editorEngineReadCache.parsedDocument = null;
+  editorEngineReadCache.parsedDocument = undefined;
   editorEngineReadCache.boundsJsonByScope = new Map();
   editorEngineReadCache.boundsByScope = new Map();
 }
@@ -757,6 +758,7 @@ async function handleDocumentCommandCommitted(event) {
     renderDocumentTabs();
     syncWindowTitle();
     refreshCommandAvailability();
+    scheduleDeferredDocumentSync();
     console.debug?.("[chemcore] document command committed", {
       type: event.commandType,
       revision: event.revision,
@@ -2140,7 +2142,7 @@ function currentEditorEngineReadCache() {
     editorEngineReadCache.interactionRenderListJson = null;
     editorEngineReadCache.interactionRenderList = null;
     editorEngineReadCache.documentJson = null;
-    editorEngineReadCache.parsedDocument = null;
+    editorEngineReadCache.parsedDocument = undefined;
     editorEngineReadCache.boundsJsonByScope = new Map();
     editorEngineReadCache.boundsByScope = new Map();
   }
@@ -2162,13 +2164,18 @@ function currentEditorEngineState() {
 }
 
 function currentEditorDocumentData() {
-  const cache = currentEditorEngineReadCache();
-  if (!cache || !state.editorEngine?.documentJson) {
+  if (!isEditingRustDocument()) {
     return state.currentDocument;
   }
-  if (!cache.parsedDocument) {
-    cache.documentJson = state.editorEngine.documentJson() || "";
-    cache.parsedDocument = parseEngineJson(cache.documentJson, null) || state.currentDocument;
+  const cache = currentEditorEngineReadCache();
+  if (!cache) {
+    return state.currentDocument;
+  }
+  if (cache.documentJson === null) {
+    cache.documentJson = state.editorEngine.documentJson?.() || "";
+  }
+  if (cache.parsedDocument === undefined) {
+    cache.parsedDocument = parseEngineJson(cache.documentJson, null);
   }
   return cache.parsedDocument || state.currentDocument;
 }
