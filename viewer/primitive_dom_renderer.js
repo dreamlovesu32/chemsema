@@ -32,6 +32,58 @@ function primitiveIdentityAttrs(primitive, options = {}) {
   };
 }
 
+function distanceBetweenPoints(a, b) {
+  const dx = Number(a?.x || 0) - Number(b?.x || 0);
+  const dy = Number(a?.y || 0) - Number(b?.y || 0);
+  return Math.hypot(dx, dy);
+}
+
+function midpoint(a, b) {
+  return {
+    x: (Number(a?.x || 0) + Number(b?.x || 0)) * 0.5,
+    y: (Number(a?.y || 0) + Number(b?.y || 0)) * 0.5,
+  };
+}
+
+function dot(ax, ay, bx, by) {
+  return ax * bx + ay * by;
+}
+
+function rectangularBondLineFromPolygon(primitive) {
+  const points = primitive?.points || [];
+  if ((primitive.role || primitive.role_name) !== "document-bond" || points.length !== 4) {
+    return null;
+  }
+  const [p0, p1, p2, p3] = points;
+  const start = midpoint(p0, p3);
+  const end = midpoint(p1, p2);
+  const axisX = end.x - start.x;
+  const axisY = end.y - start.y;
+  const length = Math.hypot(axisX, axisY);
+  const widthStart = distanceBetweenPoints(p0, p3);
+  const widthEnd = distanceBetweenPoints(p1, p2);
+  const width = (widthStart + widthEnd) * 0.5;
+  if (!Number.isFinite(length) || !Number.isFinite(width) || length <= width * 1.25 || width <= 0) {
+    return null;
+  }
+  const tolerance = Math.max(0.01, width * 0.03);
+  if (Math.abs(widthStart - widthEnd) > tolerance) {
+    return null;
+  }
+  const normalStartX = Number(p0.x || 0) - Number(p3.x || 0);
+  const normalStartY = Number(p0.y || 0) - Number(p3.y || 0);
+  const normalEndX = Number(p1.x || 0) - Number(p2.x || 0);
+  const normalEndY = Number(p1.y || 0) - Number(p2.y || 0);
+  if (Math.hypot(normalStartX - normalEndX, normalStartY - normalEndY) > tolerance) {
+    return null;
+  }
+  const perpendicularTolerance = Math.max(0.02, length * width * 0.01);
+  if (Math.abs(dot(axisX, axisY, normalStartX, normalStartY)) > perpendicularTolerance) {
+    return null;
+  }
+  return { start, end, width };
+}
+
 export function renderCorePrimitive(svgRoot, primitive, options = {}) {
   if (options.shouldHide?.(primitive)) {
     return;
@@ -133,6 +185,25 @@ export function renderCorePrimitive(svgRoot, primitive, options = {}) {
       && (primitive.nodeId || primitive.node_id)
       && !options.labelDebugMode
     ) {
+      return;
+    }
+    const rectangularBondLine = rectangularBondLineFromPolygon(primitive);
+    if (rectangularBondLine) {
+      const attrs = {
+        x1: rectangularBondLine.start.x,
+        y1: rectangularBondLine.start.y,
+        x2: rectangularBondLine.end.x,
+        y2: rectangularBondLine.end.y,
+        stroke: primitive.stroke || primitive.fill || CHEMDRAW_INK,
+        "stroke-width": rectangularBondLine.width,
+        "stroke-linecap": "butt",
+        "stroke-linejoin": "miter",
+        "shape-rendering": "geometricPrecision",
+        "data-role": primitive.role || undefined,
+        ...primitiveIdentityAttrs(primitive, options),
+        class: "mol-bond-stroked",
+      };
+      svgRoot.appendChild(makeSvgNode("line", attrs));
       return;
     }
     const strokeWidth = primitiveStrokeWidthValue(primitive, BOND_STROKE);

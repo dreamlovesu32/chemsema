@@ -9,6 +9,10 @@ const host = "127.0.0.1";
 const port = Number(process.env.CHEMCORE_DESKTOP_DEV_PORT || 8767);
 const baseUrl = `http://${host}:${port}/viewer/`;
 const nodeCount = Number(process.env.CHEMCORE_OBJECT_OP_NODE_COUNT || 8000);
+const maxCreationCommitMs = Number(process.env.CHEMCORE_OBJECT_OP_MAX_CREATION_COMMIT_MS || 80);
+const maxInteractionCommitMs = Number(process.env.CHEMCORE_OBJECT_OP_MAX_INTERACTION_COMMIT_MS || 120);
+const maxBlankPointerDownMs = Number(process.env.CHEMCORE_OBJECT_OP_MAX_BLANK_POINTER_DOWN_MS || 20);
+const timingSamples = [];
 
 function assert(condition, message) {
   if (!condition) {
@@ -138,6 +142,165 @@ function makeLargeChainDocument(count) {
   };
 }
 
+function makeManyFragmentDocument(count) {
+  const fragments = Math.max(1, Math.ceil(count / 10));
+  const objects = [];
+  const resources = {};
+  for (let fragmentIndex = 0; fragmentIndex < fragments; fragmentIndex += 1) {
+    const nodes = [];
+    const bonds = [];
+    const column = fragmentIndex % 40;
+    const row = Math.floor(fragmentIndex / 40);
+    const translate = [60 + column * 70, 60 + row * 70];
+    for (let localIndex = 0; localIndex < 10; localIndex += 1) {
+      const x = 8 + localIndex * 5;
+      const y = 18 + (localIndex % 2) * 6;
+      nodes.push({
+        id: `mf_${fragmentIndex}_n${localIndex}`,
+        element: "O",
+        atomicNumber: 8,
+        position: [x, y],
+        charge: 0,
+        numHydrogens: 0,
+        label: {
+          text: "OH",
+          position: [x, y],
+          box: [x - 5, y - 8, x + 12, y + 4],
+          fontSize: 11,
+          glyphPolygons: [[
+            [x - 5, y - 8],
+            [x + 12, y - 8],
+            [x + 12, y + 4],
+            [x - 5, y + 4],
+          ]],
+        },
+        meta: null,
+      });
+      if (localIndex > 0) {
+        bonds.push({
+          id: `mf_${fragmentIndex}_b${localIndex - 1}`,
+          begin: `mf_${fragmentIndex}_n${localIndex - 1}`,
+          end: `mf_${fragmentIndex}_n${localIndex}`,
+          order: 1,
+          strokeWidth: 1,
+          meta: null,
+        });
+      }
+    }
+    const resourceId = `mf_${fragmentIndex}`;
+    resources[resourceId] = {
+      id: resourceId,
+      type: "molecule_fragment2d",
+      encoding: "chemcore.molecule.fragment2d",
+      data: {
+        bbox: [0, 0, 70, 40],
+        nodes,
+        bonds,
+      },
+    };
+    objects.push({
+      id: `obj_${resourceId}`,
+      type: "molecule",
+      name: `fragment ${fragmentIndex}`,
+      visible: true,
+      locked: false,
+      zIndex: 10 + fragmentIndex,
+      transform: { translate, rotate: 0, scale: [1, 1] },
+      styleRef: "style_molecule_default",
+      payload: {
+        resourceRef: resourceId,
+        bbox: [0, 0, 70, 40],
+        extra: {},
+      },
+      meta: null,
+      children: [],
+    });
+  }
+  return {
+    format: { name: "chemcore", version: "0.1", unit: "pt" },
+    document: {
+      id: "doc_many_fragment_hit_test",
+      title: "Many fragment hit-test regression",
+      page: { width: 3200, height: 1800, background: "#ffffff" },
+      meta: null,
+    },
+    styles: {
+      style_molecule_default: {
+        kind: "molecule",
+        stroke: "#000000",
+        fill: "#000000",
+        strokeWidth: 0.85,
+        fontFamily: "Arial",
+        fontSize: 11,
+      },
+    },
+    objects,
+    resources,
+  };
+}
+
+function makeWideBracketSideDocument() {
+  return {
+    format: { name: "chemcore", version: "0.1", unit: "pt" },
+    document: {
+      id: "doc_wide_bracket_hit_test",
+      title: "Wide bracket hit test",
+      page: { width: 240, height: 120, background: "#ffffff" },
+      meta: null,
+    },
+    objects: [
+      {
+        id: "obj_bracket_group",
+        type: "group",
+        name: "bracket-group",
+        visible: true,
+        locked: false,
+        zIndex: 9,
+        transform: { translate: [0, 0], rotate: 0, scale: [1, 1] },
+        meta: { kind: "bracket-group" },
+        payload: { bbox: [40, 20, 118, 70] },
+        children: [
+          {
+            id: "obj_left_bracket",
+            type: "bracket",
+            name: "left bracket",
+            visible: true,
+            locked: false,
+            zIndex: 10,
+            transform: { translate: [40, 20], rotate: 0, scale: [1, 1] },
+            payload: {
+              bbox: [0, 0, 18, 70],
+              kind: "square",
+              side: "left",
+              stroke: "#000000",
+              strokeWidth: 1,
+            },
+            children: [],
+          },
+          {
+            id: "obj_right_bracket",
+            type: "bracket",
+            name: "right bracket",
+            visible: true,
+            locked: false,
+            zIndex: 11,
+            transform: { translate: [140, 20], rotate: 0, scale: [1, 1] },
+            payload: {
+              bbox: [0, 0, 18, 70],
+              kind: "square",
+              side: "right",
+              stroke: "#000000",
+              strokeWidth: 1,
+            },
+            children: [],
+          },
+        ],
+      },
+    ],
+    resources: {},
+  };
+}
+
 async function openViewer(browser) {
   const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
   const errors = [];
@@ -162,6 +325,221 @@ async function resetRenderStats(page) {
     window.__chemcoreDebug.renderStats.renderListJsonCount = 0;
     window.__chemcoreDebug.renderStats.lastRenderListJsonStack = "";
   });
+}
+
+async function resetCommitStats(page) {
+  await page.evaluate(() => {
+    window.__chemcoreDebug.creationCommitStats = { samples: [] };
+    window.__chemcoreDebug.interactionCommitStats = { samples: [] };
+  });
+}
+
+function recordCommitTiming(label, kind, sample, maxMs) {
+  assert(sample, `${label} did not record a ${kind} commit timing sample`);
+  assert(
+    Number.isFinite(Number(sample.totalMs)),
+    `${label} timing sample has no totalMs: ${JSON.stringify(sample)}`,
+  );
+  timingSamples.push({
+    label,
+    kind,
+    totalMs: sample.totalMs,
+    executeMs: sample.executeMs,
+    commandType: sample.commandType || null,
+  });
+  assert(
+    sample.totalMs < maxMs,
+    `${label} ${kind} commit took ${sample.totalMs.toFixed(1)}ms, expected < ${maxMs}ms; sample=${JSON.stringify(sample)}`,
+  );
+}
+
+async function recordLatestInteractionTiming(page, label) {
+  const sample = await page.evaluate(() => window.__chemcoreDebug.interactionCommitStats?.last || null);
+  recordCommitTiming(label, "interaction", sample, maxInteractionCommitMs);
+}
+
+async function assertBlankBondPointerDownUsesFragmentBounds(page) {
+  const result = await page.evaluate(async (doc) => {
+    await window.__chemcoreDebug.loadDocumentForTest(doc);
+    const engine = window.__chemcoreDebug.state.editorEngine;
+    engine.setTool("bond", "single");
+    const point = { x: 3150, y: 1750 };
+    const start = performance.now();
+    engine.pointerDown(point.x, point.y, false);
+    const pointerDownMs = performance.now() - start;
+    engine.pointerUp(point.x + 80, point.y, false);
+    return { pointerDownMs };
+  }, makeManyFragmentDocument(nodeCount));
+  timingSamples.push({
+    label: "blank bond pointer down",
+    kind: "hit-test",
+    totalMs: result.pointerDownMs,
+  });
+  assert(
+    result.pointerDownMs < maxBlankPointerDownMs,
+    `Blank bond pointerDown took ${result.pointerDownMs.toFixed(1)}ms, expected < ${maxBlankPointerDownMs}ms`,
+  );
+}
+
+async function drawBondUsesPrimitivePatch(page) {
+  const result = await page.evaluate(async () => {
+    const debug = window.__chemcoreDebug;
+    await debug.resetEditorEngine();
+    await debug.syncDocument();
+    const engine = debug.state.editorEngine;
+    debug.objectPrimitivePatchStats = null;
+    debug.renderStats.captureRenderListStacks = true;
+    debug.renderStats.documentRenderCount = 0;
+    debug.renderStats.renderListJsonCount = 0;
+    debug.renderStats.lastRenderListJsonStack = "";
+    const command = {
+      type: "add-bond",
+      begin: { x: 100, y: 100 },
+      end: { x: 148, y: 100 },
+      order: 1,
+      variant: "single",
+    };
+    const start = performance.now();
+    const commandResult = await debug.commandEngine.executeEngineCommand(
+      command,
+      () => engine.executeCommandJson(JSON.stringify(command)),
+      { sync: false, deferDocumentSync: true, source: "regression" },
+    );
+    const commandMs = performance.now() - start;
+    const renderStart = performance.now();
+    const patched = debug.renderDocumentChange(commandResult);
+    const renderMs = performance.now() - renderStart;
+    const targetBondIds = commandResult?.targets?.bonds || [];
+    const targetNodeIds = commandResult?.targets?.nodes || [];
+    const countTargetDom = (attribute, ids) => ids.reduce((count, id) => (
+      count + document.querySelectorAll(`[${attribute}="${CSS.escape(id)}"]`).length
+    ), 0);
+    const targetBondTags = targetBondIds.flatMap((id) => (
+      [...document.querySelectorAll(`[data-bond-id="${CSS.escape(id)}"]`)]
+        .map((element) => element.tagName.toLowerCase())
+    ));
+    return {
+      changed: !!commandResult?.changed,
+      patched,
+      targets: commandResult?.targets || null,
+      created: commandResult?.created || null,
+      commandMs,
+      renderMs,
+      targetBondDomCount: countTargetDom("data-bond-id", targetBondIds),
+      targetBondTags,
+      targetNodeDomCount: countTargetDom("data-node-id", targetNodeIds),
+      objectPrimitivePatchStats: debug.objectPrimitivePatchStats || null,
+      documentRenderCount: debug.renderStats.documentRenderCount || 0,
+      renderListJsonCount: debug.renderStats.renderListJsonCount || 0,
+    };
+  });
+  timingSamples.push({
+    label: "bond command patch",
+    kind: "creation",
+    totalMs: result.commandMs + result.renderMs,
+    executeMs: result.commandMs,
+  });
+  assert(result.changed && result.patched, `Bond was not patched: ${JSON.stringify(result)}`);
+  assert((result.targets?.nodes || []).length > 0, `Bond command did not target nodes: ${JSON.stringify(result)}`);
+  assert((result.targets?.bonds || []).length > 0, `Bond command did not target bonds: ${JSON.stringify(result)}`);
+  assert(result.targetBondDomCount > 0, `Bond primitive DOM was not patched: ${JSON.stringify(result)}`);
+  assert(result.targetBondTags.includes("line"), `Simple bond should render as a stroked line: ${JSON.stringify(result)}`);
+  assert(
+    !result.objectPrimitivePatchStats?.patched,
+    `Bond creation repainted the molecule object instead of primitive targets: ${JSON.stringify(result.objectPrimitivePatchStats)}`,
+  );
+  assertNoFullRefresh("bond draw", result);
+  await page.evaluate((doc) => window.__chemcoreDebug.loadDocumentForTest(doc), makeLargeChainDocument(nodeCount));
+  await page.waitForFunction(() => window.__chemcoreDebug?.document?.resources?.mol_large?.data?.nodes?.length > 0);
+}
+
+async function drawBondWithMouseKeepsPreviewUntilPatch(page) {
+  await page.evaluate(async () => {
+    const debug = window.__chemcoreDebug;
+    await debug.resetEditorEngine();
+    await debug.syncDocument();
+  });
+  await page.locator('button[data-tool="bond"]').click();
+  const drag = await page.evaluate(() => ({
+    start: window.__chemcoreDebug.worldToClient(100, 100),
+    end: window.__chemcoreDebug.worldToClient(148, 100),
+  }));
+  await page.mouse.move(drag.start.x, drag.start.y);
+  await page.mouse.down();
+  await page.mouse.move(drag.end.x, drag.end.y, { steps: 6 });
+  await page.waitForFunction(() => (
+    document.querySelector(".canvas-drag-preview-svg")?.childElementCount > 0
+  ));
+  await resetRenderStats(page);
+  await resetCommitStats(page);
+  await page.evaluate(() => {
+    window.__chemcoreDebug.objectPrimitivePatchStats = null;
+    window.__chemcoreBondFlashProbe = { running: true, samples: [] };
+    const sample = () => {
+      const probe = window.__chemcoreBondFlashProbe;
+      if (!probe?.running) {
+        return;
+      }
+      probe.samples.push({
+        t: performance.now(),
+        previewCount: document.querySelector(".canvas-drag-preview-svg")?.childElementCount || 0,
+        bondCount: document.querySelectorAll('[data-layer="document-content"] [data-bond-id]').length,
+        shieldActive: !!document.querySelector(".canvas-pointer-shield.is-active"),
+      });
+      requestAnimationFrame(sample);
+    };
+    sample();
+  });
+  await page.mouse.up();
+  await page.waitForTimeout(120);
+  const result = await page.evaluate(() => {
+    const probe = window.__chemcoreBondFlashProbe || { samples: [] };
+    probe.running = false;
+    const samples = probe.samples || [];
+    const command = JSON.parse(window.__chemcoreDebug.state.editorEngine.lastCommandResultJson?.() || "null");
+    const targetBondIds = command?.targets?.bonds || [];
+    const firstBondIndex = samples.findIndex((sample) => sample.bondCount > 0);
+    const beforeBond = firstBondIndex >= 0 ? samples.slice(0, firstBondIndex) : samples;
+    return {
+      changed: !!command?.changed,
+      targets: command?.targets || null,
+      created: command?.created || null,
+      sampleCount: samples.length,
+      firstBondIndex,
+      targetBondTags: targetBondIds.flatMap((id) => (
+        [...document.querySelectorAll(`[data-bond-id="${CSS.escape(id)}"]`)]
+          .map((element) => element.tagName.toLowerCase())
+      )),
+      gapSamples: beforeBond.filter((sample) => sample.previewCount === 0 && sample.bondCount === 0),
+      overlapSamples: samples.filter((sample) => sample.previewCount > 0 && sample.bondCount > 0),
+      firstSamples: samples.slice(0, 8),
+      lastSamples: samples.slice(-8),
+      objectPrimitivePatchStats: window.__chemcoreDebug.objectPrimitivePatchStats || null,
+      documentRenderCount: window.__chemcoreDebug.renderStats.documentRenderCount || 0,
+      renderListJsonCount: window.__chemcoreDebug.renderStats.renderListJsonCount || 0,
+      commitStats: window.__chemcoreDebug.creationCommitStats?.last || null,
+    };
+  });
+  assert(result.changed, `Mouse bond was not created: ${JSON.stringify(result)}`);
+  assert((result.targets?.bonds || []).length > 0, `Mouse bond did not target bonds: ${JSON.stringify(result)}`);
+  assert(result.firstBondIndex >= 0, `Mouse bond never reached document DOM: ${JSON.stringify(result)}`);
+  assert(result.targetBondTags.includes("line"), `Mouse bond should render as a stroked line: ${JSON.stringify(result)}`);
+  assert(
+    result.gapSamples.length === 0,
+    `Mouse bond preview disappeared before committed DOM was patched: ${JSON.stringify(result)}`,
+  );
+  assert(
+    result.overlapSamples.length === 0,
+    `Mouse bond preview remained visible after committed DOM was patched: ${JSON.stringify(result)}`,
+  );
+  assert(
+    !result.objectPrimitivePatchStats?.patched,
+    `Mouse bond repainted the molecule object instead of primitive targets: ${JSON.stringify(result.objectPrimitivePatchStats)}`,
+  );
+  recordCommitTiming("mouse bond draw", "creation", result.commitStats, maxCreationCommitMs);
+  assertNoFullRefresh("mouse bond draw", result);
+  await page.evaluate((doc) => window.__chemcoreDebug.loadDocumentForTest(doc), makeLargeChainDocument(nodeCount));
+  await page.waitForFunction(() => window.__chemcoreDebug?.document?.resources?.mol_large?.data?.nodes?.length > 0);
 }
 
 async function renderStats(page) {
@@ -224,6 +602,7 @@ async function drawCurvedArrow(page) {
     );
   });
   await resetRenderStats(page);
+  await resetCommitStats(page);
   await page.mouse.move(930, 210);
   await page.mouse.down();
   await page.mouse.move(1120, 210, { steps: 10 });
@@ -254,6 +633,7 @@ async function drawCurvedArrow(page) {
   result.errors = page.__chemcoreErrors || [];
   assert(result.changed && result.objectId, `Curved arrow was not created: ${JSON.stringify(result)}`);
   assert(result.domCount > 0, `Curved arrow DOM was not patched: ${JSON.stringify(result)}`);
+  recordCommitTiming("curved arrow draw", "creation", result.commitStats, maxCreationCommitMs);
   assertNoFullRefresh("curved arrow draw", await renderStats(page));
   return result.objectId;
 }
@@ -348,12 +728,14 @@ async function dragArrowCurve(page, objectId) {
   await page.waitForTimeout(80);
   await assertNoPreviewMask(page, "arrow curve pointerdown");
   assertNoFullRefresh("arrow curve pointerdown", await renderStats(page));
+  await resetCommitStats(page);
   await page.mouse.move(handle.x, handle.y + 70, { steps: 12 });
   await assertNoPreviewMask(page, "arrow curve drag");
   await assertObjectHiddenForPreview(page, objectId, "arrow curve drag");
   await assertObjectEditPreviewVisible(page, objectId, "arrow curve drag");
   await page.mouse.up();
   await page.waitForTimeout(500);
+  await recordLatestInteractionTiming(page, "arrow curve drag");
   const result = await page.evaluate((id) => {
     const object = (window.__chemcoreDebug.document.objects || []).find((candidate) => candidate.id === id);
     const arrowHead = object?.payload?.arrowHead || object?.payload?.extra?.arrowHead || null;
@@ -385,11 +767,13 @@ async function dragArrowStyleHandle(page, objectId) {
   await page.waitForTimeout(80);
   await assertNoPreviewMask(page, "arrow style pointerdown");
   assertNoFullRefresh("arrow style pointerdown", await renderStats(page));
+  await resetCommitStats(page);
   await page.mouse.move(handle.x - 26, handle.y - 22, { steps: 8 });
   await assertObjectHiddenForPreview(page, objectId, "arrow style drag");
   await assertObjectEditPreviewVisible(page, objectId, "arrow style drag");
   await page.mouse.up();
   await page.waitForTimeout(400);
+  await recordLatestInteractionTiming(page, "arrow style drag");
   const after = await page.evaluate((id) => {
     const object = (window.__chemcoreDebug.document.objects || []).find((candidate) => candidate.id === id);
     const arrowHead = object?.payload?.arrowHead || object?.payload?.extra?.arrowHead || {};
@@ -476,15 +860,19 @@ async function assertShapePointerDown(page, objectId) {
   await page.waitForTimeout(80);
   await assertNoPreviewMask(page, "shape handle pointerdown");
   assertNoFullRefresh("shape handle pointerdown", await renderStats(page));
+  await resetCommitStats(page);
   await page.mouse.move(handle.x + 80, handle.y + 50, { steps: 12 });
   await assertObjectHiddenForPreview(page, objectId, "shape handle drag");
   await assertObjectEditPreviewVisible(page, objectId, "shape handle drag");
   await page.mouse.up();
+  await page.waitForTimeout(400);
+  await recordLatestInteractionTiming(page, "shape handle drag");
 }
 
 async function drawShape(page) {
   await page.locator('button[data-tool="shape"]').click();
   await resetRenderStats(page);
+  await resetCommitStats(page);
   await page.mouse.move(920, 330);
   await page.mouse.down();
   await page.mouse.move(1070, 430, { steps: 8 });
@@ -499,10 +887,12 @@ async function drawShape(page) {
       domCount: objectId
         ? document.querySelectorAll(`[data-object-id="${CSS.escape(objectId)}"]`).length
         : 0,
+      commitStats: window.__chemcoreDebug.creationCommitStats?.last || null,
     };
   });
   assert(result.changed && result.objectId, `Shape was not created: ${JSON.stringify(result)}`);
   assert(result.domCount > 0, `Shape DOM was not patched: ${JSON.stringify(result)}`);
+  recordCommitTiming("shape draw", "creation", result.commitStats, maxCreationCommitMs);
   assertNoFullRefresh("shape draw", await renderStats(page));
   return result.objectId;
 }
@@ -510,6 +900,7 @@ async function drawShape(page) {
 async function drawBracketOpensTextEditor(page) {
   await page.locator('button[data-tool="bracket"]').click();
   await resetRenderStats(page);
+  await resetCommitStats(page);
   await page.mouse.move(910, 560);
   await page.mouse.down();
   await page.mouse.move(1050, 700, { steps: 8 });
@@ -529,12 +920,14 @@ async function drawBracketOpensTextEditor(page) {
       bracketLabelObjectId: window.__chemcoreDebug.activeTextEditor?.bracketLabelObjectId || null,
       documentRenderCount: window.__chemcoreDebug.renderStats.documentRenderCount || 0,
       renderListJsonCount: window.__chemcoreDebug.renderStats.renderListJsonCount || 0,
+      commitStats: window.__chemcoreDebug.creationCommitStats?.last || null,
     };
   });
   assert(result.domCount > 0, `Bracket DOM was not patched: ${JSON.stringify(result)}`);
   assert(result.activeTextEditor, `Bracket text editor did not open: ${JSON.stringify(result)}`);
   assert(result.bracketLabelObjectId, `Bracket text editor is not linked to bracket: ${JSON.stringify(result)}`);
   assert(elapsed < 350, `Bracket text editor opened too slowly: ${elapsed.toFixed(1)}ms`);
+  recordCommitTiming("bracket draw", "creation", result.commitStats, maxCreationCommitMs);
   assertNoFullRefresh("bracket draw text editor", result);
 }
 
@@ -648,12 +1041,115 @@ async function assertSquareBracketHandleDrag(page) {
   assertNoFullRefresh("square bracket handle drag", result);
 }
 
+async function assertBracketInteriorDoesNotHitBracket(page) {
+  const setup = await page.evaluate(async (doc) => {
+    await window.__chemcoreDebug.loadDocumentForTest(doc);
+    await window.__chemcoreDebug.state.editorEngine.clearSelection?.();
+    await window.__chemcoreDebug.state.editorEngine.clearInteraction?.();
+    document.querySelector('[data-layer="editor-overlay"]')?.replaceChildren();
+    const documentData = JSON.parse(window.__chemcoreDebug.state.editorEngine.documentJson());
+    const objects = [];
+    const visit = (object) => {
+      objects.push(object);
+      for (const child of object.children || []) {
+        visit(child);
+      }
+    };
+    for (const object of documentData.objects || []) {
+      visit(object);
+    }
+    const left = objects.find((object) => object.id === "obj_left_bracket");
+    const right = objects.find((object) => object.id === "obj_right_bracket");
+    const before = {
+      left: [...(left?.transform?.translate || [])],
+      right: [...(right?.transform?.translate || [])],
+    };
+    const leftInterior = window.__chemcoreDebug.worldToClient(49, 55);
+    const leftDragEnd = window.__chemcoreDebug.worldToClient(55, 60);
+    const betweenSides = window.__chemcoreDebug.worldToClient(100, 55);
+    const leftStroke = window.__chemcoreDebug.worldToClient(40.5, 55);
+    return { before, leftInterior, leftDragEnd, betweenSides, leftStroke };
+  }, makeWideBracketSideDocument());
+  assert(setup.leftInterior && setup.betweenSides && setup.leftStroke, `Bracket hit setup failed: ${JSON.stringify(setup)}`);
+  await page.locator('button[data-tool="select"]').click();
+  await page.waitForFunction(() => document.querySelector('button[data-tool="select"]')?.classList.contains("is-active"));
+
+  await page.mouse.move(setup.leftInterior.x, setup.leftInterior.y);
+  await page.waitForTimeout(100);
+  let hover = await page.evaluate(() => ({
+    handles: document.querySelectorAll('[data-layer="editor-overlay"] [data-role="hover-shape-handle"]').length,
+    fastHover: window.__chemcoreDebug.fastSelectHoverStats || null,
+  }));
+  assert(hover.handles === 0, `Bracket interior incorrectly showed hover handles: ${JSON.stringify(hover)}`);
+
+  await page.mouse.move(setup.betweenSides.x, setup.betweenSides.y);
+  await page.waitForTimeout(100);
+  hover = await page.evaluate(() => ({
+    handles: document.querySelectorAll('[data-layer="editor-overlay"] [data-role="hover-shape-handle"]').length,
+    fastHover: window.__chemcoreDebug.fastSelectHoverStats || null,
+  }));
+  assert(hover.handles === 0, `Space between bracket sides incorrectly showed hover handles: ${JSON.stringify(hover)}`);
+
+  await page.mouse.move(setup.leftStroke.x, setup.leftStroke.y);
+  await page.waitForTimeout(100);
+  hover = await page.evaluate(() => ({
+    handles: document.querySelectorAll('[data-layer="editor-overlay"] [data-role="hover-shape-handle"]').length,
+    fastHover: window.__chemcoreDebug.fastSelectHoverStats || null,
+  }));
+  assert(hover.handles > 0, `Bracket stroke did not show hover handles: ${JSON.stringify(hover)}`);
+
+  await page.evaluate(() => {
+    window.__chemcoreDebug.state.editorEngine.clearSelection?.();
+    window.__chemcoreDebug.state.editorEngine.clearInteraction?.();
+    document.querySelector('[data-layer="editor-overlay"]')?.replaceChildren();
+  });
+  await page.mouse.move(setup.leftInterior.x, setup.leftInterior.y);
+  await page.mouse.down();
+  await page.mouse.move(setup.leftDragEnd.x, setup.leftDragEnd.y, { steps: 4 });
+  await page.mouse.up();
+  await page.waitForTimeout(150);
+  const result = await page.evaluate((before) => {
+    const documentData = JSON.parse(window.__chemcoreDebug.state.editorEngine.documentJson());
+    const objects = [];
+    const visit = (object) => {
+      objects.push(object);
+      for (const child of object.children || []) {
+        visit(child);
+      }
+    };
+    for (const object of documentData.objects || []) {
+      visit(object);
+    }
+    const left = objects.find((object) => object.id === "obj_left_bracket");
+    const right = objects.find((object) => object.id === "obj_right_bracket");
+    const selection = window.__chemcoreDebug.engineState?.selection || {};
+    return {
+      before,
+      leftTranslate: left?.transform?.translate || null,
+      rightTranslate: right?.transform?.translate || null,
+      selection,
+      handles: document.querySelectorAll('[data-layer="editor-overlay"] [data-role="hover-shape-handle"]').length,
+    };
+  }, setup.before);
+  assert(
+    JSON.stringify(result.leftTranslate) === JSON.stringify(setup.before.left)
+      && JSON.stringify(result.rightTranslate) === JSON.stringify(setup.before.right),
+    `Dragging bracket interior moved a bracket: ${JSON.stringify(result)}`,
+  );
+  assert(
+    !(result.selection?.arrowObjects?.length || result.selection?.arrow_objects?.length),
+    `Dragging bracket interior selected a bracket: ${JSON.stringify(result)}`,
+  );
+}
+
 let server = null;
 let browser = null;
 try {
   server = await ensureServer();
   browser = await chromium.launch({ headless: true });
   const { page, errors } = await openViewer(browser);
+  await drawBondUsesPrimitivePatch(page);
+  await drawBondWithMouseKeepsPreviewUntilPatch(page);
   const arrowId = await drawCurvedArrow(page);
   await assertArrowEndpointPointerDown(page, arrowId);
   await dragArrowStyleHandle(page, arrowId);
@@ -662,9 +1158,14 @@ try {
   await assertShapePointerDown(page, shapeId);
   await drawBracketOpensTextEditor(page);
   await assertSquareBracketHandleDrag(page);
+  await assertBracketInteriorDoesNotHitBracket(page);
+  await assertBlankBondPointerDownUsesFragmentBounds(page);
   await page.close();
   assert(!errors.length, `Viewer console errors:\n${errors.join("\n")}`);
-  console.log(`[large-object-operation-regression] ok (${nodeCount} nodes)`);
+  const timingSummary = timingSamples
+    .map((sample) => `${sample.label} ${sample.totalMs.toFixed(1)}ms`)
+    .join(", ");
+  console.log(`[large-object-operation-regression] ok (${nodeCount} nodes; ${timingSummary})`);
 } finally {
   await browser?.close();
   if (server) {

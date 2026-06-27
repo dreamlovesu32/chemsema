@@ -16,7 +16,7 @@ fn default_true() -> bool {
     true
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChemcoreDocument {
     pub format: FormatInfo,
@@ -1186,7 +1186,7 @@ fn default_format_unit() -> String {
     "pt".to_string()
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FormatInfo {
     pub name: String,
     pub version: String,
@@ -1194,7 +1194,7 @@ pub struct FormatInfo {
     pub unit: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DocumentInfo {
     pub id: String,
     pub title: String,
@@ -1203,14 +1203,14 @@ pub struct DocumentInfo {
     pub meta: Value,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Page {
     pub width: f64,
     pub height: f64,
     pub background: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SceneObject {
     pub id: String,
@@ -1236,7 +1236,7 @@ pub struct SceneObject {
     pub children: Vec<SceneObject>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Transform {
     pub translate: [f64; 2],
     pub rotate: f64,
@@ -1259,7 +1259,7 @@ impl Default for Transform {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ObjectPayload {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1270,7 +1270,7 @@ pub struct ObjectPayload {
     pub extra: BTreeMap<String, Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Resource {
     #[serde(rename = "type")]
@@ -1281,7 +1281,7 @@ pub struct Resource {
     pub meta: Value,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum ResourceData {
     Fragment(MoleculeFragment),
@@ -1312,7 +1312,7 @@ impl ResourceData {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MoleculeFragment {
     pub schema: String,
     pub bbox: [f64; 4],
@@ -1336,7 +1336,7 @@ impl MoleculeFragment {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Node {
     pub id: String,
@@ -1376,7 +1376,7 @@ impl Node {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NodeLabel {
     pub text: String,
@@ -1457,7 +1457,7 @@ pub struct LabelRun {
     pub script: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Bond {
     pub id: String,
@@ -1492,7 +1492,7 @@ pub struct Bond {
     pub meta: Value,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DoubleBond {
     pub placement: DoubleBondPlacement,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1501,7 +1501,7 @@ pub struct DoubleBond {
     pub frozen: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct BondLineStyles {
     #[serde(default)]
@@ -1512,7 +1512,7 @@ pub struct BondLineStyles {
     pub right: BondLinePattern,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct BondLineWeights {
     #[serde(default)]
@@ -1540,7 +1540,7 @@ pub enum BondLineWeight {
     Bold,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BondStereo {
     pub kind: String,

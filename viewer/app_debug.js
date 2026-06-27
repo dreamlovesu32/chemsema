@@ -1,6 +1,7 @@
 export function registerChemcoreDebug({
   state,
   getEngineState,
+  getDocument,
   getActiveTextEditor,
   getActiveSelectionGesture,
   getDisplayMetrics,
@@ -10,6 +11,8 @@ export function registerChemcoreDebug({
   insertEditorText,
   syncDocument,
   loadDocumentForTest,
+  resetEditorEngine,
+  renderDocumentChange,
   renderStats,
   getRenderListJson,
   worldToClient,
@@ -21,7 +24,7 @@ export function registerChemcoreDebug({
   window.__chemcoreDebug = {
     state,
     get document() {
-      return state.currentDocument;
+      return getDocument?.() || state.currentDocument;
     },
     get engineState() {
       return getEngineState();
@@ -50,6 +53,8 @@ export function registerChemcoreDebug({
     insertEditorText,
     syncDocument,
     loadDocumentForTest,
+    resetEditorEngine,
+    renderDocumentChange,
     renderStats,
     getRenderListJson,
     worldToClient,

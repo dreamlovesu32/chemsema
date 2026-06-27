@@ -1730,7 +1730,7 @@ fn selected_bracket_and_symbol_boxes_wrap_visual_geometry() {
 
     engine.set_tool_state(select_tool());
 
-    engine.select_at_point(Point::new(49.0, 55.0), false);
+    engine.select_at_point(Point::new(36.5, 55.0), false);
     assert_eq!(
         engine.state().selection.arrow_objects,
         vec!["obj_round_bracket".to_string()]
@@ -1743,6 +1743,385 @@ fn selected_bracket_and_symbol_boxes_wrap_visual_geometry() {
         vec!["obj_circle_plus".to_string()]
     );
     assert_bounds_contains(selection_box_bounds(&engine), symbol_bounds);
+}
+
+#[test]
+fn dragging_one_selected_bracket_does_not_move_sibling_brackets() {
+    let mut engine = Engine::new();
+    let document = json!({
+        "format": { "name": "chemcore", "version": "0.1", "unit": "pt" },
+        "document": {
+            "id": "doc_single_bracket_drag",
+            "title": "single bracket drag",
+            "page": { "width": 260.0, "height": 120.0, "background": "#ffffff" }
+        },
+        "objects": [
+            {
+                "id": "obj_bracket_a",
+                "type": "bracket",
+                "visible": true,
+                "zIndex": 10,
+                "transform": { "translate": [40.0, 20.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+                "payload": {
+                    "bbox": [0.0, 0.0, 18.0, 70.0],
+                    "kind": "round",
+                    "stroke": "#000000",
+                    "strokeWidth": 1.0
+                }
+            },
+            {
+                "id": "obj_bracket_b",
+                "type": "bracket",
+                "visible": true,
+                "zIndex": 11,
+                "transform": { "translate": [150.0, 20.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+                "payload": {
+                    "bbox": [0.0, 0.0, 18.0, 70.0],
+                    "kind": "round",
+                    "stroke": "#000000",
+                    "strokeWidth": 1.0
+                }
+            }
+        ],
+        "resources": {}
+    });
+    engine
+        .load_document_json(&document.to_string())
+        .expect("bracket drag document should load");
+    engine.set_tool_state(select_tool());
+
+    let start = Point::new(36.5, 55.0);
+    let end = Point::new(48.5, 61.0);
+    engine.select_at_point(start, false);
+    assert_eq!(
+        engine.state().selection.arrow_objects,
+        vec!["obj_bracket_a".to_string()]
+    );
+    assert!(engine.begin_selection_move_at_point(start, false, false));
+    assert!(engine.update_selection_move(end, false));
+    assert!(engine.finish_selection_move(end, false));
+
+    let bracket_a = engine
+        .state()
+        .document
+        .find_scene_object("obj_bracket_a")
+        .expect("selected bracket should remain");
+    let bracket_b = engine
+        .state()
+        .document
+        .find_scene_object("obj_bracket_b")
+        .expect("sibling bracket should remain");
+    assert_eq!(bracket_a.transform.translate, [52.0, 26.0]);
+    assert_eq!(bracket_b.transform.translate, [150.0, 20.0]);
+}
+
+#[test]
+fn select_tool_bracket_side_hit_testing_ignores_interior_space() {
+    let mut engine = Engine::new();
+    let document = json!({
+        "format": { "name": "chemcore", "version": "0.1", "unit": "pt" },
+        "document": {
+            "id": "doc_bracket_side_hit_testing",
+            "title": "bracket side hit testing",
+            "page": { "width": 240.0, "height": 120.0, "background": "#ffffff" }
+        },
+        "objects": [
+            {
+                "id": "obj_bracket_group",
+                "type": "group",
+                "name": "bracket-group",
+                "visible": true,
+                "locked": false,
+                "zIndex": 9,
+                "transform": { "translate": [0.0, 0.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+                "meta": { "kind": "bracket-group" },
+                "payload": { "bbox": [40.0, 20.0, 118.0, 70.0] },
+                "children": [
+                    {
+                        "id": "obj_left_bracket",
+                        "type": "bracket",
+                        "visible": true,
+                        "zIndex": 10,
+                        "transform": { "translate": [40.0, 20.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+                        "payload": {
+                            "bbox": [0.0, 0.0, 18.0, 70.0],
+                            "kind": "square",
+                            "side": "left",
+                            "stroke": "#000000",
+                            "strokeWidth": 1.0
+                        }
+                    },
+                    {
+                        "id": "obj_right_bracket",
+                        "type": "bracket",
+                        "visible": true,
+                        "zIndex": 11,
+                        "transform": { "translate": [140.0, 20.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+                        "payload": {
+                            "bbox": [0.0, 0.0, 18.0, 70.0],
+                            "kind": "square",
+                            "side": "right",
+                            "stroke": "#000000",
+                            "strokeWidth": 1.0
+                        }
+                    }
+                ]
+            }
+        ],
+        "resources": {}
+    });
+    engine
+        .load_document_json(&document.to_string())
+        .expect("bracket side document should load");
+    engine.set_tool_state(select_tool());
+
+    let left_interior = Point::new(49.0, 55.0);
+    engine.pointer_move(PointerEvent {
+        x: left_interior.x,
+        y: left_interior.y,
+        button: None,
+        alt_key: false,
+    });
+    assert!(engine.state().overlay.hover_shape.is_none());
+    engine.select_at_point(left_interior, false);
+    assert!(engine.state().selection.arrow_objects.is_empty());
+    assert!(!engine.begin_selection_move_at_point(left_interior, false, false));
+
+    let between_sides = Point::new(100.0, 55.0);
+    engine.select_at_point(between_sides, false);
+    assert!(engine.state().selection.arrow_objects.is_empty());
+    assert!(!engine.begin_selection_move_at_point(between_sides, false, false));
+
+    let left_stroke = Point::new(40.5, 55.0);
+    engine.pointer_move(PointerEvent {
+        x: left_stroke.x,
+        y: left_stroke.y,
+        button: None,
+        alt_key: false,
+    });
+    assert!(engine.state().overlay.hover_shape.is_some());
+    assert_eq!(
+        engine.hover_shape_action_at_point(left_stroke),
+        "",
+        "bracket side strokes should select/move the bracket, not start endpoint resize"
+    );
+    assert_eq!(engine.begin_hover_shape_edit(left_stroke), "");
+
+    engine.select_in_rect(Point::new(49.0, 55.0), Point::new(55.0, 60.0), false);
+    assert!(
+        engine.state().selection.arrow_objects.is_empty(),
+        "a region inside the bracket's empty side bbox should not select the bracket"
+    );
+    engine.select_in_rect(Point::new(39.0, 54.0), Point::new(42.0, 58.0), false);
+    assert_eq!(
+        engine.state().selection.arrow_objects,
+        vec!["obj_left_bracket".to_string()]
+    );
+
+    engine.select_at_point(left_stroke, false);
+    assert_eq!(
+        engine.state().selection.arrow_objects,
+        vec!["obj_left_bracket".to_string()]
+    );
+    engine.select_at_point(Point::new(157.5, 55.0), false);
+    assert_eq!(
+        engine.state().selection.arrow_objects,
+        vec!["obj_right_bracket".to_string()]
+    );
+}
+
+#[test]
+fn dragging_one_bracket_side_in_group_does_not_move_other_side() {
+    let mut engine = Engine::new();
+    let document = json!({
+        "format": { "name": "chemcore", "version": "0.1", "unit": "pt" },
+        "document": {
+            "id": "doc_bracket_group_side_drag",
+            "title": "bracket group side drag",
+            "page": { "width": 240.0, "height": 120.0, "background": "#ffffff" }
+        },
+        "objects": [
+            {
+                "id": "obj_bracket_group",
+                "type": "group",
+                "name": "bracket-group",
+                "visible": true,
+                "locked": false,
+                "zIndex": 9,
+                "transform": { "translate": [0.0, 0.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+                "meta": { "kind": "bracket-group" },
+                "payload": { "bbox": [40.0, 20.0, 118.0, 70.0] },
+                "children": [
+                    {
+                        "id": "obj_left_bracket",
+                        "type": "bracket",
+                        "visible": true,
+                        "zIndex": 10,
+                        "transform": { "translate": [40.0, 20.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+                        "payload": {
+                            "bbox": [0.0, 0.0, 18.0, 70.0],
+                            "kind": "square",
+                            "side": "left",
+                            "stroke": "#000000",
+                            "strokeWidth": 1.0
+                        }
+                    },
+                    {
+                        "id": "obj_right_bracket",
+                        "type": "bracket",
+                        "visible": true,
+                        "zIndex": 11,
+                        "transform": { "translate": [140.0, 20.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+                        "payload": {
+                            "bbox": [0.0, 0.0, 18.0, 70.0],
+                            "kind": "square",
+                            "side": "right",
+                            "stroke": "#000000",
+                            "strokeWidth": 1.0
+                        }
+                    }
+                ]
+            }
+        ],
+        "resources": {}
+    });
+    engine
+        .load_document_json(&document.to_string())
+        .expect("bracket side document should load");
+    engine.set_tool_state(select_tool());
+
+    let start = Point::new(40.5, 55.0);
+    let end = Point::new(52.5, 61.0);
+    engine.select_at_point(start, false);
+    assert_eq!(
+        engine.state().selection.arrow_objects,
+        vec!["obj_left_bracket".to_string()]
+    );
+    assert!(engine.begin_selection_move_at_point(start, false, false));
+    assert!(engine.update_selection_move(end, false));
+    assert!(engine.finish_selection_move(end, false));
+
+    let left = engine
+        .state()
+        .document
+        .find_scene_object("obj_left_bracket")
+        .expect("left bracket should remain");
+    let right = engine
+        .state()
+        .document
+        .find_scene_object("obj_right_bracket")
+        .expect("right bracket should remain");
+    assert_eq!(left.transform.translate, [52.0, 26.0]);
+    assert_eq!(right.transform.translate, [140.0, 20.0]);
+}
+
+#[test]
+fn dragging_one_side_of_selected_bracket_pair_moves_both_sides() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(ToolState {
+        active_tool: Tool::Bracket,
+        bracket_kind: BracketKind::Square,
+        ..ToolState::default()
+    });
+    drag(
+        &mut engine,
+        Point::new(120.0, 130.0),
+        Point::new(180.0, 220.0),
+    );
+    engine.set_tool_state(select_tool());
+
+    let group = engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "group")
+        .expect("bracket tool should create a group");
+    let left_id = group
+        .children
+        .iter()
+        .find(|object| {
+            object
+                .payload
+                .extra
+                .get("side")
+                .and_then(|value| value.as_str())
+                == Some("left")
+        })
+        .map(|object| object.id.clone())
+        .expect("left bracket should exist");
+    let right_id = group
+        .children
+        .iter()
+        .find(|object| {
+            object
+                .payload
+                .extra
+                .get("side")
+                .and_then(|value| value.as_str())
+                == Some("right")
+        })
+        .map(|object| object.id.clone())
+        .expect("right bracket should exist");
+    assert_eq!(
+        engine.state().selection.arrow_objects,
+        vec![left_id.clone(), right_id.clone()]
+    );
+    let left_before = engine
+        .state()
+        .document
+        .find_scene_object(&left_id)
+        .expect("left bracket should remain")
+        .clone();
+    let right_before = engine
+        .state()
+        .document
+        .find_scene_object(&right_id)
+        .expect("right bracket should remain")
+        .clone();
+    let left_height = left_before.payload.bbox.expect("left bracket bbox")[3];
+    let start = Point::new(
+        left_before.transform.translate[0] + 0.5,
+        left_before.transform.translate[1] + left_height * 0.5,
+    );
+    let end = Point::new(start.x + 12.0, start.y + 6.0);
+
+    assert!(engine.begin_selection_move_at_point(start, false, false));
+    assert_eq!(
+        engine.state().selection.arrow_objects,
+        vec![left_id.clone(), right_id.clone()]
+    );
+    assert!(engine.update_selection_move(end, false));
+    assert!(engine.finish_selection_move(end, false));
+
+    let left_after = engine
+        .state()
+        .document
+        .find_scene_object(&left_id)
+        .expect("left bracket should remain");
+    let right_after = engine
+        .state()
+        .document
+        .find_scene_object(&right_id)
+        .expect("right bracket should remain");
+    assert_eq!(
+        left_after.transform.translate,
+        [
+            round_to_2(left_before.transform.translate[0] + 12.0),
+            round_to_2(left_before.transform.translate[1] + 6.0)
+        ]
+    );
+    assert_eq!(
+        right_after.transform.translate,
+        [
+            round_to_2(right_before.transform.translate[0] + 12.0),
+            round_to_2(right_before.transform.translate[1] + 6.0)
+        ]
+    );
+    assert_eq!(
+        engine.state().selection.arrow_objects,
+        vec![left_id, right_id]
+    );
 }
 
 #[test]
@@ -8564,9 +8943,22 @@ fn select_tool_dragging_unselected_bond_focus_starts_move() {
     assert!(engine.state().selection.is_empty());
     assert!(engine.begin_selection_move_at_point(start, false, false));
     assert_eq!(engine.state().selection.bonds, vec!["b_3"]);
+    assert!(engine.render_list().iter().all(|primitive| !matches!(
+        primitive,
+        RenderPrimitive::Rect {
+            role: RenderRole::SelectionBox
+                | RenderRole::SelectionBond
+                | RenderRole::SelectionNode
+                | RenderRole::SelectionTextBox,
+            ..
+        } | RenderPrimitive::Circle {
+            role: RenderRole::SelectionBondDot,
+            ..
+        }
+    )));
     assert!(engine.update_selection_move(end, false));
     assert!(engine.finish_selection_move(end, false));
-    assert!(engine.state().selection.is_empty());
+    assert_eq!(engine.state().selection.bonds, vec!["b_3"]);
 
     let entry = engine.state().document.editable_fragment().unwrap();
     let n1 = entry
@@ -8670,17 +9062,17 @@ fn select_tool_dragging_single_terminal_endpoint_snaps_to_15_degrees() {
 }
 
 #[test]
-fn select_tool_dragging_unselected_single_terminal_endpoint_clears_temporary_selection() {
+fn select_tool_dragging_unselected_single_terminal_endpoint_selects_dragged_endpoint() {
     let mut engine = Engine::new();
     engine.set_tool_state(bond_tool());
     click(&mut engine, px(300.0), px(260.0));
     engine.set_tool_state(select_tool());
-    engine.select_at_point(Point::new(10000.0, 10000.0), false);
+    engine.select_at_point(Point::new(FIRST_START_X, FIRST_START_Y), false);
     let start = Point::new(FIRST_END_X, FIRST_END_Y);
     let target = Point::new(FIRST_START_X, FIRST_START_Y)
         .translated(direction_from_angle(22.0).scaled(DEFAULT_BOND_LENGTH * 1.4));
 
-    assert!(engine.state().selection.is_empty());
+    assert_eq!(engine.state().selection.nodes, vec!["n_1"]);
     assert!(engine.begin_selection_move_at_point(start, false, false));
     assert_eq!(engine.state().selection.nodes, vec!["n_2"]);
     assert!(engine.update_selection_move(target, false));
@@ -8697,7 +9089,7 @@ fn select_tool_dragging_unselected_single_terminal_endpoint_clears_temporary_sel
         .unwrap();
     assert!((n2.position[0] - round_to_2(expected.x)).abs() < 0.001);
     assert!((n2.position[1] - round_to_2(expected.y)).abs() < 0.001);
-    assert!(engine.state().selection.is_empty());
+    assert_eq!(engine.state().selection.nodes, vec!["n_2"]);
 }
 
 #[test]
@@ -9651,6 +10043,70 @@ fn bracket_tool_drag_creates_bracket_object() {
         .get("kind")
         .and_then(|value| value.as_str())
         == Some("square")));
+    let side_ids: Vec<String> = sides.iter().map(|side| side.id.clone()).collect();
+
+    engine.set_tool_state(select_tool());
+    assert_eq!(
+        engine.state().selection.arrow_objects,
+        side_ids,
+        "new bracket pairs should select the child brackets drawn together"
+    );
+}
+
+#[test]
+fn selected_bracket_stroke_hits_count_as_selection_points() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(ToolState {
+        active_tool: Tool::Bracket,
+        bracket_kind: BracketKind::Round,
+        ..ToolState::default()
+    });
+
+    drag(
+        &mut engine,
+        Point::new(120.0, 130.0),
+        Point::new(180.0, 220.0),
+    );
+    let bbox = engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "group")
+        .and_then(|object| object.payload.bbox)
+        .expect("dragging bracket tool should create bracket group bounds");
+
+    engine.set_tool_state(select_tool());
+
+    let mut checked_hits = 0usize;
+    let min_x = bbox[0] - 35.0;
+    let max_x = bbox[0] + bbox[2] + 35.0;
+    let min_y = bbox[1] - 10.0;
+    let max_y = bbox[1] + bbox[3] + 10.0;
+    let mut y = min_y;
+    while y <= max_y {
+        let mut x = min_x;
+        while x <= max_x {
+            let point = Point::new(x, y);
+            let hit: serde_json::Value =
+                serde_json::from_str(&engine.context_hit_test_json(point)).unwrap();
+            if hit.get("objectType").and_then(|value| value.as_str()) == Some("bracket")
+                && hit.get("selected").and_then(|value| value.as_bool()) == Some(true)
+            {
+                checked_hits += 1;
+                assert!(
+                    engine.selection_contains_point(point),
+                    "selected bracket hit at {point:?} should count as a selection point"
+                );
+            }
+            x += 2.5;
+        }
+        y += 2.5;
+    }
+    assert!(
+        checked_hits > 0,
+        "round bracket scan should find selected hits"
+    );
 }
 
 #[test]

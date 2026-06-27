@@ -196,7 +196,11 @@ export function createEditorPointerController(options) {
   }
 
   function clearInteractionOverlayBeforeCommit() {
-    return clearInteractionOverlayNow();
+    const cleared = clearInteractionOverlayNow();
+    if (cleared && window.__chemcoreDebug) {
+      window.__chemcoreDebug.creationPreviewClearedBeforeCommitAt = performance.now();
+    }
+    return cleared;
   }
 
   function waitForNextFrame() {
@@ -234,6 +238,20 @@ export function createEditorPointerController(options) {
     }
     stats.last = sample;
     debug.creationCommitStats = stats;
+  }
+
+  function recordInteractionCommitTiming(sample) {
+    const debug = window.__chemcoreDebug;
+    if (!debug) {
+      return;
+    }
+    const stats = debug.interactionCommitStats || { samples: [] };
+    stats.samples.push(sample);
+    if (stats.samples.length > 120) {
+      stats.samples.splice(0, stats.samples.length - 120);
+    }
+    stats.last = sample;
+    debug.interactionCommitStats = stats;
   }
 
   function scheduleDocumentPreviewFrame() {
@@ -283,25 +301,38 @@ export function createEditorPointerController(options) {
     });
   }
 
+  function setSelectionHoverSuppressionCursor(cursor) {
+    const viewerSvg = options.viewerSvg?.();
+    if (options.setCanvasCursorStyle) {
+      options.setCanvasCursorStyle(cursor);
+    } else if (viewerSvg) {
+      viewerSvg.style.cursor = cursor;
+    }
+  }
+
   function syncSelectionHoverSuppressionCursor(point, state) {
     const viewerSvg = options.viewerSvg?.();
     if (!viewerSvg) {
       return;
     }
-    if ((state.overSelectionHit || state.overSelectionBounds) && !state.inHandleZone) {
-      viewerSvg.style.cursor = "grab";
+    if (options.editorState().activeTool === "select") {
+      const resizeHandle = state.inHandleZone ? options.selectionResizeHandleHit(point) : null;
+      if (resizeHandle) {
+        setSelectionHoverSuppressionCursor(resizeHandle.cursor);
+        return;
+      }
+      if (state.inHandleZone && options.selectionRotateHandleHit(point)) {
+        setSelectionHoverSuppressionCursor("grab");
+        return;
+      }
+    }
+    if (state.overSelectionHit || state.overSelectionBounds) {
+      setSelectionHoverSuppressionCursor("grab");
       return;
     }
-    if (options.editorState().activeTool === "select") {
-      const resizeHandle = options.selectionResizeHandleHit(point);
-      if (resizeHandle) {
-        viewerSvg.style.cursor = resizeHandle.cursor;
-        return;
-      }
-      if (options.selectionRotateHandleHit(point)) {
-        viewerSvg.style.cursor = "grab";
-        return;
-      }
+    if (state.inHandleZone) {
+      setSelectionHoverSuppressionCursor("grab");
+      return;
     }
     options.syncCanvasCursor?.();
   }
@@ -330,19 +361,24 @@ export function createEditorPointerController(options) {
     }
     selectionHoverSuppressionActive = false;
     if (point && options.editorState().activeTool === "select") {
-      const resizeHandle = options.selectionResizeHandleHit(point);
+      const overSelectionBounds = !!options.selectionBoundsContainsPoint?.(point);
+      const overSelectionHit = !!options.selectionHitContainsPoint?.(point);
+      const inHandleZone = selectionHandleZoneContainsPoint(point);
+      if ((overSelectionBounds || overSelectionHit) && !inHandleZone) {
+        setSelectionHoverSuppressionCursor("grab");
+        return;
+      }
+      const resizeHandle = inHandleZone ? options.selectionResizeHandleHit(point) : null;
       if (resizeHandle) {
-        const viewerSvg = options.viewerSvg?.();
-        if (viewerSvg) {
-          viewerSvg.style.cursor = resizeHandle.cursor;
-        }
+        setSelectionHoverSuppressionCursor(resizeHandle.cursor);
         return;
       }
       if (options.selectionRotateHandleHit(point)) {
-        const viewerSvg = options.viewerSvg?.();
-        if (viewerSvg) {
-          viewerSvg.style.cursor = "grab";
-        }
+        setSelectionHoverSuppressionCursor("grab");
+        return;
+      }
+      if (overSelectionBounds || overSelectionHit || inHandleZone) {
+        setSelectionHoverSuppressionCursor("grab");
         return;
       }
     }
@@ -462,6 +498,7 @@ export function createEditorPointerController(options) {
   }
 
   async function beginSelectionMoveGesture(point, event, syncCursor = options.syncSelectCursorForPoint) {
+    const startedFromExistingSelection = !!options.state().editorEngine.selectionContainsPoint?.(point.x, point.y);
     const beginResult = options.state().editorEngine.beginSelectionMove?.(
       point.x,
       point.y,
@@ -484,6 +521,7 @@ export function createEditorPointerController(options) {
       dragged: false,
       additive: !!event.shiftKey,
       previewSelection,
+      cursor: startedFromExistingSelection ? "grabbing" : "default",
     });
     await syncCursor(point);
     clearEditorOverlayRoot();
@@ -932,6 +970,27 @@ export function createEditorPointerController(options) {
         await options.renderSelectionOnlyUpdate(point);
         return;
       }
+      const hitAtPoint = options.parseEngineJson(
+        await options.state().editorEngine.contextHitTestJson?.(point.x, point.y),
+        null,
+      );
+      if (hitAtPoint?.objectType === "bracket") {
+        const bracketEditAction = await options.state().editorEngine.beginHoverShapeEdit?.(point.x, point.y) || "";
+        if (bracketEditAction) {
+          options.setActiveSelectionGesture({
+            kind: "shape-resize",
+            action: bracketEditAction,
+            cursor: options.cursorForShapeAction(bracketEditAction) || "nwse-resize",
+            start: point,
+            current: point,
+            dragged: false,
+            additive: !!event.shiftKey,
+          });
+          await options.syncArrowAwareCursorForPoint(point);
+          options.renderEditorOverlay(currentInteractionRenderList());
+          return;
+        }
+      }
       const overSelectionInterior = (
         !!options.selectionBoundsContainsPoint?.(point)
         || !!options.selectionHitContainsPoint?.(point)
@@ -954,10 +1013,7 @@ export function createEditorPointerController(options) {
         clearEditorOverlayRoot();
         return;
       }
-      const overSelection = !!options.state().editorEngine.selectionContainsPoint?.(point.x, point.y);
-      const shapeEditAction = overSelection
-        ? ""
-        : await options.state().editorEngine.beginHoverShapeEdit?.(point.x, point.y) || "";
+      const shapeEditAction = await options.state().editorEngine.beginHoverShapeEdit?.(point.x, point.y) || "";
       if (shapeEditAction) {
         options.setActiveSelectionGesture({
           kind: "shape-resize",
@@ -1140,7 +1196,11 @@ export function createEditorPointerController(options) {
       await drainEngineDragPreviewFrame();
     }
     options.viewerSvg().releasePointerCapture?.(event.pointerId);
-    const clearedDragCaptureOnPointerUp = !!options.setCanvasPointerShieldActive?.(false);
+    const keepCreationPreviewUntilCommit = !!engineCreationDrag?.start;
+    const clearedDragCaptureOnPointerUp = !!options.setCanvasPointerShieldActive?.(
+      false,
+      { clearPreview: !keepCreationPreviewUntilCommit },
+    );
     const gesture = options.activeSelectionGesture();
     if (gesture?.kind === "tlc-spot-drag") {
       const result = await executeDocumentCommand(
@@ -1169,6 +1229,7 @@ export function createEditorPointerController(options) {
     if ((options.editorState().activeTool === "select" || options.editorState().activeTool === "arrow")
       && (gesture?.kind === "arrow-endpoint" || gesture?.kind === "arrow-curve")) {
       options.setActiveSelectionGesture(null);
+      const commitStarted = performance.now();
       const result = await executeDocumentCommand(
         {
           type: "set-arrow-geometry",
@@ -1185,11 +1246,20 @@ export function createEditorPointerController(options) {
         },
         { syncRenderList: false },
       );
+      const executedAt = performance.now();
       const changed = !!result.changed;
       if (!changed && !gesture.dragged && options.editorState().activeTool === "select") {
         await options.selectClickTarget(point, gesture.additive);
         options.clearDocumentObjectPreviewTransform();
         await options.renderSelectionOnlyUpdate(point, options.syncArrowAwareCursorForPoint);
+        recordInteractionCommitTiming({
+          kind: gesture.kind,
+          commandType: result.commandType || "set-arrow-geometry",
+          changed,
+          executeMs: executedAt - commitStarted,
+          totalMs: performance.now() - commitStarted,
+          targets: result.targets || null,
+        });
         return;
       }
       if (changed) {
@@ -1199,6 +1269,14 @@ export function createEditorPointerController(options) {
         options.clearDocumentObjectPreviewTransform();
         await options.renderSelectionOnlyUpdate(point, options.syncArrowAwareCursorForPoint);
       }
+      recordInteractionCommitTiming({
+        kind: gesture.kind,
+        commandType: result.commandType || "set-arrow-geometry",
+        changed,
+        executeMs: executedAt - commitStarted,
+        totalMs: performance.now() - commitStarted,
+        targets: result.targets || null,
+      });
       return;
     }
     if ((options.editorState().activeTool === "select"
@@ -1208,6 +1286,7 @@ export function createEditorPointerController(options) {
       || options.editorState().activeTool === "orbital")
       && gesture?.kind === "shape-resize") {
       options.setActiveSelectionGesture(null);
+      const commitStarted = performance.now();
       const result = await executeDocumentCommand(
         {
           type: "set-shape-geometry",
@@ -1224,11 +1303,20 @@ export function createEditorPointerController(options) {
         },
         { sync: false, deferDocumentSync: true },
       );
+      const executedAt = performance.now();
       const changed = !!result.changed;
       if (!changed && !gesture.dragged && options.editorState().activeTool === "select") {
         await options.selectClickTarget(point, gesture.additive);
         options.clearDocumentObjectPreviewTransform();
         await options.renderSelectionOnlyUpdate(point, options.syncArrowAwareCursorForPoint);
+        recordInteractionCommitTiming({
+          kind: gesture.kind,
+          commandType: result.commandType || "set-shape-geometry",
+          changed,
+          executeMs: executedAt - commitStarted,
+          totalMs: performance.now() - commitStarted,
+          targets: result.targets || null,
+        });
         return;
       }
       if (changed) {
@@ -1238,6 +1326,14 @@ export function createEditorPointerController(options) {
         options.clearDocumentObjectPreviewTransform();
         await options.renderSelectionOnlyUpdate(point, options.syncArrowAwareCursorForPoint);
       }
+      recordInteractionCommitTiming({
+        kind: gesture.kind,
+        commandType: result.commandType || "set-shape-geometry",
+        changed,
+        executeMs: executedAt - commitStarted,
+        totalMs: performance.now() - commitStarted,
+        targets: result.targets || null,
+      });
       return;
     }
     if (gesture?.kind === "move") {
@@ -1249,6 +1345,7 @@ export function createEditorPointerController(options) {
           && typeof options.commitDocumentObjectPreviewTransform === "function";
         const commitBackendPreview = !!gesture.backendDocumentPreviewActive
           && typeof options.renderDocumentPrimitiveChange === "function";
+        const commitStarted = performance.now();
         const result = await executeDocumentCommand(
           {
             type: "move-selection",
@@ -1261,6 +1358,7 @@ export function createEditorPointerController(options) {
           () => options.state().editorEngine.finishSelectionMove(commitPoint.x, commitPoint.y, event.altKey),
           (commitPreviewDom || commitBackendPreview) ? { sync: false, deferDocumentSync: true } : {},
         );
+        const executedAt = performance.now();
         suppressHoverUntilPointerLeavesPoint(commitPoint);
         if (commitBackendPreview && result.changed) {
           options.renderDocumentPrimitiveChange(result);
@@ -1287,6 +1385,16 @@ export function createEditorPointerController(options) {
           options.renderDocumentChange?.(result) || options.renderDocument();
         }
         clearEditorOverlayRoot();
+        recordInteractionCommitTiming({
+          kind: gesture.kind,
+          commandType: result.commandType || "move-selection",
+          changed: !!result.changed,
+          previewDom: commitPreviewDom,
+          backendPreview: commitBackendPreview,
+          executeMs: executedAt - commitStarted,
+          totalMs: performance.now() - commitStarted,
+          targets: result.targets || null,
+        });
       } else if (options.editorState().activeTool === "select") {
         await options.selectClickTarget(gesture.start || point, gesture.additive);
         options.clearDocumentObjectPreviewTransform();
@@ -1304,6 +1412,7 @@ export function createEditorPointerController(options) {
         return;
       }
       if (gesture.kind === "rotate") {
+        const commitStarted = performance.now();
         const result = await executeDocumentCommand(
           {
             type: "rotate-selection",
@@ -1316,12 +1425,22 @@ export function createEditorPointerController(options) {
           () => options.state().editorEngine.finishSelectionRotate(point.x, point.y, event.altKey),
           { sync: false, deferDocumentSync: true },
         );
+        const executedAt = performance.now();
         await options.syncSelectCursorForPoint(point);
         options.clearDocumentObjectPreviewTransform();
         options.renderDocumentChange?.(result) || options.renderDocument();
+        recordInteractionCommitTiming({
+          kind: gesture.kind,
+          commandType: result.commandType || "rotate-selection",
+          changed: !!result.changed,
+          executeMs: executedAt - commitStarted,
+          totalMs: performance.now() - commitStarted,
+          targets: result.targets || null,
+        });
         return;
       }
       if (gesture.kind === "resize") {
+        const commitStarted = performance.now();
         const result = await executeDocumentCommand(
           {
             type: "resize-selection",
@@ -1334,9 +1453,18 @@ export function createEditorPointerController(options) {
           () => options.state().editorEngine.finishSelectionResize?.(point.x, point.y),
           { sync: false, deferDocumentSync: true },
         );
+        const executedAt = performance.now();
         await options.syncSelectCursorForPoint(point);
         options.clearDocumentObjectPreviewTransform();
         options.renderDocumentChange?.(result) || options.renderDocument();
+        recordInteractionCommitTiming({
+          kind: gesture.kind,
+          commandType: result.commandType || "resize-selection",
+          changed: !!result.changed,
+          executeMs: executedAt - commitStarted,
+          totalMs: performance.now() - commitStarted,
+          targets: result.targets || null,
+        });
         return;
       }
       if (gesture.kind === "move") {
@@ -1411,8 +1539,9 @@ export function createEditorPointerController(options) {
       await options.renderSelectionOnlyUpdate(point);
       return;
     }
-    const clearedInteractionBeforeCommit = clearInteractionOverlayBeforeCommit()
-      || clearedDragCaptureOnPointerUp;
+    const clearedInteractionBeforeCommit = keepCreationPreviewUntilCommit
+      ? false
+      : (clearInteractionOverlayBeforeCommit() || clearedDragCaptureOnPointerUp);
     if (clearedInteractionBeforeCommit) {
       await waitForClearedInteractionPaint();
     }
@@ -1441,6 +1570,9 @@ export function createEditorPointerController(options) {
       options.state().editorEngine.pendingGraphicObjectId?.() || "",
     ) || commitResult?.targets?.objects?.[0] || commitResult?.created?.objects?.[0] || "";
     options.renderDocumentChange?.(commitResult) || options.renderDocument();
+    if (keepCreationPreviewUntilCommit) {
+      options.clearDragCapturePreview?.();
+    }
     const renderedAt = performance.now();
     await options.ensureDocumentObjectDomForCommandResult?.(commitResult);
     const ensuredAt = performance.now();

@@ -7,7 +7,7 @@ class WasmEngineHost {
   }
 
   async initialize() {
-    await initializeChemcoreEngine(new URL("./engine/chemcore_engine_bg.wasm?v=20260626-selection-drag-preview-3", import.meta.url));
+    await initializeChemcoreEngine(new URL("./engine/chemcore_engine_bg.wasm?v=20260627-bracket-hit-cursor", import.meta.url));
     return this;
   }
 
@@ -91,10 +91,17 @@ class TauriEngineSession {
     this.exportDirty = true;
     this.operation = Promise.resolve();
     this.nativeBackgroundOperation = Promise.resolve();
+    this.coalescedNativeMutations = new Map();
     this.pendingSelectionMoveBegin = null;
     this.localSelectionMoveActive = false;
+    this.pendingSelectionRotateBegin = null;
+    this.localSelectionRotateActive = false;
+    this.pendingSelectionResizeBegin = null;
+    this.localSelectionResizeActive = false;
     this.pendingArrowEditBegin = null;
     this.localArrowEditActive = false;
+    this.pendingShapeEditBegin = null;
+    this.localShapeEditActive = false;
     this.activeTool = "";
     this.readyPromise = this.initializeSession();
   }
@@ -159,6 +166,14 @@ class TauriEngineSession {
     this.cache.documentSvg = null;
   }
 
+  hasLocalInteraction() {
+    return this.localSelectionMoveActive
+      || this.localSelectionRotateActive
+      || this.localSelectionResizeActive
+      || this.localArrowEditActive
+      || this.localShapeEditActive;
+  }
+
   syncCacheFromLayout({ document = false, interaction = false } = {}) {
     if (!this.layoutEngine) {
       return;
@@ -186,34 +201,76 @@ class TauriEngineSession {
     }
   }
 
-  runNativeMutationInBackground(command, args = {}, options = {}) {
+  async executeNativeMutation(command, args = {}, options = {}) {
     const refresh = options.refresh ?? "document";
     const dirtyExports = options.dirtyExports ?? (refresh === "all" || refresh === "document" || refresh === "documentState");
-    const run = async () => {
-      await this.ready();
-      const result = await this.invoke(command, { sessionId: this.sessionId, ...args });
-      if (dirtyExports) {
-        this.markExportsDirty();
+    const waitFor = options.waitFor || null;
+    if (waitFor) {
+      await waitFor.catch(() => false);
+    }
+    await this.ready();
+    const result = await this.invoke(command, { sessionId: this.sessionId, ...args });
+    if (dirtyExports) {
+      this.markExportsDirty();
+    }
+    if (!this.layoutEngine) {
+      if (refresh === "all" || refresh === "document") {
+        await this.refreshSnapshot("document");
+      } else if (refresh === "documentState") {
+        await this.refreshSnapshot("documentState");
+      } else if (refresh === "selection") {
+        await this.refreshSnapshot("selection");
+      } else if (refresh === "interaction") {
+        await this.refreshSnapshot("interaction");
+      } else if (refresh === "state") {
+        await this.refreshSnapshot("state");
       }
-      if (!this.layoutEngine) {
-        if (refresh === "all" || refresh === "document") {
-          await this.refreshSnapshot("document");
-        } else if (refresh === "documentState") {
-          await this.refreshSnapshot("documentState");
-        } else if (refresh === "selection") {
-          await this.refreshSnapshot("selection");
-        } else if (refresh === "interaction") {
-          await this.refreshSnapshot("interaction");
-        } else if (refresh === "state") {
-          await this.refreshSnapshot("state");
-        }
-      }
-      return result;
-    };
+    }
+    return result;
+  }
+
+  runNativeMutationInBackground(command, args = {}, options = {}) {
+    const run = () => this.executeNativeMutation(command, args, options);
     this.nativeBackgroundOperation = this.nativeBackgroundOperation.catch(() => {}).then(run);
     void this.nativeBackgroundOperation.catch((error) => {
       console.warn("[chemcore] background native mutation failed", command, error);
     });
+    return this.nativeBackgroundOperation;
+  }
+
+  runCoalescedNativeMutationInBackground(key, command, args = {}, options = {}) {
+    const existing = this.coalescedNativeMutations.get(key);
+    if (existing) {
+      existing.command = command;
+      existing.args = args;
+      existing.options = options;
+      return existing.promise;
+    }
+    const entry = {
+      command,
+      args,
+      options,
+      promise: null,
+    };
+    const run = async () => {
+      const latest = this.coalescedNativeMutations.get(key) || entry;
+      this.coalescedNativeMutations.delete(key);
+      return this.executeNativeMutation(latest.command, latest.args, latest.options);
+    };
+    entry.promise = this.nativeBackgroundOperation.catch(() => {}).then(run);
+    this.coalescedNativeMutations.set(key, entry);
+    this.nativeBackgroundOperation = entry.promise;
+    void entry.promise.catch((error) => {
+      console.warn("[chemcore] coalesced background native mutation failed", command, error);
+    });
+    return entry.promise;
+  }
+
+  syncLocalMutationState({ dirtyExports = false } = {}) {
+    if (dirtyExports) {
+      this.markExportsDirty();
+    }
+    this.syncCacheFromLayout({ interaction: true });
   }
 
   activeToolUsesLocalPointer() {
@@ -354,7 +411,7 @@ class TauriEngineSession {
   }
 
   stateJson() {
-    if ((this.localSelectionMoveActive || this.localArrowEditActive) && this.layoutEngine?.stateJson) {
+    if (this.hasLocalInteraction() && this.layoutEngine?.stateJson) {
       return this.layoutEngine.stateJson();
     }
     return this.cache.stateJson || "";
@@ -369,18 +426,23 @@ class TauriEngineSession {
   }
 
   interactionRenderListJson() {
-    if ((this.localSelectionMoveActive || this.localArrowEditActive)
-      && this.layoutEngine?.interactionRenderListJson) {
+    if (this.hasLocalInteraction() && this.layoutEngine?.interactionRenderListJson) {
       return this.layoutEngine.interactionRenderListJson();
     }
     return this.cache.interactionRenderListJson || this.cache.renderListJson || "[]";
   }
 
   renderBoundsJson(scope = "all") {
+    if (this.layoutEngine?.renderBoundsJson) {
+      return this.layoutEngine.renderBoundsJson(scope);
+    }
     return this.cache.renderBoundsJson.get(scope) || this.cache.renderBoundsJson.get("all") || "null";
   }
 
   selectionBoundsJson() {
+    if (this.layoutEngine?.selectionBoundsJson) {
+      return this.layoutEngine.selectionBoundsJson();
+    }
     return this.renderBoundsJson("selection");
   }
 
@@ -428,7 +490,8 @@ class TauriEngineSession {
     if (this.layoutEngine?.setTool) {
       this.layoutEngine.setTool(activeTool, bondVariant);
       this.syncCacheFromLayout({ interaction: true });
-      this.runNativeMutationInBackground(
+      this.runCoalescedNativeMutationInBackground(
+        "set_tool",
         "desktop_engine_set_tool",
         { activeTool, bondVariant },
         { refresh: "state", dirtyExports: false },
@@ -442,7 +505,8 @@ class TauriEngineSession {
     if (this.layoutEngine?.setShapeOptions) {
       this.layoutEngine.setShapeOptions(kind, style, color);
       this.syncCacheFromLayout({ interaction: true });
-      this.runNativeMutationInBackground(
+      this.runCoalescedNativeMutationInBackground(
+        "set_shape_options",
         "desktop_engine_set_shape_options",
         { kind, style, color },
         { refresh: "state", dirtyExports: false },
@@ -456,7 +520,8 @@ class TauriEngineSession {
     if (this.layoutEngine?.setOrbitalOptions) {
       this.layoutEngine.setOrbitalOptions(template, style, phase, color);
       this.syncCacheFromLayout({ interaction: true });
-      this.runNativeMutationInBackground(
+      this.runCoalescedNativeMutationInBackground(
+        "set_orbital_options",
         "desktop_engine_set_orbital_options",
         { template, style, phase, color },
         { refresh: "state", dirtyExports: false },
@@ -475,7 +540,8 @@ class TauriEngineSession {
     if (this.layoutEngine?.setTemplate) {
       this.layoutEngine.setTemplate(template);
       this.syncCacheFromLayout({ interaction: true });
-      this.runNativeMutationInBackground(
+      this.runCoalescedNativeMutationInBackground(
+        "set_template",
         "desktop_engine_set_template",
         { template },
         { refresh: "state", dirtyExports: false },
@@ -489,7 +555,8 @@ class TauriEngineSession {
     if (this.layoutEngine?.setBracketOptions) {
       this.layoutEngine.setBracketOptions(kind);
       this.syncCacheFromLayout({ interaction: true });
-      this.runNativeMutationInBackground(
+      this.runCoalescedNativeMutationInBackground(
+        "set_bracket_options",
         "desktop_engine_set_bracket_options",
         { kind },
         { refresh: "state", dirtyExports: false },
@@ -503,7 +570,8 @@ class TauriEngineSession {
     if (this.layoutEngine?.setSymbolOptions) {
       this.layoutEngine.setSymbolOptions(kind);
       this.syncCacheFromLayout({ interaction: true });
-      this.runNativeMutationInBackground(
+      this.runCoalescedNativeMutationInBackground(
+        "set_symbol_options",
         "desktop_engine_set_symbol_options",
         { kind },
         { refresh: "state", dirtyExports: false },
@@ -517,7 +585,8 @@ class TauriEngineSession {
     if (this.layoutEngine?.setElementOptions) {
       this.layoutEngine.setElementOptions(symbol, atomicNumber);
       this.syncCacheFromLayout({ interaction: true });
-      this.runNativeMutationInBackground(
+      this.runCoalescedNativeMutationInBackground(
+        "set_element_options",
         "desktop_engine_set_element_options",
         { symbol, atomicNumber },
         { refresh: "state", dirtyExports: false },
@@ -636,7 +705,8 @@ class TauriEngineSession {
     if (this.layoutEngine?.setArrowOptions) {
       this.layoutEngine.setArrowOptions(variant, headSize, head, tail, bold);
       this.syncCacheFromLayout({ interaction: true });
-      this.runNativeMutationInBackground(
+      this.runCoalescedNativeMutationInBackground(
+        "set_arrow_options",
         "desktop_engine_set_arrow_options",
         { variant, headSize, head, tail, bold },
         { refresh: "state", dirtyExports: false },
@@ -656,7 +726,8 @@ class TauriEngineSession {
     if (this.layoutEngine?.setArrowEndpointOptions) {
       this.layoutEngine.setArrowEndpointOptions(variant, headSize, curve, headStyle, tailStyle, noGo, bold);
       this.syncCacheFromLayout({ interaction: true });
-      this.runNativeMutationInBackground(
+      this.runCoalescedNativeMutationInBackground(
+        "set_arrow_endpoint_options",
         "desktop_engine_set_arrow_endpoint_options",
         { variant, headSize, curve, headStyle, tailStyle, noGo, bold },
         { refresh: "state", dirtyExports: false },
@@ -700,7 +771,8 @@ class TauriEngineSession {
     if (this.activeToolUsesLocalPointer() && this.layoutEngine?.pointerMove) {
       this.layoutEngine.pointerMove(x, y, altKey);
       this.syncCacheFromLayout({ interaction: true });
-      this.runNativeMutationInBackground(
+      this.runCoalescedNativeMutationInBackground(
+        "pointer_move",
         "desktop_engine_pointer_move",
         { x, y, altKey },
         { refresh: "interaction", dirtyExports: false },
@@ -728,11 +800,11 @@ class TauriEngineSession {
     if (this.activeToolUsesLocalPointer() && this.layoutEngine?.pointerUp) {
       this.layoutEngine.pointerUp(x, y, altKey);
       this.markExportsDirty();
-      this.syncCacheFromLayout({ document: true, interaction: true });
+      this.syncCacheFromLayout({ interaction: true });
       this.runNativeMutationInBackground(
         "desktop_engine_pointer_up",
         { x, y, altKey },
-        { refresh: "documentState" },
+        { refresh: "state", dirtyExports: true },
       );
       return undefined;
     }
@@ -740,26 +812,86 @@ class TauriEngineSession {
   }
 
   selectAtPoint(x, y, additive) {
+    if (this.layoutEngine?.selectAtPoint) {
+      const result = this.layoutEngine.selectAtPoint(x, y, additive);
+      this.syncLocalMutationState();
+      this.runNativeMutationInBackground(
+        "desktop_engine_select_at_point",
+        { x, y, additive },
+        { refresh: "selection", dirtyExports: false },
+      );
+      return result;
+    }
     return this.invokeMutation("desktop_engine_select_at_point", { x, y, additive }, { refresh: "selection", dirtyExports: false });
   }
 
   selectComponentAtPoint(x, y, additive) {
+    if (this.layoutEngine?.selectComponentAtPoint) {
+      const result = this.layoutEngine.selectComponentAtPoint(x, y, additive);
+      this.syncLocalMutationState();
+      this.runNativeMutationInBackground(
+        "desktop_engine_select_component_at_point",
+        { x, y, additive },
+        { refresh: "selection", dirtyExports: false },
+      );
+      return result;
+    }
     return this.invokeMutation("desktop_engine_select_component_at_point", { x, y, additive }, { refresh: "selection", dirtyExports: false });
   }
 
   selectInRect(x1, y1, x2, y2, additive) {
+    if (this.layoutEngine?.selectInRect) {
+      const result = this.layoutEngine.selectInRect(x1, y1, x2, y2, additive);
+      this.syncLocalMutationState();
+      this.runNativeMutationInBackground(
+        "desktop_engine_select_in_rect",
+        { x1, y1, x2, y2, additive },
+        { refresh: "selection", dirtyExports: false },
+      );
+      return result;
+    }
     return this.invokeMutation("desktop_engine_select_in_rect", { x1, y1, x2, y2, additive }, { refresh: "selection", dirtyExports: false });
   }
 
   selectInPolygon(pointsJson, additive) {
+    if (this.layoutEngine?.selectInPolygon) {
+      const result = this.layoutEngine.selectInPolygon(pointsJson, additive);
+      this.syncLocalMutationState();
+      this.runNativeMutationInBackground(
+        "desktop_engine_select_in_polygon",
+        { pointsJson, additive },
+        { refresh: "selection", dirtyExports: false },
+      );
+      return result;
+    }
     return this.invokeMutation("desktop_engine_select_in_polygon", { pointsJson, additive }, { refresh: "selection", dirtyExports: false });
   }
 
   selectAll() {
+    if (this.layoutEngine?.selectAll) {
+      const result = this.layoutEngine.selectAll();
+      this.syncLocalMutationState();
+      this.runNativeMutationInBackground(
+        "desktop_engine_select_all",
+        {},
+        { refresh: "selection", dirtyExports: false },
+      );
+      return result;
+    }
     return this.invokeMutation("desktop_engine_select_all", {}, { refresh: "selection", dirtyExports: false });
   }
 
   clearSelection() {
+    if (this.layoutEngine?.clearSelection) {
+      const result = this.layoutEngine.clearSelection();
+      this.syncLocalMutationState();
+      this.runNativeMutationInBackground(
+        "desktop_engine_clear_selection",
+        {},
+        { refresh: "selection", dirtyExports: false },
+      );
+      return result;
+    }
     return this.invokeMutation("desktop_engine_clear_selection", {}, { refresh: "selection", dirtyExports: false });
   }
 
@@ -796,7 +928,8 @@ class TauriEngineSession {
         return "";
       }
       this.localArrowEditActive = true;
-      this.pendingArrowEditBegin = this.invokeMutation(
+      this.syncLocalMutationState();
+      this.pendingArrowEditBegin = this.runNativeMutationInBackground(
         "desktop_engine_begin_hover_arrow_edit",
         { x, y },
         { refresh: "interaction", dirtyExports: false },
@@ -817,33 +950,18 @@ class TauriEngineSession {
     if (this.layoutEngine?.finishHoverArrowEdit) {
       const changed = this.layoutEngine.finishHoverArrowEdit(x, y, altKey);
       if (changed) {
-        this.markExportsDirty();
-        this.syncCacheFromLayout({ document: true, interaction: true });
+        this.syncLocalMutationState({ dirtyExports: true });
       }
       const pendingBegin = this.pendingArrowEditBegin;
       this.pendingArrowEditBegin = null;
-      const finish = async () => {
-        if (pendingBegin) {
-          await pendingBegin.catch(() => false);
-        }
-        try {
-          const nativeChanged = await this.invokeMutation(
-            "desktop_engine_finish_hover_arrow_edit",
-            { x, y, altKey },
-            { refresh: "interaction", dirtyExports: false },
-          );
-          if (changed) {
-            this.syncCacheFromLayout({ document: true, interaction: true });
-          }
-          return Boolean(nativeChanged || changed);
-        } finally {
-          this.localArrowEditActive = false;
-        }
-      };
-      if (changed || pendingBegin) {
-        return finish();
-      }
       this.localArrowEditActive = false;
+      if (changed || pendingBegin) {
+        this.runNativeMutationInBackground(
+          "desktop_engine_finish_hover_arrow_edit",
+          { x, y, altKey },
+          { refresh: "state", dirtyExports: changed, waitFor: pendingBegin },
+        );
+      }
       return changed;
     }
     return this.invokeMutation(
@@ -854,18 +972,55 @@ class TauriEngineSession {
   }
 
   hoverShapeAction(x, y) {
+    if (this.layoutEngine?.hoverShapeAction) {
+      return this.layoutEngine.hoverShapeAction(x, y);
+    }
     return this.invoke("desktop_engine_hover_shape_action", { sessionId: this.sessionId, x, y });
   }
 
   beginHoverShapeEdit(x, y) {
+    if (this.layoutEngine?.beginHoverShapeEdit) {
+      const action = this.layoutEngine.beginHoverShapeEdit(x, y);
+      if (!action) {
+        return "";
+      }
+      this.localShapeEditActive = true;
+      this.syncLocalMutationState();
+      this.pendingShapeEditBegin = this.runNativeMutationInBackground(
+        "desktop_engine_begin_hover_shape_edit",
+        { x, y },
+        { refresh: "interaction", dirtyExports: false },
+      );
+      return action;
+    }
     return this.invokeMutation("desktop_engine_begin_hover_shape_edit", { x, y }, { refresh: "interaction", dirtyExports: false });
   }
 
   updateHoverShapeEdit(x, y, altKey) {
+    if (this.layoutEngine?.updateHoverShapeEdit) {
+      return this.layoutEngine.updateHoverShapeEdit(x, y, altKey);
+    }
     return this.invokeMutation("desktop_engine_update_hover_shape_edit", { x, y, altKey }, { refresh: "interaction", dirtyExports: false });
   }
 
   finishHoverShapeEdit(x, y, altKey) {
+    if (this.layoutEngine?.finishHoverShapeEdit) {
+      const changed = this.layoutEngine.finishHoverShapeEdit(x, y, altKey);
+      if (changed) {
+        this.syncLocalMutationState({ dirtyExports: true });
+      }
+      const pendingBegin = this.pendingShapeEditBegin;
+      this.pendingShapeEditBegin = null;
+      this.localShapeEditActive = false;
+      if (changed || pendingBegin) {
+        this.runNativeMutationInBackground(
+          "desktop_engine_finish_hover_shape_edit",
+          { x, y, altKey },
+          { refresh: "state", dirtyExports: changed, waitFor: pendingBegin },
+        );
+      }
+      return changed;
+    }
     return this.invokeMutation(
       "desktop_engine_finish_hover_shape_edit",
       { x, y, altKey },
@@ -887,7 +1042,8 @@ class TauriEngineSession {
         return false;
       }
       this.localSelectionMoveActive = true;
-      this.pendingSelectionMoveBegin = this.invokeMutation(
+      this.syncLocalMutationState();
+      this.pendingSelectionMoveBegin = this.runNativeMutationInBackground(
         "desktop_engine_begin_selection_move",
         { x, y, additive, altKey },
         { refresh: "interaction", dirtyExports: false },
@@ -907,48 +1063,113 @@ class TauriEngineSession {
   finishSelectionMove(x, y, altKey) {
     if (this.layoutEngine?.finishSelectionMove) {
       const changed = this.layoutEngine.finishSelectionMove(x, y, altKey);
+      if (changed) {
+        this.syncLocalMutationState({ dirtyExports: true });
+      }
       const pendingBegin = this.pendingSelectionMoveBegin;
       this.pendingSelectionMoveBegin = null;
-      const finish = async () => {
-        if (pendingBegin) {
-          await pendingBegin.catch(() => false);
-        }
-        try {
-          return await this.invokeMutation("desktop_engine_finish_selection_move", { x, y, altKey });
-        } finally {
-          this.localSelectionMoveActive = false;
-        }
-      };
-      if (changed || pendingBegin) {
-        return finish();
-      }
       this.localSelectionMoveActive = false;
+      if (changed || pendingBegin) {
+        this.runNativeMutationInBackground(
+          "desktop_engine_finish_selection_move",
+          { x, y, altKey },
+          { refresh: "state", dirtyExports: changed, waitFor: pendingBegin },
+        );
+      }
       return changed;
     }
     return this.invokeMutation("desktop_engine_finish_selection_move", { x, y, altKey });
   }
 
   beginSelectionRotate(x, y) {
+    if (this.layoutEngine?.beginSelectionRotate) {
+      const began = this.layoutEngine.beginSelectionRotate(x, y);
+      if (!began) {
+        return false;
+      }
+      this.localSelectionRotateActive = true;
+      this.syncLocalMutationState();
+      this.pendingSelectionRotateBegin = this.runNativeMutationInBackground(
+        "desktop_engine_begin_selection_rotate",
+        { x, y },
+        { refresh: "interaction", dirtyExports: false },
+      );
+      return true;
+    }
     return this.invokeMutation("desktop_engine_begin_selection_rotate", { x, y }, { refresh: "interaction", dirtyExports: false });
   }
 
   updateSelectionRotate(x, y, altKey) {
+    if (this.layoutEngine?.updateSelectionRotate) {
+      return this.layoutEngine.updateSelectionRotate(x, y, altKey);
+    }
     return this.invokeMutation("desktop_engine_update_selection_rotate", { x, y, altKey }, { refresh: "interaction", dirtyExports: false });
   }
 
   finishSelectionRotate(x, y, altKey) {
+    if (this.layoutEngine?.finishSelectionRotate) {
+      const changed = this.layoutEngine.finishSelectionRotate(x, y, altKey);
+      if (changed) {
+        this.syncLocalMutationState({ dirtyExports: true });
+      }
+      const pendingBegin = this.pendingSelectionRotateBegin;
+      this.pendingSelectionRotateBegin = null;
+      this.localSelectionRotateActive = false;
+      if (changed || pendingBegin) {
+        this.runNativeMutationInBackground(
+          "desktop_engine_finish_selection_rotate",
+          { x, y, altKey },
+          { refresh: "state", dirtyExports: changed, waitFor: pendingBegin },
+        );
+      }
+      return changed;
+    }
     return this.invokeMutation("desktop_engine_finish_selection_rotate", { x, y, altKey });
   }
 
   beginSelectionResize(handle, x, y) {
+    if (this.layoutEngine?.beginSelectionResize) {
+      const began = this.layoutEngine.beginSelectionResize(handle, x, y);
+      if (!began) {
+        return false;
+      }
+      this.localSelectionResizeActive = true;
+      this.syncLocalMutationState();
+      this.pendingSelectionResizeBegin = this.runNativeMutationInBackground(
+        "desktop_engine_begin_selection_resize",
+        { handle, x, y },
+        { refresh: "interaction", dirtyExports: false },
+      );
+      return true;
+    }
     return this.invokeMutation("desktop_engine_begin_selection_resize", { handle, x, y }, { refresh: "interaction", dirtyExports: false });
   }
 
   updateSelectionResize(x, y) {
+    if (this.layoutEngine?.updateSelectionResize) {
+      return this.layoutEngine.updateSelectionResize(x, y);
+    }
     return this.invokeMutation("desktop_engine_update_selection_resize", { x, y }, { refresh: "interaction", dirtyExports: false });
   }
 
   finishSelectionResize(x, y) {
+    if (this.layoutEngine?.finishSelectionResize) {
+      const changed = this.layoutEngine.finishSelectionResize(x, y);
+      if (changed) {
+        this.syncLocalMutationState({ dirtyExports: true });
+      }
+      const pendingBegin = this.pendingSelectionResizeBegin;
+      this.pendingSelectionResizeBegin = null;
+      this.localSelectionResizeActive = false;
+      if (changed || pendingBegin) {
+        this.runNativeMutationInBackground(
+          "desktop_engine_finish_selection_resize",
+          { x, y },
+          { refresh: "state", dirtyExports: changed, waitFor: pendingBegin },
+        );
+      }
+      return changed;
+    }
     return this.invokeMutation("desktop_engine_finish_selection_resize", { x, y });
   }
 
@@ -1050,6 +1271,16 @@ class TauriEngineSession {
   }
 
   clearInteraction() {
+    if (this.layoutEngine?.clearInteraction) {
+      const result = this.layoutEngine.clearInteraction();
+      this.syncLocalMutationState();
+      this.runNativeMutationInBackground(
+        "desktop_engine_clear_interaction",
+        {},
+        { refresh: "interaction", dirtyExports: false },
+      );
+      return result;
+    }
     return this.invokeMutation("desktop_engine_clear_interaction", {}, { refresh: "interaction", dirtyExports: false });
   }
 

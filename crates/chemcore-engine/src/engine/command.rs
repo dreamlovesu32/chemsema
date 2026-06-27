@@ -1,7 +1,7 @@
 use crate::{
     ArrowCurve, ArrowEndpointStyle, ArrowHeadSize, ArrowNoGo, ArrowVariant, BondAnchor,
     BondVariant, BracketKind, ChemcoreDocument, LabelRun, ObjectSettings, OrbitalPhase,
-    OrbitalStyle, OrbitalTemplate, Point, ShapeKind, ShapeStyle,
+    OrbitalStyle, OrbitalTemplate, Point, SceneObject, ShapeKind, ShapeStyle,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -433,20 +433,46 @@ pub enum TextEditCommandTarget {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "snapshotKind", rename_all = "kebab-case")]
+pub enum HistorySnapshot {
+    Document {
+        before: ChemcoreDocument,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        after: Option<ChemcoreDocument>,
+    },
+    SceneObjects {
+        before_objects: Vec<SceneObject>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        after_objects: Option<Vec<SceneObject>>,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HistoryEntry {
     pub command: EditorCommand,
-    pub before: ChemcoreDocument,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub after: Option<ChemcoreDocument>,
+    #[serde(flatten)]
+    pub snapshot: HistorySnapshot,
 }
 
 impl HistoryEntry {
     pub fn new(command: EditorCommand, before: ChemcoreDocument) -> Self {
         Self {
             command,
-            before,
-            after: None,
+            snapshot: HistorySnapshot::Document {
+                before,
+                after: None,
+            },
+        }
+    }
+
+    pub fn new_scene_objects(command: EditorCommand, before_objects: Vec<SceneObject>) -> Self {
+        Self {
+            command,
+            snapshot: HistorySnapshot::SceneObjects {
+                before_objects,
+                after_objects: None,
+            },
         }
     }
 }

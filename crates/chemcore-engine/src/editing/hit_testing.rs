@@ -16,6 +16,9 @@ pub fn hit_test_endpoint_excluding(
 ) -> Option<EndpointHit> {
     let mut best: Option<(EndpointHit, bool)> = None;
     for entry in document.editable_fragments() {
+        if !point_near_editable_fragment(&entry, point, radius) {
+            continue;
+        }
         for node in &entry.fragment.nodes {
             if excluded_node_id == Some(node.id.as_str()) {
                 continue;
@@ -93,6 +96,9 @@ pub(super) fn endpoint_candidate_is_better(
 pub fn hit_test_bond(document: &ChemcoreDocument, point: Point, radius: f64) -> Option<BondHit> {
     let mut best: Option<BondHit> = None;
     for entry in document.editable_fragments() {
+        if !point_near_editable_fragment(&entry, point, radius) {
+            continue;
+        }
         for bond in &entry.fragment.bonds {
             let Some(begin) = entry
                 .fragment
@@ -128,6 +134,9 @@ pub fn hit_test_bond_center(
 ) -> Option<BondCenterHit> {
     let mut best: Option<BondCenterHit> = None;
     for entry in document.editable_fragments() {
+        if !point_near_editable_fragment(&entry, point, radius) {
+            continue;
+        }
         for bond in &entry.fragment.bonds {
             if bond.order < 1 {
                 continue;
@@ -170,6 +179,22 @@ pub fn hit_test_bond_center(
         }
     }
     best
+}
+
+fn point_near_editable_fragment(entry: &EditableFragment<'_>, point: Point, radius: f64) -> bool {
+    let Some([x, y, width, height]) = entry.object.payload.bbox else {
+        return true;
+    };
+    if ![x, y, width, height].iter().all(|value| value.is_finite()) {
+        return true;
+    }
+    let tx = entry.object.transform.translate[0];
+    let ty = entry.object.transform.translate[1];
+    let x1 = tx + x.min(x + width) - radius;
+    let x2 = tx + x.max(x + width) + radius;
+    let y1 = ty + y.min(y + height) - radius;
+    let y2 = ty + y.max(y + height) + radius;
+    point.x >= x1 && point.x <= x2 && point.y >= y1 && point.y <= y2
 }
 
 fn visual_bond_center_focus_segment(

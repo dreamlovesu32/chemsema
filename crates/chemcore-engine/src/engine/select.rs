@@ -316,6 +316,11 @@ impl Engine {
         {
             return true;
         }
+        if let Some(hit) = self.select_hit_at_point(point) {
+            if selection_contains_hit(&self.state.selection, &hit) {
+                return true;
+            }
+        }
         let mut selection_bounds = None;
         for bounds in hit_bounds {
             include_optional_bounds(&mut selection_bounds, bounds);
@@ -589,8 +594,9 @@ impl Engine {
         _alt_key: bool,
     ) -> bool {
         let mut preserve_selection_after_drag = true;
+        let direct_hit = self.select_hit_at_point(point);
         if self.state.selection.is_empty() || !self.selection_contains_point(point) {
-            let Some(hit) = self.select_hit_at_point(point) else {
+            let Some(hit) = direct_hit else {
                 return false;
             };
             preserve_selection_after_drag = selection_contains_hit(&self.state.selection, &hit);
@@ -724,7 +730,11 @@ impl Engine {
             .as_ref()
             .is_some_and(|drag| drag.changed);
         self.selection_rotate_drag = None;
-        self.hover_select_target(point);
+        if changed {
+            clear_select_hover_overlay(self);
+        } else {
+            self.hover_select_target(point);
+        }
         changed
     }
 
@@ -759,7 +769,11 @@ impl Engine {
             .as_ref()
             .is_some_and(|drag| drag.changed);
         self.selection_resize_drag = None;
-        self.hover_select_target(point);
+        if changed {
+            clear_select_hover_overlay(self);
+        } else {
+            self.hover_select_target(point);
+        }
         changed
     }
 
@@ -793,16 +807,12 @@ impl Engine {
             .selection_drag
             .as_ref()
             .is_some_and(|drag| drag.changed);
-        let should_clear_selection = changed
-            && self
-                .selection_drag
-                .as_ref()
-                .is_some_and(|drag| !drag.preserve_selection_after_drag);
         self.selection_drag = None;
-        if should_clear_selection {
-            self.state.selection = SelectionState::default();
+        if changed {
+            clear_select_hover_overlay(self);
+        } else {
+            self.hover_select_target(point);
         }
-        self.hover_select_target(point);
         changed
     }
 
@@ -1165,11 +1175,11 @@ impl Engine {
             SelectionState::default()
         };
         self.state.overlay.preview = None;
-        self.hover_select_target(point);
+        clear_select_hover_overlay(self);
     }
 
     pub fn select_component_at_point(&mut self, point: Point, additive: bool) -> bool {
-        let Some(hit) = self.select_hit_at_point(point) else {
+        let Some(hit) = self.component_select_hit_at_point(point) else {
             return false;
         };
         if let Some(group_id) = self.ancestor_group_id_for_hit(&hit) {
@@ -1514,6 +1524,18 @@ impl Engine {
     }
 
     fn select_hit_at_point(&self, point: Point) -> Option<SelectHit> {
+        if let Some(hit) = self.graphic_select_hit_at_point(point) {
+            return Some(hit);
+        }
+        self.chemistry_select_hit_at_point(point)
+    }
+
+    fn component_select_hit_at_point(&self, point: Point) -> Option<SelectHit> {
+        self.chemistry_select_hit_at_point(point)
+            .or_else(|| self.graphic_select_hit_at_point(point))
+    }
+
+    fn chemistry_select_hit_at_point(&self, point: Point) -> Option<SelectHit> {
         if let Some((object_id, _)) = self.hit_test_text_object(point) {
             return Some(SelectHit::TextObject { object_id });
         }
@@ -1533,6 +1555,10 @@ impl Engine {
                 bond_id: center.bond_id,
             });
         }
+        None
+    }
+
+    fn graphic_select_hit_at_point(&self, point: Point) -> Option<SelectHit> {
         let mut objects = self.state.document.scene_objects();
         objects.sort_by(|a, b| b.z_index.cmp(&a.z_index).then_with(|| b.id.cmp(&a.id)));
         for object in objects {
@@ -1543,6 +1569,12 @@ impl Engine {
             }
             if object.object_type == "shape" {
                 if self.shape_select_hit_at_point(point, object) {
+                    return Some(SelectHit::ArrowObject {
+                        object_id: object.id.clone(),
+                    });
+                }
+            } else if object.object_type == "bracket" {
+                if super::brackets::bracket_object_hit_at_point(object, point) {
                     return Some(SelectHit::ArrowObject {
                         object_id: object.id.clone(),
                     });
@@ -1608,6 +1640,16 @@ impl Engine {
             if !matches!(object.object_type.as_str(), "bracket" | "symbol" | "shape")
                 || !object.visible
             {
+                continue;
+            }
+            if object.object_type == "bracket" {
+                if super::brackets::bracket_object_region_selected(
+                    object,
+                    &mut point_inside,
+                    &mut segment_selected,
+                ) {
+                    selection.arrow_objects.push(object.id.clone());
+                }
                 continue;
             }
             let Some(bounds) = scene_object_selection_bounds(&self.state.document, object) else {
@@ -1984,6 +2026,13 @@ impl Engine {
 
     pub(super) fn selection_render_list(&self) -> Vec<RenderPrimitive> {
         if self.selection_rotate_drag.is_some() {
+            return Vec::new();
+        }
+        if self
+            .selection_drag
+            .as_ref()
+            .is_some_and(|drag| !drag.preserve_selection_after_drag)
+        {
             return Vec::new();
         }
         let mut out = Vec::new();
