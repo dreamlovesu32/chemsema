@@ -1,5 +1,6 @@
 use super::{
-    EditorCommand, Engine, PendingSelectTarget, TextEditCommandTarget, TextEditLayoutRequest,
+    EditorCommand, Engine, PendingSelectTarget, TextCommandContent, TextEditCommandTarget,
+    TextEditLayoutRequest,
 };
 use crate::{
     build_label_glyph_polygons, decide_label_layout, layout_label_text, round2, round6, Bond,
@@ -562,6 +563,59 @@ impl Engine {
         self.with_command(EditorCommand::ApplyTextEdit { target }, |engine| {
             engine.apply_text_edit_untracked(session)
         })
+    }
+
+    pub(super) fn add_text_direct(&mut self, position: Point, content: TextCommandContent) -> bool {
+        let session = TextEditSession {
+            target: TextEditTarget::TextObject {
+                object_id: None,
+                x: position.x,
+                y: position.y,
+            },
+            text: text_command_content_text(&content),
+            source_runs: content.source_runs,
+            font_family: content
+                .font_family
+                .or_else(|| Some(DEFAULT_TEXT_FONT_FAMILY.to_string())),
+            font_size: content.font_size.or(Some(DEFAULT_TEXT_FONT_SIZE)),
+            fill: content.fill.or_else(|| Some(DEFAULT_TEXT_FILL.to_string())),
+            align: content.align.or_else(|| Some("left".to_string())),
+            line_height: content.line_height.or(Some(DEFAULT_TEXT_LINE_HEIGHT)),
+            box_value: content.box_value.or(Some([
+                0.0,
+                0.0,
+                TEXT_EDIT_BOX_WIDTH,
+                DEFAULT_TEXT_LINE_HEIGHT,
+            ])),
+            anchor_offset: None,
+            preserve_lines: true,
+            default_chemical: content.default_chemical,
+        };
+        self.apply_text_object_edit(None, &session)
+    }
+
+    pub(super) fn set_text_runs_direct(
+        &mut self,
+        object_id: &str,
+        content: TextCommandContent,
+    ) -> bool {
+        let Some(session) = self.text_object_session(object_id) else {
+            return false;
+        };
+        let session = apply_text_command_content(session, content);
+        self.apply_text_object_edit(Some(object_id), &session)
+    }
+
+    pub(super) fn set_node_label_runs_direct(
+        &mut self,
+        node_id: &str,
+        content: TextCommandContent,
+    ) -> bool {
+        let Some(session) = self.endpoint_text_session(node_id, Point::new(0.0, 0.0)) else {
+            return false;
+        };
+        let session = apply_text_command_content(session, content);
+        self.apply_endpoint_text_edit(node_id, &session)
     }
 
     fn apply_text_edit_untracked(&mut self, session: TextEditSession) -> bool {
@@ -1292,6 +1346,45 @@ impl Engine {
             .unwrap_or(10)
             + 10
     }
+}
+
+fn text_command_content_text(content: &TextCommandContent) -> String {
+    if !content.text.is_empty() || content.source_runs.is_empty() {
+        return content.text.clone();
+    }
+    runs_text(&content.source_runs)
+}
+
+fn apply_text_command_content(
+    mut session: TextEditSession,
+    content: TextCommandContent,
+) -> TextEditSession {
+    session.text = text_command_content_text(&content);
+    if !content.source_runs.is_empty() {
+        session.source_runs = content.source_runs;
+    }
+    if content.font_family.is_some() {
+        session.font_family = content.font_family;
+    }
+    if content.font_size.is_some() {
+        session.font_size = content.font_size;
+    }
+    if content.fill.is_some() {
+        session.fill = content.fill;
+    }
+    if content.align.is_some() {
+        session.align = content.align;
+    }
+    if content.line_height.is_some() {
+        session.line_height = content.line_height;
+    }
+    if content.box_value.is_some() {
+        session.box_value = content.box_value;
+    }
+    if content.default_chemical {
+        session.default_chemical = true;
+    }
+    session
 }
 
 fn remove_text_object_from_siblings(

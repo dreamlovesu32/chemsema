@@ -12,6 +12,7 @@ const baseUrl = `http://${host}:${port}/viewer/`;
 const edgePath = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
 const defaultLargeCdxml = `C:\\Users\\Dream\\OneDrive\\Desktop\\${"\u94af\u50ac\u5316-jjb.cdxml"}`;
 const largeCdxml = process.env.CHEMCORE_INTERACTION_SMOKE_CDXML || defaultLargeCdxml;
+const ENDPOINT_FEEDBACK_RADIUS_PX = 3.75;
 
 function waitForPort(timeoutMs = 5000) {
   const deadline = Date.now() + timeoutMs;
@@ -69,15 +70,65 @@ function assert(condition, message) {
 async function openViewer(browser) {
   const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
   const errors = [];
+  capturePageErrors(page, errors);
+  await page.goto(`${baseUrl}?v=${Date.now()}`, { waitUntil: "domcontentloaded" });
+  await page.waitForFunction(() => !!window.__chemcoreDebug, null, { timeout: 20000 });
+  return { page, errors };
+}
+
+function capturePageErrors(page, errors) {
   page.on("console", (message) => {
     if (message.type() === "error") {
       errors.push(message.text());
     }
   });
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.goto(`${baseUrl}?v=${Date.now()}`, { waitUntil: "domcontentloaded" });
-  await page.waitForFunction(() => !!window.__chemcoreDebug, null, { timeout: 20000 });
-  return { page, errors };
+}
+
+async function waitForLargeCdxmlContent(page) {
+  await page.waitForFunction(() => {
+    if (!window.__chemcoreDebug?.document) {
+      return false;
+    }
+    if (document.querySelector('[data-layer="document-content"] [data-node-id], [data-layer="document-content"] [data-bond-id]')) {
+      return true;
+    }
+    const doc = window.__chemcoreDebug.document;
+    const visit = (object, out = []) => {
+      if (!object) {
+        return out;
+      }
+      out.push(object);
+      for (const child of object.children || []) {
+        visit(child, out);
+      }
+      return out;
+    };
+    for (const object of (doc.objects || []).flatMap((candidate) => visit(candidate, []))) {
+      const resourceRef = object.payload?.resourceRef || object.payload?.resource_ref;
+      const fragment = resourceRef ? doc.resources?.[resourceRef]?.data : object.payload?.fragment;
+      if ((fragment?.nodes?.length || 0) > 0 || (fragment?.bonds?.length || 0) > 0) {
+        return true;
+      }
+    }
+    return false;
+  }, null, { timeout: 60000 });
+}
+
+async function openLargeCdxmlViewer(browser) {
+  const opened = await openViewer(browser);
+  const popupPromise = opened.page.waitForEvent("popup", { timeout: 5000 }).catch(() => null);
+  await opened.page.locator('input[type="file"]').setInputFiles(largeCdxml);
+  const popup = await popupPromise;
+  if (!popup) {
+    await waitForLargeCdxmlContent(opened.page);
+    return opened;
+  }
+  capturePageErrors(popup, opened.errors);
+  await popup.waitForLoadState("domcontentloaded");
+  await popup.waitForFunction(() => !!window.__chemcoreDebug, null, { timeout: 20000 });
+  await waitForLargeCdxmlContent(popup);
+  return { page: popup, errors: opened.errors, sourcePage: opened.page };
 }
 
 async function verifyBondDrawing(browser) {
@@ -113,7 +164,7 @@ async function verifyBondDrawing(browser) {
   await page.close();
   assert(previewState.hadPreview, "Bond drag did not show a preview.");
   assert(
-    Math.abs(previewState.previewEndRadiusPx - 1.5) < 0.25,
+    Math.abs(previewState.previewEndRadiusPx - ENDPOINT_FEEDBACK_RADIUS_PX) < 0.35,
     `Bond preview endpoint radius was not unified: ${JSON.stringify(previewState)}`,
   );
   assert(!result.previewLeft && result.dragPreviewChildren === 0, `Bond preview remained after pointerup: ${JSON.stringify(result)}`);
@@ -196,7 +247,7 @@ async function verifyEndpointFeedbackRules(browser) {
   const bondHover = await interactionFeedbackState(page);
   assert(bondHover.hoverEndpointCount > 0, `Bond tool did not show endpoint hover: ${JSON.stringify(bondHover)}`);
   assert(
-    Math.abs(bondHover.endpointRadiusPx - 1.5) < 0.25,
+    Math.abs(bondHover.endpointRadiusPx - ENDPOINT_FEEDBACK_RADIUS_PX) < 0.35,
     `Endpoint hover radius was not unified: ${JSON.stringify(bondHover)}`,
   );
 
@@ -1706,6 +1757,8 @@ async function verifyLargeFileCommitLatency(page) {
   await page.waitForFunction(() => getComputedStyle(document.querySelector("#viewer-svg")).pointerEvents === "none");
   const bondStart = { x: bracketStart.x - 160, y: bracketStart.y + 170 };
   const bondEnd = { x: bondStart.x + 115, y: bondStart.y };
+  let bondPreviewBeforeUp = null;
+  let bondCleanupBeforeCommit = null;
   const bondMs = await measureCommitLatency(
     page,
     "Large CDXML bond hover cleanup",
@@ -1713,7 +1766,27 @@ async function verifyLargeFileCommitLatency(page) {
       await page.mouse.move(bondStart.x, bondStart.y);
       await page.mouse.down();
       await page.mouse.move(bondEnd.x, bondEnd.y);
-      await page.mouse.up();
+      bondPreviewBeforeUp = await page.evaluate(() => ({
+        dragChildren: document.querySelector(".canvas-drag-preview-svg")?.childElementCount || 0,
+        dragRoles: [...document.querySelectorAll(".canvas-drag-preview-svg [data-role]")]
+          .map((node) => node.getAttribute("data-role") || ""),
+      }));
+      const started = await page.evaluate(() => performance.now());
+      const upPromise = page.mouse.up();
+      const cleanupHandle = await page.waitForFunction((startTime) => {
+        const dragChildren = document.querySelector(".canvas-drag-preview-svg")?.childElementCount || 0;
+        if (dragChildren !== 0) {
+          return false;
+        }
+        const stats = window.__chemcoreDebug?.creationCommitStats?.last || null;
+        return {
+          elapsedMs: performance.now() - startTime,
+          commitAlreadyRecorded: !!stats && Number(stats.commitStartedAt || 0) >= startTime,
+          commitStartedAt: stats?.commitStartedAt || null,
+        };
+      }, started, { timeout: 1000 });
+      bondCleanupBeforeCommit = await cleanupHandle.jsonValue();
+      await upPromise;
     },
     () => {
       const overlay = document.querySelector('[data-layer="editor-overlay"]');
@@ -1721,6 +1794,16 @@ async function verifyLargeFileCommitLatency(page) {
     },
     null,
     3000,
+  );
+  assert(
+    bondPreviewBeforeUp?.dragChildren > 0,
+    `Large CDXML bond drag did not expose a preview before pointerup: ${JSON.stringify(bondPreviewBeforeUp)}`,
+  );
+  assert(
+    bondCleanupBeforeCommit
+      && bondCleanupBeforeCommit.elapsedMs < 120
+      && !bondCleanupBeforeCommit.commitAlreadyRecorded,
+    `Large CDXML bond preview did not clear before commit: ${JSON.stringify({ bondCleanupBeforeCommit, bondPreviewBeforeUp })}`,
   );
 
   await resetViewerUi(page);
@@ -1762,11 +1845,7 @@ async function verifyLargeFileHoverAndDrag(browser) {
     console.log(`[viewer-interaction-smoke] skipping large-file hover; missing ${largeCdxml}`);
     return;
   }
-  const { page, errors } = await openViewer(browser);
-  await page.locator('input[type="file"]').setInputFiles(largeCdxml);
-  await page.waitForFunction(() => (window.__chemcoreDebug?.document?.objects?.length || 0) > 0, null, {
-    timeout: 60000,
-  });
+  const { page, errors, sourcePage } = await openLargeCdxmlViewer(browser);
   await page.locator('button[data-tool="select"]').click();
   let targets = await page.evaluate(largeFileTargetFinder);
   assert(targets.hover, "Large CDXML did not expose a visible hover target.");
@@ -1796,13 +1875,11 @@ async function verifyLargeFileHoverAndDrag(browser) {
   targets = await page.evaluate(largeFileTargetFinder);
   await verifyObjectOnlySelectionDragPreview(page, targets.bracket, "Large CDXML bracket object");
   await page.close();
-  const { page: latencyPage, errors: latencyErrors } = await openViewer(browser);
-  await latencyPage.locator('input[type="file"]').setInputFiles(largeCdxml);
-  await latencyPage.waitForFunction(() => (window.__chemcoreDebug?.document?.objects?.length || 0) > 0, null, {
-    timeout: 60000,
-  });
+  await sourcePage?.close().catch(() => {});
+  const { page: latencyPage, errors: latencyErrors, sourcePage: latencySourcePage } = await openLargeCdxmlViewer(browser);
   const latency = await verifyLargeFileCommitLatency(latencyPage);
   await latencyPage.close();
+  await latencySourcePage?.close().catch(() => {});
   console.log(`[viewer-interaction-smoke] large commit latency bracket=${latency.bracketMs.toFixed(1)}ms symbol=${latency.symbolMs.toFixed(1)}ms bond=${latency.bondMs.toFixed(1)}ms`);
   assert(!errors.length && !latencyErrors.length, `Viewer console errors during large-file hover: ${[...errors, ...latencyErrors].join("\n")}`);
 }

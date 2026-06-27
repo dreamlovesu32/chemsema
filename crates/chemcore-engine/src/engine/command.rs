@@ -1,9 +1,10 @@
 use crate::{
     ArrowCurve, ArrowEndpointStyle, ArrowHeadSize, ArrowNoGo, ArrowVariant, BondAnchor,
-    BondVariant, BracketKind, ChemcoreDocument, ObjectSettings, OrbitalPhase, OrbitalStyle,
-    OrbitalTemplate, Point, ShapeKind, ShapeStyle,
+    BondVariant, BracketKind, ChemcoreDocument, LabelRun, ObjectSettings, OrbitalPhase,
+    OrbitalStyle, OrbitalTemplate, Point, ShapeKind, ShapeStyle,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -15,6 +16,69 @@ pub struct CommandAnchor {
     pub object_id: Option<String>,
     pub x: f64,
     pub y: f64,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommandTargetSet {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub nodes: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub bonds: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub objects: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub label_nodes: Vec<String>,
+}
+
+impl CommandTargetSet {
+    pub fn is_empty(&self) -> bool {
+        self.nodes.is_empty()
+            && self.bonds.is_empty()
+            && self.objects.is_empty()
+            && self.label_nodes.is_empty()
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommandDelta {
+    pub dx: f64,
+    pub dy: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TextCommandContent {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub text: String,
+    #[serde(default, alias = "runs", skip_serializing_if = "Vec::is_empty")]
+    pub source_runs: Vec<LabelRun>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font_family: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font_size: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fill: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub align: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub line_height: Option<f64>,
+    #[serde(default, rename = "box", skip_serializing_if = "Option::is_none")]
+    pub box_value: Option<[f64; 4]>,
+    #[serde(default)]
+    pub default_chemical: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DocumentCommandFormat {
+    Json,
+    Ccjs,
+    Cdxml,
+    Cdx,
+    Sdf,
+    Svg,
 }
 
 impl From<&BondAnchor> for CommandAnchor {
@@ -44,6 +108,28 @@ impl From<Point> for CommandAnchor {
 pub enum EditorCommand {
     Undo,
     Redo,
+    LoadDocument {
+        format: DocumentCommandFormat,
+        #[serde(default, skip_serializing)]
+        content: String,
+        #[serde(default, alias = "contentBytes", skip_serializing)]
+        bytes: Vec<u8>,
+    },
+    ExportDocument {
+        format: DocumentCommandFormat,
+    },
+    ConvertDocument {
+        from: DocumentCommandFormat,
+        to: DocumentCommandFormat,
+        #[serde(default, skip_serializing)]
+        content: String,
+        #[serde(default, alias = "contentBytes", skip_serializing)]
+        bytes: Vec<u8>,
+    },
+    InspectDocument {
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        include: Vec<String>,
+    },
     AddBond {
         begin: CommandAnchor,
         end: CommandAnchor,
@@ -54,13 +140,17 @@ pub enum EditorCommand {
         begin: CommandAnchor,
         end: CommandAnchor,
         variant: ArrowVariant,
+        #[serde(alias = "headSize")]
         head_size: ArrowHeadSize,
         curve: ArrowCurve,
+        #[serde(alias = "headStyle")]
         head_style: ArrowEndpointStyle,
+        #[serde(alias = "tailStyle")]
         tail_style: ArrowEndpointStyle,
         head: bool,
         tail: bool,
         bold: bool,
+        #[serde(alias = "noGo")]
         no_go: ArrowNoGo,
     },
     AddShape {
@@ -84,33 +174,63 @@ pub enum EditorCommand {
         atomic_number: u8,
         center: CommandAnchor,
     },
+    AddText {
+        position: Point,
+        #[serde(flatten)]
+        content: TextCommandContent,
+    },
+    SetTextRuns {
+        #[serde(alias = "objectId")]
+        object_id: String,
+        #[serde(flatten)]
+        content: TextCommandContent,
+    },
+    SetNodeLabelRuns {
+        #[serde(alias = "nodeId")]
+        node_id: String,
+        #[serde(flatten)]
+        content: TextCommandContent,
+    },
     ReplaceNodeLabel {
         node_id: String,
         label: String,
     },
     MoveTlcSpot {
+        #[serde(alias = "objectId")]
         object_id: String,
+        #[serde(alias = "laneIndex")]
         lane_index: usize,
+        #[serde(alias = "spotIndex")]
         spot_index: usize,
+        #[serde(alias = "beforeRf")]
         before_rf: f64,
     },
     ApplyArrowStyle {
+        #[serde(alias = "objectIds")]
         object_ids: Vec<String>,
         variant: ArrowVariant,
+        #[serde(alias = "headSize")]
         head_size: ArrowHeadSize,
         curve: ArrowCurve,
+        #[serde(alias = "headStyle")]
         head_style: ArrowEndpointStyle,
+        #[serde(alias = "tailStyle")]
         tail_style: ArrowEndpointStyle,
         head: bool,
         tail: bool,
         bold: bool,
+        #[serde(alias = "noGo")]
         no_go: ArrowNoGo,
     },
     CycleBondStyle {
+        #[serde(alias = "bondId")]
         bond_id: String,
         variant: BondVariant,
     },
     DeleteSelection,
+    DeleteTargets {
+        targets: CommandTargetSet,
+    },
     DeleteFocusedAtPoint {
         x: f64,
         y: f64,
@@ -127,6 +247,7 @@ pub enum EditorCommand {
         command: String,
     },
     ApplySelectionOrder {
+        #[serde(alias = "objectIds")]
         object_ids: Vec<String>,
         command: String,
     },
@@ -134,36 +255,46 @@ pub enum EditorCommand {
         color: String,
     },
     ApplyShapeStyle {
+        #[serde(alias = "objectIds")]
         object_ids: Vec<String>,
         style: String,
     },
     ApplyBracketKind {
+        #[serde(alias = "objectIds")]
         object_ids: Vec<String>,
         kind: String,
     },
     ApplyOrbitalTemplate {
+        #[serde(alias = "objectIds")]
         object_ids: Vec<String>,
         template: String,
     },
     ApplyOrbitalStyle {
+        #[serde(alias = "objectIds")]
         object_ids: Vec<String>,
         style: String,
     },
     ApplyOrbitalPhase {
+        #[serde(alias = "objectIds")]
         object_ids: Vec<String>,
         phase: String,
     },
     ApplyLineStyle {
+        #[serde(alias = "objectIds")]
         object_ids: Vec<String>,
         style: String,
     },
     ApplyBondStyle {
+        #[serde(alias = "bondIds")]
         bond_ids: Vec<String>,
         style: String,
     },
     ApplyTextStyle {
+        #[serde(alias = "textObjectIds")]
         text_object_ids: Vec<String>,
+        #[serde(alias = "labelNodeIds")]
         label_node_ids: Vec<String>,
+        #[serde(alias = "nodeIds")]
         node_ids: Vec<String>,
         command: String,
         value: String,
@@ -186,6 +317,15 @@ pub enum EditorCommand {
         object_ids: Vec<String>,
     },
     JoinSelection,
+    MoveTargets {
+        targets: CommandTargetSet,
+        delta: CommandDelta,
+    },
+    RotateTargets {
+        targets: CommandTargetSet,
+        center: Point,
+        degrees: f64,
+    },
     MoveSelection,
     RotateSelection,
     ResizeSelection,
@@ -213,6 +353,24 @@ pub enum EditorCommand {
     },
     ApplyDocumentStyle {
         preset: String,
+    },
+    SetArrowGeometry {
+        #[serde(alias = "objectId")]
+        object_id: String,
+        begin: CommandAnchor,
+        end: CommandAnchor,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        curve: Option<f64>,
+        #[serde(default, alias = "headStyle", skip_serializing_if = "Option::is_none")]
+        head_style: Option<ArrowEndpointStyle>,
+        #[serde(default, alias = "tailStyle", skip_serializing_if = "Option::is_none")]
+        tail_style: Option<ArrowEndpointStyle>,
+    },
+    SetShapeGeometry {
+        #[serde(alias = "objectId")]
+        object_id: String,
+        begin: CommandAnchor,
+        end: CommandAnchor,
     },
     ReplaceHoveredEndpointLabel {
         label: String,
@@ -348,6 +506,8 @@ pub struct CommandResult {
     pub redo_depth: usize,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub diagnostics: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output: Option<Value>,
 }
 
 impl CommandResult {
@@ -372,6 +532,7 @@ impl CommandResult {
             undo_depth,
             redo_depth,
             diagnostics: BTreeMap::new(),
+            output: None,
         }
     }
 }

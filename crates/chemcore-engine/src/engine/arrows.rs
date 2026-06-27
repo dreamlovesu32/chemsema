@@ -325,6 +325,34 @@ impl Engine {
         Some(object_id)
     }
 
+    pub(super) fn set_arrow_geometry_direct(
+        &mut self,
+        object_id: &str,
+        start: Point,
+        end: Point,
+        curve: Option<f64>,
+        head_style: Option<ArrowEndpointStyle>,
+        tail_style: Option<ArrowEndpointStyle>,
+    ) -> bool {
+        if start.distance(end) <= crate::EPSILON {
+            return false;
+        }
+        self.push_undo_snapshot();
+        let mut changed = update_direct_arrow_object_points(self, object_id, start, end);
+        if let Some(curve) = curve {
+            if curve.is_finite() {
+                changed |= update_direct_arrow_object_curve(self, object_id, curve);
+            }
+        }
+        changed |= update_arrow_object_endpoint_styles(self, object_id, head_style, tail_style);
+        if changed {
+            self.note_pending_select_target(PendingSelectTarget::GraphicObject(
+                object_id.to_string(),
+            ));
+        }
+        changed
+    }
+
     pub(super) fn arrow_scene_object(
         &self,
         start: Point,
@@ -559,4 +587,177 @@ impl Engine {
         self.state.overlay.hover_shape = None;
         true
     }
+}
+
+fn update_arrow_object_endpoint_styles(
+    engine: &mut Engine,
+    object_id: &str,
+    head_style: Option<ArrowEndpointStyle>,
+    tail_style: Option<ArrowEndpointStyle>,
+) -> bool {
+    if head_style.is_none() && tail_style.is_none() {
+        return false;
+    }
+    let Some(object) = engine
+        .state
+        .document
+        .find_scene_object_mut(object_id)
+        .filter(|object| object.object_type == "line")
+    else {
+        return false;
+    };
+    let mut changed = false;
+    let mut arrow_head = object
+        .payload
+        .extra
+        .get("arrowHead")
+        .cloned()
+        .unwrap_or_else(|| json!({}));
+    let Some(arrow_head_object) = arrow_head.as_object_mut() else {
+        return false;
+    };
+    if let Some(style) = head_style {
+        let legacy_value = if arrow_endpoint_enabled(style) {
+            "end"
+        } else {
+            "none"
+        };
+        if object.payload.extra.get("head").and_then(JsonValue::as_str) != Some(legacy_value) {
+            object
+                .payload
+                .extra
+                .insert("head".to_string(), json!(legacy_value));
+            changed = true;
+        }
+        let payload_value = arrow_endpoint_payload_name(style);
+        if arrow_head_object.get("head").and_then(JsonValue::as_str) != Some(payload_value) {
+            arrow_head_object.insert("head".to_string(), json!(payload_value));
+            changed = true;
+        }
+    }
+    if let Some(style) = tail_style {
+        let legacy_value = if arrow_endpoint_enabled(style) {
+            "start"
+        } else {
+            "none"
+        };
+        if object.payload.extra.get("tail").and_then(JsonValue::as_str) != Some(legacy_value) {
+            object
+                .payload
+                .extra
+                .insert("tail".to_string(), json!(legacy_value));
+            changed = true;
+        }
+        let payload_value = arrow_endpoint_payload_name(style);
+        if arrow_head_object.get("tail").and_then(JsonValue::as_str) != Some(payload_value) {
+            arrow_head_object.insert("tail".to_string(), json!(payload_value));
+            changed = true;
+        }
+    }
+    if object.payload.extra.get("arrowHead") != Some(&arrow_head) {
+        object
+            .payload
+            .extra
+            .insert("arrowHead".to_string(), arrow_head);
+        changed = true;
+    }
+    changed
+}
+
+fn refresh_direct_arrow_arc_geometry(object: &mut SceneObject) {
+    let curve = object
+        .payload
+        .extra
+        .get("arrowHead")
+        .and_then(|value| value.get("curve"))
+        .and_then(JsonValue::as_f64)
+        .unwrap_or(0.0);
+    let Some((start, end)) = crate::arrow_payload_line_endpoints(&object.payload.extra) else {
+        object.payload.extra.remove("arrowGeometry");
+        return;
+    };
+    if let Some(geometry) = crate::default_arrow_arc_geometry_payload(start, end, curve) {
+        object
+            .payload
+            .extra
+            .insert("arrowGeometry".to_string(), geometry);
+    } else {
+        object.payload.extra.remove("arrowGeometry");
+    }
+}
+
+fn update_direct_arrow_object_points(
+    engine: &mut Engine,
+    object_id: &str,
+    start: Point,
+    end: Point,
+) -> bool {
+    let Some(object) = engine
+        .state
+        .document
+        .find_scene_object_mut(object_id)
+        .filter(|object| object.object_type == "line")
+    else {
+        return false;
+    };
+    let tx = object.transform.translate[0];
+    let ty = object.transform.translate[1];
+    let next_points = json!([[start.x - tx, start.y - ty], [end.x - tx, end.y - ty]]);
+    if object.payload.extra.get("points") == Some(&next_points) {
+        return false;
+    }
+    object
+        .payload
+        .extra
+        .insert("points".to_string(), next_points);
+    refresh_direct_arrow_arc_geometry(object);
+    true
+}
+
+fn update_direct_arrow_object_curve(engine: &mut Engine, object_id: &str, curve: f64) -> bool {
+    let Some(object) = engine
+        .state
+        .document
+        .find_scene_object_mut(object_id)
+        .filter(|object| object.object_type == "line")
+    else {
+        return false;
+    };
+    let mut arrow_head = object
+        .payload
+        .extra
+        .get("arrowHead")
+        .cloned()
+        .unwrap_or_else(|| json!({}));
+    let Some(arrow_head_object) = arrow_head.as_object_mut() else {
+        return false;
+    };
+    let rounded_curve = (curve * 1000.0).round() / 1000.0;
+    arrow_head_object.insert("curve".to_string(), json!(rounded_curve));
+    let kind = arrow_head_object
+        .get("kind")
+        .and_then(JsonValue::as_str)
+        .unwrap_or("solid")
+        .to_ascii_lowercase();
+    if kind == "open" {
+        arrow_head_object.insert("curve".to_string(), json!(0.0));
+    } else if kind != "hollow" && kind != "equilibrium" && kind != "unequal-equilibrium" {
+        let next_kind = if rounded_curve < -crate::EPSILON {
+            "curved"
+        } else if rounded_curve > crate::EPSILON {
+            "curved-mirror"
+        } else {
+            "solid"
+        };
+        arrow_head_object.insert("kind".to_string(), json!(next_kind));
+    }
+    if object.payload.extra.get("arrowHead") == Some(&arrow_head) {
+        return false;
+    }
+    object
+        .payload
+        .extra
+        .insert("arrowHead".to_string(), arrow_head);
+    refresh_direct_arrow_arc_geometry(object);
+    true
 }

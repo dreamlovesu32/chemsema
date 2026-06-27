@@ -31,7 +31,7 @@ pub(crate) fn normalize_document_format(format: &str) -> String {
         .as_str()
     {
         "ccjz" => "ccjz",
-        "ccjs" => "ccjs",
+        "ccjs" | "json" => "ccjs",
         "cdxml" => "cdxml",
         "cdx" => "cdx",
         "sdf" | "sd" => "sdf",
@@ -50,7 +50,7 @@ pub(crate) fn document_format_for_path(path: &Path) -> String {
         .as_str()
     {
         "ccjz" => "ccjz",
-        "ccjs" => "ccjs",
+        "ccjs" | "json" => "ccjs",
         "cdxml" => "cdxml",
         "cdx" => "cdx",
         "sdf" | "sd" => "sdf",

@@ -265,6 +265,7 @@ function bindBrowserFileDrop(options) {
       event.dataTransfer.dropEffect = "copy";
     }
   };
+  const openDroppedFiles = options.openDroppedDocumentFilesInTabs;
   const openDroppedFile = options.openDroppedDocumentFileInTab || options.openDocumentFileInTab;
   const bindTargets = [window, document, document.documentElement, document.body, options.viewerContainer]
     .filter(Boolean);
@@ -288,6 +289,21 @@ function bindBrowserFileDrop(options) {
     };
     console.info("[chemcore] file drop", window.__chemcoreDebug.lastFileDrop);
     if (!files.length) {
+      return;
+    }
+    if (openDroppedFiles) {
+      try {
+        await openDroppedFiles(files);
+      } catch (error) {
+        if (!options.isAbortError(error)) {
+          console.error("Failed to open dropped documents", error);
+          void options.desktopFileHost?.traceEvent?.("editorBindings.browserDrop.error", {
+            fileNames: files.map((file) => file.name || null),
+            error,
+          });
+          window.alert?.(`Open failed: ${error.message || error}`);
+        }
+      }
       return;
     }
     for (const file of files) {

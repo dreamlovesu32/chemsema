@@ -2,7 +2,10 @@ use super::text_edit::{
     endpoint_label_world_bounds, refresh_attached_node_label_geometry_for_all_nodes,
     text_object_world_bounds,
 };
-use super::{ArrowEditDragState, ArrowEditMode, EditorCommand, Engine, PendingSelectTarget};
+use super::{
+    ArrowEditDragState, ArrowEditMode, CommandDelta, CommandTargetSet, EditorCommand, Engine,
+    PendingSelectTarget,
+};
 use crate::{
     angle_between, arrow_endpoint_style_handle_points, arrow_object_focus_points,
     arrow_object_handle_points, arrow_object_has_curve_handle, bracket_object_visual_bounds,
@@ -638,6 +641,55 @@ impl Engine {
         self.selection_rotate_drag = None;
         clear_select_hover_overlay(self);
         self.selection_resize_drag = Some(drag);
+        true
+    }
+
+    pub(super) fn move_targets_by_delta(
+        &mut self,
+        targets: &CommandTargetSet,
+        delta: CommandDelta,
+    ) -> bool {
+        if targets.is_empty()
+            || !delta.dx.is_finite()
+            || !delta.dy.is_finite()
+            || (delta.dx.abs() <= crate::EPSILON && delta.dy.abs() <= crate::EPSILON)
+        {
+            return false;
+        }
+        let previous_selection = self.state.selection.clone();
+        self.state.selection = selection_from_command_targets(&self.state.document, targets);
+        let Some(mut drag) = self.build_selection_move_drag(Point::new(0.0, 0.0), true) else {
+            self.state.selection = previous_selection;
+            return false;
+        };
+        drag.mode = SelectionMoveMode::Translate;
+        self.push_undo_snapshot();
+        apply_selection_drag_to_document(self, &drag, Point::new(delta.dx, delta.dy), true);
+        self.state.selection = previous_selection;
+        self.clear_interaction();
+        true
+    }
+
+    pub(super) fn rotate_targets_by_degrees(
+        &mut self,
+        targets: &CommandTargetSet,
+        center: Point,
+        degrees: f64,
+    ) -> bool {
+        if targets.is_empty() || !degrees.is_finite() || degrees.abs() <= crate::EPSILON {
+            return false;
+        }
+        let previous_selection = self.state.selection.clone();
+        self.state.selection = selection_from_command_targets(&self.state.document, targets);
+        let Some(mut drag) = self.build_selection_rotate_drag(center) else {
+            self.state.selection = previous_selection;
+            return false;
+        };
+        drag.center = center;
+        self.push_undo_snapshot();
+        apply_selection_rotation_to_document(self, &drag, degrees);
+        self.state.selection = previous_selection;
+        self.clear_interaction();
         true
     }
 
@@ -2164,6 +2216,29 @@ impl Engine {
         }
         out
     }
+}
+
+fn selection_from_command_targets(
+    document: &crate::ChemcoreDocument,
+    targets: &CommandTargetSet,
+) -> SelectionState {
+    let mut selection = SelectionState {
+        nodes: targets.nodes.clone(),
+        bonds: targets.bonds.clone(),
+        label_nodes: targets.label_nodes.clone(),
+        ..SelectionState::default()
+    };
+    for object_id in &targets.objects {
+        if document
+            .find_scene_object(object_id)
+            .is_some_and(|object| object.object_type == "text")
+        {
+            push_unique(&mut selection.text_objects, object_id.clone());
+        } else {
+            push_unique(&mut selection.arrow_objects, object_id.clone());
+        }
+    }
+    selection
 }
 
 fn arrow_edit_mode_name(mode: ArrowEditMode) -> &'static str {

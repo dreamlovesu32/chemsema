@@ -12,7 +12,7 @@ import { createObjectSettingsHost } from "./object_settings_host.js";
 import { createNumericDialogHost } from "./numeric_dialog_host.js";
 import { createDesktopFileHost, normalizeDesktopPath } from "./desktop_file_host.js";
 import { createEngineHost } from "./engine_host.js?v=20260626-selection-drag-preview-3";
-import { bindEditorControls, openColorDialog } from "./editor_bindings.js?v=20260624-drop-hardened";
+import { bindEditorControls, openColorDialog } from "./editor_bindings.js?v=20260627-browser-drop-tabs";
 import { createDocumentFlow } from "./document_flow.js";
 import {
   chemcoreOpenAcceptTypes,
@@ -57,9 +57,9 @@ import {
   normalizeDisplayColor,
 } from "./render_support.js";
 import { createSceneRenderer } from "./scene_renderer.js";
-import { createEditorOverlayRenderer } from "./editor_overlay.js?v=20260626-interaction-feedback";
+import { createEditorOverlayRenderer } from "./editor_overlay.js?v=20260627-hover-scale";
 import { createEditorSelectionState } from "./editor_selection_state.js";
-import { createEditorPointerController } from "./editor_pointer_controller.js?v=20260626-selection-drag-preview-4";
+import { createEditorPointerController } from "./editor_pointer_controller.js?v=20260627-hover-cleanup";
 import { createCanvasContextMenuHost } from "./editor_context_menu.js";
 import { createEditorCommandController } from "./editor_command_controller.js";
 import { createEditorCommandEngine } from "./editor_command_engine.js?v=20260626-interaction-feedback";
@@ -166,6 +166,7 @@ const BRACKET_LABEL_BASELINE_OFFSET_Y = 2.4;
 const BRACKET_LABEL_OFFSET_Y = BRACKET_LABEL_BASELINE_OFFSET_Y - BRACKET_LABEL_FONT_SIZE * 0.82;
 const BOND_STROKE = 1.0;
 const CHEMDRAW_PAGE_BACKGROUND = "#ffffff";
+const ENDPOINT_FEEDBACK_RADIUS_SCREEN_PX = 3.75;
 const DEFAULT_WORKSPACE_WIDTH = 900;
 const DEFAULT_WORKSPACE_HEIGHT = 600;
 // The editor canvas is a growing world-space viewBox. These ratios define
@@ -333,6 +334,9 @@ const UNSAVED_CLOSE_DECISION = {
 const REPEAT_UNIT_UNGROUP_WARNING_KEY = "chemcore:hide-repeat-unit-ungroup-warning";
 const BROWSER_PENDING_DOCUMENT_KEY_PREFIX = "chemcore:pending-browser-document:";
 const BROWSER_PENDING_DOCUMENT_PARAM = "chemcorePendingDocument";
+const BROWSER_PENDING_DOCUMENT_WAIT_MS = 10000;
+const BROWSER_PENDING_DOCUMENT_WAIT_INTERVAL_MS = 50;
+const BROWSER_PENDING_DOCUMENT_RESERVED_STATUS = "__chemcore_pending_document_reserved__";
 let activeTitlebarTabDrag = null;
 let detachingDocumentTabId = null;
 let suppressNextDocumentTabClick = false;
@@ -3500,8 +3504,35 @@ function syncCanvasDragPreviewViewport() {
 }
 
 function clearCanvasDragPreview() {
+  const hadPreview = canvasDragPreviewSvg.childElementCount > 0
+    || canvasDragPreviewSvg.hasAttribute("viewBox");
   canvasDragPreviewSvg.replaceChildren();
   canvasDragPreviewSvg.removeAttribute("viewBox");
+  return hadPreview;
+}
+
+function screenPointFromSvgMatrix(point, matrix) {
+  return {
+    x: Number(point?.x || 0) * matrix.a + Number(point?.y || 0) * matrix.c + matrix.e,
+    y: Number(point?.x || 0) * matrix.b + Number(point?.y || 0) * matrix.d + matrix.f,
+  };
+}
+
+function canvasScreenFeedbackPrimitiveNode(primitive, matrix) {
+  if (!matrix || primitive?.kind !== "circle" || !primitive.center) {
+    return null;
+  }
+  if (primitive.role !== "preview-end" && primitive.role !== "hover-endpoint") {
+    return null;
+  }
+  const center = screenPointFromSvgMatrix(primitive.center, matrix);
+  return makeSvgNode("circle", {
+    cx: center.x,
+    cy: center.y,
+    r: ENDPOINT_FEEDBACK_RADIUS_SCREEN_PX,
+    class: "editor-endpoint-halo",
+    "data-role": primitive.role,
+  });
 }
 
 function renderCanvasDragPreview(renderList = []) {
@@ -3516,11 +3547,20 @@ function renderCanvasDragPreview(renderList = []) {
         transform: `matrix(${matrix.a} ${matrix.b} ${matrix.c} ${matrix.d} ${matrix.e} ${matrix.f})`,
       })
     : canvasDragPreviewSvg;
+  const screenFeedbackNodes = [];
   for (const primitive of renderList) {
+    const feedbackNode = canvasScreenFeedbackPrimitiveNode(primitive, matrix);
+    if (feedbackNode) {
+      screenFeedbackNodes.push(feedbackNode);
+      continue;
+    }
     renderCorePrimitive(target, primitive, corePrimitiveRenderOptions());
   }
   if (target !== canvasDragPreviewSvg) {
     canvasDragPreviewSvg.appendChild(target);
+  }
+  for (const node of screenFeedbackNodes) {
+    canvasDragPreviewSvg.appendChild(node);
   }
 }
 const currentSelectionRotateHandle = (...args) => editorOverlayRenderer.currentSelectionRotateHandle(...args);
@@ -3650,8 +3690,9 @@ const editorPointerController = createEditorPointerController({
     canvasPointerShield.classList.toggle("is-active", enabled);
     syncViewerSvgPointerEventMode();
     if (!enabled) {
-      clearCanvasDragPreview();
+      return clearCanvasDragPreview();
     }
+    return false;
   },
   commandEngine,
   bracketLabelAnchorPoint,
@@ -5351,40 +5392,118 @@ function browserTabUrlForPendingDocument(id) {
   return url.toString();
 }
 
+function browserPendingDocumentStorageKey(id) {
+  return `${BROWSER_PENDING_DOCUMENT_KEY_PREFIX}${id}`;
+}
+
+function createBrowserPendingDocumentId() {
+  return `doc-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function storeBrowserPendingDocumentPayload(id, payload) {
+  localStorage.setItem(browserPendingDocumentStorageKey(id), JSON.stringify(payload));
+}
+
+function reserveBrowserPendingDocumentPayload(id) {
+  localStorage.setItem(browserPendingDocumentStorageKey(id), JSON.stringify({
+    status: BROWSER_PENDING_DOCUMENT_RESERVED_STATUS,
+    createdAt: Date.now(),
+  }));
+}
+
+function isReservedBrowserPendingDocument(raw) {
+  if (!raw) {
+    return false;
+  }
+  try {
+    return JSON.parse(raw)?.status === BROWSER_PENDING_DOCUMENT_RESERVED_STATUS;
+  } catch {
+    return false;
+  }
+}
+
+function clearBrowserPendingDocumentUrlParam() {
+  if (isDesktopShell || typeof window === "undefined") {
+    return;
+  }
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has(BROWSER_PENDING_DOCUMENT_PARAM)) {
+    return;
+  }
+  url.searchParams.delete(BROWSER_PENDING_DOCUMENT_PARAM);
+  window.history.replaceState(window.history.state, "", url.toString());
+}
+
+function openBrowserTab(url, { focus = true } = {}) {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  const opened = window.open(url.toString(), "_blank");
+  if (!opened) {
+    return null;
+  }
+  if (focus) {
+    try {
+      opened.focus?.();
+    } catch {
+      // Browser focus policy decides whether this is honored.
+    }
+  }
+  try {
+    opened.opener = null;
+  } catch {
+    // Some browsers expose a read-only opener proxy.
+  }
+  return opened;
+}
+
+function focusBrowserTab(opened) {
+  try {
+    opened?.focus?.();
+  } catch {
+    // Browser focus policy decides whether this is honored.
+  }
+}
+
 function openBrowserBlankDocumentTab() {
   if (typeof window === "undefined") {
     return false;
   }
   const url = new URL(window.location.href);
   url.searchParams.delete(BROWSER_PENDING_DOCUMENT_PARAM);
-  return !!window.open(url.toString(), "_blank", "noopener,noreferrer");
+  return !!openBrowserTab(url);
 }
 
-async function openBrowserFileInNewTab(file) {
+function reserveBrowserPendingDocumentTab() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  const id = createBrowserPendingDocumentId();
+  reserveBrowserPendingDocumentPayload(id);
+  const opened = openBrowserTab(browserTabUrlForPendingDocument(id), { focus: false });
+  if (!opened) {
+    localStorage.removeItem(browserPendingDocumentStorageKey(id));
+  }
+  return opened ? { id, opened } : null;
+}
+
+async function browserPendingDocumentPayloadFromFile(file) {
   if (!file) {
-    return false;
+    return null;
   }
   if (looksLikeCdxFile(file)) {
     const bytes = new Uint8Array(await file.arrayBuffer());
-    const id = `doc-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    const payload = {
+    return {
       dataBase64: bytesToBase64(bytes),
       fileName: file.name || null,
       filePath: null,
       format: "cdx",
     };
-    localStorage.setItem(`${BROWSER_PENDING_DOCUMENT_KEY_PREFIX}${id}`, JSON.stringify(payload));
-    const opened = !!window.open(browserTabUrlForPendingDocument(id), "_blank", "noopener,noreferrer");
-    if (!opened) {
-      localStorage.removeItem(`${BROWSER_PENDING_DOCUMENT_KEY_PREFIX}${id}`);
-    }
-    return opened;
   }
   const text = looksLikeCompressedChemcoreFile(file)
     ? await decompressChemcoreText(await file.arrayBuffer())
     : await file.text();
-  const id = `doc-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  const payload = {
+  return {
     text,
     fileName: file.name || null,
     filePath: null,
@@ -5394,15 +5513,75 @@ async function openBrowserFileInNewTab(file) {
         ? "sdf"
         : saveFormatFromFileName(file.name),
   };
-  localStorage.setItem(`${BROWSER_PENDING_DOCUMENT_KEY_PREFIX}${id}`, JSON.stringify(payload));
-  const opened = !!window.open(browserTabUrlForPendingDocument(id), "_blank", "noopener,noreferrer");
-  if (!opened) {
-    localStorage.removeItem(`${BROWSER_PENDING_DOCUMENT_KEY_PREFIX}${id}`);
-  }
-  return opened;
 }
 
-function takeBrowserPendingDocument() {
+async function writeBrowserFileToPendingDocument(id, file) {
+  const payload = await browserPendingDocumentPayloadFromFile(file);
+  if (!payload) {
+    localStorage.removeItem(browserPendingDocumentStorageKey(id));
+    return false;
+  }
+  storeBrowserPendingDocumentPayload(id, payload);
+  return true;
+}
+
+async function openBrowserFileInNewTab(file) {
+  const payload = await browserPendingDocumentPayloadFromFile(file);
+  if (!payload) {
+    return false;
+  }
+  const id = createBrowserPendingDocumentId();
+  storeBrowserPendingDocumentPayload(id, payload);
+  const opened = openBrowserTab(browserTabUrlForPendingDocument(id));
+  if (!opened) {
+    localStorage.removeItem(browserPendingDocumentStorageKey(id));
+  }
+  return !!opened;
+}
+
+async function openBrowserDroppedFilesInNewTabs(files) {
+  const droppedFiles = Array.from(files || []).filter(Boolean);
+  if (!droppedFiles.length || isDesktopShell) {
+    return { opened: [], fallback: droppedFiles };
+  }
+  const opened = [];
+  const fallback = [];
+  for (const file of droppedFiles) {
+    const reserved = reserveBrowserPendingDocumentTab();
+    if (reserved) {
+      opened.push({ id: reserved.id, file, opened: reserved.opened });
+    } else {
+      fallback.push(file);
+    }
+  }
+  if (!opened.length) {
+    return { opened, fallback };
+  }
+  focusBrowserTab(opened[opened.length - 1]?.opened);
+  const writes = await Promise.allSettled(
+    opened.map(async ({ id, file }) => {
+      try {
+        await writeBrowserFileToPendingDocument(id, file);
+      } catch (error) {
+        localStorage.removeItem(browserPendingDocumentStorageKey(id));
+        throw error;
+      }
+    }),
+  );
+  const rejected = writes.find((result) => result.status === "rejected");
+  if (rejected) {
+    throw rejected.reason;
+  }
+  return { opened, fallback };
+}
+
+function wait(ms) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+async function takeBrowserPendingDocument() {
   if (isDesktopShell || typeof window === "undefined") {
     return null;
   }
@@ -5410,16 +5589,29 @@ function takeBrowserPendingDocument() {
   if (!id) {
     return null;
   }
-  const key = `${BROWSER_PENDING_DOCUMENT_KEY_PREFIX}${id}`;
-  const raw = localStorage.getItem(key);
-  localStorage.removeItem(key);
-  if (!raw) {
-    return null;
-  }
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return null;
+  const key = browserPendingDocumentStorageKey(id);
+  const deadline = Date.now() + BROWSER_PENDING_DOCUMENT_WAIT_MS;
+  while (true) {
+    const raw = localStorage.getItem(key);
+    if (!raw) {
+      clearBrowserPendingDocumentUrlParam();
+      return null;
+    }
+    if (!isReservedBrowserPendingDocument(raw)) {
+      localStorage.removeItem(key);
+      clearBrowserPendingDocumentUrlParam();
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return null;
+      }
+    }
+    if (Date.now() >= deadline) {
+      localStorage.removeItem(key);
+      clearBrowserPendingDocumentUrlParam();
+      return null;
+    }
+    await wait(BROWSER_PENDING_DOCUMENT_WAIT_INTERVAL_MS);
   }
 }
 
@@ -5649,6 +5841,17 @@ async function openDroppedDocumentFileInTab(file) {
   }
 }
 
+async function openDroppedDocumentFilesInTabs(files) {
+  const droppedFiles = Array.from(files || []).filter(Boolean);
+  if (!droppedFiles.length) {
+    return;
+  }
+  const { fallback } = await openBrowserDroppedFilesInNewTabs(droppedFiles);
+  for (const file of fallback) {
+    await openDroppedDocumentFileInTab(file);
+  }
+}
+
 async function chooseAndOpenDocumentTab() {
   if (desktopFileHost?.available) {
     const path = await desktopFileHost.chooseOpenPath();
@@ -5700,6 +5903,7 @@ bindEditorControls({
   openDocumentPathInTab,
   openDocumentFileInTab,
   openDroppedDocumentFileInTab,
+  openDroppedDocumentFilesInTabs,
   getZoomPercent: () => zoomPercent,
   setTextFontSize: (size) => {
     const fontSize = normalizeToolbarFontSize(Math.max(5, Math.min(288, size)));
@@ -7070,7 +7274,7 @@ async function loadInitialDocumentTabs() {
     await loadDetachedDocumentPayload(detachedDocument);
     return;
   }
-  const browserPendingDocument = takeBrowserPendingDocument();
+  const browserPendingDocument = await takeBrowserPendingDocument();
   if (browserPendingDocument) {
     await loadBrowserPendingDocumentPayload(browserPendingDocument);
     return;

@@ -8,6 +8,86 @@ fn execute(engine: &mut Engine, command: Value) -> Value {
     serde_json::from_str(&result).expect("command result json")
 }
 
+fn document_value(engine: &Engine) -> Value {
+    serde_json::from_str(&engine.document_json().expect("document json")).expect("document value")
+}
+
+fn created_object_id(result: &Value) -> String {
+    result["created"]["objects"][0]
+        .as_str()
+        .expect("created object id")
+        .to_string()
+}
+
+fn created_node_id(result: &Value, index: usize) -> String {
+    result["created"]["nodes"][index]
+        .as_str()
+        .expect("created node id")
+        .to_string()
+}
+
+fn created_bond_id(result: &Value) -> String {
+    result["created"]["bonds"][0]
+        .as_str()
+        .expect("created bond id")
+        .to_string()
+}
+
+fn find_object(value: &Value, object_id: &str) -> Value {
+    fn search(objects: &[Value], object_id: &str) -> Option<Value> {
+        for object in objects {
+            if object["id"].as_str() == Some(object_id) {
+                return Some(object.clone());
+            }
+            if let Some(found) = object["children"]
+                .as_array()
+                .and_then(|children| search(children, object_id))
+            {
+                return Some(found);
+            }
+        }
+        None
+    }
+    search(
+        value["objects"].as_array().expect("objects array"),
+        object_id,
+    )
+    .expect("object by id")
+}
+
+fn find_node(value: &Value, node_id: &str) -> Value {
+    for resource in value["resources"].as_object().expect("resources").values() {
+        if let Some(nodes) = resource["data"]["nodes"].as_array() {
+            if let Some(node) = nodes
+                .iter()
+                .find(|node| node["id"].as_str() == Some(node_id))
+            {
+                return node.clone();
+            }
+        }
+    }
+    panic!("node {node_id} not found");
+}
+
+fn node_position(value: &Value, node_id: &str) -> (f64, f64) {
+    let node = find_node(value, node_id);
+    let position = node["position"].as_array().expect("node position");
+    (
+        position[0].as_f64().expect("x"),
+        position[1].as_f64().expect("y"),
+    )
+}
+
+fn document_bond_count(value: &Value) -> usize {
+    value["resources"]
+        .as_object()
+        .expect("resources")
+        .values()
+        .filter_map(|resource| resource["data"]["bonds"].as_array())
+        .map(Vec::len)
+        .sum()
+}
+
 #[test]
 fn execute_command_json_add_bond_tracks_revision_and_targets() {
     let mut engine = Engine::new();
@@ -31,6 +111,439 @@ fn execute_command_json_add_bond_tracks_revision_and_targets() {
     assert_eq!(result["created"]["bonds"].as_array().unwrap().len(), 1);
     assert_eq!(result["canUndo"], true);
     assert_eq!(engine.revision(), 1);
+}
+
+#[test]
+fn direct_text_commands_create_and_update_text() {
+    let mut engine = Engine::new();
+
+    let add = execute(
+        &mut engine,
+        json!({
+            "type": "add-text",
+            "position": { "x": 120.0, "y": 80.0 },
+            "text": "Yield 85%",
+            "fontFamily": "Arial",
+            "fontSize": 10.0,
+            "fill": "#000000"
+        }),
+    );
+    assert_eq!(add["changed"], true);
+    assert_eq!(add["command"]["type"], "add-text");
+    let object_id = created_object_id(&add);
+
+    let update = execute(
+        &mut engine,
+        json!({
+            "type": "set-text-runs",
+            "objectId": object_id,
+            "runs": [
+                { "text": "H2O", "script": "chemical" }
+            ]
+        }),
+    );
+    assert_eq!(update["changed"], true);
+    assert_eq!(update["command"]["type"], "set-text-runs");
+    assert_eq!(update["updated"]["objects"][0], object_id);
+
+    let document = document_value(&engine);
+    let object = find_object(&document, object_id.as_str());
+    assert_eq!(object["payload"]["text"], "H2O");
+    assert_eq!(object["payload"]["sourceRuns"][0]["script"], "chemical");
+}
+
+#[test]
+fn direct_node_label_runs_update_endpoint_label() {
+    let mut engine = Engine::new();
+    let add = execute(
+        &mut engine,
+        json!({
+            "type": "add-bond",
+            "begin": { "x": 100.0, "y": 100.0 },
+            "end": { "x": 148.0, "y": 100.0 },
+            "order": 1,
+            "variant": "single"
+        }),
+    );
+    let node_id = created_node_id(&add, 0);
+
+    let update = execute(
+        &mut engine,
+        json!({
+            "type": "set-node-label-runs",
+            "nodeId": node_id,
+            "runs": [
+                { "text": "OMe", "script": "chemical" }
+            ]
+        }),
+    );
+
+    assert_eq!(update["changed"], true);
+    assert_eq!(update["command"]["type"], "set-node-label-runs");
+    let document = document_value(&engine);
+    let node = find_node(&document, &node_id);
+    assert_eq!(node["label"]["sourceText"], "OMe");
+    assert_eq!(node["label"]["meta"]["sourceRuns"][0]["text"], "OMe");
+}
+
+#[test]
+fn move_targets_moves_bond_endpoints_by_delta() {
+    let mut engine = Engine::new();
+    let add = execute(
+        &mut engine,
+        json!({
+            "type": "add-bond",
+            "begin": { "x": 100.0, "y": 100.0 },
+            "end": { "x": 148.0, "y": 100.0 },
+            "order": 1,
+            "variant": "single"
+        }),
+    );
+    let first_node_id = created_node_id(&add, 0);
+    let second_node_id = created_node_id(&add, 1);
+    let bond_id = created_bond_id(&add);
+
+    let moved = execute(
+        &mut engine,
+        json!({
+            "type": "move-targets",
+            "targets": { "bonds": [bond_id] },
+            "delta": { "dx": 10.0, "dy": -5.0 }
+        }),
+    );
+
+    assert_eq!(moved["changed"], true);
+    assert_eq!(moved["command"]["type"], "move-targets");
+    let document = document_value(&engine);
+    assert_eq!(node_position(&document, &first_node_id), (110.0, 95.0));
+    assert_eq!(node_position(&document, &second_node_id), (158.0, 95.0));
+}
+
+#[test]
+fn rotate_targets_rotates_text_object_by_degrees() {
+    let mut engine = Engine::new();
+    let add = execute(
+        &mut engine,
+        json!({
+            "type": "add-text",
+            "position": { "x": 120.0, "y": 80.0 },
+            "text": "rotatable"
+        }),
+    );
+    let object_id = created_object_id(&add);
+
+    let rotated = execute(
+        &mut engine,
+        json!({
+            "type": "rotate-targets",
+            "targets": { "objects": [object_id] },
+            "center": { "x": 120.0, "y": 80.0 },
+            "degrees": 90.0
+        }),
+    );
+
+    assert_eq!(rotated["changed"], true);
+    assert_eq!(rotated["command"]["type"], "rotate-targets");
+    let document = document_value(&engine);
+    let object = find_object(&document, &object_id);
+    assert_eq!(object["transform"]["translate"], json!([120.0, 80.0]));
+    assert_eq!(object["transform"]["rotate"], 90.0);
+}
+
+#[test]
+fn set_arrow_geometry_updates_points_curve_and_endpoint_styles() {
+    let mut engine = Engine::new();
+    let add = execute(
+        &mut engine,
+        json!({
+            "type": "add-arrow",
+            "begin": { "x": 10.0, "y": 20.0 },
+            "end": { "x": 50.0, "y": 20.0 },
+            "variant": "solid",
+            "headSize": "small",
+            "curve": "arc270",
+            "headStyle": "full",
+            "tailStyle": "none",
+            "head": true,
+            "tail": false,
+            "bold": false,
+            "noGo": "none"
+        }),
+    );
+    let object_id = created_object_id(&add);
+
+    let update = execute(
+        &mut engine,
+        json!({
+            "type": "set-arrow-geometry",
+            "objectId": object_id,
+            "begin": { "x": 20.0, "y": 30.0 },
+            "end": { "x": 80.0, "y": 30.0 },
+            "curve": 90.0,
+            "headStyle": "none",
+            "tailStyle": "full"
+        }),
+    );
+
+    assert_eq!(update["changed"], true);
+    assert_eq!(update["command"]["type"], "set-arrow-geometry");
+    let document = document_value(&engine);
+    let object = find_object(&document, &object_id);
+    assert_eq!(object["payload"]["points"][0], json!([20.0, 30.0]));
+    assert_eq!(object["payload"]["points"][1], json!([80.0, 30.0]));
+    assert_eq!(object["payload"]["head"], "none");
+    assert_eq!(object["payload"]["tail"], "start");
+    assert_eq!(object["payload"]["arrowHead"]["curve"], 90.0);
+    assert_eq!(object["payload"]["arrowHead"]["head"], "none");
+    assert_eq!(object["payload"]["arrowHead"]["tail"], "full");
+}
+
+#[test]
+fn set_shape_geometry_updates_rect_bounds() {
+    let mut engine = Engine::new();
+    let add = execute(
+        &mut engine,
+        json!({
+            "type": "add-shape",
+            "kind": "rect",
+            "style": "solid",
+            "color": "#000000",
+            "begin": { "x": 10.0, "y": 10.0 },
+            "end": { "x": 20.0, "y": 20.0 }
+        }),
+    );
+    let object_id = created_object_id(&add);
+
+    let update = execute(
+        &mut engine,
+        json!({
+            "type": "set-shape-geometry",
+            "objectId": object_id,
+            "begin": { "x": 30.0, "y": 35.0 },
+            "end": { "x": 70.0, "y": 65.0 }
+        }),
+    );
+
+    assert_eq!(update["changed"], true);
+    assert_eq!(update["command"]["type"], "set-shape-geometry");
+    let document = document_value(&engine);
+    let object = find_object(&document, &object_id);
+    assert_eq!(object["transform"]["translate"], json!([30.0, 35.0]));
+    assert_eq!(object["payload"]["bbox"], json!([0.0, 0.0, 40.0, 30.0]));
+}
+
+#[test]
+fn delete_targets_removes_object_by_id() {
+    let mut engine = Engine::new();
+    let add = execute(
+        &mut engine,
+        json!({
+            "type": "add-text",
+            "position": { "x": 120.0, "y": 80.0 },
+            "text": "temporary"
+        }),
+    );
+    let object_id = created_object_id(&add);
+
+    let delete = execute(
+        &mut engine,
+        json!({
+            "type": "delete-targets",
+            "targets": { "objects": [object_id] }
+        }),
+    );
+
+    assert_eq!(delete["changed"], true);
+    assert_eq!(delete["command"]["type"], "delete-targets");
+    assert_eq!(delete["deleted"]["objects"][0], object_id);
+}
+
+#[test]
+fn export_document_command_returns_requested_format_payloads() {
+    let mut engine = Engine::new();
+    execute(
+        &mut engine,
+        json!({
+            "type": "add-bond",
+            "begin": { "x": 100.0, "y": 100.0 },
+            "end": { "x": 148.0, "y": 100.0 },
+            "order": 1,
+            "variant": "single"
+        }),
+    );
+
+    let json_export = execute(
+        &mut engine,
+        json!({
+            "type": "export-document",
+            "format": "json"
+        }),
+    );
+
+    assert_eq!(json_export["changed"], false);
+    assert_eq!(json_export["command"]["type"], "export-document");
+    assert_eq!(json_export["output"]["format"], "json");
+    let exported_document: Value =
+        serde_json::from_str(json_export["output"]["content"].as_str().unwrap()).unwrap();
+    assert_eq!(document_bond_count(&exported_document), 1);
+
+    let svg_export = execute(
+        &mut engine,
+        json!({
+            "type": "export-document",
+            "format": "svg"
+        }),
+    );
+    assert_eq!(svg_export["output"]["format"], "svg");
+    assert!(svg_export["output"]["content"]
+        .as_str()
+        .unwrap()
+        .contains("<svg"));
+}
+
+#[test]
+fn load_document_command_imports_cdxml_and_resets_session_history() {
+    let mut source = Engine::new();
+    execute(
+        &mut source,
+        json!({
+            "type": "add-bond",
+            "begin": { "x": 100.0, "y": 100.0 },
+            "end": { "x": 148.0, "y": 100.0 },
+            "order": 1,
+            "variant": "single"
+        }),
+    );
+    let cdxml = source.document_cdxml();
+
+    let mut engine = Engine::new();
+    let loaded = execute(
+        &mut engine,
+        json!({
+            "type": "load-document",
+            "format": "cdxml",
+            "content": cdxml
+        }),
+    );
+
+    assert_eq!(loaded["changed"], true);
+    assert_eq!(loaded["revision"], 0);
+    assert_eq!(loaded["canUndo"], false);
+    assert_eq!(loaded["command"]["type"], "load-document");
+    assert!(loaded["command"].get("content").is_none());
+    assert_eq!(loaded["output"]["format"], "cdxml");
+    let document = document_value(&engine);
+    assert_eq!(document_bond_count(&document), 1);
+}
+
+#[test]
+fn convert_document_command_returns_output_without_replacing_current_document() {
+    let mut source = Engine::new();
+    execute(
+        &mut source,
+        json!({
+            "type": "add-bond",
+            "begin": { "x": 100.0, "y": 100.0 },
+            "end": { "x": 148.0, "y": 100.0 },
+            "order": 1,
+            "variant": "single"
+        }),
+    );
+    let cdxml = source.document_cdxml();
+
+    let mut engine = Engine::new();
+    let converted = execute(
+        &mut engine,
+        json!({
+            "type": "convert-document",
+            "from": "cdxml",
+            "to": "json",
+            "content": cdxml
+        }),
+    );
+
+    assert_eq!(converted["changed"], false);
+    assert_eq!(converted["command"]["type"], "convert-document");
+    assert!(converted["command"].get("content").is_none());
+    assert_eq!(converted["output"]["format"], "json");
+    let converted_document: Value =
+        serde_json::from_str(converted["output"]["content"].as_str().unwrap()).unwrap();
+    assert_eq!(document_bond_count(&converted_document), 1);
+    let current_document = document_value(&engine);
+    assert_eq!(document_bond_count(&current_document), 0);
+}
+
+#[test]
+fn inspect_document_command_returns_agent_friendly_summary() {
+    let mut engine = Engine::new();
+    execute(
+        &mut engine,
+        json!({
+            "type": "add-bond",
+            "begin": { "x": 100.0, "y": 100.0 },
+            "end": { "x": 148.0, "y": 100.0 },
+            "order": 1,
+            "variant": "single"
+        }),
+    );
+    execute(
+        &mut engine,
+        json!({
+            "type": "add-text",
+            "position": { "x": 120.0, "y": 80.0 },
+            "text": "agent note"
+        }),
+    );
+
+    let inspected = execute(
+        &mut engine,
+        json!({
+            "type": "inspect-document",
+            "include": ["summary", "objects", "molecules", "styles"]
+        }),
+    );
+
+    assert_eq!(inspected["changed"], false);
+    assert_eq!(inspected["command"]["type"], "inspect-document");
+    assert_eq!(inspected["output"]["summary"]["counts"]["bonds"], 1);
+    assert_eq!(
+        inspected["output"]["summary"]["counts"]["objectTypes"]["text"],
+        1
+    );
+    assert_eq!(inspected["output"]["molecules"][0]["nodeCount"], 2);
+    assert!(inspected["output"]["objects"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|object| object["type"] == "text"));
+    assert!(inspected["output"]["styles"].as_array().unwrap().len() >= 1);
+}
+
+#[test]
+fn apply_document_style_command_is_available_to_agents() {
+    let mut engine = Engine::new();
+
+    let result = execute(
+        &mut engine,
+        json!({
+            "type": "apply-document-style",
+            "preset": "acs-document-1996"
+        }),
+    );
+
+    assert_eq!(result["changed"], true);
+    assert_eq!(result["command"]["type"], "apply-document-style");
+    let inspected = execute(
+        &mut engine,
+        json!({
+            "type": "inspect-document",
+            "include": ["summary"]
+        }),
+    );
+    assert_eq!(
+        inspected["output"]["summary"]["documentStylePreset"],
+        "acs-document-1996"
+    );
 }
 
 #[test]

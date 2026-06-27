@@ -2,7 +2,7 @@ use super::text_edit::{
     apply_node_label_text_edit, refresh_attached_node_label_geometry_for_all_nodes,
     refresh_attached_node_label_geometry_for_node, TextEditSession, TextEditTarget,
 };
-use super::{EditorCommand, Engine};
+use super::{CommandTargetSet, EditorCommand, Engine};
 use std::collections::BTreeSet;
 
 const DEFAULT_TEXT_FONT_FAMILY: &str = "Arial";
@@ -21,6 +21,14 @@ impl Engine {
         self.with_command(EditorCommand::DeleteSelection, |engine| {
             engine.delete_selection_untracked()
         })
+    }
+
+    pub(super) fn delete_targets_direct(&mut self, targets: &CommandTargetSet) -> bool {
+        if targets.is_empty() {
+            return false;
+        }
+        self.state.selection = delete_selection_from_command_targets(&self.state.document, targets);
+        self.delete_selection_untracked()
     }
 
     fn delete_selection_untracked(&mut self) -> bool {
@@ -368,6 +376,35 @@ impl Engine {
         self.state.selection = crate::SelectionState::default();
         self.clear_interaction();
         true
+    }
+}
+
+fn delete_selection_from_command_targets(
+    document: &crate::ChemcoreDocument,
+    targets: &CommandTargetSet,
+) -> crate::SelectionState {
+    let mut selection = crate::SelectionState {
+        nodes: targets.nodes.clone(),
+        bonds: targets.bonds.clone(),
+        label_nodes: targets.label_nodes.clone(),
+        ..crate::SelectionState::default()
+    };
+    for object_id in &targets.objects {
+        if document
+            .find_scene_object(object_id)
+            .is_some_and(|object| object.object_type == "text")
+        {
+            push_unique(&mut selection.text_objects, object_id.clone());
+        } else {
+            push_unique(&mut selection.arrow_objects, object_id.clone());
+        }
+    }
+    selection
+}
+
+fn push_unique(values: &mut Vec<String>, value: String) {
+    if !values.iter().any(|existing| existing == &value) {
+        values.push(value);
     }
 }
 

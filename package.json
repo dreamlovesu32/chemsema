@@ -1,6 +1,6 @@
 {
   "name": "chemcore",
-  "version": "1.0.0-beta.3",
+  "version": "1.0.0-beta.4",
   "description": "An open-source chemistry structure editor focused on CDXML fidelity and Office workflows.",
   "homepage": "https://dreamlovesu32.github.io/chemcore/",
   "repository": {
@@ -15,6 +15,7 @@
   },
   "scripts": {
     "build:engine-wasm": "node scripts/build-engine-wasm.mjs",
+    "cli": "cargo run -p chemcore-cli --",
     "compare:cdxml-symbol-pixels": "node scripts/compare-cdxml-symbol-pixels.mjs",
     "compare:svg-pixels": "node scripts/compare-svg-pixels.mjs",
     "desktop:build": "node scripts/desktop-tauri.mjs build",

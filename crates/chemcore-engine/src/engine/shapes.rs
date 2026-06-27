@@ -181,6 +181,36 @@ impl Engine {
         true
     }
 
+    pub(super) fn set_shape_geometry_direct(
+        &mut self,
+        object_id: &str,
+        start: Point,
+        end: Point,
+    ) -> bool {
+        let Some(original) = self
+            .state
+            .document
+            .find_scene_object(object_id)
+            .filter(|object| object.object_type == "shape")
+            .cloned()
+        else {
+            return false;
+        };
+        let Some(next_object) = shape_object_with_direct_geometry(&original, start, end) else {
+            return false;
+        };
+        if serde_json::to_value(&original).ok() == serde_json::to_value(&next_object).ok() {
+            return false;
+        }
+        self.push_undo_snapshot();
+        let Some(object) = self.state.document.find_scene_object_mut(object_id) else {
+            return false;
+        };
+        *object = next_object;
+        self.note_pending_select_target(PendingSelectTarget::GraphicObject(object_id.to_string()));
+        true
+    }
+
     fn shape_scene_object_from_drag(
         &self,
         drag: &ShapeDragState,
@@ -903,6 +933,83 @@ fn shape_object_kind(object: &SceneObject) -> Option<ShapeObjectKind> {
         "orbital" => Some(ShapeObjectKind::Orbital),
         _ => None,
     }
+}
+
+fn shape_object_with_direct_geometry(
+    original: &SceneObject,
+    start: Point,
+    end: Point,
+) -> Option<SceneObject> {
+    let mut object = original.clone();
+    match shape_object_kind(original)? {
+        ShapeObjectKind::Circle => {
+            let radius = start.distance(end);
+            if radius <= crate::EPSILON {
+                return None;
+            }
+            let angle = angle_between(start, end);
+            let minor = start.translated(direction_from_angle(angle + 90.0).scaled(radius));
+            object.transform = crate::Transform::identity();
+            object.payload.bbox = Some([
+                round2(start.x - radius),
+                round2(start.y - radius),
+                round2(radius * 2.0),
+                round2(radius * 2.0),
+            ]);
+            set_shape_point(&mut object, "center", start);
+            set_shape_point(&mut object, "majorAxisEnd", end);
+            set_shape_point(&mut object, "minorAxisEnd", minor);
+        }
+        ShapeObjectKind::Ellipse => {
+            let major_radius = start.distance(end);
+            if major_radius <= crate::EPSILON {
+                return None;
+            }
+            let ratio = shape_oval_points(original)
+                .and_then(|(center, major, minor)| {
+                    let major = center.distance(major);
+                    let minor = center.distance(minor);
+                    (major > crate::EPSILON && minor.is_finite()).then_some(minor / major)
+                })
+                .filter(|ratio| ratio.is_finite() && *ratio > crate::EPSILON)
+                .unwrap_or(ELLIPSE_MINOR_AXIS_RATIO);
+            let angle = angle_between(start, end);
+            let minor =
+                start.translated(direction_from_angle(angle + 90.0).scaled(major_radius * ratio));
+            object.transform = crate::Transform::identity();
+            object.payload.bbox = Some([
+                round2(start.x - major_radius),
+                round2(start.y - major_radius * ratio),
+                round2(major_radius * 2.0),
+                round2(major_radius * ratio * 2.0),
+            ]);
+            set_shape_point(&mut object, "center", start);
+            set_shape_point(&mut object, "majorAxisEnd", end);
+            set_shape_point(&mut object, "minorAxisEnd", minor);
+        }
+        ShapeObjectKind::Rect | ShapeObjectKind::RoundRect => {
+            let left = start.x.min(end.x);
+            let top = start.y.min(end.y);
+            let width = (end.x - start.x).abs();
+            let height = (end.y - start.y).abs();
+            if width <= crate::EPSILON || height <= crate::EPSILON {
+                return None;
+            }
+            object.transform.translate = [round2(left), round2(top)];
+            object.transform.rotate = 0.0;
+            object.transform.scale = [1.0, 1.0];
+            object.payload.bbox = Some([0.0, 0.0, round2(width), round2(height)]);
+            if shape_object_kind(original) == Some(ShapeObjectKind::RoundRect) {
+                let radius = ROUND_RECT_CORNER_RADIUS.min(width * 0.5).min(height * 0.5);
+                object
+                    .payload
+                    .extra
+                    .insert("cornerRadius".to_string(), json!(round2(radius)));
+            }
+        }
+        ShapeObjectKind::Orbital => return None,
+    }
+    Some(object)
 }
 
 fn shape_circle_hover(object: &SceneObject, point: Point) -> Option<Point> {

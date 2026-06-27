@@ -19,8 +19,9 @@ mod templates;
 mod text_edit;
 
 pub use self::command::{
-    CommandAnchor, CommandResult, CommandTargetDelta, CommandTargets, EditorCommand,
-    FocusedDeleteSource, HistoryEntry, ObjectSettingsPatch, TextEditCommandTarget,
+    CommandAnchor, CommandDelta, CommandResult, CommandTargetDelta, CommandTargetSet,
+    CommandTargets, DocumentCommandFormat, EditorCommand, FocusedDeleteSource, HistoryEntry,
+    ObjectSettingsPatch, TextCommandContent, TextEditCommandTarget,
 };
 use self::text_edit::{
     element_symbol_info, endpoint_label_world_bounds, implicit_hydrogen_label_text_for_count,
@@ -64,9 +65,9 @@ use crate::{
     BondVariant, ChemcoreDocument, DoubleBond, DoubleBondPlacement, DragState, EditableFragment,
     EditableFragmentMut, EditorOptions, EndpointHit, HoverShape, HoverTextBox, OrbitalPhase,
     OrbitalStyle, OrbitalTemplate, OverlayState, Point, PointerEvent, RenderPrimitive, RenderRole,
-    SceneObject, SelectionState, ShapeKind, ShapeStyle, Tool, ToolState, BOND_CENTER_FOCUS_WIDTH,
-    BOND_CENTER_HIT_RADIUS, DRAG_START_THRESHOLD, ENDPOINT_FOCUS_RADIUS, ENDPOINT_HIT_RADIUS,
-    GLOBAL_SNAP_ANGLES,
+    ResourceData, SceneObject, SelectionState, ShapeKind, ShapeStyle, Tool, ToolState,
+    BOND_CENTER_FOCUS_WIDTH, BOND_CENTER_HIT_RADIUS, DRAG_START_THRESHOLD, ENDPOINT_FOCUS_RADIUS,
+    ENDPOINT_HIT_RADIUS, GLOBAL_SNAP_ANGLES,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value as JsonValue};
@@ -1852,6 +1853,26 @@ impl Engine {
         let changed = match command.clone() {
             EditorCommand::Undo => self.undo(),
             EditorCommand::Redo => self.redo(),
+            EditorCommand::LoadDocument {
+                format,
+                content,
+                bytes,
+            } => return self.execute_load_document_command(command, format, &content, &bytes),
+            EditorCommand::ExportDocument { format } => {
+                return self.execute_export_document_command(command, format);
+            }
+            EditorCommand::ConvertDocument {
+                from,
+                to,
+                content,
+                bytes,
+            } => return self.execute_convert_document_command(command, from, to, &content, &bytes),
+            EditorCommand::InspectDocument { include } => {
+                return Ok(self.readonly_command_result(
+                    Some(command),
+                    self.inspect_document_output(&include),
+                ));
+            }
             EditorCommand::AddBond {
                 begin,
                 end,
@@ -1961,6 +1982,18 @@ impl Engine {
                 engine.state.tool = previous_tool;
                 changed
             }),
+            EditorCommand::AddText { position, content } => self
+                .with_command(command.clone(), |engine| {
+                    engine.add_text_direct(position, content)
+                }),
+            EditorCommand::SetTextRuns { object_id, content } => self
+                .with_command(command.clone(), |engine| {
+                    engine.set_text_runs_direct(&object_id, content)
+                }),
+            EditorCommand::SetNodeLabelRuns { node_id, content } => self
+                .with_command(command.clone(), |engine| {
+                    engine.set_node_label_runs_direct(&node_id, content)
+                }),
             EditorCommand::ReplaceNodeLabel { node_id, label } => self
                 .with_command(command.clone(), |engine| {
                     engine.replace_node_label_untracked(&node_id, &label)
@@ -2027,6 +2060,10 @@ impl Engine {
                 changed
             }
             EditorCommand::DeleteSelection => self.delete_selection(),
+            EditorCommand::DeleteTargets { targets } => self
+                .with_command(command.clone(), |engine| {
+                    engine.delete_targets_direct(&targets)
+                }),
             EditorCommand::DeleteFocusedAtPoint { x, y, source } => self.delete_focused_at_point(
                 Point::new(x, y),
                 match source {
@@ -2159,6 +2196,17 @@ impl Engine {
                 self.unlink_selection()
             }
             EditorCommand::JoinSelection => self.join_selection(),
+            EditorCommand::MoveTargets { targets, delta } => self
+                .with_command(command.clone(), |engine| {
+                    engine.move_targets_by_delta(&targets, delta)
+                }),
+            EditorCommand::RotateTargets {
+                targets,
+                center,
+                degrees,
+            } => self.with_command(command.clone(), |engine| {
+                engine.rotate_targets_by_degrees(&targets, center, degrees)
+            }),
             EditorCommand::ScaleSelection { percent } => self.scale_selection(percent),
             EditorCommand::ApplyObjectSettings { settings } => self.apply_object_settings(settings),
             EditorCommand::ApplyObjectSettingsToSelection {
@@ -2181,6 +2229,34 @@ impl Engine {
                 })
             }
             EditorCommand::ApplyDocumentStyle { preset } => self.set_document_style_preset(&preset),
+            EditorCommand::SetArrowGeometry {
+                object_id,
+                begin,
+                end,
+                curve,
+                head_style,
+                tail_style,
+            } => self.with_command(command.clone(), |engine| {
+                engine.set_arrow_geometry_direct(
+                    &object_id,
+                    point_from_command(&begin),
+                    point_from_command(&end),
+                    curve,
+                    head_style,
+                    tail_style,
+                )
+            }),
+            EditorCommand::SetShapeGeometry {
+                object_id,
+                begin,
+                end,
+            } => self.with_command(command.clone(), |engine| {
+                engine.set_shape_geometry_direct(
+                    &object_id,
+                    point_from_command(&begin),
+                    point_from_command(&end),
+                )
+            }),
             EditorCommand::ReplaceHoveredEndpointLabel { label } => {
                 self.replace_hovered_endpoint_label(&label)
             }
@@ -2192,6 +2268,311 @@ impl Engine {
             .last_command_result
             .clone()
             .unwrap_or_else(|| self.unchanged_command_result()))
+    }
+
+    fn execute_load_document_command(
+        &mut self,
+        command: EditorCommand,
+        format: DocumentCommandFormat,
+        content: &str,
+        bytes: &[u8],
+    ) -> Result<CommandResult, String> {
+        let before_revision = self.revision;
+        let before_document = self.state.document.clone();
+        self.load_document_content(format, content, bytes)?;
+        let changed = !documents_equivalent(&before_document, &self.state.document);
+        let mut result = self.command_result_from_diff(
+            Some(command),
+            before_revision,
+            &before_document,
+            &self.state.document,
+        );
+        result.changed = changed;
+        result.output = Some(json!({
+            "format": document_command_format_name(format),
+            "summary": self.inspect_document_output(&["summary".to_string()])
+        }));
+        self.last_command_result = Some(result.clone());
+        Ok(result)
+    }
+
+    fn execute_export_document_command(
+        &mut self,
+        command: EditorCommand,
+        format: DocumentCommandFormat,
+    ) -> Result<CommandResult, String> {
+        Ok(self.readonly_command_result(
+            Some(command),
+            self.export_document_output(&self.state.document, format)?,
+        ))
+    }
+
+    fn execute_convert_document_command(
+        &mut self,
+        command: EditorCommand,
+        from: DocumentCommandFormat,
+        to: DocumentCommandFormat,
+        content: &str,
+        bytes: &[u8],
+    ) -> Result<CommandResult, String> {
+        let document = document_from_command_content(from, content, bytes)?;
+        Ok(
+            self.readonly_command_result(
+                Some(command),
+                self.export_document_output(&document, to)?,
+            ),
+        )
+    }
+
+    fn load_document_content(
+        &mut self,
+        format: DocumentCommandFormat,
+        content: &str,
+        bytes: &[u8],
+    ) -> Result<(), String> {
+        match format {
+            DocumentCommandFormat::Json | DocumentCommandFormat::Ccjs => {
+                self.load_document_json(content)
+            }
+            DocumentCommandFormat::Cdxml => self.load_cdxml_document(content),
+            DocumentCommandFormat::Cdx => self.load_cdx_document(bytes),
+            DocumentCommandFormat::Sdf => self.load_sdf_document(content),
+            DocumentCommandFormat::Svg => Err(
+                "SVG is an export format and cannot be loaded as an editable document.".to_string(),
+            ),
+        }
+    }
+
+    fn export_document_output(
+        &self,
+        document: &ChemcoreDocument,
+        format: DocumentCommandFormat,
+    ) -> Result<JsonValue, String> {
+        let format_name = document_command_format_name(format);
+        match format {
+            DocumentCommandFormat::Json | DocumentCommandFormat::Ccjs => {
+                let content = serde_json::to_string(document).map_err(|error| error.to_string())?;
+                Ok(json!({
+                    "format": format_name,
+                    "mediaType": "application/json",
+                    "encoding": "utf-8",
+                    "content": content
+                }))
+            }
+            DocumentCommandFormat::Cdxml => Ok(json!({
+                "format": format_name,
+                "mediaType": "chemical/x-cdxml",
+                "encoding": "utf-8",
+                "content": crate::document_to_cdxml(document)
+            })),
+            DocumentCommandFormat::Cdx => Ok(json!({
+                "format": format_name,
+                "mediaType": "chemical/x-cdx",
+                "encoding": "bytes",
+                "bytes": crate::document_to_cdx(document)?
+            })),
+            DocumentCommandFormat::Sdf => Ok(json!({
+                "format": format_name,
+                "mediaType": "chemical/x-mdl-sdfile",
+                "encoding": "utf-8",
+                "content": crate::document_to_sdf(document)?
+            })),
+            DocumentCommandFormat::Svg => Ok(json!({
+                "format": format_name,
+                "mediaType": "image/svg+xml",
+                "encoding": "utf-8",
+                "content": crate::document_to_svg(document)
+            })),
+        }
+    }
+
+    fn inspect_document_output(&self, include: &[String]) -> JsonValue {
+        let include_all = include.is_empty();
+        let wants = |name: &str| {
+            include_all || include.iter().any(|value| value.eq_ignore_ascii_case(name))
+        };
+        let mut output = serde_json::Map::new();
+        if wants("summary") {
+            output.insert("summary".to_string(), self.document_summary_json());
+        }
+        if wants("objects") {
+            output.insert("objects".to_string(), self.document_objects_json());
+        }
+        if wants("molecules") {
+            output.insert("molecules".to_string(), self.document_molecules_json());
+        }
+        if wants("resources") {
+            output.insert("resources".to_string(), self.document_resources_json());
+        }
+        if wants("styles") {
+            output.insert("styles".to_string(), self.document_styles_json());
+        }
+        JsonValue::Object(output)
+    }
+
+    fn document_summary_json(&self) -> JsonValue {
+        let objects = self.state.document.scene_objects();
+        let mut object_types = BTreeMap::<String, usize>::new();
+        for object in &objects {
+            *object_types.entry(object.object_type.clone()).or_default() += 1;
+        }
+        let molecule_count = self.state.document.editable_fragments().len();
+        let node_count = self
+            .state
+            .document
+            .editable_fragments()
+            .iter()
+            .map(|entry| entry.fragment.nodes.len())
+            .sum::<usize>();
+        let bond_count = self
+            .state
+            .document
+            .editable_fragments()
+            .iter()
+            .map(|entry| entry.fragment.bonds.len())
+            .sum::<usize>();
+        json!({
+            "title": &self.state.document.document.title,
+            "documentId": &self.state.document.document.id,
+            "format": &self.state.document.format,
+            "page": &self.state.document.document.page,
+            "revision": self.revision,
+            "documentStylePreset": &self.document_style_preset,
+            "counts": {
+                "objects": objects.len(),
+                "objectTypes": object_types,
+                "molecules": molecule_count,
+                "nodes": node_count,
+                "bonds": bond_count,
+                "styles": self.state.document.styles.len(),
+                "resources": self.state.document.resources.len()
+            },
+            "renderBounds": self.render_bounds(RenderBoundsScope::Document),
+            "import": self.state.document.document.meta.get("import").cloned()
+        })
+    }
+
+    fn document_objects_json(&self) -> JsonValue {
+        JsonValue::Array(
+            self.state
+                .document
+                .scene_objects()
+                .into_iter()
+                .map(|object| {
+                    json!({
+                        "id": &object.id,
+                        "type": &object.object_type,
+                        "name": &object.name,
+                        "visible": object.visible,
+                        "locked": object.locked,
+                        "zIndex": object.z_index,
+                        "styleRef": &object.style_ref,
+                        "resourceRef": &object.payload.resource_ref,
+                        "bbox": &object.payload.bbox,
+                        "transform": &object.transform,
+                        "childCount": object.children.len()
+                    })
+                })
+                .collect(),
+        )
+    }
+
+    fn document_molecules_json(&self) -> JsonValue {
+        JsonValue::Array(
+            self.state
+                .document
+                .editable_fragments()
+                .into_iter()
+                .map(|entry| {
+                    json!({
+                        "objectId": &entry.object.id,
+                        "resourceRef": &entry.object.payload.resource_ref,
+                        "nodeCount": entry.fragment.nodes.len(),
+                        "bondCount": entry.fragment.bonds.len(),
+                        "bbox": entry.fragment.bbox,
+                        "nodes": entry.fragment.nodes.iter().map(|node| {
+                            json!({
+                                "id": &node.id,
+                                "element": &node.element,
+                                "atomicNumber": node.atomic_number,
+                                "position": &node.position,
+                                "charge": node.charge,
+                                "label": node.label.as_ref().map(|label| {
+                                    json!({
+                                        "text": &label.text,
+                                        "sourceText": &label.source_text,
+                                        "bbox": label.bbox()
+                                    })
+                                })
+                            })
+                        }).collect::<Vec<_>>(),
+                        "bonds": entry.fragment.bonds.iter().map(|bond| {
+                            json!({
+                                "id": &bond.id,
+                                "begin": &bond.begin,
+                                "end": &bond.end,
+                                "order": bond.order,
+                                "stereo": &bond.stereo,
+                                "lineStyles": &bond.line_styles
+                            })
+                        }).collect::<Vec<_>>()
+                    })
+                })
+                .collect(),
+        )
+    }
+
+    fn document_resources_json(&self) -> JsonValue {
+        JsonValue::Array(
+            self.state
+                .document
+                .resources
+                .iter()
+                .map(|(id, resource)| {
+                    let mut item = serde_json::Map::new();
+                    item.insert("id".to_string(), json!(id));
+                    item.insert("type".to_string(), json!(&resource.resource_type));
+                    item.insert("encoding".to_string(), json!(&resource.encoding));
+                    match &resource.data {
+                        ResourceData::Fragment(fragment) => {
+                            item.insert("kind".to_string(), json!("fragment"));
+                            item.insert("nodeCount".to_string(), json!(fragment.nodes.len()));
+                            item.insert("bondCount".to_string(), json!(fragment.bonds.len()));
+                        }
+                        ResourceData::Text(text) => {
+                            item.insert("kind".to_string(), json!("text"));
+                            item.insert("textLength".to_string(), json!(text.len()));
+                        }
+                        ResourceData::Json(value) => {
+                            item.insert("kind".to_string(), json!("json"));
+                            item.insert("jsonType".to_string(), json!(json_value_type_name(value)));
+                        }
+                    }
+                    JsonValue::Object(item)
+                })
+                .collect(),
+        )
+    }
+
+    fn document_styles_json(&self) -> JsonValue {
+        JsonValue::Array(
+            self.state
+                .document
+                .styles
+                .iter()
+                .map(|(id, style)| {
+                    json!({
+                        "id": id,
+                        "kind": style.get("kind").and_then(JsonValue::as_str),
+                        "stroke": style.get("stroke").and_then(JsonValue::as_str),
+                        "fill": style.get("fill").cloned(),
+                        "strokeWidth": style.get("strokeWidth").and_then(JsonValue::as_f64),
+                        "fontFamily": style.get("fontFamily").and_then(JsonValue::as_str),
+                        "fontSize": style.get("fontSize").and_then(JsonValue::as_f64)
+                    })
+                })
+                .collect(),
+        )
     }
 
     fn drag_target_endpoint(&self, anchor: &BondAnchor, point: Point) -> Option<EndpointHit> {
@@ -2486,7 +2867,20 @@ impl Engine {
             undo_depth: self.undo_stack.len(),
             redo_depth: self.redo_stack.len(),
             diagnostics: BTreeMap::new(),
+            output: None,
         }
+    }
+
+    fn readonly_command_result(
+        &mut self,
+        command: Option<EditorCommand>,
+        output: JsonValue,
+    ) -> CommandResult {
+        let mut result = self.unchanged_command_result();
+        result.command = command;
+        result.output = Some(output);
+        self.last_command_result = Some(result.clone());
+        result
     }
 
     fn unchanged_command_result(&self) -> CommandResult {
@@ -2790,6 +3184,59 @@ struct DocumentTargetMaps {
     styles: BTreeMap<String, JsonValue>,
 }
 
+fn document_from_command_content(
+    format: DocumentCommandFormat,
+    content: &str,
+    bytes: &[u8],
+) -> Result<ChemcoreDocument, String> {
+    let mut document = match format {
+        DocumentCommandFormat::Json | DocumentCommandFormat::Ccjs => {
+            crate::parse_document_json(content)?
+        }
+        DocumentCommandFormat::Cdxml => {
+            let mut document = crate::parse_cdxml_document(content, None)?;
+            crate::cdxml::normalize_cdxml_document_for_editing(&mut document);
+            document
+        }
+        DocumentCommandFormat::Cdx => {
+            let mut document = crate::parse_cdx_document(bytes, None)?;
+            crate::cdxml::normalize_cdxml_document_for_editing(&mut document);
+            document
+        }
+        DocumentCommandFormat::Sdf => crate::parse_sdf_document(content, None)?,
+        DocumentCommandFormat::Svg => {
+            return Err(
+                "SVG is an export format and cannot be converted into an editable document."
+                    .to_string(),
+            );
+        }
+    };
+    refresh_repeating_units(&mut document);
+    Ok(document)
+}
+
+fn document_command_format_name(format: DocumentCommandFormat) -> &'static str {
+    match format {
+        DocumentCommandFormat::Json => "json",
+        DocumentCommandFormat::Ccjs => "ccjs",
+        DocumentCommandFormat::Cdxml => "cdxml",
+        DocumentCommandFormat::Cdx => "cdx",
+        DocumentCommandFormat::Sdf => "sdf",
+        DocumentCommandFormat::Svg => "svg",
+    }
+}
+
+fn json_value_type_name(value: &JsonValue) -> &'static str {
+    match value {
+        JsonValue::Null => "null",
+        JsonValue::Bool(_) => "boolean",
+        JsonValue::Number(_) => "number",
+        JsonValue::String(_) => "string",
+        JsonValue::Array(_) => "array",
+        JsonValue::Object(_) => "object",
+    }
+}
+
 fn documents_equivalent(before: &ChemcoreDocument, after: &ChemcoreDocument) -> bool {
     serde_json::to_value(before).ok() == serde_json::to_value(after).ok()
 }
@@ -3050,17 +3497,25 @@ fn editor_command_type_name(command: &EditorCommand) -> &'static str {
     match command {
         EditorCommand::Undo => "undo",
         EditorCommand::Redo => "redo",
+        EditorCommand::LoadDocument { .. } => "load-document",
+        EditorCommand::ExportDocument { .. } => "export-document",
+        EditorCommand::ConvertDocument { .. } => "convert-document",
+        EditorCommand::InspectDocument { .. } => "inspect-document",
         EditorCommand::AddBond { .. } => "add-bond",
         EditorCommand::AddArrow { .. } => "add-arrow",
         EditorCommand::AddShape { .. } => "add-shape",
         EditorCommand::AddBracket { .. } => "add-bracket",
         EditorCommand::AddSymbol { .. } => "add-symbol",
         EditorCommand::AddElement { .. } => "add-element",
+        EditorCommand::AddText { .. } => "add-text",
+        EditorCommand::SetTextRuns { .. } => "set-text-runs",
+        EditorCommand::SetNodeLabelRuns { .. } => "set-node-label-runs",
         EditorCommand::ReplaceNodeLabel { .. } => "replace-node-label",
         EditorCommand::MoveTlcSpot { .. } => "move-tlc-spot",
         EditorCommand::ApplyArrowStyle { .. } => "apply-arrow-style",
         EditorCommand::CycleBondStyle { .. } => "cycle-bond-style",
         EditorCommand::DeleteSelection => "delete-selection",
+        EditorCommand::DeleteTargets { .. } => "delete-targets",
         EditorCommand::DeleteFocusedAtPoint { .. } => "delete-focused-at-point",
         EditorCommand::PasteClipboard => "paste-clipboard",
         EditorCommand::CutSelection => "cut-selection",
@@ -3084,6 +3539,8 @@ fn editor_command_type_name(command: &EditorCommand) -> &'static str {
         EditorCommand::LinkSelection { .. } => "link-selection",
         EditorCommand::UnlinkSelection { .. } => "unlink-selection",
         EditorCommand::JoinSelection => "join-selection",
+        EditorCommand::MoveTargets { .. } => "move-targets",
+        EditorCommand::RotateTargets { .. } => "rotate-targets",
         EditorCommand::MoveSelection => "move-selection",
         EditorCommand::RotateSelection => "rotate-selection",
         EditorCommand::ResizeSelection => "resize-selection",
@@ -3096,6 +3553,8 @@ fn editor_command_type_name(command: &EditorCommand) -> &'static str {
             "apply-object-settings-to-selection"
         }
         EditorCommand::ApplyDocumentStyle { .. } => "apply-document-style",
+        EditorCommand::SetArrowGeometry { .. } => "set-arrow-geometry",
+        EditorCommand::SetShapeGeometry { .. } => "set-shape-geometry",
         EditorCommand::ReplaceHoveredEndpointLabel { .. } => "replace-hovered-endpoint-label",
         EditorCommand::AddOrbital { .. } => "add-orbital",
     }

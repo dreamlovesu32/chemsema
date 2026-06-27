@@ -161,12 +161,19 @@ export function createEditorPointerController(options) {
       if (!overlay.childNodes.length) {
         overlay.remove();
       }
+      return true;
     }
+    return false;
   }
 
   function clearEditorOverlayRoot() {
     const viewerSvg = options.viewerSvg?.();
-    viewerSvg?.querySelector('[data-layer="editor-overlay"]')?.remove();
+    const overlay = viewerSvg?.querySelector('[data-layer="editor-overlay"]');
+    if (!overlay) {
+      return false;
+    }
+    overlay.remove();
+    return true;
   }
 
   async function clearEngineHoverOverlay({ keepSelectionOverlay = false } = {}) {
@@ -183,11 +190,25 @@ export function createEditorPointerController(options) {
 
   function clearInteractionOverlayNow() {
     cancelScheduledHoverMove();
-    clearEditorOverlayRoot();
+    const clearedOverlay = clearEditorOverlayRoot();
+    const clearedDragPreview = !!options.clearDragCapturePreview?.();
+    return clearedOverlay || clearedDragPreview;
   }
 
   function clearInteractionOverlayBeforeCommit() {
-    clearInteractionOverlayNow();
+    return clearInteractionOverlayNow();
+  }
+
+  function waitForNextFrame() {
+    if (typeof requestAnimationFrame !== "function") {
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => requestAnimationFrame(resolve));
+  }
+
+  async function waitForClearedInteractionPaint() {
+    await waitForNextFrame();
+    await waitForNextFrame();
   }
 
   async function clearPostCommitInteraction(point = null) {
@@ -1119,7 +1140,7 @@ export function createEditorPointerController(options) {
       await drainEngineDragPreviewFrame();
     }
     options.viewerSvg().releasePointerCapture?.(event.pointerId);
-    options.setCanvasPointerShieldActive?.(false);
+    const clearedDragCaptureOnPointerUp = !!options.setCanvasPointerShieldActive?.(false);
     const gesture = options.activeSelectionGesture();
     if (gesture?.kind === "tlc-spot-drag") {
       const result = await executeDocumentCommand(
@@ -1390,7 +1411,11 @@ export function createEditorPointerController(options) {
       await options.renderSelectionOnlyUpdate(point);
       return;
     }
-    clearInteractionOverlayBeforeCommit();
+    const clearedInteractionBeforeCommit = clearInteractionOverlayBeforeCommit()
+      || clearedDragCaptureOnPointerUp;
+    if (clearedInteractionBeforeCommit) {
+      await waitForClearedInteractionPaint();
+    }
     const commitStarted = performance.now();
     const result = await executeDocumentCommand(
       {

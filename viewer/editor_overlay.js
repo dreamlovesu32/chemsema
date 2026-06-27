@@ -11,6 +11,10 @@ const SELECTION_ROTATE_HANDLE_RADIUS_SCREEN_PX = 2.0;
 const SELECTION_ROTATE_HANDLE_OFFSET_SCREEN_PX = 18;
 const SELECTION_CENTER_CROSS_HALF_SCREEN_PX = 5;
 const OBJECT_CONTROL_HANDLE_RADIUS_SCREEN_PX = 1.5;
+const HOVER_ENDPOINT_RADIUS_SCREEN_PX = 3.75;
+const HOVER_CENTER_RADIUS_SCREEN_PX = 3.75;
+const HOVER_BOND_CENTER_LENGTH_SCREEN_PX = 30;
+const HOVER_BOND_CENTER_WIDTH_SCREEN_PX = 8;
 const EDITOR_OVERLAY_LAYER_SELECTOR = '[data-layer="editor-overlay"]';
 
 export function createEditorOverlayRenderer(options) {
@@ -46,6 +50,55 @@ export function createEditorOverlayRenderer(options) {
       class: "editor-object-control-handle",
       "data-role": role,
     }));
+  }
+
+  function hoverCircleRadiusForRole(overlay, primitive) {
+    if (primitive.role === "hover-endpoint" || primitive.role === "preview-end") {
+      return screenPxToOverlayWorld(overlay, HOVER_ENDPOINT_RADIUS_SCREEN_PX);
+    }
+    if (primitive.role === "hover-bond-center" || primitive.role === "hover-arrow-center") {
+      return screenPxToOverlayWorld(overlay, HOVER_CENTER_RADIUS_SCREEN_PX);
+    }
+    return primitive.radius;
+  }
+
+  function normalizeHoverBondCenterPoints(overlay, primitive) {
+    if (primitive.role !== "hover-bond-center" || !Array.isArray(primitive.points) || primitive.points.length < 4) {
+      return primitive.points;
+    }
+    const points = primitive.points;
+    const center = points.reduce((sum, point) => ({
+      x: sum.x + Number(point.x || 0),
+      y: sum.y + Number(point.y || 0),
+    }), { x: 0, y: 0 });
+    center.x /= points.length;
+    center.y /= points.length;
+    let longest = null;
+    for (let index = 0; index < points.length; index += 1) {
+      const from = points[index];
+      const to = points[(index + 1) % points.length];
+      const dx = Number(to.x || 0) - Number(from.x || 0);
+      const dy = Number(to.y || 0) - Number(from.y || 0);
+      const length = Math.hypot(dx, dy);
+      if (!longest || length > longest.length) {
+        longest = { dx, dy, length };
+      }
+    }
+    if (!longest || longest.length <= Number.EPSILON) {
+      return primitive.points;
+    }
+    const ux = longest.dx / longest.length;
+    const uy = longest.dy / longest.length;
+    const px = -uy;
+    const py = ux;
+    const halfLength = screenPxToOverlayWorld(overlay, HOVER_BOND_CENTER_LENGTH_SCREEN_PX) * 0.5;
+    const halfWidth = screenPxToOverlayWorld(overlay, HOVER_BOND_CENTER_WIDTH_SCREEN_PX) * 0.5;
+    return [
+      { x: center.x - ux * halfLength - px * halfWidth, y: center.y - uy * halfLength - py * halfWidth },
+      { x: center.x + ux * halfLength - px * halfWidth, y: center.y + uy * halfLength - py * halfWidth },
+      { x: center.x + ux * halfLength + px * halfWidth, y: center.y + uy * halfLength + py * halfWidth },
+      { x: center.x - ux * halfLength + px * halfWidth, y: center.y - uy * halfLength + py * halfWidth },
+    ];
   }
 
   function appendTlcRfLabel(overlay, hit) {
@@ -594,8 +647,9 @@ export function createEditorOverlayRenderer(options) {
         if (!className) {
           continue;
         }
+        const points = normalizeHoverBondCenterPoints(overlay, primitive);
         overlay.appendChild(makeSvgNode("polygon", {
-          points: primitive.points.map((point) => `${point.x},${point.y}`).join(" "),
+          points: points.map((point) => `${point.x},${point.y}`).join(" "),
           class: className,
           "data-role": primitive.role,
         }));
@@ -647,7 +701,7 @@ export function createEditorOverlayRenderer(options) {
           "hover-endpoint": "editor-endpoint-halo",
           "hover-bond-center": "editor-bond-center-halo",
           "hover-arrow-center": "editor-arrow-center-halo",
-          "preview-end": "editor-preview-end",
+          "preview-end": "editor-endpoint-halo",
           "selection-bond-dot": "editor-selection-bond-dot",
         };
         if (isObjectControlHandleRole(primitive.role)) {
@@ -661,7 +715,7 @@ export function createEditorOverlayRenderer(options) {
         overlay.appendChild(makeSvgNode("circle", {
           cx: primitive.center.x,
           cy: primitive.center.y,
-          r: primitive.radius,
+          r: hoverCircleRadiusForRole(overlay, primitive),
           class: className,
           "data-role": primitive.role,
         }));
