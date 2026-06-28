@@ -40,8 +40,9 @@ for reproducible rendering comparison.
 
 ![ChemDraw and ChemCore CDXML rendering comparison](./docs/assets/readme/comparison/published-cdxml-comparison.svg)
 
-The generated SVG and EMF files for both ChemDraw and ChemCore are kept in
-[docs/assets/readme/comparison](./docs/assets/readme/comparison/).
+The generated SVG and Office EMF vector files for both ChemDraw and ChemCore
+are kept in [docs/assets/readme/comparison](./docs/assets/readme/comparison/),
+and the README comparison image is regenerated from those refreshed assets.
 
 The original CDXML files are tracked at the repository root:
 [figure1.cdxml](./figure1.cdxml) and [figure2.cdxml](./figure2.cdxml).

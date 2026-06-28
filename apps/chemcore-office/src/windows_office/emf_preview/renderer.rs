@@ -3432,7 +3432,6 @@ fn ansi_metafile_text_bytes(text: &str) -> Vec<u8> {
 }
 
 const PREVIEW_MITER_LIMIT: f32 = 10.0;
-const PREVIEW_BOND_STROKE_MAX_ASPECT_RATIO: f64 = 0.24;
 const PREVIEW_BOND_STROKE_MAX_WIDTH: f64 = 4.25;
 const PREVIEW_BOND_STROKE_TOLERANCE_WIDTH_FACTOR: f64 = 0.45;
 const PREVIEW_BOND_STROKE_COLLINEAR_TOLERANCE_WIDTH_FACTOR: f64 = 0.18;
@@ -4859,7 +4858,6 @@ fn preview_bond_stroke_line(
         || length <= 0.0
         || width <= 0.0
         || width > PREVIEW_BOND_STROKE_MAX_WIDTH
-        || width / length > PREVIEW_BOND_STROKE_MAX_ASPECT_RATIO
     {
         return None;
     }
@@ -4903,7 +4901,6 @@ fn preview_bond_stroke_line(
         || length <= 0.0
         || width <= 0.0
         || width > PREVIEW_BOND_STROKE_MAX_WIDTH
-        || width / length > PREVIEW_BOND_STROKE_MAX_ASPECT_RATIO
     {
         return None;
     }
@@ -5645,6 +5642,43 @@ mod tests {
         let radius = stroke_line.width * 0.5;
         assert!(((stroke_line.start.x - radius) - 2.0).abs() < 1.0e-6);
         assert!(((stroke_line.end.x + radius) - 18.0).abs() < 1.0e-6);
+    }
+
+    #[test]
+    fn preview_bond_stroke_line_converts_short_label_clipped_so_double_segment() {
+        let axis =
+            preview_normalize_axis(point(-1.173625246904458, -2.0326537262359904)).expect("axis");
+        let mut infos = BTreeMap::new();
+        infos.insert(
+            "b1".to_string(),
+            PreviewBondInfo {
+                axis,
+                allow_pen: true,
+                order: 2,
+                start_projection: 0.0,
+                end_projection: 0.0,
+                axis_normal_projection: 0.0,
+                both_junction: false,
+                side_double: false,
+                center_double: true,
+                start_has_label: true,
+                end_has_label: true,
+            },
+        );
+        let context = PreviewBondContext { infos };
+        let stroke_line = preview_bond_stroke_line(
+            &[
+                point(349.23256650268956, 243.45628947936865),
+                point(348.0589412557851, 241.42363575313266),
+                point(347.5393339912999, 241.72364957063814),
+                point(348.71295923820435, 243.75630329687414),
+            ],
+            Some("b1"),
+            Some(&context),
+        )
+        .expect("short clipped S=O double-bond segment should convert to a round-cap pen");
+        assert!((stroke_line.width - 0.6).abs() < 1.0e-6);
+        assert!((stroke_line.start.distance(stroke_line.end) - 2.347142388299574).abs() < 1.0e-6);
     }
 
     #[test]

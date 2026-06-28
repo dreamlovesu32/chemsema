@@ -235,8 +235,8 @@ fn render_double_bond(
                 bonds,
                 node_map,
                 bond,
-                start,
-                end,
+                actual_start,
+                actual_end,
                 begin_box,
                 end_box,
                 begin_has_label,
@@ -258,8 +258,8 @@ fn render_center_double_bond_lines(
     bonds: &[Bond],
     node_map: &BTreeMap<&str, &Node>,
     bond: &Bond,
-    start: Point,
-    end: Point,
+    actual_start: Point,
+    actual_end: Point,
     begin_box: Option<RectBox>,
     end_box: Option<RectBox>,
     begin_has_label: bool,
@@ -269,7 +269,7 @@ fn render_center_double_bond_lines(
     object_id: Option<String>,
     double_offset: f64,
 ) {
-    let (normal_x, normal_y) = unit_normal(start, end);
+    let (normal_x, normal_y) = unit_normal(actual_start, actual_end);
     for (line_side, offset, pattern, weight) in [
         (
             -1.0,
@@ -284,8 +284,14 @@ fn render_center_double_bond_lines(
             bond.line_weights.right,
         ),
     ] {
-        let line_start = Point::new(start.x + normal_x * offset, start.y + normal_y * offset);
-        let line_end = Point::new(end.x + normal_x * offset, end.y + normal_y * offset);
+        let line_start = Point::new(
+            actual_start.x + normal_x * offset,
+            actual_start.y + normal_y * offset,
+        );
+        let line_end = Point::new(
+            actual_end.x + normal_x * offset,
+            actual_end.y + normal_y * offset,
+        );
         let start_endpoint_profile = center_double_endpoint_profile_for_line_side(
             object,
             contact_kernel,
@@ -327,7 +333,7 @@ fn render_center_double_bond_lines(
             line_pattern_dash_array_for_bond(bond, stroke_width, pattern),
             weight,
             object_id.clone(),
-            false,
+            true,
             !begin_has_label,
             !end_has_label,
             false,
@@ -409,8 +415,8 @@ fn render_outer_bond_lines(
     bonds: &[Bond],
     node_map: &BTreeMap<&str, &Node>,
     bond: &Bond,
-    start: Point,
-    end: Point,
+    _start: Point,
+    _end: Point,
     begin_box: Option<RectBox>,
     end_box: Option<RectBox>,
     _actual_start: Point,
@@ -433,18 +439,18 @@ fn render_outer_bond_lines(
     };
     let begin_terminal = fragment_node_degree(bonds, &bond.begin) <= 1;
     let end_terminal = fragment_node_degree(bonds, &bond.end) <= 1;
-    let (normal_x, normal_y) = unit_normal(start, end);
+    let (normal_x, normal_y) = unit_normal(_actual_start, _actual_end);
 
     for side in sides {
         let line_pattern = outer_line_pattern(bond, *side);
         let line_weight = outer_line_weight(bond, *side);
         let offset_start = Point::new(
-            start.x + normal_x * offset_distance * *side,
-            start.y + normal_y * offset_distance * *side,
+            _actual_start.x + normal_x * offset_distance * *side,
+            _actual_start.y + normal_y * offset_distance * *side,
         );
         let offset_end = Point::new(
-            end.x + normal_x * offset_distance * *side,
-            end.y + normal_y * offset_distance * *side,
+            _actual_end.x + normal_x * offset_distance * *side,
+            _actual_end.y + normal_y * offset_distance * *side,
         );
         let start_endpoint_profile = outer_bond_endpoint_profile_for_side(
             object,

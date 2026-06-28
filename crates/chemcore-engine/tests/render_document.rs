@@ -10169,7 +10169,7 @@ fn render_document_keeps_center_double_original_for_angles_over_162_degrees() {
 }
 
 #[test]
-fn render_document_keeps_center_double_equal_at_labeled_endpoint() {
+fn render_document_clips_center_double_lines_individually_at_labeled_endpoint() {
     let document = fragment_document(
         json!([
             {
@@ -10233,13 +10233,27 @@ fn render_document_keeps_center_double_equal_at_labeled_endpoint() {
         .collect();
 
     assert!(
-        (endpoint_retreats[0] - endpoint_retreats[1]).abs() <= 1.0e-4,
-        "{polygons:?} {endpoint_retreats:?}"
+        (endpoint_retreats[0] - endpoint_retreats[1]).abs() > 1.0,
+        "parallel center-double lines should clip against the label independently: {polygons:?} {endpoint_retreats:?}"
     );
     assert!(
         endpoint_retreats.iter().all(|retreat| *retreat > 0.0),
         "{polygons:?} {endpoint_retreats:?}"
     );
+    for polygon in &polygons {
+        let (from, to) = bond_axis_from_points(polygon).expect("bond axis");
+        let endpoint = if from.distance(chemcore_engine::Point::new(56.0, 40.0))
+            <= to.distance(chemcore_engine::Point::new(56.0, 40.0))
+        {
+            from
+        } else {
+            to
+        };
+        assert!(
+            (endpoint.x - 49.8).abs() <= 0.02,
+            "each parallel line should hit the expanded label box, not a shared center-axis retreat: {polygon:?}"
+        );
+    }
 }
 
 #[test]

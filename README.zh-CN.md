@@ -32,7 +32,7 @@ Jiajun ZHANG, Pinhong Chen,* Guosheng Liu*, Copper-Catalyzed Site- and Enantiose
 
 ![ChemDraw 与 ChemCore 真实论文 CDXML 渲染对比](./docs/assets/readme/comparison/published-cdxml-comparison.svg)
 
-原始 CDXML 文件也已放在仓库根目录：[figure1.cdxml](./figure1.cdxml) 和 [figure2.cdxml](./figure2.cdxml)。对应的 SVG 与 EMF 矢量产物保留在 [docs/assets/readme/comparison](./docs/assets/readme/comparison/) 中，包含 ChemDraw 和 ChemCore 各自导出的版本。对 ChemCore 来说，这类真实文件的兼容性和 Office 级矢量导出能力，是项目最重要的宣传点之一。
+原始 CDXML 文件也已放在仓库根目录：[figure1.cdxml](./figure1.cdxml) 和 [figure2.cdxml](./figure2.cdxml)。对应的 SVG 与 Office EMF 矢量产物保留在 [docs/assets/readme/comparison](./docs/assets/readme/comparison/) 中，包含 ChemDraw 和 ChemCore 各自导出的版本；README 中的对比图也由这些刷新后的资产重新生成。对 ChemCore 来说，这类真实文件的兼容性和 Office 级矢量导出能力，是项目最重要的宣传点之一。
 
 ## 当前状态
 
