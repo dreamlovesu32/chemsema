@@ -2,6 +2,25 @@
 
 ChemCore 的公开变更记录会保存在这里。
 
+## 1.0.0-beta.5
+
+面向 agent 的 CLI 扩展、安装入口完善，以及桌面端/浏览器端的进一步稳定化。
+
+- 将 `chemcore-cli` 作为桌面端安装包的一部分安装，加入安装器 PATH 注册、`chemcore-entrypoints.json`、随包 agent 指南，并可通过 `guide` / `doctor` 让机器调用方发现入口和文档。
+- 明确 CLI 的两种调用方式：PowerShell 单命令用于独立任务，JSONL `session` 用于同一个已载入文档上的连续操作。
+- 扩展 CLI agent 工作流，加入 `targets`、`context`、`detail`、`capture` 和 `copy`，覆盖稳定 selector、周边对象摘要、原始对象/详情查询、精确裁图，以及 Office/OLE 剪贴板 payload 生成。
+- 增加确定性的高清截图能力，支持 object、molecule、node、bond、all、显式 bounds 和多目标 selection。多选截图使用所有目标 bounds 的最小并集，和 GUI 选择框一致，并支持绝对/相对单边扩展、固定像素尺寸、渲染元数据，以及 PNG/SVG 落盘校验。
+- 增加 selection-box context 报告，返回截图框内的 objects、molecules、nodes 和 bonds，区分 `inside` 与 `partial`，标记显式选中目标，并继续返回这个框上下左右的周边摘要。
+- 增加轻量级 CLI `new`/`run` 审计报告，包含文档 hash/revision 变化、新建/更新/删除 selector 摘要、失败命令详情、可选 `--inspect-after` 快照，以及 `--continue-on-error`。
+- 提升 CLI 的 agent 可用性：文档、JSON、截图和 payload 写出后会校验文件存在和字节数；缺参数会返回机器可读修复信息；命令拼写错误会返回相近命令、用途、usage 和示例。
+- 增加长驻 JSONL `session` 模式和 CDXML/CDX 自动导入缓存，让大文件上的重复操作可以复用已载入或已缓存状态，不必每条命令都重新解析。
+- 优化 CLI 大文件检查与截图路径，加入目标范围 bounds、局部渲染和 `performance:cli-large` 报告，覆盖 CDXML 转换、target 发现、detail 查询、context 截图、精确截图、session 流程和 SVG 导出。
+- 修复带标签端点附近的中心/双键渲染：平行双键线会分别根据端点标签退让和裁剪；同时更新 Office EMF preview 的短双键裁剪段 stroke 转换。
+- 拆分浏览器/editor host，将文档渲染、viewport、toolbar、tab 和窗口生命周期拆到独立模块，降低大 viewer 文件的维护成本。
+- 扩展桌面端和浏览器端稳定性覆盖，包括 pointer workflow、hybrid latency、viewer 操作、大对象编辑、拖拽预览、文本编辑、生成 fixture 和可重复稳定性报告。
+- 收紧编辑器交互行为，覆盖选择、拖动、绘制、符号、括号、hover/focus 生命周期、grouped objects、混合对象 workflow，以及当前工具下侧边栏面板的激活。
+- 更新 README 语言入口、中文 README 文案、渲染对比资源，以及公开 CLI 指南。
+
 ## 1.0.0-beta.4
 
 大文件交互、CDXML 兼容和 agent-friendly CLI beta 版本。

@@ -2,6 +2,26 @@
 
 All notable public changes to ChemCore are tracked here.
 
+## 1.0.0-beta.5
+
+Agent-focused CLI expansion, installable entry points, and another round of
+desktop/browser stabilization.
+
+- Packaged an installed `chemcore-cli` entry point alongside the desktop app, with installer PATH registration, `chemcore-entrypoints.json`, an installed agent guide, and `guide`/`doctor` discovery for machine callers.
+- Clarified the CLI's two invocation modes: one-shot PowerShell commands for independent work, and JSONL `session` for repeated operations on the same loaded document.
+- Expanded the CLI agent workflow with `targets`, `context`, `detail`, `capture`, and `copy`, covering stable selectors, nearby-object summaries, raw object/detail lookup, precise crops, and Office/OLE clipboard payload generation.
+- Added deterministic high-resolution capture for objects, molecules, nodes, bonds, all content, explicit bounds, and multi-target selections. Multi-target crops use the minimum union bounds, matching the GUI selection box, and support absolute/relative per-side expansion, fixed pixel sizing, render metadata, and verified PNG/SVG writes.
+- Added selection-box context reporting for precise crops, including objects, molecules, nodes, and bonds inside the crop box, `inside` versus `partial` containment, explicit target markers, and normal nearby summaries around the box.
+- Added lightweight CLI audit reports for `new`/`run`, including document hash/revision transitions, created/updated/deleted selector summaries, failed-command details, optional `--inspect-after` snapshots, and `--continue-on-error`.
+- Improved CLI resilience for agent use: verified document/JSON/screenshot/payload writes after saving, added machine-readable missing-argument fixes, and made command typos return nearby commands with purpose, usage, and examples.
+- Added a long-lived JSONL `session` mode and an automatic CDXML/CDX import cache so repeated work on large documents can reuse loaded or cached state instead of reparsing every command.
+- Optimized large-file CLI inspection and capture with target-scoped bounds, region rendering, and a `performance:cli-large` report covering CDXML conversion, target discovery, detail lookup, context screenshots, precise captures, session flows, and SVG export.
+- Fixed centered/double-bond rendering near labels so parallel double-bond lines retreat and clip independently against endpoint labels, and updated the Office EMF preview stroke conversion for short clipped double-bond segments.
+- Split the browser/editor host into focused document rendering, viewport, toolbar, tab, and window-lifecycle modules, reducing the maintenance burden of the large viewer surface.
+- Expanded desktop and browser stability coverage for pointer workflows, hybrid latency, viewer operations, large-object editing, drag previews, text editing, generated fixtures, and repeatable stability reports.
+- Tightened editor interaction behavior around selection, dragging, drawing, symbols, brackets, hover/focus lifecycle, grouped objects, mixed object workflows, and current-tool side panel activation.
+- Updated README language links, Chinese README wording, rendered comparison assets, and the public CLI guides.
+
 ## 1.0.0-beta.4
 
 Large-document interaction, CDXML fidelity, and agent-friendly CLI beta release.
