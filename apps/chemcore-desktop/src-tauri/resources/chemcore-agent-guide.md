@@ -1,7 +1,7 @@
 # Chemcore Agent Guide
 
 This guide is for automation agents using Chemcore without source-code context.
-Prefer the CLI for machine workflows. Use the desktop GUI for interactive editing
+Use the CLI for machine workflows. Use the desktop GUI for interactive editing
 and visual inspection.
 
 ## First Contact
@@ -10,18 +10,27 @@ Run these commands first:
 
 ```powershell
 chemcore-cli guide --pretty
+chemcore-cli guide --kind detailed --pretty
 chemcore-cli doctor --pretty
 chemcore-cli about --pretty
 chemcore-cli capabilities --pretty
 ```
 
-The CLI prints JSON by default. Use `--out <path>` for large payloads. Use
-`--pretty` when a human or language model will read the output.
+The CLI prints JSON by default. Without `--pretty`, JSON is compact single-line
+JSON. `--pretty` only changes JSON whitespace: compact JSON becomes line-broken
+and indented. It does not change fields, values, output files, exit code,
+schema, ordering, or command behavior.
 
-To include this full guide in JSON, use:
+Use `--out <path>` when complete output matters. For large payloads and guide
+content, read the file written by `--out` instead of relying on a console buffer.
+
+This quick guide is installed as `chemcore-agent-guide.md`. The detailed English
+CLI guide is installed as `chemcore-cli-guide.md`. To include guide Markdown in
+JSON, use:
 
 ```powershell
-chemcore-cli guide --include-content --out chemcore-agent-guide.json --pretty
+chemcore-cli guide --kind agent --include-content --out chemcore-agent-guide.json --pretty
+chemcore-cli guide --kind detailed --include-content --out chemcore-cli-guide.json --pretty
 ```
 
 ## Core Rule
@@ -104,7 +113,7 @@ Aliases for `detail`: `details`, `describe`, `show`.
 
 ## Precise Screenshots
 
-Use `capture` for deterministic exact crops. PNG is recommended for visual
+Use `capture` for deterministic exact crops. PNG is the raster format for visual
 analysis.
 
 ```powershell
@@ -172,14 +181,13 @@ touching the clipboard.
 
 ## Output Discipline
 
-Recommended policy for agents:
+Deterministic output policy for agents:
 
 - Always use `--out` for `targets`, `context`, `detail`, and `inspect` when the
   document may be large.
 - Use `context` before `detail` when exploring unknown documents.
 - Use `detail --summary-only` unless raw object JSON is needed.
-- Use `guide --include-content --out guide.json` instead of printing the whole
-  guide to the console.
+- Use `guide --include-content --out guide.json` for guide Markdown content.
 - Treat stdout as a JSON status channel, not an image or payload channel.
 
 ## Troubleshooting

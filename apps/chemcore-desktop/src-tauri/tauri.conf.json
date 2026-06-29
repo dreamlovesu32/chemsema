@@ -37,6 +37,7 @@
     "resources": {
       "resources/chemcore-entrypoints.json": "chemcore-entrypoints.json",
       "resources/chemcore-agent-guide.md": "chemcore-agent-guide.md",
+      "../../../docs/chemcore-cli-guide.md": "chemcore-cli-guide.md",
       "../../../target/release/chemcore-cli.exe": "chemcore-cli.exe",
       "../../../target/release/chemcore-office.exe": "chemcore-office.exe"
     },

@@ -34,12 +34,37 @@ npm run cli -- --help
 npm.cmd run cli -- --help
 ```
 
+桌面端安装版会把 `chemcore-cli.exe` 和 GUI 一起安装，并随安装包携带英文详细指南
+`chemcore-cli-guide.md`。安装版 CLI 可以从这些命令开始：
+
+```powershell
+chemcore-cli guide --pretty
+chemcore-cli guide --kind detailed --pretty
+chemcore-cli doctor --pretty
+chemcore-cli capabilities --pretty
+```
+
+`--pretty` 只改变 JSON 的空白字符布局：把紧凑单行 JSON 输出成带换行和
+缩进的 JSON。它不改变字段、值、输出文件、退出码、schema、排序或命令行为。
+不加 `--pretty` 时，JSON 是紧凑单行 JSON。
+
 ## 2. 文件命令
 
 打开文件就是把文件路径作为 `inspect`、`run`、`convert` 或 `export` 的输入参数。
 
 ```text
+chemcore-cli guide [--kind agent|detailed|all] [--include-content] [--pretty] [--out <path>]
+chemcore-cli about [--pretty] [--out <path>]
+chemcore-cli capabilities [--pretty] [--out <path>]
+chemcore-cli doctor [--pretty] [--out <path>]
+chemcore-cli examples [basic|capture-copy|all] [--pretty] [--out <path>]
+chemcore-cli schema [commands|targets|capture|context|detail|guide|copy|json-output|command-script|all] [--pretty] [--out <path>]
 chemcore-cli inspect <input> [--include summary,objects,molecules,resources,styles] [--out <path>] [--pretty]
+chemcore-cli targets <input> [--out <path>] [--pretty]
+chemcore-cli context <input> --target <selector> [--radius <pt>] [--out <context.json>] [--capture-out <path.svg|path.png>] [--scale <n>|--width <px>|--height <px>] [--pretty]
+chemcore-cli detail <input> --target <object:id|molecule:index|node:id|bond:id> [--summary-only] [--include-resource] [--out <detail.json>] [--pretty]
+chemcore-cli capture <input> --target <selector> --out <path.svg|path.png> [--scale <n>|--width <px>|--height <px>] [--expand <pt>] [--expand-rel <fraction>] [--pretty]
+chemcore-cli copy <input> [--target <selector>] [--payload <payload.json>] [--no-copy] [--pretty]
 chemcore-cli new [commands.json|-] --out <path> [--save-format <format>] [--results <path>] [--document-json <path>] [--inspect-after <include|none>] [--pretty] [--quiet]
 chemcore-cli run <input> <commands.json|-> [--out <path>] [--save-format <format>] [--results <path>] [--document-json <path>] [--inspect-after <include|none>] [--pretty] [--quiet]
 chemcore-cli convert <input> <output> [--format <format>]
@@ -50,6 +75,8 @@ chemcore-cli export <input> <output> [--format <format>]
 
 ```powershell
 npm run cli -- inspect input.cdxml --include summary,objects,molecules --out inspect.json --pretty
+npm run cli -- targets input.cdxml --out targets.json --pretty
+npm run cli -- capture input.cdxml --target molecule:0 --out molecule.png --scale 6 --expand-rel 0.15 --pretty
 npm run cli -- new commands.json --out output.cdxml --results results.json --pretty
 npm run cli -- run input.cdxml commands.json --out output.cdxml --results results.json --document-json after.ccjs --pretty
 npm run cli -- convert input.cdxml output.svg
@@ -343,7 +370,7 @@ npm run cli -- run input.cdxml commands.json --results results.json --inspect-af
 npm run cli -- new commands.json --out output.cdxml --results results.json --pretty
 ```
 
-新建键后的 id 通常在：
+创建节点、键或对象的命令会把新 id 记录在：
 
 ```text
 commands[i].created.nodes
@@ -390,6 +417,54 @@ npm run cli -- run input.cdxml commands.json --out after.ccjs --results results.
 ```
 
 `--document-json` 适合调试，因为它可以和 `--out output.cdxml` 同时使用。脚本中途失败时，它会写出失败发生时内存里的 ChemCore 内部 JSON。
+
+### 4.7 agent 的 target、context、detail、capture、copy 工作流
+
+agent 需要精确 id、精确截图或周边对象信息时，按这个顺序走，不要猜坐标：
+
+```powershell
+chemcore-cli targets input.cdxml --out targets.json --pretty
+chemcore-cli context input.cdxml --target object:obj_shape_001 --radius 80 --out context.json --capture-out context.png --scale 5 --pretty
+chemcore-cli detail input.cdxml --target object:obj_shape_001 --out detail.json --pretty
+chemcore-cli capture input.cdxml --target object:obj_shape_001 --out object.png --scale 6 --expand-rel 0.15 --pretty
+chemcore-cli copy input.cdxml --target object:obj_shape_001 --pretty
+```
+
+支持 target 的命令接受这些 selector：
+
+```text
+all
+object:<scene-object-id>
+molecule:<zero-based-molecule-index>
+node:<node-id>
+bond:<bond-id>
+bounds:<minX>,<minY>,<maxX>,<maxY>
+```
+
+`bounds:` 用于截图类裁剪。`detail` 只接受单个 object、molecule、node 或 bond
+selector；不接受 `all` 或 `bounds`。
+
+`targets` 返回稳定 selector 和 bounds，按 `objects`、`molecules`、`nodes`、
+`bonds` 分组。调用方不知道精确 selector 时，先跑 `targets`，再跑 `context`、
+`detail`、`capture` 或 `copy`。
+
+`context` 返回目标周边的对象摘要、分子摘要、节点摘要、键摘要、bounds、方向、
+距离、重叠标记、group 祖先、子对象 id 和 link 元数据。`context` 只返回摘要。
+需要原始 JSON 时，把返回的 selector 交给 `detail`。
+
+`detail` 返回一个被选实体。默认包含该实体的 raw JSON。只需要 id、bounds 和关系
+元数据时，加 `--summary-only`。查看对象并且需要嵌入引用资源时，加
+`--include-resource`。
+
+`capture` 把渲染后的裁剪图写入 `--out`，stdout 只输出 JSON manifest。SVG 是矢量。
+PNG 默认 `--scale 4`；需要更清晰或固定像素预算时，用 `--scale`、`--width` 或
+`--height`。用绝对扩展（`--expand`、`--expand-left`、`--expand-right`、
+`--expand-top`、`--expand-bottom`）和相对扩展（`--expand-rel`、
+`--expand-rel-left`、`--expand-rel-right`、`--expand-rel-top`、
+`--expand-rel-bottom`）把周边内容纳入截图。
+
+`copy` 把可编辑 ChemCore Office/OLE payload 放到 Windows 剪贴板。调试剪贴板
+payload 时，用 `--payload payload.json --no-copy`，这样只写 manifest，不碰剪贴板。
 
 ## 5. 分子对象
 
@@ -1207,10 +1282,18 @@ npm run cli -- inspect "$env:USERPROFILE\Desktop\benzene-arrow.cdxml" --include 
 
 ## 16. 编辑已有文件的标准流程
 
-第一步，读 id：
+第一步，读取摘要、稳定 selector 和 bounds：
 
 ```powershell
 npm run cli -- inspect input.cdxml --include summary,objects,molecules --out before.json --pretty
+npm run cli -- targets input.cdxml --out targets.json --pretty
+```
+
+如果编辑依赖周边对象，先看周边，再展开一个 selector：
+
+```powershell
+npm run cli -- context input.cdxml --target object:arrow_1 --radius 80 --out context.json --capture-out context.png --scale 5 --pretty
+npm run cli -- detail input.cdxml --target object:arrow_1 --out detail.json --pretty
 ```
 
 第二步，写编辑脚本：

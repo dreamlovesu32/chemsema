@@ -34,12 +34,39 @@ If Windows PowerShell blocks `npm.ps1` by execution policy, use `npm.cmd`:
 npm.cmd run cli -- --help
 ```
 
+Installed desktop builds also install `chemcore-cli.exe` next to the GUI and
+ship this English guide as `chemcore-cli-guide.md`. Start an installed CLI
+session with:
+
+```powershell
+chemcore-cli guide --pretty
+chemcore-cli guide --kind detailed --pretty
+chemcore-cli doctor --pretty
+chemcore-cli capabilities --pretty
+```
+
+`--pretty` only changes JSON whitespace: compact JSON becomes line-broken and
+indented. It does not change fields, values, output files, exit code, schema,
+ordering, or command behavior. Without `--pretty`, JSON is compact single-line
+JSON.
+
 ## 2. File Commands
 
 Opening a file means passing the file path to `inspect`, `run`, `convert`, or `export`.
 
 ```text
+chemcore-cli guide [--kind agent|detailed|all] [--include-content] [--pretty] [--out <path>]
+chemcore-cli about [--pretty] [--out <path>]
+chemcore-cli capabilities [--pretty] [--out <path>]
+chemcore-cli doctor [--pretty] [--out <path>]
+chemcore-cli examples [basic|capture-copy|all] [--pretty] [--out <path>]
+chemcore-cli schema [commands|targets|capture|context|detail|guide|copy|json-output|command-script|all] [--pretty] [--out <path>]
 chemcore-cli inspect <input> [--include summary,objects,molecules,resources,styles] [--out <path>] [--pretty]
+chemcore-cli targets <input> [--out <path>] [--pretty]
+chemcore-cli context <input> --target <selector> [--radius <pt>] [--out <context.json>] [--capture-out <path.svg|path.png>] [--scale <n>|--width <px>|--height <px>] [--pretty]
+chemcore-cli detail <input> --target <object:id|molecule:index|node:id|bond:id> [--summary-only] [--include-resource] [--out <detail.json>] [--pretty]
+chemcore-cli capture <input> --target <selector> --out <path.svg|path.png> [--scale <n>|--width <px>|--height <px>] [--expand <pt>] [--expand-rel <fraction>] [--pretty]
+chemcore-cli copy <input> [--target <selector>] [--payload <payload.json>] [--no-copy] [--pretty]
 chemcore-cli new [commands.json|-] --out <path> [--save-format <format>] [--results <path>] [--document-json <path>] [--inspect-after <include|none>] [--pretty] [--quiet]
 chemcore-cli run <input> <commands.json|-> [--out <path>] [--save-format <format>] [--results <path>] [--document-json <path>] [--inspect-after <include|none>] [--pretty] [--quiet]
 chemcore-cli convert <input> <output> [--format <format>]
@@ -50,6 +77,8 @@ Common calls:
 
 ```powershell
 npm run cli -- inspect input.cdxml --include summary,objects,molecules --out inspect.json --pretty
+npm run cli -- targets input.cdxml --out targets.json --pretty
+npm run cli -- capture input.cdxml --target molecule:0 --out molecule.png --scale 6 --expand-rel 0.15 --pretty
 npm run cli -- new commands.json --out output.cdxml --results results.json --pretty
 npm run cli -- run input.cdxml commands.json --out output.cdxml --results results.json --document-json after.ccjs --pretty
 npm run cli -- convert input.cdxml output.svg
@@ -144,7 +173,7 @@ Coordinates use ChemCore document coordinates. `x` increases to the right, and `
 
 ## 4. Execution Reports, Ids, And Internal JSON
 
-Callers should always pass `--results` when using `new` or `run`. `results.json` is the primary machine-readable record for whether commands executed, whether they changed the document, what failed, and what the molecule looks like after each command.
+Pass `--results` when using `new` or `run`. `results.json` is the primary machine-readable record for whether commands executed, whether they changed the document, what failed, and what the molecule looks like after each command.
 
 ```powershell
 npm run cli -- run input.cdxml commands.json --out output.cdxml --results results.json --document-json after.ccjs --pretty
@@ -339,7 +368,7 @@ Write `--results` when creating objects:
 npm run cli -- new commands.json --out output.cdxml --results results.json --pretty
 ```
 
-New ids usually appear at:
+For commands that create entities, new ids are recorded at:
 
 ```text
 commands[i].created.nodes
@@ -386,6 +415,59 @@ npm run cli -- run input.cdxml commands.json --out after.ccjs --results results.
 ```
 
 `--document-json` is useful for debugging because it can be used together with `--out output.cdxml`. If the script fails partway through, it writes the in-memory ChemCore JSON at the failure point.
+
+### 4.7 Agent Target, Context, Detail, Capture, And Copy Workflow
+
+Use this workflow when an agent needs exact ids, exact crops, or nearby-object
+context without guessing coordinates:
+
+```powershell
+chemcore-cli targets input.cdxml --out targets.json --pretty
+chemcore-cli context input.cdxml --target object:obj_shape_001 --radius 80 --out context.json --capture-out context.png --scale 5 --pretty
+chemcore-cli detail input.cdxml --target object:obj_shape_001 --out detail.json --pretty
+chemcore-cli capture input.cdxml --target object:obj_shape_001 --out object.png --scale 6 --expand-rel 0.15 --pretty
+chemcore-cli copy input.cdxml --target object:obj_shape_001 --pretty
+```
+
+Selectors accepted by target-aware commands:
+
+```text
+all
+object:<scene-object-id>
+molecule:<zero-based-molecule-index>
+node:<node-id>
+bond:<bond-id>
+bounds:<minX>,<minY>,<maxX>,<maxY>
+```
+
+`bounds:` is accepted by capture-style crops. `detail` accepts one object,
+molecule, node, or bond selector; it does not accept `all` or `bounds`.
+
+`targets` returns stable selectors and bounds grouped under `objects`,
+`molecules`, `nodes`, and `bonds`. Run it before `context`, `detail`,
+`capture`, or `copy` when the caller does not already know the exact selector.
+
+`context` returns nearby object summaries, molecule summaries, node summaries,
+bond summaries, bounds, direction, distance, overlap flags, group ancestry,
+child ids, and link metadata. It returns summaries by design. Use `detail` on a
+returned selector when raw JSON is needed.
+
+`detail` returns one selected entity. By default, it includes raw JSON for that
+entity. Add `--summary-only` when ids, bounds, and relationship metadata are
+sufficient. Add `--include-resource` for an object when the referenced resource
+must be embedded in the response.
+
+`capture` writes the rendered crop to `--out` and writes only a JSON manifest to
+stdout. SVG output is vector. PNG output defaults to `--scale 4`; use
+`--scale`, `--width`, or `--height` when the caller needs a sharper or bounded
+raster image. Use absolute expansion (`--expand`, `--expand-left`,
+`--expand-right`, `--expand-top`, `--expand-bottom`) and proportional expansion
+(`--expand-rel`, `--expand-rel-left`, `--expand-rel-right`, `--expand-rel-top`,
+`--expand-rel-bottom`) to include surrounding context.
+
+`copy` places an editable ChemCore Office/OLE payload on the Windows clipboard.
+Use `--payload payload.json --no-copy` to write the clipboard payload manifest
+without touching the clipboard.
 
 ## 5. Molecule Objects
 
@@ -1168,10 +1250,19 @@ npm run cli -- inspect "$env:USERPROFILE\Desktop\benzene-arrow.cdxml" --include 
 
 ## 16. Standard Workflow For Editing Existing Files
 
-First, read ids:
+First, discover available ids and exact selectors:
 
 ```powershell
 npm run cli -- inspect input.cdxml --include summary,objects,molecules --out before.json --pretty
+npm run cli -- targets input.cdxml --out targets.json --pretty
+```
+
+When the edit depends on surrounding objects, inspect the neighborhood and then
+expand one selector:
+
+```powershell
+npm run cli -- context input.cdxml --target object:arrow_1 --radius 80 --out context.json --capture-out context.png --scale 5 --pretty
+npm run cli -- detail input.cdxml --target object:arrow_1 --out detail.json --pretty
 ```
 
 Then write an edit script:

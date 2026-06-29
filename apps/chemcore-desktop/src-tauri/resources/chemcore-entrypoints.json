@@ -22,6 +22,7 @@
       ],
       "discovery": [
         "chemcore-cli guide --pretty",
+        "chemcore-cli guide --kind detailed --pretty",
         "chemcore-cli about --pretty",
         "chemcore-cli doctor --pretty",
         "chemcore-cli capabilities --pretty",
@@ -45,19 +46,41 @@
     "selfDescriptionInstalledPathHint": "<install-dir>\\resources\\chemcore-entrypoints.json",
     "agentGuideFile": "chemcore-agent-guide.md",
     "agentGuideInstalledPathHint": "<install-dir>\\resources\\chemcore-agent-guide.md",
+    "detailedGuideFile": "chemcore-cli-guide.md",
+    "detailedGuideInstalledPathHint": "<install-dir>\\resources\\chemcore-cli-guide.md",
     "windowsAppPaths": ["chemcore-cli.exe"],
-    "consoleNote": "For console agents, prefer the explicit installedPathHints from this file or from `chemcore-cli doctor`; Windows App Paths are also registered for ShellExecute-style launchers."
+    "consoleNote": "Console agents can read installedPathHints from this file or from `chemcore-cli doctor`; Windows App Paths are also registered for ShellExecute-style launchers."
   },
   "documentation": {
     "agentGuide": {
+      "key": "agent",
       "file": "chemcore-agent-guide.md",
+      "language": "en",
+      "title": "Chemcore Agent Guide",
       "installedPathHints": [
         "<install-dir>\\resources\\chemcore-agent-guide.md",
         "<install-dir>\\chemcore-agent-guide.md"
       ],
-      "discoveryCommand": "chemcore-cli guide --pretty",
-      "contentCommand": "chemcore-cli guide --include-content --out chemcore-agent-guide.json --pretty"
+      "discoveryCommand": "chemcore-cli guide --kind agent --pretty",
+      "contentCommand": "chemcore-cli guide --kind agent --include-content --out chemcore-agent-guide.json --pretty"
+    },
+    "detailedGuide": {
+      "key": "detailed",
+      "file": "chemcore-cli-guide.md",
+      "language": "en",
+      "title": "ChemCore CLI Command Guide",
+      "installedPathHints": [
+        "<install-dir>\\resources\\chemcore-cli-guide.md",
+        "<install-dir>\\chemcore-cli-guide.md"
+      ],
+      "discoveryCommand": "chemcore-cli guide --kind detailed --pretty",
+      "contentCommand": "chemcore-cli guide --kind detailed --include-content --out chemcore-cli-guide.json --pretty"
     }
+  },
+  "jsonOutput": {
+    "default": "Commands that print JSON emit compact single-line JSON unless --pretty is present.",
+    "pretty": "--pretty only changes JSON whitespace: compact JSON becomes line-broken and indented. It does not change fields, values, output files, exit code, schema, ordering, or command behavior.",
+    "out": "When complete output matters, pass --out <path> and read that file instead of relying on a console buffer."
   },
   "formats": {
     "editableInput": ["ccjs", "ccjz", "cdxml", "cdx", "sdf"],
@@ -67,6 +90,7 @@
   },
   "agentWorkflow": [
     "Run `chemcore-cli guide --pretty` first when using Chemcore without source-code context.",
+    "Run `chemcore-cli guide --kind detailed --pretty` to locate the detailed English CLI guide.",
     "Run `chemcore-cli doctor --pretty` to identify the executable directory and install state.",
     "Run `chemcore-cli examples basic --pretty` for a minimal command script that creates an editable document.",
     "Run `chemcore-cli targets <document> --out targets.json --pretty` before precise capture or copy.",

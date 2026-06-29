@@ -1013,6 +1013,11 @@ mod tests {
         assert_eq!(protocol::schema_topic_key("agent-guide"), Some("guide"));
         assert_eq!(protocol::schema_topic_key("clipboard"), Some("copy"));
         assert_eq!(
+            protocol::schema_topic_key("json-output"),
+            Some("jsonOutput")
+        );
+        assert_eq!(protocol::schema_topic_key("pretty"), Some("jsonOutput"));
+        assert_eq!(
             protocol::schema_topic_key("command-script"),
             Some("commandScript")
         );
