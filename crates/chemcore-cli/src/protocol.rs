@@ -373,7 +373,10 @@ fn protocol_schemas_json() -> Value {
         "commandScript": {
             "input": "A JSON object command or an array of command objects.",
             "stdin": "Use '-' for commands.json to read JSON from stdin.",
-            "errorPointers": "Execution reports include command index, commandType, and engine error message."
+            "audit": "new/run results are lightweight by default. They include top-level and per-command document hash/revision transitions plus selector-form created/updated/deleted summaries.",
+            "historyPolicy": "The CLI does not maintain an undo stack or per-step snapshot history. Agents should maintain history with git, temp files, or their own logs.",
+            "snapshots": "Per-command after snapshots and the top-level final snapshot are opt-in with --inspect-after <include>. Use --inspect-after none or --no-inspect-after to force no snapshots.",
+            "errorPointers": "Execution reports include command index, commandType, document transition, changeSummary, and engine error message."
         }
     })
 }

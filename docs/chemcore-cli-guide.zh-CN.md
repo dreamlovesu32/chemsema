@@ -172,7 +172,7 @@ npm run cli -- convert input.cdxml output --format svg
 
 ## 4. 执行报告、id 和内部 JSON
 
-机器人调用 `new` 或 `run` 时应始终写 `--results`。`results.json` 是机器判断命令是否执行、是否修改文档、失败原因和修改后结构的主要依据。
+机器人调用 `new` 或 `run` 时应始终写 `--results`。`results.json` 是机器判断命令是否执行、是否修改文档、新建/更新/删除了哪些 id、失败原因、以及本次读写了哪些文件的主要依据。默认它是轻量审计报告，不是完整历史栈。
 
 ```powershell
 npm run cli -- run input.cdxml commands.json --out output.cdxml --results results.json --document-json after.ccjs --pretty
@@ -189,7 +189,21 @@ npm run cli -- run input.cdxml commands.json --out output.cdxml --results result
   "executedCount": 1,
   "failedIndex": null,
   "commands": [],
-  "final": {},
+  "document": {
+    "hashAlgorithm": "sha256",
+    "hashInput": "chemcore-document-json-v1",
+    "beforeHash": "64 hex chars",
+    "afterHash": "64 hex chars",
+    "hashChanged": true,
+    "beforeRevision": 0,
+    "afterRevision": 1
+  },
+  "io": {
+    "operation": "run",
+    "input": { "path": "input.cdxml" },
+    "script": "commands.json",
+    "output": { "path": "output.cdxml", "format": "cdxml" }
+  },
   "documentJson": {
     "ok": true,
     "path": "after.ccjs",
@@ -212,7 +226,9 @@ npm run cli -- run input.cdxml commands.json --out output.cdxml --results result
 | `executedCount` | 成功进入 engine 并返回结果的命令数 |
 | `failedIndex` | 失败命令的 0-based index；全部成功时为 `null` |
 | `commands` | 每条命令的执行报告 |
-| `final` | 脚本结束后的 inspect 快照 |
+| `document` | 脚本执行前后的文档 hash 和 revision。用它判断文档是否变化，不需要保存完整快照 |
+| `io` | 本次调用的操作名、输入文件、命令脚本、输出文件 |
+| `final` | 脚本结束后的可选 inspect 快照。只有显式使用 `--inspect-after` 时才有 |
 | `documentJson` | `--document-json` 写出结果 |
 | `save` | `--out` 写出结果 |
 | `error` | 顶层失败原因；成功时没有该字段 |
@@ -233,16 +249,40 @@ CLI 失败时进程退出码为非 0，并在 stderr 打印错误；如果传了
   "command": {},
   "revision": 1,
   "beforeRevision": 0,
+  "document": {
+    "hashAlgorithm": "sha256",
+    "hashInput": "chemcore-document-json-v1",
+    "beforeHash": "64 hex chars",
+    "afterHash": "64 hex chars",
+    "hashChanged": true,
+    "beforeRevision": 0,
+    "afterRevision": 1
+  },
+  "changeSummary": {
+    "createdCount": 3,
+    "updatedCount": 1,
+    "deletedCount": 0,
+    "createdSelectors": {
+      "objects": [],
+      "nodes": ["node:n_1", "node:n_2"],
+      "bonds": ["bond:b_3"],
+      "styles": []
+    },
+    "updatedSelectors": { "objects": ["object:obj_editor_molecule"], "nodes": [], "bonds": [], "styles": [] },
+    "deletedSelectors": { "objects": [], "nodes": [], "bonds": [], "styles": [] },
+    "touchedSelectors": ["node:n_1", "node:n_2", "bond:b_3", "object:obj_editor_molecule"]
+  },
   "targets": {},
   "created": {
     "nodes": ["n_1", "n_2"],
     "bonds": ["b_3"]
   },
-  "updated": {},
+  "updated": {
+    "objects": ["obj_editor_molecule"]
+  },
   "deleted": {},
   "diagnostics": {},
-  "engineResult": {},
-  "after": {}
+  "engineResult": {}
 }
 ```
 
@@ -254,11 +294,13 @@ CLI 失败时进程退出码为非 0，并在 stderr 打印错误；如果传了
 | `executed` | 是否成功进入 engine 并拿到 `engineResult` |
 | `changed` | 命令是否改变文档。合法但没有造成变化时为 `false` |
 | `commandType` | 原始命令的 `type` |
+| `document` | 这条命令执行前后的文档 hash 和 revision |
+| `changeSummary` | 以 selector 形式汇总的新建、更新、删除 id，主要给 agent 维护历史使用 |
 | `created` | 新建的节点、键、scene object、style id |
 | `updated` | 被修改的节点、键、scene object、style id |
 | `deleted` | 被删除的节点、键、scene object、style id |
 | `engineResult` | ChemCore engine 原始结果 |
-| `after` | 这条命令执行后的 inspect 快照 |
+| `after` | 这条命令执行后的可选 inspect 快照。只有显式使用 `--inspect-after` 时才有 |
 
 判断规则：
 
@@ -297,22 +339,24 @@ CLI 失败时进程退出码为非 0，并在 stderr 打印错误；如果传了
 | --- | --- |
 | `read-script` | 命令 JSON 文件无法读取或不是 object/array |
 | `execute-command` | 单条命令字段错误、枚举值错误、缺字段，或命令需要当前没有的交互上下文 |
-| `inspect-after` | 命令后自动 inspect 失败 |
-| `inspect-final` | 脚本结束后自动 inspect 失败 |
+| `inspect-after` | 可选的命令后 inspect 失败 |
+| `inspect-final` | 可选的脚本结束后 inspect 失败 |
 | `write-document-json` | `--document-json` 写出失败 |
 | `save-output` | `--out` 保存失败 |
 
-脚本失败时，已经成功的前序命令会保留在内存文档中，并体现在 `final` 和 `--document-json` 中；目标 `--out` 不会保存。
+脚本失败时，已经成功的前序命令会保留在内存文档中，并体现在 `document`、命令条目、以及按需写出的 `--document-json` 中；目标 `--out` 不会保存。
 
-### 4.4 after 快照
+### 4.4 可选 after 快照
 
-默认每条成功命令后都会在 `after` 中返回：
+默认命令报告不包含 `after` 快照，顶层报告也不包含 `final`。这样大文件和长脚本的 results 不会迅速膨胀。CLI 只报告本次发生了什么；历史、回退和分支实验应由调用方或 agent 用 git、临时文件或自己的日志维护。
+
+需要逐条命令的结构快照时，显式使用 `--inspect-after`：
 
 ```text
 summary,objects,molecules
 ```
 
-分子修改后，机器人直接读：
+使用 `--inspect-after summary,objects,molecules` 后，分子修改结果可从这里读：
 
 ```text
 commands[i].after.molecules
@@ -351,7 +395,7 @@ commands[i].after.molecules
 }
 ```
 
-控制 after 内容：
+显式控制 after 内容：
 
 ```powershell
 npm run cli -- run input.cdxml commands.json --results results.json --inspect-after summary,molecules
@@ -363,7 +407,7 @@ npm run cli -- run input.cdxml commands.json --results results.json --inspect-af
 
 ### 4.5 获取对象 id
 
-编辑已有对象时需要 id。id 从 `inspect`、`results.commands[i].created` 或 `results.commands[i].after` 获取。
+编辑已有对象时需要 id。id 从 `inspect`、`targets`、`results.commands[i].created` 或 `results.commands[i].changeSummary` 获取。只有显式使用 `--inspect-after` 时，才从 `results.commands[i].after` 获取。
 
 创建时写 `--results`：
 

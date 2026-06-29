@@ -165,9 +165,12 @@ Run commands against an existing document:
 chemcore-cli run input.cdxml commands.json --out edited.cdxml --results run-results.json --pretty
 ```
 
-Execution reports include per-command success, created/updated/deleted targets,
-diagnostics, and final inspection snapshots. Use `--continue-on-error` for batch
-experiments where one failure should not stop later commands.
+Execution reports include per-command success, document hash/revision changes,
+created/updated/deleted targets, diagnostics, and invocation input/output paths.
+They do not store per-command document snapshots by default. Use `--inspect-after
+summary,objects,molecules` only when a structural snapshot after each command is
+needed. Use `--continue-on-error` for batch experiments where one failure should
+not stop later commands.
 
 ## Copy To Office
 
@@ -186,6 +189,9 @@ touching the clipboard.
 
 Deterministic output policy for agents:
 
+- `new` and `run` are stateless command invocations. The CLI reports what each
+  step changed; the caller should maintain history with git, temp files, or its
+  own log.
 - Always use `--out` for `targets`, `context`, `detail`, and `inspect` when the
   document may be large.
 - Use `context` before `detail` when exploring unknown documents.

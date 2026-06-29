@@ -627,6 +627,7 @@ dependencies = [
  "chemcore-engine",
  "resvg",
  "serde_json",
+ "sha2",
  "tiny-skia",
  "usvg",
 ]

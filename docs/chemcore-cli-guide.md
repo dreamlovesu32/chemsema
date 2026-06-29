@@ -173,7 +173,7 @@ Coordinates use ChemCore document coordinates. `x` increases to the right, and `
 
 ## 4. Execution Reports, Ids, And Internal JSON
 
-Pass `--results` when using `new` or `run`. `results.json` is the primary machine-readable record for whether commands executed, whether they changed the document, what failed, and what the molecule looks like after each command.
+Pass `--results` when using `new` or `run`. `results.json` is the primary machine-readable record for whether commands executed, whether they changed the document, which ids were created/updated/deleted, what failed, and which input/output files were involved. By default it is a lightweight audit report, not a stored history stack.
 
 ```powershell
 npm run cli -- run input.cdxml commands.json --out output.cdxml --results results.json --document-json after.ccjs --pretty
@@ -190,7 +190,21 @@ npm run cli -- run input.cdxml commands.json --out output.cdxml --results result
   "executedCount": 1,
   "failedIndex": null,
   "commands": [],
-  "final": {},
+  "document": {
+    "hashAlgorithm": "sha256",
+    "hashInput": "chemcore-document-json-v1",
+    "beforeHash": "64 hex chars",
+    "afterHash": "64 hex chars",
+    "hashChanged": true,
+    "beforeRevision": 0,
+    "afterRevision": 1
+  },
+  "io": {
+    "operation": "run",
+    "input": { "path": "input.cdxml" },
+    "script": "commands.json",
+    "output": { "path": "output.cdxml", "format": "cdxml" }
+  },
   "documentJson": {
     "ok": true,
     "path": "after.ccjs",
@@ -211,7 +225,9 @@ npm run cli -- run input.cdxml commands.json --out output.cdxml --results result
 | `executedCount` | number of commands that reached the engine and returned an engine result |
 | `failedIndex` | 0-based index of the failed command, or `null` |
 | `commands` | per-command reports |
-| `final` | inspect snapshot after the script stops |
+| `document` | document hash/revision before and after the script. Use this to verify whether the document changed without storing a full snapshot |
+| `io` | operation name plus input/script/output paths for this invocation |
+| `final` | optional inspect snapshot after the script stops, present only when `--inspect-after` is used |
 | `documentJson` | result of `--document-json` |
 | `save` | result of `--out` |
 | `error` | top-level failure reason |
@@ -232,16 +248,40 @@ When the CLI fails, the process exits non-zero and prints an error to stderr. If
   "command": {},
   "revision": 1,
   "beforeRevision": 0,
+  "document": {
+    "hashAlgorithm": "sha256",
+    "hashInput": "chemcore-document-json-v1",
+    "beforeHash": "64 hex chars",
+    "afterHash": "64 hex chars",
+    "hashChanged": true,
+    "beforeRevision": 0,
+    "afterRevision": 1
+  },
+  "changeSummary": {
+    "createdCount": 3,
+    "updatedCount": 1,
+    "deletedCount": 0,
+    "createdSelectors": {
+      "objects": [],
+      "nodes": ["node:n_1", "node:n_2"],
+      "bonds": ["bond:b_3"],
+      "styles": []
+    },
+    "updatedSelectors": { "objects": ["object:obj_editor_molecule"], "nodes": [], "bonds": [], "styles": [] },
+    "deletedSelectors": { "objects": [], "nodes": [], "bonds": [], "styles": [] },
+    "touchedSelectors": ["node:n_1", "node:n_2", "bond:b_3", "object:obj_editor_molecule"]
+  },
   "targets": {},
   "created": {
     "nodes": ["n_1", "n_2"],
     "bonds": ["b_3"]
   },
-  "updated": {},
+  "updated": {
+    "objects": ["obj_editor_molecule"]
+  },
   "deleted": {},
   "diagnostics": {},
-  "engineResult": {},
-  "after": {}
+  "engineResult": {}
 }
 ```
 
@@ -251,11 +291,13 @@ When the CLI fails, the process exits non-zero and prints an error to stderr. If
 | `executed` | whether it reached the engine and returned `engineResult` |
 | `changed` | whether it changed the document. A valid no-op is `false` |
 | `commandType` | original `type` value |
+| `document` | document hash/revision before and after this command |
+| `changeSummary` | selector-form summary of created/updated/deleted ids, intended for agent history |
 | `created` | created node, bond, scene object, and style ids |
 | `updated` | updated node, bond, scene object, and style ids |
 | `deleted` | deleted node, bond, scene object, and style ids |
 | `engineResult` | raw ChemCore engine result |
-| `after` | inspect snapshot after this command |
+| `after` | optional inspect snapshot after this command, present only when `--inspect-after` is used |
 
 Decision table:
 
@@ -294,22 +336,24 @@ Common `error.stage` values:
 | --- | --- |
 | `read-script` | command JSON could not be read or was not an object/array |
 | `execute-command` | invalid field, invalid enum value, missing field, or context-only command |
-| `inspect-after` | automatic inspect after one command failed |
-| `inspect-final` | automatic final inspect failed |
+| `inspect-after` | optional inspect after one command failed |
+| `inspect-final` | optional final inspect failed |
 | `write-document-json` | `--document-json` write failed |
 | `save-output` | `--out` save failed |
 
-If a script fails, earlier successful commands remain in the in-memory document and are visible in `final` and `--document-json`. The target `--out` file is not saved.
+If a script fails, earlier successful commands remain in the in-memory document and are visible in `document`, command entries, and `--document-json` if requested. The target `--out` file is not saved.
 
-### 4.4 After Snapshots
+### 4.4 Optional After Snapshots
 
-By default, each successful command includes these sections in `after`:
+By default, command reports do not include `after` snapshots and the top-level report does not include `final`. This keeps reports small for large documents and long command scripts. The CLI reports what changed; the caller or agent should maintain history with git, temporary files, or its own log.
+
+Pass `--inspect-after` when a command-by-command structural snapshot is useful:
 
 ```text
 summary,objects,molecules
 ```
 
-For molecule edits, read:
+With `--inspect-after summary,objects,molecules`, molecule edits can be read from:
 
 ```text
 commands[i].after.molecules
@@ -348,7 +392,7 @@ It contains the current molecule fragments, nodes, bonds, elements, coordinates,
 }
 ```
 
-Control snapshot contents:
+Control snapshot contents explicitly:
 
 ```powershell
 npm run cli -- run input.cdxml commands.json --results results.json --inspect-after summary,molecules
@@ -360,7 +404,7 @@ npm run cli -- run input.cdxml commands.json --results results.json --inspect-af
 
 ### 4.5 Getting Object Ids
 
-Editing existing objects requires ids. Get ids from `inspect`, `results.commands[i].created`, or `results.commands[i].after`.
+Editing existing objects requires ids. Get ids from `inspect`, `targets`, `results.commands[i].created`, or `results.commands[i].changeSummary`. Use `results.commands[i].after` only when `--inspect-after` was requested.
 
 Write `--results` when creating objects:
 

@@ -9,9 +9,13 @@ use protocol::{
 };
 use serde_json::Map;
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::Path;
+
+const DOCUMENT_HASH_ALGORITHM: &str = "sha256";
+const DOCUMENT_HASH_INPUT: &str = "chemcore-document-json-v1";
 
 fn main() {
     let exit_code = match run() {
@@ -166,6 +170,22 @@ fn new_command(args: &[String]) -> Result<(), String> {
     } else {
         empty_script_execution(&mut engine, inspect_after.as_deref())
     };
+    set_report_field(
+        &mut execution.report,
+        "io",
+        json!({
+            "operation": "new",
+            "input": null,
+            "script": script.as_deref(),
+            "output": {
+                "path": output.as_str(),
+                "format": save_format
+                    .as_deref()
+                    .map(str::to_string)
+                    .or_else(|| infer_format_from_path(&output)),
+            },
+        }),
+    );
     write_optional_document_json(
         &mut execution,
         &engine,
@@ -392,6 +412,30 @@ fn run_command_script(args: &[String]) -> Result<(), String> {
         inspect_after.as_deref(),
         continue_on_error,
     );
+    let output_io = output
+        .as_deref()
+        .map(|path| {
+            json!({
+                "path": path,
+                "format": save_format
+                    .as_deref()
+                    .map(str::to_string)
+                    .or_else(|| infer_format_from_path(path)),
+            })
+        })
+        .unwrap_or(Value::Null);
+    set_report_field(
+        &mut execution.report,
+        "io",
+        json!({
+            "operation": "run",
+            "input": {
+                "path": input.as_str(),
+            },
+            "script": script.as_str(),
+            "output": output_io,
+        }),
+    );
     write_optional_document_json(
         &mut execution,
         &engine,
@@ -485,20 +529,32 @@ fn execute_command_file(
     let commands = match read_command_values(script) {
         Ok(commands) => commands,
         Err(error) => {
+            let script_before_hash = document_hash(engine);
+            let script_before_revision = engine.revision();
+            let mut report = json!({
+                "ok": false,
+                "commandCount": 0,
+                "executedCount": 0,
+                "failedCount": 0,
+                "failedIndex": null,
+                "failedIndices": [],
+                "continueOnError": continue_on_error,
+                "commands": [],
+                "error": {
+                    "stage": "read-script",
+                    "message": error,
+                },
+            });
+            append_script_document_summary(
+                &mut report,
+                script_before_hash,
+                script_before_revision,
+                engine,
+            );
             return ScriptExecution {
                 ok: false,
                 error_message: Some(error.clone()),
-                report: json!({
-                    "ok": false,
-                    "commandCount": 0,
-                    "executedCount": 0,
-                    "failedIndex": null,
-                    "commands": [],
-                    "error": {
-                        "stage": "read-script",
-                        "message": error,
-                    },
-                }),
+                report,
             };
         }
     };
@@ -516,8 +572,12 @@ fn execute_command_values(
     let mut executed_count = 0usize;
     let mut failed_indices = Vec::new();
     let mut first_error_message = None;
+    let script_before_hash = document_hash(engine);
+    let script_before_revision = engine.revision();
     for (index, command) in commands.into_iter().enumerate() {
         let command_type = command_type_name(&command);
+        let before_hash = document_hash(engine);
+        let before_revision = engine.revision();
         match execute_json_command(engine, command.clone()) {
             Ok(engine_result) => {
                 executed_count += 1;
@@ -525,6 +585,21 @@ fn execute_command_values(
                     .get("changed")
                     .and_then(Value::as_bool)
                     .unwrap_or(false);
+                let after_hash = document_hash(engine);
+                let after_revision = engine.revision();
+                let created = engine_result
+                    .get("created")
+                    .cloned()
+                    .unwrap_or_else(|| json!({}));
+                let updated = engine_result
+                    .get("updated")
+                    .cloned()
+                    .unwrap_or_else(|| json!({}));
+                let deleted = engine_result
+                    .get("deleted")
+                    .cloned()
+                    .unwrap_or_else(|| json!({}));
+                let change_summary = change_summary_json(&engine_result);
                 let mut entry = json!({
                     "index": index,
                     "ok": true,
@@ -537,10 +612,17 @@ fn execute_command_values(
                         .get("beforeRevision")
                         .cloned()
                         .unwrap_or(Value::Null),
+                    "document": document_transition_json(
+                        &before_hash,
+                        before_revision,
+                        &after_hash,
+                        after_revision,
+                    ),
+                    "changeSummary": change_summary,
                     "targets": engine_result.get("targets").cloned().unwrap_or_else(|| json!({})),
-                    "created": engine_result.get("created").cloned().unwrap_or_else(|| json!({})),
-                    "updated": engine_result.get("updated").cloned().unwrap_or_else(|| json!({})),
-                    "deleted": engine_result.get("deleted").cloned().unwrap_or_else(|| json!({})),
+                    "created": created,
+                    "updated": updated,
+                    "deleted": deleted,
                     "diagnostics": engine_result
                         .get("diagnostics")
                         .cloned()
@@ -555,6 +637,8 @@ fn execute_command_values(
                 if first_error_message.is_none() {
                     first_error_message = Some(error.clone());
                 }
+                let after_hash = document_hash(engine);
+                let after_revision = engine.revision();
                 entries.push(json!({
                     "index": index,
                     "ok": false,
@@ -562,6 +646,13 @@ fn execute_command_values(
                     "changed": false,
                     "commandType": command_type,
                     "command": command,
+                    "document": document_transition_json(
+                        &before_hash,
+                        before_revision,
+                        &after_hash,
+                        after_revision,
+                    ),
+                    "changeSummary": empty_change_summary_json(),
                     "error": {
                         "stage": "execute-command",
                         "message": error,
@@ -590,6 +681,12 @@ fn execute_command_values(
                         "message": error_message,
                     },
                 });
+                append_script_document_summary(
+                    &mut report,
+                    script_before_hash,
+                    script_before_revision,
+                    engine,
+                );
                 append_final_snapshot(engine, &mut report, inspect_after);
                 return ScriptExecution {
                     ok: false,
@@ -619,6 +716,12 @@ fn execute_command_values(
                 "message": error_message,
             },
         });
+        append_script_document_summary(
+            &mut report,
+            script_before_hash,
+            script_before_revision,
+            engine,
+        );
         append_final_snapshot(engine, &mut report, inspect_after);
         return ScriptExecution {
             ok: false,
@@ -636,6 +739,12 @@ fn execute_command_values(
         "continueOnError": continue_on_error,
         "commands": entries,
     });
+    append_script_document_summary(
+        &mut report,
+        script_before_hash,
+        script_before_revision,
+        engine,
+    );
     append_final_snapshot(engine, &mut report, inspect_after);
     ScriptExecution {
         ok: true,
@@ -652,9 +761,18 @@ fn empty_script_execution(
         "ok": true,
         "commandCount": 0,
         "executedCount": 0,
+        "failedCount": 0,
         "failedIndex": null,
+        "failedIndices": [],
+        "continueOnError": false,
         "commands": [],
     });
+    append_script_document_summary(
+        &mut report,
+        document_hash(engine),
+        engine.revision(),
+        engine,
+    );
     append_final_snapshot(engine, &mut report, inspect_after);
     ScriptExecution {
         ok: true,
@@ -699,6 +817,146 @@ fn append_final_snapshot(
             }),
         ),
     }
+}
+
+fn append_script_document_summary(
+    report: &mut Value,
+    before_hash: Option<String>,
+    before_revision: u64,
+    engine: &Engine,
+) {
+    let after_hash = document_hash(engine);
+    set_report_field(
+        report,
+        "document",
+        document_transition_json(
+            &before_hash,
+            before_revision,
+            &after_hash,
+            engine.revision(),
+        ),
+    );
+}
+
+fn document_transition_json(
+    before_hash: &Option<String>,
+    before_revision: u64,
+    after_hash: &Option<String>,
+    after_revision: u64,
+) -> Value {
+    json!({
+        "hashAlgorithm": DOCUMENT_HASH_ALGORITHM,
+        "hashInput": DOCUMENT_HASH_INPUT,
+        "beforeHash": before_hash,
+        "afterHash": after_hash,
+        "hashChanged": hash_changed_value(before_hash, after_hash),
+        "beforeRevision": before_revision,
+        "afterRevision": after_revision,
+    })
+}
+
+fn hash_changed_value(before_hash: &Option<String>, after_hash: &Option<String>) -> Value {
+    match (before_hash, after_hash) {
+        (Some(before_hash), Some(after_hash)) => json!(before_hash != after_hash),
+        _ => Value::Null,
+    }
+}
+
+fn document_hash(engine: &Engine) -> Option<String> {
+    document_json(engine).ok().map(|text| {
+        let digest = Sha256::digest(text.as_bytes());
+        digest
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>()
+    })
+}
+
+fn change_summary_json(engine_result: &Value) -> Value {
+    change_summary_from_targets(
+        engine_result.get("created"),
+        engine_result.get("updated"),
+        engine_result.get("deleted"),
+    )
+}
+
+fn empty_change_summary_json() -> Value {
+    change_summary_from_targets(None, None, None)
+}
+
+fn change_summary_from_targets(
+    created: Option<&Value>,
+    updated: Option<&Value>,
+    deleted: Option<&Value>,
+) -> Value {
+    let created_selectors = target_selector_group(created);
+    let updated_selectors = target_selector_group(updated);
+    let deleted_selectors = target_selector_group(deleted);
+    let touched_selectors =
+        combined_touched_selectors(&[&created_selectors, &updated_selectors, &deleted_selectors]);
+    json!({
+        "createdCount": selector_group_count(&created_selectors),
+        "updatedCount": selector_group_count(&updated_selectors),
+        "deletedCount": selector_group_count(&deleted_selectors),
+        "createdSelectors": created_selectors,
+        "updatedSelectors": updated_selectors,
+        "deletedSelectors": deleted_selectors,
+        "touchedSelectors": touched_selectors,
+    })
+}
+
+fn target_selector_group(targets: Option<&Value>) -> Value {
+    json!({
+        "objects": target_selector_values(targets, "objects", "object:"),
+        "nodes": target_selector_values(targets, "nodes", "node:"),
+        "bonds": target_selector_values(targets, "bonds", "bond:"),
+        "styles": target_selector_values(targets, "styles", "style:"),
+    })
+}
+
+fn target_selector_values(targets: Option<&Value>, key: &str, prefix: &str) -> Vec<String> {
+    targets
+        .and_then(|targets| targets.get(key))
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(|id| format!("{prefix}{id}"))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn selector_group_count(group: &Value) -> usize {
+    selector_group_values(group).len()
+}
+
+fn selector_group_values(group: &Value) -> Vec<String> {
+    let mut values = Vec::new();
+    for key in ["objects", "nodes", "bonds", "styles"] {
+        let Some(items) = group.get(key).and_then(Value::as_array) else {
+            continue;
+        };
+        for item in items {
+            if let Some(selector) = item.as_str() {
+                values.push(selector.to_string());
+            }
+        }
+    }
+    values
+}
+
+fn combined_touched_selectors(groups: &[&Value]) -> Vec<String> {
+    let mut selectors = Vec::new();
+    for group in groups {
+        for selector in selector_group_values(group) {
+            if !selectors.contains(&selector) {
+                selectors.push(selector);
+            }
+        }
+    }
+    selectors
 }
 
 fn inspect_engine(engine: &mut Engine, include: &[String]) -> Result<Value, String> {
@@ -936,11 +1194,7 @@ fn split_csv(value: &str) -> Vec<String> {
 }
 
 fn default_inspect_after() -> Option<Vec<String>> {
-    Some(vec![
-        "summary".to_string(),
-        "objects".to_string(),
-        "molecules".to_string(),
-    ])
+    None
 }
 
 fn parse_inspect_after_value(value: &str) -> Option<Vec<String>> {
@@ -959,6 +1213,14 @@ fn parse_inspect_after_value(value: &str) -> Option<Vec<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn snapshot_include() -> Vec<String> {
+        vec![
+            "summary".to_string(),
+            "objects".to_string(),
+            "molecules".to_string(),
+        ]
+    }
 
     #[test]
     fn normalizes_common_formats() {
@@ -1069,7 +1331,7 @@ mod tests {
     #[test]
     fn execution_report_includes_after_snapshot_for_success() {
         let mut engine = Engine::new();
-        let include = default_inspect_after().unwrap();
+        let include = snapshot_include();
         let execution = execute_command_values(
             &mut engine,
             vec![json!({
@@ -1090,14 +1352,67 @@ mod tests {
         assert_eq!(execution.report["commands"][0]["ok"], true);
         assert_eq!(execution.report["commands"][0]["executed"], true);
         assert_eq!(execution.report["commands"][0]["changed"], true);
+        assert_eq!(
+            execution.report["commands"][0]["document"]["hashAlgorithm"],
+            DOCUMENT_HASH_ALGORITHM
+        );
+        assert_eq!(
+            execution.report["commands"][0]["document"]["hashInput"],
+            DOCUMENT_HASH_INPUT
+        );
+        assert_eq!(
+            execution.report["commands"][0]["document"]["hashChanged"],
+            true
+        );
+        assert_eq!(execution.report["document"]["hashChanged"], true);
+        assert_eq!(
+            execution.report["commands"][0]["changeSummary"]["createdCount"],
+            3
+        );
+        assert!(
+            execution.report["commands"][0]["changeSummary"]["touchedSelectors"]
+                .as_array()
+                .unwrap()
+                .contains(&json!("node:n_1"))
+        );
         assert!(execution.report["commands"][0]["after"]["molecules"].is_array());
         assert!(execution.report["final"]["molecules"].is_array());
     }
 
     #[test]
+    fn execution_report_is_lightweight_by_default() {
+        let mut engine = Engine::new();
+        let execution = execute_command_values(
+            &mut engine,
+            vec![json!({
+                "type": "add-bond",
+                "begin": { "x": 100.0, "y": 120.0 },
+                "end": { "x": 140.0, "y": 120.0 },
+                "order": 1,
+                "variant": "single",
+            })],
+            default_inspect_after().as_deref(),
+            false,
+        );
+
+        assert!(execution.ok);
+        assert!(execution.report["commands"][0]["after"].is_null());
+        assert!(execution.report["final"].is_null());
+        assert_eq!(execution.report["document"]["hashChanged"], true);
+        assert_eq!(
+            execution.report["commands"][0]["document"]["hashChanged"],
+            true
+        );
+        assert_eq!(
+            execution.report["commands"][0]["changeSummary"]["createdSelectors"]["bonds"][0],
+            "bond:b_3"
+        );
+    }
+
+    #[test]
     fn execution_report_records_failed_command_without_saving() {
         let mut engine = Engine::new();
-        let include = default_inspect_after().unwrap();
+        let include = snapshot_include();
         let execution = execute_command_values(
             &mut engine,
             vec![
@@ -1130,6 +1445,14 @@ mod tests {
         assert_eq!(execution.report["commands"][0]["executed"], true);
         assert_eq!(execution.report["commands"][1]["executed"], false);
         assert_eq!(
+            execution.report["commands"][1]["document"]["hashChanged"],
+            false
+        );
+        assert_eq!(
+            execution.report["commands"][1]["changeSummary"]["touchedSelectors"],
+            json!([])
+        );
+        assert_eq!(
             execution.report["commands"][1]["error"]["stage"],
             "execute-command"
         );
@@ -1139,7 +1462,7 @@ mod tests {
     #[test]
     fn execution_report_can_continue_after_command_failures() {
         let mut engine = Engine::new();
-        let include = default_inspect_after().unwrap();
+        let include = snapshot_include();
         let execution = execute_command_values(
             &mut engine,
             vec![
