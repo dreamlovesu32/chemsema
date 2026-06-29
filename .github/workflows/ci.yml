@@ -36,8 +36,8 @@ jobs:
       - name: Install Node dependencies
         run: npm ci
 
-      - name: Build Office resource
-        run: cargo build -p chemcore-office --release
+      - name: Build desktop bundled resources
+        run: cargo build -p chemcore-office -p chemcore-cli --release
 
       - name: Run Rust tests
         run: cargo test

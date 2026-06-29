@@ -282,7 +282,7 @@ Build release binaries:
 
 ```bash
 npm run desktop:build-fast
-cargo build -p chemcore-office --release
+cargo build -p chemcore-office -p chemcore-cli --release
 ```
 
 Register the Office/OLE integration for the current user:

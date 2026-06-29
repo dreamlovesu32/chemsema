@@ -207,7 +207,7 @@ npm run cli -- run input.cdxml commands.json --out edited.cdxml --results result
 
 ```bash
 npm run desktop:build-fast
-cargo build -p chemcore-office --release
+cargo build -p chemcore-office -p chemcore-cli --release
 ```
 
 为当前用户注册 Office/OLE 集成：

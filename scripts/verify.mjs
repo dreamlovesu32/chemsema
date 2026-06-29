@@ -20,6 +20,7 @@ function run(command, args, options = {}) {
   return result;
 }
 
+run("cargo", ["build", "-p", "chemcore-office", "-p", "chemcore-cli", "--release"]);
 run("cargo", ["test"]);
 run(process.execPath, ["scripts/build-engine-wasm.mjs"]);
 run(process.execPath, ["--check", "viewer/app.js"]);
