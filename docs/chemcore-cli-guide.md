@@ -50,6 +50,46 @@ indented. It does not change fields, values, output files, exit code, schema,
 ordering, or command behavior. Without `--pretty`, JSON is compact single-line
 JSON.
 
+## Invocation Modes
+
+ChemCore CLI has two invocation modes.
+
+Use a PowerShell one-shot command when each operation can start a process, read
+its input files, write its output files, print one JSON result, and exit. This is
+the simplest mode for independent inspection, conversion, export, copy, precise
+capture, or a single `new`/`run` edit batch. One-shot commands are stateless:
+edits persist only through explicit output paths such as `--out`,
+`--results`, or `--document-json`.
+
+```powershell
+chemcore-cli targets input.cdxml --out targets.json --pretty
+chemcore-cli capture input.cdxml --target molecule:0 --out molecule.png --scale 6 --pretty
+chemcore-cli run input.cdxml commands.json --out edited.cdxml --results results.json --pretty
+```
+
+Use a JSONL session when many operations target the same document. Start one
+long-lived process with `chemcore-cli session [input]`, then write one JSON
+request per stdin line and read one JSON response per stdout line. A session
+keeps the document in memory, so repeated `targets`, `detail`, `context`,
+`capture`, `execute`, and `save` operations avoid repeated process startup and
+file import.
+
+```powershell
+chemcore-cli session input.cdxml
+```
+
+```jsonl
+{"id":1,"op":"targets"}
+{"id":2,"op":"capture","target":"molecule:0","out":"molecule.png","width":1800}
+{"id":3,"op":"save","out":"edited.cdxml"}
+{"id":4,"op":"exit"}
+```
+
+The automatic CDXML/CDX import cache is not a third invocation mode. It only
+speeds repeated one-shot commands by caching the normalized imported document on
+disk. `session` is still the fastest and clearest mode for long iterative work
+on one large file.
+
 ## 2. File Commands
 
 Opening a file means passing the file path to `inspect`, `run`, `convert`, or `export`.

@@ -49,6 +49,33 @@ chemcore-cli capabilities --pretty
 缩进的 JSON。它不改变字段、值、输出文件、退出码、schema、排序或命令行为。
 不加 `--pretty` 时，JSON 是紧凑单行 JSON。
 
+## 调用模式
+
+ChemCore CLI 有两种调用模式。
+
+当每个操作都可以启动一个进程、读取输入文件、写输出文件、打印一次 JSON 结果并退出时，用 PowerShell 单命令模式。这是独立检查、转换、导出、复制、精确截图，或单次 `new`/`run` 编辑批处理的最简单模式。单命令模式是无状态的：编辑只会通过显式输出路径持久化，例如 `--out`、`--results` 或 `--document-json`。
+
+```powershell
+chemcore-cli targets input.cdxml --out targets.json --pretty
+chemcore-cli capture input.cdxml --target molecule:0 --out molecule.png --scale 6 --pretty
+chemcore-cli run input.cdxml commands.json --out edited.cdxml --results results.json --pretty
+```
+
+当很多操作都针对同一个文档时，用 JSONL session。用 `chemcore-cli session [input]` 启动一个长驻进程，然后向 stdin 每行写一个 JSON 请求，从 stdout 每行读一个 JSON 响应。session 会把文档保持在内存里，所以反复执行 `targets`、`detail`、`context`、`capture`、`execute` 和 `save` 时，不需要每步重新启动进程和重新导入文件。
+
+```powershell
+chemcore-cli session input.cdxml
+```
+
+```jsonl
+{"id":1,"op":"targets"}
+{"id":2,"op":"capture","target":"molecule:0","out":"molecule.png","width":1800}
+{"id":3,"op":"save","out":"edited.cdxml"}
+{"id":4,"op":"exit"}
+```
+
+自动 CDXML/CDX 导入缓存不是第三种调用模式。它只是通过磁盘上的归一化导入文档缓存，加速重复的单命令调用。对同一个大文件做长时间迭代时，`session` 仍然是最快、边界最清晰的模式。
+
 ## 2. 文件命令
 
 打开文件就是把文件路径作为 `inspect`、`run`、`convert` 或 `export` 的输入参数。

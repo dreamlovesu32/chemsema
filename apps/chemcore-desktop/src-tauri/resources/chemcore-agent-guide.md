@@ -36,6 +36,37 @@ chemcore-cli guide --kind agent --include-content --out chemcore-agent-guide.jso
 chemcore-cli guide --kind detailed --include-content --out chemcore-cli-guide.json --pretty
 ```
 
+## Invocation Modes
+
+There are two CLI invocation modes.
+
+Use a PowerShell one-shot command when one operation can start a process, read
+files, write files, print one JSON result, and exit.
+
+```powershell
+chemcore-cli targets input.cdxml --out targets.json --pretty
+chemcore-cli capture input.cdxml --target molecule:0 --out molecule.png --scale 6 --pretty
+```
+
+Use a JSONL session for repeated work on one document. Start one long-lived
+process, write one JSON request per stdin line, and read one JSON response per
+stdout line. This keeps the document in memory and avoids repeated startup and
+file import.
+
+```powershell
+chemcore-cli session input.cdxml
+```
+
+```jsonl
+{"id":1,"op":"targets"}
+{"id":2,"op":"capture","target":"molecule:0","out":"molecule.png","width":1800}
+{"id":3,"op":"exit"}
+```
+
+The CDXML/CDX import cache is not a third mode. It only speeds repeated
+one-shot commands. Prefer `session` for long iterative work on the same large
+file.
+
 ## Core Rule
 
 Use a layered workflow:
