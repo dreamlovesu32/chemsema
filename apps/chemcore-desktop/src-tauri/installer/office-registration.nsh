@@ -1,3 +1,30 @@
+!include WinMessages.nsh
+
+!macro CHEMCORE_WRITE_PATH_HELPER
+  InitPluginsDir
+  FileOpen $4 "$PLUGINSDIR\chemcore-path.ps1" w
+  FileWrite $4 "param([string]$$Action, [string]$$Dir, [string]$$TargetName)$\r$\n"
+  FileWrite $4 "$$target = [EnvironmentVariableTarget]::$$TargetName$\r$\n"
+  FileWrite $4 "$$current = [Environment]::GetEnvironmentVariable('Path', $$target)$\r$\n"
+  FileWrite $4 "$$parts = @()$\r$\n"
+  FileWrite $4 "if (-not [string]::IsNullOrEmpty($$current)) { $$parts = @($$current -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace($$_) }) }$\r$\n"
+  FileWrite $4 "$$normalizedDir = $$Dir.TrimEnd('\')$\r$\n"
+  FileWrite $4 "$$kept = @()$\r$\n"
+  FileWrite $4 "$$found = $$false$\r$\n"
+  FileWrite $4 "foreach ($$part in $$parts) {$\r$\n"
+  FileWrite $4 "  if ([string]::Equals($$part.TrimEnd('\'), $$normalizedDir, [StringComparison]::OrdinalIgnoreCase)) { $$found = $$true } else { $$kept += $$part }$\r$\n"
+  FileWrite $4 "}$\r$\n"
+  FileWrite $4 "if ($$Action -eq 'Add') {$\r$\n"
+  FileWrite $4 "  if ($$found) { $$next = $$parts -join ';' } else { $$next = @($$parts + $$Dir) -join ';' }$\r$\n"
+  FileWrite $4 "} elseif ($$Action -eq 'Remove') {$\r$\n"
+  FileWrite $4 "  $$next = $$kept -join ';'$\r$\n"
+  FileWrite $4 "} else {$\r$\n"
+  FileWrite $4 "  throw 'Unknown PATH action: ' + $$Action$\r$\n"
+  FileWrite $4 "}$\r$\n"
+  FileWrite $4 "[Environment]::SetEnvironmentVariable('Path', $$next, $$target)$\r$\n"
+  FileClose $4
+!macroend
+
 !macro NSIS_HOOK_POSTINSTALL
   DetailPrint "Registering Chemcore Office/OLE integration..."
 
@@ -87,6 +114,41 @@
   DetailPrint "Chemcore CLI app path registration failed."
 
   chemcore_cli_register_done:
+  IfFileExists "$3\chemcore-cli.exe" chemcore_cli_path_begin
+  DetailPrint "Chemcore CLI PATH registration skipped: chemcore-cli.exe was not found in the selected CLI directory."
+  Goto chemcore_cli_path_done
+
+  chemcore_cli_path_begin:
+  DetailPrint "Adding Chemcore CLI directory to PATH..."
+  !insertmacro CHEMCORE_WRITE_PATH_HELPER
+  ClearErrors
+  ExecWait 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\chemcore-path.ps1" Add "$3" Machine' $0
+  IfErrors chemcore_cli_path_machine_failed
+  StrCmp $0 0 chemcore_cli_path_machine_done chemcore_cli_path_machine_failed
+
+  chemcore_cli_path_machine_done:
+  DetailPrint "Chemcore CLI machine PATH registration succeeded."
+  Goto chemcore_cli_path_notify
+
+  chemcore_cli_path_machine_failed:
+  DetailPrint "Chemcore CLI machine PATH registration failed; trying current-user PATH."
+  ClearErrors
+  ExecWait 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\chemcore-path.ps1" Add "$3" User' $0
+  IfErrors chemcore_cli_path_user_failed
+  StrCmp $0 0 chemcore_cli_path_user_done chemcore_cli_path_user_failed
+
+  chemcore_cli_path_user_done:
+  DetailPrint "Chemcore CLI current-user PATH registration succeeded."
+  Goto chemcore_cli_path_notify
+
+  chemcore_cli_path_user_failed:
+  DetailPrint "Chemcore CLI PATH registration failed. App Paths registration may still allow ShellExecute launchers to find chemcore-cli.exe."
+  Goto chemcore_cli_path_done
+
+  chemcore_cli_path_notify:
+  SendMessage ${HWND_BROADCAST} ${WM_SETTINGCHANGE} 0 "STR:Environment" /TIMEOUT=5000
+
+  chemcore_cli_path_done:
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL
@@ -120,5 +182,18 @@
   DetailPrint "Unregistering Chemcore CLI app path..."
   DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\App Paths\chemcore-cli.exe"
   DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\chemcore-cli.exe"
+
+  DetailPrint "Removing Chemcore CLI directories from PATH..."
+  !insertmacro CHEMCORE_WRITE_PATH_HELPER
+  ClearErrors
+  ExecWait 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\chemcore-path.ps1" Remove "$INSTDIR" Machine' $0
+  ClearErrors
+  ExecWait 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\chemcore-path.ps1" Remove "$INSTDIR\resources" Machine' $0
+  ClearErrors
+  ExecWait 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\chemcore-path.ps1" Remove "$INSTDIR" User' $0
+  ClearErrors
+  ExecWait 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\chemcore-path.ps1" Remove "$INSTDIR\resources" User' $0
+  SendMessage ${HWND_BROADCAST} ${WM_SETTINGCHANGE} 0 "STR:Environment" /TIMEOUT=5000
+
   Delete "$INSTDIR\chemcore-cli.exe"
 !macroend

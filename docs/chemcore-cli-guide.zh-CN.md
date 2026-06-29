@@ -35,7 +35,8 @@ npm.cmd run cli -- --help
 ```
 
 桌面端安装版会把 `chemcore-cli.exe` 和 GUI 一起安装，并随安装包携带英文详细指南
-`chemcore-cli-guide.md`。安装版 CLI 可以从这些命令开始：
+`chemcore-cli-guide.md`。安装器会把 CLI 目录加入 PATH。安装后打开新的终端，
+从这些命令开始：
 
 ```powershell
 chemcore-cli guide --pretty

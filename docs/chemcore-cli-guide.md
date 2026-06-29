@@ -35,8 +35,8 @@ npm.cmd run cli -- --help
 ```
 
 Installed desktop builds also install `chemcore-cli.exe` next to the GUI and
-ship this English guide as `chemcore-cli-guide.md`. Start an installed CLI
-session with:
+ship this English guide as `chemcore-cli-guide.md`. The installer adds the CLI
+directory to PATH. Open a new terminal after installing, then start with:
 
 ```powershell
 chemcore-cli guide --pretty

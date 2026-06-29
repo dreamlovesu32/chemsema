@@ -463,7 +463,9 @@ pub(crate) fn about_value() -> Value {
             "detailedGuideInstalledPathHint": "<install-dir>\\resources\\chemcore-cli-guide.md",
             "installer": "NSIS x64",
             "windowsAppPaths": ["chemcore-cli.exe"],
-            "consoleNote": "Console agents can read installedPathHints from this file or from `chemcore-cli doctor`; Windows App Paths are also registered for ShellExecute-style launchers."
+            "pathRegistration": "The installer adds the Chemcore CLI directory to PATH. Open a new terminal after installing, then run `chemcore-cli guide --pretty`.",
+            "pathRegistrationFallback": "If machine PATH registration fails, the installer writes the current-user PATH. App Paths are also registered for ShellExecute-style launchers.",
+            "consoleNote": "Console agents can call `chemcore-cli` from a new terminal after install, or read installedPathHints from this file and `chemcore-cli doctor`."
         },
         "documentation": documentation_metadata(),
         "formats": {

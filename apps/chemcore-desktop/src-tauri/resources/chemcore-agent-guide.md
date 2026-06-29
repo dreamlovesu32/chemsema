@@ -16,6 +16,9 @@ chemcore-cli about --pretty
 chemcore-cli capabilities --pretty
 ```
 
+Installed builds add the CLI directory to PATH. Open a new terminal after
+installing, then call `chemcore-cli` directly.
+
 The CLI prints JSON by default. Without `--pretty`, JSON is compact single-line
 JSON. `--pretty` only changes JSON whitespace: compact JSON becomes line-broken
 and indented. It does not change fields, values, output files, exit code,
