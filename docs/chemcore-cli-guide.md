@@ -93,6 +93,11 @@ File output policy:
 - `new`, `convert`, and `export` require explicit output paths because they create primary document files.
 - Every file-writing command verifies after writing that the target exists, is a regular file, and has the expected or minimum byte size. A failed verification is a command failure.
 
+Import cache policy:
+
+- CDXML/CDX input uses an automatic normalized-document import cache to speed repeated CLI invocations. The cache key includes the source content, format, CLI version, and executable stamp, so changed files or rebuilt binaries miss the cache.
+- Use `CHEMCORE_CLI_DISABLE_CACHE=1` to disable import caching. Use `CHEMCORE_CLI_CACHE_DIR=<path>` to place the cache in a specific directory. `chemcore-cli doctor --pretty` reports the effective cache settings.
+
 Error output policy:
 
 - Error JSON includes `error.kind`, `message`, `hint`, `fix`, `usage`, `examples`, and `suggestions`.

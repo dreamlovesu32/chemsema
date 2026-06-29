@@ -12,10 +12,12 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::{self, Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::time::UNIX_EPOCH;
 
 const DOCUMENT_HASH_ALGORITHM: &str = "sha256";
 const DOCUMENT_HASH_INPUT: &str = "chemcore-document-json-v1";
+const IMPORT_CACHE_VERSION: &str = "chemcore-cli-import-cache-v1";
 
 fn main() {
     let exit_code = match run() {
@@ -1044,7 +1046,9 @@ fn load_engine_from_file(path: &str) -> Result<Engine, String> {
     let mut engine = Engine::new();
     match opened.format.as_str() {
         "ccjs" | "ccjz" => engine.load_document_json(&opened.text)?,
-        "cdxml" | "cdx" => engine.load_cdxml_document(&opened.text)?,
+        "cdxml" | "cdx" => {
+            load_cdxml_document_with_cache(&mut engine, &opened.text, &opened.format)?
+        }
         "sdf" => engine.load_sdf_document(&opened.text)?,
         "svg" => {
             return Err(
@@ -1054,6 +1058,158 @@ fn load_engine_from_file(path: &str) -> Result<Engine, String> {
         format => return Err(format!("Unsupported input format '{format}'.")),
     }
     Ok(engine)
+}
+
+fn load_cdxml_document_with_cache(
+    engine: &mut Engine,
+    source_text: &str,
+    format: &str,
+) -> Result<(), String> {
+    if cli_import_cache_enabled() {
+        let cache_path = import_cache_path(source_text, format);
+        if cache_path.is_file() {
+            let cache_result = fs::read_to_string(&cache_path)
+                .map_err(|error| {
+                    format!(
+                        "Failed to read import cache {}: {error}",
+                        cache_path.display()
+                    )
+                })
+                .and_then(|cached_json| {
+                    let mut cached_engine = Engine::new();
+                    cached_engine.load_document_json(&cached_json)?;
+                    Ok(cached_engine)
+                });
+            match cache_result {
+                Ok(cached_engine) => {
+                    *engine = cached_engine;
+                    return Ok(());
+                }
+                Err(_) => {
+                    let _ = fs::remove_file(&cache_path);
+                }
+            }
+        }
+
+        engine.load_cdxml_document(source_text)?;
+        if let Ok(document_json) = document_json(engine) {
+            let _ = write_import_cache(&cache_path, &document_json);
+        }
+        return Ok(());
+    }
+
+    engine.load_cdxml_document(source_text)
+}
+
+pub(crate) fn cli_import_cache_enabled() -> bool {
+    !std::env::var("CHEMCORE_CLI_DISABLE_CACHE")
+        .ok()
+        .is_some_and(|value| {
+            matches!(
+                value.to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+}
+
+pub(crate) fn cli_cache_dir() -> PathBuf {
+    if let Ok(path) = std::env::var("CHEMCORE_CLI_CACHE_DIR") {
+        if !path.trim().is_empty() {
+            return PathBuf::from(path);
+        }
+    }
+    #[cfg(windows)]
+    {
+        if let Ok(path) = std::env::var("LOCALAPPDATA") {
+            if !path.trim().is_empty() {
+                return PathBuf::from(path).join("ChemCore").join("cli-cache");
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        if let Ok(path) = std::env::var("XDG_CACHE_HOME") {
+            if !path.trim().is_empty() {
+                return PathBuf::from(path).join("chemcore").join("cli-cache");
+            }
+        }
+        if let Ok(path) = std::env::var("HOME") {
+            if !path.trim().is_empty() {
+                return PathBuf::from(path)
+                    .join(".cache")
+                    .join("chemcore")
+                    .join("cli-cache");
+            }
+        }
+    }
+    std::env::temp_dir().join("chemcore-cli").join("cache")
+}
+
+fn import_cache_path(source_text: &str, format: &str) -> PathBuf {
+    cli_cache_dir()
+        .join("imports")
+        .join(IMPORT_CACHE_VERSION)
+        .join(format!("{}.ccjs", import_cache_key(source_text, format)))
+}
+
+fn import_cache_key(source_text: &str, format: &str) -> String {
+    let mut digest = Sha256::new();
+    digest.update(IMPORT_CACHE_VERSION.as_bytes());
+    digest.update(b"\0");
+    digest.update(env!("CARGO_PKG_VERSION").as_bytes());
+    digest.update(b"\0");
+    digest.update(current_exe_cache_stamp().as_bytes());
+    digest.update(b"\0");
+    digest.update(format.as_bytes());
+    digest.update(b"\0");
+    digest.update(source_text.as_bytes());
+    digest
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>()
+}
+
+fn current_exe_cache_stamp() -> String {
+    let Some(metadata) = std::env::current_exe()
+        .ok()
+        .and_then(|path| fs::metadata(path).ok())
+    else {
+        return "unknown-exe".to_string();
+    };
+    let modified_ms = metadata
+        .modified()
+        .ok()
+        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| duration.as_millis())
+        .unwrap_or_default();
+    format!("{}:{modified_ms}", metadata.len())
+}
+
+fn write_import_cache(path: &Path, document_json: &str) -> Result<u64, String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|error| {
+            format!(
+                "Failed to create import cache directory {}: {error}",
+                parent.display()
+            )
+        })?;
+    }
+    let temp_path = path.with_extension(format!("tmp-{}", std::process::id()));
+    fs::write(&temp_path, document_json.as_bytes()).map_err(|error| {
+        format!(
+            "Failed to write import cache {}: {error}",
+            temp_path.display()
+        )
+    })?;
+    verify_file_written_exact(&temp_path, document_json.len() as u64, "import cache")?;
+    fs::rename(&temp_path, path).map_err(|error| {
+        format!(
+            "Failed to move import cache into place {}: {error}",
+            path.display()
+        )
+    })?;
+    verify_file_written_exact(path, document_json.len() as u64, "import cache")
 }
 
 fn write_engine_output(engine: &Engine, path: &str, format: Option<&str>) -> Result<(), String> {
@@ -1437,6 +1593,35 @@ mod tests {
         assert_eq!(
             read_command_values(path.to_str().unwrap()).unwrap().len(),
             1
+        );
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn import_cache_key_changes_with_source_or_format() {
+        let base_key = import_cache_key("<CDXML><page /></CDXML>", "cdxml");
+
+        assert_ne!(
+            base_key,
+            import_cache_key("<CDXML><page id=\"2\" /></CDXML>", "cdxml")
+        );
+        assert_ne!(base_key, import_cache_key("<CDXML><page /></CDXML>", "cdx"));
+    }
+
+    #[test]
+    fn import_cache_write_verifies_written_bytes() {
+        let path = std::env::temp_dir().join(format!(
+            "chemcore-cli-import-cache-test-{}.ccjs",
+            std::process::id()
+        ));
+        let _ = fs::remove_file(&path);
+
+        let bytes = write_import_cache(&path, "{\"nodes\":[],\"bonds\":[]}\n").unwrap();
+
+        assert_eq!(bytes, 24);
+        assert_eq!(
+            fs::read_to_string(&path).unwrap(),
+            "{\"nodes\":[],\"bonds\":[]}\n"
         );
         let _ = fs::remove_file(path);
     }

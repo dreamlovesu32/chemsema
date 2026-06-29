@@ -92,6 +92,11 @@ npm run cli -- convert input.cdxml output.ccjs
 - `new`、`convert`、`export` 会创建主要文档文件，必须显式给输出路径。
 - 所有写文件命令都会在写完后检查目标是否存在、是否为普通文件、以及字节数是否符合预期或最低要求。校验失败就是命令失败。
 
+导入缓存规则：
+
+- CDXML/CDX 输入会自动使用归一化文档导入缓存，加速重复 CLI 调用。缓存键包含源文件内容、格式、CLI 版本和可执行文件标记；文件变化或重新构建后的二进制会自动 miss。
+- 用 `CHEMCORE_CLI_DISABLE_CACHE=1` 关闭导入缓存。用 `CHEMCORE_CLI_CACHE_DIR=<path>` 指定缓存目录。`chemcore-cli doctor --pretty` 会报告当前生效的缓存设置。
+
 错误输出规则：
 
 - 错误 JSON 包含 `error.kind`、`message`、`hint`、`fix`、`usage`、`examples` 和 `suggestions`。

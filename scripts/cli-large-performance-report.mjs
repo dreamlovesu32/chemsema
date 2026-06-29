@@ -10,6 +10,7 @@ const runId = new Date().toISOString().replace(/[:.]/g, "-");
 const perfDir = join(rootDir, "tmp", "performance", "cli-large");
 const fixtureDir = join(perfDir, "fixtures");
 const outputDir = join(perfDir, "outputs", runId);
+const cacheDir = join(outputDir, "cache");
 const reportDir = join(perfDir, "reports");
 const markdownReportPath = join(reportDir, `cli-large-performance-${runId}.md`);
 const jsonReportPath = join(reportDir, `cli-large-performance-${runId}.json`);
@@ -20,6 +21,7 @@ const cliBinary = join(rootDir, "target", "debug", process.platform === "win32" 
 
 mkdirSync(fixtureDir, { recursive: true });
 mkdirSync(outputDir, { recursive: true });
+mkdirSync(cacheDir, { recursive: true });
 mkdirSync(reportDir, { recursive: true });
 
 function rel(path) {
@@ -338,6 +340,10 @@ function cliTask(id, group, args, options = {}) {
     command: cliBinary,
     args,
     ...options,
+    env: {
+      CHEMCORE_CLI_CACHE_DIR: cacheDir,
+      ...(options.env || {}),
+    },
   };
 }
 
@@ -495,6 +501,7 @@ const report = {
   rootDir,
   fixtureDir,
   outputDir,
+  cacheDir,
   reports: {
     markdown: markdownReportPath,
     json: jsonReportPath,
@@ -548,6 +555,7 @@ function renderMarkdownReport(data) {
   lines.push(`- Fixture: ${data.fixture.synthetic.nodes} nodes, ${data.fixture.synthetic.bonds} bonds, ${data.fixture.synthetic.objects} objects, ${(data.fixture.synthetic.bytes / 1024 / 1024).toFixed(2)} MB ccjs`);
   lines.push(`- Probe targets: \`${data.fixture.targets.node}\`, \`${data.fixture.targets.bond}\``);
   lines.push(`- Output dir: \`${rel(data.outputDir)}\``);
+  lines.push(`- CLI cache dir: \`${rel(data.cacheDir)}\``);
   lines.push("");
   lines.push("## Summary");
   lines.push("");

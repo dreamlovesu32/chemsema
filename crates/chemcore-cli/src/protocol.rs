@@ -1,4 +1,4 @@
-use crate::write_json_value;
+use crate::{cli_cache_dir, cli_import_cache_enabled, write_json_value};
 use serde_json::{json, Value};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -1117,6 +1117,12 @@ pub(crate) fn doctor_command(args: &[String]) -> Result<(), String> {
             "exeDir": exe_dir,
             "cwd": std::env::current_dir().ok().map(|path| path.display().to_string()),
             "tempDir": std::env::temp_dir().display().to_string(),
+            "cache": {
+                "enabled": cli_import_cache_enabled(),
+                "dir": cli_cache_dir().display().to_string(),
+                "disableEnv": "CHEMCORE_CLI_DISABLE_CACHE=1",
+                "dirEnv": "CHEMCORE_CLI_CACHE_DIR"
+            },
             "pathContainsExeDir": path_contains_exe_dir,
             "commands": COMMAND_SPECS.iter().map(|spec| spec.name).collect::<Vec<_>>(),
             "documentation": documentation_metadata(),
