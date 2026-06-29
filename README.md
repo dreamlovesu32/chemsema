@@ -4,11 +4,11 @@
 
 [![CI](https://github.com/dreamlovesu32/chemcore/actions/workflows/ci.yml/badge.svg)](https://github.com/dreamlovesu32/chemcore/actions/workflows/ci.yml)
 [![Demo](https://img.shields.io/badge/demo-GitHub%20Pages-2ea44f)](https://dreamlovesu32.github.io/chemcore/)
-[![Windows installer](https://img.shields.io/badge/Windows-installer-0078d4)](https://github.com/dreamlovesu32/chemcore/releases/download/v1.0.0-beta.4/Chemcore_1.0.0-beta.4_x64-setup.exe)
+[![Windows installer](https://img.shields.io/badge/Windows-installer-0078d4)](https://github.com/dreamlovesu32/chemcore/releases/download/v1.0.0-beta.5/Chemcore_1.0.0-beta.5_x64-setup.exe)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](./LICENSE)
-[![Version](https://img.shields.io/badge/version-1.0.0--beta.4-orange)](https://github.com/dreamlovesu32/chemcore/releases/tag/v1.0.0-beta.4)
+[![Version](https://img.shields.io/badge/version-1.0.0--beta.5-orange)](https://github.com/dreamlovesu32/chemcore/releases/tag/v1.0.0-beta.5)
 
-ChemCore is an open-source chemistry structure editor built from scratch for everyday research drawing, publication layout, and Office copy/paste workflows at ChemDraw-level fidelity. Windows users can try the current beta with the [ChemCore 1.0.0-beta.4 x64 installer](https://github.com/dreamlovesu32/chemcore/releases/download/v1.0.0-beta.4/Chemcore_1.0.0-beta.4_x64-setup.exe). The installer includes the desktop app and the Windows Office/OLE integration service; it is not code-signed yet, so Windows may show a SmartScreen warning during this beta stage. It is a chemistry editor rather than a generic cheminformatics toolkit. Maintainer: Jiajun ZHANG, [dreamlovesu@hotmail.com](mailto:dreamlovesu@hotmail.com). Feedback, issues, real CDXML files, and contributions are very welcome. The long-term goal is to make ChemCore a free research infrastructure platform that can later grow into automation, batch processing, AI-assisted research interfaces, and more carefully designed scientific software.
+ChemCore is an open-source chemistry structure editor built from scratch for everyday research drawing, publication layout, and Office copy/paste workflows at ChemDraw-level fidelity. Windows users can try the current beta with the [ChemCore 1.0.0-beta.5 x64 installer](https://github.com/dreamlovesu32/chemcore/releases/download/v1.0.0-beta.5/Chemcore_1.0.0-beta.5_x64-setup.exe). The installer includes the desktop app and the Windows Office/OLE integration service; it is not code-signed yet, so Windows may show a SmartScreen warning during this beta stage. It is a chemistry editor rather than a generic cheminformatics toolkit. Maintainer: Jiajun ZHANG, [dreamlovesu@hotmail.com](mailto:dreamlovesu@hotmail.com). Feedback, issues, real CDXML files, and contributions are very welcome. The long-term goal is to make ChemCore a free research infrastructure platform that can later grow into automation, batch processing, AI-assisted research interfaces, and more carefully designed scientific software.
 
 The core architecture is a shared Rust engine with a lightweight Web interface and a headless CLI surface. Rust owns the document model, editing commands, hit testing, chemical label rules, implicit hydrogen logic, CDXML/CDX import/export, render primitive generation, and vector output needed by Office/OLE. The front end mainly collects events, manages UI state, and presents the result, so the visual editor can stay friendly to human researchers. The CLI calls the same engine directly for file inspection, format conversion, document generation, and JSON command execution, which gives scripts and agents a stable way to create, inspect, and modify documents without driving the GUI. Rust is used because this type of editor depends on long-lived geometry code, format parsers, and interaction state machines where memory safety, testability, performance, and typed boundaries matter. The same engine can compile to WASM for the browser and run as native code for the desktop shell, CLI, and Windows Office integration; the desktop app uses Tauri/WebView2, so the UI can remain Web-based while behavior stays centralized in the cross-platform core.
 
@@ -47,12 +47,57 @@ and the README comparison image is regenerated from those refreshed assets.
 The original CDXML files are tracked at the repository root:
 [figure1.cdxml](./figure1.cdxml) and [figure2.cdxml](./figure2.cdxml).
 
+## Agent-Oriented CLI
+
+ChemCore also treats agents as first-class callers, not as scripts that have to
+drive the GUI by guessing from screen pixels. The CLI is a deterministic engine
+surface for machine workflows: it can discover stable selectors, return
+object/bond/node ids, inspect raw object details, answer neighborhood queries,
+create precise visual crops, execute JSON editing commands, and report what
+changed after each operation.
+
+The design goal is to give an agent both structure and pixels. Structured JSON
+tells it which objects exist, where they are, how they relate through groups or
+links, and whether a command created, updated, or deleted anything. Precise
+PNG/SVG capture gives it a high-resolution visual view of the exact region it
+is reasoning about. One-shot commands are convenient for isolated file tasks,
+while JSONL `session` mode and CDXML import caching keep repeated work on large
+documents fast. Output paths are verified after writing, and command errors
+include recoverable usage hints instead of bare failure codes.
+
+Precise capture is one visible part of that interface. It crops the same visual
+region a GUI selection box would cover: the requested object or multi-selection
+defines the frame, while everything visible inside that frame is rendered into
+the PNG/SVG. Context queries use the same target model and return the
+surrounding objects with ids, directions, distances, `inside`/`partial`
+selection-box membership, group ancestry, and link metadata.
+
+Examples generated from the public [figure1.cdxml](./figure1.cdxml) fixture:
+
+| Exact object crop | Context crop around an arrow object | Multi-target selection crop |
+| --- | --- | --- |
+| ![Precise CLI crop of object obj_bracket_001](./docs/assets/readme/agent-cli/precise-bracket-object.png) | ![CLI context crop around arrow object obj_line_001](./docs/assets/readme/agent-cli/line-context.png) | ![CLI multi-target crop from a bracket object and nearby text target](./docs/assets/readme/agent-cli/multi-target-bracket-text.png) |
+
+The context command that produced the middle image also returns structured ids
+for the same region. For example, around `object:obj_line_001` it reports the
+target arrow itself, the partly overlapping molecule
+`object:obj_cdxml_merged_molecule`, the partly overlapping condition text
+`object:obj_text_008`, and the nearby lower text `object:obj_text_025`.
+
+```bash
+chemcore-cli guide
+chemcore-cli targets figure1.cdxml --pretty
+chemcore-cli detail figure1.cdxml --target object:obj_bracket_001 --pretty
+chemcore-cli context figure1.cdxml --target object:obj_line_001 --radius 45 --expand-left 10 --expand-right 10 --expand-top 34 --expand-bottom 34 --capture-out tmp/line-context.png --out tmp/line-context.json --pretty
+chemcore-cli capture figure1.cdxml --target object:obj_bracket_001 --out tmp/bracket.png --width 1200 --expand 8 --pretty
+```
+
 ## Current Status
 
-Current version: `1.0.0-beta.4`.
+Current version: `1.0.0-beta.5`.
 
 The Windows x64 installer is available from the
-[v1.0.0-beta.4 release](https://github.com/dreamlovesu32/chemcore/releases/tag/v1.0.0-beta.4).
+[v1.0.0-beta.5 release](https://github.com/dreamlovesu32/chemcore/releases/tag/v1.0.0-beta.5).
 It bundles the Tauri/WebView2 desktop app, file associations, and the
 Office/OLE integration service. The installer is still a beta build and is not
 code-signed yet. The browser demo is published through GitHub Pages:
@@ -66,7 +111,7 @@ code-signed yet. The browser demo is published through GitHub Pages:
 - **Low-latency editing**: Hover, focus, selection, drag preview, rotation, and zoom use local WASM/Rust hot paths.
 - **Modern desktop behavior**: The Tauri/WebView2 desktop shell supports file open/save, drag-to-open, recent files, tabs, unsaved-change prompts, shortcuts, and Windows file association.
 - **Office paste and embedding are treated seriously**: Copy operations consider native ChemCore data, CDXML, SVG, EMF, RTF/OOXML, and OLE payloads so Office display and later editing remain reliable.
-- **Agent-friendly headless CLI**: The CLI can inspect documents, convert formats, create new drawings, execute JSON editing commands, return structured execution reports, and write internal ChemCore JSON for downstream automation.
+- **Agent-oriented headless CLI**: The CLI can inspect documents, convert formats, query object ids and relationships, create exact PNG/SVG crops, execute JSON editing commands with audit reports, and reuse large documents through cache/session workflows.
 
 ## Implemented Capabilities
 
@@ -226,6 +271,9 @@ Run the headless file CLI:
 ```bash
 npm run cli -- inspect figure1.cdxml --pretty
 npm run cli -- convert figure1.cdxml tmp/figure1.svg
+npm run cli -- targets figure1.cdxml --pretty
+npm run cli -- capture figure1.cdxml --target object:obj_bracket_001 --out tmp/bracket.png --width 1200 --expand 8 --pretty
+npm run cli -- context figure1.cdxml --target object:obj_line_001 --radius 45 --expand-left 10 --expand-right 10 --expand-top 34 --expand-bottom 34 --capture-out tmp/line-context.png --out tmp/line-context.json --pretty
 npm run cli -- new commands.json --out generated.cdxml --results results.json --pretty
 npm run cli -- run input.cdxml commands.json --out edited.cdxml --results results.json --document-json after.ccjs --pretty
 ```
@@ -300,7 +348,7 @@ needed analysis packages.
 - Text symbols and glyph profiles: [English](./docs/text-symbol-glyph-profile-rules.md) / [中文](./docs/text-symbol-glyph-profile-rules.zh-CN.md)
 - Valence-driven label recognition: [English](./docs/valence-label-recognition-rules.md) / [中文](./docs/valence-label-recognition-rules.zh-CN.md)
 - Windows desktop and Office architecture: [English](./docs/windows-desktop-office-architecture.md) / [中文](./docs/windows-desktop-office-architecture.zh-CN.md)
-- Release notes: [CHANGELOG.md](./CHANGELOG.md) / [中文](./CHANGELOG.zh-CN.md) / [v1.0.0-beta.4](./docs/releases/v1.0.0-beta.4.md)
+- Release notes: [CHANGELOG.md](./CHANGELOG.md) / [中文](./CHANGELOG.zh-CN.md)
 - Roadmap: [English](./ROADMAP.md) / [中文](./ROADMAP.zh-CN.md)
 - [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)
 

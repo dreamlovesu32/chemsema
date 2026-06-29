@@ -621,7 +621,7 @@ checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
 
 [[package]]
 name = "chemcore-cli"
-version = "1.0.0-beta.4"
+version = "1.0.0-beta.5"
 dependencies = [
  "chemcore-desktop-service",
  "chemcore-engine",
@@ -635,7 +635,7 @@ dependencies = [
 
 [[package]]
 name = "chemcore-desktop"
-version = "1.0.0-beta.4"
+version = "1.0.0-beta.5"
 dependencies = [
  "base64 0.22.1",
  "chemcore-desktop-service",
@@ -652,7 +652,7 @@ dependencies = [
 
 [[package]]
 name = "chemcore-desktop-service"
-version = "1.0.0-beta.4"
+version = "1.0.0-beta.5"
 dependencies = [
  "chemcore-engine",
  "dirs",
@@ -663,7 +663,7 @@ dependencies = [
 
 [[package]]
 name = "chemcore-engine"
-version = "1.0.0-beta.4"
+version = "1.0.0-beta.5"
 dependencies = [
  "quick-xml",
  "serde",
@@ -673,7 +673,7 @@ dependencies = [
 
 [[package]]
 name = "chemcore-office"
-version = "1.0.0-beta.4"
+version = "1.0.0-beta.5"
 dependencies = [
  "chemcore-engine",
  "resvg",

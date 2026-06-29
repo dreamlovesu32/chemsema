@@ -2,7 +2,7 @@
   "schema": "chemcore.entrypoints.v1",
   "product": {
     "name": "Chemcore",
-    "version": "1.0.0-beta.4",
+    "version": "1.0.0-beta.5",
     "identifier": "com.chemcore.desktop",
     "description": "Chemcore is a desktop, browser, and CLI chemical drawing toolkit with editable ChemCore JSON, CDXML/CDX, SDF, SVG, and Office/OLE clipboard workflows."
   },

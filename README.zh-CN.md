@@ -4,11 +4,11 @@
 
 [![CI](https://github.com/dreamlovesu32/chemcore/actions/workflows/ci.yml/badge.svg)](https://github.com/dreamlovesu32/chemcore/actions/workflows/ci.yml)
 [![在线 Demo](https://img.shields.io/badge/demo-GitHub%20Pages-2ea44f)](https://dreamlovesu32.github.io/chemcore/)
-[![Windows 安装包](https://img.shields.io/badge/Windows-installer-0078d4)](https://github.com/dreamlovesu32/chemcore/releases/download/v1.0.0-beta.4/Chemcore_1.0.0-beta.4_x64-setup.exe)
+[![Windows 安装包](https://img.shields.io/badge/Windows-installer-0078d4)](https://github.com/dreamlovesu32/chemcore/releases/download/v1.0.0-beta.5/Chemcore_1.0.0-beta.5_x64-setup.exe)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](./LICENSE)
-[![Version](https://img.shields.io/badge/version-1.0.0--beta.4-orange)](https://github.com/dreamlovesu32/chemcore/releases/tag/v1.0.0-beta.4)
+[![Version](https://img.shields.io/badge/version-1.0.0--beta.5-orange)](https://github.com/dreamlovesu32/chemcore/releases/tag/v1.0.0-beta.5)
 
-ChemCore 是一个从零开始开发的开源化学结构编辑器，目标是无缝衔接 ChemDraw 级别的日常科研绘图、论文排版和 Office 复制粘贴工作流。Windows 用户可以直接下载当前 beta 的 [ChemCore 1.0.0-beta.4 x64 安装包](https://github.com/dreamlovesu32/chemcore/releases/download/v1.0.0-beta.4/Chemcore_1.0.0-beta.4_x64-setup.exe)。这个安装包包含桌面端和 Windows Office/OLE 集成服务；目前还没有代码签名，beta 阶段 Windows 可能会弹出 SmartScreen 提醒。它是化学结构编辑器，不是通用 cheminformatics toolkit。作者：Jiajun ZHANG，邮箱：[dreamlovesu@hotmail.com](mailto:dreamlovesu@hotmail.com)，欢迎试用、反馈、提交 issue 或参与贡献。项目希望 ChemCore 能成为一个完全免费的科研基础设施平台；未来还可以继续接入自动化、批量处理、AI 辅助科研接口，以及更多用心打磨的科研软件。ChemCore 只是第一步。
+ChemCore 是一个从零开始开发的开源化学结构编辑器，目标是无缝衔接 ChemDraw 级别的日常科研绘图、论文排版和 Office 复制粘贴工作流。Windows 用户可以直接下载当前 beta 的 [ChemCore 1.0.0-beta.5 x64 安装包](https://github.com/dreamlovesu32/chemcore/releases/download/v1.0.0-beta.5/Chemcore_1.0.0-beta.5_x64-setup.exe)。这个安装包包含桌面端和 Windows Office/OLE 集成服务；目前还没有代码签名，beta 阶段 Windows 可能会弹出 SmartScreen 提醒。它是化学结构编辑器，不是通用 cheminformatics toolkit。作者：Jiajun ZHANG，邮箱：[dreamlovesu@hotmail.com](mailto:dreamlovesu@hotmail.com)，欢迎试用、反馈、提交 issue 或参与贡献。项目希望 ChemCore 能成为一个完全免费的科研基础设施平台；未来还可以继续接入自动化、批量处理、AI 辅助科研接口，以及更多用心打磨的科研软件。ChemCore 只是第一步。
 
 ChemCore 的核心架构是共享 Rust engine + 轻量 Web 界面 + headless CLI。Rust 负责文档模型、编辑命令、命中测试、化学标签逻辑、隐式氢规则、CDXML/CDX 导入导出、渲染 primitive 和 Office/OLE 所需的矢量输出；前端主要负责事件采集、界面状态和显示，让可视化编辑器对科研工作者保持友好。CLI 直接调用同一套 engine，用于文件检查、格式转换、文档生成和 JSON 命令执行，让脚本和 agent 可以不驱动 GUI，稳定地创建、检查和修改文档。选择 Rust，是因为这类软件需要长时间维护的几何计算、格式解析和状态机：内存安全、可测试性、性能和强类型边界都很重要。同一套 Rust 内核既可以编译为 WASM 运行在浏览器端，也可以作为原生库服务桌面端、CLI 和 Windows Office 集成；桌面壳使用 Tauri/WebView2，因此编辑器 UI 能复用 Web 技术，而核心行为仍由跨平台内核统一保证。
 
@@ -34,11 +34,38 @@ Jiajun ZHANG, Pinhong Chen,* Guosheng Liu*, Copper-Catalyzed Site- and Enantiose
 
 原始 CDXML 文件也已放在仓库根目录：[figure1.cdxml](./figure1.cdxml) 和 [figure2.cdxml](./figure2.cdxml)。对应的 SVG 与 Office EMF 矢量产物保留在 [docs/assets/readme/comparison](./docs/assets/readme/comparison/) 中，包含 ChemDraw 和 ChemCore 各自导出的版本；README 中的对比图也由这些刷新后的资产重新生成。对 ChemCore 来说，这类真实文件的兼容性和 Office 级矢量导出能力，是项目最重要的宣传点之一。
 
+## 面向 Agent 的 CLI
+
+ChemCore 也把 agent 当作一等调用方来设计，而不是让机器靠猜屏幕像素去模拟 GUI 操作。CLI 是一层确定性的 engine 接口：它可以发现稳定 selector，返回 object/bond/node id，查看原始对象详情，查询目标周边关系，生成精确视觉裁图，执行 JSON 编辑命令，并报告每一步到底改了什么。
+
+这套设计的目标是同时给 agent 结构信息和视觉信息。结构化 JSON 会告诉它文档里有哪些对象、对象在哪里、group/link 关系是什么，以及一次命令新建、更新或删除了哪些内容。PNG/SVG 精确截图则提供对应区域的高清视觉视图。单命令适合独立文件任务；JSONL `session` 模式和 CDXML 导入缓存让大文件上的连续操作不必反复解析。输出文件写完会校验路径和字节数；命令出错时会返回可恢复的 usage 提示，而不是只给一个失败码。
+
+精确截图只是这套接口里最容易看见的一部分。它会裁出和 GUI 选择框一致的视觉范围：目标 object 或多选目标负责定义截图框，而这个框里实际可见的内容都会进入 PNG/SVG。context 查询使用同一套 target 模型，并返回周边对象的 id、方向、距离、`inside`/`partial` 选择框关系、group 层级和 link 信息。
+
+下面的图片由公开示例 [figure1.cdxml](./figure1.cdxml) 直接生成：
+
+| 单个对象精确截图 | 箭头对象的周边截图 | 多目标选择框截图 |
+| --- | --- | --- |
+| ![CLI 对 object obj_bracket_001 的精确截图](./docs/assets/readme/agent-cli/precise-bracket-object.png) | ![CLI 对箭头 object obj_line_001 周边的 context 截图](./docs/assets/readme/agent-cli/line-context.png) | ![CLI 对 bracket object 和附近文本目标的多选截图](./docs/assets/readme/agent-cli/multi-target-bracket-text.png) |
+
+生成中间图片的 context 命令同时会返回结构化 id。比如在
+`object:obj_line_001` 周围，它会报告目标箭头本身、部分重叠的分子
+`object:obj_cdxml_merged_molecule`、部分重叠的条件文本
+`object:obj_text_008`，以及下方附近的文本 `object:obj_text_025`。
+
+```bash
+chemcore-cli guide
+chemcore-cli targets figure1.cdxml --pretty
+chemcore-cli detail figure1.cdxml --target object:obj_bracket_001 --pretty
+chemcore-cli context figure1.cdxml --target object:obj_line_001 --radius 45 --expand-left 10 --expand-right 10 --expand-top 34 --expand-bottom 34 --capture-out tmp/line-context.png --out tmp/line-context.json --pretty
+chemcore-cli capture figure1.cdxml --target object:obj_bracket_001 --out tmp/bracket.png --width 1200 --expand 8 --pretty
+```
+
 ## 当前状态
 
-当前版本：`1.0.0-beta.4`。
+当前版本：`1.0.0-beta.5`。
 
-Windows x64 安装包已经放在 [v1.0.0-beta.4 release](https://github.com/dreamlovesu32/chemcore/releases/tag/v1.0.0-beta.4) 中，包含 Tauri/WebView2 桌面端、文件关联和 Office/OLE 集成服务。当前安装包仍是 beta 版本，尚未代码签名。浏览器 demo 通过 GitHub Pages 发布：<https://dreamlovesu32.github.io/chemcore/>。
+Windows x64 安装包已经放在 [v1.0.0-beta.5 release](https://github.com/dreamlovesu32/chemcore/releases/tag/v1.0.0-beta.5) 中，包含 Tauri/WebView2 桌面端、文件关联和 Office/OLE 集成服务。当前安装包仍是 beta 版本，尚未代码签名。浏览器 demo 通过 GitHub Pages 发布：<https://dreamlovesu32.github.io/chemcore/>。
 
 ## 产品特色
 
@@ -48,7 +75,7 @@ Windows x64 安装包已经放在 [v1.0.0-beta.4 release](https://github.com/dre
 - **低延迟编辑体验**：鼠标 hover、focus、选择、拖拽预览、旋转和缩放等高频交互走本地 WASM/Rust 热路径，不把每一次鼠标移动都变成跨进程请求。
 - **现代桌面软件体验**：桌面端基于 Tauri/WebView2 构建，支持文件打开保存、拖拽打开、最近文件、标签页、未保存提醒、快捷键和 Windows 文件关联等基础体验。
 - **为 Office 粘贴与嵌入认真设计**：复制时不只写一张图片，而是同时考虑 ChemCore native、CDXML、SVG、EMF、RTF/OOXML 和 OLE 对象等多格式链路，让 Office 里的显示和后续编辑都尽量可靠。
-- **对 agent 友好的 headless CLI**：CLI 可以检查文档、转换格式、从空白文档生成结构、执行 JSON 编辑命令、返回结构化执行报告，并写出 ChemCore 内部 JSON，方便自动化流程继续读取。
+- **面向 agent 的 headless CLI**：CLI 可以检查文档、转换格式、查询对象 id 和关系、生成精确 PNG/SVG 裁图、执行带审计报告的 JSON 编辑命令，并通过 cache/session 工作流复用大文件状态。
 
 ## 已实现的关键能力
 
@@ -169,6 +196,9 @@ npm run desktop:dev
 ```bash
 npm run cli -- inspect figure1.cdxml --pretty
 npm run cli -- convert figure1.cdxml tmp/figure1.svg
+npm run cli -- targets figure1.cdxml --pretty
+npm run cli -- capture figure1.cdxml --target object:obj_bracket_001 --out tmp/bracket.png --width 1200 --expand 8 --pretty
+npm run cli -- context figure1.cdxml --target object:obj_line_001 --radius 45 --expand-left 10 --expand-right 10 --expand-top 34 --expand-bottom 34 --capture-out tmp/line-context.png --out tmp/line-context.json --pretty
 npm run cli -- new commands.json --out generated.cdxml --results results.json --pretty
 npm run cli -- run input.cdxml commands.json --out edited.cdxml --results results.json --document-json after.ccjs --pretty
 ```
@@ -236,7 +266,7 @@ node --check viewer/app.js
 - 文本符号与 glyph profile：[English](./docs/text-symbol-glyph-profile-rules.md) / [中文](./docs/text-symbol-glyph-profile-rules.zh-CN.md)
 - 价键驱动标签识别：[English](./docs/valence-label-recognition-rules.md) / [中文](./docs/valence-label-recognition-rules.zh-CN.md)
 - Windows 桌面端与 Office 架构：[English](./docs/windows-desktop-office-architecture.md) / [中文](./docs/windows-desktop-office-architecture.zh-CN.md)
-- Release notes：[English](./CHANGELOG.md) / [中文](./CHANGELOG.zh-CN.md) / [v1.0.0-beta.4](./docs/releases/v1.0.0-beta.4.zh-CN.md)
+- Release notes：[English](./CHANGELOG.md) / [中文](./CHANGELOG.zh-CN.md)
 - Roadmap：[English](./ROADMAP.md) / [中文](./ROADMAP.zh-CN.md)
 - [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)
 
