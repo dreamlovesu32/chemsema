@@ -171,6 +171,7 @@ pub enum EditorCommand {
     },
     AddElement {
         symbol: String,
+        #[serde(alias = "atomicNumber")]
         atomic_number: u8,
         center: CommandAnchor,
     },

@@ -2,6 +2,7 @@ use super::{
     EditorCommand, Engine, PendingSelectTarget, TextCommandContent, TextEditCommandTarget,
     TextEditLayoutRequest,
 };
+use super::links::scene_object_is_bracket_like;
 use crate::{
     build_label_glyph_polygons, decide_label_layout, layout_label_text, round2, round6, Bond,
     BondLineWeight, DoubleBondPlacement, EndpointHit, LabelFlow, LabelRun, Point, WorldPoint,
@@ -655,7 +656,7 @@ impl Engine {
             .state
             .document
             .find_scene_object(bracket_id)
-            .is_some_and(|object| object.object_type == "bracket")
+            .is_some_and(scene_object_is_bracket_like)
         {
             return false;
         }

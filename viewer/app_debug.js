@@ -1,5 +1,6 @@
 export function registerChemcoreDebug({
   state,
+  getEditorState,
   getEngineState,
   getDocument,
   getActiveTextEditor,
@@ -23,6 +24,10 @@ export function registerChemcoreDebug({
 
   window.__chemcoreDebug = {
     state,
+    get editorState() {
+      return getEditorState?.() || null;
+    },
+    getEditorState,
     get document() {
       return getDocument?.() || state.currentDocument;
     },

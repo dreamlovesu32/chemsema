@@ -504,7 +504,7 @@ export function renderSecondaryToolbarHtml(editorState) {
 }
 
 export function syncPrimaryToolButtons(editorState, root = document) {
-  const activeTool = editorState.elementPlacementActive ? null : editorState.activeTool;
+  const activeTool = editorState.activeTool;
   root.querySelectorAll("[data-tool]").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.tool === activeTool);
   });

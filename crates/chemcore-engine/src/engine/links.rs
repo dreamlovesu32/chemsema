@@ -187,7 +187,7 @@ fn objects_are_linked(document: &ChemcoreDocument, bracket_id: &str, text_id: &s
     bracket_matches || text_matches
 }
 
-fn scene_object_is_bracket_like(object: &SceneObject) -> bool {
+pub(super) fn scene_object_is_bracket_like(object: &SceneObject) -> bool {
     object.object_type == "bracket"
         || (object.object_type == "group"
             && object.meta.get("kind").and_then(Value::as_str) == Some("bracket-group"))

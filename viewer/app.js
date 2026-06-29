@@ -11,7 +11,7 @@ import { createColorHost } from "./color_host.js";
 import { createObjectSettingsHost } from "./object_settings_host.js";
 import { createNumericDialogHost } from "./numeric_dialog_host.js";
 import { createDesktopFileHost, normalizeDesktopPath } from "./desktop_file_host.js";
-import { createEngineHost } from "./engine_host.js?v=20260627-bracket-hit-cursor";
+import { createEngineHost } from "./engine_host.js?v=20260629-local-text-commit";
 import { bindEditorControls, openColorDialog } from "./editor_bindings.js?v=20260627-browser-drop-tabs";
 import { createDocumentFlow } from "./document_flow.js";
 import {
@@ -59,7 +59,7 @@ import {
 import { createSceneRenderer } from "./scene_renderer.js";
 import { createEditorOverlayRenderer } from "./editor_overlay.js?v=20260627-hover-scale";
 import { createEditorSelectionState } from "./editor_selection_state.js";
-import { createEditorPointerController } from "./editor_pointer_controller.js?v=20260627-selection-hover-cursor";
+import { createEditorPointerController } from "./editor_pointer_controller.js?v=20260629-palette-select-guard";
 import { createCanvasContextMenuHost } from "./editor_context_menu.js";
 import { createEditorCommandController } from "./editor_command_controller.js";
 import { createEditorCommandEngine } from "./editor_command_engine.js?v=20260626-interaction-feedback";
@@ -238,6 +238,7 @@ const appInitialDocumentReady = new Promise((resolve) => {
 let lastEditorPointerActivityAt = 0;
 registerChemcoreDebug({
   state,
+  getEditorState: () => editorState,
   getEngineState: () => currentEditorEngineState(),
   getDocument: () => currentEditorDocumentData(),
   getActiveTextEditor: () => activeTextEditor,
@@ -1488,15 +1489,16 @@ async function syncEngineToolState() {
       editorState.arrowNoGo,
       editorState.arrowBold,
     );
-    return;
+  } else {
+    await state.editorEngine.setArrowOptions?.(
+      editorState.arrowType,
+      editorState.arrowHeadSize,
+      editorState.arrowHead,
+      editorState.arrowTail,
+      editorState.arrowBold,
+    );
   }
-  await state.editorEngine.setArrowOptions?.(
-    editorState.arrowType,
-    editorState.arrowHeadSize,
-    editorState.arrowHead,
-    editorState.arrowTail,
-    editorState.arrowBold,
-  );
+  invalidateEditorEngineReadCache();
 }
 
 function mapRunsFontSize(runs, convert) {
@@ -4679,7 +4681,7 @@ function ensureTextSymbolPalette(payload = null) {
     return;
   }
   textSymbolPalette = createTextSymbolPalette({
-    mount: viewerContainer,
+    mount: document.body,
     payload,
     elementPayload,
     onSelect: insertTextSymbol,
@@ -5410,6 +5412,10 @@ function insertElementSymbol(symbol) {
 
 function setElementPlacementActive(active) {
   const nextActive = Boolean(active) && !activeTextEditor;
+  canvasPointerShieldActive = false;
+  canvasPointerShield.classList.remove("is-active");
+  clearCanvasDragPreview();
+  syncViewerSvgPointerEventMode();
   if (editorState.elementPlacementActive === nextActive) {
     return;
   }

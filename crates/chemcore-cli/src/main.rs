@@ -10,10 +10,10 @@ const HELP: &str = r#"ChemCore CLI
 
 Usage:
   chemcore-cli inspect <input> [--include summary,objects,molecules,resources,styles] [--out <path>] [--pretty]
-  chemcore-cli new [commands.json|-] --out <path> [--save-format <format>] [--results <path>] [--document-json <path>] [--inspect-after <include|none>] [--pretty] [--quiet]
+  chemcore-cli new [commands.json|-] --out <path> [--save-format <format>] [--results <path>] [--document-json <path>] [--inspect-after <include|none>] [--continue-on-error] [--pretty] [--quiet]
   chemcore-cli convert <input> <output> [--format <format>]
   chemcore-cli export <input> <output> [--format <format>]
-  chemcore-cli run <input> <commands.json|-> [--out <path>] [--save-format <format>] [--results <path>] [--document-json <path>] [--inspect-after <include|none>] [--pretty] [--quiet]
+  chemcore-cli run <input> <commands.json|-> [--out <path>] [--save-format <format>] [--results <path>] [--document-json <path>] [--inspect-after <include|none>] [--continue-on-error] [--pretty] [--quiet]
 
 Formats:
   json, ccjs, ccjz, cdxml, cdx, sdf, svg
@@ -63,6 +63,7 @@ fn new_command(args: &[String]) -> Result<(), String> {
     let mut results = None;
     let mut document_json_output = None;
     let mut inspect_after = default_inspect_after();
+    let mut continue_on_error = false;
     let mut pretty = false;
     let mut quiet = false;
     let mut index = 0;
@@ -116,6 +117,7 @@ fn new_command(args: &[String]) -> Result<(), String> {
                 );
             }
             "--no-inspect-after" => inspect_after = None,
+            "--continue-on-error" => continue_on_error = true,
             "--pretty" => pretty = true,
             "--quiet" => quiet = true,
             value if script.is_none() => script = Some(value.to_string()),
@@ -130,7 +132,12 @@ fn new_command(args: &[String]) -> Result<(), String> {
     }
     let mut engine = Engine::new();
     let mut execution = if let Some(script) = script.as_deref() {
-        execute_command_file(&mut engine, script, inspect_after.as_deref())
+        execute_command_file(
+            &mut engine,
+            script,
+            inspect_after.as_deref(),
+            continue_on_error,
+        )
     } else {
         empty_script_execution(&mut engine, inspect_after.as_deref())
     };
@@ -280,6 +287,7 @@ fn run_command_script(args: &[String]) -> Result<(), String> {
     let mut results = None;
     let mut document_json_output = None;
     let mut inspect_after = default_inspect_after();
+    let mut continue_on_error = false;
     let mut pretty = false;
     let mut quiet = false;
     let mut index = 0;
@@ -333,6 +341,7 @@ fn run_command_script(args: &[String]) -> Result<(), String> {
                 );
             }
             "--no-inspect-after" => inspect_after = None,
+            "--continue-on-error" => continue_on_error = true,
             "--pretty" => pretty = true,
             "--quiet" => quiet = true,
             value if input.is_none() => input = Some(value.to_string()),
@@ -352,7 +361,12 @@ fn run_command_script(args: &[String]) -> Result<(), String> {
     }
 
     let mut engine = load_engine_from_file(&input)?;
-    let mut execution = execute_command_file(&mut engine, &script, inspect_after.as_deref());
+    let mut execution = execute_command_file(
+        &mut engine,
+        &script,
+        inspect_after.as_deref(),
+        continue_on_error,
+    );
     write_optional_document_json(
         &mut execution,
         &engine,
@@ -441,6 +455,7 @@ fn execute_command_file(
     engine: &mut Engine,
     script: &str,
     inspect_after: Option<&[String]>,
+    continue_on_error: bool,
 ) -> ScriptExecution {
     let commands = match read_command_values(script) {
         Ok(commands) => commands,
@@ -462,17 +477,20 @@ fn execute_command_file(
             };
         }
     };
-    execute_command_values(engine, commands, inspect_after)
+    execute_command_values(engine, commands, inspect_after, continue_on_error)
 }
 
 fn execute_command_values(
     engine: &mut Engine,
     commands: Vec<Value>,
     inspect_after: Option<&[String]>,
+    continue_on_error: bool,
 ) -> ScriptExecution {
     let command_count = commands.len();
     let mut entries = Vec::new();
     let mut executed_count = 0usize;
+    let mut failed_indices = Vec::new();
+    let mut first_error_message = None;
     for (index, command) in commands.into_iter().enumerate() {
         let command_type = command_type_name(&command);
         match execute_json_command(engine, command.clone()) {
@@ -508,6 +526,10 @@ fn execute_command_values(
                 entries.push(entry);
             }
             Err(error) => {
+                failed_indices.push(index);
+                if first_error_message.is_none() {
+                    first_error_message = Some(error.clone());
+                }
                 entries.push(json!({
                     "index": index,
                     "ok": false,
@@ -520,6 +542,9 @@ fn execute_command_values(
                         "message": error,
                     },
                 }));
+                if continue_on_error {
+                    continue;
+                }
                 let error_message = entries
                     .last()
                     .and_then(|entry| entry.pointer("/error/message"))
@@ -530,7 +555,10 @@ fn execute_command_values(
                     "ok": false,
                     "commandCount": command_count,
                     "executedCount": executed_count,
+                    "failedCount": 1,
                     "failedIndex": index,
+                    "failedIndices": [index],
+                    "continueOnError": continue_on_error,
                     "commands": entries,
                     "error": {
                         "stage": "execute-command",
@@ -546,11 +574,41 @@ fn execute_command_values(
             }
         }
     }
+    if !failed_indices.is_empty() {
+        let error_message = if failed_indices.len() == 1 {
+            first_error_message.unwrap_or_else(|| "Command failed.".to_string())
+        } else {
+            format!("{} commands failed.", failed_indices.len())
+        };
+        let mut report = json!({
+            "ok": false,
+            "commandCount": command_count,
+            "executedCount": executed_count,
+            "failedCount": failed_indices.len(),
+            "failedIndex": failed_indices.first().copied(),
+            "failedIndices": failed_indices,
+            "continueOnError": continue_on_error,
+            "commands": entries,
+            "error": {
+                "stage": "execute-command",
+                "message": error_message,
+            },
+        });
+        append_final_snapshot(engine, &mut report, inspect_after);
+        return ScriptExecution {
+            ok: false,
+            report,
+            error_message: Some(error_message),
+        };
+    }
     let mut report = json!({
         "ok": true,
         "commandCount": command_count,
         "executedCount": executed_count,
+        "failedCount": 0,
         "failedIndex": null,
+        "failedIndices": [],
+        "continueOnError": continue_on_error,
         "commands": entries,
     });
     append_final_snapshot(engine, &mut report, inspect_after);
@@ -717,6 +775,7 @@ fn write_engine_output(engine: &Engine, path: &str, format: Option<&str>) -> Res
         return write_engine_output_to_stdout(engine, &format);
     }
 
+    ensure_output_parent(path)?;
     let mut service = DesktopDocumentService::default();
     match format.as_str() {
         "json" | "ccjs" => service.write_document_file(path, &document_json(engine)?, Some("ccjs")),
@@ -783,9 +842,24 @@ fn write_text_output(path: Option<&str>, text: &str) -> Result<(), String> {
     match path {
         Some("-") | None => write_stdout_text(text),
         Some(path) => {
+            ensure_output_parent(path)?;
             fs::write(path, text).map_err(|error| format!("Failed to write {path}: {error}"))
         }
     }
+}
+
+fn ensure_output_parent(path: &str) -> Result<(), String> {
+    if path == "-" {
+        return Ok(());
+    }
+    let Some(parent) = Path::new(path).parent() else {
+        return Ok(());
+    };
+    if parent.as_os_str().is_empty() {
+        return Ok(());
+    }
+    fs::create_dir_all(parent)
+        .map_err(|error| format!("Failed to create output directory {}: {error}", parent.display()))
 }
 
 fn write_stdout_text(text: &str) -> Result<(), String> {
@@ -929,6 +1003,7 @@ mod tests {
                 "variant": "single",
             })],
             Some(&include),
+            false,
         );
 
         assert!(execution.ok);
@@ -965,13 +1040,16 @@ mod tests {
                 }),
             ],
             Some(&include),
+            false,
         );
 
         assert!(!execution.ok);
         assert_eq!(execution.report["ok"], false);
         assert_eq!(execution.report["commandCount"], 2);
         assert_eq!(execution.report["executedCount"], 1);
+        assert_eq!(execution.report["failedCount"], 1);
         assert_eq!(execution.report["failedIndex"], 1);
+        assert_eq!(execution.report["failedIndices"], json!([1]));
         assert_eq!(execution.report["commands"][0]["executed"], true);
         assert_eq!(execution.report["commands"][1]["executed"], false);
         assert_eq!(
@@ -979,5 +1057,54 @@ mod tests {
             "execute-command"
         );
         assert!(execution.report["final"]["molecules"].is_array());
+    }
+
+    #[test]
+    fn execution_report_can_continue_after_command_failures() {
+        let mut engine = Engine::new();
+        let include = default_inspect_after().unwrap();
+        let execution = execute_command_values(
+            &mut engine,
+            vec![
+                json!({
+                    "type": "add-bond",
+                    "begin": { "x": 100.0, "y": 120.0 },
+                    "end": { "x": 140.0, "y": 120.0 },
+                    "order": 1,
+                    "variant": "single",
+                }),
+                json!({
+                    "type": "add-bond",
+                    "begin": { "x": 100.0, "y": 120.0 },
+                    "end": { "x": 180.0, "y": 120.0 },
+                    "order": 1,
+                    "variant": "not-a-bond-style",
+                }),
+                json!({
+                    "type": "add-text",
+                    "position": { "x": 120.0, "y": 80.0 },
+                    "text": "still executes"
+                }),
+            ],
+            Some(&include),
+            true,
+        );
+
+        assert!(!execution.ok);
+        assert_eq!(execution.report["ok"], false);
+        assert_eq!(execution.report["commandCount"], 3);
+        assert_eq!(execution.report["executedCount"], 2);
+        assert_eq!(execution.report["failedCount"], 1);
+        assert_eq!(execution.report["failedIndex"], 1);
+        assert_eq!(execution.report["failedIndices"], json!([1]));
+        assert_eq!(execution.report["commands"][2]["executed"], true);
+        assert_eq!(
+            execution.report["commands"][2]["commandType"],
+            json!("add-text")
+        );
+        assert_eq!(
+            execution.report["final"]["summary"]["counts"]["objectTypes"]["text"],
+            1
+        );
     }
 }

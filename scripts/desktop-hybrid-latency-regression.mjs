@@ -170,6 +170,8 @@ function installFakeTauriScript(delayMs) {
       "desktop_engine_pointer_up",
       "desktop_engine_begin_hover_arrow_edit",
       "desktop_engine_finish_hover_arrow_edit",
+      "desktop_engine_apply_text_edit",
+      "desktop_engine_apply_bracket_label_text",
       "desktop_engine_clear_interaction",
     ]);
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -335,11 +337,94 @@ async function main() {
         samples.push(await measure("finishHoverArrowEdit", () => session.finishHoverArrowEdit(455, 215, false)));
       }
 
+      const countNonMoleculeObjects = () => {
+        const doc = JSON.parse(session.documentJson() || "null");
+        const flatten = (objects) => objects.flatMap((object) => [object, ...flatten(object.children || [])]);
+        const objects = flatten(doc?.objects || []);
+        return {
+          total: objects.length,
+          nonMolecule: objects.filter((object) => (object.type || object.objectType || object.object_type) !== "molecule").length,
+          text: objects.filter((object) => (object.type || object.objectType || object.object_type) === "text").length,
+          bracket: objects.filter((object) => (object.type || object.objectType || object.object_type) === "bracket").length,
+        };
+      };
+      const latestBracketObjectId = () => {
+        const doc = JSON.parse(session.documentJson() || "null");
+        const flatten = (objects) => objects.flatMap((object) => [object, ...flatten(object.children || [])]);
+        return flatten(doc?.objects || [])
+          .filter((object) => (object.type || object.objectType || object.object_type) === "bracket")
+          .map((object) => object.id)
+          .filter(Boolean)
+          .at(-1) || "";
+      };
+      const nonMoleculeObjectSummaries = () => {
+        const doc = JSON.parse(session.documentJson() || "null");
+        const flatten = (objects) => objects.flatMap((object) => [object, ...flatten(object.children || [])]);
+        return flatten(doc?.objects || [])
+          .filter((object) => (object.type || object.objectType || object.object_type) !== "molecule")
+          .map((object) => ({
+            id: object.id,
+            type: object.type || object.objectType || object.object_type,
+            name: object.name || "",
+            childCount: (object.children || []).length,
+            payloadKind: object.payload?.kind || object.payload?.bracketKind || object.payload?.bracket_kind || "",
+          }));
+      };
+      const dragTool = (tool, start, end) => {
+        session.setTool(tool, "single");
+        session.pointerDown(start.x, start.y, false);
+        session.pointerMove(end.x, end.y, false);
+        session.pointerUp(end.x, end.y, false);
+        return JSON.parse(session.lastCommandResultJson?.() || "null");
+      };
+      dragTool("arrow", { x: 120, y: 320 }, { x: 240, y: 320 });
+      dragTool("shape", { x: 280, y: 300 }, { x: 360, y: 380 });
+      const bracketResult = dragTool("bracket", { x: 420, y: 290 }, { x: 520, y: 390 });
+      const bracketId = await session.pendingGraphicObjectId?.()
+        || latestBracketObjectId()
+        || bracketResult?.targets?.objects?.[0]
+        || bracketResult?.created?.objects?.[0]
+        || "";
+      const beforeBracketLabel = countNonMoleculeObjects();
+      const bracketLabelSession = {
+        target: { kind: "text-object", objectId: null, x: 530, y: 392 },
+        text: "3",
+        sourceRuns: [],
+        fontFamily: "Arial",
+        fontSize: 7.5,
+        fill: "#000000",
+        align: "left",
+        lineHeight: 9,
+        box: [0, 0, 8, 9],
+        preserveLines: true,
+        defaultChemical: false,
+      };
+      samples.push(await measure(
+        "applyBracketLabelText",
+        () => session.applyBracketLabelText(bracketId, JSON.stringify(bracketLabelSession)),
+      ));
+      const afterBracketLabel = countNonMoleculeObjects();
+      await new Promise((resolve) => setTimeout(resolve, nativeDelay * 4));
+      const afterBracketLabelNativeCatchup = countNonMoleculeObjects();
+
       samples.push(await measure("clearInteraction", () => session.clearInteraction()));
       await new Promise((resolve) => setTimeout(resolve, nativeDelay * 12));
       const counts = window.__chemcoreHybridLatencyFakeNative.counts;
+      const nonMoleculeObjects = nonMoleculeObjectSummaries();
       await session.free();
-      return { samples, beganMove, arrowAction, documentJsonCalls, counts, maxMs };
+      return {
+        samples,
+        beganMove,
+        arrowAction,
+        bracketId,
+        nonMoleculeObjects,
+        beforeBracketLabel,
+        afterBracketLabel,
+        afterBracketLabelNativeCatchup,
+        documentJsonCalls,
+        counts,
+        maxMs,
+      };
     }, {
       documentData: makeLargeChainDocument(nodeCount),
       nativeDelay: nativeDelayMs,
@@ -367,6 +452,19 @@ async function main() {
     if (result.arrowAction) {
       assert(result.counts.desktop_engine_finish_hover_arrow_edit >= 1, `Native arrow finish was not queued: ${JSON.stringify(result.counts)}`);
     }
+    assert(result.bracketId, `Bracket drag did not create a bracket object: ${JSON.stringify(result)}`);
+    assert(
+      result.afterBracketLabel.nonMolecule >= result.beforeBracketLabel.nonMolecule + 1,
+      `Bracket label commit removed newly created objects: ${JSON.stringify(result)}`,
+    );
+    assert(
+      result.afterBracketLabelNativeCatchup.nonMolecule >= result.afterBracketLabel.nonMolecule,
+      `Native catch-up rewound local bracket label state: ${JSON.stringify(result)}`,
+    );
+    assert(
+      result.counts.desktop_engine_apply_bracket_label_text >= 1,
+      `Native bracket label commit was not queued: ${JSON.stringify(result.counts)}`,
+    );
     assert(!errors.length, `Viewer console errors:\n${errors.join("\n")}`);
     await page.close();
     const summary = result.samples

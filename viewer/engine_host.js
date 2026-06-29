@@ -1358,10 +1358,40 @@ class TauriEngineSession {
   }
 
   applyTextEdit(sessionJson) {
+    if (this.layoutEngine?.applyTextEdit) {
+      const changed = this.layoutEngine.applyTextEdit(sessionJson);
+      if (changed) {
+        this.markExportsDirty();
+      }
+      this.syncCacheFromLayout({ interaction: true });
+      if (changed) {
+        this.runNativeMutationInBackground(
+          "desktop_engine_apply_text_edit",
+          { sessionJson },
+          { refresh: "document", dirtyExports: true },
+        );
+      }
+      return changed;
+    }
     return this.invokeMutation("desktop_engine_apply_text_edit", { sessionJson }, { refresh: "all" });
   }
 
   applyBracketLabelText(bracketId, sessionJson) {
+    if (this.layoutEngine?.applyBracketLabelText) {
+      const changed = this.layoutEngine.applyBracketLabelText(bracketId, sessionJson);
+      if (changed) {
+        this.markExportsDirty();
+      }
+      this.syncCacheFromLayout({ interaction: true });
+      if (changed) {
+        this.runNativeMutationInBackground(
+          "desktop_engine_apply_bracket_label_text",
+          { bracketId, sessionJson },
+          { refresh: "document", dirtyExports: true },
+        );
+      }
+      return changed;
+    }
     return this.invokeMutation(
       "desktop_engine_apply_bracket_label_text",
       { bracketId, sessionJson },

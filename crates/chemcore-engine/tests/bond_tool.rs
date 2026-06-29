@@ -11145,6 +11145,63 @@ fn bracket_label_count_links_with_bracket_and_selects_with_component() {
 }
 
 #[test]
+fn bracket_label_count_links_with_new_bracket_group() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(ToolState {
+        active_tool: Tool::Bracket,
+        bracket_kind: BracketKind::Round,
+        ..ToolState::default()
+    });
+
+    drag(
+        &mut engine,
+        Point::new(120.0, 130.0),
+        Point::new(180.0, 220.0),
+    );
+
+    let bracket_id = engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .find(|object| {
+            object.object_type == "group"
+                && object.meta.get("kind").and_then(|value| value.as_str())
+                    == Some("bracket-group")
+        })
+        .map(|object| object.id.clone())
+        .expect("dragging bracket tool should create a bracket group");
+
+    assert!(engine.apply_bracket_label_text(&bracket_id, bracket_label_session("3")));
+
+    let text = engine
+        .state()
+        .document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "text")
+        .expect("bracket group label commit should create text");
+    assert_eq!(
+        text.meta
+            .get("linkedBracketObjectId")
+            .and_then(|value| value.as_str()),
+        Some(bracket_id.as_str())
+    );
+    let bracket = engine
+        .state()
+        .document
+        .find_scene_object(&bracket_id)
+        .expect("bracket group should remain in the document");
+    assert_eq!(
+        bracket
+            .meta
+            .get("linkedTextObjectId")
+            .and_then(|value| value.as_str()),
+        Some(text.id.as_str())
+    );
+}
+
+#[test]
 fn unlinking_repeat_unit_link_detaches_count_label() {
     let mut engine = Engine::new();
     engine

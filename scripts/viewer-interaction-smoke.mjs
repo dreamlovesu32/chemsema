@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import net from "node:net";
-import { dirname } from "node:path";
+import { basename, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 
@@ -10,8 +10,7 @@ const host = "127.0.0.1";
 const port = Number(process.env.CHEMCORE_DESKTOP_DEV_PORT || 8767);
 const baseUrl = `http://${host}:${port}/viewer/`;
 const edgePath = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
-const defaultLargeCdxml = `C:\\Users\\Dream\\OneDrive\\Desktop\\${"\u94af\u50ac\u5316-jjb.cdxml"}`;
-const largeCdxml = process.env.CHEMCORE_INTERACTION_SMOKE_CDXML || defaultLargeCdxml;
+const largeCdxml = process.env.CHEMCORE_STABILITY_PRIVATE_CDXML || process.env.CHEMCORE_INTERACTION_SMOKE_CDXML || "";
 const ENDPOINT_FEEDBACK_RADIUS_PX = 3.75;
 
 function waitForPort(timeoutMs = 5000) {
@@ -207,6 +206,103 @@ async function visibleEndpointTarget(page) {
     }
     return null;
   });
+}
+
+async function documentBondCount(page) {
+  return page.evaluate(() => {
+    const doc = JSON.parse(window.__chemcoreDebug.state.editorEngine.documentJson?.() || "null")
+      || window.__chemcoreDebug.document;
+    const objectType = (object) => object?.type || object?.objectType || object?.object_type;
+    const visit = (object, out = []) => {
+      if (!object) {
+        return out;
+      }
+      out.push(object);
+      for (const child of object.children || []) {
+        visit(child, out);
+      }
+      return out;
+    };
+    let count = 0;
+    for (const object of (doc.objects || []).flatMap((candidate) => visit(candidate, []))) {
+      if (objectType(object) !== "molecule") {
+        continue;
+      }
+      const resourceRef = object.payload?.resourceRef || object.payload?.resource_ref;
+      const fragment = resourceRef ? doc.resources?.[resourceRef]?.data : object.payload?.fragment;
+      count += fragment?.bonds?.length || 0;
+    }
+    return count;
+  });
+}
+
+async function verifyQuickPaletteAndSelectDragRegression(browser) {
+  const { page, errors } = await openViewer(browser);
+  const box = await page.locator("#viewer-container").boundingBox();
+  const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+
+  await page.locator('button[data-tool="bond"]').click();
+  await page.mouse.move(center.x - 80, center.y);
+  await page.mouse.down();
+  await page.mouse.move(center.x + 40, center.y, { steps: 6 });
+  await page.mouse.up();
+  await page.waitForTimeout(150);
+  const endpoint = await visibleEndpointTarget(page);
+  assert(endpoint, "Could not locate endpoint for select drag regression.");
+  const beforeDragBonds = await documentBondCount(page);
+
+  await page.locator('button[data-tool="select"]').click();
+  await page.waitForFunction(() => document.querySelector('button[data-tool="select"]')?.classList.contains("is-active"));
+  await page.mouse.move(endpoint.x, endpoint.y);
+  await page.mouse.down();
+  await page.mouse.move(endpoint.x + 52, endpoint.y + 18, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForTimeout(180);
+  const afterDrag = await page.evaluate(() => {
+    const command = JSON.parse(window.__chemcoreDebug.state.editorEngine.lastCommandResultJson?.() || "null");
+    return {
+      commandType: command?.commandType || command?.command_type || command?.type || "",
+      createdBonds: command?.created?.bonds?.length || 0,
+      targetBonds: command?.targets?.bonds?.length || 0,
+      activeTool: window.__chemcoreDebug.engineState?.tool?.activeTool
+        || window.__chemcoreDebug.engineState?.tool?.active_tool
+        || "",
+      shieldActive: document.querySelector(".canvas-pointer-shield")?.classList.contains("is-active") || false,
+    };
+  });
+  const afterDragBonds = await documentBondCount(page);
+  assert(afterDragBonds === beforeDragBonds, `Select atom drag created bonds: ${JSON.stringify({ beforeDragBonds, afterDragBonds, afterDrag })}`);
+  assert(afterDrag.activeTool === "select", `Select drag left engine on the wrong tool: ${JSON.stringify(afterDrag)}`);
+  assert(!afterDrag.shieldActive, `Select drag left pointer shield active: ${JSON.stringify(afterDrag)}`);
+
+  await page.evaluate(() => document.querySelector(".canvas-pointer-shield")?.classList.add("is-active"));
+  await page.locator(".quick-palette-toggle-element").click();
+  const elementState = await page.evaluate(() => ({
+    open: document.querySelector(".quick-palette")?.classList.contains("is-open") || false,
+    mode: document.querySelector(".quick-palette")?.dataset.mode || "",
+    selectActive: document.querySelector('button[data-tool="select"]')?.classList.contains("is-active") || false,
+    shieldActive: document.querySelector(".canvas-pointer-shield")?.classList.contains("is-active") || false,
+  }));
+  assert(
+    elementState.open && elementState.mode === "element" && elementState.selectActive && !elementState.shieldActive,
+    `Element quick palette did not open above/clear shield: ${JSON.stringify(elementState)}`,
+  );
+
+  await page.evaluate(() => document.querySelector(".canvas-pointer-shield")?.classList.add("is-active"));
+  await page.locator(".quick-palette-toggle-symbol").click();
+  const symbolState = await page.evaluate(() => ({
+    open: document.querySelector(".quick-palette")?.classList.contains("is-open") || false,
+    mode: document.querySelector(".quick-palette")?.dataset.mode || "",
+    selectActive: document.querySelector('button[data-tool="select"]')?.classList.contains("is-active") || false,
+    shieldActive: document.querySelector(".canvas-pointer-shield")?.classList.contains("is-active") || false,
+  }));
+  assert(
+    symbolState.open && symbolState.mode === "symbol" && symbolState.selectActive && !symbolState.shieldActive,
+    `Symbol quick palette did not open above/clear shield: ${JSON.stringify(symbolState)}`,
+  );
+
+  await page.close();
+  assert(!errors.length, `Viewer console errors during quick palette/select regression: ${errors.join("\n")}`);
 }
 
 async function interactionFeedbackState(page) {
@@ -2295,8 +2391,11 @@ async function verifyLargeFileCommitLatency(page) {
 }
 
 async function verifyLargeFileHoverAndDrag(browser) {
-  if (!existsSync(largeCdxml)) {
-    console.log(`[viewer-interaction-smoke] skipping large-file hover; missing ${largeCdxml}`);
+  if (!largeCdxml || !existsSync(largeCdxml)) {
+    const reason = largeCdxml
+      ? `missing configured private file ${basename(largeCdxml)}`
+      : "set CHEMCORE_STABILITY_PRIVATE_CDXML to enable";
+    console.log(`[viewer-interaction-smoke] skipping private large-file hover; ${reason}`);
     return;
   }
   const { page, errors, sourcePage } = await openLargeCdxmlViewer(browser);
@@ -2349,6 +2448,7 @@ try {
     executablePath: existsSync(edgePath) ? edgePath : undefined,
   });
   await verifyBondDrawing(browser);
+  await verifyQuickPaletteAndSelectDragRegression(browser);
   await verifyEndpointFeedbackRules(browser);
   await verifyCreationDragKeepsCanvasVisibleAfterToolSwitch(browser);
   await verifySelectedObjectSuppressesHover(browser);

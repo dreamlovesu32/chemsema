@@ -938,7 +938,7 @@ body.browser-shell .document-tabbar {
   position: fixed;
   right: 18px;
   bottom: calc(var(--selection-status-bar-height) + 18px);
-  z-index: 13;
+  z-index: 1100;
   display: flex;
   align-items: flex-end;
   gap: 6px;
