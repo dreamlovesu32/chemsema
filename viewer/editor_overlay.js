@@ -11,7 +11,6 @@ const SELECTION_ROTATE_HANDLE_RADIUS_SCREEN_PX = 2.0;
 const SELECTION_ROTATE_HANDLE_OFFSET_SCREEN_PX = 18;
 const SELECTION_CENTER_CROSS_HALF_SCREEN_PX = 5;
 const OBJECT_CONTROL_HANDLE_RADIUS_SCREEN_PX = 1.5;
-const PREVIEW_END_RADIUS_SCREEN_PX = 3.75;
 const HOVER_CENTER_RADIUS_SCREEN_PX = 3.75;
 const TEMP_LABEL_FONT_SCREEN_PX = 12;
 const TEMP_LABEL_OFFSET_SCREEN_PX = 8;
@@ -53,9 +52,6 @@ export function createEditorOverlayRenderer(options) {
   }
 
   function hoverCircleRadiusForRole(overlay, primitive) {
-    if (primitive.role === "preview-end") {
-      return screenPxToOverlayWorld(overlay, PREVIEW_END_RADIUS_SCREEN_PX);
-    }
     if (primitive.role === "hover-arrow-center") {
       return screenPxToOverlayWorld(overlay, HOVER_CENTER_RADIUS_SCREEN_PX);
     }

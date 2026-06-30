@@ -75,9 +75,6 @@ use std::collections::{BTreeMap, BTreeSet};
 
 const HOVER_STROKE_WIDTH: f64 = crate::px_to_pt(1.1);
 const HOVER_LABEL_STROKE_WIDTH: f64 = crate::px_to_pt(1.1);
-const HOVER_BOND_CENTER_STROKE_WIDTH: f64 = crate::px_to_pt(1.2);
-const PREVIEW_END_RADIUS: f64 = crate::px_to_pt(1.5);
-const PREVIEW_END_STROKE_WIDTH: f64 = crate::px_to_pt(1.2);
 const SYMBOL_CLICK_CLEARANCE: f64 = 2.5;
 const ELLIPSE_MINOR_AXIS_RATIO: f64 = 0.4;
 const ROUND_RECT_CORNER_RADIUS: f64 = 6.0;
@@ -865,9 +862,9 @@ impl Engine {
                         focus_length,
                         hover.width,
                     ),
-                    fill: "rgba(47,111,237,0.11)".to_string(),
-                    stroke: "rgba(47,111,237,0.72)".to_string(),
-                    stroke_width: HOVER_BOND_CENTER_STROKE_WIDTH,
+                    fill: "rgba(47,111,237,0.72)".to_string(),
+                    stroke: "none".to_string(),
+                    stroke_width: 0.0,
                 });
             }
         }
@@ -878,10 +875,11 @@ impl Engine {
                     object_id: None,
                     node_id: None,
                     center: preview.end,
-                    radius: PREVIEW_END_RADIUS,
-                    fill: "rgba(47,111,237,0.16)".to_string(),
-                    stroke: "rgba(47,111,237,0.86)".to_string(),
-                    stroke_width: PREVIEW_END_STROKE_WIDTH,
+                    radius: self.options.bold_bond_width_world_pt().value()
+                        * crate::ENDPOINT_HOVER_RADIUS_BOLD_WIDTH_SCALE,
+                    fill: "rgba(47,111,237,0.82)".to_string(),
+                    stroke: "none".to_string(),
+                    stroke_width: 0.0,
                 });
             }
         }

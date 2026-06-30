@@ -2405,7 +2405,6 @@ body.browser-shell .document-tabbar {
 .editor-endpoint-halo {
   fill: rgba(47, 111, 237, 0.82);
   stroke: none;
-  filter: drop-shadow(0 0 4px rgba(47, 111, 237, 0.55));
 }
 
 .editor-bond-center-halo {
@@ -2433,11 +2432,8 @@ body.browser-shell .document-tabbar {
 }
 
 .editor-bond-center-rect {
-  fill: rgba(47, 111, 237, 0.11);
-  stroke: rgba(47, 111, 237, 0.72);
-  stroke-width: 1.2px;
-  vector-effect: non-scaling-stroke;
-  filter: drop-shadow(0 0 4px rgba(47, 111, 237, 0.35));
+  fill: rgba(47, 111, 237, 0.72);
+  stroke: none;
 }
 
 .editor-text-box-focus {

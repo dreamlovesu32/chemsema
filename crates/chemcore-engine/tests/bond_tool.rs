@@ -3945,7 +3945,7 @@ fn hover_focuses_existing_endpoint() {
     let hover = engine.state().overlay.hover_endpoint.as_ref().unwrap();
     assert_eq!(hover.point.x, FIRST_END_X);
     assert_eq!(hover.point.y, FIRST_END_Y);
-    let expected_radius = engine.options().bold_bond_width * 1.5;
+    let expected_radius = engine.options().bold_bond_width * 0.75;
     assert!(engine.render_list().iter().any(|primitive| matches!(
         primitive,
         RenderPrimitive::Circle {
@@ -3971,18 +3971,23 @@ fn hover_bond_center_rect_uses_half_bond_length_and_bold_width() {
     let hover = engine.state().overlay.hover_bond_center.as_ref().unwrap();
     assert!((hover.width - expected_width).abs() < 0.001);
 
-    let points = engine
-        .render_list()
+    let render_list = engine.render_list();
+    let polygon = render_list
         .iter()
         .find_map(|primitive| match primitive {
             RenderPrimitive::Polygon {
                 role: RenderRole::HoverBondCenter,
                 points,
+                fill,
+                stroke,
                 ..
-            } => Some(points.clone()),
+            } => Some((points.clone(), fill.as_str(), stroke.as_str())),
             _ => None,
         })
         .expect("hover bond center polygon should render");
+    let (points, fill, stroke) = polygon;
+    assert_eq!(fill, "rgba(47,111,237,0.72)");
+    assert_eq!(stroke, "none");
     let mut lengths = polygon_edge_lengths(&points);
     lengths.sort_by(f64::total_cmp);
 
@@ -4865,7 +4870,7 @@ fn drag_preview_interaction_render_list_only_contains_preview_geometry() {
             role: RenderRole::PreviewEnd,
             fill,
             ..
-        } if fill == "rgba(47,111,237,0.16)"
+        } if fill == "rgba(47,111,237,0.82)"
     )));
     assert!(interaction.iter().all(|primitive| !matches!(
         primitive,
@@ -4916,7 +4921,7 @@ fn bond_tool_endpoint_hover_and_preview_handles_use_tinted_not_white_fill() {
             role: RenderRole::PreviewEnd,
             fill,
             ..
-        } if fill == "rgba(47,111,237,0.16)"
+        } if fill == "rgba(47,111,237,0.82)"
     )));
 }
 

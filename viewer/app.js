@@ -144,7 +144,6 @@ const BRACKET_LABEL_BASELINE_OFFSET_Y = 2.4;
 const BRACKET_LABEL_OFFSET_Y = BRACKET_LABEL_BASELINE_OFFSET_Y - BRACKET_LABEL_FONT_SIZE * 0.82;
 const BOND_STROKE = 1.0;
 const CHEMDRAW_PAGE_BACKGROUND = "#ffffff";
-const ENDPOINT_FEEDBACK_RADIUS_SCREEN_PX = 3.75;
 const DELETE_CURSOR_SVG = encodeURIComponent(
   `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
     <rect x="4" y="4" width="8" height="8" fill="#ffffff" stroke="#000000" stroke-width="1"/>
@@ -1971,10 +1970,12 @@ function canvasScreenFeedbackPrimitiveNode(primitive, matrix) {
     return null;
   }
   const center = screenPointFromSvgMatrix(primitive.center, matrix);
+  const scale = Math.hypot(matrix.a || 0, matrix.b || 0);
+  const radius = Number(primitive.radius || 0) * scale;
   return makeSvgNode("circle", {
     cx: center.x,
     cy: center.y,
-    r: ENDPOINT_FEEDBACK_RADIUS_SCREEN_PX,
+    r: radius,
     class: "editor-endpoint-halo",
     "data-role": primitive.role,
   });
