@@ -1720,25 +1720,43 @@ function largeFileTargetFinder() {
       if (!rect || !Array.isArray(bbox)) {
         return null;
       }
-      const hover = window.__chemcoreDebug.worldToClient(
-        Number(translate[0] || 0) + Number(bbox[0] || 0),
-        Number(translate[1] || 0) + Number(bbox[1] || 0) + Number(bbox[3] || 0) * 0.5,
-      );
-      if (!hover
-        || hover.x <= 80
-        || hover.x >= innerWidth - 80
-        || hover.y <= 120
-        || hover.y >= innerHeight - 80) {
-        return null;
+      const tx = Number(translate[0] || 0) + Number(bbox[0] || 0);
+      const ty = Number(translate[1] || 0) + Number(bbox[1] || 0);
+      const width = Number(bbox[2] || 0);
+      const height = Number(bbox[3] || 0);
+      const side = object.payload?.side || object.payload?.extra?.side || "";
+      const xCandidates = side
+        ? [side === "right" ? tx + width : tx, tx + width * 0.5, side === "right" ? tx : tx + width]
+        : [tx, tx + width, tx + width * 0.5];
+      const yCandidates = [ty + height * 0.25, ty + height * 0.5, ty + height * 0.75, ty, ty + height];
+      for (const x of xCandidates) {
+        for (const y of yCandidates) {
+          const hover = window.__chemcoreDebug.worldToClient(x, y);
+          if (!hover
+            || hover.x <= 80
+            || hover.x >= innerWidth - 80
+            || hover.y <= 120
+            || hover.y >= innerHeight - 80) {
+            continue;
+          }
+          const hit = JSON.parse(window.__chemcoreDebug.state.editorEngine.contextHitTestJson?.(x, y) || "null");
+          if (hit?.objectId !== object.id) {
+            continue;
+          }
+          return {
+            id: object.id,
+            x: hover.x,
+            y: hover.y,
+            rect,
+          };
+        }
       }
-      return {
-        id: object.id,
-        x: hover.x,
-        y: hover.y,
-        rect,
-      };
+      return null;
     })
     .find(Boolean) || null;
+  const bracketCount = allObjects
+    .filter((object) => objectType(object) === "bracket" && object.visible !== false)
+    .length;
   const domHover = [...document.querySelectorAll("[data-node-id]")]
     .map((element) => {
       const rect = element.getBoundingClientRect();
@@ -1810,6 +1828,7 @@ function largeFileTargetFinder() {
     label: entries.find((entry) => entry.label && entry.degree > 0) || null,
     atom: entries.find((entry) => !entry.label && (!entry.element || entry.element === "C") && entry.degree > 0) || null,
     bracket,
+    bracketCount,
     textObject: visibleObjectTarget("text"),
     invalidDiagnostic,
   };
@@ -3129,6 +3148,8 @@ async function verifyLargeFileHoverAndDrag(browser) {
     await verifyBracketHoverFocus(page, targets.bracket);
     await verifyAllSquareBracketsHover(page);
     await verifyImportedBracketSideDragIsolation(page);
+  } else if (targets.bracketCount > 0) {
+    throw new Error(`Large CDXML contains ${targets.bracketCount} bracket objects, but none exposed a visible hit target.`);
   } else {
     console.log("[viewer-interaction-smoke] skipping bracket-specific large-file checks; no visible bracket target");
   }
