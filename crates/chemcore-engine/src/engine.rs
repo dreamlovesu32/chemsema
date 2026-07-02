@@ -564,9 +564,7 @@ impl Engine {
         self.options = options;
         self.document_style_preset = DEFAULT_DOCUMENT_STYLE_PRESET.to_string();
         self.refresh_symbol_chemistry();
-        if let Some(entry) = self.state.document.editable_fragment_mut() {
-            refresh_element_valence_recognition_for_all_nodes(entry.fragment);
-        }
+        refresh_element_valence_recognition_for_all_editable_fragments(&mut self.state.document);
         self.state.selection = SelectionState::default();
         self.clear_interaction();
         self.undo_stack.clear();
@@ -605,9 +603,7 @@ impl Engine {
         self.options = options;
         self.document_style_preset = DEFAULT_DOCUMENT_STYLE_PRESET.to_string();
         self.refresh_symbol_chemistry();
-        if let Some(entry) = self.state.document.editable_fragment_mut() {
-            refresh_element_valence_recognition_for_all_nodes(entry.fragment);
-        }
+        refresh_element_valence_recognition_for_all_editable_fragments(&mut self.state.document);
         self.state.selection = SelectionState::default();
         self.clear_interaction();
         self.undo_stack.clear();
@@ -3588,6 +3584,19 @@ fn document_from_command_content(
     };
     refresh_repeating_units(&mut document);
     Ok(document)
+}
+
+fn refresh_element_valence_recognition_for_all_editable_fragments(document: &mut ChemcoreDocument) {
+    let object_ids = document
+        .editable_fragments()
+        .into_iter()
+        .map(|entry| entry.object.id.clone())
+        .collect::<Vec<_>>();
+    for object_id in object_ids {
+        if let Some(entry) = document.editable_fragment_mut_for_object(&object_id) {
+            refresh_element_valence_recognition_for_all_nodes(entry.fragment);
+        }
+    }
 }
 
 fn document_command_format_name(format: DocumentCommandFormat) -> &'static str {

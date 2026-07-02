@@ -2399,7 +2399,7 @@ fn export_svg_emits_rendered_document_primitives() {
 }
 
 #[test]
-fn parse_cdxml_merges_display_fragments_for_editing_hit_tests() {
+fn load_cdxml_document_preserves_display_fragments_for_editing_hit_tests() {
     let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >
 <CDXML BondLength="18" LineWidth="0.6" BoldWidth="2" HashSpacing="2.5" BondSpacing="18">
@@ -2426,12 +2426,15 @@ fn parse_cdxml_merges_display_fragments_for_editing_hit_tests() {
         .iter()
         .filter(|object| object.object_type == "molecule")
         .count();
-    assert_eq!(molecule_objects, 1);
-    let fragment = document
-        .editable_fragment()
-        .expect("merged fragment should be editable")
-        .fragment;
-    assert_eq!(fragment.bonds.len(), 2);
+    assert_eq!(molecule_objects, 2);
+    let fragments = document.editable_fragments();
+    assert_eq!(fragments.len(), 2);
+    assert_eq!(fragments[0].fragment.bonds.len(), 1);
+    assert_eq!(fragments[1].fragment.bonds.len(), 1);
+    assert!(!document
+        .objects
+        .iter()
+        .any(|object| object.id == "obj_cdxml_merged_molecule"));
     assert!(hit_test_bond_center(
         &document,
         Point::new(85.0 * CDXML_EDIT_SCALE, 15.0 * CDXML_EDIT_SCALE),
@@ -2441,7 +2444,31 @@ fn parse_cdxml_merges_display_fragments_for_editing_hit_tests() {
 }
 
 #[test]
-fn render_cdxml_merged_fragment_node_labels_interleave_with_external_graphics_by_source_z() {
+fn load_cdxml_document_preserves_figure2_display_fragments() {
+    let Some(cdxml) = read_optional_cdxml_fixture("figure2.cdxml") else {
+        return;
+    };
+    let mut engine = Engine::new();
+    engine
+        .load_cdxml_document(&cdxml)
+        .expect("figure2 should load into editing engine");
+    let document = &engine.state().document;
+    let molecule_objects = document
+        .objects
+        .iter()
+        .filter(|object| object.object_type == "molecule")
+        .count();
+    assert_eq!(molecule_objects, 7);
+    assert_eq!(document.editable_fragments().len(), 7);
+    assert!(!document
+        .objects
+        .iter()
+        .any(|object| object.id == "obj_cdxml_merged_molecule"));
+    assert!(!document.resources.contains_key("mol_cdxml_merged"));
+}
+
+#[test]
+fn render_cdxml_fragment_node_labels_interleave_with_external_graphics_by_source_z() {
     let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >
 <CDXML BondLength="18" LineWidth="0.6" BoldWidth="2" HashSpacing="2.5" BondSpacing="18">
@@ -2497,7 +2524,7 @@ fn render_cdxml_merged_fragment_node_labels_interleave_with_external_graphics_by
         .iter()
         .enumerate()
         .find_map(|(index, primitive)| {
-            (render_primitive_bond_id(primitive) == Some("f1_13")).then_some(index)
+            (render_primitive_bond_id(primitive) == Some("13")).then_some(index)
         })
         .unwrap_or_else(|| {
             panic!(
