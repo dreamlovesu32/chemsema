@@ -156,15 +156,15 @@ const COMMAND_SPECS: &[CommandSpec] = &[
     },
     CommandSpec {
         name: "convert",
-        summary: "Convert an editable document between ChemCore, CDXML/CDX, SDF, and SVG export formats.",
-        usage: "chemcore-cli convert <input> <output> [--format <format>]",
-        example: "chemcore-cli convert input.cdxml output.svg",
+        summary: "Convert an editable document between ChemCore, CDXML/CDX, SDF, SVG, and PNG export formats.",
+        usage: "chemcore-cli convert <input> <output> [--format <format>] [--scale <n>|--width <px>|--height <px>]",
+        example: "chemcore-cli convert input.cdxml output.png --scale 6",
     },
     CommandSpec {
         name: "export",
         summary: "Alias of convert for export-oriented workflows.",
-        usage: "chemcore-cli export <input> <output> [--format <format>]",
-        example: "chemcore-cli export input.cdxml output.svg",
+        usage: "chemcore-cli export <input> <output> [--format <format>] [--scale <n>|--width <px>|--height <px>]",
+        example: "chemcore-cli export input.cdxml output.png --scale 6",
     },
 ];
 
@@ -609,7 +609,7 @@ fn capabilities_value() -> Value {
         "commands": command_specs_json(),
         "formats": {
             "editableInput": ["ccjs", "ccjz", "cdxml", "cdx", "sdf"],
-            "documentOutput": ["json", "ccjs", "ccjz", "cdxml", "cdx", "sdf", "svg"],
+            "documentOutput": ["json", "ccjs", "ccjz", "cdxml", "cdx", "sdf", "svg", "png"],
             "captureOutput": ["svg", "png"],
             "clipboardOutput": ["windows-office-ole", "chemcore-payload-json"]
         },
@@ -678,7 +678,7 @@ pub(crate) fn about_value() -> Value {
         "documentation": documentation_metadata(),
         "formats": {
             "editableInput": ["ccjs", "ccjz", "cdxml", "cdx", "sdf"],
-            "documentOutput": ["json", "ccjs", "ccjz", "cdxml", "cdx", "sdf", "svg"],
+            "documentOutput": ["json", "ccjs", "ccjz", "cdxml", "cdx", "sdf", "svg", "png"],
             "captureOutput": ["svg", "png"],
             "clipboardOutput": ["windows-office-ole", "chemcore-payload-json"]
         },
@@ -1189,7 +1189,7 @@ pub(crate) fn doctor_command(args: &[String]) -> Result<(), String> {
             "documentation": documentation_metadata(),
             "formats": {
                 "editableInput": ["ccjs", "ccjz", "cdxml", "cdx", "sdf"],
-                "documentOutput": ["json", "ccjs", "ccjz", "cdxml", "cdx", "sdf", "svg"],
+                "documentOutput": ["json", "ccjs", "ccjz", "cdxml", "cdx", "sdf", "svg", "png"],
                 "captureOutput": ["svg", "png"],
                 "clipboardOutput": ["windows-office-ole", "chemcore-payload-json"]
             }

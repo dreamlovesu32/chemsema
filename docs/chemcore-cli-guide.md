@@ -113,8 +113,8 @@ chemcore-cli copy <input> [--target <selector>] [--payload <payload.json>] [--no
 chemcore-cli session [input]
 chemcore-cli new [commands.json|-] --out <path> [--save-format <format>] [--results <path>] [--document-json <path>] [--inspect-after <include|none>] [--pretty] [--quiet]
 chemcore-cli run <input> <commands.json|-> [--out <path>] [--save-format <format>] [--results <path>] [--document-json <path>] [--inspect-after <include|none>] [--pretty] [--quiet]
-chemcore-cli convert <input> <output> [--format <format>]
-chemcore-cli export <input> <output> [--format <format>]
+chemcore-cli convert <input> <output> [--format <format>] [--scale <n>|--width <px>|--height <px>]
+chemcore-cli export <input> <output> [--format <format>] [--scale <n>|--width <px>|--height <px>]
 ```
 
 Common calls:
@@ -126,6 +126,7 @@ npm run cli -- capture input.cdxml --target molecule:0 --out molecule.png --scal
 npm run cli -- new commands.json --out output.cdxml --results results.json --pretty
 npm run cli -- run input.cdxml commands.json --out output.cdxml --results results.json --document-json after.ccjs --pretty
 npm run cli -- convert input.cdxml output.svg
+npm run cli -- convert input.cdxml output.png --scale 6
 npm run cli -- convert input.cdxml output.ccjs
 ```
 
@@ -174,6 +175,7 @@ npm run cli -- run input.cdxml commands.json --out - --save-format svg --quiet
 
 ```powershell
 npm run cli -- convert input.cdxml output --format svg
+npm run cli -- convert input.cdxml output --format png --width 1800
 ```
 
 Supported formats:
@@ -187,6 +189,7 @@ Supported formats:
 | `cdx` | yes | yes | ChemDraw binary |
 | `sdf` | yes | yes | MDL SD file |
 | `svg` | - | yes | vector export |
+| `png` | - | yes | raster export. Defaults to `--scale 4`; use `--scale`, `--width`, or `--height` |
 
 ## 3. Command Script Format
 

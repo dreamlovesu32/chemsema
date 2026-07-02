@@ -266,3 +266,30 @@ use detail::*;
 use output::*;
 use target::*;
 use targets::*;
+
+pub(crate) fn write_document_png_output(
+    engine: &Engine,
+    output: &str,
+    scale: Option<f64>,
+    width: Option<u32>,
+    height: Option<u32>,
+) -> Result<u64, String> {
+    let document = engine_document(engine)?;
+    let bounds = target_bounds(&document, &TargetSelector::All)?;
+    let view_box = expanded_view_box(bounds, CropExpansion::uniform_abs(0.0));
+    let render = capture_render_primitives(&document, &TargetSelector::All, view_box);
+    let mut raster = RasterOptions::default();
+    if let Some(scale) = scale {
+        raster.scale = scale;
+    }
+    raster.width = width;
+    raster.height = height;
+    let output = write_capture_output(
+        &render.primitives,
+        view_box,
+        output,
+        CaptureFormat::Png,
+        raster,
+    )?;
+    Ok(output.bytes)
+}

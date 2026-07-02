@@ -272,6 +272,7 @@ Run the headless file CLI:
 ```bash
 npm run cli -- inspect figure1.cdxml --pretty
 npm run cli -- convert figure1.cdxml tmp/figure1.svg
+npm run cli -- convert figure1.cdxml tmp/figure1.png --scale 6
 npm run cli -- targets figure1.cdxml --pretty
 npm run cli -- capture figure1.cdxml --target object:obj_bracket_001 --out tmp/bracket.png --width 1200 --expand 8 --pretty
 npm run cli -- context figure1.cdxml --target object:obj_line_001 --radius 45 --expand-left 10 --expand-right 10 --expand-top 34 --expand-bottom 34 --capture-out tmp/line-context.png --out tmp/line-context.json --pretty

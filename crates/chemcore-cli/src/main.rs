@@ -20,6 +20,19 @@ const DOCUMENT_HASH_ALGORITHM: &str = "sha256";
 const DOCUMENT_HASH_INPUT: &str = "chemcore-document-json-v1";
 const IMPORT_CACHE_VERSION: &str = "chemcore-cli-import-cache-v1";
 
+#[derive(Debug, Clone, Copy, Default)]
+struct RasterOutputOptions {
+    scale: Option<f64>,
+    width: Option<u32>,
+    height: Option<u32>,
+}
+
+impl RasterOutputOptions {
+    fn has_explicit_options(self) -> bool {
+        self.scale.is_some() || self.width.is_some() || self.height.is_some()
+    }
+}
+
 fn main() {
     let exit_code = match run() {
         Ok(()) => 0,
@@ -313,6 +326,7 @@ fn convert_command(args: &[String]) -> Result<(), String> {
     let mut input = None;
     let mut output = None;
     let mut format = None;
+    let mut raster = RasterOutputOptions::default();
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
@@ -323,6 +337,30 @@ fn convert_command(args: &[String]) -> Result<(), String> {
                         .ok_or_else(|| "--format requires a value.".to_string())?
                         .clone(),
                 );
+            }
+            "--scale" => {
+                index += 1;
+                raster.scale = Some(parse_positive_f64_arg(
+                    "--scale",
+                    args.get(index)
+                        .ok_or_else(|| "--scale requires a positive number.".to_string())?,
+                )?);
+            }
+            "--width" => {
+                index += 1;
+                raster.width = Some(parse_positive_u32_arg(
+                    "--width",
+                    args.get(index)
+                        .ok_or_else(|| "--width requires a positive integer.".to_string())?,
+                )?);
+            }
+            "--height" => {
+                index += 1;
+                raster.height = Some(parse_positive_u32_arg(
+                    "--height",
+                    args.get(index)
+                        .ok_or_else(|| "--height requires a positive integer.".to_string())?,
+                )?);
             }
             value if input.is_none() => input = Some(value.to_string()),
             value if output.is_none() => output = Some(value.to_string()),
@@ -336,7 +374,7 @@ fn convert_command(args: &[String]) -> Result<(), String> {
             .to_string()
     })?;
     let engine = load_engine_from_file(&input)?;
-    write_engine_output(&engine, &output, format.as_deref())
+    write_engine_output_with_raster(&engine, &output, format.as_deref(), raster)
 }
 
 fn run_command_script(args: &[String]) -> Result<(), String> {
@@ -1219,14 +1257,34 @@ fn write_import_cache(path: &Path, document_json: &str) -> Result<u64, String> {
 }
 
 fn write_engine_output(engine: &Engine, path: &str, format: Option<&str>) -> Result<(), String> {
+    write_engine_output_with_raster(engine, path, format, RasterOutputOptions::default())
+}
+
+fn write_engine_output_with_raster(
+    engine: &Engine,
+    path: &str,
+    format: Option<&str>,
+    raster: RasterOutputOptions,
+) -> Result<(), String> {
     let format = format
         .map(normalize_format)
         .transpose()?
         .or_else(|| infer_format_from_path(path))
         .ok_or_else(|| "Output format is ambiguous; pass --format.".to_string())?;
 
+    if raster.has_explicit_options() && format != "png" {
+        return Err(
+            "--scale, --width, and --height are only supported for PNG output.".to_string(),
+        );
+    }
+
     if path == "-" {
         return write_engine_output_to_stdout(engine, &format);
+    }
+
+    if format == "png" {
+        agent::write_document_png_output(engine, path, raster.scale, raster.width, raster.height)?;
+        return Ok(());
     }
 
     ensure_output_parent(path)?;
@@ -1254,6 +1312,7 @@ fn write_engine_output_to_stdout(engine: &Engine, format: &str) -> Result<(), St
             .map_err(|error| error.to_string()),
         "sdf" => write_stdout_text(&engine.document_sdf()?),
         "svg" => write_stdout_text(&engine.document_svg()),
+        "png" => Err("Writing PNG to stdout is not supported.".to_string()),
         _ => Err(format!("Unsupported output format '{format}'.")),
     }
 }
@@ -1397,6 +1456,7 @@ fn normalize_format(value: &str) -> Result<String, String> {
         "cdx" => "cdx",
         "sdf" | "sd" => "sdf",
         "svg" => "svg",
+        "png" => "png",
         _ => return Err(format!("Unsupported format '{value}'.")),
     };
     Ok(normalized.to_string())
@@ -1419,6 +1479,26 @@ fn split_csv(value: &str) -> Vec<String> {
         .filter(|item| !item.is_empty())
         .map(str::to_string)
         .collect()
+}
+
+fn parse_positive_f64_arg(name: &str, value: &str) -> Result<f64, String> {
+    let number = value
+        .parse::<f64>()
+        .map_err(|_| format!("{name} requires a positive number."))?;
+    if !number.is_finite() || number <= 0.0 {
+        return Err(format!("{name} requires a finite positive number."));
+    }
+    Ok(number)
+}
+
+fn parse_positive_u32_arg(name: &str, value: &str) -> Result<u32, String> {
+    let number = value
+        .parse::<u32>()
+        .map_err(|_| format!("{name} requires a positive integer."))?;
+    if number == 0 {
+        return Err(format!("{name} requires a positive integer."));
+    }
+    Ok(number)
 }
 
 fn default_inspect_after() -> Option<Vec<String>> {
@@ -1455,12 +1535,13 @@ mod tests {
         assert_eq!(normalize_format("json").unwrap(), "json");
         assert_eq!(normalize_format(".cdxml").unwrap(), "cdxml");
         assert_eq!(normalize_format("sd").unwrap(), "sdf");
-        assert!(normalize_format("png").is_err());
+        assert_eq!(normalize_format("png").unwrap(), "png");
     }
 
     #[test]
     fn infers_format_from_output_path() {
         assert_eq!(infer_format_from_path("out.svg").as_deref(), Some("svg"));
+        assert_eq!(infer_format_from_path("out.png").as_deref(), Some("png"));
         assert_eq!(infer_format_from_path("out.json").as_deref(), Some("json"));
         assert_eq!(infer_format_from_path("-"), None);
     }
