@@ -397,53 +397,64 @@ pub(super) fn render_primitives_for_target(
     document: &ChemcoreDocument,
     target: &TargetSelector,
 ) -> Result<Vec<RenderPrimitive>, String> {
+    if let Some(targets) = render_targets_for_target(document, target)? {
+        return Ok(render_document_targets(
+            document,
+            &targets.nodes,
+            &targets.bonds,
+            &targets.objects,
+        ));
+    }
+    Ok(render_document(document))
+}
+
+pub(super) fn render_targets_for_target(
+    document: &ChemcoreDocument,
+    target: &TargetSelector,
+) -> Result<Option<RegionRenderTargets>, String> {
     match target {
-        TargetSelector::All => Ok(render_document(document)),
-        TargetSelector::Bounds(_) => Ok(render_document(document)),
+        TargetSelector::All | TargetSelector::Bounds(_) => Ok(None),
         TargetSelector::Selection(targets) => {
-            let mut primitives = Vec::new();
+            let mut merged = RegionRenderTargets::default();
             for target in targets {
-                primitives.extend(render_primitives_for_target(document, target)?);
+                let Some(targets) = render_targets_for_target(document, target)? else {
+                    return Ok(None);
+                };
+                merged.nodes.extend(targets.nodes);
+                merged.bonds.extend(targets.bonds);
+                merged.objects.extend(targets.objects);
             }
-            Ok(primitives)
+            Ok(Some(merged))
         }
         TargetSelector::Object(id) => {
             if document.find_scene_object(id).is_none() {
                 return Err(format!("Object target not found: {id}. Run 'chemcore-cli targets <input>' to list valid selectors."));
             }
-            let nodes = BTreeSet::new();
-            let bonds = BTreeSet::new();
-            let mut objects = BTreeSet::new();
-            objects.insert(id.clone());
-            Ok(render_document_targets(document, &nodes, &bonds, &objects))
+            let mut targets = RegionRenderTargets::default();
+            targets.objects.insert(id.clone());
+            Ok(Some(targets))
         }
         TargetSelector::Molecule(index) => {
             let object_id = molecule_object_id(document, *index)?;
-            let nodes = BTreeSet::new();
-            let bonds = BTreeSet::new();
-            let mut objects = BTreeSet::new();
-            objects.insert(object_id);
-            Ok(render_document_targets(document, &nodes, &bonds, &objects))
+            let mut targets = RegionRenderTargets::default();
+            targets.objects.insert(object_id);
+            Ok(Some(targets))
         }
         TargetSelector::Node(id) => {
             if !node_exists(document, id) {
                 return Err(format!("Node target not found: {id}. Run 'chemcore-cli targets <input>' to list valid selectors."));
             }
-            let mut nodes = BTreeSet::new();
-            let bonds = BTreeSet::new();
-            let objects = BTreeSet::new();
-            nodes.insert(id.clone());
-            Ok(render_document_targets(document, &nodes, &bonds, &objects))
+            let mut targets = RegionRenderTargets::default();
+            targets.nodes.insert(id.clone());
+            Ok(Some(targets))
         }
         TargetSelector::Bond(id) => {
             if !bond_exists(document, id) {
                 return Err(format!("Bond target not found: {id}. Run 'chemcore-cli targets <input>' to list valid selectors."));
             }
-            let nodes = BTreeSet::new();
-            let mut bonds = BTreeSet::new();
-            let objects = BTreeSet::new();
-            bonds.insert(id.clone());
-            Ok(render_document_targets(document, &nodes, &bonds, &objects))
+            let mut targets = RegionRenderTargets::default();
+            targets.bonds.insert(id.clone());
+            Ok(Some(targets))
         }
     }
 }
@@ -490,6 +501,15 @@ pub(super) fn expanded_view_box(bounds: [f64; 4], expansion: CropExpansion) -> [
     let width = (width + left + right).max(1.0);
     let height = (height + top + bottom).max(1.0);
     [min_x, min_y, width, height]
+}
+
+pub(super) fn bounds_view_box(bounds: [f64; 4]) -> [f64; 4] {
+    [
+        bounds[0],
+        bounds[1],
+        bounds[2] - bounds[0],
+        bounds[3] - bounds[1],
+    ]
 }
 
 pub(super) fn bounds_json(bounds: [f64; 4]) -> Value {

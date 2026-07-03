@@ -199,7 +199,7 @@ pub(super) fn session_context(
             .ok_or_else(|| {
                 "captureOut format is ambiguous; use .svg/.png or format=svg|png.".to_string()
             })?;
-        let render = capture_render_primitives(&document.document, &target, query_view_box);
+        let render = capture_render_primitives(&document.document, &target, query_view_box, false)?;
         let render_output = write_capture_output(
             &render.primitives,
             query_view_box,
@@ -238,11 +238,19 @@ pub(super) fn session_capture(
     let output = request_string(request, &["out", "output", "path"])?;
     let format = request_capture_format(request)?;
     let expansion = request_expansion(request, CropExpansion::uniform_abs(8.0))?;
+    let crop_bounds = request_bounds(request, &["cropBounds", "crop-bounds", "crop_bounds"])?;
+    let selection_only = request_bool(
+        request,
+        &["selectionOnly", "selection-only", "selection_only"],
+    )?
+    .unwrap_or(false);
     let raster = request_raster_options(request)?;
     let (output, format, output_defaulted) = resolve_capture_output(output, format)?;
     let bounds = target_bounds(&document.document, &target)?;
-    let view_box = expanded_view_box(bounds, expansion);
-    let render = capture_render_primitives(&document.document, &target, view_box);
+    let view_box = crop_bounds
+        .map(bounds_view_box)
+        .unwrap_or_else(|| expanded_view_box(bounds, expansion));
+    let render = capture_render_primitives(&document.document, &target, view_box, selection_only)?;
     let render_output =
         write_capture_output(&render.primitives, view_box, &output, format, raster)?;
     let primitive_count = render.primitives.len();
@@ -260,8 +268,10 @@ pub(super) fn session_capture(
             "pixelSize": render_output.pixel_size.map(PixelSize::to_json),
         },
         "bounds": bounds_json(bounds),
+        "cropBounds": crop_bounds.map(bounds_json),
         "viewBox": view_box_json(view_box),
         "expansion": expansion.to_json(),
+        "selectionOnly": selection_only,
         "render": {
             "mode": render.mode,
             "primitiveCount": primitive_count,
@@ -405,7 +415,7 @@ pub(super) fn session_help_json() -> Value {
             "targets": {"description": "Return stable selectors and bounds for the open document."},
             "detail": {"required": ["target"], "description": "Return one object/molecule/node/bond detail JSON."},
             "context": {"required": ["target"], "optional": ["targets", "radius", "captureOut", "scale", "width", "height", "limit"], "description": "Return nearby summaries and optionally a screenshot. target/targets may be a selector string or an array of selector strings."},
-            "capture": {"required": ["target"], "optional": ["targets", "out", "format", "scale", "width", "height", "expand", "expandRel"], "description": "Write a precise crop; target/targets may be a selector string or an array. Multi-target crops use the minimum union bounds."},
+            "capture": {"required": ["target"], "optional": ["targets", "out", "format", "scale", "width", "height", "expand", "expandRel", "selectionOnly", "cropBounds"], "description": "Write a precise crop; target/targets may be a selector string or an array. Use selectionOnly with cropBounds to render aligned object-only layers."},
             "execute": {"required": ["command or commands"], "optional": ["continueOnError"], "description": "Run one or more engine JSON commands against the in-memory document."},
             "save": {"required": ["out"], "optional": ["format"], "description": "Save the current in-memory document."},
             "status": {"description": "Return the open document summary."},
@@ -595,6 +605,40 @@ pub(super) fn request_capture_format(request: &Value) -> Result<Option<CaptureFo
     })
 }
 
+pub(super) fn request_bounds(request: &Value, keys: &[&str]) -> Result<Option<[f64; 4]>, String> {
+    for key in keys {
+        let Some(value) = request.get(*key) else {
+            continue;
+        };
+        if let Some(text) = value.as_str() {
+            return parse_bounds_arg(text).map(Some);
+        }
+        let Some(values) = value.as_array() else {
+            return Err(format!(
+                "{key} must be a bounds string or an array of four numbers."
+            ));
+        };
+        if values.len() != 4 {
+            return Err(format!("{key} must contain exactly four numbers."));
+        }
+        let mut bounds = [0.0; 4];
+        for (index, value) in values.iter().enumerate() {
+            let Some(number) = value.as_f64() else {
+                return Err(format!("{key}[{index}] must be a number."));
+            };
+            if !number.is_finite() {
+                return Err(format!("{key}[{index}] must be finite."));
+            }
+            bounds[index] = number;
+        }
+        if bounds[2] <= bounds[0] || bounds[3] <= bounds[1] {
+            return Err(format!("{key} must satisfy maxX > minX and maxY > minY."));
+        }
+        return Ok(Some(bounds));
+    }
+    Ok(None)
+}
+
 pub(super) fn session_request_commands(request: &Value) -> Result<Vec<Value>, String> {
     if let Some(command) = request.get("command").filter(|value| value.is_object()) {
         return Ok(vec![command.clone()]);
@@ -617,12 +661,8 @@ pub(super) fn session_command_type_name(command: &Value) -> Value {
 }
 
 pub(super) fn request_required_string(request: &Value, keys: &[&str]) -> Result<String, String> {
-    request_string(request, keys)?.ok_or_else(|| {
-        format!(
-            "Request requires one of: {}.",
-            keys.iter().copied().collect::<Vec<_>>().join(", ")
-        )
-    })
+    request_string(request, keys)?
+        .ok_or_else(|| format!("Request requires one of: {}.", keys.to_vec().join(", ")))
 }
 
 pub(super) fn request_string(request: &Value, keys: &[&str]) -> Result<Option<String>, String> {

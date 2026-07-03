@@ -250,7 +250,7 @@ pub(crate) fn context_command(args: &[String]) -> Result<(), String> {
             .ok_or_else(|| {
                 "--capture-out format is ambiguous; use .svg/.png or --format svg|png.".to_string()
             })?;
-        let render = capture_render_primitives(&document, &target, query_view_box);
+        let render = capture_render_primitives(&document, &target, query_view_box, false)?;
         let render_output = write_capture_output(
             &render.primitives,
             query_view_box,

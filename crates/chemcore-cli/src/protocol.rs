@@ -115,8 +115,8 @@ const COMMAND_SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "capture",
         summary: "Render a deterministic cropped SVG or high-resolution PNG for an object, molecule, node, bond, all content, or explicit bounds.",
-        usage: "chemcore-cli capture <input> --target <selector> [--target <selector> ...] [--targets <selector;selector>] [--out <path.svg|path.png>] [--scale <n>|--width <px>|--height <px>] [--expand <pt>] [--expand-rel <fraction>] [--expand-left <pt>] [--pretty]",
-        example: "chemcore-cli capture input.cdxml --target molecule:0 --target object:obj_label --out selection.png --scale 6 --expand-rel 0.15",
+        usage: "chemcore-cli capture <input> --target <selector> [--target <selector> ...] [--targets <selector;selector>] [--selection-only] [--crop-bounds <minX,minY,maxX,maxY>] [--out <path.svg|path.png>] [--scale <n>|--width <px>|--height <px>] [--expand <pt>] [--expand-rel <fraction>] [--expand-left <pt>] [--pretty]",
+        example: "chemcore-cli capture input.cdxml --target molecule:0 --target object:obj_label --selection-only --crop-bounds 0,0,800,600 --out selection.png --scale 6",
     },
     CommandSpec {
         name: "context",
@@ -537,6 +537,8 @@ fn protocol_schemas_json() -> Value {
             "verification": "Capture manifests include output.verified=true and output.bytes after the rendered file is verified on disk.",
             "render": "Capture manifests include render.mode, render.primitiveCount, and render.targets. These describe how many render primitives and nearby node/bond/object targets were used to produce the crop.",
             "multiSelect": "Multiple targets are cropped by their minimum union bounds. The rendered image includes everything visible inside that box plus requested expansion.",
+            "selectionOnly": "Pass --selection-only to render only the requested target primitives instead of every visible object inside the crop region.",
+            "cropBounds": "Pass --crop-bounds minX,minY,maxX,maxY to force an exact world-space output canvas while the target still controls which primitives are rendered. This is useful for aligned object masks and training layers.",
             "usage": command_spec("capture").map(|spec| spec.usage).unwrap_or("")
         },
         "context": {

@@ -6,6 +6,8 @@ pub(crate) fn capture_command(args: &[String]) -> Result<(), String> {
     let mut output = None;
     let mut format = None;
     let mut expansion = CropExpansion::uniform_abs(8.0);
+    let mut crop_bounds = None;
+    let mut selection_only = false;
     let mut raster = RasterOptions::default();
     let mut pretty = false;
     let mut index = 0;
@@ -80,6 +82,13 @@ pub(crate) fn capture_command(args: &[String]) -> Result<(), String> {
                     )?),
                 )?;
             }
+            "--crop-bounds" => {
+                index += 1;
+                crop_bounds = Some(parse_bounds_arg(args.get(index).ok_or_else(|| {
+                    "--crop-bounds requires minX,minY,maxX,maxY.".to_string()
+                })?)?);
+            }
+            "--selection-only" => selection_only = true,
             "--out" | "-o" => {
                 index += 1;
                 output = Some(
@@ -275,8 +284,10 @@ pub(crate) fn capture_command(args: &[String]) -> Result<(), String> {
     let engine = load_engine_from_file(&input)?;
     let document = engine_document(&engine)?;
     let bounds = target_bounds(&document, &target)?;
-    let view_box = expanded_view_box(bounds, expansion);
-    let render = capture_render_primitives(&document, &target, view_box);
+    let view_box = crop_bounds
+        .map(bounds_view_box)
+        .unwrap_or_else(|| expanded_view_box(bounds, expansion));
+    let render = capture_render_primitives(&document, &target, view_box, selection_only)?;
     let render_output =
         write_capture_output(&render.primitives, view_box, &output, format, raster)?;
     let primitive_count = render.primitives.len();
@@ -295,8 +306,10 @@ pub(crate) fn capture_command(args: &[String]) -> Result<(), String> {
                 "pixelSize": render_output.pixel_size.map(PixelSize::to_json),
             },
             "bounds": bounds_json(bounds),
+            "cropBounds": crop_bounds.map(bounds_json),
             "viewBox": view_box_json(view_box),
             "expansion": expansion.to_json(),
+            "selectionOnly": selection_only,
             "render": {
                 "mode": render.mode,
                 "primitiveCount": primitive_count,
@@ -312,31 +325,57 @@ pub(super) fn capture_render_primitives(
     document: &ChemcoreDocument,
     target: &TargetSelector,
     view_box: [f64; 4],
-) -> CaptureRender {
+    selection_only: bool,
+) -> Result<CaptureRender, String> {
+    if selection_only {
+        match render_targets_for_target(document, target)? {
+            Some(targets) => {
+                let primitives = render_document_targets(
+                    document,
+                    &targets.nodes,
+                    &targets.bonds,
+                    &targets.objects,
+                );
+                return Ok(CaptureRender {
+                    primitives,
+                    mode: "selection-targets",
+                    targets,
+                });
+            }
+            None => {
+                return Ok(CaptureRender {
+                    primitives: render_document(document),
+                    mode: "selection-full-document",
+                    targets: RegionRenderTargets::default(),
+                });
+            }
+        }
+    }
+
     if matches!(target, TargetSelector::All) {
-        return CaptureRender {
+        return Ok(CaptureRender {
             primitives: render_document(document),
             mode: "full-document",
             targets: RegionRenderTargets::default(),
-        };
+        });
     }
 
     let targets = region_render_targets(document, view_box_to_bounds(view_box));
     if targets.is_empty() {
-        return CaptureRender {
+        return Ok(CaptureRender {
             primitives: Vec::new(),
             mode: "region-empty",
             targets,
-        };
+        });
     }
 
     let primitives =
         render_document_targets(document, &targets.nodes, &targets.bonds, &targets.objects);
-    CaptureRender {
+    Ok(CaptureRender {
         primitives,
         mode: "region-targets",
         targets,
-    }
+    })
 }
 
 pub(super) fn region_render_targets(

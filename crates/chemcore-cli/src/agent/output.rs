@@ -189,10 +189,11 @@ pub(super) fn render_svg_png_pixmap(
 }
 
 pub(super) fn usvg_options_with_system_fonts() -> usvg::Options<'static> {
-    let mut options = usvg::Options::default();
-    options.fontdb = capture_font_database();
-    options.font_family = "Arial".to_string();
-    options
+    usvg::Options {
+        fontdb: capture_font_database(),
+        font_family: "Arial".to_string(),
+        ..Default::default()
+    }
 }
 
 pub(super) fn capture_font_database() -> Arc<fontdb::Database> {

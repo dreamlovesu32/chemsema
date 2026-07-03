@@ -108,7 +108,7 @@ chemcore-cli inspect <input> [--include summary,objects,molecules,resources,styl
 chemcore-cli targets <input> [--out <path>] [--pretty]
 chemcore-cli context <input> --target <selector> [--target <selector> ...] [--targets <selector;selector>] [--radius <pt>] [--out <context.json>] [--capture-out <path.svg|path.png>] [--scale <n>|--width <px>|--height <px>] [--pretty]
 chemcore-cli detail <input> --target <object:id|molecule:index|node:id|bond:id> [--summary-only] [--include-resource] [--out <detail.json>] [--pretty]
-chemcore-cli capture <input> --target <selector> [--target <selector> ...] [--targets <selector;selector>] [--out <path.svg|path.png>] [--scale <n>|--width <px>|--height <px>] [--expand <pt>] [--expand-rel <fraction>] [--pretty]
+chemcore-cli capture <input> --target <selector> [--target <selector> ...] [--targets <selector;selector>] [--selection-only] [--crop-bounds <minX,minY,maxX,maxY>] [--out <path.svg|path.png>] [--scale <n>|--width <px>|--height <px>] [--expand <pt>] [--expand-rel <fraction>] [--pretty]
 chemcore-cli copy <input> [--target <selector>] [--payload <payload.json>] [--no-copy] [--pretty]
 chemcore-cli session [input]
 chemcore-cli new [commands.json|-] --out <path> [--save-format <format>] [--results <path>] [--document-json <path>] [--inspect-after <include|none>] [--pretty] [--quiet]
@@ -123,6 +123,7 @@ Common calls:
 npm run cli -- inspect input.cdxml --include summary,objects,molecules --out inspect.json --pretty
 npm run cli -- targets input.cdxml --out targets.json --pretty
 npm run cli -- capture input.cdxml --target molecule:0 --out molecule.png --scale 6 --expand-rel 0.15 --pretty
+npm run cli -- capture input.cdxml --target object:obj_text_1 --selection-only --crop-bounds 0,0,800,600 --out text-layer.png --width 4800 --height 3600 --pretty
 npm run cli -- new commands.json --out output.cdxml --results results.json --pretty
 npm run cli -- run input.cdxml commands.json --out output.cdxml --results results.json --document-json after.ccjs --pretty
 npm run cli -- convert input.cdxml output.svg

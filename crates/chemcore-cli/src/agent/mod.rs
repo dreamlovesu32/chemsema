@@ -277,7 +277,7 @@ pub(crate) fn write_document_png_output(
     let document = engine_document(engine)?;
     let bounds = target_bounds(&document, &TargetSelector::All)?;
     let view_box = expanded_view_box(bounds, CropExpansion::uniform_abs(0.0));
-    let render = capture_render_primitives(&document, &TargetSelector::All, view_box);
+    let render = capture_render_primitives(&document, &TargetSelector::All, view_box, false)?;
     let mut raster = RasterOptions::default();
     if let Some(scale) = scale {
         raster.scale = scale;

@@ -46,6 +46,7 @@ fn main() {
     std::process::exit(exit_code);
 }
 
+#[allow(clippy::result_large_err)]
 fn run() -> CliResult<()> {
     let args = std::env::args().skip(1).collect::<Vec<_>>();
     let Some(command) = args.first().map(String::as_str) else {
