@@ -190,7 +190,7 @@ Supported formats:
 | `cdx` | yes | yes | ChemDraw binary |
 | `sdf` | yes | yes | MDL SD file |
 | `svg` | - | yes | vector export |
-| `png` | - | yes | raster export. Defaults to `--scale 4`; use `--scale`, `--width`, or `--height` |
+| `png` | - | yes | raster export. Defaults to `--scale 10`; use `--scale`, `--width`, or `--height` |
 
 ## 3. Command Script Format
 
@@ -588,7 +588,7 @@ image shows everything visible in that box plus requested expansion. If `--out`
 is omitted, it writes a PNG to the OS temp `chemcore-cli`
 directory and reports `output.defaulted=true` plus the exact `output.path`.
 It also emits a `warnings[]` entry with `kind="default_output_path"`.
-SVG output is vector. PNG output defaults to `--scale 4`; use `--scale`,
+SVG output is vector. PNG output defaults to `--scale 10`; use `--scale`,
 `--width`, or `--height` when the caller needs a sharper or bounded
 raster image. The manifest includes `output.verified=true` and `output.bytes`
 after the file is verified on disk. Use absolute expansion (`--expand`, `--expand-left`,

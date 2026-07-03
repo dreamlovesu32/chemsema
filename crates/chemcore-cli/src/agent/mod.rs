@@ -18,7 +18,7 @@ use std::process::Command;
 use std::sync::{Arc, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const DEFAULT_CAPTURE_SCALE: f64 = 4.0;
+const DEFAULT_CAPTURE_SCALE: f64 = 10.0;
 const DEFAULT_OUTPUT_DIR_NAME: &str = "chemcore-cli";
 const MAX_CAPTURE_SIDE_PX: u32 = 32_000;
 const MAX_CAPTURE_PIXELS: u64 = 120_000_000;

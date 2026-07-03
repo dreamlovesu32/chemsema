@@ -173,7 +173,7 @@ npm run cli -- convert input.cdxml output --format png --width 1800
 | `cdx` | yes | yes | ChemDraw binary |
 | `sdf` | yes | yes | MDL SD file |
 | `svg` | no | yes | 矢量导出 |
-| `png` | no | yes | 位图导出，默认 `--scale 4`；可用 `--scale`、`--width` 或 `--height` 控制分辨率 |
+| `png` | no | yes | 位图导出，默认 `--scale 10`；可用 `--scale`、`--width` 或 `--height` 控制分辨率 |
 
 ## 3. 命令脚本格式
 
@@ -564,7 +564,7 @@ selection:<selector;selector>
 `--out` 时，会把 PNG 写到系统临时目录下的 `chemcore-cli` 子目录，并返回
 `output.defaulted=true`、真实的 `output.path`，以及 `kind="default_output_path"` 的
 `warnings[]` 条目。SVG 是矢量。PNG 默认
-`--scale 4`；需要更清晰或固定像素预算时，用 `--scale`、`--width` 或
+`--scale 10`；需要更清晰或固定像素预算时，用 `--scale`、`--width` 或
 `--height`。文件落盘校验通过后，manifest 会包含 `output.verified=true` 和
 `output.bytes`。用绝对扩展（`--expand`、`--expand-left`、`--expand-right`、
 `--expand-top`、`--expand-bottom`）和相对扩展（`--expand-rel`、

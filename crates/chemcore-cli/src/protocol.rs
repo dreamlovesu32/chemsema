@@ -530,7 +530,7 @@ fn protocol_schemas_json() -> Value {
         },
         "capture": {
             "formats": ["svg", "png"],
-            "resolution": "PNG defaults to --scale 4. Use --scale, --width, or --height for sharper or bounded raster output.",
+            "resolution": "PNG defaults to --scale 10. Use --scale, --width, or --height for sharper or bounded raster output.",
             "expansion": "Use --expand/--padding for absolute pt expansion, --expand-left/right/top/bottom for per-side absolute expansion, and --expand-rel or --expand-rel-x/y for relative expansion based on target size.",
             "defaultOutput": "If --out is omitted, capture writes a PNG into the OS temp chemcore-cli directory and returns output.defaulted=true plus the exact path and a default_output_path warning in the JSON manifest.",
             "stdout": "JSON manifest only; rendered image data is written to --out or the default temp capture path.",

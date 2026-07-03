@@ -84,7 +84,7 @@ fn derives_png_height_from_fixed_width() {
     let pixel_size = pixel_size_for_view_box(
         [0.0, 0.0, 100.0, 50.0],
         RasterOptions {
-            scale: 4.0,
+            scale: 10.0,
             width: Some(1000),
             height: None,
         },

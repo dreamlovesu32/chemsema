@@ -202,7 +202,7 @@ Expansion options:
 --expand-rel-bottom <fraction>
 ```
 
-PNG defaults to `--scale 4`. Use higher scale for close inspection.
+PNG defaults to `--scale 10`. Use `--scale`, `--width`, or `--height` for bounded close inspection.
 
 ## Editing Documents
 

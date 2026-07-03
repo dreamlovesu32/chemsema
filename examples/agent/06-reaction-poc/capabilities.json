@@ -218,7 +218,7 @@
       ],
       "multiSelect": "Multiple targets are cropped by their minimum union bounds. The rendered image includes everything visible inside that box plus requested expansion.",
       "render": "Capture manifests include render.mode, render.primitiveCount, and render.targets. These describe how many render primitives and nearby node/bond/object targets were used to produce the crop.",
-      "resolution": "PNG defaults to --scale 4. Use --scale, --width, or --height for sharper or bounded raster output.",
+      "resolution": "PNG defaults to --scale 10. Use --scale, --width, or --height for sharper or bounded raster output.",
       "stdout": "JSON manifest only; rendered image data is written to --out or the default temp capture path.",
       "usage": "chemcore-cli capture <input> --target <selector> [--target <selector> ...] [--targets <selector;selector>] [--out <path.svg|path.png>] [--scale <n>|--width <px>|--height <px>] [--expand <pt>] [--expand-rel <fraction>] [--expand-left <pt>] [--pretty]",
       "verification": "Capture manifests include output.verified=true and output.bytes after the rendered file is verified on disk."

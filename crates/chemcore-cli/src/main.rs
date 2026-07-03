@@ -266,7 +266,7 @@ fn new_command(args: &[String]) -> Result<(), String> {
         );
     }
     set_report_field(&mut execution.report, "ok", json!(execution.ok));
-    if !quiet {
+    if results.is_some() || !quiet {
         write_json_value(execution.report.clone(), results.as_deref(), pretty)?;
     }
     if !execution.ok {
@@ -557,7 +557,7 @@ fn run_command_script(args: &[String]) -> Result<(), String> {
         );
     }
     set_report_field(&mut execution.report, "ok", json!(execution.ok));
-    if !quiet {
+    if results.is_some() || !quiet {
         write_json_value(execution.report.clone(), results.as_deref(), pretty)?;
     }
     if !execution.ok {
@@ -1565,6 +1565,77 @@ mod tests {
         assert!(output_parent_path(Path::new("results.json")).is_none());
         ensure_output_parent_path(Path::new("output.cdxml")).unwrap();
         ensure_output_parent("results.json").unwrap();
+    }
+
+    #[test]
+    fn new_quiet_still_writes_explicit_results_file() {
+        let root = std::env::temp_dir().join(format!(
+            "chemcore-cli-new-quiet-results-test-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let script = root.join("commands.json");
+        let out = root.join("out.ccjs");
+        let results = root.join("results.json");
+        fs::write(
+            &script,
+            r#"[{"type":"add-bond","begin":{"x":10,"y":10},"end":{"x":40,"y":10},"order":1,"variant":"single"}]"#,
+        )
+        .unwrap();
+
+        new_command(&[
+            script.display().to_string(),
+            "--out".to_string(),
+            out.display().to_string(),
+            "--results".to_string(),
+            results.display().to_string(),
+            "--quiet".to_string(),
+        ])
+        .unwrap();
+
+        let report: Value = serde_json::from_str(&fs::read_to_string(&results).unwrap()).unwrap();
+        assert_eq!(report["ok"], true);
+        assert_eq!(report["commandCount"], 1);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn run_quiet_still_writes_explicit_results_file() {
+        let root = std::env::temp_dir().join(format!(
+            "chemcore-cli-run-quiet-results-test-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let input = root.join("input.ccjs");
+        let script = root.join("commands.json");
+        let results = root.join("results.json");
+        new_command(&[
+            "--out".to_string(),
+            input.display().to_string(),
+            "--quiet".to_string(),
+        ])
+        .unwrap();
+        fs::write(
+            &script,
+            r#"[{"type":"add-bond","begin":{"x":20,"y":20},"end":{"x":50,"y":20},"order":1,"variant":"single"}]"#,
+        )
+        .unwrap();
+
+        run_command_script(&[
+            input.display().to_string(),
+            script.display().to_string(),
+            "--results".to_string(),
+            results.display().to_string(),
+            "--quiet".to_string(),
+        ])
+        .unwrap();
+
+        let report: Value = serde_json::from_str(&fs::read_to_string(&results).unwrap()).unwrap();
+        assert_eq!(report["ok"], true);
+        assert_eq!(report["commandCount"], 1);
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]
