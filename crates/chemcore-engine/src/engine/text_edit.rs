@@ -615,8 +615,9 @@ impl Engine {
         let Some(session) = self.endpoint_text_session(node_id, Point::new(0.0, 0.0)) else {
             return false;
         };
+        let preserve_measured_box = content.preserve_measured_box;
         let session = apply_text_command_content(session, content);
-        self.apply_endpoint_text_edit(node_id, &session)
+        self.apply_endpoint_text_edit_with_options(node_id, &session, preserve_measured_box)
     }
 
     fn apply_text_edit_untracked(&mut self, session: TextEditSession) -> bool {
@@ -1197,6 +1198,15 @@ impl Engine {
     }
 
     fn apply_endpoint_text_edit(&mut self, node_id: &str, session: &TextEditSession) -> bool {
+        self.apply_endpoint_text_edit_with_options(node_id, session, false)
+    }
+
+    fn apply_endpoint_text_edit_with_options(
+        &mut self,
+        node_id: &str,
+        session: &TextEditSession,
+        preserve_measured_box: bool,
+    ) -> bool {
         let text = session
             .text
             .replace("\r\n", "\n")
@@ -1229,12 +1239,13 @@ impl Engine {
         };
         let connection_angles = adjacent_angles_for_fragment_node(entry.fragment, node_id);
         let node = &mut entry.fragment.nodes[node_index];
-        let changed = apply_node_label_text_edit(
+        let changed = apply_node_label_text_edit_with_options(
             node,
             &text,
             session,
             &connection_angles,
             local_anchor_position,
+            preserve_measured_box,
         );
         if !changed {
             self.undo_stack.pop();
@@ -1382,6 +1393,9 @@ fn apply_text_command_content(
     if content.box_value.is_some() {
         session.box_value = content.box_value;
     }
+    if content.anchor_offset.is_some() {
+        session.anchor_offset = content.anchor_offset;
+    }
     if content.default_chemical {
         session.default_chemical = true;
     }
@@ -1472,6 +1486,24 @@ pub(super) fn apply_node_label_text_edit(
     session: &TextEditSession,
     connection_angles: &[f64],
     anchor_position: [f64; 2],
+) -> bool {
+    apply_node_label_text_edit_with_options(
+        node,
+        text,
+        session,
+        connection_angles,
+        anchor_position,
+        false,
+    )
+}
+
+fn apply_node_label_text_edit_with_options(
+    node: &mut crate::Node,
+    text: &str,
+    session: &TextEditSession,
+    connection_angles: &[f64],
+    anchor_position: [f64; 2],
+    preserve_measured_box: bool,
 ) -> bool {
     let previous_element = node.element.clone();
     let previous_atomic_number = node.atomic_number;
@@ -1578,11 +1610,14 @@ pub(super) fn apply_node_label_text_edit(
         session.fill.as_deref().unwrap_or(DEFAULT_TEXT_FILL),
         connection_angles,
         session,
-        false,
+        preserve_measured_box,
         false,
         false,
         None,
     );
+    if preserve_measured_box {
+        mark_node_label_import_geometry_authoritative(&mut next_label);
+    }
     set_label_recognition_meta(&mut next_label, label_recognition_meta);
     let implicit_hydrogen_label_meta = previous_implicit_hydrogen_label_meta.map(|meta| {
         let user_edited =
@@ -1604,4 +1639,26 @@ pub(super) fn apply_node_label_text_edit(
     }
     node.label = Some(next_label);
     true
+}
+
+fn mark_node_label_import_geometry_authoritative(label: &mut crate::NodeLabel) {
+    let Some(bbox) = label.bbox() else {
+        return;
+    };
+    let text_position = label.position.unwrap_or([bbox[0], bbox[1]]);
+    let import_meta = json!({
+        "cdxml": {
+            "boundingBox": bbox,
+            "textPosition": text_position,
+            "labelAlignment": "Left"
+        }
+    });
+    match label.meta.as_object_mut() {
+        Some(meta) => {
+            meta.insert("import".to_string(), import_meta);
+        }
+        None => {
+            label.meta = json!({ "import": import_meta });
+        }
+    }
 }

@@ -394,6 +394,47 @@ fn direct_node_label_runs_update_endpoint_label() {
 }
 
 #[test]
+fn direct_node_label_runs_can_preserve_measured_endpoint_box() {
+    let mut engine = Engine::new();
+    let add = execute(
+        &mut engine,
+        json!({
+            "type": "add-bond",
+            "begin": { "x": 100.0, "y": 100.0 },
+            "end": { "x": 148.0, "y": 100.0 },
+            "order": 1,
+            "variant": "single"
+        }),
+    );
+    let node_id = created_node_id(&add, 0);
+
+    let update = execute(
+        &mut engine,
+        json!({
+            "type": "set-node-label-runs",
+            "nodeId": node_id,
+            "runs": [
+                { "text": "Ph", "script": "normal" }
+            ],
+            "box": [72.0, 92.0, 96.0, 104.0],
+            "anchorOffset": [28.0, 8.0],
+            "preserveMeasuredBox": true,
+            "defaultChemical": true
+        }),
+    );
+
+    assert_eq!(update["changed"], true);
+    let document = document_value(&engine);
+    let node = find_node(&document, &node_id);
+    assert_eq!(node["label"]["text"], "Ph");
+    assert_eq!(node["label"]["box"], json!([72.0, 92.0, 96.0, 104.0]));
+    assert_eq!(
+        node["label"]["meta"]["import"]["cdxml"]["boundingBox"],
+        json!([72.0, 92.0, 96.0, 104.0])
+    );
+}
+
+#[test]
 fn move_targets_moves_bond_endpoints_by_delta() {
     let mut engine = Engine::new();
     let add = execute(

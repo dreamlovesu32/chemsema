@@ -405,31 +405,34 @@ pub(super) fn make_centered_node_label_from_runs(
         Some([x1, y1, x2, y2]),
         font_size,
     );
-    if let Some(anchor_polygon_index) =
-        label_anchor_polygon_index(&line_runs, layout.anchor_line, anchor_char)
-    {
-        if let Some(current_anchor) = glyph_polygons
-            .get(anchor_polygon_index)
-            .and_then(|polygon| {
-                let points: Vec<_> = polygon
-                    .iter()
-                    .map(|point| Point::new(point[0], point[1]))
-                    .collect();
-                polygon_anchor_point(&points)
-            })
+    if !preserve_measured_box {
+        if let Some(anchor_polygon_index) =
+            label_anchor_polygon_index(&line_runs, layout.anchor_line, anchor_char)
         {
-            let dx = round2(position[0] - current_anchor.x);
-            let dy = round2(position[1] - current_anchor.y);
-            if dx.abs() > crate::EPSILON || dy.abs() > crate::EPSILON {
-                x1 = round2(x1 + dx);
-                y1 = round2(y1 + dy);
-                x2 = round2(x2 + dx);
-                y2 = round2(y2 + dy);
-                baseline_y = round2(baseline_y + dy);
-                for polygon in &mut glyph_polygons {
-                    for point in polygon {
-                        point[0] = round2(point[0] + dx);
-                        point[1] = round2(point[1] + dy);
+            if let Some(current_anchor) =
+                glyph_polygons
+                    .get(anchor_polygon_index)
+                    .and_then(|polygon| {
+                        let points: Vec<_> = polygon
+                            .iter()
+                            .map(|point| Point::new(point[0], point[1]))
+                            .collect();
+                        polygon_anchor_point(&points)
+                    })
+            {
+                let dx = round2(position[0] - current_anchor.x);
+                let dy = round2(position[1] - current_anchor.y);
+                if dx.abs() > crate::EPSILON || dy.abs() > crate::EPSILON {
+                    x1 = round2(x1 + dx);
+                    y1 = round2(y1 + dy);
+                    x2 = round2(x2 + dx);
+                    y2 = round2(y2 + dy);
+                    baseline_y = round2(baseline_y + dy);
+                    for polygon in &mut glyph_polygons {
+                        for point in polygon {
+                            point[0] = round2(point[0] + dx);
+                            point[1] = round2(point[1] + dy);
+                        }
                     }
                 }
             }

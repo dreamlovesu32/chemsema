@@ -783,9 +783,19 @@ triple
   "fontFamily": "Arial",
   "fontSize": 10.0,
   "fill": "#000000",
+  "box": [72.0, 92.0, 96.0, 104.0],
+  "anchorOffset": [28.0, 8.0],
+  "preserveMeasuredBox": true,
   "defaultChemical": true
 }
 ```
+
+`box`, `anchorOffset`, and `preserveMeasuredBox` are optional. Use them when a
+caller has authoritative measured endpoint-label geometry, for example from
+CDXML import or OCR. The box is world-space `[x1, y1, x2, y2]`; `anchorOffset`
+is the endpoint anchor relative to the box origin. When `preserveMeasuredBox` is
+true, ChemCore keeps the measured label box while still applying node-label
+recognition and bond retreat semantics.
 
 ### 5.8 Edit Atom Label Style
 

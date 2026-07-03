@@ -66,6 +66,10 @@ pub struct TextCommandContent {
     pub line_height: Option<f64>,
     #[serde(default, rename = "box", skip_serializing_if = "Option::is_none")]
     pub box_value: Option<[f64; 4]>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anchor_offset: Option<[f64; 2]>,
+    #[serde(default)]
+    pub preserve_measured_box: bool,
     #[serde(default)]
     pub default_chemical: bool,
 }
