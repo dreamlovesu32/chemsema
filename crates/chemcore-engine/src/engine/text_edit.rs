@@ -1640,7 +1640,7 @@ fn apply_node_label_text_edit_with_options(
         None,
     );
     if preserve_measured_box {
-        mark_node_label_import_geometry_authoritative(&mut next_label);
+        mark_node_label_measured_geometry_authoritative(&mut next_label);
     }
     set_label_recognition_meta(&mut next_label, label_recognition_meta);
     let implicit_hydrogen_label_meta = previous_implicit_hydrogen_label_meta.map(|meta| {
@@ -1665,21 +1665,19 @@ fn apply_node_label_text_edit_with_options(
     true
 }
 
-fn mark_node_label_import_geometry_authoritative(label: &mut crate::NodeLabel) {
+fn mark_node_label_measured_geometry_authoritative(label: &mut crate::NodeLabel) {
     let Some(bbox) = label.bbox() else {
         return;
     };
     let text_position = label.position.unwrap_or([bbox[0], bbox[1]]);
-    let import_meta = json!({
-        "cdxml": {
-            "boundingBox": bbox,
-            "textPosition": text_position,
-            "labelAlignment": "Left"
-        }
+    let measured_geometry = json!({
+        "box": bbox,
+        "textPosition": text_position,
+        "labelAlignment": "Left"
     });
     match label.meta.as_object_mut() {
         Some(meta) => {
-            meta.insert("import".to_string(), import_meta);
+            meta.insert("measuredGeometry".to_string(), measured_geometry);
             meta.insert(
                 "measuredTextPositionAuthoritative".to_string(),
                 Value::Bool(true),
@@ -1687,7 +1685,7 @@ fn mark_node_label_import_geometry_authoritative(label: &mut crate::NodeLabel) {
         }
         None => {
             label.meta = json!({
-                "import": import_meta,
+                "measuredGeometry": measured_geometry,
                 "measuredTextPositionAuthoritative": true
             });
         }

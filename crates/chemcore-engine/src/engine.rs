@@ -1912,6 +1912,48 @@ impl Engine {
                     self.inspect_document_output(&include),
                 ));
             }
+            EditorCommand::PlanBond {
+                begin,
+                cursor,
+                angle,
+                bond_length,
+                order,
+                variant,
+            } => {
+                let output = self.plan_bond_command_output(
+                    begin,
+                    cursor,
+                    angle,
+                    bond_length,
+                    order,
+                    variant,
+                );
+                return Ok(self.readonly_command_result(Some(command), output));
+            }
+            EditorCommand::PlanTemplate {
+                template,
+                x,
+                y,
+                anchor,
+                bond_id,
+                cursor,
+                angle,
+                bond_length,
+                side,
+            } => {
+                let output = self.plan_template_command_output(
+                    template,
+                    x,
+                    y,
+                    anchor,
+                    bond_id,
+                    cursor,
+                    angle,
+                    bond_length,
+                    side,
+                )?;
+                return Ok(self.readonly_command_result(Some(command), output));
+            }
             EditorCommand::AddBond {
                 begin,
                 end,
@@ -2112,21 +2154,27 @@ impl Engine {
             ),
             EditorCommand::PasteClipboard => self.paste_clipboard(),
             EditorCommand::CutSelection => self.cut_selection(),
-            EditorCommand::InsertTemplate { template, x, y } => {
-                let previous_tool = self.state.tool.clone();
-                let before_revision = self.revision;
-                self.state.tool.template = template;
-                let event = PointerEvent {
-                    x,
-                    y,
-                    button: Some(0),
-                    alt_key: false,
-                };
-                self.pointer_down_template(event.clone());
-                self.pointer_up_template(event);
-                self.state.tool = previous_tool;
-                self.revision != before_revision
-            }
+            EditorCommand::InsertTemplate {
+                template,
+                x,
+                y,
+                anchor,
+                bond_id,
+                cursor,
+                angle,
+                bond_length,
+                side,
+            } => self.insert_template_command(
+                template,
+                x,
+                y,
+                anchor,
+                bond_id,
+                cursor,
+                angle,
+                bond_length,
+                side,
+            ),
             EditorCommand::ApplySelectionArrange { command } => {
                 self.apply_selection_arrange_command(&command)
             }
@@ -2445,6 +2493,67 @@ impl Engine {
             output.insert("styles".to_string(), self.document_styles_json());
         }
         JsonValue::Object(output)
+    }
+
+    fn plan_bond_command_output(
+        &self,
+        begin: CommandAnchor,
+        cursor: Option<Point>,
+        angle: Option<f64>,
+        bond_length: Option<f64>,
+        order: u8,
+        variant: BondVariant,
+    ) -> JsonValue {
+        let anchor = bond_anchor_from_command(begin.clone());
+        let default_angle =
+            default_angle_for_anchor_for_variant(&self.state.document, &anchor, variant);
+        let (angle_deg, angle_source) = if let Some(angle) = angle {
+            (normalize_angle(angle), "explicit-angle")
+        } else if let Some(cursor) = cursor {
+            (
+                snapped_angle_for_anchor(&self.state.document, &anchor, cursor),
+                "cursor-snap",
+            )
+        } else {
+            (default_angle, "default-angle")
+        };
+        let length = bond_length
+            .unwrap_or_else(|| self.options.bond_length_world_pt().value())
+            .max(crate::EPSILON);
+        let end_point =
+            endpoint_from_angle_for_document(&self.state.document, &anchor, angle_deg, length);
+        let end = CommandAnchor {
+            node_id: None,
+            object_id: begin.object_id.clone(),
+            x: end_point.x,
+            y: end_point.y,
+        };
+        let command = json!({
+            "type": "add-bond",
+            "begin": begin,
+            "end": end,
+            "order": order,
+            "variant": variant,
+        });
+        json!({
+            "schema": "chemcore.plan.bond.v1",
+            "begin": command["begin"].clone(),
+            "end": command["end"].clone(),
+            "angleDeg": angle_deg,
+            "angleSource": angle_source,
+            "defaultAngleDeg": default_angle,
+            "bondLength": length,
+            "order": order,
+            "variant": variant,
+            "globalSnapAngles": GLOBAL_SNAP_ANGLES,
+            "keypadSlots": bond_plan_keypad_slots(
+                &self.state.document,
+                &anchor,
+                default_angle,
+                length,
+            ),
+            "command": command,
+        })
     }
 
     fn document_summary_json(&self) -> JsonValue {
@@ -4125,6 +4234,41 @@ fn bond_anchor_from_command(anchor: CommandAnchor) -> BondAnchor {
     }
 }
 
+fn bond_plan_keypad_slots(
+    document: &ChemcoreDocument,
+    anchor: &BondAnchor,
+    default_angle: f64,
+    length: f64,
+) -> Vec<JsonValue> {
+    [
+        ("6", 0.0),
+        ("3", 45.0),
+        ("2", 90.0),
+        ("1", 135.0),
+        ("4", 180.0),
+        ("7", 225.0),
+        ("8", 270.0),
+        ("9", 315.0),
+        ("5", default_angle),
+    ]
+    .into_iter()
+    .map(|(key, angle)| {
+        let angle = normalize_angle(angle);
+        let endpoint = endpoint_from_angle_for_document(document, anchor, angle, length);
+        json!({
+            "key": key,
+            "angleDeg": angle,
+            "end": CommandAnchor {
+                node_id: None,
+                object_id: anchor.object_id.clone(),
+                x: endpoint.x,
+                y: endpoint.y,
+            },
+        })
+    })
+    .collect()
+}
+
 fn scene_object_selection_from_ids(
     document: &ChemcoreDocument,
     object_ids: &[String],
@@ -4152,6 +4296,8 @@ fn editor_command_type_name(command: &EditorCommand) -> &'static str {
         EditorCommand::ExportDocument { .. } => "export-document",
         EditorCommand::ConvertDocument { .. } => "convert-document",
         EditorCommand::InspectDocument { .. } => "inspect-document",
+        EditorCommand::PlanBond { .. } => "plan-bond",
+        EditorCommand::PlanTemplate { .. } => "plan-template",
         EditorCommand::AddBond { .. } => "add-bond",
         EditorCommand::AddArrow { .. } => "add-arrow",
         EditorCommand::AddShape { .. } => "add-shape",

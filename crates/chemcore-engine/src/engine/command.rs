@@ -111,6 +111,14 @@ impl From<Point> for CommandAnchor {
     }
 }
 
+fn default_bond_order() -> u8 {
+    1
+}
+
+fn default_bond_variant() -> BondVariant {
+    BondVariant::Single
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum EditorCommand {
@@ -137,6 +145,51 @@ pub enum EditorCommand {
     InspectDocument {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         include: Vec<String>,
+    },
+    PlanBond {
+        begin: CommandAnchor,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cursor: Option<Point>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        angle: Option<f64>,
+        #[serde(
+            default,
+            rename = "bondLength",
+            alias = "length",
+            skip_serializing_if = "Option::is_none"
+        )]
+        bond_length: Option<f64>,
+        #[serde(default = "default_bond_order")]
+        order: u8,
+        #[serde(default = "default_bond_variant")]
+        variant: BondVariant,
+    },
+    PlanTemplate {
+        template: String,
+        x: f64,
+        y: f64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        anchor: Option<CommandAnchor>,
+        #[serde(
+            default,
+            rename = "bondId",
+            alias = "bond_id",
+            skip_serializing_if = "Option::is_none"
+        )]
+        bond_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cursor: Option<Point>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        angle: Option<f64>,
+        #[serde(
+            default,
+            rename = "bondLength",
+            alias = "length",
+            skip_serializing_if = "Option::is_none"
+        )]
+        bond_length: Option<f64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        side: Option<f64>,
     },
     AddBond {
         begin: CommandAnchor,
@@ -251,6 +304,28 @@ pub enum EditorCommand {
         template: String,
         x: f64,
         y: f64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        anchor: Option<CommandAnchor>,
+        #[serde(
+            default,
+            rename = "bondId",
+            alias = "bond_id",
+            skip_serializing_if = "Option::is_none"
+        )]
+        bond_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cursor: Option<Point>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        angle: Option<f64>,
+        #[serde(
+            default,
+            rename = "bondLength",
+            alias = "length",
+            skip_serializing_if = "Option::is_none"
+        )]
+        bond_length: Option<f64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        side: Option<f64>,
     },
     ApplySelectionArrange {
         command: String,

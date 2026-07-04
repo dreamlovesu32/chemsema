@@ -807,7 +807,8 @@ fn normalize_node_label_payload(
         label.box_field = Some(default_node_label_box(position, &label.text, font_size));
     }
     if (label.glyph_polygons.is_empty()
-        || label.meta.pointer("/import/cdxml/boundingBox").is_some())
+        || label.meta.pointer("/import/cdxml/boundingBox").is_some()
+        || label.meta.pointer("/measuredGeometry/box").is_some())
         && !node_label_glyph_polygons_are_authoritative(label)
     {
         rebuild_node_label_glyph_polygons(label, node_position, node_atomic_number, anchor_side);
@@ -815,11 +816,16 @@ fn normalize_node_label_payload(
 }
 
 fn node_label_glyph_polygons_are_authoritative(label: &NodeLabel) -> bool {
-    label
+    (label
         .meta
-        .get("ocrGlyphPolygonsAuthoritative")
+        .get("glyphPolygonsAuthoritative")
         .and_then(Value::as_bool)
         == Some(true)
+        || label
+            .meta
+            .get("ocrGlyphPolygonsAuthoritative")
+            .and_then(Value::as_bool)
+            == Some(true))
         && !label.glyph_polygons.is_empty()
 }
 

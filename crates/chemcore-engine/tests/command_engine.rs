@@ -237,6 +237,105 @@ fn execute_command_json_add_bond_tracks_revision_and_targets() {
 }
 
 #[test]
+fn plan_bond_returns_engine_landing_geometry_without_changing_document() {
+    let mut engine = Engine::new();
+
+    let result = execute(
+        &mut engine,
+        json!({
+            "type": "plan-bond",
+            "begin": { "x": 100.0, "y": 120.0 },
+            "angle": 0.0,
+            "bondLength": 20.0,
+            "order": 1,
+            "variant": "single"
+        }),
+    );
+
+    assert_eq!(result["changed"], false);
+    assert_eq!(result["revision"], 0);
+    assert_eq!(result["output"]["schema"], "chemcore.plan.bond.v1");
+    assert_eq!(result["output"]["angleSource"], "explicit-angle");
+    assert_eq!(result["output"]["command"]["type"], "add-bond");
+    assert_eq!(result["output"]["command"]["end"]["x"], 120.0);
+    assert_eq!(result["output"]["command"]["end"]["y"], 120.0);
+    assert!(
+        result["output"]["keypadSlots"]
+            .as_array()
+            .expect("keypad slots")
+            .iter()
+            .any(|slot| slot["key"] == "5"),
+        "plan-bond should expose a default numeric keypad slot"
+    );
+}
+
+#[test]
+fn plan_template_reports_benzene_vertices_and_edges_without_inserting() {
+    let mut engine = Engine::new();
+
+    let result = execute(
+        &mut engine,
+        json!({
+            "type": "plan-template",
+            "template": "benzene",
+            "x": 100.0,
+            "y": 100.0,
+            "angle": 270.0,
+            "bondLength": 20.0
+        }),
+    );
+
+    let output = &result["output"];
+    assert_eq!(result["changed"], false);
+    assert_eq!(output["schema"], "chemcore.plan.template.v1");
+    assert_eq!(output["anchorKind"], "center");
+    assert_eq!(output["vertices"].as_array().expect("vertices").len(), 6);
+    assert_eq!(output["edges"].as_array().expect("edges").len(), 6);
+    assert_eq!(
+        output["edges"]
+            .as_array()
+            .expect("edges")
+            .iter()
+            .filter(|edge| edge["order"] == 2)
+            .count(),
+        3
+    );
+    assert_eq!(output["insertCommand"]["type"], "insert-template");
+}
+
+#[test]
+fn insert_template_can_use_endpoint_anchor_and_explicit_angle() {
+    let mut engine = Engine::new();
+    let first_bond = execute(
+        &mut engine,
+        json!({
+            "type": "add-bond",
+            "begin": { "x": 100.0, "y": 100.0 },
+            "end": { "x": 120.0, "y": 100.0 },
+            "order": 1,
+            "variant": "single"
+        }),
+    );
+    let anchor_id = created_node_id(&first_bond, 0);
+
+    let result = execute(
+        &mut engine,
+        json!({
+            "type": "insert-template",
+            "template": "benzene",
+            "x": 100.0,
+            "y": 100.0,
+            "anchor": { "nodeId": anchor_id, "x": 100.0, "y": 100.0 },
+            "angle": 0.0,
+            "bondLength": 20.0
+        }),
+    );
+
+    assert_eq!(result["changed"], true);
+    assert_eq!(document_bond_count(&document_value(&engine)), 7);
+}
+
+#[test]
 fn add_bond_from_existing_atom_marks_existing_endpoint_for_incremental_render() {
     let mut engine = Engine::new();
     let first = execute(
@@ -442,13 +541,24 @@ fn direct_node_label_runs_can_preserve_measured_endpoint_box() {
         ])
     );
     assert_eq!(
-        node["label"]["meta"]["import"]["cdxml"]["boundingBox"],
+        node["label"]["meta"]["measuredGeometry"]["box"],
         json!([72.0, 92.0, 96.0, 104.0])
     );
     assert_eq!(
-        node["label"]["meta"]["ocrGlyphPolygonsAuthoritative"],
+        node["label"]["meta"]["measuredGeometry"]["textPosition"],
+        json!([71.2, 104.0])
+    );
+    assert!(
+        node["label"]["meta"].get("import").is_none(),
+        "source-neutral command geometry must not be encoded as CDXML import metadata"
+    );
+    assert_eq!(
+        node["label"]["meta"]["glyphPolygonsAuthoritative"],
         json!(true)
     );
+    assert!(node["label"]["meta"]
+        .get("ocrGlyphPolygonsAuthoritative")
+        .is_none());
     assert_eq!(
         node["label"]["meta"]["measuredTextPositionAuthoritative"],
         json!(true)
@@ -516,6 +626,21 @@ fn direct_node_label_runs_preserve_measured_text_position_when_rebuilding_glyphs
         node["label"]["meta"]["measuredTextPositionAuthoritative"],
         json!(true)
     );
+    assert_eq!(
+        node["label"]["meta"]["measuredGeometry"]["box"],
+        json!([72.0, 92.0, 96.0, 104.0])
+    );
+    assert_eq!(
+        node["label"]["meta"]["measuredGeometry"]["textPosition"],
+        json!([71.2, 104.0])
+    );
+    assert!(
+        node["label"]["meta"].get("import").is_none(),
+        "source-neutral command geometry must not be encoded as CDXML import metadata"
+    );
+    assert!(node["label"]["meta"]
+        .get("glyphPolygonsAuthoritative")
+        .is_none());
     assert!(node["label"]["meta"]
         .get("ocrGlyphPolygonsAuthoritative")
         .is_none());

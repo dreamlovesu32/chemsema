@@ -443,10 +443,7 @@ pub(super) fn make_centered_node_label_from_runs(
         }
     }
     if has_authoritative_glyph_polygons {
-        meta.insert(
-            "ocrGlyphPolygonsAuthoritative".to_string(),
-            Value::Bool(true),
-        );
+        meta.insert("glyphPolygonsAuthoritative".to_string(), Value::Bool(true));
     }
     let label_position = session
         .text_position
@@ -1330,6 +1327,11 @@ fn is_cdxml_imported_attached_label(label: &crate::NodeLabel) -> bool {
         && label.meta.pointer("/import/cdxml/boundingBox").is_some()
 }
 
+fn is_source_measured_attached_label(label: &crate::NodeLabel) -> bool {
+    label.attachment.as_deref() == Some("node")
+        && label.meta.pointer("/measuredGeometry/box").is_some()
+}
+
 fn is_cdxml_imported_right_aligned_attached_label(label: &crate::NodeLabel) -> bool {
     label.attachment.as_deref() == Some("node")
         && label.align.as_deref() == Some("right")
@@ -1364,11 +1366,37 @@ fn cdxml_imported_label_alignment_is_horizontal_only(label: &crate::NodeLabel) -
     }
 }
 
+fn measured_label_alignment_is_horizontal_only(label: &crate::NodeLabel) -> bool {
+    let alignment = label
+        .meta
+        .pointer("/measuredGeometry/labelAlignment")
+        .and_then(serde_json::Value::as_str);
+    match alignment {
+        Some(value) => matches!(value, "Left" | "Center" | "Right"),
+        None => true,
+    }
+}
+
 fn imported_cdxml_label_geometry_is_authoritative(label: &crate::NodeLabel) -> bool {
     label.attachment.as_deref() == Some("node")
         && cdxml_imported_label_alignment_is_horizontal_only(label)
         && label.meta.pointer("/import/cdxml/boundingBox").is_some()
         && label.meta.pointer("/import/cdxml/textPosition").is_some()
+}
+
+fn measured_label_geometry_is_authoritative(label: &crate::NodeLabel) -> bool {
+    label.attachment.as_deref() == Some("node")
+        && measured_label_alignment_is_horizontal_only(label)
+        && label.meta.pointer("/measuredGeometry/box").is_some()
+        && label
+            .meta
+            .pointer("/measuredGeometry/textPosition")
+            .is_some()
+        && label
+            .meta
+            .get("measuredTextPositionAuthoritative")
+            .and_then(serde_json::Value::as_bool)
+            == Some(true)
 }
 
 fn imported_cdxml_single_character_label_geometry_is_authoritative(
@@ -1378,6 +1406,15 @@ fn imported_cdxml_single_character_label_geometry_is_authoritative(
     label.attachment.as_deref() == Some("node")
         && label.meta.pointer("/import/cdxml/boundingBox").is_some()
         && label.meta.pointer("/import/cdxml/textPosition").is_some()
+        && !text.contains('\n')
+        && text.chars().count() == 1
+}
+
+fn measured_single_character_label_geometry_is_authoritative(
+    label: &crate::NodeLabel,
+    text: &str,
+) -> bool {
+    measured_label_geometry_is_authoritative(label)
         && !text.contains('\n')
         && text.chars().count() == 1
 }
@@ -1394,7 +1431,21 @@ fn cdxml_imported_label_flow_override(label: &crate::NodeLabel) -> Option<LabelF
     }
 }
 
-fn refreshed_authoritative_imported_label_display(
+fn node_label_glyph_polygons_are_authoritative(label: &crate::NodeLabel) -> bool {
+    (label
+        .meta
+        .get("glyphPolygonsAuthoritative")
+        .and_then(serde_json::Value::as_bool)
+        == Some(true)
+        || label
+            .meta
+            .get("ocrGlyphPolygonsAuthoritative")
+            .and_then(serde_json::Value::as_bool)
+            == Some(true))
+        && !label.glyph_polygons.is_empty()
+}
+
+fn refreshed_authoritative_label_display(
     label: &crate::NodeLabel,
     source_text: &str,
     source_runs: &[LabelRun],
@@ -1436,13 +1487,7 @@ fn refreshed_authoritative_imported_label_display(
         Some(serde_json::to_value(source_runs).unwrap_or(Value::Array(Vec::new()))),
     );
 
-    if label
-        .meta
-        .get("ocrGlyphPolygonsAuthoritative")
-        .and_then(Value::as_bool)
-        == Some(true)
-        && !label.glyph_polygons.is_empty()
-    {
+    if node_label_glyph_polygons_are_authoritative(label) {
         return next_label;
     }
 
@@ -1496,6 +1541,7 @@ pub(super) fn refreshed_attached_node_label(
     let should_use_internal_whole_label_layout =
         label_should_render_as_whole_group(&text, connection_count);
     if !is_attached_node_label(label)
+        && !is_source_measured_attached_label(label)
         && !is_cdxml_imported_right_aligned_attached_label(label)
         && !is_cdxml_imported_single_character_centered_label(label)
         && !(is_cdxml_imported_centered_attached_label(label)
@@ -1513,8 +1559,9 @@ pub(super) fn refreshed_attached_node_label(
         .clone()
         .unwrap_or_else(|| DEFAULT_TEXT_FILL.to_string());
     let source_runs = source_runs_for_attached_label(node, source_runs, &text, label);
-    let layout_as_grouped_attached_label =
-        source_runs_are_chemical(&source_runs) || is_cdxml_imported_attached_label(label);
+    let layout_as_grouped_attached_label = source_runs_are_chemical(&source_runs)
+        || is_cdxml_imported_attached_label(label)
+        || is_source_measured_attached_label(label);
     let mut decision = label_layout_decision_for_text_mode(
         &text,
         &connection_angles,
@@ -1533,12 +1580,21 @@ pub(super) fn refreshed_attached_node_label(
     if imported_cdxml_single_character_label_geometry_is_authoritative(label, &text) {
         return Some(label.clone());
     }
+    if measured_single_character_label_geometry_is_authoritative(label, &text) {
+        return Some(label.clone());
+    }
+    if measured_label_geometry_is_authoritative(label)
+        && !matches!(decision.flow, LabelFlow::StackAbove | LabelFlow::StackBelow)
+        && !should_use_internal_whole_label_layout
+    {
+        return Some(label.clone());
+    }
     if imported_cdxml_label_geometry_is_authoritative(label) {
         if matches!(decision.flow, LabelFlow::Reverse)
             && is_cdxml_imported_right_aligned_attached_label(label)
             && !should_use_internal_whole_label_layout
         {
-            return Some(refreshed_authoritative_imported_label_display(
+            return Some(refreshed_authoritative_label_display(
                 label,
                 &text,
                 &source_runs,
@@ -1593,6 +1649,20 @@ pub(super) fn refreshed_attached_node_label(
     );
     if let Some(import_meta) = label.meta.get("import").cloned() {
         set_meta_object_field(&mut next_label.meta, "import", Some(import_meta));
+    }
+    if let Some(measured_geometry) = label.meta.get("measuredGeometry").cloned() {
+        set_meta_object_field(
+            &mut next_label.meta,
+            "measuredGeometry",
+            Some(measured_geometry),
+        );
+    }
+    if let Some(authoritative) = label.meta.get("measuredTextPositionAuthoritative").cloned() {
+        set_meta_object_field(
+            &mut next_label.meta,
+            "measuredTextPositionAuthoritative",
+            Some(authoritative),
+        );
     }
     let recognition_meta = label
         .meta

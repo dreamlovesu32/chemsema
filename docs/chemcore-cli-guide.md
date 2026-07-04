@@ -671,7 +671,40 @@ hashed-wedge
 hollow-wedge
 ```
 
-### 5.3 Add A Bond Between Existing Atoms
+### 5.3 Plan A Bond Without Editing
+
+Use `plan-bond` when an external agent wants the same landing point that the
+ChemCore engine would use for a new bond, without changing the document.
+
+```json
+{
+  "type": "plan-bond",
+  "begin": { "nodeId": "n_1", "x": 100.0, "y": 120.0 },
+  "angle": 0.0,
+  "bondLength": 14.4,
+  "order": 1,
+  "variant": "single"
+}
+```
+
+Inputs:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `begin` | anchor | start node or coordinate |
+| `cursor` | point, optional | pointer position to resolve through the engine's bond-angle snapping |
+| `angle` | number, optional | explicit angle in degrees; bypasses cursor snapping |
+| `bondLength` | number, optional | world pt bond length; defaults to current object settings |
+| `order` | number | bond order, defaults to `1` |
+| `variant` | string | bond variant, defaults to `single` |
+
+Output is an unchanged command result whose `output.command` is an executable
+`add-bond` command. `output.keypadSlots` exposes numeric-keypad convenience
+directions, including key `5` for the engine default angle. This command is for
+drawing agents and GUI-like automation. OCR should still measure source pixels;
+it should not use `plan-bond` as a bond-length snap.
+
+### 5.4 Add A Bond Between Existing Atoms
 
 Use node ids from `inspect` or `results`:
 
@@ -687,7 +720,7 @@ Use node ids from `inspect` or `results`:
 
 When `nodeId` is present, the node is the target. `x/y` are still required.
 
-### 5.4 Insert A Template
+### 5.5 Plan Or Insert A Template
 
 ```json
 {
@@ -710,11 +743,38 @@ ring-8
 benzene
 chair-6-right
 chair-6-left
+chain
 ```
 
-Create chains with multiple `add-bond` commands.
+`plan-template` returns the same vertex/edge plan without editing:
 
-### 5.5 Edit Bond Style
+```json
+{
+  "type": "plan-template",
+  "template": "benzene",
+  "x": 300.0,
+  "y": 260.0,
+  "angle": 270.0,
+  "bondLength": 14.4
+}
+```
+
+Optional placement fields on both `plan-template` and `insert-template`:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `anchor` | anchor | attach the first template vertex to an existing endpoint |
+| `bondId` | string | fuse the template to an existing bond |
+| `cursor` | point | use GUI drag placement from the anchor or center |
+| `angle` | number | explicit template axis angle in degrees |
+| `bondLength` | number | template side length in world pt |
+| `side` | number | for fused rings, positive or negative side of the anchor bond |
+
+`plan-template` output includes `vertices`, `edges`, and an `insertCommand` that
+can be used as the corresponding edit command. Create chains with the `chain`
+template or with multiple `add-bond` commands.
+
+### 5.6 Edit Bond Style
 
 ```json
 {
@@ -759,7 +819,7 @@ double
 triple
 ```
 
-### 5.6 Replace Atom Label
+### 5.7 Replace Atom Label
 
 ```json
 {
@@ -769,7 +829,7 @@ triple
 }
 ```
 
-### 5.7 Set Atom Label Runs
+### 5.8 Set Atom Label Runs
 
 ```json
 {
@@ -805,11 +865,11 @@ when the caller only has visible ink/component boxes, so ChemCore can rebuild
 renderer glyph outlines from the font and text position for knockout and bond
 retreat. Source-neutral measured geometry must not be encoded as
 `meta.import.cdxml`; that namespace is reserved for data actually imported from
-CDXML. When `preserveMeasuredBox` is true, ChemCore keeps the measured box and
-text position while still applying node-label recognition and editable label
-semantics.
+CDXML. When `preserveMeasuredBox` is true, ChemCore stores the source-neutral
+measurement under `label.meta.measuredGeometry`, keeps the measured box and text
+position, and still applies node-label recognition and editable label semantics.
 
-### 5.8 Edit Atom Label Style
+### 5.9 Edit Atom Label Style
 
 ```json
 {

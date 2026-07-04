@@ -580,7 +580,19 @@ fn protocol_schemas_json() -> Value {
             "audit": "new/run results are lightweight by default. They include top-level and per-command document hash/revision transitions plus selector-form created/updated/deleted summaries.",
             "historyPolicy": "The CLI does not maintain an undo stack or per-step snapshot history. Agents should maintain history with git, temp files, or their own logs.",
             "snapshots": "Per-command after snapshots and the top-level final snapshot are opt-in with --inspect-after <include>. Use --inspect-after none or --no-inspect-after to force no snapshots.",
-            "errorPointers": "Execution reports include command index, commandType, document transition, changeSummary, and engine error message."
+            "errorPointers": "Execution reports include command index, commandType, document transition, changeSummary, and engine error message.",
+            "planningCommands": {
+                "plan-bond": {
+                    "description": "Readonly engine query for the final add-bond landing geometry. Accepts begin, optional cursor or angle, optional bondLength, order, and variant. Returns output.command as an executable add-bond command plus globalSnapAngles and keypadSlots.",
+                    "ocrBoundary": "This is for GUI-like drawing agents. OCR should measure source pixels and must not use plan-bond as a bond-length snap."
+                },
+                "plan-template": {
+                    "description": "Readonly engine query for template vertices and edges. Accepts template, x, y, and optional anchor, bondId, cursor, angle, bondLength, and side. Returns vertices, edges, and insertCommand."
+                },
+                "insert-template": {
+                    "description": "Template edit command. The legacy centered form uses template/x/y. The extended form also accepts anchor, bondId, cursor, angle, bondLength, and side so callers can reuse engine placement instead of calculating ring geometry externally."
+                }
+            }
         }
     })
 }

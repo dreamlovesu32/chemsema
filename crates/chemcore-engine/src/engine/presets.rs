@@ -1052,6 +1052,7 @@ fn style_scale_key_as_local_length_array(key: &str) -> bool {
             | "box"
             | "boxField"
             | "position"
+            | "textPosition"
             | "points"
             | "anchorOffset"
             | "glyphPolygons"

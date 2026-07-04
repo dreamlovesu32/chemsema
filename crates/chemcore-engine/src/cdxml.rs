@@ -487,6 +487,7 @@ fn scale_json_key_as_length_array(key: &str) -> bool {
             | "boundingBox"
             | "cdxmlBoundingBox"
             | "position"
+            | "textPosition"
             | "translate"
             | "points"
             | "center"

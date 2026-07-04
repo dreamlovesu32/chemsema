@@ -1,5 +1,5 @@
 use super::text_edit::refresh_attached_node_label_geometry_for_all_nodes;
-use super::{EditorCommand, Engine, PendingSelectTarget};
+use super::{CommandAnchor, EditorCommand, Engine, PendingSelectTarget};
 use crate::{
     adjacent_directions, angle_between, direction_from_angle, hit_test_bond, hit_test_bond_center,
     hit_test_endpoint, nearest_angle, normalize_angle, Bond, BondAnchor, BondPreview,
@@ -7,6 +7,7 @@ use crate::{
     BOND_CENTER_HIT_RADIUS, BOND_HIT_RADIUS, DRAG_START_THRESHOLD, ENDPOINT_HIT_RADIUS,
     GLOBAL_SNAP_ANGLES,
 };
+use serde_json::{json, Value as JsonValue};
 
 const RING_REUSE_RADIUS: f64 = crate::px_to_pt(5.0);
 
@@ -163,6 +164,12 @@ impl Engine {
                 template: self.state.tool.template.clone(),
                 x: point.x,
                 y: point.y,
+                anchor: None,
+                bond_id: None,
+                cursor: None,
+                angle: None,
+                bond_length: None,
+                side: None,
             },
             |engine| {
                 engine.push_undo_snapshot();
@@ -223,19 +230,40 @@ impl Engine {
     }
 
     fn template_ring_plan(&self, drag: &TemplateDrag, point: Point) -> Option<RingPlan> {
-        let side_length = self.template_ring_bond_length();
-        if selected_chain_template(&self.state.tool.template) {
-            return self.template_chain_plan(drag, point, side_length);
+        self.template_ring_plan_with_options(
+            &self.state.tool.template,
+            drag,
+            point,
+            self.template_ring_bond_length(),
+            None,
+            None,
+        )
+    }
+
+    fn template_ring_plan_with_options(
+        &self,
+        template: &str,
+        drag: &TemplateDrag,
+        point: Point,
+        side_length: f64,
+        explicit_angle: Option<f64>,
+        explicit_side: Option<f64>,
+    ) -> Option<RingPlan> {
+        let side_length = side_length.max(crate::EPSILON);
+        if selected_chain_template(template) {
+            return self.template_chain_plan(drag, point, side_length, explicit_angle);
         }
-        if let Some(chair) = selected_chair_template(&self.state.tool.template) {
-            return self.template_chair_plan(drag, point, chair, side_length);
+        if let Some(chair) = selected_chair_template(template) {
+            return self.template_chair_plan(drag, point, chair, side_length, explicit_angle);
         }
 
-        let ring_size = selected_ring_size(&self.state.tool.template)?;
-        let aromatic = self.state.tool.template == "benzene";
+        let ring_size = selected_ring_size(template)?;
+        let aromatic = template == "benzene";
         match &drag.anchor {
             TemplateAnchor::Endpoint(anchor) => {
-                let angle = if drag.has_dragged {
+                let angle = if let Some(angle) = explicit_angle {
+                    normalize_angle(angle)
+                } else if drag.has_dragged {
                     nearest_angle(angle_between(anchor.point, point), GLOBAL_SNAP_ANGLES)
                 } else {
                     endpoint_click_ring_axis_angle(&self.state.document, anchor)
@@ -250,7 +278,9 @@ impl Engine {
             }
             TemplateAnchor::Center(center) => {
                 if drag.has_dragged {
-                    let angle = nearest_angle(angle_between(*center, point), GLOBAL_SNAP_ANGLES);
+                    let angle = explicit_angle.map(normalize_angle).unwrap_or_else(|| {
+                        nearest_angle(angle_between(*center, point), GLOBAL_SNAP_ANGLES)
+                    });
                     Some(endpoint_ring_plan(
                         ring_size,
                         &BondAnchor {
@@ -267,7 +297,7 @@ impl Engine {
                     Some(centered_ring_plan(
                         ring_size,
                         *center,
-                        270.0,
+                        explicit_angle.map(normalize_angle).unwrap_or(270.0),
                         aromatic,
                         side_length,
                     ))
@@ -280,7 +310,13 @@ impl Engine {
                 begin,
                 end,
             } => {
-                let side = if drag.has_dragged {
+                let side = if let Some(side) = explicit_side {
+                    if side < 0.0 {
+                        -1.0
+                    } else {
+                        1.0
+                    }
+                } else if drag.has_dragged {
                     side_for_point(*begin, *end, point).unwrap_or(1.0)
                 } else {
                     self.preferred_ring_side_for_bond(bond_id, *begin, *end)
@@ -305,10 +341,13 @@ impl Engine {
         point: Point,
         chair: ChairTemplate,
         side_length: f64,
+        explicit_angle: Option<f64>,
     ) -> Option<RingPlan> {
         match &drag.anchor {
             TemplateAnchor::Endpoint(anchor) => {
-                let angle = if drag.has_dragged {
+                let angle = if let Some(angle) = explicit_angle {
+                    normalize_angle(angle)
+                } else if drag.has_dragged {
                     nearest_angle(angle_between(anchor.point, point), GLOBAL_SNAP_ANGLES)
                 } else {
                     endpoint_click_ring_axis_angle(&self.state.document, anchor)
@@ -317,7 +356,9 @@ impl Engine {
             }
             TemplateAnchor::Center(center) => {
                 if drag.has_dragged {
-                    let angle = nearest_angle(angle_between(*center, point), GLOBAL_SNAP_ANGLES);
+                    let angle = explicit_angle.map(normalize_angle).unwrap_or_else(|| {
+                        nearest_angle(angle_between(*center, point), GLOBAL_SNAP_ANGLES)
+                    });
                     Some(chair_plan_from_anchor(
                         &BondAnchor {
                             node_id: None,
@@ -342,14 +383,18 @@ impl Engine {
         drag: &TemplateDrag,
         point: Point,
         side_length: f64,
+        explicit_angle: Option<f64>,
     ) -> Option<RingPlan> {
-        if !drag.has_dragged {
+        if !drag.has_dragged && explicit_angle.is_none() {
             return None;
         }
         match &drag.anchor {
-            TemplateAnchor::Endpoint(anchor) => {
-                Some(chain_plan_from_anchor(anchor, point, side_length))
-            }
+            TemplateAnchor::Endpoint(anchor) => Some(chain_plan_from_anchor(
+                anchor,
+                point,
+                side_length,
+                explicit_angle,
+            )),
             TemplateAnchor::Center(center) => Some(chain_plan_from_anchor(
                 &BondAnchor {
                     node_id: None,
@@ -359,9 +404,197 @@ impl Engine {
                 },
                 point,
                 side_length,
+                explicit_angle,
             )),
             TemplateAnchor::Bond { .. } => None,
         }
+    }
+
+    pub(super) fn plan_template_command_output(
+        &self,
+        template: String,
+        x: f64,
+        y: f64,
+        anchor: Option<CommandAnchor>,
+        bond_id: Option<String>,
+        cursor: Option<Point>,
+        angle: Option<f64>,
+        bond_length: Option<f64>,
+        side: Option<f64>,
+    ) -> Result<JsonValue, String> {
+        let side_length = bond_length.unwrap_or_else(|| self.template_ring_bond_length());
+        let (drag, current, anchor_kind) = self.template_drag_from_command(
+            x,
+            y,
+            anchor.clone(),
+            bond_id.clone(),
+            cursor,
+            angle,
+            side,
+        )?;
+        let plan = self
+            .template_ring_plan_with_options(&template, &drag, current, side_length, angle, side)
+            .ok_or_else(|| format!("Unsupported template '{template}'."))?;
+        let insert_command = json!({
+            "type": "insert-template",
+            "template": template,
+            "x": x,
+            "y": y,
+            "anchor": anchor,
+            "bondId": bond_id,
+            "cursor": cursor,
+            "angle": angle,
+            "bondLength": bond_length,
+            "side": side,
+        });
+        Ok(ring_plan_json(
+            &plan,
+            "chemcore.plan.template.v1",
+            &anchor_kind,
+            side_length,
+            Some(insert_command),
+        ))
+    }
+
+    pub(super) fn insert_template_command(
+        &mut self,
+        template: String,
+        x: f64,
+        y: f64,
+        anchor: Option<CommandAnchor>,
+        bond_id: Option<String>,
+        cursor: Option<Point>,
+        angle: Option<f64>,
+        bond_length: Option<f64>,
+        side: Option<f64>,
+    ) -> bool {
+        let previous_tool = self.state.tool.clone();
+        self.state.tool.template = template.clone();
+        let side_length = bond_length.unwrap_or_else(|| self.template_ring_bond_length());
+        let command = EditorCommand::InsertTemplate {
+            template: template.clone(),
+            x,
+            y,
+            anchor: anchor.clone(),
+            bond_id: bond_id.clone(),
+            cursor,
+            angle,
+            bond_length,
+            side,
+        };
+        let plan = self
+            .template_drag_from_command(x, y, anchor, bond_id, cursor, angle, side)
+            .ok()
+            .and_then(|(drag, current, _)| {
+                self.template_ring_plan_with_options(
+                    &template,
+                    &drag,
+                    current,
+                    side_length,
+                    angle,
+                    side,
+                )
+            });
+        let Some(plan) = plan else {
+            self.state.tool = previous_tool;
+            return false;
+        };
+        let changed = self.with_command(command, |engine| {
+            engine.push_undo_snapshot();
+            if !engine.insert_ring_plan(plan, false) {
+                engine.undo_stack.pop();
+                return false;
+            }
+            true
+        });
+        self.state.tool = previous_tool;
+        changed
+    }
+
+    fn template_drag_from_command(
+        &self,
+        x: f64,
+        y: f64,
+        anchor: Option<CommandAnchor>,
+        bond_id: Option<String>,
+        cursor: Option<Point>,
+        angle: Option<f64>,
+        side: Option<f64>,
+    ) -> Result<(TemplateDrag, Point, String), String> {
+        let start = Point::new(x, y);
+        if let Some(bond_id) = bond_id {
+            let (begin_id, end_id, begin, end) = self
+                .template_bond_anchor_from_id(&bond_id)
+                .ok_or_else(|| format!("Template anchor bond '{bond_id}' was not found."))?;
+            let current = cursor.unwrap_or(start);
+            let drag = TemplateDrag {
+                start,
+                current,
+                anchor: TemplateAnchor::Bond {
+                    bond_id,
+                    begin_id,
+                    end_id,
+                    begin,
+                    end,
+                },
+                has_dragged: cursor.is_some() || side.is_some(),
+            };
+            return Ok((drag, current, "bond".to_string()));
+        }
+
+        if let Some(anchor) = anchor {
+            let point = Point::new(anchor.x, anchor.y);
+            let current = cursor.unwrap_or(point);
+            let drag = TemplateDrag {
+                start: point,
+                current,
+                anchor: TemplateAnchor::Endpoint(BondAnchor {
+                    node_id: anchor.node_id,
+                    object_id: anchor.object_id,
+                    point,
+                    label_anchor: None,
+                }),
+                has_dragged: cursor.is_some() || angle.is_some(),
+            };
+            return Ok((drag, current, "endpoint".to_string()));
+        }
+
+        let current = cursor.unwrap_or(start);
+        let drag = TemplateDrag {
+            start,
+            current,
+            anchor: TemplateAnchor::Center(start),
+            has_dragged: cursor.is_some(),
+        };
+        Ok((drag, current, "center".to_string()))
+    }
+
+    fn template_bond_anchor_from_id(
+        &self,
+        bond_id: &str,
+    ) -> Option<(String, String, Point, Point)> {
+        let entry = self.state.document.editable_fragment()?;
+        let bond = entry
+            .fragment
+            .bonds
+            .iter()
+            .find(|bond| bond.id == bond_id)?;
+        let begin = entry
+            .fragment
+            .nodes
+            .iter()
+            .find(|node| node.id == bond.begin)?;
+        let end = entry
+            .fragment
+            .nodes
+            .iter()
+            .find(|node| node.id == bond.end)?;
+        Some((
+            bond.begin.clone(),
+            bond.end.clone(),
+            entry.world_point_for_node(begin),
+            entry.world_point_for_node(end),
+        ))
     }
 
     fn insert_ring_plan(&mut self, plan: RingPlan, preview: bool) -> bool {
@@ -568,8 +801,15 @@ fn selected_chain_template(template: &str) -> bool {
     template == "chain"
 }
 
-fn chain_plan_from_anchor(anchor: &BondAnchor, point: Point, side_length: f64) -> RingPlan {
-    let axis_angle = nearest_angle(angle_between(anchor.point, point), GLOBAL_SNAP_ANGLES);
+fn chain_plan_from_anchor(
+    anchor: &BondAnchor,
+    point: Point,
+    side_length: f64,
+    explicit_axis_angle: Option<f64>,
+) -> RingPlan {
+    let axis_angle = explicit_axis_angle
+        .map(normalize_angle)
+        .unwrap_or_else(|| nearest_angle(angle_between(anchor.point, point), GLOBAL_SNAP_ANGLES));
     let distance = anchor.point.distance(point);
     let bond_count = (distance / side_length).round().max(1.0) as usize;
     let points = chain_points_for_cursor(anchor.point, point, axis_angle, bond_count, side_length);
@@ -598,6 +838,49 @@ fn chain_plan_from_anchor(anchor: &BondAnchor, point: Point, side_length: f64) -
         edges,
         attach_edges: Vec::new(),
     }
+}
+
+fn ring_plan_json(
+    plan: &RingPlan,
+    schema: &str,
+    anchor_kind: &str,
+    side_length: f64,
+    insert_command: Option<JsonValue>,
+) -> JsonValue {
+    let vertices = plan
+        .vertices
+        .iter()
+        .enumerate()
+        .map(|(index, vertex)| {
+            json!({
+                "index": index,
+                "point": vertex.point,
+                "nodeId": vertex.node_id,
+            })
+        })
+        .collect::<Vec<_>>();
+    let edges = plan
+        .edges
+        .iter()
+        .map(|edge| {
+            json!({
+                "begin": edge.begin,
+                "end": edge.end,
+                "order": edge.order,
+                "doublePlacement": edge.double_placement,
+                "beginPoint": plan.vertices[edge.begin].point,
+                "endPoint": plan.vertices[edge.end].point,
+            })
+        })
+        .collect::<Vec<_>>();
+    json!({
+        "schema": schema,
+        "anchorKind": anchor_kind,
+        "bondLength": side_length,
+        "vertices": vertices,
+        "edges": edges,
+        "insertCommand": insert_command,
+    })
 }
 
 fn chain_points_for_cursor(
