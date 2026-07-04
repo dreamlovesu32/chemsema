@@ -73,6 +73,16 @@ This command runs Rust tests, rebuilds engine WASM, checks viewer syntax, and co
 - Formula-like label valence parsing uses `docs/valence-label-recognition-rules.md` as the current behavioral baseline.
 - The semantics of charges, radicals, and lone-pair symbols after they are assigned to molecular atoms use `docs/charge-radical-symbol-rules.md` as the rules baseline.
 - Label recognition, implicit hydrogen counts, generated label text, and bond-drawing anchors are Rust engine behavior and should not be reimplemented in the viewer.
+- CDXML import is an input adapter, not a separate label-layout engine. It may
+  read `t` positions, bounding boxes, runs, alignment, and script information
+  from CDXML, but it must translate them into ChemCore's native node-label
+  model. Label anchors, display ordering, glyph polygons, and bond retreat stay
+  owned by the Rust engine.
+- `meta.import.cdxml` is provenance and round-trip/debug metadata for data that
+  actually came from CDXML. Source-neutral measured label geometry from OCR,
+  screenshots, pasted images, or future non-CDXML inputs must not be encoded as
+  `import.cdxml` or rely on CDXML-import anchor compatibility paths. Use a
+  source-neutral measured-geometry contract instead.
 
 ## Text Symbols And Glyphs
 
