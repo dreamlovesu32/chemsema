@@ -79,6 +79,8 @@ fn run() -> CliResult<()> {
         "about" => about_command(&args[1..]).map_err(CliError::message),
         "examples" => examples_command(&args[1..]).map_err(CliError::message),
         "guide" => guide_command(&args[1..]).map_err(CliError::message),
+        "label-query" | "label" => label_query_command(&args[1..])
+            .map_err(|error| CliError::for_command("label-query", error)),
         "targets" => agent::targets_command(&args[1..])
             .map_err(|error| CliError::for_command("targets", error)),
         "capture" => agent::capture_command(&args[1..])
@@ -107,6 +109,239 @@ fn run() -> CliResult<()> {
         }
         other => Err(CliError::unknown_command(other)),
     }
+}
+
+fn label_query_command(args: &[String]) -> Result<(), String> {
+    let mut text = None;
+    let mut connection_angles = Vec::<f64>::new();
+    let mut connection_count = None;
+    let mut default_chemical = true;
+    let mut output = None;
+    let mut pretty = false;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--text" | "-t" => {
+                index += 1;
+                text = Some(
+                    args.get(index)
+                        .ok_or_else(|| "--text requires a value.".to_string())?
+                        .clone(),
+                );
+            }
+            "--connection-angle" | "--angle" => {
+                index += 1;
+                connection_angles.push(parse_f64_arg(
+                    args.get(index)
+                        .ok_or_else(|| "--connection-angle requires a value.".to_string())?,
+                    "--connection-angle",
+                )?);
+            }
+            "--connection-count" | "--connections" => {
+                index += 1;
+                connection_count = Some(parse_usize_arg(
+                    args.get(index)
+                        .ok_or_else(|| "--connection-count requires a value.".to_string())?,
+                    "--connection-count",
+                )?);
+            }
+            "--default-chemical" => default_chemical = true,
+            "--no-default-chemical" => default_chemical = false,
+            "--out" | "-o" => {
+                index += 1;
+                output = Some(
+                    args.get(index)
+                        .ok_or_else(|| "--out requires a path.".to_string())?
+                        .clone(),
+                );
+            }
+            "--pretty" => pretty = true,
+            value if text.is_none() => text = Some(value.to_string()),
+            value => return Err(format!("Unexpected label-query argument '{value}'.")),
+        }
+        index += 1;
+    }
+    let text = text.ok_or_else(|| "label-query requires --text <label>.".to_string())?;
+    let connection_count = connection_count.unwrap_or_else(|| connection_angles.len().max(1));
+    if connection_angles.len() > connection_count {
+        return Err(
+            "More --connection-angle values were provided than --connection-count.".to_string(),
+        );
+    }
+    while connection_angles.len() < connection_count {
+        let fallback = match connection_angles.len() {
+            0 => 0.0,
+            1 => 180.0,
+            index => 360.0 * index as f64 / connection_count.max(1) as f64,
+        };
+        connection_angles.push(fallback);
+    }
+
+    let report = label_query_report(&text, &connection_angles, default_chemical)?;
+    write_json_value(report, output.as_deref(), pretty)
+}
+
+fn label_query_report(
+    text: &str,
+    connection_angles: &[f64],
+    default_chemical: bool,
+) -> Result<Value, String> {
+    let mut engine = Engine::new();
+    let node_id = if connection_angles.is_empty() {
+        None
+    } else {
+        Some(build_label_query_node(&mut engine, connection_angles)?)
+    };
+    if let Some(node_id) = node_id.as_deref() {
+        execute_json_command(
+            &mut engine,
+            json!({
+                "type": "set-node-label-runs",
+                "nodeId": node_id,
+                "runs": label_query_source_runs(text, default_chemical),
+                "defaultChemical": default_chemical
+            }),
+        )?;
+    }
+    let document_text = document_json(&engine)?;
+    let document: Value =
+        serde_json::from_str(&document_text).map_err(|error| error.to_string())?;
+    let node = node_id
+        .as_deref()
+        .and_then(|id| find_document_node(&document, id).cloned());
+    let label = node.as_ref().and_then(|node| node.get("label")).cloned();
+    let label_meta = label
+        .as_ref()
+        .and_then(|label| label.get("meta"))
+        .cloned()
+        .unwrap_or(Value::Null);
+    let node_meta = node
+        .as_ref()
+        .and_then(|node| node.get("meta"))
+        .cloned()
+        .unwrap_or(Value::Null);
+    let recognition = label_meta
+        .get("labelRecognition")
+        .cloned()
+        .or_else(|| node_meta.get("labelRecognition").cloned());
+    let display_text = label
+        .as_ref()
+        .and_then(|label| label.get("text"))
+        .and_then(Value::as_str)
+        .map(ToString::to_string);
+    let source_text = label
+        .as_ref()
+        .and_then(|label| label.get("sourceText"))
+        .and_then(Value::as_str)
+        .map(ToString::to_string)
+        .unwrap_or_else(|| text.to_string());
+    let status = recognition
+        .as_ref()
+        .and_then(|recognition| recognition.get("status"))
+        .and_then(Value::as_str)
+        .unwrap_or("accepted");
+
+    Ok(json!({
+        "schema": "chemcore.labelQuery.v1",
+        "input": {
+            "text": text,
+            "connectionCount": connection_angles.len(),
+            "connectionAngles": connection_angles,
+            "defaultChemical": default_chemical
+        },
+        "accepted": status != "invalid",
+        "status": status,
+        "node": node,
+        "label": label,
+        "sourceText": source_text,
+        "displayText": display_text,
+        "displayDiffersFromSource": display_text.as_deref().is_some_and(|display| display != source_text),
+        "recognition": recognition,
+        "sourceRuns": label_meta.get("sourceRuns").cloned().unwrap_or_else(|| label_query_source_runs(text, default_chemical)),
+    }))
+}
+
+fn build_label_query_node(
+    engine: &mut Engine,
+    connection_angles: &[f64],
+) -> Result<String, String> {
+    let origin = (100.0, 100.0);
+    let length = 48.0;
+    let first_angle = *connection_angles
+        .first()
+        .ok_or_else(|| "label query requires at least one connection angle.".to_string())?;
+    let first_end = point_from_angle(origin, length, first_angle);
+    let first = execute_json_command(
+        engine,
+        json!({
+            "type": "add-bond",
+            "begin": { "x": origin.0, "y": origin.1 },
+            "end": { "x": first_end.0, "y": first_end.1 },
+            "order": 1,
+            "variant": "single"
+        }),
+    )?;
+    let node_id = first
+        .get("created")
+        .and_then(|created| created.get("nodes"))
+        .and_then(Value::as_array)
+        .and_then(|nodes| nodes.first())
+        .and_then(Value::as_str)
+        .ok_or_else(|| "add-bond did not return a created label node.".to_string())?
+        .to_string();
+    for angle in connection_angles.iter().copied().skip(1) {
+        let end = point_from_angle(origin, length, angle);
+        execute_json_command(
+            engine,
+            json!({
+                "type": "add-bond",
+                "begin": { "nodeId": node_id, "x": origin.0, "y": origin.1 },
+                "end": { "x": end.0, "y": end.1 },
+                "order": 1,
+                "variant": "single"
+            }),
+        )?;
+    }
+    Ok(node_id)
+}
+
+fn point_from_angle(origin: (f64, f64), length: f64, angle_deg: f64) -> (f64, f64) {
+    let radians = angle_deg.to_radians();
+    (
+        origin.0 + length * radians.cos(),
+        origin.1 + length * radians.sin(),
+    )
+}
+
+fn label_query_source_runs(text: &str, default_chemical: bool) -> Value {
+    json!([{
+        "text": text,
+        "script": if default_chemical { "chemical" } else { "normal" }
+    }])
+}
+
+fn find_document_node<'a>(document: &'a Value, node_id: &str) -> Option<&'a Value> {
+    document
+        .get("resources")?
+        .as_object()?
+        .values()
+        .filter_map(|resource| resource.get("data"))
+        .filter_map(|data| data.get("nodes"))
+        .filter_map(Value::as_array)
+        .flat_map(|nodes| nodes.iter())
+        .find(|node| node.get("id").and_then(Value::as_str) == Some(node_id))
+}
+
+fn parse_f64_arg(value: &str, name: &str) -> Result<f64, String> {
+    value
+        .parse::<f64>()
+        .map_err(|error| format!("{name} must be a number: {error}"))
+}
+
+fn parse_usize_arg(value: &str, name: &str) -> Result<usize, String> {
+    value
+        .parse::<usize>()
+        .map_err(|error| format!("{name} must be an integer: {error}"))
 }
 
 fn new_command(args: &[String]) -> Result<(), String> {
@@ -1639,6 +1874,42 @@ mod tests {
     }
 
     #[test]
+    fn label_query_reports_default_cf3_reversal() {
+        let report = label_query_report("CF3", &[0.0], true).unwrap();
+
+        assert_eq!(report["accepted"], json!(true));
+        assert_eq!(report["sourceText"], json!("CF3"));
+        assert_eq!(report["displayText"], json!("F3C"));
+        assert_eq!(report["displayDiffersFromSource"], json!(true));
+        assert_eq!(report["recognition"]["canonicalLabel"], json!("CF3"));
+    }
+
+    #[test]
+    fn label_query_can_disable_default_chemical_layout() {
+        let report = label_query_report("CF3", &[0.0], false).unwrap();
+
+        assert_eq!(report["accepted"], json!(true));
+        assert_eq!(report["sourceText"], json!("CF3"));
+        assert_eq!(report["displayText"], json!("CF3"));
+        assert_eq!(report["displayDiffersFromSource"], json!(false));
+        assert_eq!(report["sourceRuns"][0]["script"], json!("normal"));
+        assert!(report["recognition"].is_null());
+    }
+
+    #[test]
+    fn label_query_uses_kernel_abbreviation_recognition() {
+        let bn = label_query_report("Bn", &[180.0], true).unwrap();
+        let et = label_query_report("Et", &[180.0], true).unwrap();
+
+        assert_eq!(bn["accepted"], json!(true));
+        assert_eq!(bn["recognition"]["canonicalLabel"], json!("Bn"));
+        assert_eq!(bn["recognition"]["groupKind"], json!("terminal-fragment"));
+        assert_eq!(et["accepted"], json!(true));
+        assert_eq!(et["recognition"]["canonicalLabel"], json!("Et"));
+        assert_eq!(et["recognition"]["groupKind"], json!("terminal-fragment"));
+    }
+
+    #[test]
     fn parses_agent_target_selectors() {
         assert_eq!(
             agent::parse_target_selector("all").unwrap(),
@@ -1691,6 +1962,10 @@ mod tests {
         assert_eq!(protocol::schema_topic_key("guide"), Some("guide"));
         assert_eq!(protocol::schema_topic_key("agent-guide"), Some("guide"));
         assert_eq!(protocol::schema_topic_key("clipboard"), Some("copy"));
+        assert_eq!(
+            protocol::schema_topic_key("label-query"),
+            Some("labelQuery")
+        );
         assert_eq!(
             protocol::schema_topic_key("json-output"),
             Some("jsonOutput")

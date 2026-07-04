@@ -101,6 +101,12 @@ const COMMAND_SPECS: &[CommandSpec] = &[
         example: "chemcore-cli guide --pretty",
     },
     CommandSpec {
+        name: "label-query",
+        summary: "Ask the ChemCore text engine how a node label is recognized and displayed for a connection geometry.",
+        usage: "chemcore-cli label-query --text <label> [--connection-angle <deg> ...] [--connection-count <n>] [--no-default-chemical] [--pretty] [--out <path>]",
+        example: "chemcore-cli label-query --text CF3 --connection-angle 0 --pretty",
+    },
+    CommandSpec {
         name: "inspect",
         summary: "Inspect a document and write JSON summary/object/molecule/resource data.",
         usage: "chemcore-cli inspect <input> [--include summary,objects,molecules,resources,styles] [--out <path>] [--pretty]",
@@ -349,7 +355,7 @@ fn command_error_suggestions(
         })],
         _ if message.contains("Unknown schema topic") => vec![json!({
             "action": "choose_schema_topic",
-            "accepted": ["protocol", "commands", "targets", "bounds", "capture", "context", "detail", "guide", "copy", "session", "json-output", "command-script", "all"],
+            "accepted": ["protocol", "commands", "targets", "bounds", "capture", "context", "detail", "guide", "copy", "session", "label-query", "json-output", "command-script", "all"],
             "example": "chemcore-cli schema capture --pretty",
         })],
         _ => spec
@@ -573,6 +579,11 @@ fn protocol_schemas_json() -> Value {
             "stdout": "JSON manifest only; large clipboard payloads are written to a payload file.",
             "defaultPayload": "If --payload is omitted, copy writes the payload JSON into the OS temp chemcore-cli directory and reports payload.defaulted=true, payload.verified=true, payload.bytes, and a default_payload_path warning.",
             "usage": command_spec("copy").map(|spec| spec.usage).unwrap_or("")
+        },
+        "labelQuery": {
+            "description": "Readonly label-engine query. It simulates attaching text to a node with the requested connection angles, then reports sourceText, displayText, sourceRuns, labelRecognition, and whether the default display differs from the source text.",
+            "ocrUse": "OCR should use this to decide whether a visible text string can be emitted as a default chemical label or must preserve visible ordering with defaultChemical=false.",
+            "usage": command_spec("label-query").map(|spec| spec.usage).unwrap_or("")
         },
         "commandScript": {
             "input": "A JSON object command or an array of command objects.",
@@ -1147,7 +1158,7 @@ pub(crate) fn schema_command(args: &[String]) -> Result<(), String> {
         json!({ "ok": true, "topic": topic, "schema": schema })
     } else {
         return Err(format!(
-            "Unknown schema topic '{topic}'. Expected protocol, commands, targets, bounds, capture, context, detail, guide, copy, session, json-output, command-script, or all."
+            "Unknown schema topic '{topic}'. Expected protocol, commands, targets, bounds, capture, context, detail, guide, copy, session, label-query, json-output, command-script, or all."
         ));
     };
     write_json_value(value, output.as_deref(), pretty)
@@ -1164,6 +1175,7 @@ pub(crate) fn schema_topic_key(topic: &str) -> Option<&'static str> {
         "guide" | "agent-guide" | "docs" | "documentation" => Some("guide"),
         "copy" | "clipboard" => Some("copy"),
         "session" | "jsonl" | "daemon" => Some("session"),
+        "label-query" | "labelQuery" | "label" | "text-label" => Some("labelQuery"),
         "json-output" | "jsonOutput" | "stdout" | "output" | "pretty" => Some("jsonOutput"),
         "examples" => Some("commandScript"),
         "command-script" | "commandScript" | "commands-json" => Some("commandScript"),
