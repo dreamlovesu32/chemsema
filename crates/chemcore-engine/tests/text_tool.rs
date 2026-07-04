@@ -675,6 +675,8 @@ fn centered_text_object_edit_layout_anchors_editor_to_box_center() {
         line_height: Some(12.0),
         box_value: Some([-20.0, 0.0, 40.0, 20.0]),
         anchor_offset: None,
+        text_position: None,
+        glyph_polygons: Vec::new(),
         preserve_lines: true,
         default_chemical: false,
     };
@@ -709,6 +711,8 @@ fn centered_text_object_selection_rects_use_visual_line_bounds() {
         line_height: Some(12.0),
         box_value: Some([-20.0, 0.0, 40.0, 20.0]),
         anchor_offset: None,
+        text_position: None,
+        glyph_polygons: Vec::new(),
         preserve_lines: true,
         default_chemical: false,
     };
@@ -800,6 +804,8 @@ fn text_object_caret_treats_percent_as_wide_single_glyph() {
         line_height: Some(12.0),
         box_value: None,
         anchor_offset: None,
+        text_position: None,
+        glyph_polygons: Vec::new(),
         preserve_lines: true,
         default_chemical: false,
     };
@@ -838,6 +844,8 @@ fn applying_centered_text_object_edit_stores_box_relative_to_anchor() {
         line_height: Some(12.0),
         box_value: Some([-20.0, 0.0, 40.0, 20.0]),
         anchor_offset: None,
+        text_position: None,
+        glyph_polygons: Vec::new(),
         preserve_lines: true,
         default_chemical: false,
     };
@@ -1915,6 +1923,8 @@ fn preview_text_runs_expands_chemical_source_runs_in_kernel() {
         line_height: Some(12.6),
         box_value: None,
         anchor_offset: None,
+        text_position: None,
+        glyph_polygons: Vec::new(),
         preserve_lines: true,
         default_chemical: true,
     };

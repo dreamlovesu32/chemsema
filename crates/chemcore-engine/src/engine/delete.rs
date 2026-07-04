@@ -196,6 +196,8 @@ impl Engine {
             line_height: Some(DEFAULT_TEXT_LINE_HEIGHT),
             box_value: None,
             anchor_offset: None,
+            text_position: None,
+            glyph_polygons: Vec::new(),
             preserve_lines: true,
             default_chemical: true,
         };

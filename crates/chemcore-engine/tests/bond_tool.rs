@@ -11405,6 +11405,8 @@ fn bracket_label_session(text: &str) -> TextEditSession {
         line_height: Some(9.0),
         box_value: None,
         anchor_offset: None,
+        text_position: None,
+        glyph_polygons: Vec::new(),
         preserve_lines: true,
         default_chemical: false,
     }

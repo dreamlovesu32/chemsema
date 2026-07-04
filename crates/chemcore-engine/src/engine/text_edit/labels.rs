@@ -405,6 +405,10 @@ pub(super) fn make_centered_node_label_from_runs(
         Some([x1, y1, x2, y2]),
         font_size,
     );
+    let has_authoritative_glyph_polygons = !session.glyph_polygons.is_empty();
+    if has_authoritative_glyph_polygons {
+        glyph_polygons = session.glyph_polygons.clone();
+    }
     if !preserve_measured_box {
         if let Some(anchor_polygon_index) =
             label_anchor_polygon_index(&line_runs, layout.anchor_line, anchor_char)
@@ -438,10 +442,20 @@ pub(super) fn make_centered_node_label_from_runs(
             }
         }
     }
+    if has_authoritative_glyph_polygons {
+        meta.insert(
+            "ocrGlyphPolygonsAuthoritative".to_string(),
+            Value::Bool(true),
+        );
+    }
+    let label_position = session
+        .text_position
+        .map(|position| [round2(position[0]), round2(position[1])])
+        .unwrap_or([x1, baseline_y]);
     crate::NodeLabel {
         text: layout.rendered_text,
         source_text: Some(text.to_string()),
-        position: Some([x1, baseline_y]),
+        position: Some(label_position),
         box_field: Some([x1, y1, x2, y2]),
         runs: if line_runs.len() == 1 {
             line_runs.first().cloned().unwrap_or_default()
@@ -1422,6 +1436,16 @@ fn refreshed_authoritative_imported_label_display(
         Some(serde_json::to_value(source_runs).unwrap_or(Value::Array(Vec::new()))),
     );
 
+    if label
+        .meta
+        .get("ocrGlyphPolygonsAuthoritative")
+        .and_then(Value::as_bool)
+        == Some(true)
+        && !label.glyph_polygons.is_empty()
+    {
+        return next_label;
+    }
+
     if let Some(bbox) = label.bbox() {
         let baseline_y = label
             .position
@@ -1545,6 +1569,8 @@ pub(super) fn refreshed_attached_node_label(
         line_height: Some((font_size * 1.05).max(font_size)),
         box_value,
         anchor_offset,
+        text_position: None,
+        glyph_polygons: Vec::new(),
         preserve_lines: true,
         default_chemical: source_runs
             .iter()

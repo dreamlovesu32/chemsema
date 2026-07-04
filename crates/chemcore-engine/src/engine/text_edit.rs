@@ -78,6 +78,10 @@ pub struct TextEditSession {
     pub box_value: Option<[f64; 4]>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub anchor_offset: Option<[f64; 2]>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text_position: Option<[f64; 2]>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub glyph_polygons: Vec<Vec<[f64; 2]>>,
     #[serde(default)]
     pub preserve_lines: bool,
     #[serde(default)]
@@ -138,6 +142,8 @@ pub(crate) fn make_periodic_element_node_label(text: &str, position: [f64; 2]) -
         line_height: Some(DEFAULT_TEXT_LINE_HEIGHT),
         box_value: None,
         anchor_offset: None,
+        text_position: None,
+        glyph_polygons: Vec::new(),
         preserve_lines: false,
         default_chemical: true,
     };
@@ -547,6 +553,8 @@ impl Engine {
             line_height: Some(DEFAULT_TEXT_LINE_HEIGHT),
             box_value: Some([0.0, 0.0, TEXT_EDIT_BOX_WIDTH, DEFAULT_TEXT_LINE_HEIGHT]),
             anchor_offset: None,
+            text_position: None,
+            glyph_polygons: Vec::new(),
             preserve_lines: true,
             default_chemical: false,
         })
@@ -589,6 +597,8 @@ impl Engine {
                 DEFAULT_TEXT_LINE_HEIGHT,
             ])),
             anchor_offset: None,
+            text_position: None,
+            glyph_polygons: Vec::new(),
             preserve_lines: true,
             default_chemical: content.default_chemical,
         };
@@ -958,6 +968,8 @@ impl Engine {
                     round6(anchor_point.y - bbox[1]),
                 ]
             }),
+            text_position: None,
+            glyph_polygons: Vec::new(),
             preserve_lines: true,
             default_chemical,
         })
@@ -1019,6 +1031,8 @@ impl Engine {
                 .or(Some(DEFAULT_TEXT_LINE_HEIGHT)),
             box_value: payload_box(payload),
             anchor_offset: None,
+            text_position: None,
+            glyph_polygons: Vec::new(),
             preserve_lines: payload
                 .extra
                 .get("preserveLines")
@@ -1067,6 +1081,8 @@ impl Engine {
                 TextEditSession {
                     box_value: None,
                     anchor_offset: None,
+                    text_position: None,
+                    glyph_polygons: Vec::new(),
                     ..session.clone()
                 },
             )
@@ -1396,6 +1412,12 @@ fn apply_text_command_content(
     if content.anchor_offset.is_some() {
         session.anchor_offset = content.anchor_offset;
     }
+    if content.text_position.is_some() {
+        session.text_position = content.text_position;
+    }
+    if !content.glyph_polygons.is_empty() {
+        session.glyph_polygons = content.glyph_polygons;
+    }
     if content.default_chemical {
         session.default_chemical = true;
     }
@@ -1474,6 +1496,8 @@ pub(super) fn apply_node_label_replacement(
         line_height: Some(DEFAULT_TEXT_LINE_HEIGHT),
         box_value: None,
         anchor_offset: None,
+        text_position: None,
+        glyph_polygons: Vec::new(),
         preserve_lines: true,
         default_chemical: true,
     };

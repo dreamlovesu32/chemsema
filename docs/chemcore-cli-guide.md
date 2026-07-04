@@ -785,17 +785,25 @@ triple
   "fill": "#000000",
   "box": [72.0, 92.0, 96.0, 104.0],
   "anchorOffset": [28.0, 8.0],
+  "textPosition": [71.2, 104.0],
+  "glyphPolygons": [
+    [[72.0, 92.0], [84.0, 92.0], [84.0, 104.0], [72.0, 104.0]],
+    [[86.0, 92.0], [96.0, 92.0], [96.0, 104.0], [86.0, 104.0]]
+  ],
   "preserveMeasuredBox": true,
   "defaultChemical": true
 }
 ```
 
-`box`, `anchorOffset`, and `preserveMeasuredBox` are optional. Use them when a
-caller has authoritative measured endpoint-label geometry, for example from
-CDXML import or OCR. The box is world-space `[x1, y1, x2, y2]`; `anchorOffset`
-is the endpoint anchor relative to the box origin. When `preserveMeasuredBox` is
-true, ChemCore keeps the measured label box while still applying node-label
-recognition and bond retreat semantics.
+`box`, `anchorOffset`, `textPosition`, `glyphPolygons`, and
+`preserveMeasuredBox` are optional. Use them when a caller has authoritative
+measured endpoint-label geometry, for example from CDXML import or OCR. The box
+is world-space `[x1, y1, x2, y2]`; `anchorOffset` is the endpoint anchor
+relative to the box origin; `textPosition` is the renderer-facing text position;
+and `glyphPolygons` are world-space visible glyph polygons used for knockout and
+bond retreat. When `preserveMeasuredBox` is true, ChemCore keeps the measured
+label box while still applying node-label recognition and editable label
+semantics.
 
 ### 5.8 Edit Atom Label Style
 

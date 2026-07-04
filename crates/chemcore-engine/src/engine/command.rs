@@ -68,6 +68,10 @@ pub struct TextCommandContent {
     pub box_value: Option<[f64; 4]>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub anchor_offset: Option<[f64; 2]>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text_position: Option<[f64; 2]>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub glyph_polygons: Vec<Vec<[f64; 2]>>,
     #[serde(default)]
     pub preserve_measured_box: bool,
     #[serde(default)]

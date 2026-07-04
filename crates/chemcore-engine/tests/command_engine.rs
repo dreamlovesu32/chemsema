@@ -418,6 +418,11 @@ fn direct_node_label_runs_can_preserve_measured_endpoint_box() {
             ],
             "box": [72.0, 92.0, 96.0, 104.0],
             "anchorOffset": [28.0, 8.0],
+            "textPosition": [71.2, 104.0],
+            "glyphPolygons": [
+                [[72.0, 92.0], [84.0, 92.0], [84.0, 104.0], [72.0, 104.0]],
+                [[86.0, 92.0], [96.0, 92.0], [96.0, 104.0], [86.0, 104.0]]
+            ],
             "preserveMeasuredBox": true,
             "defaultChemical": true
         }),
@@ -427,11 +432,40 @@ fn direct_node_label_runs_can_preserve_measured_endpoint_box() {
     let document = document_value(&engine);
     let node = find_node(&document, &node_id);
     assert_eq!(node["label"]["text"], "Ph");
+    assert_eq!(node["label"]["position"], json!([71.2, 104.0]));
     assert_eq!(node["label"]["box"], json!([72.0, 92.0, 96.0, 104.0]));
+    assert_eq!(
+        node["label"]["glyphPolygons"],
+        json!([
+            [[72.0, 92.0], [84.0, 92.0], [84.0, 104.0], [72.0, 104.0]],
+            [[86.0, 92.0], [96.0, 92.0], [96.0, 104.0], [86.0, 104.0]]
+        ])
+    );
     assert_eq!(
         node["label"]["meta"]["import"]["cdxml"]["boundingBox"],
         json!([72.0, 92.0, 96.0, 104.0])
     );
+    assert_eq!(
+        node["label"]["meta"]["ocrGlyphPolygonsAuthoritative"],
+        json!(true)
+    );
+
+    let mut reloaded = Engine::new();
+    execute(
+        &mut reloaded,
+        json!({
+            "type": "load-document",
+            "format": "json",
+            "content": document.to_string()
+        }),
+    );
+    let reloaded_document = document_value(&reloaded);
+    let reloaded_node = find_node(&reloaded_document, &node_id);
+    assert_eq!(
+        reloaded_node["label"]["glyphPolygons"],
+        node["label"]["glyphPolygons"]
+    );
+    assert_eq!(reloaded_node["label"]["position"], json!([71.2, 104.0]));
 }
 
 #[test]
