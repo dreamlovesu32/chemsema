@@ -2094,6 +2094,10 @@ impl Engine {
                 .with_command(command.clone(), |engine| {
                     engine.set_node_label_runs_direct(&node_id, content)
                 }),
+            EditorCommand::SetNodeCharge { node_id, charge } => self
+                .with_command(command.clone(), |engine| {
+                    engine.set_node_charge_direct(&node_id, charge)
+                }),
             EditorCommand::ReplaceNodeLabel { node_id, label } => self
                 .with_command(command.clone(), |engine| {
                     engine.replace_node_label_untracked(&node_id, &label)
@@ -4345,6 +4349,7 @@ fn editor_command_type_name(command: &EditorCommand) -> &'static str {
         EditorCommand::AddText { .. } => "add-text",
         EditorCommand::SetTextRuns { .. } => "set-text-runs",
         EditorCommand::SetNodeLabelRuns { .. } => "set-node-label-runs",
+        EditorCommand::SetNodeCharge { .. } => "set-node-charge",
         EditorCommand::ReplaceNodeLabel { .. } => "replace-node-label",
         EditorCommand::MoveTlcSpot { .. } => "move-tlc-spot",
         EditorCommand::ApplyArrowStyle { .. } => "apply-arrow-style",

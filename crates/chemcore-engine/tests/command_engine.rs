@@ -527,7 +527,7 @@ fn direct_node_label_runs_update_endpoint_label() {
             "variant": "single"
         }),
     );
-    let node_id = created_node_id(&add, 0);
+    let node_id = created_node_id(&add, 1);
 
     let update = execute(
         &mut engine,
@@ -546,6 +546,93 @@ fn direct_node_label_runs_update_endpoint_label() {
     let node = find_node(&document, &node_id);
     assert_eq!(node["label"]["sourceText"], "OMe");
     assert_eq!(node["label"]["meta"]["sourceRuns"][0]["text"], "OMe");
+}
+
+#[test]
+fn direct_node_charge_updates_attached_label_valence_semantics() {
+    let mut engine = Engine::new();
+    let add = execute(
+        &mut engine,
+        json!({
+            "type": "add-bond",
+            "begin": { "x": 100.0, "y": 100.0 },
+            "end": { "x": 148.0, "y": 100.0 },
+            "order": 2,
+            "variant": "double",
+            "doublePlacement": "center"
+        }),
+    );
+    let node_id = created_node_id(&add, 0);
+    execute(
+        &mut engine,
+        json!({
+            "type": "set-node-label-runs",
+            "nodeId": node_id,
+            "runs": [
+                { "text": "NH2", "script": "chemical" }
+            ]
+        }),
+    );
+
+    let update = execute(
+        &mut engine,
+        json!({
+            "type": "set-node-charge",
+            "nodeId": node_id,
+            "charge": 1
+        }),
+    );
+
+    assert_eq!(update["changed"], true);
+    assert_eq!(update["command"]["type"], "set-node-charge");
+    let document = document_value(&engine);
+    let node = find_node(&document, &node_id);
+    assert_eq!(node["charge"], json!(1));
+    assert_eq!(node["label"]["sourceText"], "NH2");
+    assert_eq!(node["label"]["text"], "H2N");
+}
+
+#[test]
+fn direct_node_label_runs_can_preserve_user_edited_hydrogen_source_text() {
+    let mut engine = Engine::new();
+    let add = execute(
+        &mut engine,
+        json!({
+            "type": "add-bond",
+            "begin": { "x": 100.0, "y": 100.0 },
+            "end": { "x": 148.0, "y": 100.0 },
+            "order": 2,
+            "variant": "double",
+            "doublePlacement": "center"
+        }),
+    );
+    let node_id = created_node_id(&add, 1);
+
+    let update = execute(
+        &mut engine,
+        json!({
+            "type": "set-node-label-runs",
+            "nodeId": node_id,
+            "runs": [
+                { "text": "NH2", "script": "chemical" }
+            ],
+            "preserveImplicitHydrogenLabel": true
+        }),
+    );
+
+    assert_eq!(update["changed"], true);
+    assert_eq!(update["command"]["type"], "set-node-label-runs");
+    let document = document_value(&engine);
+    let node = find_node(&document, &node_id);
+    assert_eq!(node["element"], "N");
+    assert_eq!(node["charge"], json!(0));
+    assert_eq!(node["numHydrogens"], json!(1));
+    assert_eq!(node["label"]["sourceText"], "NH2");
+    assert_eq!(node["label"]["text"], "NH2");
+    assert_eq!(
+        node["label"]["meta"]["implicitHydrogenLabel"]["userEdited"],
+        json!(true)
+    );
 }
 
 #[test]

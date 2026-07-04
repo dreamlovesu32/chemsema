@@ -768,11 +768,30 @@ triple
   "fontFamily": "Arial",
   "fontSize": 10.0,
   "fill": "#000000",
+  "preserveImplicitHydrogenLabel": false,
   "defaultChemical": true
 }
 ```
 
-### 5.8 修改原子标签样式
+`preserveImplicitHydrogenLabel` 可选。对 `NH2` 这类端点元素氢标签设为
+`true` 时，ChemCore 会把源文本视为用户/导入文档明确保留的标签；即使
+当前键级推导出的隐式氢数量通常会把它刷新成 `NH`，也会继续保留源文本。
+
+### 5.8 设置原子电荷
+
+```json
+{
+  "type": "set-node-charge",
+  "nodeId": "node_1",
+  "charge": 1
+}
+```
+
+当调用方已经拥有显式或推断出的形式电荷语义时使用，包括 OCR 恢复场景：
+可见标签例如 `NH2` 在恢复出的键级下让氮达到 4 价，因此应写入正电荷。
+ChemCore 会在更新电荷后刷新隐式氢、标签识别和附着标签几何。
+
+### 5.9 修改原子标签样式
 
 ```json
 {

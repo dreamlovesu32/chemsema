@@ -851,6 +851,7 @@ triple
     [[86.0, 92.0], [96.0, 92.0], [96.0, 104.0], [86.0, 104.0]]
   ],
   "preserveMeasuredBox": true,
+  "preserveImplicitHydrogenLabel": false,
   "defaultChemical": true
 }
 ```
@@ -868,8 +869,28 @@ retreat. Source-neutral measured geometry must not be encoded as
 CDXML. When `preserveMeasuredBox` is true, ChemCore stores the source-neutral
 measurement under `label.meta.measuredGeometry`, keeps the measured box and text
 position, and still applies node-label recognition and editable label semantics.
+When `preserveImplicitHydrogenLabel` is true on an endpoint label such as
+`NH2`, ChemCore treats the element-hydrogen source text as user-authored and
+keeps it even if the current valence-derived implicit hydrogen count would
+normally refresh the label to another source, such as `NH`.
 
-### 5.9 Edit Atom Label Style
+### 5.9 Set Atom Charge
+
+```json
+{
+  "type": "set-node-charge",
+  "nodeId": "node_1",
+  "charge": 1
+}
+```
+
+Use this when the caller has explicit or inferred formal-charge semantics for an
+atom, including OCR recovery where a visible label such as `NH2` becomes
+positively charged because its recovered bond order gives nitrogen valence 4.
+ChemCore refreshes implicit hydrogens, label recognition, and attached label
+geometry after the charge update.
+
+### 5.10 Edit Atom Label Style
 
 ```json
 {

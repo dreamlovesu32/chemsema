@@ -75,6 +75,8 @@ pub struct TextCommandContent {
     #[serde(default)]
     pub preserve_measured_box: bool,
     #[serde(default)]
+    pub preserve_implicit_hydrogen_label: bool,
+    #[serde(default)]
     pub default_chemical: bool,
 }
 
@@ -269,6 +271,11 @@ pub enum EditorCommand {
         node_id: String,
         #[serde(flatten)]
         content: TextCommandContent,
+    },
+    SetNodeCharge {
+        #[serde(alias = "nodeId")]
+        node_id: String,
+        charge: i32,
     },
     ReplaceNodeLabel {
         node_id: String,

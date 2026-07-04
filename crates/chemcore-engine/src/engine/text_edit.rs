@@ -626,8 +626,45 @@ impl Engine {
             return false;
         };
         let preserve_measured_box = content.preserve_measured_box;
+        let preserve_implicit_hydrogen_label = content.preserve_implicit_hydrogen_label;
         let session = apply_text_command_content(session, content);
-        self.apply_endpoint_text_edit_with_options(node_id, &session, preserve_measured_box)
+        self.apply_endpoint_text_edit_with_options(
+            node_id,
+            &session,
+            preserve_measured_box,
+            preserve_implicit_hydrogen_label,
+        )
+    }
+
+    pub(super) fn set_node_charge_direct(&mut self, node_id: &str, charge: i32) -> bool {
+        self.push_undo_snapshot();
+        let Some(mut entry) = self.state.document.editable_fragment_mut() else {
+            self.undo_stack.pop();
+            return false;
+        };
+        let object_translate = entry.object.transform.translate;
+        let Some(node) = entry
+            .fragment
+            .nodes
+            .iter_mut()
+            .find(|node| node.id == node_id)
+        else {
+            self.undo_stack.pop();
+            return false;
+        };
+        if node.charge == charge {
+            self.undo_stack.pop();
+            return false;
+        }
+        node.charge = charge;
+        refresh_attached_node_label_geometry_for_node(
+            entry.fragment,
+            object_translate,
+            node_id,
+            self.options.bond_stroke_world_pt().value(),
+        );
+        entry.update_bounds();
+        true
     }
 
     fn apply_text_edit_untracked(&mut self, session: TextEditSession) -> bool {
@@ -1214,7 +1251,7 @@ impl Engine {
     }
 
     fn apply_endpoint_text_edit(&mut self, node_id: &str, session: &TextEditSession) -> bool {
-        self.apply_endpoint_text_edit_with_options(node_id, session, false)
+        self.apply_endpoint_text_edit_with_options(node_id, session, false, false)
     }
 
     fn apply_endpoint_text_edit_with_options(
@@ -1222,6 +1259,7 @@ impl Engine {
         node_id: &str,
         session: &TextEditSession,
         preserve_measured_box: bool,
+        preserve_implicit_hydrogen_label: bool,
     ) -> bool {
         let text = session
             .text
@@ -1255,7 +1293,7 @@ impl Engine {
         };
         let connection_angles = adjacent_angles_for_fragment_node(entry.fragment, node_id);
         let node = &mut entry.fragment.nodes[node_index];
-        let changed = apply_node_label_text_edit_with_options(
+        let mut changed = apply_node_label_text_edit_with_options(
             node,
             &text,
             session,
@@ -1263,6 +1301,9 @@ impl Engine {
             local_anchor_position,
             preserve_measured_box,
         );
+        if preserve_implicit_hydrogen_label {
+            changed |= mark_user_edited_implicit_hydrogen_label(node);
+        }
         if !changed {
             self.undo_stack.pop();
             return false;

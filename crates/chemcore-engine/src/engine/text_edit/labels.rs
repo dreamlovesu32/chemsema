@@ -1130,6 +1130,28 @@ pub(crate) fn mark_shortcut_implicit_hydrogen_label(node: &mut crate::Node, labe
     }
 }
 
+pub(super) fn mark_user_edited_implicit_hydrogen_label(node: &mut crate::Node) -> bool {
+    let Some(label) = node.label.as_ref() else {
+        return false;
+    };
+    let source_text = label_source_text(label);
+    if !parse_element_hydrogen_label(source_text.trim())
+        .is_some_and(|parsed| parsed.element == node.element)
+    {
+        return false;
+    }
+    let meta = implicit_hydrogen_label_meta_value("command", true);
+    let previous_node_meta = node.meta.clone();
+    let previous_label_meta = label.meta.clone();
+    set_node_implicit_hydrogen_label_meta(node, Some(meta.clone()));
+    if let Some(label) = node.label.as_mut() {
+        set_label_implicit_hydrogen_label_meta(label, Some(meta));
+        previous_node_meta != node.meta || previous_label_meta != label.meta
+    } else {
+        previous_node_meta != node.meta
+    }
+}
+
 pub(super) fn set_meta_object_field(meta_value: &mut Value, key: &str, value: Option<Value>) {
     if !meta_value.is_object() {
         *meta_value = Value::Object(serde_json::Map::new());
