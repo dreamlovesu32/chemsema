@@ -581,8 +581,8 @@ fn protocol_schemas_json() -> Value {
             "usage": command_spec("copy").map(|spec| spec.usage).unwrap_or("")
         },
         "labelQuery": {
-            "description": "Readonly label-engine query. It simulates attaching text to a node with the requested connection angles, then reports sourceText, displayText, sourceRuns, labelRecognition, and whether the default display differs from the source text.",
-            "ocrUse": "OCR should use this to decide whether a visible text string can be emitted as a default chemical label or must preserve visible ordering with defaultChemical=false.",
+            "description": "Readonly label-engine query. It simulates attaching text to a node with the requested connection angles, then reports sourceText, displayText, sourceRuns, labelRecognition, semantics.anchorAtom, semantics.implicitHydrogenCount, and whether the default display differs from the source text.",
+            "ocrUse": "OCR should use this to decide whether a visible text string can be emitted as a default chemical label or must preserve visible ordering with defaultChemical=false. Generated implicit-hydrogen glyphs are not bond anchors; semantics.generatedHydrogensMayBeBondAnchors is only true for standalone H.",
             "usage": command_spec("label-query").map(|spec| spec.usage).unwrap_or("")
         },
         "commandScript": {

@@ -235,11 +235,27 @@ fn label_query_report(
         .and_then(Value::as_str)
         .map(ToString::to_string)
         .unwrap_or_else(|| text.to_string());
+    let node_element = node
+        .as_ref()
+        .and_then(|node| node.get("element"))
+        .and_then(Value::as_str);
+    let node_atomic_number = node
+        .as_ref()
+        .and_then(|node| node.get("atomicNumber"))
+        .and_then(Value::as_u64);
+    let implicit_hydrogen_count = node
+        .as_ref()
+        .and_then(|node| node.get("numHydrogens"))
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
     let status = recognition
         .as_ref()
         .and_then(|recognition| recognition.get("status"))
         .and_then(Value::as_str)
         .unwrap_or("accepted");
+    let accepted = status != "invalid";
+    let hydrogen_is_anchor =
+        accepted && node_element == Some("H") && source_text == "H" && implicit_hydrogen_count == 0;
 
     Ok(json!({
         "schema": "chemcore.labelQuery.v1",
@@ -249,8 +265,15 @@ fn label_query_report(
             "connectionAngles": connection_angles,
             "defaultChemical": default_chemical
         },
-        "accepted": status != "invalid",
+        "accepted": accepted,
         "status": status,
+        "semantics": {
+            "anchorAtom": if accepted { node_element } else { None },
+            "anchorAtomicNumber": if accepted { node_atomic_number } else { None },
+            "implicitHydrogenCount": if accepted { Some(implicit_hydrogen_count) } else { None },
+            "generatedHydrogensMayBeBondAnchors": hydrogen_is_anchor,
+            "hydrogenAnchorRule": "Generated implicit-hydrogen glyphs are display/edit text only; bond drawing anchors stay on the heavy atom. Standalone H is the only hydrogen label that may anchor a bond."
+        },
         "node": node,
         "label": label,
         "sourceText": source_text,
@@ -1882,6 +1905,11 @@ mod tests {
         assert_eq!(report["displayText"], json!("F3C"));
         assert_eq!(report["displayDiffersFromSource"], json!(true));
         assert_eq!(report["recognition"]["canonicalLabel"], json!("CF3"));
+        assert_eq!(report["semantics"]["anchorAtom"], json!("C"));
+        assert_eq!(
+            report["semantics"]["generatedHydrogensMayBeBondAnchors"],
+            json!(false)
+        );
     }
 
     #[test]
@@ -1907,6 +1935,31 @@ mod tests {
         assert_eq!(et["accepted"], json!(true));
         assert_eq!(et["recognition"]["canonicalLabel"], json!("Et"));
         assert_eq!(et["recognition"]["groupKind"], json!("terminal-fragment"));
+    }
+
+    #[test]
+    fn label_query_reports_implicit_hydrogen_anchor_semantics() {
+        let nh = label_query_report("NH", &[0.0, 180.0], true).unwrap();
+        let hn = label_query_report("HN", &[0.0, 180.0], true).unwrap();
+        let standalone_h = label_query_report("H", &[0.0], true).unwrap();
+
+        assert_eq!(nh["accepted"], json!(true));
+        assert_eq!(nh["semantics"]["anchorAtom"], json!("N"));
+        assert_eq!(nh["semantics"]["implicitHydrogenCount"], json!(1));
+        assert_eq!(
+            nh["semantics"]["generatedHydrogensMayBeBondAnchors"],
+            json!(false)
+        );
+
+        assert_eq!(hn["accepted"], json!(false));
+        assert!(hn["semantics"]["anchorAtom"].is_null());
+
+        assert_eq!(standalone_h["accepted"], json!(true));
+        assert_eq!(standalone_h["semantics"]["anchorAtom"], json!("H"));
+        assert_eq!(
+            standalone_h["semantics"]["generatedHydrogensMayBeBondAnchors"],
+            json!(true)
+        );
     }
 
     #[test]
