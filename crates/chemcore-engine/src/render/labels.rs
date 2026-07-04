@@ -116,6 +116,56 @@ fn point_is_inside_or_on_polygon(point: Point, polygon: &[Point]) -> bool {
     inside
 }
 
+fn polygon_bounds(polygon: &[Point]) -> Option<RectBox> {
+    let mut bounds = RectBox {
+        x1: f64::INFINITY,
+        y1: f64::INFINITY,
+        x2: f64::NEG_INFINITY,
+        y2: f64::NEG_INFINITY,
+    };
+    for point in polygon {
+        bounds.x1 = bounds.x1.min(point.x);
+        bounds.y1 = bounds.y1.min(point.y);
+        bounds.x2 = bounds.x2.max(point.x);
+        bounds.y2 = bounds.y2.max(point.y);
+    }
+    (bounds.x1.is_finite()
+        && bounds.y1.is_finite()
+        && bounds.x2.is_finite()
+        && bounds.y2.is_finite()
+        && bounds.x2 + EPSILON >= bounds.x1
+        && bounds.y2 + EPSILON >= bounds.y1)
+        .then_some(bounds)
+}
+
+fn rect_segment_exit_fraction(start: Point, end: Point, rect: RectBox) -> Option<f64> {
+    let corners = [
+        Point::new(rect.x1, rect.y1),
+        Point::new(rect.x2, rect.y1),
+        Point::new(rect.x2, rect.y2),
+        Point::new(rect.x1, rect.y2),
+    ];
+    let start_inside = rect.contains(start);
+    let mut best_t: Option<f64> = None;
+    for index in 0..corners.len() {
+        let next = (index + 1) % corners.len();
+        let Some(t) = segment_intersection_fraction(start, end, corners[index], corners[next])
+        else {
+            continue;
+        };
+        if t <= EPSILON && !start_inside {
+            continue;
+        }
+        if best_t.is_none_or(|current| t > current) {
+            best_t = Some(t);
+        }
+    }
+    if start_inside && best_t.is_none() {
+        best_t = Some(0.0);
+    }
+    best_t
+}
+
 pub(super) fn clip_point_out_of_polygons(
     start: Point,
     end: Point,
@@ -148,6 +198,35 @@ pub(super) fn clip_point_out_of_polygons(
             if best_t.is_none_or(|current| t > current) {
                 best_t = Some(t);
             }
+        }
+    }
+    best_t.map(|t| {
+        Point::new(
+            start.x + (end.x - start.x) * t,
+            start.y + (end.y - start.y) * t,
+        )
+    })
+}
+
+fn clip_point_out_of_expanded_polygon_bounds(
+    start: Point,
+    end: Point,
+    polygons: &[Vec<Point>],
+    margin: f64,
+) -> Option<Point> {
+    if margin <= EPSILON {
+        return None;
+    }
+    let mut best_t: Option<f64> = None;
+    for polygon in polygons {
+        let Some(bounds) = polygon_bounds(polygon) else {
+            continue;
+        };
+        let Some(t) = rect_segment_exit_fraction(start, end, bounds.expanded(margin)) else {
+            continue;
+        };
+        if best_t.is_none_or(|current| t > current) {
+            best_t = Some(t);
         }
     }
     best_t.map(|t| {
@@ -226,6 +305,7 @@ pub(super) fn clip_point_out_of_label_geometry(
     }
     clip_point_out_of_polygons(start, end, polygons)
         .map(|point| advance_point_toward(point, end, margin))
+        .or_else(|| clip_point_out_of_expanded_polygon_bounds(start, end, polygons, margin))
         .unwrap_or(start)
 }
 

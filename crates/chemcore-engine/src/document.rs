@@ -823,6 +823,14 @@ fn node_label_glyph_polygons_are_authoritative(label: &NodeLabel) -> bool {
         && !label.glyph_polygons.is_empty()
 }
 
+fn node_label_measured_text_position_is_authoritative(label: &NodeLabel) -> bool {
+    label
+        .meta
+        .get("measuredTextPositionAuthoritative")
+        .and_then(Value::as_bool)
+        == Some(true)
+}
+
 fn rebuild_node_label_glyph_polygons(
     label: &mut NodeLabel,
     node_position: [f64; 2],
@@ -889,7 +897,9 @@ fn rebuild_node_label_glyph_polygons(
         )
     };
 
-    if !imported_cdxml_bullet_carbon_node_label(label, node_atomic_number) {
+    if !node_label_measured_text_position_is_authoritative(label)
+        && !imported_cdxml_bullet_carbon_node_label(label, node_atomic_number)
+    {
         align_imported_node_label_glyph_anchor(label, node_position, anchor_side);
     }
 }

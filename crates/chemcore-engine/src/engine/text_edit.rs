@@ -1680,9 +1680,16 @@ fn mark_node_label_import_geometry_authoritative(label: &mut crate::NodeLabel) {
     match label.meta.as_object_mut() {
         Some(meta) => {
             meta.insert("import".to_string(), import_meta);
+            meta.insert(
+                "measuredTextPositionAuthoritative".to_string(),
+                Value::Bool(true),
+            );
         }
         None => {
-            label.meta = json!({ "import": import_meta });
+            label.meta = json!({
+                "import": import_meta,
+                "measuredTextPositionAuthoritative": true
+            });
         }
     }
 }

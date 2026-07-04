@@ -10337,6 +10337,87 @@ fn render_document_clips_center_double_lines_individually_at_labeled_endpoint() 
 }
 
 #[test]
+fn render_document_clips_center_double_lines_against_small_label_margin() {
+    let document = fragment_document(
+        json!([
+            { "id": "n1", "element": "C", "atomicNumber": 6, "position": [20.0, 40.0], "charge": 0, "numHydrogens": 0 },
+            {
+                "id": "n2",
+                "element": "C",
+                "atomicNumber": 6,
+                "position": [50.0, 40.0],
+                "charge": 0,
+                "numHydrogens": 0,
+                "isPlaceholder": true,
+                "label": {
+                    "text": "•",
+                    "position": [49.0, 42.5],
+                    "box": [49.4, 37.8, 50.6, 42.2],
+                    "glyphPolygons": [[
+                        [49.4, 37.8],
+                        [50.6, 37.8],
+                        [50.6, 42.2],
+                        [49.4, 42.2]
+                    ]]
+                }
+            },
+            { "id": "n3", "element": "C", "atomicNumber": 6, "position": [80.0, 40.0], "charge": 0, "numHydrogens": 0 }
+        ]),
+        json!([
+            {
+                "id": "b1",
+                "begin": "n1",
+                "end": "n2",
+                "order": 2,
+                "strokeWidth": 0.6,
+                "labelClipMargin": 0.8,
+                "bondSpacing": 18.0,
+                "double": { "placement": "center" }
+            },
+            {
+                "id": "b2",
+                "begin": "n2",
+                "end": "n3",
+                "order": 2,
+                "strokeWidth": 0.6,
+                "labelClipMargin": 0.8,
+                "bondSpacing": 18.0,
+                "double": { "placement": "center" }
+            }
+        ]),
+    );
+
+    let polygons = object_bond_polygons_with_ids(&render_document(&document));
+    let b1_axes: Vec<_> = polygons
+        .iter()
+        .filter(|(bond_id, _)| bond_id == "b1")
+        .map(|(_, points)| bond_axis_from_points(points).expect("b1 axis"))
+        .collect();
+    let b2_axes: Vec<_> = polygons
+        .iter()
+        .filter(|(bond_id, _)| bond_id == "b2")
+        .map(|(_, points)| bond_axis_from_points(points).expect("b2 axis"))
+        .collect();
+
+    assert_eq!(b1_axes.len(), 2, "{polygons:?}");
+    assert_eq!(b2_axes.len(), 2, "{polygons:?}");
+    for (from, to) in b1_axes {
+        let label_endpoint_x = from.x.max(to.x);
+        assert!(
+            label_endpoint_x <= 48.7,
+            "left center-double line should retreat from the dot margin: {polygons:?}"
+        );
+    }
+    for (from, to) in b2_axes {
+        let label_endpoint_x = from.x.min(to.x);
+        assert!(
+            label_endpoint_x >= 51.3,
+            "right center-double line should retreat from the dot margin: {polygons:?}"
+        );
+    }
+}
+
+#[test]
 fn render_document_keeps_terminal_side_double_offset_with_label_retreat() {
     let unlabeled = fragment_document(
         json!([
