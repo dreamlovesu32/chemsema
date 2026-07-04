@@ -213,6 +213,10 @@ $script = '[{"type":"add-bond","begin":{"x":100,"y":120},"end":{"x":145,"y":120}
 $script | chemcore-cli new - --out example.ccjs --results example-results.json --pretty
 ```
 
+For measured double bonds, `add-bond` accepts `doublePlacement: "left" | "right" | "center"`
+or nested `double: {"placement": "left"}`. Omit it to keep ChemCore's automatic
+double-bond side placement.
+
 Run commands against an existing document:
 
 ```powershell

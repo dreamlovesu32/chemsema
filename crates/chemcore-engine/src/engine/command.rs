@@ -1,7 +1,7 @@
 use crate::{
     ArrowCurve, ArrowEndpointStyle, ArrowHeadSize, ArrowNoGo, ArrowVariant, BondAnchor,
-    BondVariant, BracketKind, ChemcoreDocument, LabelRun, ObjectSettings, OrbitalPhase,
-    OrbitalStyle, OrbitalTemplate, Point, SceneObject, ShapeKind, ShapeStyle,
+    BondVariant, BracketKind, ChemcoreDocument, DoubleBondPlacement, LabelRun, ObjectSettings,
+    OrbitalPhase, OrbitalStyle, OrbitalTemplate, Point, SceneObject, ShapeKind, ShapeStyle,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -119,6 +119,14 @@ fn default_bond_variant() -> BondVariant {
     BondVariant::Single
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommandDoubleBond {
+    pub placement: DoubleBondPlacement,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub center_exit_side: Option<DoubleBondPlacement>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum EditorCommand {
@@ -196,6 +204,15 @@ pub enum EditorCommand {
         end: CommandAnchor,
         order: u8,
         variant: BondVariant,
+        #[serde(
+            default,
+            rename = "doublePlacement",
+            alias = "double_placement",
+            skip_serializing_if = "Option::is_none"
+        )]
+        double_placement: Option<DoubleBondPlacement>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        double: Option<CommandDoubleBond>,
     },
     AddArrow {
         begin: CommandAnchor,

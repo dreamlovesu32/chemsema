@@ -566,6 +566,8 @@ mod tests {
                 end: CommandAnchor::from(Point::new(260.0, 300.0)),
                 order: 1,
                 variant: BondVariant::Single,
+                double_placement: None,
+                double: None,
             })
             .expect("add bond");
         let mut tool = engine.state.tool.clone();

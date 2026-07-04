@@ -581,6 +581,11 @@ fn protocol_schemas_json() -> Value {
             "historyPolicy": "The CLI does not maintain an undo stack or per-step snapshot history. Agents should maintain history with git, temp files, or their own logs.",
             "snapshots": "Per-command after snapshots and the top-level final snapshot are opt-in with --inspect-after <include>. Use --inspect-after none or --no-inspect-after to force no snapshots.",
             "errorPointers": "Execution reports include command index, commandType, document transition, changeSummary, and engine error message.",
+            "editCommands": {
+                "add-bond": {
+                    "description": "Creates a ChemCore bond from begin to end with order and variant. Optional doublePlacement left/right/center, or double.placement, freezes an explicit double-bond placement while preserving the default automatic behavior when omitted."
+                }
+            },
             "planningCommands": {
                 "plan-bond": {
                     "description": "Readonly engine query for the final add-bond landing geometry. Accepts begin, optional cursor or angle, optional bondLength, order, and variant. Returns output.command as an executable add-bond command plus globalSnapAngles and keypadSlots.",

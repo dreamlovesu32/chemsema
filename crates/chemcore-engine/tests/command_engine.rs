@@ -70,6 +70,20 @@ fn find_node(value: &Value, node_id: &str) -> Value {
     panic!("node {node_id} not found");
 }
 
+fn find_bond(value: &Value, bond_id: &str) -> Value {
+    for resource in value["resources"].as_object().expect("resources").values() {
+        if let Some(bonds) = resource["data"]["bonds"].as_array() {
+            if let Some(bond) = bonds
+                .iter()
+                .find(|bond| bond["id"].as_str() == Some(bond_id))
+            {
+                return bond.clone();
+            }
+        }
+    }
+    panic!("bond {bond_id} not found");
+}
+
 fn node_position(value: &Value, node_id: &str) -> (f64, f64) {
     let node = find_node(value, node_id);
     let position = node["position"].as_array().expect("node position");
@@ -234,6 +248,48 @@ fn execute_command_json_add_bond_tracks_revision_and_targets() {
     assert_eq!(result["created"]["bonds"].as_array().unwrap().len(), 1);
     assert_eq!(result["canUndo"], true);
     assert_eq!(engine.revision(), 1);
+}
+
+#[test]
+fn execute_command_json_add_bond_accepts_explicit_double_placement() {
+    let mut engine = Engine::new();
+
+    let result = execute(
+        &mut engine,
+        json!({
+            "type": "add-bond",
+            "begin": { "x": 100.0, "y": 100.0 },
+            "end": { "x": 148.0, "y": 100.0 },
+            "order": 2,
+            "variant": "double",
+            "doublePlacement": "left"
+        }),
+    );
+    let bond_id = created_bond_id(&result);
+    let document = document_value(&engine);
+    let bond = find_bond(&document, &bond_id);
+
+    assert_eq!(bond["order"], 2);
+    assert_eq!(bond["double"]["placement"], "left");
+    assert_eq!(bond["double"]["frozen"], true);
+
+    let nested = execute(
+        &mut engine,
+        json!({
+            "type": "add-bond",
+            "begin": { "x": 100.0, "y": 140.0 },
+            "end": { "x": 148.0, "y": 140.0 },
+            "order": 2,
+            "variant": "double",
+            "double": { "placement": "right" }
+        }),
+    );
+    let nested_bond_id = created_bond_id(&nested);
+    let document = document_value(&engine);
+    let nested_bond = find_bond(&document, &nested_bond_id);
+
+    assert_eq!(nested_bond["double"]["placement"], "right");
+    assert_eq!(nested_bond["double"]["frozen"], true);
 }
 
 #[test]

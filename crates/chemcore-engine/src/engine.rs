@@ -19,9 +19,9 @@ mod templates;
 mod text_edit;
 
 pub use self::command::{
-    CommandAnchor, CommandDelta, CommandResult, CommandTargetDelta, CommandTargetSet,
-    CommandTargets, DocumentCommandFormat, EditorCommand, FocusedDeleteSource, HistoryEntry,
-    HistorySnapshot, ObjectSettingsPatch, TextCommandContent, TextEditCommandTarget,
+    CommandAnchor, CommandDelta, CommandDoubleBond, CommandResult, CommandTargetDelta,
+    CommandTargetSet, CommandTargets, DocumentCommandFormat, EditorCommand, FocusedDeleteSource,
+    HistoryEntry, HistorySnapshot, ObjectSettingsPatch, TextCommandContent, TextEditCommandTarget,
 };
 use self::text_edit::{
     element_symbol_info, endpoint_label_world_bounds, implicit_hydrogen_label_text_for_count,
@@ -1632,14 +1632,26 @@ impl Engine {
     }
 
     pub fn add_bond_between(&mut self, anchor: BondAnchor, end: BondAnchor, order: u8) -> bool {
+        self.add_bond_between_with_double_override(anchor, end, order, None)
+    }
+
+    fn add_bond_between_with_double_override(
+        &mut self,
+        anchor: BondAnchor,
+        end: BondAnchor,
+        order: u8,
+        explicit_double: Option<DoubleBond>,
+    ) -> bool {
         let command = EditorCommand::AddBond {
             begin: CommandAnchor::from(&anchor),
             end: CommandAnchor::from(&end),
             order,
             variant: self.state.tool.bond_variant,
+            double_placement: explicit_double.as_ref().map(|double| double.placement),
+            double: None,
         };
         self.with_command(command, |engine| {
-            engine.add_bond_between_untracked(anchor, end, order)
+            engine.add_bond_between_untracked(anchor, end, order, explicit_double)
         })
     }
 
@@ -1648,6 +1660,7 @@ impl Engine {
         anchor: BondAnchor,
         end: BondAnchor,
         order: u8,
+        explicit_double: Option<DoubleBond>,
     ) -> bool {
         if anchor
             .object_id
@@ -1685,12 +1698,15 @@ impl Engine {
         let pending_line_styles = self.pending_line_styles();
         let pending_line_weights = self.pending_line_weights();
         let pending_stereo = self.pending_bond_stereo();
-        let pending_double = self.pending_double_state_for_new_bond_in_anchor_fragment(
-            target_anchor,
-            &begin_id,
-            &end_id,
-            order.max(1),
-        );
+        let order = order.max(1);
+        let pending_double = if order >= 2 { explicit_double } else { None }.or_else(|| {
+            self.pending_double_state_for_new_bond_in_anchor_fragment(
+                target_anchor,
+                &begin_id,
+                &end_id,
+                order,
+            )
+        });
         let stroke_width = self.options.bond_stroke_world_pt().value();
         let bold_width = self.options.bold_bond_width_world_pt().value();
         let wedge_width = self.options.wedge_width_world_pt().value();
@@ -1705,7 +1721,7 @@ impl Engine {
             id: bond_id.clone(),
             begin: begin_id.clone(),
             end: end_id.clone(),
-            order: order.max(1),
+            order,
             double: pending_double,
             stereo: pending_stereo,
             stroke_width,
@@ -1959,13 +1975,16 @@ impl Engine {
                 end,
                 order,
                 variant,
+                double_placement,
+                double,
             } => {
                 let previous_tool = self.state.tool.clone();
                 self.state.tool.bond_variant = variant;
-                let changed = self.add_bond_between(
+                let changed = self.add_bond_between_with_double_override(
                     bond_anchor_from_command(begin),
                     bond_anchor_from_command(end),
                     order,
+                    command_double_bond_override(double_placement, double),
                 );
                 self.state.tool = previous_tool;
                 changed
@@ -4232,6 +4251,25 @@ fn bond_anchor_from_command(anchor: CommandAnchor) -> BondAnchor {
         point: Point::new(anchor.x, anchor.y),
         label_anchor: None,
     }
+}
+
+fn command_double_bond_override(
+    double_placement: Option<DoubleBondPlacement>,
+    double: Option<CommandDoubleBond>,
+) -> Option<DoubleBond> {
+    double_placement
+        .map(|placement| DoubleBond {
+            placement,
+            center_exit_side: double.and_then(|double| double.center_exit_side),
+            frozen: true,
+        })
+        .or_else(|| {
+            double.map(|double| DoubleBond {
+                placement: double.placement,
+                center_exit_side: double.center_exit_side,
+                frozen: true,
+            })
+        })
 }
 
 fn bond_plan_keypad_slots(
