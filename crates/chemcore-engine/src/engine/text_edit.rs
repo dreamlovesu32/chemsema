@@ -625,15 +625,56 @@ impl Engine {
         let Some(session) = self.endpoint_text_session(node_id, Point::new(0.0, 0.0)) else {
             return false;
         };
+        let source_text_override = content.source_text.clone();
         let preserve_measured_box = content.preserve_measured_box;
         let preserve_implicit_hydrogen_label = content.preserve_implicit_hydrogen_label;
         let session = apply_text_command_content(session, content);
-        self.apply_endpoint_text_edit_with_options(
+        let changed = self.apply_endpoint_text_edit_with_options(
             node_id,
             &session,
             preserve_measured_box,
             preserve_implicit_hydrogen_label,
-        )
+        );
+        if changed {
+            if let Some(source_text) = source_text_override.as_deref() {
+                self.override_node_label_source_text(node_id, source_text);
+            }
+        }
+        changed
+    }
+
+    fn override_node_label_source_text(&mut self, node_id: &str, source_text: &str) -> bool {
+        let Some(entry) = self.state.document.editable_fragment_mut() else {
+            return false;
+        };
+        let Some(node) = entry
+            .fragment
+            .nodes
+            .iter_mut()
+            .find(|node| node.id == node_id)
+        else {
+            return false;
+        };
+        let Some(label) = node.label.as_mut() else {
+            return false;
+        };
+        label.source_text = Some(source_text.to_string());
+        let source_run = LabelRun {
+            text: source_text.to_string(),
+            font_family: label.font_family.clone(),
+            font_size: label.font_size,
+            fill: label.fill.clone(),
+            font_weight: label.runs.first().and_then(|run| run.font_weight),
+            font_style: label.runs.first().and_then(|run| run.font_style.clone()),
+            underline: None,
+            script: Some("chemical".to_string()),
+        };
+        set_meta_object_field(
+            &mut label.meta,
+            "sourceRuns",
+            Some(serde_json::to_value(vec![source_run]).unwrap_or(Value::Array(Vec::new()))),
+        );
+        true
     }
 
     pub(super) fn set_node_charge_direct(&mut self, node_id: &str, charge: i32) -> bool {
@@ -1309,12 +1350,14 @@ impl Engine {
             return false;
         }
         let node_position = node.position;
-        refresh_attached_node_label_geometry_for_node(
-            entry.fragment,
-            object_translate,
-            node_id,
-            self.options.bond_stroke_world_pt().value(),
-        );
+        if !preserve_measured_box {
+            refresh_attached_node_label_geometry_for_node(
+                entry.fragment,
+                object_translate,
+                node_id,
+                self.options.bond_stroke_world_pt().value(),
+            );
+        }
         entry.update_bounds();
         let hover_point = crate::Point::new(
             object_translate[0] + node_position[0],

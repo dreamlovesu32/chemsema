@@ -290,12 +290,7 @@ fn target_render_bond_segments_cross(
         .is_some()
 }
 
-fn target_render_segment_intersection(
-    a1: Point,
-    a2: Point,
-    b1: Point,
-    b2: Point,
-) -> Option<Point> {
+fn target_render_segment_intersection(a1: Point, a2: Point, b1: Point, b2: Point) -> Option<Point> {
     let a = Vector::new(a2.x - a1.x, a2.y - a1.y);
     let b = Vector::new(b2.x - b1.x, b2.y - b1.y);
     let denom = target_render_vector_cross(a, b);

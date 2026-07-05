@@ -549,6 +549,57 @@ fn direct_node_label_runs_update_endpoint_label() {
 }
 
 #[test]
+fn direct_node_label_runs_can_override_source_text_for_visible_order() {
+    let mut engine = Engine::new();
+    let add = execute(
+        &mut engine,
+        json!({
+            "type": "add-bond",
+            "begin": { "x": 100.0, "y": 100.0 },
+            "end": { "x": 148.0, "y": 100.0 },
+            "order": 1,
+            "variant": "single"
+        }),
+    );
+    let node_id = created_node_id(&add, 1);
+
+    let update = execute(
+        &mut engine,
+        json!({
+            "type": "set-node-label-runs",
+            "nodeId": node_id,
+            "text": "HN",
+            "runs": [
+                { "text": "HN", "script": "normal" }
+            ],
+            "sourceText": "NH",
+            "box": [120.0, 92.0, 144.0, 104.0],
+            "anchorOffset": [28.0, 8.0],
+            "preserveMeasuredBox": true,
+            "defaultChemical": false
+        }),
+    );
+
+    assert_eq!(update["changed"], true);
+    assert_eq!(update["command"]["type"], "set-node-label-runs");
+    let document = document_value(&engine);
+    let node = find_node(&document, &node_id);
+    assert_eq!(node["label"]["text"], "HN");
+    assert_eq!(node["label"]["sourceText"], "NH");
+    assert_eq!(node["label"]["position"], json!([120.0, 100.2]));
+    assert_eq!(node["label"]["box"], json!([120.0, 92.0, 144.0, 104.0]));
+    assert_eq!(node["label"]["meta"]["sourceRuns"][0]["text"], "NH");
+    assert_eq!(
+        node["label"]["meta"]["measuredGeometry"]["box"],
+        json!([120.0, 92.0, 144.0, 104.0])
+    );
+    assert_eq!(
+        node["label"]["meta"]["measuredGeometry"]["textPosition"],
+        json!([120.0, 100.2])
+    );
+}
+
+#[test]
 fn direct_node_charge_updates_attached_label_valence_semantics() {
     let mut engine = Engine::new();
     let add = execute(

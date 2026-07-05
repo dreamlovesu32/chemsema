@@ -52,6 +52,8 @@ pub struct CommandDelta {
 pub struct TextCommandContent {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_text: Option<String>,
     #[serde(default, alias = "runs", skip_serializing_if = "Vec::is_empty")]
     pub source_runs: Vec<LabelRun>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
