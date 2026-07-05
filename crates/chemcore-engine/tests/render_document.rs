@@ -86,6 +86,15 @@ fn fragment_document(nodes: serde_json::Value, bonds: serde_json::Value) -> Chem
     .expect("document should deserialize")
 }
 
+fn fragment_document_preserving_disconnected_components(
+    nodes: serde_json::Value,
+    bonds: serde_json::Value,
+) -> ChemcoreDocument {
+    let mut document = fragment_document(nodes, bonds);
+    document.objects[0].meta = json!({ "preserveDisconnectedComponents": true });
+    document
+}
+
 fn grouped_two_fragment_document() -> ChemcoreDocument {
     serde_json::from_value(json!({
         "format": { "name": "chemcore", "version": "0.1" },
@@ -332,7 +341,7 @@ fn rects_with_role(engine: &Engine, role_filter: RenderRole) -> Vec<[f64; 4]> {
 
 #[test]
 fn render_document_adds_margin_knockout_for_later_crossing_bond() {
-    let document = fragment_document(
+    let document = fragment_document_preserving_disconnected_components(
         json!([
             { "id": "n1", "element": "C", "atomicNumber": 6, "position": [20.0, 60.0], "charge": 0, "numHydrogens": 0 },
             { "id": "n2", "element": "C", "atomicNumber": 6, "position": [100.0, 60.0], "charge": 0, "numHydrogens": 0 },
@@ -380,7 +389,7 @@ fn render_document_adds_margin_knockout_for_later_crossing_bond() {
 
 #[test]
 fn render_targets_for_under_crossing_bond_include_over_bond_dependency() {
-    let document = fragment_document(
+    let document = fragment_document_preserving_disconnected_components(
         json!([
             { "id": "n1", "element": "C", "atomicNumber": 6, "position": [20.0, 60.0], "charge": 0, "numHydrogens": 0 },
             { "id": "n2", "element": "C", "atomicNumber": 6, "position": [100.0, 60.0], "charge": 0, "numHydrogens": 0 },
