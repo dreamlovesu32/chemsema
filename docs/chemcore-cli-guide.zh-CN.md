@@ -99,6 +99,8 @@ chemcore-cli new [commands.json|-] --out <path> [--save-format <format>] [--resu
 chemcore-cli run <input> <commands.json|-> [--out <path>] [--save-format <format>] [--results <path>] [--document-json <path>] [--inspect-after <include|none>] [--pretty] [--quiet]
 chemcore-cli convert <input> <output> [--format <format>] [--scale <n>|--width <px>|--height <px>]
 chemcore-cli export <input> <output> [--format <format>] [--scale <n>|--width <px>|--height <px>]
+chemcore-cli label-query --text <source-label> [--connection-angle <deg> ...] [--connection-count <n>] [--no-default-chemical] [--pretty]
+chemcore-cli label-query --visible-text <visible-label> [--connection-angle <deg> ...] [--connection-count <n>] [--pretty]
 ```
 
 常用调用：
@@ -114,6 +116,23 @@ npm run cli -- convert input.cdxml output.svg
 npm run cli -- convert input.cdxml output.png --scale 6
 npm run cli -- convert input.cdxml output.ccjs
 ```
+
+标签查询示例：
+
+```powershell
+npm run cli -- label-query --text CF3 --connection-angle 0 --pretty
+npm run cli -- label-query --visible-text H2N --connection-angle 0 --pretty
+npm run cli -- label-query --visible-text CF3 --connection-angle 0 --pretty
+```
+
+`label-query --text` 是正向 contract：ChemCore 接收 source text、连接几何
+和 `defaultChemical`，返回该标签是否 accepted、最终 display text、source
+runs、生成氢是否可作为键锚点，以及 functional-group recognition 元数据。
+`label-query --visible-text` 是给 OCR/agent 使用的反向 contract：ChemCore
+先用同一套 label group 反写规则从可见文本生成 source 候选，再逐个调用正常
+label engine，并推荐 display 能回到可见文本的候选。如果没有任何 chemical
+source 候选既合法又能渲染回可见文本，反向报告会推荐
+`defaultChemical:false` 的 plain-text 候选，让调用方尊重源文档排版，而不是强行化学化。
 
 文件输出规则：
 

@@ -115,6 +115,8 @@ chemcore-cli new [commands.json|-] --out <path> [--save-format <format>] [--resu
 chemcore-cli run <input> <commands.json|-> [--out <path>] [--save-format <format>] [--results <path>] [--document-json <path>] [--inspect-after <include|none>] [--pretty] [--quiet]
 chemcore-cli convert <input> <output> [--format <format>] [--scale <n>|--width <px>|--height <px>]
 chemcore-cli export <input> <output> [--format <format>] [--scale <n>|--width <px>|--height <px>]
+chemcore-cli label-query --text <source-label> [--connection-angle <deg> ...] [--connection-count <n>] [--no-default-chemical] [--pretty]
+chemcore-cli label-query --visible-text <visible-label> [--connection-angle <deg> ...] [--connection-count <n>] [--pretty]
 ```
 
 Common calls:
@@ -130,6 +132,26 @@ npm run cli -- convert input.cdxml output.svg
 npm run cli -- convert input.cdxml output.png --scale 6
 npm run cli -- convert input.cdxml output.ccjs
 ```
+
+Label query calls:
+
+```powershell
+npm run cli -- label-query --text CF3 --connection-angle 0 --pretty
+npm run cli -- label-query --visible-text H2N --connection-angle 0 --pretty
+npm run cli -- label-query --visible-text CF3 --connection-angle 0 --pretty
+```
+
+`label-query --text` is the forward contract: ChemCore receives source text,
+connection geometry, and `defaultChemical`, then reports whether the label is
+accepted, its displayed text, source runs, generated-hydrogen anchor semantics,
+and functional-group recognition metadata. `label-query --visible-text` is the
+reverse contract for OCR and agents: ChemCore generates candidate source labels
+from visible text using the same label-group reversal rules, runs the normal
+label engine for each candidate, and recommends the candidate whose display
+matches the visible text. If no chemical source candidate both validates and
+renders back to the visible text, the reverse report recommends the
+`defaultChemical:false` plain-text candidate so the caller can preserve the
+source drawing instead of forcing chemical rewriting.
 
 File output policy:
 

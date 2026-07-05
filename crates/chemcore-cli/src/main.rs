@@ -2,7 +2,7 @@ mod agent;
 mod protocol;
 
 use chemcore_desktop_service::DesktopDocumentService;
-use chemcore_engine::Engine;
+use chemcore_engine::{compact_label_text, reverse_label_groups, Engine};
 use protocol::{
     about_command, capabilities_command, doctor_command, examples_command, guide_command,
     schema_command, schema_or_capabilities_for_help, version_command, version_text, CliError,
@@ -113,6 +113,8 @@ fn run() -> CliResult<()> {
 
 fn label_query_command(args: &[String]) -> Result<(), String> {
     let mut text = None;
+    let mut visible_text = None;
+    let mut reverse_mode = false;
     let mut connection_angles = Vec::<f64>::new();
     let mut connection_count = None;
     let mut default_chemical = true;
@@ -128,6 +130,31 @@ fn label_query_command(args: &[String]) -> Result<(), String> {
                         .ok_or_else(|| "--text requires a value.".to_string())?
                         .clone(),
                 );
+            }
+            "--visible-text" => {
+                index += 1;
+                visible_text = Some(
+                    args.get(index)
+                        .ok_or_else(|| "--visible-text requires a value.".to_string())?
+                        .clone(),
+                );
+                reverse_mode = true;
+            }
+            "--mode" => {
+                index += 1;
+                match args
+                    .get(index)
+                    .ok_or_else(|| "--mode requires source or reverse.".to_string())?
+                    .as_str()
+                {
+                    "source" | "forward" => reverse_mode = false,
+                    "reverse" | "visible" => reverse_mode = true,
+                    value => {
+                        return Err(format!(
+                            "Unsupported label-query --mode '{value}'. Use source or reverse."
+                        ));
+                    }
+                }
             }
             "--connection-angle" | "--angle" => {
                 index += 1;
@@ -161,7 +188,13 @@ fn label_query_command(args: &[String]) -> Result<(), String> {
         }
         index += 1;
     }
-    let text = text.ok_or_else(|| "label-query requires --text <label>.".to_string())?;
+    let text = if reverse_mode {
+        visible_text.or(text).ok_or_else(|| {
+            "label-query reverse mode requires --visible-text <label>.".to_string()
+        })?
+    } else {
+        text.ok_or_else(|| "label-query requires --text <label>.".to_string())?
+    };
     let connection_count = connection_count.unwrap_or_else(|| connection_angles.len().max(1));
     if connection_angles.len() > connection_count {
         return Err(
@@ -177,7 +210,11 @@ fn label_query_command(args: &[String]) -> Result<(), String> {
         connection_angles.push(fallback);
     }
 
-    let report = label_query_report(&text, &connection_angles, default_chemical)?;
+    let report = if reverse_mode {
+        label_query_reverse_report(&text, &connection_angles)?
+    } else {
+        label_query_report(&text, &connection_angles, default_chemical)?
+    };
     write_json_value(report, output.as_deref(), pretty)
 }
 
@@ -282,6 +319,132 @@ fn label_query_report(
         "recognition": recognition,
         "sourceRuns": label_meta.get("sourceRuns").cloned().unwrap_or_else(|| label_query_source_runs(text, default_chemical)),
     }))
+}
+
+fn label_query_reverse_report(
+    visible_text: &str,
+    connection_angles: &[f64],
+) -> Result<Value, String> {
+    let visible_compact = compact_label_text(visible_text);
+    let mut source_candidates = Vec::<LabelQuerySourceCandidate>::new();
+    push_label_query_source_candidate(
+        &mut source_candidates,
+        visible_compact.clone(),
+        true,
+        "visible-text-as-chemical-source",
+    );
+    let reversed_source = reverse_label_groups(&visible_compact);
+    if reversed_source != visible_compact {
+        push_label_query_source_candidate(
+            &mut source_candidates,
+            reversed_source,
+            true,
+            "kernel-reverse-label-groups",
+        );
+    }
+    push_label_query_source_candidate(
+        &mut source_candidates,
+        visible_compact.clone(),
+        false,
+        "plain-visible-text-preserve-layout",
+    );
+
+    let mut candidates = Vec::<Value>::new();
+    for source in source_candidates {
+        let report = label_query_report(&source.text, connection_angles, source.default_chemical)?;
+        let display_text = report
+            .get("displayText")
+            .and_then(Value::as_str)
+            .map(ToString::to_string)
+            .unwrap_or_else(|| source.text.clone());
+        let display_matches_visible = compact_label_text(&display_text) == visible_compact;
+        candidates.push(json!({
+            "sourceText": source.text,
+            "defaultChemical": source.default_chemical,
+            "reason": source.reason,
+            "accepted": report.get("accepted").cloned().unwrap_or(Value::Bool(false)),
+            "status": report.get("status").cloned().unwrap_or(Value::Null),
+            "displayText": display_text,
+            "displayMatchesVisible": display_matches_visible,
+            "displayDiffersFromSource": report.get("displayDiffersFromSource").cloned().unwrap_or(Value::Null),
+            "semantics": report.get("semantics").cloned().unwrap_or(Value::Null),
+            "recognition": report.get("recognition").cloned().unwrap_or(Value::Null),
+            "sourceRuns": report.get("sourceRuns").cloned().unwrap_or(Value::Null)
+        }));
+    }
+
+    let recommended_index = recommended_label_query_reverse_candidate_index(&candidates);
+    let recommendation = recommended_index.and_then(|index| candidates.get(index).cloned());
+    Ok(json!({
+        "schema": "chemcore.labelQueryReverse.v1",
+        "input": {
+            "visibleText": visible_text,
+            "normalizedVisibleText": visible_compact,
+            "connectionCount": connection_angles.len(),
+            "connectionAngles": connection_angles
+        },
+        "recommendedIndex": recommended_index,
+        "recommendation": recommendation,
+        "candidates": candidates,
+        "contract": {
+            "ocrRole": "OCR supplies visible text and connection geometry; ChemCore validates source text, display reversal, generated-hydrogen semantics, and defaultChemical behavior.",
+            "plainFallback": "When no chemical candidate both validates and renders back to the visible text, use the plain defaultChemical=false candidate to preserve the source drawing."
+        }
+    }))
+}
+
+#[derive(Debug)]
+struct LabelQuerySourceCandidate {
+    text: String,
+    default_chemical: bool,
+    reason: &'static str,
+}
+
+fn push_label_query_source_candidate(
+    candidates: &mut Vec<LabelQuerySourceCandidate>,
+    text: String,
+    default_chemical: bool,
+    reason: &'static str,
+) {
+    if text.is_empty()
+        || candidates.iter().any(|candidate| {
+            candidate.text == text && candidate.default_chemical == default_chemical
+        })
+    {
+        return;
+    }
+    candidates.push(LabelQuerySourceCandidate {
+        text,
+        default_chemical,
+        reason,
+    });
+}
+
+fn recommended_label_query_reverse_candidate_index(candidates: &[Value]) -> Option<usize> {
+    candidates
+        .iter()
+        .position(|candidate| {
+            candidate.get("accepted").and_then(Value::as_bool) == Some(true)
+                && candidate
+                    .get("displayMatchesVisible")
+                    .and_then(Value::as_bool)
+                    == Some(true)
+                && candidate.get("defaultChemical").and_then(Value::as_bool) == Some(true)
+        })
+        .or_else(|| {
+            candidates.iter().position(|candidate| {
+                candidate.get("accepted").and_then(Value::as_bool) == Some(true)
+                    && candidate
+                        .get("displayMatchesVisible")
+                        .and_then(Value::as_bool)
+                        == Some(true)
+            })
+        })
+        .or_else(|| {
+            candidates.iter().position(|candidate| {
+                candidate.get("defaultChemical").and_then(Value::as_bool) == Some(false)
+            })
+        })
 }
 
 fn build_label_query_node(
@@ -1960,6 +2123,68 @@ mod tests {
             standalone_h["semantics"]["generatedHydrogensMayBeBondAnchors"],
             json!(true)
         );
+    }
+
+    #[test]
+    fn label_query_reverse_maps_visible_h2n_to_nh2_source() {
+        let report = label_query_reverse_report("H2N", &[0.0]).unwrap();
+
+        assert_eq!(report["schema"], json!("chemcore.labelQueryReverse.v1"));
+        assert_eq!(report["recommendation"]["sourceText"], json!("NH2"));
+        assert_eq!(report["recommendation"]["defaultChemical"], json!(true));
+        assert_eq!(report["recommendation"]["displayText"], json!("H2N"));
+        assert_eq!(
+            report["recommendation"]["displayMatchesVisible"],
+            json!(true)
+        );
+        assert_eq!(
+            report["recommendation"]["semantics"]["anchorAtom"],
+            json!("N")
+        );
+        assert_eq!(
+            report["recommendation"]["semantics"]["generatedHydrogensMayBeBondAnchors"],
+            json!(false)
+        );
+    }
+
+    #[test]
+    fn label_query_reverse_maps_visible_f3c_to_cf3_source() {
+        let report = label_query_reverse_report("F3C", &[0.0]).unwrap();
+
+        assert_eq!(report["recommendation"]["sourceText"], json!("CF3"));
+        assert_eq!(report["recommendation"]["defaultChemical"], json!(true));
+        assert_eq!(report["recommendation"]["displayText"], json!("F3C"));
+        assert_eq!(
+            report["recommendation"]["displayMatchesVisible"],
+            json!(true)
+        );
+        assert_eq!(
+            report["recommendation"]["recognition"]["canonicalLabel"],
+            json!("CF3")
+        );
+    }
+
+    #[test]
+    fn label_query_reverse_prefers_plain_when_default_chemical_display_conflicts() {
+        let report = label_query_reverse_report("CF3", &[0.0]).unwrap();
+
+        assert_eq!(report["recommendation"]["sourceText"], json!("CF3"));
+        assert_eq!(report["recommendation"]["defaultChemical"], json!(false));
+        assert_eq!(report["recommendation"]["displayText"], json!("CF3"));
+        assert_eq!(
+            report["recommendation"]["displayMatchesVisible"],
+            json!(true)
+        );
+        assert!(report["candidates"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|candidate| {
+                candidate["sourceText"] == json!("CF3")
+                    && candidate["defaultChemical"] == json!(true)
+                    && candidate["displayText"] == json!("F3C")
+                    && candidate["displayMatchesVisible"] == json!(false)
+            }));
     }
 
     #[test]
