@@ -328,11 +328,7 @@ fn split_disconnected_molecule_objects_in(
 ) {
     let mut index = 0;
     while index < objects.len() {
-        split_disconnected_molecule_objects_in(
-            &mut objects[index].children,
-            resources,
-            next_index,
-        );
+        split_disconnected_molecule_objects_in(&mut objects[index].children, resources, next_index);
         if !is_disconnected_molecule_split_candidate(&objects[index]) {
             index += 1;
             continue;
@@ -369,12 +365,13 @@ fn is_disconnected_molecule_split_candidate(object: &SceneObject) -> bool {
     if object.object_type != "molecule" {
         return false;
     }
-    let resource_ref = object.payload.resource_ref.as_deref();
-    let imported_cdxml_molecule = object.meta.get("source").and_then(Value::as_str) == Some("cdxml")
-        || object.id == "obj_cdxml_merged_molecule"
-        || resource_ref == Some("mol_cdxml_merged");
+    let preserve_disconnected_components = object
+        .meta
+        .get("preserveDisconnectedComponents")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
     object.visible
-        && imported_cdxml_molecule
+        && !preserve_disconnected_components
         && object.transform.rotate.abs() <= EPSILON
         && (object.transform.scale[0] - 1.0).abs() <= EPSILON
         && (object.transform.scale[1] - 1.0).abs() <= EPSILON
@@ -2226,12 +2223,24 @@ mod tests {
         let fragments = document.editable_fragments();
         let left_label_node = fragments
             .iter()
-            .find_map(|entry| entry.fragment.nodes.iter().find(|node| node.id == "left_label"))
+            .find_map(|entry| {
+                entry
+                    .fragment
+                    .nodes
+                    .iter()
+                    .find(|node| node.id == "left_label")
+            })
             .expect("left label node");
         let left_label = left_label_node.label.as_ref().expect("left label");
         let right_label_node = fragments
             .iter()
-            .find_map(|entry| entry.fragment.nodes.iter().find(|node| node.id == "right_label"))
+            .find_map(|entry| {
+                entry
+                    .fragment
+                    .nodes
+                    .iter()
+                    .find(|node| node.id == "right_label")
+            })
             .expect("right label node");
         let right_label = right_label_node.label.as_ref().expect("right label");
 
@@ -2505,6 +2514,124 @@ mod tests {
         );
         assert_eq!(document.objects[0].transform.translate, [10.0, 14.5]);
         assert_eq!(document.objects[1].transform.translate, [82.0, 14.5]);
+    }
+
+    #[test]
+    fn parse_document_json_splits_unmarked_disconnected_visible_molecule() {
+        let document = parse_document_json(
+            &json!({
+                "format": { "name": "chemcore", "version": "0.1" },
+                "document": {
+                    "id": "doc_unmarked_disconnected_molecule",
+                    "title": "unmarked disconnected molecule",
+                    "page": { "width": 140.0, "height": 80.0, "background": "#ffffff" }
+                },
+                "objects": [{
+                    "id": "obj_molecule_001",
+                    "type": "molecule",
+                    "visible": true,
+                    "transform": {
+                        "translate": [10.0, 10.0],
+                        "rotate": 0.0,
+                        "scale": [1.0, 1.0]
+                    },
+                    "payload": {
+                        "resourceRef": "mol_001",
+                        "bbox": [0.0, 0.0, 102.0, 10.0]
+                    }
+                }],
+                "resources": {
+                    "mol_001": {
+                        "type": "molecule_fragment2d",
+                        "encoding": "chemcore.molecule.fragment2d",
+                        "data": {
+                            "schema": "chemcore.molecule.fragment2d",
+                            "bbox": [0.0, 0.0, 102.0, 10.0],
+                            "nodes": [
+                                { "id": "n1", "element": "C", "atomicNumber": 6, "position": [0.0, 5.0], "charge": 0, "numHydrogens": 0 },
+                                { "id": "n2", "element": "C", "atomicNumber": 6, "position": [30.0, 5.0], "charge": 0, "numHydrogens": 0 },
+                                { "id": "n3", "element": "C", "atomicNumber": 6, "position": [72.0, 5.0], "charge": 0, "numHydrogens": 0 },
+                                { "id": "n4", "element": "C", "atomicNumber": 6, "position": [102.0, 5.0], "charge": 0, "numHydrogens": 0 }
+                            ],
+                            "bonds": [
+                                { "id": "b1", "begin": "n1", "end": "n2", "order": 1 },
+                                { "id": "b2", "begin": "n3", "end": "n4", "order": 1 }
+                            ]
+                        }
+                    }
+                }
+            })
+            .to_string(),
+        )
+        .expect("unmarked disconnected molecule should parse");
+
+        assert!(!document.resources.contains_key("mol_001"));
+        assert_eq!(document.objects.len(), 2);
+        assert_eq!(document.editable_fragments().len(), 2);
+        assert_eq!(
+            document
+                .editable_fragments()
+                .iter()
+                .map(|entry| entry.fragment.bonds.len())
+                .collect::<Vec<_>>(),
+            vec![1, 1]
+        );
+    }
+
+    #[test]
+    fn parse_document_json_preserves_explicit_disconnected_molecule_opt_out() {
+        let document = parse_document_json(
+            &json!({
+                "format": { "name": "chemcore", "version": "0.1" },
+                "document": {
+                    "id": "doc_preserved_disconnected_molecule",
+                    "title": "preserved disconnected molecule",
+                    "page": { "width": 140.0, "height": 80.0, "background": "#ffffff" }
+                },
+                "objects": [{
+                    "id": "obj_molecule_001",
+                    "type": "molecule",
+                    "visible": true,
+                    "meta": { "preserveDisconnectedComponents": true },
+                    "transform": {
+                        "translate": [10.0, 10.0],
+                        "rotate": 0.0,
+                        "scale": [1.0, 1.0]
+                    },
+                    "payload": {
+                        "resourceRef": "mol_001",
+                        "bbox": [0.0, 0.0, 102.0, 10.0]
+                    }
+                }],
+                "resources": {
+                    "mol_001": {
+                        "type": "molecule_fragment2d",
+                        "encoding": "chemcore.molecule.fragment2d",
+                        "data": {
+                            "schema": "chemcore.molecule.fragment2d",
+                            "bbox": [0.0, 0.0, 102.0, 10.0],
+                            "nodes": [
+                                { "id": "n1", "element": "C", "atomicNumber": 6, "position": [0.0, 5.0], "charge": 0, "numHydrogens": 0 },
+                                { "id": "n2", "element": "C", "atomicNumber": 6, "position": [30.0, 5.0], "charge": 0, "numHydrogens": 0 },
+                                { "id": "n3", "element": "C", "atomicNumber": 6, "position": [72.0, 5.0], "charge": 0, "numHydrogens": 0 },
+                                { "id": "n4", "element": "C", "atomicNumber": 6, "position": [102.0, 5.0], "charge": 0, "numHydrogens": 0 }
+                            ],
+                            "bonds": [
+                                { "id": "b1", "begin": "n1", "end": "n2", "order": 1 },
+                                { "id": "b2", "begin": "n3", "end": "n4", "order": 1 }
+                            ]
+                        }
+                    }
+                }
+            })
+            .to_string(),
+        )
+        .expect("preserved disconnected molecule should parse");
+
+        assert!(document.resources.contains_key("mol_001"));
+        assert_eq!(document.objects.len(), 1);
+        assert_eq!(document.editable_fragments().len(), 1);
+        assert_eq!(document.editable_fragments()[0].fragment.bonds.len(), 2);
     }
 
     #[test]
