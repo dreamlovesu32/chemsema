@@ -2444,6 +2444,56 @@ fn load_cdxml_document_preserves_display_fragments_for_editing_hit_tests() {
 }
 
 #[test]
+fn load_cdxml_document_splits_disconnected_components_inside_one_fragment() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >
+<CDXML BondLength="18" LineWidth="0.6" BoldWidth="2" HashSpacing="2.5" BondSpacing="18">
+  <page id="1" BoundingBox="0 0 140 80">
+    <fragment id="10" BoundingBox="10 10 112 20">
+      <n id="11" p="10 15"/>
+      <n id="12" p="40 15"/>
+      <b id="13" B="11" E="12" Order="1"/>
+      <n id="21" p="82 15"/>
+      <n id="22" p="112 15"/>
+      <b id="23" B="21" E="22" Order="1"/>
+    </fragment>
+  </page>
+</CDXML>"#;
+    let mut engine = Engine::new();
+    engine
+        .load_cdxml_document(cdxml)
+        .expect("cdxml should load into editing engine");
+    let document = &engine.state().document;
+    let molecule_objects = document
+        .objects
+        .iter()
+        .filter(|object| object.object_type == "molecule")
+        .count();
+    assert_eq!(molecule_objects, 2);
+    let fragments = document.editable_fragments();
+    assert_eq!(fragments.len(), 2);
+    assert_eq!(fragments[0].fragment.nodes.len(), 2);
+    assert_eq!(fragments[0].fragment.bonds.len(), 1);
+    assert_eq!(fragments[1].fragment.nodes.len(), 2);
+    assert_eq!(fragments[1].fragment.bonds.len(), 1);
+    assert_eq!(document.resources.len(), 2);
+    assert!(document.resources.contains_key("mol_001"));
+    assert!(document.resources.contains_key("mol_002"));
+    assert!(hit_test_bond_center(
+        document,
+        Point::new(25.0 * CDXML_EDIT_SCALE, 15.0 * CDXML_EDIT_SCALE),
+        30.0 * CDXML_EDIT_SCALE
+    )
+    .is_some());
+    assert!(hit_test_bond_center(
+        document,
+        Point::new(97.0 * CDXML_EDIT_SCALE, 15.0 * CDXML_EDIT_SCALE),
+        30.0 * CDXML_EDIT_SCALE
+    )
+    .is_some());
+}
+
+#[test]
 fn load_cdxml_document_preserves_figure2_display_fragments() {
     let Some(cdxml) = read_optional_cdxml_fixture("figure2.cdxml") else {
         return;
@@ -5970,14 +6020,15 @@ fn parse_cdxml_normal_face_attached_label_uses_group_layout() {
 </CDXML>"#;
     let document =
         parse_cdxml_document(cdxml, Some("normal face labels")).expect("cdxml should parse");
-    let fragment = document
+    let fragments: Vec<_> = document
         .resources
         .values()
-        .find_map(|resource| resource.data.as_fragment())
-        .expect("fragment should import");
-    let stacked = fragment
-        .nodes
+        .filter_map(|resource| resource.data.as_fragment())
+        .collect();
+    assert_eq!(fragments.len(), 2);
+    let stacked = fragments
         .iter()
+        .flat_map(|fragment| fragment.nodes.iter())
         .find(|node| node.id == "n1")
         .and_then(|node| node.label.as_ref())
         .expect("stacked NTs label should import");
@@ -5998,9 +6049,9 @@ fn parse_cdxml_normal_face_attached_label_uses_group_layout() {
         Some("NTs")
     );
 
-    let reversed = fragment
-        .nodes
+    let reversed = fragments
         .iter()
+        .flat_map(|fragment| fragment.nodes.iter())
         .find(|node| node.id == "n4")
         .and_then(|node| node.label.as_ref())
         .expect("right aligned NTs label should import");

@@ -4,7 +4,7 @@ use crate::{
     ResourceData, SceneObject, Transform, EPSILON,
 };
 use serde_json::{json, Value};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 mod colors;
 mod export;
@@ -65,54 +65,58 @@ pub fn parse_cdxml_document(cdxml: &str, title: Option<&str>) -> Result<Chemcore
         .filter_map(|fragment| fragment.attr("id").map(ToString::to_string))
         .collect();
     let bonded_node_ids = cdxml_bonded_node_ids(&root);
-    for (index, fragment) in fragments.iter().enumerate() {
+    let mut molecule_index = 1usize;
+    for fragment in &fragments {
         let Some(bbox) = parse_bbox(fragment.attr("BoundingBox")) else {
             continue;
         };
         let Some(resource) = normalize_fragment(fragment, bbox, defaults, &colors, &fonts) else {
             continue;
         };
-        let resource_id = format!("mol_{:03}", index + 1);
-        resources.insert(
-            resource_id.clone(),
-            Resource {
-                resource_type: "molecule_fragment2d".to_string(),
-                encoding: "chemcore.molecule.fragment2d".to_string(),
-                data: ResourceData::Fragment(resource),
-                meta: json!({
-                    "import": { "cdxml": { "fragmentId": fragment.attr("id") } }
-                }),
-            },
-        );
-        objects.push(SceneObject {
-            id: format!("obj_mol_{:03}", index + 1),
-            object_type: "molecule".to_string(),
-            name: format!("molecule {}", index + 1),
-            visible: true,
-            locked: false,
-            z_index: parse_i32(fragment.attr("Z")).unwrap_or(10),
-            transform: Transform {
-                translate: [round2(bbox[0]), round2(bbox[1])],
-                rotate: 0.0,
-                scale: [1.0, 1.0],
-            },
-            style_ref: Some("style_molecule_default".to_string()),
-            meta: json!({
-                "source": "cdxml",
-                "fragmentId": fragment.attr("id"),
-            }),
-            payload: ObjectPayload {
-                resource_ref: Some(resource_id),
-                bbox: Some([
-                    0.0,
-                    0.0,
-                    round2(bbox[2] - bbox[0]),
-                    round2(bbox[3] - bbox[1]),
-                ]),
-                extra: BTreeMap::new(),
-            },
-            children: Vec::new(),
-        });
+        for component in split_cdxml_fragment_components(resource, bbox) {
+            let resource_id = format!("mol_{:03}", molecule_index);
+            let component_meta = cdxml_fragment_component_meta(
+                fragment.attr("id"),
+                component.component_index,
+                component.component_count,
+            );
+            resources.insert(
+                resource_id.clone(),
+                Resource {
+                    resource_type: "molecule_fragment2d".to_string(),
+                    encoding: "chemcore.molecule.fragment2d".to_string(),
+                    data: ResourceData::Fragment(component.fragment),
+                    meta: component_meta.clone(),
+                },
+            );
+            objects.push(SceneObject {
+                id: format!("obj_mol_{:03}", molecule_index),
+                object_type: "molecule".to_string(),
+                name: format!("molecule {}", molecule_index),
+                visible: true,
+                locked: false,
+                z_index: parse_i32(fragment.attr("Z")).unwrap_or(10),
+                transform: Transform {
+                    translate: [round2(component.bbox_abs[0]), round2(component.bbox_abs[1])],
+                    rotate: 0.0,
+                    scale: [1.0, 1.0],
+                },
+                style_ref: Some("style_molecule_default".to_string()),
+                meta: component_meta,
+                payload: ObjectPayload {
+                    resource_ref: Some(resource_id),
+                    bbox: Some([
+                        0.0,
+                        0.0,
+                        round2(component.bbox_abs[2] - component.bbox_abs[0]),
+                        round2(component.bbox_abs[3] - component.bbox_abs[1]),
+                    ]),
+                    extra: BTreeMap::new(),
+                },
+                children: Vec::new(),
+            });
+            molecule_index += 1;
+        }
     }
     append_line_objects(&root, &mut objects, &mut styles, defaults, &colors);
     append_shape_objects(&root, &mut objects, &mut styles, defaults, &colors);
@@ -679,6 +683,274 @@ fn normalize_fragment(
     );
     infer_cdxml_ring_double_bond_placements(&mut fragment);
     Some(fragment)
+}
+
+#[derive(Debug)]
+struct CdxmlFragmentComponent {
+    fragment: MoleculeFragment,
+    bbox_abs: [f64; 4],
+    component_index: usize,
+    component_count: usize,
+}
+
+fn split_cdxml_fragment_components(
+    fragment: MoleculeFragment,
+    source_bbox_abs: [f64; 4],
+) -> Vec<CdxmlFragmentComponent> {
+    let components = fragment_connected_components(&fragment);
+    if components.len() <= 1 {
+        return vec![CdxmlFragmentComponent {
+            fragment,
+            bbox_abs: source_bbox_abs,
+            component_index: 0,
+            component_count: 1,
+        }];
+    }
+
+    let component_count = components.len();
+    components
+        .into_iter()
+        .enumerate()
+        .filter_map(|(component_index, node_ids)| {
+            let mut nodes: Vec<Node> = fragment
+                .nodes
+                .iter()
+                .filter(|node| node_ids.contains(&node.id))
+                .cloned()
+                .collect();
+            let bonds: Vec<Bond> = fragment
+                .bonds
+                .iter()
+                .filter(|bond| node_ids.contains(&bond.begin) && node_ids.contains(&bond.end))
+                .cloned()
+                .collect();
+            if !cdxml_component_has_visible_molecule_content(&nodes, &bonds) {
+                return None;
+            }
+
+            let local_bounds = component_local_bounds(&nodes).unwrap_or([
+                0.0,
+                0.0,
+                fragment.bbox[2].max(1.0),
+                fragment.bbox[3].max(1.0),
+            ]);
+            let delta_x = -local_bounds[0];
+            let delta_y = -local_bounds[1];
+            for node in &mut nodes {
+                node.position[0] = round2(node.position[0] + delta_x);
+                node.position[1] = round2(node.position[1] + delta_y);
+                if let Some(label) = &mut node.label {
+                    translate_node_label_geometry(label, delta_x, delta_y);
+                }
+            }
+
+            let bbox_abs = [
+                round2(source_bbox_abs[0] + local_bounds[0]),
+                round2(source_bbox_abs[1] + local_bounds[1]),
+                round2(source_bbox_abs[0] + local_bounds[2]),
+                round2(source_bbox_abs[1] + local_bounds[3]),
+            ];
+            let mut component_fragment = MoleculeFragment {
+                schema: fragment.schema.clone(),
+                bbox: [
+                    0.0,
+                    0.0,
+                    round2((local_bounds[2] - local_bounds[0]).max(1.0)),
+                    round2((local_bounds[3] - local_bounds[1]).max(1.0)),
+                ],
+                nodes,
+                bonds,
+                meta: fragment.meta.clone(),
+            };
+            annotate_cdxml_component_fragment_meta(
+                &mut component_fragment,
+                source_bbox_abs,
+                bbox_abs,
+                component_index,
+                component_count,
+            );
+            Some(CdxmlFragmentComponent {
+                fragment: component_fragment,
+                bbox_abs,
+                component_index,
+                component_count,
+            })
+        })
+        .collect()
+}
+
+fn fragment_connected_components(fragment: &MoleculeFragment) -> Vec<BTreeSet<String>> {
+    let mut adjacency: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+    for node in &fragment.nodes {
+        adjacency.entry(node.id.as_str()).or_default();
+    }
+    for bond in &fragment.bonds {
+        adjacency
+            .entry(bond.begin.as_str())
+            .or_default()
+            .push(bond.end.as_str());
+        adjacency
+            .entry(bond.end.as_str())
+            .or_default()
+            .push(bond.begin.as_str());
+    }
+
+    let mut visited = BTreeSet::new();
+    let mut components = Vec::new();
+    for node in &fragment.nodes {
+        if visited.contains(node.id.as_str()) {
+            continue;
+        }
+        let mut queue = VecDeque::from([node.id.as_str()]);
+        let mut component = BTreeSet::new();
+        while let Some(id) = queue.pop_front() {
+            if !visited.insert(id) {
+                continue;
+            }
+            component.insert(id.to_string());
+            if let Some(neighbors) = adjacency.get(id) {
+                for neighbor in neighbors {
+                    if !visited.contains(neighbor) {
+                        queue.push_back(neighbor);
+                    }
+                }
+            }
+        }
+        if !component.is_empty() {
+            components.push(component);
+        }
+    }
+    components
+}
+
+fn cdxml_component_has_visible_molecule_content(nodes: &[Node], bonds: &[Bond]) -> bool {
+    !bonds.is_empty()
+        || nodes.iter().any(|node| {
+            node.atomic_number != 6
+                || node
+                    .label
+                    .as_ref()
+                    .is_some_and(|label| label.has_visible_text())
+        })
+}
+
+fn component_local_bounds(nodes: &[Node]) -> Option<[f64; 4]> {
+    let mut bounds = None;
+    for node in nodes {
+        include_point_in_bounds(&mut bounds, node.position);
+        if let Some(label) = &node.label {
+            if let Some(label_bounds) = label.bbox() {
+                include_box_in_bounds(&mut bounds, label_bounds);
+            }
+            for polygon in &label.glyph_polygons {
+                for point in polygon {
+                    include_point_in_bounds(&mut bounds, *point);
+                }
+            }
+        }
+    }
+    bounds.map(|mut bounds| {
+        if (bounds[2] - bounds[0]).abs() < 1.0 {
+            let center = (bounds[0] + bounds[2]) * 0.5;
+            bounds[0] = center - 0.5;
+            bounds[2] = center + 0.5;
+        }
+        if (bounds[3] - bounds[1]).abs() < 1.0 {
+            let center = (bounds[1] + bounds[3]) * 0.5;
+            bounds[1] = center - 0.5;
+            bounds[3] = center + 0.5;
+        }
+        [
+            round2(bounds[0]),
+            round2(bounds[1]),
+            round2(bounds[2]),
+            round2(bounds[3]),
+        ]
+    })
+}
+
+fn include_point_in_bounds(bounds: &mut Option<[f64; 4]>, point: [f64; 2]) {
+    if let Some(bounds) = bounds {
+        bounds[0] = bounds[0].min(point[0]);
+        bounds[1] = bounds[1].min(point[1]);
+        bounds[2] = bounds[2].max(point[0]);
+        bounds[3] = bounds[3].max(point[1]);
+    } else {
+        *bounds = Some([point[0], point[1], point[0], point[1]]);
+    }
+}
+
+fn include_box_in_bounds(bounds: &mut Option<[f64; 4]>, bbox: [f64; 4]) {
+    include_point_in_bounds(bounds, [bbox[0], bbox[1]]);
+    include_point_in_bounds(bounds, [bbox[2], bbox[3]]);
+}
+
+fn translate_node_label_geometry(label: &mut NodeLabel, delta_x: f64, delta_y: f64) {
+    if delta_x.abs() <= EPSILON && delta_y.abs() <= EPSILON {
+        return;
+    }
+    if let Some(position) = &mut label.position {
+        position[0] = round2(position[0] + delta_x);
+        position[1] = round2(position[1] + delta_y);
+    }
+    if let Some(bbox) = &mut label.box_field {
+        translate_bbox(bbox, delta_x, delta_y);
+    }
+    if let Some(bbox) = &mut label.box_value {
+        translate_bbox(bbox, delta_x, delta_y);
+    }
+    for polygon in &mut label.glyph_polygons {
+        for point in polygon {
+            point[0] = round2(point[0] + delta_x);
+            point[1] = round2(point[1] + delta_y);
+        }
+    }
+}
+
+fn translate_bbox(bbox: &mut [f64; 4], delta_x: f64, delta_y: f64) {
+    bbox[0] = round2(bbox[0] + delta_x);
+    bbox[1] = round2(bbox[1] + delta_y);
+    bbox[2] = round2(bbox[2] + delta_x);
+    bbox[3] = round2(bbox[3] + delta_y);
+}
+
+fn annotate_cdxml_component_fragment_meta(
+    fragment: &mut MoleculeFragment,
+    source_bbox_abs: [f64; 4],
+    bbox_abs: [f64; 4],
+    component_index: usize,
+    component_count: usize,
+) {
+    let Some(cdxml_meta) = fragment
+        .meta
+        .get_mut("import")
+        .and_then(|value| value.get_mut("cdxml"))
+        .and_then(Value::as_object_mut)
+    else {
+        return;
+    };
+    cdxml_meta.insert("sourceFragmentBboxAbs".to_string(), json!(source_bbox_abs));
+    cdxml_meta.insert("bboxAbs".to_string(), json!(bbox_abs));
+    cdxml_meta.insert("componentIndex".to_string(), json!(component_index));
+    cdxml_meta.insert("componentCount".to_string(), json!(component_count));
+}
+
+fn cdxml_fragment_component_meta(
+    fragment_id: Option<&str>,
+    component_index: usize,
+    component_count: usize,
+) -> Value {
+    let mut cdxml = serde_json::Map::new();
+    cdxml.insert("fragmentId".to_string(), json!(fragment_id));
+    if component_count > 1 {
+        cdxml.insert("componentIndex".to_string(), json!(component_index));
+        cdxml.insert("componentCount".to_string(), json!(component_count));
+    }
+    json!({
+        "source": "cdxml",
+        "import": { "cdxml": cdxml },
+        "fragmentId": fragment_id,
+    })
 }
 
 fn normalize_node(
