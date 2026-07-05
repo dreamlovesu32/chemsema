@@ -3972,7 +3972,7 @@ fn expand_updated_bonds_with_visual_dependencies(
 }
 
 fn collect_target_bond_segments(document: &ChemcoreDocument) -> Vec<Vec<TargetBondSegment>> {
-    let mut groups = Vec::new();
+    let mut segments = Vec::new();
     for entry in document.editable_fragments() {
         let node_map: BTreeMap<&str, &Node> = entry
             .fragment
@@ -3980,7 +3980,6 @@ fn collect_target_bond_segments(document: &ChemcoreDocument) -> Vec<Vec<TargetBo
             .iter()
             .map(|node| (node.id.as_str(), node))
             .collect();
-        let mut segments = Vec::new();
         for bond in &entry.fragment.bonds {
             let (Some(begin), Some(end)) = (
                 node_map.get(bond.begin.as_str()),
@@ -4001,9 +4000,8 @@ fn collect_target_bond_segments(document: &ChemcoreDocument) -> Vec<Vec<TargetBo
                 end_point,
             });
         }
-        groups.push(segments);
     }
-    groups
+    vec![segments]
 }
 
 fn target_bond_segments_cross(first: &TargetBondSegment, second: &TargetBondSegment) -> bool {

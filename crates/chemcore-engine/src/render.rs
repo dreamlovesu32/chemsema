@@ -165,12 +165,154 @@ pub fn render_document_targets(
     object_ids: &BTreeSet<String>,
 ) -> Vec<RenderPrimitive> {
     let mut out = Vec::new();
+    let expanded_bond_ids = expand_target_bond_ids_with_document_crossings(document, bond_ids);
     for object in &document.objects {
         render_scene_object_targets(
-            &mut out, document, object, node_ids, bond_ids, object_ids, false,
+            &mut out,
+            document,
+            object,
+            node_ids,
+            &expanded_bond_ids,
+            object_ids,
+            false,
         );
     }
     out
+}
+
+#[derive(Debug, Clone)]
+struct TargetRenderBondSegment {
+    id: String,
+    begin: String,
+    end: String,
+    start: Point,
+    end_point: Point,
+}
+
+fn expand_target_bond_ids_with_document_crossings(
+    document: &ChemcoreDocument,
+    bond_ids: &BTreeSet<String>,
+) -> BTreeSet<String> {
+    if bond_ids.is_empty() {
+        return BTreeSet::new();
+    }
+    let segments = collect_document_target_bond_segments(document);
+    if segments.is_empty() {
+        return bond_ids.clone();
+    }
+    let mut expanded = bond_ids.clone();
+    let target_indices: Vec<usize> = segments
+        .iter()
+        .enumerate()
+        .filter_map(|(index, segment)| bond_ids.contains(&segment.id).then_some(index))
+        .collect();
+    for target_index in target_indices {
+        for other_index in 0..segments.len() {
+            if target_index == other_index {
+                continue;
+            }
+            let (under, over) = if target_index < other_index {
+                (&segments[target_index], &segments[other_index])
+            } else {
+                (&segments[other_index], &segments[target_index])
+            };
+            if target_render_bond_segments_cross(under, over) {
+                expanded.insert(over.id.clone());
+            }
+        }
+    }
+    expanded
+}
+
+fn collect_document_target_bond_segments(
+    document: &ChemcoreDocument,
+) -> Vec<TargetRenderBondSegment> {
+    let mut segments = Vec::new();
+    for entry in document.editable_fragments() {
+        let node_map: BTreeMap<&str, &Node> = entry
+            .fragment
+            .nodes
+            .iter()
+            .map(|node| (node.id.as_str(), node))
+            .collect();
+        for bond in &entry.fragment.bonds {
+            let (Some(begin), Some(end)) = (
+                node_map.get(bond.begin.as_str()),
+                node_map.get(bond.end.as_str()),
+            ) else {
+                continue;
+            };
+            let start = entry.world_point_for_node(begin);
+            let end_point = entry.world_point_for_node(end);
+            if start.distance(end_point) <= EPSILON {
+                continue;
+            }
+            segments.push(TargetRenderBondSegment {
+                id: bond.id.clone(),
+                begin: bond.begin.clone(),
+                end: bond.end.clone(),
+                start,
+                end_point,
+            });
+        }
+    }
+    segments
+}
+
+fn target_render_bond_segments_cross(
+    first: &TargetRenderBondSegment,
+    second: &TargetRenderBondSegment,
+) -> bool {
+    if first.begin == second.begin
+        || first.begin == second.end
+        || first.end == second.begin
+        || first.end == second.end
+    {
+        return false;
+    }
+    let first_vector = Vector::new(
+        first.end_point.x - first.start.x,
+        first.end_point.y - first.start.y,
+    );
+    let second_vector = Vector::new(
+        second.end_point.x - second.start.x,
+        second.end_point.y - second.start.y,
+    );
+    if first_vector.length() <= EPSILON || second_vector.length() <= EPSILON {
+        return false;
+    }
+    let crossing_sin =
+        target_render_vector_cross(first_vector.normalized(), second_vector.normalized()).abs();
+    if crossing_sin <= 0.1 {
+        return false;
+    }
+    target_render_segment_intersection(first.start, first.end_point, second.start, second.end_point)
+        .is_some()
+}
+
+fn target_render_segment_intersection(
+    a1: Point,
+    a2: Point,
+    b1: Point,
+    b2: Point,
+) -> Option<Point> {
+    let a = Vector::new(a2.x - a1.x, a2.y - a1.y);
+    let b = Vector::new(b2.x - b1.x, b2.y - b1.y);
+    let denom = target_render_vector_cross(a, b);
+    if denom.abs() <= EPSILON {
+        return None;
+    }
+    let offset = Vector::new(b1.x - a1.x, b1.y - a1.y);
+    let t = target_render_vector_cross(offset, b) / denom;
+    let u = target_render_vector_cross(offset, a) / denom;
+    if t <= 1.0e-6 || t >= 1.0 - 1.0e-6 || u <= 1.0e-6 || u >= 1.0 - 1.0e-6 {
+        return None;
+    }
+    Some(Point::new(a1.x + a.x * t, a1.y + a.y * t))
+}
+
+fn target_render_vector_cross(first: Vector, second: Vector) -> f64 {
+    first.x * second.y - first.y * second.x
 }
 
 fn render_scene_object_targets(
