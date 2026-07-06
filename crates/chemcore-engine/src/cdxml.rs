@@ -514,7 +514,8 @@ fn cdxml_defaults(root: &XmlNode) -> CdxmlDefaults {
             .unwrap_or(crate::DEFAULT_HASH_SPACING_PT.value()),
         bond_spacing: parse_f64(root.attr("BondSpacing"))
             .unwrap_or(crate::DEFAULT_BOND_SPACING_PERCENT),
-        margin_width: crate::DEFAULT_BOND_MARGIN_WIDTH_PT.value(),
+        margin_width: parse_f64(root.attr("MarginWidth"))
+            .unwrap_or(crate::DEFAULT_BOND_MARGIN_WIDTH_PT.value()),
         label_size: parse_f64(root.attr("LabelSize"))
             .unwrap_or(crate::DEFAULT_MOLECULE_LABEL_FONT_SIZE_PT),
         caption_size: parse_f64(root.attr("CaptionSize"))
@@ -647,7 +648,7 @@ fn normalize_fragment(
         .collect();
     let nodes: Vec<Node> = fragment
         .direct_children("n")
-        .filter_map(|node| normalize_node(node, origin, colors, fonts))
+        .filter_map(|node| normalize_node(node, origin, colors, fonts, defaults))
         .collect();
     let bonds: Vec<Bond> = fragment
         .direct_children("b")
@@ -958,12 +959,13 @@ fn normalize_node(
     origin: [f64; 2],
     colors: &CdxmlColorTable,
     fonts: &BTreeMap<String, String>,
+    defaults: CdxmlDefaults,
 ) -> Option<Node> {
     let id = node.attr("id")?.to_string();
     let position = parse_xy(node.attr("p"))?;
     let atomic_number = parse_u8(node.attr("Element")).unwrap_or(6);
     let node_type = node.attr("NodeType").unwrap_or("");
-    let label = node_label(node, origin, colors, fonts);
+    let label = node_label(node, origin, colors, fonts, defaults);
     let is_bullet_carbon = atomic_number == 6
         && label
             .as_ref()
@@ -1024,6 +1026,7 @@ fn node_label(
     origin: [f64; 2],
     colors: &CdxmlColorTable,
     fonts: &BTreeMap<String, String>,
+    defaults: CdxmlDefaults,
 ) -> Option<NodeLabel> {
     let text_el = node.direct_children("t").next()?;
     let text = text_el
@@ -1117,6 +1120,7 @@ fn node_label(
         text_el.attr("LabelAlignment"),
     );
     let is_centered = inferred_align == "center";
+    let glyph_clip_profile = cdxml_glyph_clip_profile(defaults.margin_width);
     let glyph_polygons = if let Some(position) = local_position {
         if inferred_align == "center" {
             let width = local_bbox
@@ -1125,12 +1129,13 @@ fn node_label(
                 .unwrap_or_else(|| {
                     (text.chars().count() as f64 * parent_size * 0.55).max(parent_size)
                 });
-            crate::build_label_glyph_polygons(
+            crate::build_label_glyph_polygons_with_profile(
                 &runs,
                 &[],
                 [round2(position[0] - width * 0.5), position[1]],
                 local_bbox,
                 parent_size,
+                glyph_clip_profile,
             )
         } else if inferred_align == "right" {
             let width = local_bbox
@@ -1139,18 +1144,30 @@ fn node_label(
                 .unwrap_or_else(|| {
                     (text.chars().count() as f64 * parent_size * 0.55).max(parent_size)
                 });
-            crate::build_label_glyph_polygons(
+            crate::build_label_glyph_polygons_with_profile(
                 &runs,
                 &[],
                 [round2(position[0] - width), position[1]],
                 local_bbox,
                 parent_size,
+                glyph_clip_profile,
             )
         } else {
-            crate::build_label_glyph_polygons(&runs, &[], position, local_bbox, parent_size)
+            crate::build_label_glyph_polygons_with_profile(
+                &runs,
+                &[],
+                position,
+                local_bbox,
+                parent_size,
+                glyph_clip_profile,
+            )
         }
     } else {
         Vec::new()
+    };
+    let glyph_clip_profile_name = match glyph_clip_profile {
+        crate::GlyphClipProfile::AcsDocument1996 => "acs-document-1996",
+        crate::GlyphClipProfile::Default => "default",
     };
     Some(NodeLabel {
         text: text.clone(),
@@ -1196,11 +1213,21 @@ fn node_label(
                     "labelAlignment": empty_as_null(text_el.attr("LabelAlignment")),
                     "labelJustification": empty_as_null(text_el.attr("LabelJustification")),
                     "justification": empty_as_null(text_el.attr("Justification")),
+                    "marginWidth": defaults.margin_width,
+                    "glyphClipProfile": glyph_clip_profile_name,
                 }
             },
             "sourceRuns": source_runs,
         }),
     })
+}
+
+fn cdxml_glyph_clip_profile(margin_width: f64) -> crate::GlyphClipProfile {
+    if (margin_width - 1.6).abs() <= 0.25 {
+        crate::GlyphClipProfile::AcsDocument1996
+    } else {
+        crate::GlyphClipProfile::Default
+    }
 }
 
 fn attr_eq_ignore_ascii_case(value: Option<&str>, expected: &str) -> bool {

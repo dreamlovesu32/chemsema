@@ -544,7 +544,6 @@ impl Engine {
         let stroke_width = self.options.bond_stroke_world_pt().value();
         let bold_width = self.options.bold_bond_width_world_pt().value();
         let wedge_width = self.options.wedge_width_world_pt().value();
-        let label_clip_margin = self.options.label_clip_margin_world_pt().value();
         let hash_spacing = self.options.hash_spacing_world_pt().value();
         let bond_spacing = self.options.bond_spacing_percent();
         let margin_width = self.options.margin_width_world_pt().value();
@@ -576,7 +575,7 @@ impl Engine {
                 stroke_width,
                 bold_width,
                 wedge_width,
-                label_clip_margin,
+                0.0,
                 hash_spacing,
                 bond_spacing,
                 margin_width,
@@ -622,7 +621,7 @@ fn expand_label_node_in_fragment(
     stroke_width: f64,
     bold_width: f64,
     wedge_width: f64,
-    label_clip_margin: f64,
+    _label_clip_margin: f64,
     hash_spacing: f64,
     bond_spacing: f64,
     margin_width: f64,
@@ -738,7 +737,7 @@ fn expand_label_node_in_fragment(
             stroke_width,
             bold_width,
             wedge_width,
-            label_clip_margin,
+            0.0,
             hash_spacing,
             bond_spacing,
             margin_width,
@@ -949,7 +948,7 @@ fn expansion_bond(
     stroke_width: f64,
     bold_width: f64,
     wedge_width: f64,
-    label_clip_margin: f64,
+    _label_clip_margin: f64,
     hash_spacing: f64,
     bond_spacing: f64,
     margin_width: f64,
@@ -969,7 +968,7 @@ fn expansion_bond(
         stroke: None,
         bold_width: Some(bold_width),
         wedge_width: Some(wedge_width),
-        label_clip_margin: Some(label_clip_margin),
+        label_clip_margin: None,
         hash_spacing: Some(hash_spacing),
         bond_spacing: Some(bond_spacing),
         margin_width: Some(margin_width),

@@ -182,6 +182,14 @@ impl Engine {
             return None;
         }
 
+        if self.selection_covers_visible_document() {
+            let mut document = self.state.document.clone();
+            if let Some(bounds) = self.render_bounds(RenderBoundsScope::Selection) {
+                set_clipboard_selection_bounds_meta(&mut document, bounds);
+            }
+            return Some(document);
+        }
+
         let selected_molecule = self.selected_molecule_clipboard_object();
         let mut selected_object_ids: BTreeSet<String> =
             self.state.selection.text_objects.iter().cloned().collect();
@@ -270,6 +278,72 @@ impl Engine {
         let mut resource = self.state.document.resources.get(&resource_ref)?.clone();
         resource.data = ResourceData::Fragment(fragment);
         Some((object, resource_ref, resource))
+    }
+
+    fn selection_covers_visible_document(&self) -> bool {
+        if self.state.selection.is_empty() {
+            return false;
+        }
+
+        let selected_molecules: BTreeSet<&str> = self
+            .state
+            .selection
+            .molecule_objects
+            .iter()
+            .map(String::as_str)
+            .collect();
+        let selected_text: BTreeSet<&str> = self
+            .state
+            .selection
+            .text_objects
+            .iter()
+            .map(String::as_str)
+            .collect();
+        let selected_graphics: BTreeSet<&str> = self
+            .state
+            .selection
+            .arrow_objects
+            .iter()
+            .map(String::as_str)
+            .collect();
+
+        if self
+            .state
+            .document
+            .editable_fragments()
+            .iter()
+            .any(|entry| !selected_molecules.contains(entry.object.id.as_str()))
+        {
+            return false;
+        }
+
+        self.state.document.objects.iter().all(|object| {
+            visible_root_object_is_selected_for_clipboard(
+                object,
+                &selected_text,
+                &selected_graphics,
+                &selected_molecules,
+            )
+        })
+    }
+}
+
+fn visible_root_object_is_selected_for_clipboard(
+    object: &SceneObject,
+    selected_text: &BTreeSet<&str>,
+    selected_graphics: &BTreeSet<&str>,
+    selected_molecules: &BTreeSet<&str>,
+) -> bool {
+    if !object.visible {
+        return true;
+    }
+    match object.object_type.as_str() {
+        "text" => selected_text.contains(object.id.as_str()),
+        "line" | "bracket" | "symbol" | "shape" | "group" => {
+            selected_graphics.contains(object.id.as_str())
+        }
+        "molecule" => selected_molecules.contains(object.id.as_str()),
+        _ => true,
     }
 }
 

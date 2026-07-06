@@ -23,9 +23,7 @@ pub const HASH_WEDGE_INITIAL_SEGMENT_WIDTH_PT: WorldPt = css_px(0.82).to_world_p
 pub const HASH_WEDGE_SEGMENT_WIDTH_PT: WorldPt = css_px(0.72).to_world_pt();
 
 pub const BOUNDARY_JOIN_MIN_BACKTRACK_PT: WorldPt = css_px(0.85).to_world_pt();
-pub const LABEL_GEOMETRY_CLIP_MARGIN_PT: WorldPt = world_pt(1.2);
 pub const DEFAULT_ARROW_HEAD_LENGTH_RATIO: f64 = 10.0;
 pub const TEXT_WRAP_ESTIMATED_CHAR_WIDTH_PT: WorldPt = css_px(6.0).to_world_pt();
 pub const HASH_WEDGE_GAP_START_OFFSET_PT: WorldPt = world_pt(0.38);
 pub const HASH_WEDGE_GAP_END_INSET_PT: WorldPt = world_pt(0.0);
-pub const ACS_LABEL_GEOMETRY_CLIP_MARGIN_PT: WorldPt = world_pt(0.8);

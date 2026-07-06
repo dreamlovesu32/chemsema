@@ -67,8 +67,8 @@ use crate::{
     EndpointHit, HoverShape, HoverTextBox, Node, OrbitalPhase, OrbitalStyle, OrbitalTemplate,
     OverlayState, Point, PointerEvent, RenderPrimitive, RenderRole, ResourceData, SceneObject,
     SelectionState, ShapeKind, ShapeStyle, Tool, ToolState, Vector, ARROW_HIT_RADIUS,
-    BOND_CENTER_HIT_RADIUS, DRAG_START_THRESHOLD, ENDPOINT_HIT_RADIUS, GLOBAL_SNAP_ANGLES,
-    GRAPHIC_EDGE_HIT_RADIUS,
+    BOND_CENTER_HIT_RADIUS, DRAG_START_THRESHOLD, ENDPOINT_FOCUS_RADIUS, ENDPOINT_HIT_RADIUS,
+    GLOBAL_SNAP_ANGLES, GRAPHIC_EDGE_HIT_RADIUS,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value as JsonValue};
@@ -1034,8 +1034,23 @@ impl Engine {
         self.state.overlay = OverlayState::default();
     }
 
+    pub(super) fn endpoint_hit_radius(&self) -> f64 {
+        let scale = (self.options.bond_length_world_pt().value() / crate::DEFAULT_BOND_LENGTH)
+            .sqrt()
+            .clamp(0.6, 1.0);
+        ENDPOINT_HIT_RADIUS * scale
+    }
+
+    pub(super) fn endpoint_focus_radius(&self) -> f64 {
+        let scale = (self.options.bond_length_world_pt().value() / crate::DEFAULT_BOND_LENGTH)
+            .clamp(0.35, 1.0);
+        ENDPOINT_FOCUS_RADIUS * scale
+    }
+
     pub fn pointer_move(&mut self, event: PointerEvent) {
         let point = event.point();
+        let endpoint_hit_radius = self.endpoint_hit_radius();
+        let endpoint_focus_radius = self.endpoint_focus_radius();
         if self.state.tool.active_tool == Tool::Select {
             self.hover_select_target(point);
             return;
@@ -1084,16 +1099,22 @@ impl Engine {
                 });
                 return;
             }
-            if let Some(endpoint) =
-                hit_test_endpoint(&self.state.document, point, ENDPOINT_HIT_RADIUS)
+            let endpoint_hit = hit_test_endpoint(&self.state.document, point, endpoint_hit_radius);
+            if endpoint_hit
+                .as_ref()
+                .is_some_and(|endpoint| endpoint.distance <= endpoint_focus_radius)
             {
-                self.state.overlay.hover_endpoint = Some(endpoint);
+                self.state.overlay.hover_endpoint = endpoint_hit;
                 return;
             }
             if let Some(center) =
                 hit_test_bond_center(&self.state.document, point, BOND_CENTER_HIT_RADIUS)
             {
                 self.state.overlay.hover_bond_center = Some(center);
+                return;
+            }
+            if let Some(endpoint) = endpoint_hit {
+                self.state.overlay.hover_endpoint = Some(endpoint);
             }
             return;
         }
@@ -1122,7 +1143,7 @@ impl Engine {
                 return;
             }
             if let Some(endpoint) =
-                hit_test_endpoint(&self.state.document, point, ENDPOINT_HIT_RADIUS)
+                hit_test_endpoint(&self.state.document, point, endpoint_hit_radius)
             {
                 if endpoint.label_anchor.is_some() {
                     if let Some(entry) = self.state.document.editable_fragment() {
@@ -1198,9 +1219,12 @@ impl Engine {
         self.state.overlay.hover_arrow = None;
         self.state.overlay.hover_shape = None;
         self.state.overlay.hover_text_box = None;
-        if let Some(endpoint) = hit_test_endpoint(&self.state.document, point, ENDPOINT_HIT_RADIUS)
+        let endpoint_hit = hit_test_endpoint(&self.state.document, point, endpoint_hit_radius);
+        if endpoint_hit
+            .as_ref()
+            .is_some_and(|endpoint| endpoint.distance <= endpoint_focus_radius)
         {
-            self.state.overlay.hover_endpoint = Some(endpoint);
+            self.state.overlay.hover_endpoint = endpoint_hit;
             return;
         }
         if can_focus_bond_center(&self.state.tool) {
@@ -1211,8 +1235,7 @@ impl Engine {
                 return;
             }
         }
-        self.state.overlay.hover_endpoint =
-            hit_test_endpoint(&self.state.document, point, ENDPOINT_HIT_RADIUS);
+        self.state.overlay.hover_endpoint = endpoint_hit;
     }
 
     fn pointer_move_element(&mut self, event: PointerEvent) {
@@ -1234,14 +1257,14 @@ impl Engine {
             return;
         }
         self.state.overlay.hover_endpoint =
-            hit_test_endpoint(&self.state.document, point, ENDPOINT_HIT_RADIUS);
+            hit_test_endpoint(&self.state.document, point, self.endpoint_hit_radius());
     }
 
     fn element_replacement_node_at_point(&self, point: Point) -> Option<String> {
         self.hit_test_endpoint_label_box(point)
             .map(|(node_id, _)| node_id)
             .or_else(|| {
-                hit_test_endpoint(&self.state.document, point, ENDPOINT_HIT_RADIUS)
+                hit_test_endpoint(&self.state.document, point, self.endpoint_hit_radius())
                     .map(|hit| hit.node_id)
             })
     }
@@ -1317,8 +1340,11 @@ impl Engine {
         if self.state.tool.active_tool == Tool::Text {
             self.state.selection = SelectionState::default();
             self.clear_interaction();
-            self.state.overlay.hover_endpoint =
-                hit_test_endpoint(&self.state.document, event.point(), ENDPOINT_HIT_RADIUS);
+            self.state.overlay.hover_endpoint = hit_test_endpoint(
+                &self.state.document,
+                event.point(),
+                self.endpoint_hit_radius(),
+            );
             return;
         }
         if !can_draw_bond(&self.state.tool) {
@@ -1334,7 +1360,11 @@ impl Engine {
             return;
         }
         let point = event.point();
-        if let Some(endpoint) = hit_test_endpoint(&self.state.document, point, ENDPOINT_HIT_RADIUS)
+        let endpoint_hit =
+            hit_test_endpoint(&self.state.document, point, self.endpoint_hit_radius());
+        if let Some(endpoint) = endpoint_hit
+            .clone()
+            .filter(|endpoint| endpoint.distance <= self.endpoint_focus_radius())
         {
             self.clear_overlay();
             self.drag = Some(DragState {
@@ -1357,6 +1387,23 @@ impl Engine {
             self.cycle_bond_center_style(&hit.bond_id);
             return;
         }
+        if let Some(endpoint) = endpoint_hit {
+            self.clear_overlay();
+            self.drag = Some(DragState {
+                anchor: BondAnchor {
+                    node_id: Some(endpoint.node_id),
+                    object_id: Some(endpoint.object_id),
+                    point: endpoint.point,
+                    label_anchor: endpoint.label_anchor,
+                },
+                start: point,
+                has_dragged: false,
+                free_length: event.alt_key,
+                preview_end: None,
+                target: None,
+            });
+            return;
+        }
         let Some(anchor) = anchor_from_point(&self.state.document, point) else {
             return;
         };
@@ -1377,8 +1424,11 @@ impl Engine {
             return;
         }
         if self.state.tool.active_tool == Tool::Text {
-            self.state.overlay.hover_endpoint =
-                hit_test_endpoint(&self.state.document, event.point(), ENDPOINT_HIT_RADIUS);
+            self.state.overlay.hover_endpoint = hit_test_endpoint(
+                &self.state.document,
+                event.point(),
+                self.endpoint_hit_radius(),
+            );
             return;
         }
         if self.state.tool.active_tool == Tool::Templates {
@@ -1720,7 +1770,6 @@ impl Engine {
         let stroke_width = self.options.bond_stroke_world_pt().value();
         let bold_width = self.options.bold_bond_width_world_pt().value();
         let wedge_width = self.options.wedge_width_world_pt().value();
-        let label_clip_margin = self.options.label_clip_margin_world_pt().value();
         let hash_spacing = self.options.hash_spacing_world_pt().value();
         let bond_spacing = self.options.bond_spacing_percent();
         let margin_width = self.options.margin_width_world_pt().value();
@@ -1738,7 +1787,7 @@ impl Engine {
             stroke: None,
             bold_width: Some(bold_width),
             wedge_width: Some(wedge_width),
-            label_clip_margin: Some(label_clip_margin),
+            label_clip_margin: None,
             hash_spacing: Some(hash_spacing),
             bond_spacing: Some(bond_spacing),
             margin_width: Some(margin_width),
@@ -2760,7 +2809,7 @@ impl Engine {
         hit_test_endpoint_excluding(
             &self.state.document,
             point,
-            ENDPOINT_HIT_RADIUS,
+            self.endpoint_hit_radius(),
             anchor.node_id.as_deref(),
         )
     }

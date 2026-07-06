@@ -139,9 +139,9 @@ consume the same geometry.
 Endpoint labels are split into styled runs and line runs, then the engine builds per-glyph clip
 polygons from font size, baseline, subscript/superscript shifts, and character
 advance data. When a bond is rendered, its endpoint ray intersects the glyph
-polygon edges, picks the farthest exit point from the atom, and advances by the
-bond's `label_clip_margin`. The default template uses `1.2pt`; ACS Document
-1996 uses `0.8pt`.
+polygon edges and picks the farthest exit point from the atom. Glyph polygons
+already include the optical clipping allowance; renderers must not add a
+separate label margin.
 
 Common uppercase letters and symbols use tuned height-centered glyph polygons
 generated from Arial, including cases such as `N`, `I`, and `+`. Unknown

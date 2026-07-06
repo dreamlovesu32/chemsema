@@ -237,20 +237,6 @@ fn clip_point_out_of_expanded_polygon_bounds(
     })
 }
 
-pub(super) fn advance_point_toward(point: Point, target: Point, distance: f64) -> Point {
-    if distance <= EPSILON {
-        return point;
-    }
-    let direction = Vector::new(target.x - point.x, target.y - point.y);
-    let length = direction.length();
-    if length <= EPSILON {
-        return point;
-    }
-    let step = distance.min(length);
-    let unit = direction.normalized();
-    Point::new(point.x + unit.x * step, point.y + unit.y * step)
-}
-
 pub(super) fn clip_point_out_of_box(
     start: Point,
     end: Point,
@@ -296,16 +282,15 @@ pub(super) fn clip_point_out_of_label_geometry(
     end: Point,
     rect: Option<RectBox>,
     polygons: &[Vec<Point>],
-    margin: f64,
+    _margin: f64,
 ) -> Point {
     // Prefer per-glyph polygons when they exist; bounding boxes are only a
     // fallback for imported or legacy labels without glyph geometry.
     if polygons.is_empty() {
-        return clip_point_out_of_box(start, end, rect, margin);
+        return clip_point_out_of_box(start, end, rect, 0.0);
     }
     clip_point_out_of_polygons(start, end, polygons)
-        .map(|point| advance_point_toward(point, end, margin))
-        .or_else(|| clip_point_out_of_expanded_polygon_bounds(start, end, polygons, margin))
+        .or_else(|| clip_point_out_of_expanded_polygon_bounds(start, end, polygons, 0.0))
         .unwrap_or(start)
 }
 

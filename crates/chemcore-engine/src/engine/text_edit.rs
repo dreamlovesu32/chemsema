@@ -4,9 +4,9 @@ use super::{
     TextEditLayoutRequest,
 };
 use crate::{
-    build_label_glyph_polygons, decide_label_layout, layout_label_text, round2, round6, Bond,
-    BondLineWeight, DoubleBondPlacement, EndpointHit, LabelFlow, LabelRun, Point, WorldPoint,
-    WorldPt,
+    build_label_glyph_polygons, build_label_glyph_polygons_with_profile, decide_label_layout,
+    layout_label_text, round2, round6, Bond, BondLineWeight, DoubleBondPlacement, EndpointHit,
+    GlyphClipProfile, LabelFlow, LabelRun, Point, WorldPoint, WorldPt,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -19,6 +19,20 @@ const DEFAULT_TEXT_BLOCK_LINE_HEIGHT: f64 = crate::DEFAULT_TEXT_BLOCK_LINE_HEIGH
 const DEFAULT_CENTERED_LABEL_FONT_SIZE: f64 = crate::DEFAULT_CENTERED_LABEL_FONT_SIZE_PT;
 const TEXT_EDIT_BOX_WIDTH: f64 = crate::px_to_pt(8.0);
 const IMPLICIT_HYDROGEN_LABEL_META_KEY: &str = "implicitHydrogenLabel";
+
+pub(crate) fn glyph_clip_profile_for_style_preset(preset: &str) -> GlyphClipProfile {
+    if preset == super::ACS_DOCUMENT_1996_PRESET {
+        GlyphClipProfile::AcsDocument1996
+    } else {
+        GlyphClipProfile::Default
+    }
+}
+
+impl Engine {
+    fn glyph_clip_profile(&self) -> GlyphClipProfile {
+        glyph_clip_profile_for_style_preset(&self.document_style_preset)
+    }
+}
 
 #[path = "text_edit/geometry.rs"]
 mod geometry;
@@ -34,7 +48,9 @@ use self::labels::*;
 pub(crate) use self::labels::{
     element_symbol_info, formula_hydrogen_count_for_node, implicit_hydrogen_label_text_for_count,
     mark_shortcut_implicit_hydrogen_label, refresh_attached_node_label_geometry_for_all_nodes,
+    refresh_attached_node_label_geometry_for_all_nodes_with_profile,
     refresh_attached_node_label_geometry_for_node,
+    refresh_attached_node_label_geometry_for_node_with_profile,
     refresh_element_valence_recognition_for_all_nodes, standalone_element_hydrogen_count,
 };
 use self::layout::*;
@@ -168,6 +184,7 @@ pub(crate) fn make_periodic_element_node_label(text: &str, position: [f64; 2]) -
         false,
         false,
         None,
+        GlyphClipProfile::Default,
     )
 }
 
@@ -1179,6 +1196,7 @@ impl Engine {
             false,
             false,
             None,
+            self.glyph_clip_profile(),
         );
         build_endpoint_label_edit_layout_from_label(
             text,
@@ -1307,6 +1325,8 @@ impl Engine {
             .replace("\r\n", "\n")
             .replace('\r', "\n")
             .replace('\n', " ");
+        let glyph_clip_profile = self.glyph_clip_profile();
+        let bond_stroke_width = self.options.bond_stroke_world_pt().value();
         self.push_undo_snapshot();
         let Some(mut entry) = self.state.document.editable_fragment_mut() else {
             self.undo_stack.pop();
@@ -1341,6 +1361,7 @@ impl Engine {
             &connection_angles,
             local_anchor_position,
             preserve_measured_box,
+            glyph_clip_profile,
         );
         if preserve_implicit_hydrogen_label {
             changed |= mark_user_edited_implicit_hydrogen_label(node);
@@ -1351,11 +1372,12 @@ impl Engine {
         }
         let node_position = node.position;
         if !preserve_measured_box {
-            refresh_attached_node_label_geometry_for_node(
+            refresh_attached_node_label_geometry_for_node_with_profile(
                 entry.fragment,
                 object_translate,
                 node_id,
-                self.options.bond_stroke_world_pt().value(),
+                bond_stroke_width,
+                Some(glyph_clip_profile),
             );
         }
         entry.update_bounds();
@@ -1602,6 +1624,7 @@ pub(super) fn apply_node_label_text_edit(
         connection_angles,
         anchor_position,
         false,
+        GlyphClipProfile::Default,
     )
 }
 
@@ -1612,6 +1635,7 @@ fn apply_node_label_text_edit_with_options(
     connection_angles: &[f64],
     anchor_position: [f64; 2],
     preserve_measured_box: bool,
+    glyph_clip_profile: GlyphClipProfile,
 ) -> bool {
     let previous_element = node.element.clone();
     let previous_atomic_number = node.atomic_number;
@@ -1722,6 +1746,7 @@ fn apply_node_label_text_edit_with_options(
         false,
         false,
         None,
+        glyph_clip_profile,
     );
     if preserve_measured_box {
         mark_node_label_measured_geometry_authoritative(&mut next_label);

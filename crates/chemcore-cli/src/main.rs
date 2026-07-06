@@ -536,6 +536,7 @@ fn new_command(args: &[String]) -> Result<(), String> {
     let mut save_format = None;
     let mut results = None;
     let mut document_json_output = None;
+    let mut style_preset = None;
     let mut inspect_after = default_inspect_after();
     let mut continue_on_error = false;
     let mut pretty = false;
@@ -583,6 +584,14 @@ fn new_command(args: &[String]) -> Result<(), String> {
                         .clone(),
                 );
             }
+            "--style-preset" | "--template" => {
+                index += 1;
+                style_preset = Some(
+                    args.get(index)
+                        .ok_or_else(|| "--style-preset requires a value.".to_string())?
+                        .clone(),
+                );
+            }
             "--inspect-after" => {
                 index += 1;
                 inspect_after = parse_inspect_after_value(
@@ -607,6 +616,9 @@ fn new_command(args: &[String]) -> Result<(), String> {
         return Err("Use --results or --quiet when --document-json is '-'.".to_string());
     }
     let mut engine = Engine::new();
+    if let Some(preset) = style_preset.as_deref() {
+        engine.set_document_style_preset(preset);
+    }
     let mut execution = if let Some(script) = script.as_deref() {
         execute_command_file(
             &mut engine,
@@ -624,6 +636,7 @@ fn new_command(args: &[String]) -> Result<(), String> {
             "operation": "new",
             "input": null,
             "script": script.as_deref(),
+            "stylePreset": style_preset.as_deref(),
             "output": {
                 "path": output.as_str(),
                 "format": save_format

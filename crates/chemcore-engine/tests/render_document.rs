@@ -2874,7 +2874,7 @@ fn load_cdxml_document_derives_wedge_width_from_imported_bold_width() {
     assert!((engine.options().bold_bond_width - 2.01).abs() < 0.01);
     assert!((engine.options().wedge_width - 3.015).abs() < 0.01);
     assert!(engine.options().label_clip_margin.abs() < 0.01);
-    assert!((engine.options().margin_width - 2.0).abs() < 0.01);
+    assert!((engine.options().margin_width - 1.7).abs() < 0.01);
 
     let bond = &engine
         .state()
@@ -2890,7 +2890,7 @@ fn load_cdxml_document_derives_wedge_width_from_imported_bold_width() {
 
 #[test]
 fn load_cdxml_document_does_not_import_margin_width_as_label_retreat() {
-    fn imported_label_clip_margin(line_width: f64, margin_width: f64) -> f64 {
+    fn imported_label_clip_profile(line_width: f64, margin_width: f64) -> (f64, Option<String>) {
         let cdxml = format!(
             r#"<?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >
@@ -2912,14 +2912,35 @@ fn load_cdxml_document_does_not_import_margin_width_as_label_retreat() {
         engine
             .load_cdxml_document(&cdxml)
             .expect("cdxml should load");
-        engine.options().label_clip_margin
+        let profile = engine
+            .state()
+            .document
+            .editable_fragment()
+            .and_then(|entry| {
+                entry
+                    .fragment
+                    .nodes
+                    .iter()
+                    .find_map(|node| node.label.as_ref())
+                    .and_then(|label| {
+                        label
+                            .meta
+                            .pointer("/import/cdxml/glyphClipProfile")
+                            .and_then(serde_json::Value::as_str)
+                            .map(str::to_string)
+                    })
+            });
+        (engine.options().label_clip_margin, profile)
     }
 
-    let normal = imported_label_clip_margin(0.60, 1.60);
-    let wide_line = imported_label_clip_margin(1.80, 1.60);
-    let wide_margin = imported_label_clip_margin(0.60, 5.00);
+    let (normal, normal_profile) = imported_label_clip_profile(0.60, 1.60);
+    let (wide_line, wide_line_profile) = imported_label_clip_profile(1.80, 1.60);
+    let (wide_margin, wide_margin_profile) = imported_label_clip_profile(0.60, 5.00);
 
     assert!(normal.abs() < 0.01, "{normal}");
+    assert_eq!(normal_profile.as_deref(), Some("acs-document-1996"));
+    assert_eq!(wide_line_profile.as_deref(), Some("acs-document-1996"));
+    assert_eq!(wide_margin_profile.as_deref(), Some("default"));
     assert!(
         (wide_line - normal).abs() < 0.01,
         "CDXML MarginWidth should not become label retreat: {normal} {wide_line}"
@@ -2970,7 +2991,7 @@ fn cdxml_imported_bonds_use_engine_glyph_retreat() {
     let label_endpoint = if from.x > to.x { from } else { to };
 
     assert!(
-        20.8 - label_endpoint.x > 0.7,
+        20.8 - label_endpoint.x > 0.55,
         "imported bond should retreat from the N glyph using engine glyph clipping: {polygon:?}"
     );
 }
@@ -3024,7 +3045,7 @@ fn render_document_does_not_join_bold_bond_at_labeled_endpoint() {
         .fold(f64::NEG_INFINITY, f64::max);
 
     assert!(
-        max_x < 51.0,
+        max_x <= 51.0 + 1.0e-6,
         "labeled endpoints should be clipped by glyphs and must not rejoin at the atom point: {polygon:?}"
     );
 }
@@ -3069,7 +3090,7 @@ fn render_document_retreats_bond_when_label_anchor_lies_on_glyph_boundary() {
         .fold(f64::NEG_INFINITY, f64::max);
 
     assert!(
-        max_x < 49.0,
+        max_x <= 50.0 + 1.0e-6,
         "a bond whose atom anchor lies on a glyph edge should still retreat outside the glyph: {polygon:?}"
     );
 }
@@ -8645,8 +8666,8 @@ fn render_document_uses_label_glyph_polygons_for_knockout_and_endpoint_clipping(
     assert_eq!(centerlines.len(), 1, "{centerlines:?}");
     let start_x = centerlines[0].0.x.min(centerlines[0].1.x);
     assert!(
-        start_x > 24.0 && start_x < 25.0,
-        "endpoint should be clipped from the glyph polygon plus margin, not the full label box: {centerlines:?}"
+        (start_x - 23.0).abs() < 0.02,
+        "endpoint should be clipped at the glyph polygon boundary, not the full label box or a legacy margin: {centerlines:?}"
     );
 }
 
@@ -10390,14 +10411,14 @@ fn render_document_clips_center_double_lines_individually_at_labeled_endpoint() 
             to
         };
         assert!(
-            (endpoint.x - 49.8).abs() <= 0.02,
-            "each parallel line should hit the expanded label box, not a shared center-axis retreat: {polygon:?}"
+            (51.0..=52.0).contains(&endpoint.x),
+            "each parallel line should hit the label box boundary without a legacy margin: {polygon:?}"
         );
     }
 }
 
 #[test]
-fn render_document_clips_center_double_lines_against_small_label_margin() {
+fn render_document_clips_center_double_lines_against_glyph_polygon_only() {
     let document = fragment_document(
         json!([
             { "id": "n1", "element": "C", "atomicNumber": 6, "position": [20.0, 40.0], "charge": 0, "numHydrogens": 0 },
@@ -10412,12 +10433,12 @@ fn render_document_clips_center_double_lines_against_small_label_margin() {
                 "label": {
                     "text": "•",
                     "position": [49.0, 42.5],
-                    "box": [49.4, 37.8, 50.6, 42.2],
+                    "box": [49.4, 37.0, 50.6, 43.0],
                     "glyphPolygons": [[
-                        [49.4, 37.8],
-                        [50.6, 37.8],
-                        [50.6, 42.2],
-                        [49.4, 42.2]
+                        [49.4, 37.0],
+                        [50.6, 37.0],
+                        [50.6, 43.0],
+                        [49.4, 43.0]
                     ]]
                 }
             },
@@ -10430,7 +10451,7 @@ fn render_document_clips_center_double_lines_against_small_label_margin() {
                 "end": "n2",
                 "order": 2,
                 "strokeWidth": 0.6,
-                "labelClipMargin": 0.8,
+                "labelClipMargin": 9.0,
                 "bondSpacing": 18.0,
                 "double": { "placement": "center" }
             },
@@ -10440,7 +10461,7 @@ fn render_document_clips_center_double_lines_against_small_label_margin() {
                 "end": "n3",
                 "order": 2,
                 "strokeWidth": 0.6,
-                "labelClipMargin": 0.8,
+                "labelClipMargin": 9.0,
                 "bondSpacing": 18.0,
                 "double": { "placement": "center" }
             }
@@ -10464,15 +10485,15 @@ fn render_document_clips_center_double_lines_against_small_label_margin() {
     for (from, to) in b1_axes {
         let label_endpoint_x = from.x.max(to.x);
         assert!(
-            label_endpoint_x <= 48.7,
-            "left center-double line should retreat from the dot margin: {polygons:?}"
+            label_endpoint_x <= 49.45,
+            "left center-double line should stop at the dot glyph polygon, ignoring legacy labelClipMargin: {polygons:?}"
         );
     }
     for (from, to) in b2_axes {
         let label_endpoint_x = from.x.min(to.x);
         assert!(
-            label_endpoint_x >= 51.3,
-            "right center-double line should retreat from the dot margin: {polygons:?}"
+            label_endpoint_x >= 50.55,
+            "right center-double line should stop at the dot glyph polygon, ignoring legacy labelClipMargin: {polygons:?}"
         );
     }
 }
@@ -10559,7 +10580,7 @@ fn render_document_keeps_terminal_side_double_offset_with_label_retreat() {
 }
 
 #[test]
-fn render_document_applies_label_clip_margin_to_glyph_polygons() {
+fn render_document_ignores_legacy_label_clip_margin_for_glyph_polygons() {
     let document = fragment_document(
         json!([
             { "id": "n1", "element": "C", "atomicNumber": 6, "position": [20.0, 40.0], "charge": 0, "numHydrogens": 0 },
@@ -10584,7 +10605,7 @@ fn render_document_applies_label_clip_margin_to_glyph_polygons() {
             }
         ]),
         json!([
-            { "id": "b1", "begin": "n1", "end": "n2", "order": 1, "strokeWidth": 0.85 }
+            { "id": "b1", "begin": "n1", "end": "n2", "order": 1, "strokeWidth": 0.85, "labelClipMargin": 9.0 }
         ]),
     );
 
@@ -10596,13 +10617,65 @@ fn render_document_applies_label_clip_margin_to_glyph_polygons() {
     let label_endpoint = if from.x > to.x { from } else { to };
 
     assert!(
-        51.0 - label_endpoint.x > 1.0,
-        "glyph polygon clipping should leave extra margin before the label: {polygon:?}"
+        (label_endpoint.x - 51.0).abs() < 0.02,
+        "glyph polygon clipping should stop at the polygon boundary and ignore legacy labelClipMargin: {polygon:?}"
     );
 }
 
 #[test]
-fn render_document_uses_smaller_acs_label_clip_margin() {
+fn render_document_retreats_solid_wedge_cap_from_labeled_wide_endpoint() {
+    let document = fragment_document(
+        json!([
+            { "id": "n1", "element": "C", "atomicNumber": 6, "position": [42.0, 54.0], "charge": 0, "numHydrogens": 0 },
+            {
+                "id": "n2",
+                "element": "C",
+                "atomicNumber": 6,
+                "position": [27.0, 70.0],
+                "charge": 0,
+                "numHydrogens": 0,
+                "label": {
+                    "text": "t-Bu",
+                    "position": [27.0, 73.5],
+                    "box": [12.0, 65.0, 29.3, 72.4],
+                    "glyphPolygons": [
+                        [[12.0, 65.0], [16.0, 65.0], [16.0, 72.4], [12.0, 72.4]],
+                        [[17.0, 65.0], [21.0, 65.0], [21.0, 72.4], [17.0, 72.4]],
+                        [[22.0, 65.0], [25.0, 65.0], [25.0, 72.4], [22.0, 72.4]],
+                        [[26.0, 65.0], [29.3, 65.0], [29.3, 72.4], [26.0, 72.4]]
+                    ]
+                }
+            }
+        ]),
+        json!([{
+            "id": "b1",
+            "begin": "n1",
+            "end": "n2",
+            "order": 1,
+            "strokeWidth": 0.6,
+            "wedgeWidth": 3.0,
+            "stereo": { "kind": "solid-wedge", "wideEnd": "end" }
+        }]),
+    );
+
+    let polygon = object_bond_polygons_with_ids(&render_document(&document))
+        .into_iter()
+        .find_map(|(bond_id, points)| (bond_id == "b1").then_some(points))
+        .expect("solid wedge should render");
+    let cap_near_label = [polygon[1], polygon[2]];
+    let min_clearance = cap_near_label
+        .iter()
+        .map(|point| point.distance(Point::new(27.0, 70.0)))
+        .fold(f64::INFINITY, f64::min);
+
+    assert!(
+        min_clearance > 1.45,
+        "wide wedge cap should retreat from the attached label glyphs: {polygon:?}"
+    );
+}
+
+#[test]
+fn render_document_acs_template_does_not_add_label_clip_margin() {
     let document = fragment_document(
         json!([
             { "id": "n1", "element": "C", "atomicNumber": 6, "position": [20.0, 40.0], "charge": 0, "numHydrogens": 0 },
@@ -10649,8 +10722,8 @@ fn render_document_uses_smaller_acs_label_clip_margin() {
     let margin = 51.0 - label_endpoint.x;
 
     assert!(
-        (margin - 0.8).abs() < 0.02,
-        "ACS label clipping should use the ACS template margin: {margin} {polygon:?}"
+        margin.abs() < 0.02,
+        "ACS label clipping should stop at the glyph boundary without a template margin: {margin} {polygon:?}"
     );
 }
 

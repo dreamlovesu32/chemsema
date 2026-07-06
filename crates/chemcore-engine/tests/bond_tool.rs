@@ -419,6 +419,31 @@ fn bond_center_point(engine: &Engine, bond_id: &str) -> chemcore_engine::Point {
     )
 }
 
+fn bond_world_center_point(engine: &Engine, bond_id: &str) -> chemcore_engine::Point {
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let bond = entry
+        .fragment
+        .bonds
+        .iter()
+        .find(|bond| bond.id == bond_id)
+        .expect("bond should exist");
+    let begin = entry
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == bond.begin)
+        .map(|node| entry.world_point_for_node(node))
+        .expect("begin node should exist");
+    let end = entry
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == bond.end)
+        .map(|node| entry.world_point_for_node(node))
+        .expect("end node should exist");
+    chemcore_engine::Point::new((begin.x + end.x) * 0.5, (begin.y + end.y) * 0.5)
+}
+
 fn selection_bond_rect(engine: &Engine) -> (f64, f64, f64, f64) {
     engine
         .render_list()
@@ -958,7 +983,7 @@ fn template_pointer_down_clears_previous_hover_overlay() {
 
     engine.set_tool_state(templates_tool("chain"));
     hover(&mut engine, FIRST_END_HOVER_X, FIRST_END_HOVER_Y);
-    assert!(engine.state().overlay.hover_endpoint.is_none());
+    assert!(engine.state().overlay.hover_endpoint.is_some());
 
     engine.pointer_down(PointerEvent {
         x: FIRST_END_X,
@@ -2348,6 +2373,80 @@ fn load_label_document(
         .expect("document should load");
 }
 
+fn load_two_molecule_document_with_duplicate_local_ids(engine: &mut Engine) {
+    let fragment = |x1: f64, x2: f64| {
+        json!({
+            "schema": "chemcore.molecule.fragment2d",
+            "bbox": [x1 - 5.0, 95.0, x2 + 5.0, 105.0],
+            "nodes": [{
+                "id": "n0",
+                "element": "C",
+                "atomicNumber": 6,
+                "position": [x1, 100.0],
+                "charge": 0,
+                "numHydrogens": 0
+            }, {
+                "id": "n1",
+                "element": "C",
+                "atomicNumber": 6,
+                "position": [x2, 100.0],
+                "charge": 0,
+                "numHydrogens": 0
+            }],
+            "bonds": [{ "id": "b1", "begin": "n0", "end": "n1", "order": 1 }]
+        })
+    };
+    let document = json!({
+        "format": { "name": "chemcore", "version": "0.1" },
+        "document": {
+            "id": "doc_multi",
+            "title": "multi molecule clipboard test",
+            "page": { "width": 360.0, "height": 180.0, "background": "#ffffff" }
+        },
+        "styles": {
+            "style_molecule_default": {
+                "kind": "molecule",
+                "stroke": "#000000",
+                "strokeWidth": DEFAULT_BOND_STROKE,
+                "fontFamily": "Arial",
+                "fontSize": chemcore_engine::DEFAULT_MOLECULE_LABEL_FONT_SIZE_PT
+            }
+        },
+        "objects": [{
+            "id": "obj_molecule_a",
+            "type": "molecule",
+            "visible": true,
+            "zIndex": 10,
+            "transform": { "translate": [0.0, 0.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+            "styleRef": "style_molecule_default",
+            "payload": { "resourceRef": "mol_a" }
+        }, {
+            "id": "obj_molecule_b",
+            "type": "molecule",
+            "visible": true,
+            "zIndex": 11,
+            "transform": { "translate": [0.0, 0.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+            "styleRef": "style_molecule_default",
+            "payload": { "resourceRef": "mol_b" }
+        }],
+        "resources": {
+            "mol_a": {
+                "type": "molecule_fragment2d",
+                "encoding": "chemcore.molecule.fragment2d",
+                "data": fragment(80.0, 110.0)
+            },
+            "mol_b": {
+                "type": "molecule_fragment2d",
+                "encoding": "chemcore.molecule.fragment2d",
+                "data": fragment(220.0, 250.0)
+            }
+        }
+    });
+    engine
+        .load_document_json(&document.to_string())
+        .expect("document should load");
+}
+
 #[test]
 fn component_selection_from_label_selects_whole_fragment() {
     let mut engine = Engine::new();
@@ -2410,6 +2509,50 @@ fn clipboard_document_json_contains_selected_molecule_fragment() {
             .count(),
         1
     );
+}
+
+#[test]
+fn select_all_clipboard_document_json_keeps_all_molecule_objects() {
+    let mut engine = Engine::new();
+    load_two_molecule_document_with_duplicate_local_ids(&mut engine);
+
+    assert!(engine.select_all());
+    let document_json = engine
+        .clipboard_document_json()
+        .expect("clipboard document should serialize")
+        .expect("select all should produce a clipboard document");
+    let document = parse_document_json(&document_json).expect("clipboard document should parse");
+
+    assert_eq!(
+        document.editable_fragments().len(),
+        2,
+        "select-all Office payload must not collapse multiple molecule objects into the first fragment"
+    );
+    assert!(
+        document.find_scene_object("obj_molecule_a").is_some()
+            && document.find_scene_object("obj_molecule_b").is_some()
+    );
+}
+
+#[test]
+fn single_molecule_clipboard_document_json_does_not_expand_duplicate_local_ids() {
+    let mut engine = Engine::new();
+    load_two_molecule_document_with_duplicate_local_ids(&mut engine);
+
+    assert!(engine.select_component_at_point(Point::new(95.0, 100.0), false));
+    let document_json = engine
+        .clipboard_document_json()
+        .expect("clipboard document should serialize")
+        .expect("single molecule selection should produce a clipboard document");
+    let document = parse_document_json(&document_json).expect("clipboard document should parse");
+
+    assert_eq!(
+        document.editable_fragments().len(),
+        1,
+        "object-level select-all marker must be required before copying every molecule"
+    );
+    assert!(document.find_scene_object("obj_molecule_a").is_some());
+    assert!(document.find_scene_object("obj_molecule_b").is_none());
 }
 
 fn load_text_object_document(engine: &mut Engine) {
@@ -2555,7 +2698,7 @@ fn acs_document_1996_preset_sets_new_bond_metrics() {
     assert!((bond.stroke_width - 0.6).abs() < 0.001);
     assert_eq!(bond.bold_width, Some(2.0));
     assert_eq!(bond.wedge_width, Some(3.0));
-    assert_eq!(bond.label_clip_margin, Some(0.8));
+    assert_eq!(bond.label_clip_margin, None);
     assert_eq!(bond.hash_spacing, Some(2.5));
     assert_eq!(bond.bond_spacing, Some(18.0));
     assert_eq!(bond.margin_width, Some(1.6));
@@ -2596,6 +2739,123 @@ fn acs_document_1996_preset_reflows_existing_endpoint_label_geometry() {
         "label bbox should also be reflowed at the current font size: {:?}",
         label.bbox()
     );
+}
+
+#[test]
+fn acs_document_1996_preset_keeps_existing_bonds_hoverable() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, px(300.0), px(260.0));
+    let bond_id = engine
+        .state()
+        .document
+        .editable_fragment()
+        .unwrap()
+        .fragment
+        .bonds
+        .first()
+        .unwrap()
+        .id
+        .clone();
+
+    engine.set_document_style_preset("acs-document-1996");
+    let center = bond_world_center_point(&engine, &bond_id);
+    let (endpoint_probe, near_endpoint_probe) = {
+        let entry = engine.state().document.editable_fragment().unwrap();
+        let bond = entry
+            .fragment
+            .bonds
+            .iter()
+            .find(|bond| bond.id == bond_id)
+            .expect("original bond should exist");
+        let begin = entry
+            .fragment
+            .nodes
+            .iter()
+            .find(|node| node.id == bond.begin)
+            .map(|node| entry.world_point_for_node(node))
+            .expect("begin node should exist");
+        let end = entry
+            .fragment
+            .nodes
+            .iter()
+            .find(|node| node.id == bond.end)
+            .map(|node| entry.world_point_for_node(node))
+            .expect("end node should exist");
+        let length = begin.distance(end);
+        let normal =
+            chemcore_engine::Vector::new(-(end.y - begin.y) / length, (end.x - begin.x) / length);
+        let toward_center =
+            chemcore_engine::Vector::new((begin.x - end.x) / length, (begin.y - end.y) / length);
+        (
+            end.translated(normal.scaled(4.5)),
+            end.translated(toward_center.scaled(2.5)),
+        )
+    };
+    engine.set_tool_state(bond_tool());
+    hover(&mut engine, endpoint_probe.x, endpoint_probe.y);
+    assert!(
+        engine.state().overlay.hover_endpoint.is_some(),
+        "ACS endpoint hit target should remain comfortable near the endpoint"
+    );
+    hover(&mut engine, near_endpoint_probe.x, near_endpoint_probe.y);
+    assert!(
+        engine.state().overlay.hover_endpoint.is_some(),
+        "ACS endpoint-side bond body should still belong to the endpoint, matching the default feel"
+    );
+    hover(&mut engine, center.x, center.y);
+    assert!(
+        engine.state().overlay.hover_bond_center.is_some(),
+        "bond tool should still hover an existing bond after switching to ACS"
+    );
+    click(&mut engine, center.x, center.y);
+    let entry = engine.state().document.editable_fragment().unwrap();
+    let bond = entry
+        .fragment
+        .bonds
+        .iter()
+        .find(|bond| bond.id == bond_id)
+        .expect("original bond should still exist");
+    assert_eq!(
+        bond.order, 2,
+        "clicking an ACS bond center should cycle the bond, not start an endpoint drag"
+    );
+
+    engine.set_tool_state(templates_tool("ring-6"));
+    hover(&mut engine, center.x, center.y);
+    assert!(
+        engine.state().overlay.hover_bond_center.is_some(),
+        "template tool should still hover an existing bond after switching to ACS"
+    );
+}
+
+#[test]
+fn acs_template_click_on_bond_uses_bond_as_ring_side() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, px(300.0), px(260.0));
+    let bond_id = engine
+        .state()
+        .document
+        .editable_fragment()
+        .unwrap()
+        .fragment
+        .bonds
+        .first()
+        .unwrap()
+        .id
+        .clone();
+
+    engine.set_document_style_preset("acs-document-1996");
+    let center = bond_world_center_point(&engine, &bond_id);
+    engine.set_tool_state(templates_tool("ring-6"));
+    click(&mut engine, center.x, center.y);
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    assert_eq!(entry.fragment.nodes.len(), 6);
+    assert_eq!(entry.fragment.bonds.len(), 6);
+    assert!(entry.fragment.bonds.iter().any(|bond| bond.id == bond_id));
+    assert_no_duplicate_node_positions(&engine);
 }
 
 #[test]
@@ -2845,7 +3105,7 @@ fn acs_document_1996_preset_scales_existing_document_as_one_group() {
     assert!((bond.stroke_width - 0.6).abs() < 0.001);
     assert_eq!(bond.bold_width, Some(2.0));
     assert_eq!(bond.wedge_width, Some(3.0));
-    assert_eq!(bond.label_clip_margin, Some(0.8));
+    assert_eq!(bond.label_clip_margin, None);
     assert_eq!(bond.hash_spacing, Some(2.5));
     assert_eq!(bond.margin_width, Some(1.6));
 
@@ -2872,7 +3132,7 @@ fn acs_document_1996_preset_scales_existing_document_as_one_group() {
     assert!((default_begin.distance(default_end) - DEFAULT_BOND_LENGTH).abs() < 0.001);
     assert!((default_bond.stroke_width - DEFAULT_BOND_STROKE).abs() < 0.001);
     assert_eq!(default_bond.wedge_width, Some(6.0));
-    assert_eq!(default_bond.label_clip_margin, Some(1.2));
+    assert_eq!(default_bond.label_clip_margin, None);
     assert_eq!(default_bond.margin_width, Some(2.0));
 }
 
@@ -3502,6 +3762,129 @@ fn template_drag_on_endpoint_keeps_live_focus_on_connection_anchor() {
     assert!((preview.end.x - endpoint.x).abs() < 0.001, "{preview:?}");
     assert!((preview.end.y - endpoint.y).abs() < 0.001, "{preview:?}");
     assert!(preview.end.distance(target) > DEFAULT_BOND_LENGTH);
+}
+
+#[test]
+fn template_tool_hover_shows_endpoint_snap_target_before_drag() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, px(300.0), px(260.0));
+
+    let endpoint = node_world_point(&engine, "n_2");
+    engine.set_tool_state(templates_tool("ring-6"));
+    engine.pointer_move(PointerEvent {
+        x: endpoint.x,
+        y: endpoint.y,
+        button: None,
+        alt_key: false,
+    });
+
+    let hover = engine
+        .state()
+        .overlay
+        .hover_endpoint
+        .as_ref()
+        .expect("template tool should expose endpoint snap hover before drag");
+    assert_eq!(hover.node_id, "n_2");
+    assert!(hover.point.distance(endpoint) < 0.001, "{hover:?}");
+}
+
+#[test]
+fn template_tool_hover_shows_label_anchor_snap_target_before_drag() {
+    let mut engine = Engine::new();
+    let document = json!({
+        "format": { "name": "chemcore", "version": "0.1" },
+        "document": { "id": "doc_test", "title": "test", "page": { "width": 400.0, "height": 300.0, "background": "#ffffff" } },
+        "styles": {
+            "style_molecule_default": { "kind": "molecule", "stroke": "#000000", "strokeWidth": 0.85, "fontFamily": "Arial", "fontSize": 11.0 }
+        },
+        "objects": [{
+            "id": "obj_molecule_001",
+            "type": "molecule",
+            "visible": true,
+            "zIndex": 10,
+            "transform": { "translate": [0.0, 0.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+            "styleRef": "style_molecule_default",
+            "payload": { "resourceRef": "mol_001", "bbox": [0.0, 0.0, 200.0, 120.0] }
+        }],
+        "resources": {
+            "mol_001": {
+                "type": "molecule_fragment2d",
+                "encoding": "chemcore.molecule.fragment2d",
+                "data": {
+                    "schema": "chemcore.molecule.fragment2d",
+                    "bbox": [0.0, 0.0, 200.0, 120.0],
+                    "nodes": [{
+                        "id": "n1",
+                        "element": "C",
+                        "atomicNumber": 6,
+                        "position": [100.0, 60.0],
+                        "charge": 0,
+                        "numHydrogens": 0,
+                        "label": {
+                            "text": "Ph",
+                            "position": [100.0, 63.5],
+                            "box": [96.0, 54.0, 110.0, 66.0],
+                            "glyphPolygons": [
+                                [[96.0, 54.0], [102.0, 54.0], [102.0, 66.0], [96.0, 66.0]],
+                                [[104.0, 54.0], [110.0, 54.0], [110.0, 66.0], [104.0, 66.0]]
+                            ]
+                        }
+                    }],
+                    "bonds": []
+                }
+            }
+        }
+    });
+    engine
+        .load_document_json(&document.to_string())
+        .expect("document should load");
+    engine.set_tool_state(templates_tool("ring-6"));
+
+    engine.pointer_move(PointerEvent {
+        x: 107.0,
+        y: 60.0,
+        button: None,
+        alt_key: false,
+    });
+
+    let hover = engine
+        .state()
+        .overlay
+        .hover_endpoint
+        .as_ref()
+        .expect("template tool should expose label glyph anchors like the bond tool");
+    assert_eq!(hover.node_id, "n1");
+    assert!(hover.label_anchor.is_some(), "{hover:?}");
+}
+
+#[test]
+fn template_tool_hover_shows_bond_center_snap_target_before_drag() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, px(300.0), px(260.0));
+
+    engine.set_tool_state(templates_tool("ring-6"));
+    engine.pointer_move(PointerEvent {
+        x: FIRST_CENTER_X,
+        y: FIRST_CENTER_Y,
+        button: None,
+        alt_key: false,
+    });
+
+    let hover = engine
+        .state()
+        .overlay
+        .hover_bond_center
+        .as_ref()
+        .expect("template tool should expose bond-center snap hover before drag");
+    assert!(
+        hover
+            .point
+            .distance(Point::new(FIRST_CENTER_X, FIRST_CENTER_Y))
+            < px(3.0),
+        "{hover:?}"
+    );
 }
 
 #[test]

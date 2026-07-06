@@ -144,6 +144,9 @@ export function createEditorPointerController(options) {
   }
 
   function toolCanHoverSuppressSelection(tool) {
+    if (tool === "bond" || tool === "templates" || tool === "chain") {
+      return false;
+    }
     return tool === "select" || toolSupportsSelectionBoxMove(tool);
   }
 

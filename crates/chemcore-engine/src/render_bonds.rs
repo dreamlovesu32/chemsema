@@ -893,6 +893,11 @@ fn compute_fragment_solid_wedge_points(
     let normal = Vector::new(-unit.y, unit.x);
     let tip_half_width = solid_wedge_tip_half_width(stroke_width);
     let width = solid_wedge_half_width_for_bond(bond, stroke_width);
+    let end_inset = if wide_has_label {
+        end_inset.max(width)
+    } else {
+        end_inset
+    };
     let tip_plus = Point::new(
         start.x + normal.x * tip_half_width,
         start.y + normal.y * tip_half_width,

@@ -92,9 +92,13 @@ struct SharedGlyphClipPolygonsJson {
     version: u32,
     coordinate_system: Option<String>,
     natural_outset_ratio: f64,
+    acs_natural_outset_ratio: Option<f64>,
     green_inset_ratio: f64,
     circle_radius_ratio: f64,
+    acs_circle_radius_ratio: Option<f64>,
     glyphs: HashMap<String, GlyphClipPolygonJson>,
+    #[serde(default)]
+    acs_glyphs: HashMap<String, GlyphClipPolygonJson>,
 }
 
 #[derive(Debug, Clone)]
@@ -108,15 +112,24 @@ struct SharedGlyphClipPolygons {
     version: u32,
     coordinate_system: GlyphClipCoordinateSystem,
     natural_outset_ratio: f64,
+    acs_natural_outset_ratio: f64,
     green_inset_ratio: f64,
     circle_radius_ratio: f64,
+    acs_circle_radius_ratio: f64,
     glyphs: HashMap<char, GlyphClipPolygon>,
+    acs_glyphs: HashMap<char, GlyphClipPolygon>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum GlyphClipCoordinateSystem {
     LegacyInkBox,
     HeightCentered,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GlyphClipProfile {
+    Default,
+    AcsDocument1996,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -232,6 +245,24 @@ pub fn build_label_glyph_polygons(
     box_value: Option<[f64; 4]>,
     fallback_font_size: f64,
 ) -> Vec<Vec<[f64; 2]>> {
+    build_label_glyph_polygons_with_profile(
+        runs,
+        line_runs,
+        position,
+        box_value,
+        fallback_font_size,
+        GlyphClipProfile::Default,
+    )
+}
+
+pub fn build_label_glyph_polygons_with_profile(
+    runs: &[LabelRun],
+    line_runs: &[Vec<LabelRun>],
+    position: [f64; 2],
+    box_value: Option<[f64; 4]>,
+    fallback_font_size: f64,
+    profile: GlyphClipProfile,
+) -> Vec<Vec<[f64; 2]>> {
     // Build world-space clip polygons from the same styled runs used for
     // label rendering, so bonds can retreat from actual glyph shapes instead
     // of the much coarser text bounding box.
@@ -265,7 +296,7 @@ pub fn build_label_glyph_polygons(
         polygons.extend(
             glyph_placements_for_runs(line, position[0], baseline_y, fallback_font_size)
                 .into_iter()
-                .filter_map(|placement| shape_polygon(&placement)),
+                .filter_map(|placement| shape_polygon_with_profile(&placement, profile)),
         );
     }
     polygons
@@ -666,13 +697,30 @@ fn charge_sign_baseline_adjustment(
 }
 
 fn shape_polygon(placement: &GlyphPlacement) -> Option<Vec<[f64; 2]>> {
+    shape_polygon_with_profile(placement, GlyphClipProfile::Default)
+}
+
+fn shape_polygon_with_profile(
+    placement: &GlyphPlacement,
+    profile: GlyphClipProfile,
+) -> Option<Vec<[f64; 2]>> {
     if !placement.visible {
         return None;
     }
     // The shared manifest stores normalized glyph outlines. Height-centered
     // mapping keeps narrow capitals such as I from losing their side margin.
     let manifest = shared_glyph_clip_polygons();
-    manifest.glyphs.get(&placement.codepoint).map(|polygon| {
+    let glyphs = match profile {
+        GlyphClipProfile::Default => &manifest.glyphs,
+        GlyphClipProfile::AcsDocument1996 => {
+            if manifest.acs_glyphs.is_empty() {
+                &manifest.glyphs
+            } else {
+                &manifest.acs_glyphs
+            }
+        }
+    };
+    glyphs.get(&placement.codepoint).map(|polygon| {
         map_normalized_polygon(
             &polygon.points,
             placement.ink_box_px,
@@ -1014,6 +1062,22 @@ impl SharedGlyphClipPolygons {
                 },
             );
         }
+        let mut acs_glyphs = HashMap::new();
+        for (key, value) in manifest.acs_glyphs {
+            let mut chars = key.chars();
+            let character = chars
+                .next()
+                .filter(|_| chars.next().is_none())
+                .unwrap_or_else(|| {
+                    panic!("ACS glyph clip manifest key must be exactly one character: {key:?}")
+                });
+            acs_glyphs.insert(
+                character,
+                GlyphClipPolygon {
+                    points: value.points,
+                },
+            );
+        }
         let coordinate_system = match manifest.coordinate_system.as_deref() {
             Some("heightCentered") => GlyphClipCoordinateSystem::HeightCentered,
             Some(other) => panic!("unsupported glyph clip coordinate system: {other}"),
@@ -1023,9 +1087,16 @@ impl SharedGlyphClipPolygons {
             version: manifest.version,
             coordinate_system,
             natural_outset_ratio: manifest.natural_outset_ratio,
+            acs_natural_outset_ratio: manifest
+                .acs_natural_outset_ratio
+                .unwrap_or(manifest.natural_outset_ratio),
             green_inset_ratio: manifest.green_inset_ratio,
             circle_radius_ratio: manifest.circle_radius_ratio,
+            acs_circle_radius_ratio: manifest
+                .acs_circle_radius_ratio
+                .unwrap_or(manifest.circle_radius_ratio),
             glyphs,
+            acs_glyphs,
         }
     }
 }
@@ -1192,11 +1263,15 @@ mod tests {
             manifest.coordinate_system,
             GlyphClipCoordinateSystem::HeightCentered
         );
-        assert!((manifest.natural_outset_ratio - 0.18).abs() < 1e-9);
+        assert!((manifest.natural_outset_ratio - 0.27).abs() < 1e-9);
+        assert!((manifest.acs_natural_outset_ratio - 0.18).abs() < 1e-9);
         assert!((manifest.green_inset_ratio - 0.22).abs() < 1e-9);
-        assert!((manifest.circle_radius_ratio - 0.36).abs() < 1e-9);
+        assert!((manifest.circle_radius_ratio - 0.54).abs() < 1e-9);
+        assert!((manifest.acs_circle_radius_ratio - 0.36).abs() < 1e-9);
         assert!(manifest.glyphs.contains_key(&'N'));
         assert!(manifest.glyphs.contains_key(&'+'));
+        assert!(manifest.acs_glyphs.contains_key(&'N'));
+        assert!(manifest.acs_glyphs.contains_key(&'+'));
     }
 
     #[test]
@@ -1224,6 +1299,34 @@ mod tests {
             bounds[3] > placement.ink_box_px[3],
             "{bounds:?} vs {:?}",
             placement.ink_box_px
+        );
+    }
+
+    #[test]
+    fn acs_profile_keeps_previous_label_retreat_polygon() {
+        let placement = layout_glyph('O', ScriptKind::Normal, LayoutConfig::default(), 0.0, 0.0);
+        let default_polygon =
+            shape_polygon_with_profile(&placement, GlyphClipProfile::Default).unwrap();
+        let acs_polygon =
+            shape_polygon_with_profile(&placement, GlyphClipProfile::AcsDocument1996).unwrap();
+        let default_bounds = polygon_bounds(&default_polygon);
+        let acs_bounds = polygon_bounds(&acs_polygon);
+
+        assert!(
+            default_bounds[0] < acs_bounds[0],
+            "{default_bounds:?} vs {acs_bounds:?}"
+        );
+        assert!(
+            default_bounds[1] < acs_bounds[1],
+            "{default_bounds:?} vs {acs_bounds:?}"
+        );
+        assert!(
+            default_bounds[2] > acs_bounds[2],
+            "{default_bounds:?} vs {acs_bounds:?}"
+        );
+        assert!(
+            default_bounds[3] > acs_bounds[3],
+            "{default_bounds:?} vs {acs_bounds:?}"
         );
     }
 

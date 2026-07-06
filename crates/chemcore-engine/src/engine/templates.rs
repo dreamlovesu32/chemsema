@@ -4,8 +4,7 @@ use crate::{
     adjacent_directions, angle_between, direction_from_angle, hit_test_bond, hit_test_bond_center,
     hit_test_endpoint, nearest_angle, normalize_angle, Bond, BondAnchor, BondPreview,
     ChemcoreDocument, DoubleBond, DoubleBondPlacement, EndpointHit, Node, Point, PointerEvent,
-    BOND_CENTER_HIT_RADIUS, BOND_HIT_RADIUS, DRAG_START_THRESHOLD, ENDPOINT_HIT_RADIUS,
-    GLOBAL_SNAP_ANGLES,
+    BOND_CENTER_HIT_RADIUS, BOND_HIT_RADIUS, DRAG_START_THRESHOLD, GLOBAL_SNAP_ANGLES,
 };
 use serde_json::{json, Value as JsonValue};
 
@@ -95,21 +94,44 @@ impl Engine {
         self.state.overlay.hover_shape = None;
         self.state.overlay.hover_text_box = None;
         self.state.overlay.preview = None;
-        self.state.overlay.hover_bond_center =
-            hit_test_bond_center(&self.state.document, point, BOND_CENTER_HIT_RADIUS);
+        let endpoint_hit =
+            hit_test_endpoint(&self.state.document, point, self.endpoint_hit_radius());
+        if endpoint_hit
+            .as_ref()
+            .is_some_and(|endpoint| endpoint.distance <= self.endpoint_focus_radius())
+        {
+            self.state.overlay.hover_endpoint = endpoint_hit;
+            return;
+        }
+        if let Some(center) =
+            hit_test_bond_center(&self.state.document, point, BOND_CENTER_HIT_RADIUS)
+        {
+            self.state.overlay.hover_bond_center = Some(center);
+            return;
+        }
+        if let Some(endpoint) = endpoint_hit {
+            self.state.overlay.hover_endpoint = Some(endpoint);
+        }
     }
 
     pub(super) fn pointer_down_template(&mut self, event: PointerEvent) {
         let point = event.point();
         self.drag = None;
         self.selection_drag = None;
+        let hovered_endpoint = self.state.overlay.hover_endpoint.clone();
+        let hovered_bond_center = self.state.overlay.hover_bond_center.clone();
         // Template creation starts a new gesture; stale hover endpoints from
         // the previous tool action must not survive into the preview.
         self.clear_overlay();
         self.state.selection = crate::SelectionState::default();
         let is_chain = selected_chain_template(&self.state.tool.template);
-        if let Some(endpoint) = hit_test_endpoint(&self.state.document, point, ENDPOINT_HIT_RADIUS)
-        {
+        let endpoint_hit = hovered_endpoint
+            .filter(|endpoint| endpoint.point.distance(point) <= self.endpoint_hit_radius())
+            .or_else(|| hit_test_endpoint(&self.state.document, point, self.endpoint_hit_radius()));
+        let precise_endpoint_hit = endpoint_hit
+            .as_ref()
+            .is_some_and(|endpoint| endpoint.distance <= self.endpoint_focus_radius());
+        if let Some(endpoint) = endpoint_hit.clone().filter(|_| precise_endpoint_hit) {
             self.template_drag = Some(TemplateDrag {
                 start: point,
                 current: point,
@@ -124,6 +146,45 @@ impl Engine {
             return;
         }
         if !is_chain {
+            if let Some(center) = hovered_bond_center
+                .filter(|center| center.point.distance(point) <= BOND_CENTER_HIT_RADIUS)
+                .or_else(|| {
+                    hit_test_bond_center(&self.state.document, point, BOND_CENTER_HIT_RADIUS)
+                })
+            {
+                let Some((begin_id, end_id, begin, end)) =
+                    self.template_bond_anchor_from_id(&center.bond_id)
+                else {
+                    return;
+                };
+                self.template_drag = Some(TemplateDrag {
+                    start: point,
+                    current: point,
+                    anchor: TemplateAnchor::Bond {
+                        bond_id: center.bond_id,
+                        begin_id,
+                        end_id,
+                        begin,
+                        end,
+                    },
+                    has_dragged: false,
+                });
+                return;
+            }
+            if let Some(endpoint) = endpoint_hit {
+                self.template_drag = Some(TemplateDrag {
+                    start: point,
+                    current: point,
+                    anchor: TemplateAnchor::Endpoint(BondAnchor {
+                        node_id: Some(endpoint.node_id),
+                        object_id: Some(endpoint.object_id),
+                        point: endpoint.point,
+                        label_anchor: endpoint.label_anchor,
+                    }),
+                    has_dragged: false,
+                });
+                return;
+            }
             if let Some(bond) = hit_test_bond(&self.state.document, point, BOND_HIT_RADIUS) {
                 let Some((begin_id, end_id)) = self.bond_node_ids(&bond.bond_id) else {
                     return;
@@ -1430,7 +1491,7 @@ fn insert_ring_bond(
         stroke: None,
         bold_width: Some(engine.options.bold_bond_width_world_pt().value()),
         wedge_width: Some(engine.options.wedge_width_world_pt().value()),
-        label_clip_margin: Some(engine.options.label_clip_margin_world_pt().value()),
+        label_clip_margin: None,
         hash_spacing: Some(engine.options.hash_spacing_world_pt().value()),
         bond_spacing: Some(engine.options.bond_spacing_percent()),
         margin_width: Some(engine.options.margin_width_world_pt().value()),

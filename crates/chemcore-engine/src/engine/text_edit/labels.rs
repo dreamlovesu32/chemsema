@@ -296,6 +296,7 @@ pub(super) fn make_centered_node_label_from_runs(
     treat_as_literal_text_mode: bool,
     force_grouped_attached_layout: bool,
     forced_flow: Option<LabelFlow>,
+    glyph_clip_profile: GlyphClipProfile,
 ) -> crate::NodeLabel {
     let mut decision = label_layout_decision_for_text_mode(
         text,
@@ -394,7 +395,7 @@ pub(super) fn make_centered_node_label_from_runs(
         "sourceRuns".to_string(),
         serde_json::to_value(source_runs).unwrap_or(Value::Array(Vec::new())),
     );
-    let mut glyph_polygons = build_label_glyph_polygons(
+    let mut glyph_polygons = build_label_glyph_polygons_with_profile(
         if line_runs.len() == 1 {
             line_runs.first().map(Vec::as_slice).unwrap_or(&[])
         } else {
@@ -404,6 +405,7 @@ pub(super) fn make_centered_node_label_from_runs(
         [x1, baseline_y],
         Some([x1, y1, x2, y2]),
         font_size,
+        glyph_clip_profile,
     );
     let has_authoritative_glyph_polygons = !session.glyph_polygons.is_empty();
     if has_authoritative_glyph_polygons {
@@ -1199,6 +1201,20 @@ pub(crate) fn refresh_attached_node_label_geometry_for_all_nodes(
     object_translate: [f64; 2],
     stroke_width: f64,
 ) {
+    refresh_attached_node_label_geometry_for_all_nodes_with_profile(
+        fragment,
+        object_translate,
+        stroke_width,
+        None,
+    );
+}
+
+pub(crate) fn refresh_attached_node_label_geometry_for_all_nodes_with_profile(
+    fragment: &mut crate::MoleculeFragment,
+    object_translate: [f64; 2],
+    stroke_width: f64,
+    glyph_clip_profile: Option<GlyphClipProfile>,
+) {
     refresh_implicit_hydrogens(fragment);
     let node_ids: Vec<_> = fragment.nodes.iter().map(|node| node.id.clone()).collect();
     for node_id in node_ids {
@@ -1207,6 +1223,7 @@ pub(crate) fn refresh_attached_node_label_geometry_for_all_nodes(
             object_translate,
             &node_id,
             stroke_width,
+            glyph_clip_profile,
         );
     }
 }
@@ -1217,12 +1234,29 @@ pub(crate) fn refresh_attached_node_label_geometry_for_node(
     node_id: &str,
     stroke_width: f64,
 ) {
+    refresh_attached_node_label_geometry_for_node_with_profile(
+        fragment,
+        object_translate,
+        node_id,
+        stroke_width,
+        None,
+    );
+}
+
+pub(crate) fn refresh_attached_node_label_geometry_for_node_with_profile(
+    fragment: &mut crate::MoleculeFragment,
+    object_translate: [f64; 2],
+    node_id: &str,
+    stroke_width: f64,
+    glyph_clip_profile: Option<GlyphClipProfile>,
+) {
     refresh_implicit_hydrogens(fragment);
     refresh_attached_node_label_geometry_for_node_inner(
         fragment,
         object_translate,
         node_id,
         stroke_width,
+        glyph_clip_profile,
     );
 }
 
@@ -1231,14 +1265,19 @@ pub(super) fn refresh_attached_node_label_geometry_for_node_inner(
     object_translate: [f64; 2],
     node_id: &str,
     stroke_width: f64,
+    glyph_clip_profile: Option<GlyphClipProfile>,
 ) {
     let Some(node_index) = fragment.nodes.iter().position(|node| node.id == node_id) else {
         return;
     };
     refresh_label_recognition_for_node(fragment, node_id);
-    let Some(next_label) =
-        refreshed_attached_node_label(fragment, node_id, object_translate, stroke_width)
-    else {
+    let Some(next_label) = refreshed_attached_node_label(
+        fragment,
+        node_id,
+        object_translate,
+        stroke_width,
+        glyph_clip_profile,
+    ) else {
         return;
     };
     fragment.nodes[node_index].label = Some(next_label);
@@ -1453,6 +1492,17 @@ fn cdxml_imported_label_flow_override(label: &crate::NodeLabel) -> Option<LabelF
     }
 }
 
+fn glyph_clip_profile_for_label(label: &crate::NodeLabel) -> GlyphClipProfile {
+    match label
+        .meta
+        .pointer("/import/cdxml/glyphClipProfile")
+        .and_then(serde_json::Value::as_str)
+    {
+        Some("acs-document-1996") => GlyphClipProfile::AcsDocument1996,
+        _ => GlyphClipProfile::Default,
+    }
+}
+
 fn node_label_glyph_polygons_are_authoritative(label: &crate::NodeLabel) -> bool {
     (label
         .meta
@@ -1539,6 +1589,7 @@ pub(super) fn refreshed_attached_node_label(
     node_id: &str,
     object_translate: [f64; 2],
     stroke_width: f64,
+    glyph_clip_profile: Option<GlyphClipProfile>,
 ) -> Option<crate::NodeLabel> {
     let node = fragment.nodes.iter().find(|node| node.id == node_id)?;
     let label = node.label.as_ref()?;
@@ -1668,6 +1719,7 @@ pub(super) fn refreshed_attached_node_label(
         false,
         layout_as_grouped_attached_label,
         cdxml_imported_label_flow_override(label),
+        glyph_clip_profile.unwrap_or_else(|| glyph_clip_profile_for_label(label)),
     );
     if let Some(import_meta) = label.meta.get("import").cloned() {
         set_meta_object_field(&mut next_label.meta, "import", Some(import_meta));

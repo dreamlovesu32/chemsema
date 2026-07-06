@@ -492,7 +492,6 @@ Example bonds:
   "strokeWidth": 0.6,
   "boldWidth": 2.0,
   "wedgeWidth": 3.0,
-  "labelClipMargin": 0.8,
   "hashSpacing": 2.5,
   "bondSpacing": 18.0,
   "marginWidth": 1.6,
@@ -540,7 +539,8 @@ Bond fields:
 - `strokeWidth`: normal bond stroke width in pt
 - `boldWidth`: bold bond template width in pt
 - `wedgeWidth`: solid and hashed wedge wide-end template width in pt
-- `labelClipMargin`: extra bond retreat from label glyph/box geometry in pt
+- `labelClipMargin`: legacy compatibility field; new documents must not emit it,
+  and renderers ignore it because glyph polygons define the clipping boundary
 - `hashSpacing`: hash / hashed wedge template spacing in pt
 - `bondSpacing`: double-bond spacing percentage, matching CDXML `BondSpacing`
 - `marginWidth`: white margin width around the overpassing bond when two bonds
@@ -564,7 +564,6 @@ Current built-in template values:
 | `strokeWidth` | `1.0` | `0.6` |
 | `boldWidth` | `4.0` | `2.0` |
 | `wedgeWidth` | `6.0` | `3.0` |
-| `labelClipMargin` | `1.2` | `0.8` |
 | `hashSpacing` | `2.7` | `2.5` |
 | `bondSpacing` | `12.0` | `18.0` |
 | `marginWidth` | `2.0` | `1.6` |

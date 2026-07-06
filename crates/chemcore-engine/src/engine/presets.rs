@@ -1,4 +1,7 @@
-use super::text_edit::refresh_attached_node_label_geometry_for_all_nodes;
+use super::text_edit::{
+    refresh_attached_node_label_geometry_for_all_nodes,
+    refresh_attached_node_label_geometry_for_all_nodes_with_profile,
+};
 use super::{Engine, ObjectSettingsPatch, ACS_DOCUMENT_1996_PRESET, DEFAULT_DOCUMENT_STYLE_PRESET};
 use crate::{
     render_document, render_primitives_bounds, Bond, ChemcoreDocument, EditorOptions,
@@ -88,16 +91,21 @@ impl Engine {
         }
         apply_existing_document_style_preset(&mut self.state.document, &next_options);
         update_document_object_settings_defaults(&mut self.state.document, &next_options);
+        let glyph_clip_profile =
+            super::text_edit::glyph_clip_profile_for_style_preset(&self.document_style_preset);
         if let Some(mut entry) = self.state.document.editable_fragment_mut() {
-            refresh_attached_node_label_geometry_for_all_nodes(
+            refresh_attached_node_label_geometry_for_all_nodes_with_profile(
                 entry.fragment,
                 entry.object.transform.translate,
                 next_options.bond_stroke_world_pt().value(),
+                Some(glyph_clip_profile),
             );
             entry.update_bounds();
         }
         self.options = next_options;
-        self.document_style_preset = "custom".to_string();
+        if self.document_style_preset != ACS_DOCUMENT_1996_PRESET {
+            self.document_style_preset = "custom".to_string();
+        }
         self.clear_interaction();
         true
     }
@@ -415,11 +423,13 @@ impl Engine {
         }
         apply_existing_document_style_preset(&mut self.state.document, &next_options);
         update_document_object_settings_defaults(&mut self.state.document, &next_options);
+        let glyph_clip_profile = super::text_edit::glyph_clip_profile_for_style_preset(preset);
         if let Some(mut entry) = self.state.document.editable_fragment_mut() {
-            refresh_attached_node_label_geometry_for_all_nodes(
+            refresh_attached_node_label_geometry_for_all_nodes_with_profile(
                 entry.fragment,
                 entry.object.transform.translate,
                 next_options.bond_stroke_world_pt().value(),
+                Some(glyph_clip_profile),
             );
             entry.update_bounds();
         }
@@ -640,10 +650,9 @@ fn apply_settings_to_bond(
     }
     if let Some(value) = settings.margin_width {
         changed |= set_bond_option_number(&mut bond.margin_width, value);
-        changed |= set_bond_option_number(
-            &mut bond.label_clip_margin,
-            derived_label_clip_margin(value),
-        );
+        if bond.label_clip_margin.take().is_some() {
+            changed = true;
+        }
     }
     if let Some(value) = settings.hash_spacing {
         if bond_uses_hash_spacing(bond) {
@@ -758,7 +767,7 @@ fn document_style_preset_options(preset: &str) -> EditorOptions {
             bond_stroke_width: 0.6,
             bold_bond_width: 2.0,
             wedge_width: 3.0,
-            label_clip_margin: crate::ACS_LABEL_GEOMETRY_CLIP_MARGIN_PT.value(),
+            label_clip_margin: 0.0,
             hash_spacing: 2.5,
             bond_spacing: 18.0,
             margin_width: crate::ACS_BOND_MARGIN_WIDTH_PT.value(),
@@ -828,11 +837,7 @@ pub(super) fn editor_options_from_document(document: &ChemcoreDocument) -> Edito
         }
     }
     options.wedge_width = derived_wedge_width(options.bold_bond_width);
-    options.label_clip_margin = if has_cdxml_defaults {
-        0.0
-    } else {
-        derived_label_clip_margin(options.margin_width)
-    };
+    options.label_clip_margin = 0.0;
     options
 }
 
@@ -863,8 +868,8 @@ fn derived_wedge_width(bold_width: f64) -> f64 {
     (bold_width * 1.5).max(crate::DEFAULT_BOND_STROKE)
 }
 
-fn derived_label_clip_margin(margin_width: f64) -> f64 {
-    (margin_width - crate::ACS_LABEL_GEOMETRY_CLIP_MARGIN_PT.value()).max(0.0)
+fn derived_label_clip_margin(_margin_width: f64) -> f64 {
+    0.0
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -1091,7 +1096,7 @@ fn apply_existing_document_style_preset(document: &mut ChemcoreDocument, options
             bond.stroke_width = options.bond_stroke_world_pt().value();
             bond.bold_width = Some(options.bold_bond_width_world_pt().value());
             bond.wedge_width = Some(options.wedge_width_world_pt().value());
-            bond.label_clip_margin = Some(options.label_clip_margin_world_pt().value());
+            bond.label_clip_margin = None;
             bond.hash_spacing = Some(options.hash_spacing_world_pt().value());
             bond.bond_spacing = Some(options.bond_spacing_percent());
             bond.margin_width = Some(options.margin_width_world_pt().value());

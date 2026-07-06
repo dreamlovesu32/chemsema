@@ -296,6 +296,7 @@ pub fn select_at(document: &ChemcoreDocument, point: Point) -> SelectionState {
         return SelectionState {
             text_objects: Vec::new(),
             arrow_objects: Vec::new(),
+            molecule_objects: Vec::new(),
             label_nodes: Vec::new(),
             region: false,
             nodes: vec![endpoint.node_id],
@@ -306,6 +307,7 @@ pub fn select_at(document: &ChemcoreDocument, point: Point) -> SelectionState {
         return SelectionState {
             text_objects: Vec::new(),
             arrow_objects: Vec::new(),
+            molecule_objects: Vec::new(),
             label_nodes: Vec::new(),
             region: false,
             nodes: Vec::new(),

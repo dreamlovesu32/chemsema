@@ -317,7 +317,7 @@ impl Default for EditorOptions {
             bond_stroke_width: crate::DEFAULT_BOND_STROKE,
             bold_bond_width: crate::BOLD_BOND_WIDTH_PT.value(),
             wedge_width: crate::SOLID_WEDGE_WIDTH_PT.value(),
-            label_clip_margin: crate::LABEL_GEOMETRY_CLIP_MARGIN_PT.value(),
+            label_clip_margin: 0.0,
             hash_spacing: crate::DEFAULT_HASH_SPACING_PT.value(),
             bond_spacing: crate::DEFAULT_BOND_SPACING_PERCENT,
             margin_width: crate::DEFAULT_BOND_MARGIN_WIDTH_PT.value(),
@@ -606,6 +606,8 @@ pub struct SelectionState {
     #[serde(default)]
     pub arrow_objects: Vec<String>,
     #[serde(default)]
+    pub molecule_objects: Vec<String>,
+    #[serde(default)]
     pub label_nodes: Vec<String>,
     #[serde(default)]
     pub region: bool,
@@ -617,6 +619,7 @@ impl SelectionState {
     pub fn is_empty(&self) -> bool {
         self.text_objects.is_empty()
             && self.arrow_objects.is_empty()
+            && self.molecule_objects.is_empty()
             && self.label_nodes.is_empty()
             && self.nodes.is_empty()
             && self.bonds.is_empty()
@@ -708,12 +711,15 @@ pub fn can_draw_bond(tool_state: &ToolState) -> bool {
 }
 
 pub fn can_focus_bond_center(tool_state: &ToolState) -> bool {
-    matches!(tool_state.active_tool, Tool::Bond | Tool::Delete)
+    matches!(
+        tool_state.active_tool,
+        Tool::Bond | Tool::Delete | Tool::Templates
+    )
 }
 
 pub fn can_focus_endpoint(tool_state: &ToolState) -> bool {
     matches!(
         tool_state.active_tool,
-        Tool::Bond | Tool::Delete | Tool::Text
+        Tool::Bond | Tool::Delete | Tool::Text | Tool::Templates
     )
 }

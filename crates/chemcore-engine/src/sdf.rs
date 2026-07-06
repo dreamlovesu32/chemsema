@@ -420,7 +420,7 @@ fn molfile_to_fragment(molfile: &Molfile, record: &SdfRecord) -> (MoleculeFragme
                 stroke: None,
                 bold_width: Some(crate::BOLD_BOND_WIDTH_PT.value()),
                 wedge_width: Some(crate::SOLID_WEDGE_WIDTH_PT.value()),
-                label_clip_margin: Some(crate::LABEL_GEOMETRY_CLIP_MARGIN_PT.value()),
+                label_clip_margin: None,
                 hash_spacing: Some(crate::DEFAULT_HASH_SPACING_PT.value()),
                 bond_spacing: Some(crate::DEFAULT_BOND_SPACING_PERCENT),
                 margin_width: Some(crate::DEFAULT_BOND_MARGIN_WIDTH_PT.value()),

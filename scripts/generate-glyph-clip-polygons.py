@@ -20,9 +20,11 @@ DEFAULT_OUTPUT = ROOT / "shared" / "glyph_clip_polygons.json"
 
 FONT_SIZE = 240
 PADDING = 160
-NATURAL_OUTSET_RATIO = 0.18
+ACS_NATURAL_OUTSET_RATIO = 0.18
+DEFAULT_NATURAL_OUTSET_RATIO = round(ACS_NATURAL_OUTSET_RATIO * 1.5, 6)
 GREEN_INSET_RATIO = 0.22
-CIRCLE_RADIUS_RATIO = 0.36
+ACS_CIRCLE_RADIUS_RATIO = 0.36
+DEFAULT_CIRCLE_RADIUS_RATIO = round(ACS_CIRCLE_RADIUS_RATIO * 1.5, 6)
 
 ANCHOR_MAP = {
     "A": [("midpoint", "c0", 1, 2), ("point", "c0", 0), ("point", "c0", 3)],
@@ -160,10 +162,16 @@ def contour_from_mask(mask: np.ndarray) -> list[list[float]]:
     return [[float(col), float(row)] for row, col in approx]
 
 
-def clip_polygon_for_char(ttfont: TTFont, font: ImageFont.FreeTypeFont, ch: str) -> dict:
+def clip_polygon_for_char(
+    ttfont: TTFont,
+    font: ImageFont.FreeTypeFont,
+    ch: str,
+    natural_outset_ratio: float,
+    circle_radius_ratio: float,
+) -> dict:
     mask, bbox, glyph_height, origin = render_mask(font, ch)
     glyph_w = bbox[2] - bbox[0]
-    natural = ndimage.binary_dilation(mask, structure=disk_kernel(max(1, int(round(glyph_height * NATURAL_OUTSET_RATIO)))))
+    natural = ndimage.binary_dilation(mask, structure=disk_kernel(max(1, int(round(glyph_height * natural_outset_ratio)))))
     merged = natural.copy()
 
     if ch.isascii() and ch.isupper():
@@ -171,7 +179,7 @@ def clip_polygon_for_char(ttfont: TTFont, font: ImageFont.FreeTypeFont, ch: str)
         center = ((bbox[0] + bbox[2]) * 0.5, (bbox[1] + bbox[3]) * 0.5)
         anchors = collect_anchor_positions(contour_points, ch)
         inset = [inset_anchor(anchor, center, glyph_w, glyph_height) for anchor in anchors]
-        radius = glyph_height * CIRCLE_RADIUS_RATIO
+        radius = glyph_height * circle_radius_ratio
         yy, xx = np.ogrid[:mask.shape[0], :mask.shape[1]]
         for cx, cy in inset:
             merged |= (xx - cx) ** 2 + (yy - cy) ** 2 <= radius * radius
@@ -195,9 +203,23 @@ def main() -> None:
     ttfont = TTFont(str(args.font))
 
     glyphs = {}
+    acs_glyphs = {}
     for ch in chars:
         try:
-            glyphs[ch] = clip_polygon_for_char(ttfont, font, ch)
+            glyphs[ch] = clip_polygon_for_char(
+                ttfont,
+                font,
+                ch,
+                DEFAULT_NATURAL_OUTSET_RATIO,
+                DEFAULT_CIRCLE_RADIUS_RATIO,
+            )
+            acs_glyphs[ch] = clip_polygon_for_char(
+                ttfont,
+                font,
+                ch,
+                ACS_NATURAL_OUTSET_RATIO,
+                ACS_CIRCLE_RADIUS_RATIO,
+            )
         except Exception as error:  # noqa: BLE001
             print(f"skip {ch!r}: {error}")
 
@@ -206,10 +228,13 @@ def main() -> None:
         "sourceFont": str(args.font),
         "fontSizePx": FONT_SIZE,
         "coordinateSystem": "heightCentered",
-        "naturalOutsetRatio": NATURAL_OUTSET_RATIO,
+        "naturalOutsetRatio": DEFAULT_NATURAL_OUTSET_RATIO,
+        "acsNaturalOutsetRatio": ACS_NATURAL_OUTSET_RATIO,
         "greenInsetRatio": GREEN_INSET_RATIO,
-        "circleRadiusRatio": CIRCLE_RADIUS_RATIO,
+        "circleRadiusRatio": DEFAULT_CIRCLE_RADIUS_RATIO,
+        "acsCircleRadiusRatio": ACS_CIRCLE_RADIUS_RATIO,
         "glyphs": glyphs,
+        "acsGlyphs": acs_glyphs,
     }
     Path(args.output).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 

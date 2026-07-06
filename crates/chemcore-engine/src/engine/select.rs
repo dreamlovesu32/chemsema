@@ -1358,6 +1358,7 @@ impl Engine {
             }
         }
         for entry in self.state.document.editable_fragments() {
+            selection.molecule_objects.push(entry.object.id.clone());
             selection
                 .nodes
                 .extend(entry.fragment.nodes.iter().map(|node| node.id.clone()));
