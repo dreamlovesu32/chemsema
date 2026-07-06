@@ -1656,12 +1656,18 @@ impl Engine {
                 node_set.contains(bond.begin.as_str()) && node_set.contains(bond.end.as_str())
             })
             .map(|bond| bond.id.clone())
-            .collect();
-        Some(SelectionState {
+            .collect::<Vec<_>>();
+        let covers_whole_molecule_object =
+            nodes.len() == entry.fragment.nodes.len() && bonds.len() == entry.fragment.bonds.len();
+        let mut selection = SelectionState {
             nodes,
             bonds,
             ..SelectionState::default()
-        })
+        };
+        if covers_whole_molecule_object {
+            selection.molecule_objects.push(entry.object.id.clone());
+        }
+        Some(selection)
     }
 
     pub fn add_single_bond(&mut self, anchor: BondAnchor, end: Point) {

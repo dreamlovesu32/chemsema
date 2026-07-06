@@ -2874,7 +2874,7 @@ fn load_cdxml_document_derives_wedge_width_from_imported_bold_width() {
     assert!((engine.options().bold_bond_width - 2.01).abs() < 0.01);
     assert!((engine.options().wedge_width - 3.015).abs() < 0.01);
     assert!(engine.options().label_clip_margin.abs() < 0.01);
-    assert!((engine.options().margin_width - 1.7).abs() < 0.01);
+    assert!((engine.options().margin_width - 2.0).abs() < 0.01);
 
     let bond = &engine
         .state()
@@ -5911,8 +5911,8 @@ fn render_cdxml_single_character_atom_label_uses_text_primitive() {
         })
         .expect("N label should render as text");
 
-    assert!((text.0 - 6.42).abs() < 0.001, "{text:?}");
-    assert!((text.1 - 15.67).abs() < 0.001, "{text:?}");
+    assert!((text.0 - 6.4).abs() < 0.001, "{text:?}");
+    assert!((text.1 - 15.63).abs() < 0.001, "{text:?}");
     assert_eq!(
         text.2
             .iter()

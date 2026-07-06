@@ -38,6 +38,9 @@ pub(super) fn merge_selection(
     for object_id in next.arrow_objects {
         push_unique(&mut merged.arrow_objects, object_id);
     }
+    for object_id in next.molecule_objects {
+        push_unique(&mut merged.molecule_objects, object_id);
+    }
     for node_id in next.label_nodes {
         push_unique(&mut merged.label_nodes, node_id);
     }

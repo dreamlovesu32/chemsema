@@ -1242,6 +1242,9 @@ impl Engine {
             })
             .map(|bond| bond.id.clone())
             .collect();
+        let component_covers_whole_molecule_object = component_node_ids.len()
+            == entry.fragment.nodes.len()
+            && component_bond_ids.len() == entry.fragment.bonds.len();
         let label_node_ids: Vec<String> = entry
             .fragment
             .nodes
@@ -1265,6 +1268,9 @@ impl Engine {
         }
         for bond_id in component_bond_ids {
             push_unique(&mut selection.bonds, bond_id);
+        }
+        if component_covers_whole_molecule_object {
+            push_unique(&mut selection.molecule_objects, entry.object.id.clone());
         }
         for node_id in label_node_ids {
             push_unique(&mut selection.label_nodes, node_id);
