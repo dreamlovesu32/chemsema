@@ -2,6 +2,8 @@
 
 ChemCore Office paste depends on a payload that can contain:
 
+- `windows-office-ole` clipboard output
+- `chemcore-payload-json` debug payload output
 - ChemCore internal document JSON or selected fragment JSON
 - CDXML/CDX-compatible data when available
 - SVG preview or vector data

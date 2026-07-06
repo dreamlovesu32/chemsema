@@ -43,7 +43,7 @@ def executable_from_repo(repo: Path | None) -> Path | None:
 
 def main(argv: list[str]) -> int:
     script_root = Path(__file__).resolve().parent
-    repo = find_repo_root(script_root)
+    repo = find_repo_root(script_root) or find_repo_root(Path.cwd())
     exe = executable_from_env() or executable_from_path() or executable_from_repo(repo)
     if exe:
         return subprocess.run([str(exe), *argv]).returncode

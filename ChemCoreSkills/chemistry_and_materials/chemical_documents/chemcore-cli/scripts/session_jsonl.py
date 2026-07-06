@@ -27,7 +27,7 @@ def find_cli() -> tuple[list[str], Path | None]:
     path_cli = shutil.which("chemcore-cli")
     if path_cli:
         return [path_cli], None
-    repo = find_repo_root(Path(__file__).resolve().parent)
+    repo = find_repo_root(Path(__file__).resolve().parent) or find_repo_root(Path.cwd())
     if repo:
         for rel in ("target/release/chemcore-cli.exe", "target/debug/chemcore-cli.exe"):
             exe = repo / rel

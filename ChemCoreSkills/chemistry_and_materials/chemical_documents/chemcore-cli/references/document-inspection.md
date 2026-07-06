@@ -2,6 +2,17 @@
 
 Use selectors instead of coordinate guessing.
 
+## Whole-Document Inspection
+
+Use `inspect` before target-specific work when you need document-level object,
+molecule, resource, or style summaries:
+
+```powershell
+chemcore-cli inspect input.cdxml --include summary,objects,molecules,resources,styles --out inspect.json --pretty
+```
+
+Keep `inspect` output file-backed for large documents.
+
 ## Target Discovery
 
 ```powershell

@@ -23,13 +23,17 @@ changes whitespace.
 
 Use this order for document work:
 
-1. `targets` to discover stable selectors.
-2. `context` to inspect neighborhoods and selection boxes.
-3. `detail` to expand one object, molecule, node, or bond.
-4. `capture` for deterministic SVG/PNG crops.
-5. `new` or `run` with command scripts for edits.
-6. `copy` for Windows Office/OLE clipboard payloads.
-7. `session` for repeated work on one document.
+1. `about`, `examples`, `guide`, `schema`, and `capabilities` to discover the
+   installed runtime.
+2. `inspect` for whole-document summaries.
+3. `targets` to discover stable selectors.
+4. `context` to inspect neighborhoods and selection boxes.
+5. `detail` to expand one object, molecule, node, or bond.
+6. `capture` for deterministic SVG/PNG crops.
+7. `new` or `run` with command scripts for edits.
+8. `convert` or `export` for document and image format output.
+9. `copy` for Windows Office/OLE clipboard payloads.
+10. `session` for repeated work on one document.
 
 ## Read References As Needed
 
@@ -39,6 +43,8 @@ Use this order for document work:
   `references/document-inspection.md`.
 - For `new`, `run`, `plan-bond`, `plan-template`, and command JSON, read
   `references/command-scripts.md`.
+- For `convert`, `export`, editable formats, and raster/vector output, read
+  `references/formats-conversion.md`.
 - For chemical text, visible text, reverse labels, anchors, and
   `defaultChemical:false`, read `references/label-query.md`.
 - For long iterative operations, read `references/session-jsonl.md`.
@@ -51,6 +57,7 @@ Use bundled helpers instead of retyping discovery boilerplate:
 powershell -ExecutionPolicy Bypass -File scripts\find_chemcore_cli.ps1 -Json
 python scripts\run_chemcore_cli.py version --pretty
 python scripts\session_jsonl.py input.cdxml requests.jsonl --out transcript.jsonl
+python scripts\check_cli_skill_sync.py --suite-root ..\..\..\.. --json
 ```
 
 ## Guardrails

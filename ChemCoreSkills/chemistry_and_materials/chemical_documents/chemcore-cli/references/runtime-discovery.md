@@ -25,12 +25,17 @@ Run:
 chemcore-cli version --pretty
 chemcore-cli doctor --pretty
 chemcore-cli capabilities --pretty
+chemcore-cli about --pretty
+chemcore-cli examples basic --pretty
 chemcore-cli schema protocol --pretty
 chemcore-cli guide --kind agent --pretty
 chemcore-cli guide --kind detailed --out chemcore-guide.json --pretty
 ```
 
 For large payloads, request `--out` and read the file.
+
+Use `about` for installed entrypoints and packaging notes. Use `examples` for
+ready-to-run command scripts and CLI workflows.
 
 ## Invocation Modes
 

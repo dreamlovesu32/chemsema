@@ -12,8 +12,9 @@ function Test-ExecutablePath {
     return (Test-Path -LiteralPath $Path -PathType Leaf)
 }
 
-function Find-RepoRoot {
-    $current = (Resolve-Path -LiteralPath $PSScriptRoot).Path
+function Find-RepoRootFrom {
+    param([string]$Start)
+    $current = (Resolve-Path -LiteralPath $Start).Path
     while ($true) {
         if ((Test-Path -LiteralPath (Join-Path $current "Cargo.toml")) -and
             (Test-Path -LiteralPath (Join-Path $current "package.json"))) {
@@ -37,7 +38,10 @@ if ($pathCommand) {
     $candidates += $pathCommand.Source
 }
 
-$repoRoot = Find-RepoRoot
+$repoRoot = Find-RepoRootFrom $PSScriptRoot
+if (-not $repoRoot) {
+    $repoRoot = Find-RepoRootFrom (Get-Location).Path
+}
 if ($repoRoot) {
     $candidates += (Join-Path $repoRoot "target\release\chemcore-cli.exe")
     $candidates += (Join-Path $repoRoot "target\debug\chemcore-cli.exe")
