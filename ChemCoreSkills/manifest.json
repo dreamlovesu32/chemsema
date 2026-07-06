@@ -1,0 +1,38 @@
+{
+  "name": "ChemCoreSkills",
+  "version": "0.1.0",
+  "description": "Codex skills for ChemCore chemical document, Office, OCR, drawing-agent, and development workflows.",
+  "layout": "mindscience-style-domain-tree",
+  "skills": [
+    {
+      "name": "chemcore-cli",
+      "path": "chemistry_and_materials/chemical_documents/chemcore-cli",
+      "category": "chemistry_and_materials/chemical_documents",
+      "type": ["domain_software", "api", "know_how"]
+    },
+    {
+      "name": "chemcore-office",
+      "path": "chemistry_and_materials/chemical_documents/chemcore-office",
+      "category": "chemistry_and_materials/chemical_documents",
+      "type": ["domain_software", "know_how"]
+    },
+    {
+      "name": "chemcore-ocr-reconstruction",
+      "path": "chemistry_and_materials/chemical_documents/chemcore-ocr-reconstruction",
+      "category": "chemistry_and_materials/chemical_documents",
+      "type": ["ai4s_model", "domain_software", "know_how"]
+    },
+    {
+      "name": "chemcore-drawing-agent",
+      "path": "chemistry_and_materials/chemical_documents/chemcore-drawing-agent",
+      "category": "chemistry_and_materials/chemical_documents",
+      "type": ["api", "know_how"]
+    },
+    {
+      "name": "chemcore-development",
+      "path": "research_tools/development/chemcore-development",
+      "category": "research_tools/development",
+      "type": ["research_tools", "know_how"]
+    }
+  ]
+}

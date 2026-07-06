@@ -1,0 +1,66 @@
+---
+name: chemcore-cli
+description: Use ChemCore CLI for chemical document inspection, editing, capture, conversion, label queries, Office payload debugging, and JSONL sessions. Trigger this skill when working with ChemCore documents or formats such as CCJS, CCJZ, CDXML, CDX, SDF, SVG, PNG, Office clipboard payloads, ChemCore command scripts, selectors, molecule targets, label-query, plan-bond, plan-template, capture, context, detail, targets, new, run, convert, export, or session workflows.
+---
+
+# ChemCore CLI
+
+## Core Workflow
+
+Use the CLI as the machine contract for ChemCore. Prefer runtime discovery over
+memory:
+
+```powershell
+chemcore-cli version --pretty
+chemcore-cli doctor --pretty
+chemcore-cli capabilities --pretty
+chemcore-cli schema all --out chemcore-schema.json --pretty
+chemcore-cli guide --kind detailed --out chemcore-guide.json --pretty
+```
+
+For large JSON, always pass `--out <path>` and read the file. `--pretty` only
+changes whitespace.
+
+Use this order for document work:
+
+1. `targets` to discover stable selectors.
+2. `context` to inspect neighborhoods and selection boxes.
+3. `detail` to expand one object, molecule, node, or bond.
+4. `capture` for deterministic SVG/PNG crops.
+5. `new` or `run` with command scripts for edits.
+6. `copy` for Windows Office/OLE clipboard payloads.
+7. `session` for repeated work on one document.
+
+## Read References As Needed
+
+- For locating the executable and handling repo vs installed builds, read
+  `references/runtime-discovery.md`.
+- For selectors, targets, detail, context, and capture, read
+  `references/document-inspection.md`.
+- For `new`, `run`, `plan-bond`, `plan-template`, and command JSON, read
+  `references/command-scripts.md`.
+- For chemical text, visible text, reverse labels, anchors, and
+  `defaultChemical:false`, read `references/label-query.md`.
+- For long iterative operations, read `references/session-jsonl.md`.
+
+## Helpers
+
+Use bundled helpers instead of retyping discovery boilerplate:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\find_chemcore_cli.ps1 -Json
+python scripts\run_chemcore_cli.py version --pretty
+python scripts\session_jsonl.py input.cdxml requests.jsonl --out transcript.jsonl
+```
+
+## Guardrails
+
+- Do not parse console text when a JSON output path exists.
+- Do not invent selectors; discover them from `targets` or `context`.
+- Do not manually calculate label reversal, generated hydrogens, or chemical
+  anchors when `label-query` can answer.
+- Do not use `plan-bond` as OCR geometry evidence; it is for GUI-like drawing
+  agents. OCR must measure the source image.
+- Preserve original document semantics when the visible drawing intentionally
+  disagrees with default chemical rewriting; use `defaultChemical:false` when
+  appropriate.

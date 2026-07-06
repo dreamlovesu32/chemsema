@@ -1,0 +1,4 @@
+interface:
+  display_name: "ChemCore Office"
+  short_description: "Debug ChemCore Office/OLE copy and paste workflows."
+  default_prompt: "Use ChemCore Office workflows to copy a ChemCore selection into Word or inspect an Office payload."
