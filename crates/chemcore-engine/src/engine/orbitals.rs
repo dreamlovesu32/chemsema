@@ -568,6 +568,7 @@ mod tests {
                 variant: BondVariant::Single,
                 double_placement: None,
                 double: None,
+                line_weights: None,
             })
             .expect("add bond");
         let mut tool = engine.state.tool.clone();

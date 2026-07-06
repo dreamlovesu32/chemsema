@@ -1632,7 +1632,7 @@ impl Engine {
     }
 
     pub fn add_bond_between(&mut self, anchor: BondAnchor, end: BondAnchor, order: u8) -> bool {
-        self.add_bond_between_with_double_override(anchor, end, order, None)
+        self.add_bond_between_with_double_override(anchor, end, order, None, None)
     }
 
     fn add_bond_between_with_double_override(
@@ -1641,6 +1641,7 @@ impl Engine {
         end: BondAnchor,
         order: u8,
         explicit_double: Option<DoubleBond>,
+        line_weights_override: Option<crate::BondLineWeights>,
     ) -> bool {
         let command = EditorCommand::AddBond {
             begin: CommandAnchor::from(&anchor),
@@ -1649,9 +1650,16 @@ impl Engine {
             variant: self.state.tool.bond_variant,
             double_placement: explicit_double.as_ref().map(|double| double.placement),
             double: None,
+            line_weights: None,
         };
         self.with_command(command, |engine| {
-            engine.add_bond_between_untracked(anchor, end, order, explicit_double)
+            engine.add_bond_between_untracked(
+                anchor,
+                end,
+                order,
+                explicit_double,
+                line_weights_override,
+            )
         })
     }
 
@@ -1661,6 +1669,7 @@ impl Engine {
         end: BondAnchor,
         order: u8,
         explicit_double: Option<DoubleBond>,
+        line_weights_override: Option<crate::BondLineWeights>,
     ) -> bool {
         if anchor
             .object_id
@@ -1696,7 +1705,8 @@ impl Engine {
         }
         let bond_id = self.next_id("b");
         let pending_line_styles = self.pending_line_styles();
-        let pending_line_weights = self.pending_line_weights();
+        let pending_line_weights =
+            line_weights_override.unwrap_or_else(|| self.pending_line_weights());
         let pending_stereo = self.pending_bond_stereo();
         let order = order.max(1);
         let pending_double = if order >= 2 { explicit_double } else { None }.or_else(|| {
@@ -1977,6 +1987,7 @@ impl Engine {
                 variant,
                 double_placement,
                 double,
+                line_weights,
             } => {
                 let previous_tool = self.state.tool.clone();
                 self.state.tool.bond_variant = variant;
@@ -1985,6 +1996,7 @@ impl Engine {
                     bond_anchor_from_command(end),
                     order,
                     command_double_bond_override(double_placement, double),
+                    line_weights,
                 );
                 self.state.tool = previous_tool;
                 changed

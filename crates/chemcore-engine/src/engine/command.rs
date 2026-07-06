@@ -1,7 +1,8 @@
 use crate::{
     ArrowCurve, ArrowEndpointStyle, ArrowHeadSize, ArrowNoGo, ArrowVariant, BondAnchor,
-    BondVariant, BracketKind, ChemcoreDocument, DoubleBondPlacement, LabelRun, ObjectSettings,
-    OrbitalPhase, OrbitalStyle, OrbitalTemplate, Point, SceneObject, ShapeKind, ShapeStyle,
+    BondLineWeights, BondVariant, BracketKind, ChemcoreDocument, DoubleBondPlacement, LabelRun,
+    ObjectSettings, OrbitalPhase, OrbitalStyle, OrbitalTemplate, Point, SceneObject, ShapeKind,
+    ShapeStyle,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -217,6 +218,13 @@ pub enum EditorCommand {
         double_placement: Option<DoubleBondPlacement>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         double: Option<CommandDoubleBond>,
+        #[serde(
+            default,
+            rename = "lineWeights",
+            alias = "line_weights",
+            skip_serializing_if = "Option::is_none"
+        )]
+        line_weights: Option<BondLineWeights>,
     },
     AddArrow {
         begin: CommandAnchor,

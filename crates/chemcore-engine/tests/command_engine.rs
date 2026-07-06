@@ -293,6 +293,34 @@ fn execute_command_json_add_bond_accepts_explicit_double_placement() {
 }
 
 #[test]
+fn execute_command_json_add_bond_accepts_line_weight_override() {
+    let mut engine = Engine::new();
+
+    let result = execute(
+        &mut engine,
+        json!({
+            "type": "add-bond",
+            "begin": { "x": 100.0, "y": 100.0 },
+            "end": { "x": 148.0, "y": 100.0 },
+            "order": 2,
+            "variant": "double",
+            "doublePlacement": "right",
+            "lineWeights": { "main": "bold" }
+        }),
+    );
+    let bond_id = created_bond_id(&result);
+    let document = document_value(&engine);
+    let bond = find_bond(&document, &bond_id);
+
+    assert_eq!(bond["order"], 2);
+    assert_eq!(bond["double"]["placement"], "right");
+    assert_eq!(bond["double"]["frozen"], true);
+    assert_eq!(bond["lineWeights"]["main"], "bold");
+    assert_eq!(bond["lineWeights"]["left"], "normal");
+    assert_eq!(bond["lineWeights"]["right"], "normal");
+}
+
+#[test]
 fn plan_bond_returns_engine_landing_geometry_without_changing_document() {
     let mut engine = Engine::new();
 
