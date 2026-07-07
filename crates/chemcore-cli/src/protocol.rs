@@ -582,7 +582,7 @@ fn protocol_schemas_json() -> Value {
         },
         "labelQuery": {
             "description": "Readonly label-engine query. It simulates attaching text to a node with the requested connection angles, then reports sourceText, displayText, sourceRuns, labelRecognition, semantics.anchorAtom, semantics.implicitHydrogenCount, and whether the default display differs from the source text.",
-            "ocrUse": "OCR should use this to decide whether a visible text string can be emitted as a default chemical label or must preserve visible ordering with defaultChemical=false. Generated implicit-hydrogen glyphs are not bond anchors; semantics.generatedHydrogensMayBeBondAnchors is only true for standalone H.",
+            "reverseUse": "Use visible text queries to decide whether a visible string can be emitted as a default chemical label or must preserve visible ordering with defaultChemical=false. Generated implicit-hydrogen glyphs are not bond anchors; semantics.generatedHydrogensMayBeBondAnchors is only true for standalone H.",
             "usage": command_spec("label-query").map(|spec| spec.usage).unwrap_or("")
         },
         "commandScript": {
@@ -627,7 +627,7 @@ fn protocol_schemas_json() -> Value {
             "planningCommands": {
                 "plan-bond": {
                     "description": "Readonly engine query for the final add-bond landing geometry. Accepts begin, optional cursor or angle, optional bondLength, order, and variant. Returns output.command as an executable add-bond command plus globalSnapAngles and keypadSlots.",
-                    "ocrBoundary": "This is for GUI-like drawing agents. OCR should measure source pixels and must not use plan-bond as a bond-length snap."
+                    "agentBoundary": "This is for GUI-like drawing agents that want ChemCore placement behavior instead of duplicating GUI geometry."
                 },
                 "plan-template": {
                     "description": "Readonly engine query for template vertices and edges. Accepts template, x, y, and optional anchor, bondId, cursor, angle, bondLength, and side. Returns vertices, edges, and insertCommand."

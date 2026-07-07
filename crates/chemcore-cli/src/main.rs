@@ -387,7 +387,7 @@ fn label_query_reverse_report(
         "recommendation": recommendation,
         "candidates": candidates,
         "contract": {
-            "ocrRole": "OCR supplies visible text and connection geometry; ChemCore validates source text, display reversal, generated-hydrogen semantics, and defaultChemical behavior.",
+            "reverseRole": "The caller supplies visible text and connection geometry; ChemCore validates source text, display reversal, generated-hydrogen semantics, and defaultChemical behavior.",
             "plainFallback": "When no chemical candidate both validates and renders back to the visible text, use the plain defaultChemical=false candidate to preserve the source drawing."
         }
     }))

@@ -26,6 +26,6 @@ The payload should preserve:
 
 - `--payload <path> --no-copy` is the safest first diagnostic.
 - Payload generation should be deterministic for the same input and target.
-- `CF_METAFILEPICT` should not outrank the editable object path in Word.
+- The editable object path should take priority over `CF_METAFILEPICT` in Word.
 - When investigating a missed object, compare `targets`, `detail`, payload
   object counts, and preview crops in that order.

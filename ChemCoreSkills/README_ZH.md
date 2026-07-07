@@ -7,22 +7,28 @@
 
 ## 技能列表
 
+`skills/chemcore-cli` 是主要对外 skill。普通 agent 使用时优先安装这个。
+
 - `skills/chemcore-cli`
   - ChemCore CLI、协议、selector、capture、command script、selection/target
     editing、label-query 和 JSONL session。
 - `skills/chemcore-office`
-  - Office/OLE payload、Word/PowerPoint 粘贴、可编辑对象调试。
+  - Office/OLE payload 诊断、Word/PowerPoint 粘贴检查、可编辑对象调试。
 - `skills/chemcore-drawing-agent`
   - 给绘制 agent 用的 `plan-bond`、`plan-template`、label-query 工作流。
 - `skills/chemcore-development`
   - ChemCore 编译、测试、WASM、桌面包、CI、仓库卫生。
+
+可选专项 skill 覆盖更窄的工作流：`chemcore-office` 支持 clipboard/OLE
+粘贴诊断，`chemcore-drawing-agent` 支持带 planning query 的命令脚本生成，
+`chemcore-development` 支持仓库维护者和贡献者工作流。
 
 ## 设计原则
 
 - skill 的 `SKILL.md` 保持轻量，复杂规则放入 `references/` 按需读取。
 - CLI 是机器契约，优先使用 `version`、`schema`、`capabilities`、`guide`
   做运行时发现。
-- 绘制 agent 应该问内核要吸附、标签、模板落点，不要手写 GUI 几何。
+- 绘制 agent 通过内核获取吸附、标签和模板落点，保持和 GUI 几何一致。
 - Office 调试先看 payload，再看 Office 粘贴结果。
 
 ## 平铺安装

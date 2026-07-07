@@ -6,18 +6,26 @@ each installable skill is its own folder with a `SKILL.md` entrypoint.
 
 ## Skills
 
+`skills/chemcore-cli` is the primary public skill. Install this one first for
+normal agent use.
+
 - `skills/chemcore-cli`
   - ChemCore CLI, protocol discovery, selectors, capture, command scripts,
     selection/target editing, label-query, and JSONL sessions.
 - `skills/chemcore-office`
-  - Office/OLE payloads, Word and PowerPoint paste behavior, editable object
-    debugging, and clipboard verification.
+  - Office/OLE payload diagnostics, Word and PowerPoint paste checks,
+    editable-object debugging, and clipboard verification.
 - `skills/chemcore-drawing-agent`
   - Drawing-agent workflows for `plan-bond`, `plan-template`, `label-query`,
     template insertion, and GUI-compatible command scripts.
 - `skills/chemcore-development`
   - ChemCore build, test, WASM, desktop package, CI, release, and repository
     hygiene workflows.
+
+Optional specialist guides cover narrower workflows: `chemcore-office` supports
+clipboard/OLE paste diagnostics, `chemcore-drawing-agent` supports command
+script generation with planning queries, and `chemcore-development` supports
+maintainer and contributor workflows inside the repository.
 
 ## Install From A Checkout
 

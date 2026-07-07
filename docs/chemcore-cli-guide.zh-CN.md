@@ -128,7 +128,7 @@ npm run cli -- label-query --visible-text CF3 --connection-angle 0 --pretty
 `label-query --text` 是正向 contract：ChemCore 接收 source text、连接几何
 和 `defaultChemical`，返回该标签是否 accepted、最终 display text、source
 runs、生成氢是否可作为键锚点，以及 functional-group recognition 元数据。
-`label-query --visible-text` 是给 OCR/agent 使用的反向 contract：ChemCore
+`label-query --visible-text` 是给导入图或外部测量图使用的反向 contract：ChemCore
 先用同一套 label group 反写规则从可见文本生成 source 候选，再逐个调用正常
 label engine，并推荐 display 能回到可见文本的候选。如果没有任何 chemical
 source 候选既合法又能渲染回可见文本，反向报告会推荐
@@ -806,7 +806,7 @@ triple
 }
 ```
 
-当调用方已经拥有显式或推断出的形式电荷语义时使用，包括 OCR 恢复场景：
+当调用方已经拥有显式或推断出的形式电荷语义时使用，包括导入图或外部测量图：
 可见标签例如 `NH2` 在恢复出的键级下让氮达到 4 价，因此应写入正电荷。
 ChemCore 会在更新电荷后刷新隐式氢、标签识别和附着标签几何。
 

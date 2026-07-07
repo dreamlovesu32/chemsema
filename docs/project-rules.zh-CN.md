@@ -78,9 +78,9 @@ npm run verify
   信息转成 ChemCore 原生 node-label 模型。label 锚点、显示顺序、glyph
   polygons 和 bond retreat 仍由 Rust engine 统一负责。
 - `meta.import.cdxml` 只表示数据确实来自 CDXML 时的 provenance、round-trip
-  或调试元数据。OCR、截图、粘贴图片或未来非 CDXML 输入得到的 measured
-  label geometry 不能写成 `import.cdxml`，也不能依赖 CDXML-import 的锚点兼容
-  路径；应使用来源无关的 measured-geometry 契约。
+  或调试元数据。截图、粘贴图片或其他非 CDXML 输入得到的 measured label
+  geometry 不能写成 `import.cdxml`，也不能依赖 CDXML-import 的锚点兼容路径；
+  应使用来源无关的 measured-geometry 契约。
 
 ## 文本符号和 Glyph
 

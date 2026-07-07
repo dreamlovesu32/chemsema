@@ -145,7 +145,7 @@ npm run cli -- label-query --visible-text CF3 --connection-angle 0 --pretty
 connection geometry, and `defaultChemical`, then reports whether the label is
 accepted, its displayed text, source runs, generated-hydrogen anchor semantics,
 and functional-group recognition metadata. `label-query --visible-text` is the
-reverse contract for OCR and agents: ChemCore generates candidate source labels
+reverse contract for imported or externally measured drawings: ChemCore generates candidate source labels
 from visible text using the same label-group reversal rules, runs the normal
 label engine for each candidate, and recommends the candidate whose display
 matches the visible text. If no chemical source candidate both validates and
@@ -723,8 +723,8 @@ Inputs:
 Output is an unchanged command result whose `output.command` is an executable
 `add-bond` command. `output.keypadSlots` exposes numeric-keypad convenience
 directions, including key `5` for the engine default angle. This command is for
-drawing agents and GUI-like automation. OCR should still measure source pixels;
-it should not use `plan-bond` as a bond-length snap.
+drawing agents and GUI-like automation that want ChemCore's own placement
+rules instead of duplicating GUI geometry.
 
 ### 5.4 Add A Bond Between Existing Atoms
 
@@ -907,8 +907,9 @@ normally refresh the label to another source, such as `NH`.
 ```
 
 Use this when the caller has explicit or inferred formal-charge semantics for an
-atom, including OCR recovery where a visible label such as `NH2` becomes
-positively charged because its recovered bond order gives nitrogen valence 4.
+atom, including imported or externally measured drawings where a visible label
+such as `NH2` becomes positively charged because the recovered bond order gives
+nitrogen valence 4.
 ChemCore refreshes implicit hydrogens, label recognition, and attached label
 geometry after the charge update.
 

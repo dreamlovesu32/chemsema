@@ -79,8 +79,8 @@ This command runs Rust tests, rebuilds engine WASM, checks viewer syntax, and co
   model. Label anchors, display ordering, glyph polygons, and bond retreat stay
   owned by the Rust engine.
 - `meta.import.cdxml` is provenance and round-trip/debug metadata for data that
-  actually came from CDXML. Source-neutral measured label geometry from OCR,
-  screenshots, pasted images, or future non-CDXML inputs must not be encoded as
+  actually came from CDXML. Source-neutral measured label geometry from
+  screenshots, pasted images, or other non-CDXML inputs must not be encoded as
   `import.cdxml` or rely on CDXML-import anchor compatibility paths. Use a
   source-neutral measured-geometry contract instead.
 
