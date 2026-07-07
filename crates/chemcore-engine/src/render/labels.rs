@@ -294,6 +294,26 @@ pub(super) fn clip_point_out_of_label_geometry(
         .unwrap_or(start)
 }
 
+pub(super) fn clip_point_out_of_label_bounds_with_margin(
+    start: Point,
+    end: Point,
+    rect: Option<RectBox>,
+    polygons: &[Vec<Point>],
+    margin: f64,
+) -> Point {
+    if margin <= EPSILON {
+        return clip_point_out_of_label_geometry(start, end, rect, polygons, 0.0);
+    }
+
+    if polygons.is_empty() {
+        return clip_point_out_of_box(start, end, rect, margin);
+    }
+
+    clip_point_out_of_expanded_polygon_bounds(start, end, polygons, margin)
+        .or_else(|| clip_point_out_of_polygons(start, end, polygons))
+        .unwrap_or(start)
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) fn clip_segment_out_of_label_geometry(
     start: Point,

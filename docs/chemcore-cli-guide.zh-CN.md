@@ -1327,6 +1327,11 @@ default
 acs-document-1996
 ```
 
+ChemCore JSON 会把当前文件默认参数持久化为 `style.preset` 和
+`style.defaults`。`chemcore-cli run` 会从输入文件恢复这些默认值，因此后续编辑命令
+没有显式传入样式参数时，会使用文件自己的键长、线宽、锲形键宽、hash 间距、
+边距和字体默认值。
+
 ### 13.2 设置默认对象参数
 
 ```json

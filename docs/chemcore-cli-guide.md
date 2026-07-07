@@ -1407,6 +1407,12 @@ default
 acs-document-1996
 ```
 
+ChemCore JSON persists the active file defaults as `style.preset` and
+`style.defaults`. `chemcore-cli run` restores those defaults from the input file,
+so later edit commands use the file's bond length, line width, wedge width,
+hash spacing, margins, and font defaults unless the command explicitly provides
+different values.
+
 ### 13.2 Set Default Object Settings
 
 ```json

@@ -8,7 +8,7 @@ use crate::{
     ObjectSettings, Point, SceneObject, WorldPt, DEFAULT_BOND_LENGTH,
 };
 use serde_json::{Map as JsonMap, Value as JsonValue};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 impl Engine {
     pub fn options(&self) -> &EditorOptions {
@@ -106,6 +106,11 @@ impl Engine {
         if self.document_style_preset != ACS_DOCUMENT_1996_PRESET {
             self.document_style_preset = "custom".to_string();
         }
+        update_document_style_info_defaults(
+            &mut self.state.document,
+            &self.document_style_preset,
+            &self.options,
+        );
         self.clear_interaction();
         true
     }
@@ -423,6 +428,7 @@ impl Engine {
         }
         apply_existing_document_style_preset(&mut self.state.document, &next_options);
         update_document_object_settings_defaults(&mut self.state.document, &next_options);
+        update_document_style_info_defaults(&mut self.state.document, preset, &next_options);
         let glyph_clip_profile = super::text_edit::glyph_clip_profile_for_style_preset(preset);
         if let Some(mut entry) = self.state.document.editable_fragment_mut() {
             refresh_attached_node_label_geometry_for_all_nodes_with_profile(
@@ -777,8 +783,21 @@ fn document_style_preset_options(preset: &str) -> EditorOptions {
     }
 }
 
+pub(super) fn document_style_preset_from_document(document: &ChemcoreDocument) -> &'static str {
+    normalize_document_style_preset_or_custom(&document.style.preset)
+}
+
+pub(super) fn sync_document_style_info_from_options(
+    document: &mut ChemcoreDocument,
+    preset: &str,
+    options: &EditorOptions,
+) {
+    update_document_style_info_defaults(document, preset, options);
+}
+
 pub(super) fn editor_options_from_document(document: &ChemcoreDocument) -> EditorOptions {
-    let mut options = EditorOptions::default();
+    let mut options = document_style_preset_options(document_style_preset_from_document(document));
+    apply_document_style_defaults(&mut options, &document.style.defaults);
     let mut has_cdxml_defaults = false;
     let mut has_bond_length = false;
     let mut has_line_width = false;
@@ -839,6 +858,29 @@ pub(super) fn editor_options_from_document(document: &ChemcoreDocument) -> Edito
     options.wedge_width = derived_wedge_width(options.bold_bond_width);
     options.label_clip_margin = 0.0;
     options
+}
+
+fn apply_document_style_defaults(options: &mut EditorOptions, defaults: &BTreeMap<String, f64>) {
+    for (key, value) in defaults {
+        if *value < 0.0 {
+            continue;
+        }
+        match key.as_str() {
+            "bondLength" if *value > crate::EPSILON => options.bond_length = *value,
+            "lineWidth" | "strokeWidth" | "bondStrokeWidth" if *value > crate::EPSILON => {
+                options.bond_stroke_width = *value;
+                options.graphic_stroke_width = *value;
+            }
+            "boldWidth" if *value > crate::EPSILON => options.bold_bond_width = *value,
+            "wedgeWidth" if *value > crate::EPSILON => options.wedge_width = *value,
+            "labelClipMargin" => options.label_clip_margin = *value,
+            "hashSpacing" if *value > crate::EPSILON => options.hash_spacing = *value,
+            "bondSpacing" if *value > crate::EPSILON => options.bond_spacing = *value,
+            "marginWidth" if *value > crate::EPSILON => options.margin_width = *value,
+            "graphicLineWidth" if *value > crate::EPSILON => options.graphic_stroke_width = *value,
+            _ => {}
+        }
+    }
 }
 
 pub(super) fn editor_options_from_imported_cdxml_document(
@@ -1180,6 +1222,9 @@ fn update_document_object_settings_defaults(
     document: &mut ChemcoreDocument,
     options: &EditorOptions,
 ) {
+    let preset = document.style.preset.clone();
+    update_document_style_info_defaults(document, &preset, options);
+
     let Some(meta) = document.document.meta.as_object_mut() else {
         document.document.meta = JsonValue::Object(JsonMap::new());
         return update_document_object_settings_defaults(document, options);
@@ -1235,4 +1280,57 @@ fn update_document_object_settings_defaults(
         "marginWidth".to_string(),
         json_number(options.margin_width_world_pt().value()),
     );
+}
+
+fn update_document_style_info_defaults(
+    document: &mut ChemcoreDocument,
+    preset: &str,
+    options: &EditorOptions,
+) {
+    document.style.preset = normalize_document_style_preset_or_custom(preset).to_string();
+    document.style.defaults = BTreeMap::from([
+        (
+            "bondLength".to_string(),
+            options.bond_length_world_pt().value(),
+        ),
+        (
+            "lineWidth".to_string(),
+            options.bond_stroke_world_pt().value(),
+        ),
+        (
+            "boldWidth".to_string(),
+            options.bold_bond_width_world_pt().value(),
+        ),
+        (
+            "wedgeWidth".to_string(),
+            options.wedge_width_world_pt().value(),
+        ),
+        ("labelClipMargin".to_string(), options.label_clip_margin),
+        (
+            "hashSpacing".to_string(),
+            options.hash_spacing_world_pt().value(),
+        ),
+        ("bondSpacing".to_string(), options.bond_spacing_percent()),
+        (
+            "marginWidth".to_string(),
+            options.margin_width_world_pt().value(),
+        ),
+        (
+            "graphicLineWidth".to_string(),
+            options.graphic_stroke_world_pt().value(),
+        ),
+        (
+            "labelFontSize".to_string(),
+            crate::DEFAULT_MOLECULE_LABEL_FONT_SIZE_PT,
+        ),
+        ("textFontSize".to_string(), crate::DEFAULT_TEXT_FONT_SIZE_PT),
+    ]);
+}
+
+fn normalize_document_style_preset_or_custom(preset: &str) -> &'static str {
+    match preset {
+        ACS_DOCUMENT_1996_PRESET => ACS_DOCUMENT_1996_PRESET,
+        "custom" => "custom",
+        _ => DEFAULT_DOCUMENT_STYLE_PRESET,
+    }
 }

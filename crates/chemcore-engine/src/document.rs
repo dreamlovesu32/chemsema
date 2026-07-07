@@ -22,6 +22,8 @@ pub struct ChemcoreDocument {
     pub format: FormatInfo,
     pub document: DocumentInfo,
     #[serde(default)]
+    pub style: DocumentStyleInfo,
+    #[serde(default)]
     pub styles: BTreeMap<String, Value>,
     #[serde(default)]
     pub objects: Vec<SceneObject>,
@@ -80,6 +82,7 @@ impl ChemcoreDocument {
                 },
                 meta: Value::Null,
             },
+            style: DocumentStyleInfo::default(),
             styles,
             objects: vec![SceneObject {
                 id: "obj_editor_molecule".to_string(),
@@ -1650,6 +1653,59 @@ pub struct DocumentInfo {
     pub page: Page,
     #[serde(default)]
     pub meta: Value,
+}
+
+fn default_document_style_preset() -> String {
+    "default".to_string()
+}
+
+fn default_document_style_defaults() -> BTreeMap<String, f64> {
+    BTreeMap::from([
+        ("bondLength".to_string(), DEFAULT_BOND_LENGTH_PT),
+        ("lineWidth".to_string(), DEFAULT_BOND_STROKE_PT),
+        ("boldWidth".to_string(), crate::BOLD_BOND_WIDTH_PT.value()),
+        (
+            "wedgeWidth".to_string(),
+            crate::SOLID_WEDGE_WIDTH_PT.value(),
+        ),
+        ("labelClipMargin".to_string(), 0.0),
+        (
+            "hashSpacing".to_string(),
+            crate::DEFAULT_HASH_SPACING_PT.value(),
+        ),
+        (
+            "bondSpacing".to_string(),
+            crate::DEFAULT_BOND_SPACING_PERCENT,
+        ),
+        (
+            "marginWidth".to_string(),
+            crate::DEFAULT_BOND_MARGIN_WIDTH_PT.value(),
+        ),
+        ("graphicLineWidth".to_string(), DEFAULT_BOND_STROKE_PT),
+        (
+            "labelFontSize".to_string(),
+            DEFAULT_MOLECULE_LABEL_FONT_SIZE_PT,
+        ),
+        ("textFontSize".to_string(), DEFAULT_TEXT_FONT_SIZE_PT),
+    ])
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentStyleInfo {
+    #[serde(default = "default_document_style_preset")]
+    pub preset: String,
+    #[serde(default)]
+    pub defaults: BTreeMap<String, f64>,
+}
+
+impl Default for DocumentStyleInfo {
+    fn default() -> Self {
+        Self {
+            preset: default_document_style_preset(),
+            defaults: default_document_style_defaults(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

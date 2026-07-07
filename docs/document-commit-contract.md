@@ -297,6 +297,12 @@ All fields are optional patches. Fields without settings should not be written.
 
 This is a document-level command, even though internally it may batch-modify bond length, bond width, fonts, and shape strokes.
 
+ChemCore JSON documents persist the active defaults near the top of the file as
+`style.preset` and `style.defaults`. CLI `new` and `run` commands load those
+defaults from the document; later edit commands use them whenever a command does
+not explicitly provide style parameters. `apply-document-style` and object
+settings commands must keep this document-level style ledger in sync.
+
 ## Direct Execution And Interaction Context
 
 Self-contained commands can execute headlessly through `execute_command_json`, such as `add-bond`, `add-shape`, `apply-bond-style`, `undo`, and `redo`.

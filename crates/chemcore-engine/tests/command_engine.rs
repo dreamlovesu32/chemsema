@@ -1287,6 +1287,47 @@ fn apply_document_style_command_is_available_to_agents() {
 }
 
 #[test]
+fn document_json_persists_document_style_defaults_for_later_edits() {
+    let mut engine = Engine::new();
+    engine.set_document_style_preset("acs-document-1996");
+
+    let saved = engine.document_json().expect("document json");
+    let saved_value: serde_json::Value =
+        serde_json::from_str(&saved).expect("document should be valid json");
+    assert_eq!(saved_value["style"]["preset"], "acs-document-1996");
+    assert_eq!(saved_value["style"]["defaults"]["lineWidth"], 0.6);
+    assert_eq!(saved_value["style"]["defaults"]["wedgeWidth"], 3.0);
+
+    let mut loaded = Engine::new();
+    loaded
+        .load_document_json(&saved)
+        .expect("styled document should load");
+    assert_eq!(loaded.document_style_preset(), "acs-document-1996");
+
+    execute(
+        &mut loaded,
+        json!({
+            "type": "add-bond",
+            "begin": { "x": 40.0, "y": 40.0 },
+            "end": { "x": 54.4, "y": 40.0 },
+            "order": 1,
+            "variant": "single"
+        }),
+    );
+
+    let entry = loaded
+        .state()
+        .document
+        .editable_fragment()
+        .expect("fragment should exist");
+    let bond = entry.fragment.bonds.last().expect("bond should be added");
+    assert_eq!(bond.stroke_width, 0.6);
+    assert_eq!(bond.bold_width, Some(2.0));
+    assert_eq!(bond.wedge_width, Some(3.0));
+    assert_eq!(bond.hash_spacing, Some(2.5));
+}
+
+#[test]
 fn undo_and_redo_are_revisioned_commands() {
     let mut engine = Engine::new();
     execute(

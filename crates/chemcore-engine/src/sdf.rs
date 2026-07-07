@@ -1,6 +1,7 @@
 use crate::{
-    Bond, BondStereo, ChemcoreDocument, DocumentInfo, DoubleBond, DoubleBondPlacement, FormatInfo,
-    MoleculeFragment, Node, ObjectPayload, Page, Resource, ResourceData, SceneObject, Transform,
+    Bond, BondStereo, ChemcoreDocument, DocumentInfo, DocumentStyleInfo, DoubleBond,
+    DoubleBondPlacement, FormatInfo, MoleculeFragment, Node, ObjectPayload, Page, Resource,
+    ResourceData, SceneObject, Transform,
 };
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashMap};
@@ -138,6 +139,7 @@ pub fn parse_sdf_document(sdf: &str, title: Option<&str>) -> Result<ChemcoreDocu
                 }
             }),
         },
+        style: DocumentStyleInfo::default(),
         styles: default_sdf_styles(),
         objects,
         resources,

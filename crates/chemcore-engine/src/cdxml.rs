@@ -1,7 +1,7 @@
 use crate::{
-    Bond, BondLineStyles, BondLineWeights, BondStereo, ChemcoreDocument, DocumentInfo, DoubleBond,
-    FormatInfo, LabelRun, MoleculeFragment, Node, NodeLabel, ObjectPayload, Page, Resource,
-    ResourceData, SceneObject, Transform, EPSILON,
+    Bond, BondLineStyles, BondLineWeights, BondStereo, ChemcoreDocument, DocumentInfo,
+    DocumentStyleInfo, DoubleBond, FormatInfo, LabelRun, MoleculeFragment, Node, NodeLabel,
+    ObjectPayload, Page, Resource, ResourceData, SceneObject, Transform, EPSILON,
 };
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -134,6 +134,11 @@ pub fn parse_cdxml_document(cdxml: &str, title: Option<&str>) -> Result<Chemcore
         &bonded_node_ids,
     );
     apply_cdxml_groups(&root, &mut objects);
+    let glyph_clip_profile = cdxml_glyph_clip_profile(defaults.margin_width);
+    let document_style_preset = match glyph_clip_profile {
+        crate::GlyphClipProfile::AcsDocument1996 => "acs-document-1996",
+        crate::GlyphClipProfile::Default => "default",
+    };
     let mut document = ChemcoreDocument {
         format: FormatInfo {
             name: "chemcore".to_string(),
@@ -156,12 +161,32 @@ pub fn parse_cdxml_document(cdxml: &str, title: Option<&str>) -> Result<Chemcore
                             "boldWidth": defaults.bold_width,
                             "hashSpacing": defaults.hash_spacing,
                             "bondSpacing": defaults.bond_spacing,
+                            "marginWidth": defaults.margin_width,
                             "labelSize": defaults.label_size,
                             "captionSize": defaults.caption_size,
                         }
                     }
                 },
             }),
+        },
+        style: DocumentStyleInfo {
+            preset: document_style_preset.to_string(),
+            defaults: BTreeMap::from([
+                ("bondLength".to_string(), defaults.bond_length),
+                ("lineWidth".to_string(), defaults.line_width),
+                ("boldWidth".to_string(), defaults.bold_width),
+                ("wedgeWidth".to_string(), defaults.bold_width * 1.5),
+                ("labelClipMargin".to_string(), 0.0),
+                ("hashSpacing".to_string(), defaults.hash_spacing),
+                ("bondSpacing".to_string(), defaults.bond_spacing),
+                (
+                    "marginWidth".to_string(),
+                    crate::DEFAULT_BOND_MARGIN_WIDTH_PT.value(),
+                ),
+                ("graphicLineWidth".to_string(), defaults.line_width),
+                ("labelFontSize".to_string(), defaults.label_size),
+                ("textFontSize".to_string(), defaults.caption_size),
+            ]),
         },
         styles,
         objects,

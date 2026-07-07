@@ -297,6 +297,11 @@ pointer up / finish
 
 这是一条文档级命令，即便它内部会批量修改键长、键宽、字体和图形 stroke。
 
+ChemCore JSON 会在文件靠前位置持久化当前默认参数，即 `style.preset` 和
+`style.defaults`。CLI 的 `new` 和 `run` 会从文档读取这些默认值；后续编辑命令
+没有显式传入样式参数时，就使用文档级默认值。`apply-document-style` 和对象设置
+命令必须同步维护这份文档级样式账本。
+
 ## 直接执行与交互上下文
 
 自包含命令可以通过 `execute_command_json` headless 执行，例如 `add-bond`、`add-shape`、`apply-bond-style`、`undo`、`redo`。

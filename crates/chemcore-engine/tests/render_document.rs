@@ -10667,10 +10667,20 @@ fn render_document_retreats_solid_wedge_cap_from_labeled_wide_endpoint() {
         .iter()
         .map(|point| point.distance(Point::new(27.0, 70.0)))
         .fold(f64::INFINITY, f64::min);
+    let cap_touches_u_glyph = cap_near_label.iter().any(|point| {
+        point.x >= 26.0 - 0.01
+            && point.x <= 29.3 + 0.01
+            && point.y >= 65.0 - 0.01
+            && point.y <= 72.4 + 0.01
+    });
 
     assert!(
         min_clearance > 1.45,
         "wide wedge cap should retreat from the attached label glyphs: {polygon:?}"
+    );
+    assert!(
+        !cap_touches_u_glyph,
+        "wide wedge cap polygon should not press into the terminal u glyph: {polygon:?}"
     );
 }
 

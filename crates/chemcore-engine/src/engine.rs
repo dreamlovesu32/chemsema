@@ -50,7 +50,8 @@ use self::bond_styles::{
 };
 use self::delete::FocusedDeleteMode;
 use self::presets::{
-    editor_options_from_document, editor_options_from_imported_cdxml_document,
+    document_style_preset_from_document, editor_options_from_document,
+    editor_options_from_imported_cdxml_document, sync_document_style_info_from_options,
     SelectedObjectSettings,
 };
 use crate::{
@@ -560,9 +561,11 @@ impl Engine {
         let mut document = crate::parse_document_json(json)?;
         refresh_repeating_units(&mut document);
         let options = editor_options_from_document(&document);
+        let document_style_preset = document_style_preset_from_document(&document).to_string();
+        sync_document_style_info_from_options(&mut document, &document_style_preset, &options);
         self.state.document = document;
         self.options = options;
-        self.document_style_preset = DEFAULT_DOCUMENT_STYLE_PRESET.to_string();
+        self.document_style_preset = document_style_preset;
         self.refresh_symbol_chemistry();
         refresh_element_valence_recognition_for_all_editable_fragments(&mut self.state.document);
         self.state.selection = SelectionState::default();
@@ -600,8 +603,15 @@ impl Engine {
         self.link_imported_repeat_unit_labels_untracked();
         refresh_repeating_units(&mut self.state.document);
         let options = editor_options_from_imported_cdxml_document(&self.state.document);
+        let document_style_preset =
+            document_style_preset_from_document(&self.state.document).to_string();
+        sync_document_style_info_from_options(
+            &mut self.state.document,
+            &document_style_preset,
+            &options,
+        );
         self.options = options;
-        self.document_style_preset = DEFAULT_DOCUMENT_STYLE_PRESET.to_string();
+        self.document_style_preset = document_style_preset;
         self.refresh_symbol_chemistry();
         refresh_element_valence_recognition_for_all_editable_fragments(&mut self.state.document);
         self.state.selection = SelectionState::default();
@@ -1874,6 +1884,7 @@ impl Engine {
         ChemcoreDocument {
             format: self.state.document.format.clone(),
             document: self.state.document.document.clone(),
+            style: self.state.document.style.clone(),
             styles: self.state.document.styles.clone(),
             objects: Vec::new(),
             resources: BTreeMap::new(),
@@ -4213,8 +4224,8 @@ fn union_target_ids<const N: usize>(groups: [&[String]; N]) -> Vec<String> {
 mod tests {
     use super::*;
     use crate::{
-        DocumentInfo, FormatInfo, MoleculeFragment, Node, ObjectPayload, Page, Resource,
-        ResourceData, Transform,
+        DocumentInfo, DocumentStyleInfo, FormatInfo, MoleculeFragment, Node, ObjectPayload, Page,
+        Resource, ResourceData, Transform,
     };
 
     fn molecule_object(id: &str, resource_ref: &str) -> SceneObject {
@@ -4278,6 +4289,7 @@ mod tests {
                 },
                 meta: JsonValue::Null,
             },
+            style: DocumentStyleInfo::default(),
             styles: BTreeMap::new(),
             objects: vec![
                 molecule_object("obj_mol_a", "mol_a"),

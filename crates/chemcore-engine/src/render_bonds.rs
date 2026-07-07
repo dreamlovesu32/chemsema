@@ -52,6 +52,42 @@ pub(super) fn render_fragment_bond(
     finish = clipped_finish;
 
     if let Some(stereo) = bond_stereo_kind(bond) {
+        let wide_label_margin = solid_wedge_half_width_for_bond(bond, stroke_width);
+        match stereo {
+            BondStereoKind::SolidWedgeBegin
+            | BondStereoKind::HashedWedgeBegin
+            | BondStereoKind::HollowWedgeBegin
+                if begin_has_label =>
+            {
+                start = clip_point_out_of_label_bounds_with_margin(
+                    start,
+                    finish,
+                    begin_box,
+                    &begin_polygons,
+                    wide_label_margin,
+                );
+            }
+            BondStereoKind::SolidWedgeEnd
+            | BondStereoKind::HashedWedgeEnd
+            | BondStereoKind::HollowWedgeEnd
+                if end_has_label =>
+            {
+                finish = clip_point_out_of_label_bounds_with_margin(
+                    finish,
+                    start,
+                    end_box,
+                    &end_polygons,
+                    wide_label_margin,
+                );
+            }
+            _ => {}
+        }
+
+        let direction = Vector::new(finish.x - start.x, finish.y - start.y);
+        if direction.x * direction.x + direction.y * direction.y <= EPSILON {
+            return;
+        }
+
         render_stereo_bond(
             out,
             object,
