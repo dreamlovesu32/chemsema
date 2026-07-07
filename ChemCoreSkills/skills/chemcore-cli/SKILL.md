@@ -67,8 +67,6 @@ python scripts\check_cli_skill_sync.py --suite-root ..\..\..\.. --json
 - Do not invent selectors; discover them from `targets` or `context`.
 - Do not manually calculate label reversal, generated hydrogens, or chemical
   anchors when `label-query` can answer.
-- Do not use `plan-bond` as OCR geometry evidence; it is for GUI-like drawing
-  agents. OCR must measure the source image.
 - Preserve original document semantics when the visible drawing intentionally
   disagrees with default chemical rewriting; use `defaultChemical:false` when
   appropriate.

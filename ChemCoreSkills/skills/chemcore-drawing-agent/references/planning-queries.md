@@ -15,8 +15,6 @@ Use cases:
 - inspect keypad slot directions
 - avoid manually calculating the endpoint for a standard bond
 
-Do not use this as OCR measurement.
-
 ## plan-template
 
 Use when inserting a ring or template. It can accept template name, center,

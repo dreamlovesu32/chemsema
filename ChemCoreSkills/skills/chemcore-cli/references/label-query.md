@@ -18,7 +18,7 @@ differs from source text.
 
 ## Reverse Query
 
-Use `--visible-text` for OCR and imported drawings:
+Use `--visible-text` for imported drawings:
 
 ```powershell
 chemcore-cli label-query --visible-text F3C --connection-angle 0 --pretty

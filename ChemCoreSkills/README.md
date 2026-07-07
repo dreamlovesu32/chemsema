@@ -12,9 +12,6 @@ each installable skill is its own folder with a `SKILL.md` entrypoint.
 - `skills/chemcore-office`
   - Office/OLE payloads, Word and PowerPoint paste behavior, editable object
     debugging, and clipboard verification.
-- `skills/chemcore-ocr-reconstruction`
-  - PNG-to-ChemCore JSON/command reconstruction, structure gates, molecule-pool
-    regression, and failure taxonomy.
 - `skills/chemcore-drawing-agent`
   - Drawing-agent workflows for `plan-bond`, `plan-template`, `label-query`,
     template insertion, and GUI-compatible command scripts.
@@ -66,9 +63,9 @@ Bash:
 ```
 
 In Claude Code, invoke the skills directly with `/chemcore-cli`,
-`/chemcore-office`, `/chemcore-ocr-reconstruction`,
-`/chemcore-drawing-agent`, or `/chemcore-development`. Claude can also load
-them automatically when a request matches each skill description.
+`/chemcore-office`, `/chemcore-drawing-agent`, or `/chemcore-development`.
+Claude can also load them automatically when a request matches each skill
+description.
 
 ## Dry Run Installation
 
@@ -85,7 +82,6 @@ Expected direct child folders:
 - `chemcore-cli`
 - `chemcore-development`
 - `chemcore-drawing-agent`
-- `chemcore-ocr-reconstruction`
 - `chemcore-office`
 
 ## Remote Installation
@@ -96,7 +92,6 @@ skill path explicitly because this repository packages them as a suite:
 ```text
 ChemCoreSkills/skills/chemcore-cli
 ChemCoreSkills/skills/chemcore-office
-ChemCoreSkills/skills/chemcore-ocr-reconstruction
 ChemCoreSkills/skills/chemcore-drawing-agent
 ChemCoreSkills/skills/chemcore-development
 ```
@@ -107,7 +102,6 @@ With the bundled installer helper, pass all paths after one `--path` flag:
 python install-skill-from-github.py --repo dreamlovesu32/chemcore --path `
   ChemCoreSkills/skills/chemcore-cli `
   ChemCoreSkills/skills/chemcore-office `
-  ChemCoreSkills/skills/chemcore-ocr-reconstruction `
   ChemCoreSkills/skills/chemcore-drawing-agent `
   ChemCoreSkills/skills/chemcore-development
 ```

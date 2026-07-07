@@ -25,11 +25,5 @@ template placement before emitting commands.
 - For document creation and edit loops, read `references/drawing-workflows.md`.
 - For template, bond, and style decisions, read `references/templates-style.md`.
 
-## Boundary With OCR
-
-This skill is for drawing agents and command generation. OCR should measure the
-source image and use ChemCore only for semantic queries such as label reversal.
-Do not use plan queries to snap OCR bond lengths.
-
 Use `scripts/write_commands.py` to assemble small command arrays when the task
 needs deterministic JSON writing.

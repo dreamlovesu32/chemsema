@@ -20,8 +20,8 @@ Good ChemCore commits usually contain:
 - focused tests or updated fixtures
 - generated runtime files only when repo policy expects them
 
-Avoid mixing unrelated OCR, desktop, Office, and packaging changes unless the
-user explicitly asks for a bulk sync.
+Avoid mixing unrelated desktop, Office, and packaging changes unless the user
+explicitly asks for a bulk sync.
 
 ## Push
 

@@ -3,7 +3,7 @@
 这是一组面向 ChemCore 生态的 agent skills，可安装到 Codex 或 Claude Code。
 源码 skill 统一放在 `ChemCoreSkills/skills` 下；每个可安装 skill 都是一个
 独立目录，并以 `SKILL.md` 作为入口。当前覆盖 ChemCore 的核心能力：
-化学文档、可编辑对象、渲染内核、Office/OLE、CLI 协议和 OCR 逆渲染。
+化学文档、可编辑对象、渲染内核、Office/OLE、CLI 协议和绘制 agent。
 
 ## 技能列表
 
@@ -12,8 +12,6 @@
     editing、label-query 和 JSONL session。
 - `skills/chemcore-office`
   - Office/OLE payload、Word/PowerPoint 粘贴、可编辑对象调试。
-- `skills/chemcore-ocr-reconstruction`
-  - PNG 到 ChemCore JSON/command stream、结构门禁、分子池回归。
 - `skills/chemcore-drawing-agent`
   - 给绘制 agent 用的 `plan-bond`、`plan-template`、label-query 工作流。
 - `skills/chemcore-development`
@@ -24,7 +22,6 @@
 - skill 的 `SKILL.md` 保持轻量，复杂规则放入 `references/` 按需读取。
 - CLI 是机器契约，优先使用 `version`、`schema`、`capabilities`、`guide`
   做运行时发现。
-- OCR 的目标是可编辑 ChemCore 文档，不是像素拟合。
 - 绘制 agent 应该问内核要吸附、标签、模板落点，不要手写 GUI 几何。
 - Office 调试先看 payload，再看 Office 粘贴结果。
 
@@ -74,8 +71,8 @@ Git Bash / Linux / macOS:
 ```
 
 在 Claude Code 里可以直接用 `/chemcore-cli`、`/chemcore-office`、
-`/chemcore-ocr-reconstruction`、`/chemcore-drawing-agent` 或
-`/chemcore-development` 调用；自然语言请求匹配 description 时，Claude 也可以自动加载。
+`/chemcore-drawing-agent` 或 `/chemcore-development` 调用；自然语言请求匹配
+description 时，Claude 也可以自动加载。
 
 也可以输出到临时目录检查：
 
@@ -85,12 +82,11 @@ powershell -ExecutionPolicy Bypass -File .\ChemCoreSkills\flatten_skills.ps1 -Ou
 Get-ChildItem $out
 ```
 
-期望看到 5 个直接子目录：
+期望看到 4 个直接子目录：
 
 - `chemcore-cli`
 - `chemcore-development`
 - `chemcore-drawing-agent`
-- `chemcore-ocr-reconstruction`
 - `chemcore-office`
 
 ## 远程安装路径
@@ -101,7 +97,6 @@ Get-ChildItem $out
 ```text
 ChemCoreSkills/skills/chemcore-cli
 ChemCoreSkills/skills/chemcore-office
-ChemCoreSkills/skills/chemcore-ocr-reconstruction
 ChemCoreSkills/skills/chemcore-drawing-agent
 ChemCoreSkills/skills/chemcore-development
 ```
@@ -112,7 +107,6 @@ ChemCoreSkills/skills/chemcore-development
 python install-skill-from-github.py --repo dreamlovesu32/chemcore --path `
   ChemCoreSkills/skills/chemcore-cli `
   ChemCoreSkills/skills/chemcore-office `
-  ChemCoreSkills/skills/chemcore-ocr-reconstruction `
   ChemCoreSkills/skills/chemcore-drawing-agent `
   ChemCoreSkills/skills/chemcore-development
 ```

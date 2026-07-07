@@ -1,4 +1,0 @@
-interface:
-  display_name: "ChemCore OCR"
-  short_description: "Reconstruct editable molecule JSON from raster drawings."
-  default_prompt: "Use ChemCore OCR reconstruction rules to test and fix molecule recovery from PNG crops."

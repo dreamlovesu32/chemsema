@@ -97,8 +97,8 @@ chemcore-cli capture figure1.cdxml --target object:obj_bracket_001 --out tmp/bra
 
 ChemCore includes a dedicated agent skill suite in
 [ChemCoreSkills](./ChemCoreSkills/). These skills package the project-specific
-workflows for the CLI protocol, command scripts, drawing-agent planning, OCR
-reconstruction, Office/OLE debugging, and repository development. The suite can
+workflows for the CLI protocol, command scripts, drawing-agent planning,
+Office/OLE debugging, and repository development. The suite can
 be flattened into Codex skills or Claude Code skills; keep the installable
 skills independent, and use this README as the public entry point for
 discovering them.

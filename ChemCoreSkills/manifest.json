@@ -1,7 +1,7 @@
 {
   "name": "ChemCoreSkills",
   "version": "0.1.0",
-  "description": "Codex skills for ChemCore chemical document, Office, OCR, drawing-agent, and development workflows.",
+  "description": "Codex skills for ChemCore chemical document, Office, drawing-agent, and development workflows.",
   "layout": "chemcore-skills",
   "skills": [
     {
@@ -15,12 +15,6 @@
       "path": "skills/chemcore-office",
       "category": "office",
       "type": ["office-integration", "clipboard", "ole-debugging"]
-    },
-    {
-      "name": "chemcore-ocr-reconstruction",
-      "path": "skills/chemcore-ocr-reconstruction",
-      "category": "ocr-reconstruction",
-      "type": ["ocr-reconstruction", "editable-document", "regression"]
     },
     {
       "name": "chemcore-drawing-agent",

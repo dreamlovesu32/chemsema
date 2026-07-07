@@ -47,9 +47,8 @@ returns an executable `add-bond` command, global snap angles, and keypad slots.
 template, x, y, anchor, bondId, cursor, angle, bondLength, and side. It returns
 vertices, edges, and an insert command.
 
-OCR must not use these planning queries as a replacement for measuring the
-source raster. Drawing agents should use them to avoid duplicating ChemCore GUI
-placement logic.
+Drawing agents should use these planning queries to avoid duplicating ChemCore
+GUI placement logic.
 
 ## Template Inserts
 

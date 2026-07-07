@@ -66,7 +66,7 @@ chemcore-cli capture figure1.cdxml --target object:obj_bracket_001 --out tmp/bra
 
 ChemCore 在 [ChemCoreSkills](./ChemCoreSkills/) 中单独维护了一组 agent
 skills。这些 skill 把项目专用的工作流打包起来，覆盖 CLI 协议、command script、
-drawing-agent 规划、OCR 重建、Office/OLE 调试和仓库开发。这套目录可以平铺安装为
+drawing-agent 规划、Office/OLE 调试和仓库开发。这套目录可以平铺安装为
 Codex skills，也可以平铺安装为 Claude Code skills；总 README 只保留公开入口，
 具体安装和使用细节放在独立 skill 套件里维护。
 
