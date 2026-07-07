@@ -1,6 +1,6 @@
 # Document Commit 合同
 
-本文定义 Chemcore 编辑器里的“有效操作”和内核命令系统。保存按钮、撤销/重做、Office/OLE 回写、自动保存、测试和二次开发都必须以同一个 Document Commit 结果为准。
+本文定义 ChemCore 编辑器里的“有效操作”和内核命令系统。保存按钮、撤销/重做、Office/OLE 回写、自动保存、测试和二次开发都必须以同一个 Document Commit 结果为准。
 
 ## 核心定义
 

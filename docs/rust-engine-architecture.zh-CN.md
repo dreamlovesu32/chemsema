@@ -1,6 +1,6 @@
-# Chemcore Rust Engine
+# ChemCore Rust Engine
 
-Chemcore 的编辑能力从现在开始以 Rust 核心为准。Web、Windows、iPad 端只负责 UI、输入事件、文件系统和像素渲染；文档模型、命中测试、吸附、工具状态和命令行为都应进入同一套 engine。
+ChemCore 的编辑能力从现在开始以 Rust 核心为准。Web、Windows、iPad 端只负责 UI、输入事件、文件系统和像素渲染；文档模型、命中测试、吸附、工具状态和命令行为都应进入同一套 engine。
 
 ## 目标边界
 

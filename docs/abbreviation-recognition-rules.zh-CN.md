@@ -1,6 +1,6 @@
-# Chemcore 缩写识别规则
+# ChemCore 缩写识别规则
 
-本文档定义 Chemcore 当前内核对结构端点标签、functional group 缩写和
+本文档定义 ChemCore 当前内核对结构端点标签、functional group 缩写和
 formula-like 标签的识别行为。普通自由文本由文本对象规则处理。
 
 识别入口必须带连接数上下文。同一个字符串在不同连接数下可能有不同语义，

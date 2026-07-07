@@ -51,7 +51,7 @@ Use this order for document work:
 
 ## Helpers
 
-Use bundled helpers instead of retyping discovery boilerplate:
+Use bundled helpers instead of retyping discovery code:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\find_chemcore_cli.ps1 -Json

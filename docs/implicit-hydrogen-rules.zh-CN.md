@@ -1,4 +1,4 @@
-# Chemcore 隐式氢规则
+# ChemCore 隐式氢规则
 
 本文档定义 Rust engine 对节点标签自动加氢的行为基线。这里的“隐式氢”指写入节点 `numHydrogens`，并把简单元素标签显示为 `NH3`、`NH2`、`OH` 这类带氢形式。
 

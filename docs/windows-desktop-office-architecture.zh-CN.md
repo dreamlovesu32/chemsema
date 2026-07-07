@@ -1,22 +1,22 @@
 # Windows 桌面端与 Office 集成长期架构
 
-本文记录 Chemcore Windows 桌面端和 Office 集成的长期方案。方案从第一阶段就沿着最终产品形态建设：同一个 Rust 化学内核、一个专业 Windows 桌面应用、一个真正的 Office/OLE 集成层，以及一个仍然可共享的 Web 端适配层。
+本文记录 ChemCore Windows 桌面端和 Office 集成的长期方案。方案从第一阶段就沿着最终产品形态建设：同一个 Rust 化学内核、一个专业 Windows 桌面应用、一个真正的 Office/OLE 集成层，以及一个仍然可共享的 Web 端适配层。
 
 ## 目标体验
 
-最终 Windows 版 Chemcore 应达到类似 ChemDraw 的系统集成体验：
+最终 Windows 版 ChemCore 应达到类似 ChemDraw 的系统集成体验：
 
-- 双击 `.ccjz`、`.ccjs`、`.cdxml` 可直接打开 Chemcore。
-- Word、PowerPoint、Excel 中可以插入 Chemcore 对象。
+- 双击 `.ccjz`、`.ccjs`、`.cdxml` 可直接打开 ChemCore。
+- Word、PowerPoint、Excel 中可以插入 ChemCore 对象。
 - Office 文档中显示高质量预览图。
-- 双击 Office 里的 Chemcore 对象可以打开 Chemcore 编辑。
+- 双击 Office 里的 ChemCore 对象可以打开 ChemCore 编辑。
 - 编辑完成后，Office 内对象数据和预览同步更新。
-- 从 Chemcore 复制到 Office 时，既有可再编辑的 Chemcore native object，也有 CDXML、SVG、PNG 等 fallback。
+- 从 ChemCore 复制到 Office 时，既有可再编辑的 ChemCore native object，也有 CDXML、SVG、PNG 等 fallback。
 - Web 端、桌面端和 Office 对象使用同一个 Rust engine，不分叉业务逻辑。
 
 ## 总体架构
 
-Chemcore 长期应是：
+ChemCore 长期应是：
 
 ```text
 同一个 Rust 化学内核
@@ -54,7 +54,7 @@ viewer/
 
 - Rust `chemcore-engine` 仍是编辑、导入导出、命中测试、render primitives 和文档 mutation 的权威。
 - 桌面端不复制一套化学逻辑。
-- Office 集成层不直接解析和修改 Chemcore JSON。
+- Office 集成层不直接解析和修改 ChemCore JSON。
 - Web viewer 和桌面 viewer 不应分叉出两套行为。
 - 系统能力通过 service/adapter 暴露，不能让 UI 层随意绕开 engine。
 
@@ -86,7 +86,7 @@ Tauri 在本项目中承担长期系统 adapter：
 - 文件关联。
 - 单实例和外部文件唤醒。
 - 调用 Rust desktop service。
-- 承载 Chemcore 专业编辑 UI。
+- 承载 ChemCore 专业编辑 UI。
 
 WebView 只是显示和交互容器，不意味着产品要像浏览器。窗口中不应出现地址栏、浏览器菜单或临时网页式布局。桌面 UI 应按专业绘图软件设计：顶部菜单和工具栏、左侧工具箱、中间画布、右侧属性栏、底部状态栏。
 
@@ -164,8 +164,8 @@ apps/chemcore-desktop/src-tauri
   已增加原生 File/Edit/View 菜单、快捷键、文件打开/保存/另存为对话框、拖拽打开、
   启动参数打开、最近文件菜单和 .ccjz/.ccjs/.cdxml 文件关联配置。
   已接入 Tauri single-instance 插件：第二次启动会把可打开文件参数转发给已有窗口，并唤醒主窗口。
-  已接入 Windows 原生剪贴板 command：复制/剪切时写入 Chemcore 选择片段、整文档 JSON、CDXML、
-  SVG 和 Unicode text fallback；粘贴时优先读取 Chemcore 选择片段并插入当前画布。
+  已接入 Windows 原生剪贴板 command：复制/剪切时写入 ChemCore 选择片段、整文档 JSON、CDXML、
+  SVG 和 Unicode text fallback；粘贴时优先读取 ChemCore 选择片段并插入当前画布。
   已支持 PDF preview 导出：当前先由 WebView 将 SVG 预览栅格化并封装为单页 PDF。
   已支持基础 EMF preview 导出：当前由 Tauri 后端把 document render primitives 映射到 Win32 GDI
   Enhanced Metafile。该路径适合预览/Office fallback，后续仍应继续提升 path、字体和高级填充的保真度。
@@ -195,7 +195,7 @@ Office 集成分三层：
 
 ### 1. 文件关联
 
-`.ccjz`、`.ccjs`、`.cdxml` 注册到 Chemcore。用户在文件系统、Outlook 附件、Office 最近文件或下载目录中双击这些文件时，Windows 用 Chemcore 打开。
+`.ccjz`、`.ccjs`、`.cdxml` 注册到 ChemCore。用户在文件系统、Outlook 附件、Office 最近文件或下载目录中双击这些文件时，Windows 用 ChemCore 打开。
 
 Tauri bundle 可以配置 file associations；Windows 底层应使用明确的 extension + ProgID 方案。
 
@@ -209,14 +209,14 @@ chemcore://open?id=...
 chemcore://edit-object?id=...
 ```
 
-这用于外部系统、网页、Office Add-in 或文档链接唤醒 Chemcore，作为启动和定位机制。
+这用于外部系统、网页、Office Add-in 或文档链接唤醒 ChemCore，作为启动和定位机制。
 
 ### 3. OLE/COM 嵌入对象
 
-长期目标是实现 Chemcore OLE Object：
+长期目标是实现 ChemCore OLE Object：
 
 ```text
-Chemcore OLE Object
+ChemCore OLE Object
   - 内部存储 .ccjz 或等价 native object payload
   - 向 Office 暴露高质量预览
   - 支持双击激活编辑
@@ -233,9 +233,9 @@ Chemcore OLE Object
 
 Office Add-in 可作为后续增强，用于 Ribbon 按钮、模板库、批量插入、选中对象编辑、导入导出入口等。但 Add-in 不应替代 OLE 对象，因为 Add-in 无法单独提供 ChemDraw 式双击对象编辑体验。
 
-## Chemcore OLE 注册
+## ChemCore OLE 注册
 
-Chemcore 自己的 Office 对象从一开始按长期 OLE class 设计，不走临时图片粘贴方案。
+ChemCore 自己的 Office 对象从一开始按长期 OLE class 设计，不走临时图片粘贴方案。
 
 固定对象身份：
 
@@ -271,19 +271,19 @@ target\debug\chemcore-office.exe --unregister-machine
 - 已支持 user/machine scope 注册与反注册。
 - 已注册 `Insertable`、`LocalServer32`、`ProgID`、`VersionIndependentProgID`、`Verb` 和 `DefaultIcon` 等 OLE 基础键。
 - 已有 `IClassFactory` local server 骨架，可被 COM 启动并注册 class object。
-- `IClassFactory::CreateInstance` 已能返回 Chemcore object，并支持查询 `IOleObject`、`IDataObject`、`IPersistStorage`、`IViewObject2` 和 `IRunnableObject`。
-- `IPersistStorage::InitNew/Save` 已开始写入 Chemcore OLE compound storage。当前固定 stream 名称为：
+- `IClassFactory::CreateInstance` 已能返回 ChemCore object，并支持查询 `IOleObject`、`IDataObject`、`IPersistStorage`、`IViewObject2` 和 `IRunnableObject`。
+- `IPersistStorage::InitNew/Save` 已开始写入 ChemCore OLE compound storage。当前固定 stream 名称为：
 
 ```text
 ChemcoreManifest    OLE object manifest，记录 class/progId 和 payload stream 名称。
-ChemcoreDocument    Chemcore document JSON，内容由 chemcore-engine 生成。
+ChemcoreDocument    ChemCore document JSON，内容由 chemcore-engine 生成。
 ChemcorePreviewSvg  当前阶段的 SVG preview placeholder，后续由真实渲染结果替换。
 \x02OlePres001       EMF presentation stream，用于 OLE storage 内部预览。
 \x03EPRINT           Enhanced print stream，内容为 EMF bits。
 ```
 
 - `npm run office:self-test` 用于无 Office 环境下验证 COM object 创建、接口查询、CLSID 返回，以及 OLE storage stream 写入/读回。
-- 桌面端复制时会继续写入普通 Windows clipboard 格式，同时调用 `chemcore-office.exe --copy-clipboard-payload` 把同一份 Chemcore document/svg/cdxml payload 放入 OLE clipboard。该 OLE clipboard object 支持 `Embed Source`、`Object Descriptor`、Chemcore 自定义 JSON、CDXML、SVG、Unicode text 和 `CF_ENHMETAFILE`，用于 Office 粘贴为可编辑对象。默认 OLE clipboard 枚举排除 `CF_METAFILEPICT`，避免 Word 优先生成 WMF 预览。
+- 桌面端复制时会继续写入普通 Windows clipboard 格式，同时调用 `chemcore-office.exe --copy-clipboard-payload` 把同一份 ChemCore document/svg/cdxml payload 放入 OLE clipboard。该 OLE clipboard object 支持 `Embed Source`、`Object Descriptor`、ChemCore 自定义 JSON、CDXML、SVG、Unicode text 和 `CF_ENHMETAFILE`，用于 Office 粘贴为可编辑对象。默认 OLE clipboard 枚举排除 `CF_METAFILEPICT`，避免 Word 优先生成 WMF 预览。
 - 已增加 `chemcore-office.exe --write-word-docx-payload <payload.json> <output.docx>`。这是第一条“直写 Word 结构”的路径：直接生成包含 `word/embeddings/oleObject1.bin` 和 `word/media/image1.emf` 的 OOXML package，用于验证和沉淀 ChemDraw 式外部 EMF 预览结构。后续 clipboard/active Word 插入能力应复用这条 package writer，直接生成稳定预览。
 
 后续仍需补齐真正的 embedded object 接口：
@@ -291,12 +291,12 @@ ChemcorePreviewSvg  当前阶段的 SVG preview placeholder，后续由真实渲
 ```text
 IOleObject      已补基础 extent 和 DoVerb 唤醒桌面端，下一步补编辑后回写 Office storage。
 IDataObject     已补 OLE clipboard 的 Embed Source/Object Descriptor/自定义文本格式/CF_ENHMETAFILE。
-IPersistStorage 已写入 Chemcore payload stream、SVG preview stream、EMF presentation 和 EPRINT，下一步补 Load 回读和编辑回写。
+IPersistStorage 已写入 ChemCore payload stream、SVG preview stream、EMF presentation 和 EPRINT，下一步补 Load 回读和编辑回写。
 IViewObject2    已接 native vector preview renderer 的基础路径，下一步继续补 path、字体和高级填充保真度。
 IRunnableObject 当前骨架已存在，下一步补运行状态和桌面端唤醒。
 ```
 
-第一阶段只要求 Windows/Office 能识别 Chemcore OLE class；第二阶段再让 Office 插入对象时得到可显示 preview；第三阶段实现双击激活和编辑回写。
+第一阶段只要求 Windows/Office 能识别 ChemCore OLE class；第二阶段再让 Office 插入对象时得到可显示 preview；第三阶段实现双击激活和编辑回写。
 
 ## 原生文档容器
 
@@ -332,10 +332,10 @@ migrate()
 
 ## 剪贴板格式
 
-ChemDraw 级体验必须重视剪贴板。复制 Chemcore 对象时，应同时写入多种格式：
+ChemDraw 级体验必须重视剪贴板。复制 ChemCore 对象时，应同时写入多种格式：
 
 ```text
-Chemcore native object
+ChemCore native object
 CDXML
 SVG
 PNG
@@ -345,10 +345,10 @@ Plain text / SMILES / InChI（后续可选）
 粘贴时按优先级读取：
 
 ```text
-Chemcore native > CDXML > SVG/PNG > text chemistry
+ChemCore native > CDXML > SVG/PNG > text chemistry
 ```
 
-这样在 Chemcore、Office、ChemDraw、浏览器、聊天工具之间都能有合理 fallback。
+这样在 ChemCore、Office、ChemDraw、浏览器、聊天工具之间都能有合理 fallback。
 
 ## 预览与导出格式
 
@@ -414,14 +414,14 @@ Office 中的对象预览不能只依赖 SVG。长期需要：
 
 ### 阶段 7：Office OLE 原型
 
-- 注册 Chemcore OLE object。
+- 注册 ChemCore OLE object。
 - 在 Office 中插入对象。
 - 显示 preview。
-- 双击打开 Chemcore desktop。
+- 双击打开 ChemCore desktop。
 
 ### 阶段 8：Office 完整生命周期
 
-- Office 文档保存和恢复 Chemcore object payload。
+- Office 文档保存和恢复 ChemCore object payload。
 - 编辑后更新 Office preview。
 - 支持复制/粘贴可编辑对象。
 - 支持对象内嵌 `.ccjz` 数据。
@@ -429,8 +429,8 @@ Office 中的对象预览不能只依赖 SVG。长期需要：
 ### 阶段 9：Office Add-in 增强
 
 - Ribbon 按钮。
-- Insert Chemcore Object。
-- Edit Selected Chemcore Object。
+- Insert ChemCore Object。
+- Edit Selected ChemCore Object。
 - Export/Convert。
 - 模板库。
 
@@ -447,7 +447,7 @@ Office 中的对象预览不能只依赖 SVG。长期需要：
 
 - 不做临时 Electron 版。
 - 不做桌面专用化学编辑逻辑。
-- 不让 Office 插件直接解析或修改 Chemcore JSON。
+- 不让 Office 插件直接解析或修改 ChemCore JSON。
 - 不只做 SVG 粘贴再以后补可编辑对象。
 - 不把 `.ccjz` API 设计死成永远单一 gzip JSON。
 - 不把 Tauri 后端变成第二套业务层。

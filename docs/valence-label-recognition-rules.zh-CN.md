@@ -1,6 +1,6 @@
-# Chemcore 价键驱动标签识别规则
+# ChemCore 价键驱动标签识别规则
 
-本文档定义 Chemcore 价键驱动标签识别规则。价键 parser 负责解释 `CN`、`CO2Cl`、`CH2COOCH2SO2NHCl`
+本文档定义 ChemCore 价键驱动标签识别规则。价键 parser 负责解释 `CN`、`CO2Cl`、`CH2COOCH2SO2NHCl`
 这类可以由元素价键和线性书写顺序推出的 formula-like label。`Boc`、`Fmoc`、`Ts`
 这类命名取代基由专门模板解释。
 

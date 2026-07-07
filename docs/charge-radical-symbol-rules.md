@@ -1,4 +1,4 @@
-# Chemcore Charge And Radical Symbol Assignment Rules
+# ChemCore Charge And Radical Symbol Assignment Rules
 
 This document defines the chemical semantics of eight charge/electron symbols. When these symbols are close to molecular endpoints or attached labels, they should be assigned to the corresponding atom and participate in valence, implicit hydrogen, red-box validity, and repeating-unit expansion.
 

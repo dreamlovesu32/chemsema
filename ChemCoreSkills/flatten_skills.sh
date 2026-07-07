@@ -9,7 +9,10 @@ fi
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OUT="$1"
 CLEAN="${2:-}"
-OUT_ABS="$(python -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "$OUT")"
+OUT_PARENT="$(dirname "$OUT")"
+OUT_NAME="$(basename "$OUT")"
+mkdir -p "$OUT_PARENT"
+OUT_ABS="$(cd "$OUT_PARENT" && pwd -P)/$OUT_NAME"
 
 if [[ "$CLEAN" == "--clean" && -d "$OUT" ]]; then
   rm -rf "$OUT"
@@ -21,5 +24,11 @@ while IFS= read -r -d '' skill_file; do
   name="$(basename "$skill_dir")"
   rm -rf "$OUT/$name"
   cp -R "$skill_dir" "$OUT/$name"
+  find "$OUT/$name" \
+    \( -name '__pycache__' -o -name '.pytest_cache' -o -name '.mypy_cache' -o -name '.ruff_cache' \) \
+    -type d -prune -exec rm -rf {} +
+  find "$OUT/$name" \
+    \( -name '*.pyc' -o -name '*.pyo' -o -name '*.log' -o -name '*.tmp' -o -name '*.bak' -o -name '*.orig' -o -name '*.rej' -o -name '*~' \) \
+    -type f -delete
   echo "flattened $name -> $OUT/$name"
 done < <(find "$ROOT" -path "$OUT_ABS" -prune -o -name SKILL.md -print0)

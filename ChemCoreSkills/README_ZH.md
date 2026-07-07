@@ -1,20 +1,21 @@
 # ChemCore Skills
 
-这是一组面向 ChemCore 生态的 Codex skills，目录结构参考 MindScienceSkills
-的学科树，但定位是 ChemCore 的核心能力：化学文档、可编辑对象、渲染内核、
-Office/OLE、CLI 协议和 OCR 逆渲染。
+这是一组面向 ChemCore 生态的 agent skills，可安装到 Codex 或 Claude Code。
+源码 skill 统一放在 `ChemCoreSkills/skills` 下；每个可安装 skill 都是一个
+独立目录，并以 `SKILL.md` 作为入口。当前覆盖 ChemCore 的核心能力：
+化学文档、可编辑对象、渲染内核、Office/OLE、CLI 协议和 OCR 逆渲染。
 
 ## 技能列表
 
-- `chemistry_and_materials/chemical_documents/chemcore-cli`
+- `skills/chemcore-cli`
   - ChemCore CLI、协议、selector、capture、command script、label-query。
-- `chemistry_and_materials/chemical_documents/chemcore-office`
+- `skills/chemcore-office`
   - Office/OLE payload、Word/PowerPoint 粘贴、可编辑对象调试。
-- `chemistry_and_materials/chemical_documents/chemcore-ocr-reconstruction`
+- `skills/chemcore-ocr-reconstruction`
   - PNG 到 ChemCore JSON/command stream、结构门禁、分子池回归。
-- `chemistry_and_materials/chemical_documents/chemcore-drawing-agent`
+- `skills/chemcore-drawing-agent`
   - 给绘制 agent 用的 `plan-bond`、`plan-template`、label-query 工作流。
-- `research_tools/development/chemcore-development`
+- `skills/chemcore-development`
   - ChemCore 编译、测试、WASM、桌面包、CI、仓库卫生。
 
 ## 设计原则
@@ -94,25 +95,25 @@ Get-ChildItem $out
 ## 远程安装路径
 
 如果通过 Codex 的 skill installer 从 GitHub 安装，需要分别安装每个 skill 路径，
-因为本仓库按领域树组织，不是把所有 skill 平铺在顶层：
+因为本仓库把多个 skill 作为一个 suite 管理：
 
 ```text
-ChemCoreSkills/chemistry_and_materials/chemical_documents/chemcore-cli
-ChemCoreSkills/chemistry_and_materials/chemical_documents/chemcore-office
-ChemCoreSkills/chemistry_and_materials/chemical_documents/chemcore-ocr-reconstruction
-ChemCoreSkills/chemistry_and_materials/chemical_documents/chemcore-drawing-agent
-ChemCoreSkills/research_tools/development/chemcore-development
+ChemCoreSkills/skills/chemcore-cli
+ChemCoreSkills/skills/chemcore-office
+ChemCoreSkills/skills/chemcore-ocr-reconstruction
+ChemCoreSkills/skills/chemcore-drawing-agent
+ChemCoreSkills/skills/chemcore-development
 ```
 
 使用内置 installer helper 时，多个路径应放在同一个 `--path` 后面：
 
 ```powershell
 python install-skill-from-github.py --repo dreamlovesu32/chemcore --path `
-  ChemCoreSkills/chemistry_and_materials/chemical_documents/chemcore-cli `
-  ChemCoreSkills/chemistry_and_materials/chemical_documents/chemcore-office `
-  ChemCoreSkills/chemistry_and_materials/chemical_documents/chemcore-ocr-reconstruction `
-  ChemCoreSkills/chemistry_and_materials/chemical_documents/chemcore-drawing-agent `
-  ChemCoreSkills/research_tools/development/chemcore-development
+  ChemCoreSkills/skills/chemcore-cli `
+  ChemCoreSkills/skills/chemcore-office `
+  ChemCoreSkills/skills/chemcore-ocr-reconstruction `
+  ChemCoreSkills/skills/chemcore-drawing-agent `
+  ChemCoreSkills/skills/chemcore-development
 ```
 
 ## 校验
@@ -120,17 +121,17 @@ python install-skill-from-github.py --repo dreamlovesu32/chemcore --path `
 检查 CLI skill 文档是否覆盖当前运行时暴露的 commands 和 formats：
 
 ```powershell
-python .\ChemCoreSkills\chemistry_and_materials\chemical_documents\chemcore-cli\scripts\check_cli_skill_sync.py --suite-root .\ChemCoreSkills --json
+python .\ChemCoreSkills\skills\chemcore-cli\scripts\check_cli_skill_sync.py --suite-root .\ChemCoreSkills --json
 ```
 
 检查开发 helper 是否可用：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\ChemCoreSkills\research_tools\development\chemcore-development\scripts\chemcore_check.ps1 -Help
+powershell -ExecutionPolicy Bypass -File .\ChemCoreSkills\skills\chemcore-development\scripts\chemcore_check.ps1 -Help
 ```
 
 完整仓库验证：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\ChemCoreSkills\research_tools\development\chemcore-development\scripts\chemcore_check.ps1 -All
+powershell -ExecutionPolicy Bypass -File .\ChemCoreSkills\skills\chemcore-development\scripts\chemcore_check.ps1 -All
 ```

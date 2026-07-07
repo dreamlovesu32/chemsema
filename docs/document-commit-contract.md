@@ -1,6 +1,6 @@
 # Document Commit Contract
 
-This document defines "effective operations" and the kernel command system in the Chemcore editor. Save button state, undo/redo, Office/OLE write-back, autosave, tests, and secondary development must all use the same Document Commit result.
+This document defines "effective operations" and the kernel command system in the ChemCore editor. Save button state, undo/redo, Office/OLE write-back, autosave, tests, and secondary development must all use the same Document Commit result.
 
 ## Core Definition
 

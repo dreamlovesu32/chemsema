@@ -1,4 +1,4 @@
-# Chemcore Project Rules
+# ChemCore Project Rules
 
 This document records project-level rules that must stay true during the current development phase. More detailed behavioral rules live in topic-specific documents such as format, bond rendering, and command history.
 
@@ -18,7 +18,7 @@ The long-term plan for the Windows desktop app and Office integration is describ
 ## Office/OLE Boundary
 
 - Office integration must be bounded by the independent COM/OLE local server in `apps/chemcore-office`; the OLE lifecycle should not be embedded directly in the desktop main-window process.
-- Chemcore's OLE class is fixed as `Chemcore.Document` / `Chemcore.Document.1` / `{CB69F54F-F21E-44DE-84FB-89D98FECE056}`.
+- ChemCore's OLE class is fixed as `Chemcore.Document` / `Chemcore.Document.1` / `{CB69F54F-F21E-44DE-84FB-89D98FECE056}`.
 - Development registration writes to `HKCU\Software\Classes`; the production installer writes to `HKLM\Software\Classes`. Users should not be asked to edit the registry manually.
 - The OLE server is responsible only for COM/OLE interfaces, storage, preview, clipboard objects, and waking the desktop app. Chemical parsing, document mutation, import/export, and rendering semantics remain provided by the Rust engine / desktop service.
 - Office Add-in support may later enhance Ribbon or entry points, but it cannot replace the OLE embedded object.

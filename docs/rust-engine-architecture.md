@@ -1,6 +1,6 @@
-# Chemcore Rust Engine
+# ChemCore Rust Engine
 
-Chemcore editing capability is governed by the Rust core. Web, Windows, and iPad surfaces are responsible for UI, input events, file systems, and pixel rendering; the document model, hit testing, snapping, tool state, and command behavior belong in the same engine.
+ChemCore editing capability is governed by the Rust core. Web, Windows, and iPad surfaces are responsible for UI, input events, file systems, and pixel rendering; the document model, hit testing, snapping, tool state, and command behavior belong in the same engine.
 
 ## Target Boundary
 

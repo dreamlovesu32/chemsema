@@ -1,22 +1,22 @@
 # Long-Term Architecture For Windows Desktop And Office Integration
 
-This document records the long-term plan for Chemcore Windows desktop and Office integration. The plan builds toward the final product shape from the first stage: one Rust chemical kernel, one professional Windows desktop application, one real Office/OLE integration layer, and a still-shareable Web adaptation layer.
+This document records the long-term plan for ChemCore Windows desktop and Office integration. The plan builds toward the final product shape from the first stage: one Rust chemical kernel, one professional Windows desktop application, one real Office/OLE integration layer, and a still-shareable Web adaptation layer.
 
 ## Target Experience
 
-The final Windows version of Chemcore should reach system integration similar to ChemDraw:
+The final Windows version of ChemCore should reach system integration similar to ChemDraw:
 
-- Double-clicking `.ccjz`, `.ccjs`, or `.cdxml` opens Chemcore directly.
-- Word, PowerPoint, and Excel can insert Chemcore objects.
+- Double-clicking `.ccjz`, `.ccjs`, or `.cdxml` opens ChemCore directly.
+- Word, PowerPoint, and Excel can insert ChemCore objects.
 - Office documents show high-quality previews.
-- Double-clicking a Chemcore object inside Office opens Chemcore for editing.
+- Double-clicking a ChemCore object inside Office opens ChemCore for editing.
 - After editing, object data and preview inside Office update together.
-- Copying from Chemcore to Office provides an editable Chemcore native object as well as CDXML, SVG, PNG, and other fallbacks.
+- Copying from ChemCore to Office provides an editable ChemCore native object as well as CDXML, SVG, PNG, and other fallbacks.
 - Web, desktop, and Office objects use the same Rust engine and do not fork business logic.
 
 ## Overall Architecture
 
-Long-term Chemcore should be:
+Long-term ChemCore should be:
 
 ```text
 one Rust chemical kernel
@@ -54,7 +54,7 @@ Important principles:
 
 - Rust `chemcore-engine` remains authoritative for editing, import/export, hit testing, render primitives, and document mutation.
 - The desktop app does not duplicate chemical logic.
-- The Office integration layer does not directly parse or modify Chemcore JSON.
+- The Office integration layer does not directly parse or modify ChemCore JSON.
 - The Web viewer and desktop viewer should not fork into two behavior sets.
 - System capabilities are exposed through services/adapters; the UI layer must not bypass the engine arbitrarily.
 
@@ -86,7 +86,7 @@ In this project, Tauri is the long-term system adapter:
 - File associations.
 - Single instance and external-file wake-up.
 - Calling the Rust desktop service.
-- Hosting the professional Chemcore editing UI.
+- Hosting the professional ChemCore editing UI.
 
 WebView is only the display and interaction container; it does not mean the product should look like a browser. The window should not show an address bar, browser menu, or temporary web-page layout. The desktop UI should follow professional drawing software conventions: top menu and toolbar, left toolbox, center canvas, right properties panel, and bottom status bar.
 
@@ -165,8 +165,8 @@ apps/chemcore-desktop/src-tauri
   startup-argument open, recent-file menu, and .ccjz/.ccjs/.cdxml file association config.
   Has integrated the Tauri single-instance plugin: a second launch forwards openable file arguments
   to the existing window and wakes the main window.
-  Has integrated Windows native clipboard commands: copy/cut writes Chemcore selection fragment,
-  whole-document JSON, CDXML, SVG, and Unicode text fallback; paste prefers Chemcore selection fragment
+  Has integrated Windows native clipboard commands: copy/cut writes ChemCore selection fragment,
+  whole-document JSON, CDXML, SVG, and Unicode text fallback; paste prefers ChemCore selection fragment
   and inserts it into the current canvas.
   Supports PDF preview export: currently the WebView rasterizes the SVG preview and wraps it in a single-page PDF.
   Supports basic EMF preview export: the Tauri backend maps document render primitives to Win32 GDI
@@ -198,7 +198,7 @@ Office integration has three layers:
 
 ### 1. File Associations
 
-`.ccjz`, `.ccjs`, and `.cdxml` are registered to Chemcore. When users double-click these files in the filesystem, Outlook attachments, Office recent files, or downloads, Windows opens them with Chemcore.
+`.ccjz`, `.ccjs`, and `.cdxml` are registered to ChemCore. When users double-click these files in the filesystem, Outlook attachments, Office recent files, or downloads, Windows opens them with ChemCore.
 
 The Tauri bundle can configure file associations; the Windows layer should use a clear extension + ProgID scheme.
 
@@ -212,14 +212,14 @@ chemcore://open?id=...
 chemcore://edit-object?id=...
 ```
 
-This wakes Chemcore from external systems, web pages, Office Add-ins, or document links, and serves as a launch and navigation mechanism.
+This wakes ChemCore from external systems, web pages, Office Add-ins, or document links, and serves as a launch and navigation mechanism.
 
 ### 3. OLE/COM Embedded Object
 
-The long-term target is a Chemcore OLE Object:
+The long-term target is a ChemCore OLE Object:
 
 ```text
-Chemcore OLE Object
+ChemCore OLE Object
   - stores .ccjz or equivalent native object payload internally
   - exposes high-quality preview to Office
   - supports double-click activation for editing
@@ -236,9 +236,9 @@ Implementation recommendations:
 
 An Office Add-in may later enhance Ribbon buttons, template library, batch insertion, selected-object editing, import/export entry points, and similar workflows. However, the Add-in should not replace OLE objects because an Add-in alone cannot provide ChemDraw-style double-click object editing.
 
-## Chemcore OLE Registration
+## ChemCore OLE Registration
 
-Chemcore's Office object is designed from the start as a long-term OLE class, not as a temporary image paste path.
+ChemCore's Office object is designed from the start as a long-term OLE class, not as a temporary image paste path.
 
 Fixed object identity:
 
@@ -274,19 +274,19 @@ target\debug\chemcore-office.exe --unregister-machine
 - User/machine scope registration and unregistration are supported.
 - Basic OLE keys such as `Insertable`, `LocalServer32`, `ProgID`, `VersionIndependentProgID`, `Verb`, and `DefaultIcon` are registered.
 - An `IClassFactory` local-server skeleton exists and can be launched by COM and register the class object.
-- `IClassFactory::CreateInstance` can return a Chemcore object and supports querying `IOleObject`, `IDataObject`, `IPersistStorage`, `IViewObject2`, and `IRunnableObject`.
-- `IPersistStorage::InitNew/Save` has started writing Chemcore OLE compound storage. Current fixed stream names are:
+- `IClassFactory::CreateInstance` can return a ChemCore object and supports querying `IOleObject`, `IDataObject`, `IPersistStorage`, `IViewObject2`, and `IRunnableObject`.
+- `IPersistStorage::InitNew/Save` has started writing ChemCore OLE compound storage. Current fixed stream names are:
 
 ```text
 ChemcoreManifest    OLE object manifest, records class/progId and payload stream name.
-ChemcoreDocument    Chemcore document JSON, generated by chemcore-engine.
+ChemcoreDocument    ChemCore document JSON, generated by chemcore-engine.
 ChemcorePreviewSvg  Current-stage SVG preview placeholder, to be replaced by real render output later.
 \x02OlePres001       EMF presentation stream, used for internal preview in OLE storage.
 \x03EPRINT           Enhanced print stream, contents are EMF bits.
 ```
 
 - `npm run office:self-test` validates COM object creation, interface querying, CLSID return, and OLE storage stream write/read without an Office environment.
-- Desktop copy continues to write ordinary Windows clipboard formats, while also calling `chemcore-office.exe --copy-clipboard-payload` to put the same Chemcore document/svg/cdxml payload into the OLE clipboard. That OLE clipboard object supports `Embed Source`, `Object Descriptor`, Chemcore custom JSON, CDXML, SVG, Unicode text, and `CF_ENHMETAFILE`, enabling Office paste as an editable object. The default OLE clipboard enumeration excludes `CF_METAFILEPICT`, avoiding Word's preference for WMF preview generation.
+- Desktop copy continues to write ordinary Windows clipboard formats, while also calling `chemcore-office.exe --copy-clipboard-payload` to put the same ChemCore document/svg/cdxml payload into the OLE clipboard. That OLE clipboard object supports `Embed Source`, `Object Descriptor`, ChemCore custom JSON, CDXML, SVG, Unicode text, and `CF_ENHMETAFILE`, enabling Office paste as an editable object. The default OLE clipboard enumeration excludes `CF_METAFILEPICT`, avoiding Word's preference for WMF preview generation.
 - `chemcore-office.exe --write-word-docx-payload <payload.json> <output.docx>` has been added. This is the first "direct-write Word structure" path: it directly generates an OOXML package containing `word/embeddings/oleObject1.bin` and `word/media/image1.emf`, used to verify and settle the ChemDraw-style external EMF preview structure. Later clipboard/active Word insertion should reuse this package writer for stable previews.
 
 Remaining embedded object interfaces to complete:
@@ -294,12 +294,12 @@ Remaining embedded object interfaces to complete:
 ```text
 IOleObject      Basic extent and DoVerb desktop wake-up are implemented; next is write-back to Office storage after editing.
 IDataObject     OLE clipboard already supports Embed Source/Object Descriptor/custom text formats/CF_ENHMETAFILE.
-IPersistStorage Writes Chemcore payload stream, SVG preview stream, EMF presentation, and EPRINT; next is Load read-back and edit write-back.
+IPersistStorage Writes ChemCore payload stream, SVG preview stream, EMF presentation, and EPRINT; next is Load read-back and edit write-back.
 IViewObject2    Has basic native vector preview renderer path; next is more path, font, and advanced fill fidelity.
 IRunnableObject Skeleton exists; next is running state and desktop wake-up.
 ```
 
-Stage 1 only requires Windows/Office to recognize the Chemcore OLE class. Stage 2 lets inserted Office objects show previews. Stage 3 implements double-click activation and edit write-back.
+Stage 1 only requires Windows/Office to recognize the ChemCore OLE class. Stage 2 lets inserted Office objects show previews. Stage 3 implements double-click activation and edit write-back.
 
 ## Native Document Container
 
@@ -335,10 +335,10 @@ This allows upgrading from gzip JSON to a multi-file container later without ove
 
 ## Clipboard Formats
 
-ChemDraw-level experience requires serious clipboard support. Copying Chemcore objects should write multiple formats at once:
+ChemDraw-level experience requires serious clipboard support. Copying ChemCore objects should write multiple formats at once:
 
 ```text
-Chemcore native object
+ChemCore native object
 CDXML
 SVG
 PNG
@@ -348,10 +348,10 @@ Plain text / SMILES / InChI (optional later)
 Paste should read formats by priority:
 
 ```text
-Chemcore native > CDXML > SVG/PNG > text chemistry
+ChemCore native > CDXML > SVG/PNG > text chemistry
 ```
 
-This gives reasonable fallbacks between Chemcore, Office, ChemDraw, browsers, and chat tools.
+This gives reasonable fallbacks between ChemCore, Office, ChemDraw, browsers, and chat tools.
 
 ## Preview And Export Formats
 
@@ -417,14 +417,14 @@ These outputs should be generated uniformly by engine/render service. The Office
 
 ### Stage 7: Office OLE Prototype
 
-- Register Chemcore OLE object.
+- Register ChemCore OLE object.
 - Insert objects into Office.
 - Display preview.
-- Double-click opens Chemcore desktop.
+- Double-click opens ChemCore desktop.
 
 ### Stage 8: Complete Office Lifecycle
 
-- Save and restore Chemcore object payload in Office documents.
+- Save and restore ChemCore object payload in Office documents.
 - Update Office preview after editing.
 - Support copy/paste editable objects.
 - Support embedded `.ccjz` data inside objects.
@@ -432,8 +432,8 @@ These outputs should be generated uniformly by engine/render service. The Office
 ### Stage 9: Office Add-in Enhancements
 
 - Ribbon buttons.
-- Insert Chemcore Object.
-- Edit Selected Chemcore Object.
+- Insert ChemCore Object.
+- Edit Selected ChemCore Object.
 - Export/Convert.
 - Template library.
 
@@ -450,7 +450,7 @@ These outputs should be generated uniformly by engine/render service. The Office
 
 - No temporary Electron version.
 - No desktop-only chemical editing logic.
-- No Office plugin directly parsing or modifying Chemcore JSON.
+- No Office plugin directly parsing or modifying ChemCore JSON.
 - No SVG-only paste with editable object postponed indefinitely.
 - Do not freeze `.ccjz` API as forever single gzip JSON.
 - Do not turn the Tauri backend into a second business layer.

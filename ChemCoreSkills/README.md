@@ -1,24 +1,24 @@
 # ChemCore Skills
 
 This suite contains agent skills for the ChemCore ecosystem, installable in
-Codex or Claude Code. The directory layout follows a domain tree, while each
-installable skill still lives in its own folder with a `SKILL.md` file.
+Codex or Claude Code. Source skills live under `ChemCoreSkills/skills`, and
+each installable skill is its own folder with a `SKILL.md` entrypoint.
 
 ## Skills
 
-- `chemistry_and_materials/chemical_documents/chemcore-cli`
+- `skills/chemcore-cli`
   - ChemCore CLI, protocol discovery, selectors, capture, command scripts,
     label-query, and JSONL sessions.
-- `chemistry_and_materials/chemical_documents/chemcore-office`
+- `skills/chemcore-office`
   - Office/OLE payloads, Word and PowerPoint paste behavior, editable object
     debugging, and clipboard verification.
-- `chemistry_and_materials/chemical_documents/chemcore-ocr-reconstruction`
+- `skills/chemcore-ocr-reconstruction`
   - PNG-to-ChemCore JSON/command reconstruction, structure gates, molecule-pool
     regression, and failure taxonomy.
-- `chemistry_and_materials/chemical_documents/chemcore-drawing-agent`
+- `skills/chemcore-drawing-agent`
   - Drawing-agent workflows for `plan-bond`, `plan-template`, `label-query`,
     template insertion, and GUI-compatible command scripts.
-- `research_tools/development/chemcore-development`
+- `skills/chemcore-development`
   - ChemCore build, test, WASM, desktop package, CI, release, and repository
     hygiene workflows.
 
@@ -91,25 +91,25 @@ Expected direct child folders:
 ## Remote Installation
 
 If installing through a Codex skill installer from GitHub, list each installable
-skill path explicitly because this repository stores them in a domain tree:
+skill path explicitly because this repository packages them as a suite:
 
 ```text
-ChemCoreSkills/chemistry_and_materials/chemical_documents/chemcore-cli
-ChemCoreSkills/chemistry_and_materials/chemical_documents/chemcore-office
-ChemCoreSkills/chemistry_and_materials/chemical_documents/chemcore-ocr-reconstruction
-ChemCoreSkills/chemistry_and_materials/chemical_documents/chemcore-drawing-agent
-ChemCoreSkills/research_tools/development/chemcore-development
+ChemCoreSkills/skills/chemcore-cli
+ChemCoreSkills/skills/chemcore-office
+ChemCoreSkills/skills/chemcore-ocr-reconstruction
+ChemCoreSkills/skills/chemcore-drawing-agent
+ChemCoreSkills/skills/chemcore-development
 ```
 
 With the bundled installer helper, pass all paths after one `--path` flag:
 
 ```powershell
 python install-skill-from-github.py --repo dreamlovesu32/chemcore --path `
-  ChemCoreSkills/chemistry_and_materials/chemical_documents/chemcore-cli `
-  ChemCoreSkills/chemistry_and_materials/chemical_documents/chemcore-office `
-  ChemCoreSkills/chemistry_and_materials/chemical_documents/chemcore-ocr-reconstruction `
-  ChemCoreSkills/chemistry_and_materials/chemical_documents/chemcore-drawing-agent `
-  ChemCoreSkills/research_tools/development/chemcore-development
+  ChemCoreSkills/skills/chemcore-cli `
+  ChemCoreSkills/skills/chemcore-office `
+  ChemCoreSkills/skills/chemcore-ocr-reconstruction `
+  ChemCoreSkills/skills/chemcore-drawing-agent `
+  ChemCoreSkills/skills/chemcore-development
 ```
 
 ## Validation
@@ -118,17 +118,17 @@ Check that the CLI-facing skill documentation is still in sync with the runtime
 commands and formats:
 
 ```powershell
-python .\ChemCoreSkills\chemistry_and_materials\chemical_documents\chemcore-cli\scripts\check_cli_skill_sync.py --suite-root .\ChemCoreSkills --json
+python .\ChemCoreSkills\skills\chemcore-cli\scripts\check_cli_skill_sync.py --suite-root .\ChemCoreSkills --json
 ```
 
 Check that the development helper is available:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\ChemCoreSkills\research_tools\development\chemcore-development\scripts\chemcore_check.ps1 -Help
+powershell -ExecutionPolicy Bypass -File .\ChemCoreSkills\skills\chemcore-development\scripts\chemcore_check.ps1 -Help
 ```
 
 For a full repository verification, run:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\ChemCoreSkills\research_tools\development\chemcore-development\scripts\chemcore_check.ps1 -All
+powershell -ExecutionPolicy Bypass -File .\ChemCoreSkills\skills\chemcore-development\scripts\chemcore_check.ps1 -All
 ```

@@ -1,4 +1,4 @@
-# Chemcore Abbreviation Recognition Rules
+# ChemCore Abbreviation Recognition Rules
 
 This document defines the current kernel behavior for recognizing structural endpoint labels, functional-group abbreviations, and formula-like labels. Ordinary free text is handled by text-object rules.
 

@@ -1,6 +1,6 @@
-# Chemcore Valence-Driven Label Recognition Rules
+# ChemCore Valence-Driven Label Recognition Rules
 
-This document defines Chemcore valence-driven label recognition rules. The valence parser interprets formula-like labels such as `CN`, `CO2Cl`, and `CH2COOCH2SO2NHCl`, where meaning can be derived from elemental valence and linear writing order. Named substituents such as `Boc`, `Fmoc`, and `Ts` are interpreted by dedicated templates.
+This document defines ChemCore valence-driven label recognition rules. The valence parser interprets formula-like labels such as `CN`, `CO2Cl`, and `CH2COOCH2SO2NHCl`, where meaning can be derived from elemental valence and linear writing order. Named substituents such as `Boc`, `Fmoc`, and `Ts` are interpreted by dedicated templates.
 
 ## Behavioral Goals
 

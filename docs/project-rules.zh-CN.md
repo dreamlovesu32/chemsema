@@ -1,4 +1,4 @@
-# Chemcore 项目规则
+# ChemCore 项目规则
 
 这份文档记录当前开发阶段也必须保持的项目级规则。更细的行为规则仍放在各专题文档里，例如格式、键绘制和命令历史。
 
@@ -18,7 +18,7 @@ Windows 桌面端和 Office 集成的长期方案见 `docs/windows-desktop-offic
 ## Office/OLE 边界
 
 - Office 集成必须以 `apps/chemcore-office` 的独立 COM/OLE local server 为边界，不把 OLE 生命周期直接塞进桌面主窗口进程。
-- Chemcore 自己的 OLE class 固定为 `Chemcore.Document` / `Chemcore.Document.1` / `{CB69F54F-F21E-44DE-84FB-89D98FECE056}`。
+- ChemCore 自己的 OLE class 固定为 `Chemcore.Document` / `Chemcore.Document.1` / `{CB69F54F-F21E-44DE-84FB-89D98FECE056}`。
 - 开发期注册写 `HKCU\Software\Classes`，正式安装器写 `HKLM\Software\Classes`。不要要求用户手动编辑注册表。
 - OLE server 只能负责 COM/OLE 接口、storage、preview、剪贴板对象和唤醒桌面端；化学解析、文档 mutation、导入导出和渲染语义仍由 Rust engine / desktop service 提供。
 - Office Add-in 只能作为后续 Ribbon/入口增强，不能替代 OLE embedded object。
