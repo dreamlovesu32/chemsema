@@ -93,6 +93,16 @@ chemcore-cli context figure1.cdxml --target object:obj_line_001 --radius 45 --ex
 chemcore-cli capture figure1.cdxml --target object:obj_bracket_001 --out tmp/bracket.png --width 1200 --expand 8 --pretty
 ```
 
+## Agent Skills
+
+ChemCore includes a dedicated agent skill suite in
+[ChemCoreSkills](./ChemCoreSkills/). These skills package the project-specific
+workflows for the CLI protocol, command scripts, drawing-agent planning, OCR
+reconstruction, Office/OLE debugging, and repository development. The suite can
+be flattened into Codex skills or Claude Code skills; keep the installable
+skills independent, and use this README as the public entry point for
+discovering them.
+
 ## Current Status
 
 Current version: `1.0.0-beta.5`.
@@ -227,6 +237,7 @@ chemcore/
   apps/chemcore-office/            Windows Office/OLE integration server
   viewer/                          Browser editor host and generated WASM package
   docs/                            Public rules, specs, architecture notes, and assets
+  ChemCoreSkills/                  Codex/Claude skills for ChemCore agent and development workflows
   examples/                        Example ChemCore native documents
   fixtures/                        Public synthetic CDXML regression fixtures
   scripts/                         Build, verification, and regression helpers
@@ -338,6 +349,7 @@ needed analysis packages.
 - Bond rendering rules: [English](./docs/bond-rendering-rules.md) / [中文](./docs/bond-rendering-rules.zh-CN.md)
 - Charge and radical symbol rules: [English](./docs/charge-radical-symbol-rules.md) / [中文](./docs/charge-radical-symbol-rules.zh-CN.md)
 - Agent POC workflow: [English](./docs/agent-poc-workflow.md) / [中文](./docs/agent-poc-workflow.zh-CN.md)
+- ChemCore agent skills: [English](./ChemCoreSkills/README.md) / [中文](./ChemCoreSkills/README_ZH.md)
 - ChemCore CLI command guide: [English](./docs/chemcore-cli-guide.md) / [中文](./docs/chemcore-cli-guide.zh-CN.md)
 - CLI protocol contracts: [docs/protocol](./docs/protocol/README.md)
 - Document commit contract: [English](./docs/document-commit-contract.md) / [中文](./docs/document-commit-contract.zh-CN.md)

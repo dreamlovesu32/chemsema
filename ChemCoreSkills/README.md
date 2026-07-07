@@ -1,81 +1,78 @@
 # ChemCore Skills
 
-这是一组面向 ChemCore 生态的 Codex skills，目录结构参考 MindScienceSkills
-的学科树，但定位是 ChemCore 的核心能力：化学文档、可编辑对象、渲染内核、
-Office/OLE、CLI 协议和 OCR 逆渲染。
+This suite contains agent skills for the ChemCore ecosystem, installable in
+Codex or Claude Code. The directory layout follows a domain tree, while each
+installable skill still lives in its own folder with a `SKILL.md` file.
 
-## 技能列表
+## Skills
 
 - `chemistry_and_materials/chemical_documents/chemcore-cli`
-  - ChemCore CLI、协议、selector、capture、command script、label-query。
+  - ChemCore CLI, protocol discovery, selectors, capture, command scripts,
+    label-query, and JSONL sessions.
 - `chemistry_and_materials/chemical_documents/chemcore-office`
-  - Office/OLE payload、Word/PowerPoint 粘贴、可编辑对象调试。
+  - Office/OLE payloads, Word and PowerPoint paste behavior, editable object
+    debugging, and clipboard verification.
 - `chemistry_and_materials/chemical_documents/chemcore-ocr-reconstruction`
-  - PNG 到 ChemCore JSON/command stream、结构门禁、分子池回归。
+  - PNG-to-ChemCore JSON/command reconstruction, structure gates, molecule-pool
+    regression, and failure taxonomy.
 - `chemistry_and_materials/chemical_documents/chemcore-drawing-agent`
-  - 给绘制 agent 用的 `plan-bond`、`plan-template`、label-query 工作流。
+  - Drawing-agent workflows for `plan-bond`, `plan-template`, `label-query`,
+    template insertion, and GUI-compatible command scripts.
 - `research_tools/development/chemcore-development`
-  - ChemCore 编译、测试、WASM、桌面包、CI、仓库卫生。
+  - ChemCore build, test, WASM, desktop package, CI, release, and repository
+    hygiene workflows.
 
-## 设计原则
+## Install From A Checkout
 
-- skill 的 `SKILL.md` 保持轻量，复杂规则放入 `references/` 按需读取。
-- CLI 是机器契约，优先使用 `version`、`schema`、`capabilities`、`guide`
-  做运行时发现。
-- OCR 的目标是可编辑 ChemCore 文档，不是像素拟合。
-- 绘制 agent 应该问内核要吸附、标签、模板落点，不要手写 GUI 几何。
-- Office 调试先看 payload，再看 Office 粘贴结果。
+Codex expects installed skills to be direct children of `$CODEX_HOME/skills`.
+Use the flatten script to copy the nested skill folders into an installable
+directory.
 
-## 平铺安装
-
-Codex skill 通常需要每个 skill 作为 `$CODEX_HOME/skills` 下的直接子目录。
-使用平铺脚本生成安装目录：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\flatten_skills.ps1 -OutDir $env:CODEX_HOME\skills
-```
-
-从仓库根目录运行时也可以这样写：
+PowerShell:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\ChemCoreSkills\flatten_skills.ps1 -OutDir $env:CODEX_HOME\skills
 ```
 
-Linux/macOS 或 Git Bash:
+Bash:
 
 ```bash
 ./ChemCoreSkills/flatten_skills.sh "${CODEX_HOME:-$HOME/.codex}/skills"
 ```
 
-安装后重启 Codex，让新 skill 被重新发现。
+Restart Codex after installation so the new skills are discovered.
 
-## 安装到 Claude Code
+## Install For Claude Code
 
-Claude Code 也支持以 `SKILL.md` 为入口的 skills。如果希望这套 skill 跟随当前仓库，
-可以平铺到项目内 `.claude/skills`：
+Claude Code also supports skills built around a `SKILL.md` entrypoint. Install
+ChemCore skills into a project-local `.claude/skills` directory when you want
+them to travel with this checkout:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\ChemCoreSkills\flatten_skills.ps1 -OutDir .\.claude\skills
 ```
 
-如果希望作为个人 Claude Code skills 全局可用，可以安装到：
+Or install them as personal Claude Code skills:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\ChemCoreSkills\flatten_skills.ps1 -OutDir "$HOME\.claude\skills"
 ```
 
-Git Bash / Linux / macOS:
+Bash:
 
 ```bash
 ./ChemCoreSkills/flatten_skills.sh .claude/skills
 ./ChemCoreSkills/flatten_skills.sh "$HOME/.claude/skills"
 ```
 
-在 Claude Code 里可以直接用 `/chemcore-cli`、`/chemcore-office`、
-`/chemcore-ocr-reconstruction`、`/chemcore-drawing-agent` 或
-`/chemcore-development` 调用；自然语言请求匹配 description 时，Claude 也可以自动加载。
+In Claude Code, invoke the skills directly with `/chemcore-cli`,
+`/chemcore-office`, `/chemcore-ocr-reconstruction`,
+`/chemcore-drawing-agent`, or `/chemcore-development`. Claude can also load
+them automatically when a request matches each skill description.
 
-也可以输出到临时目录检查：
+## Dry Run Installation
+
+Write the flattened skills to a temporary directory first:
 
 ```powershell
 $out = Join-Path $env:TEMP "chemcore-skills"
@@ -83,7 +80,7 @@ powershell -ExecutionPolicy Bypass -File .\ChemCoreSkills\flatten_skills.ps1 -Ou
 Get-ChildItem $out
 ```
 
-期望看到 5 个直接子目录：
+Expected direct child folders:
 
 - `chemcore-cli`
 - `chemcore-development`
@@ -91,10 +88,10 @@ Get-ChildItem $out
 - `chemcore-ocr-reconstruction`
 - `chemcore-office`
 
-## 远程安装路径
+## Remote Installation
 
-如果通过 Codex 的 skill installer 从 GitHub 安装，需要分别安装每个 skill 路径，
-因为本仓库按领域树组织，不是把所有 skill 平铺在顶层：
+If installing through a Codex skill installer from GitHub, list each installable
+skill path explicitly because this repository stores them in a domain tree:
 
 ```text
 ChemCoreSkills/chemistry_and_materials/chemical_documents/chemcore-cli
@@ -104,7 +101,7 @@ ChemCoreSkills/chemistry_and_materials/chemical_documents/chemcore-drawing-agent
 ChemCoreSkills/research_tools/development/chemcore-development
 ```
 
-使用内置 installer helper 时，多个路径应放在同一个 `--path` 后面：
+With the bundled installer helper, pass all paths after one `--path` flag:
 
 ```powershell
 python install-skill-from-github.py --repo dreamlovesu32/chemcore --path `
@@ -115,21 +112,22 @@ python install-skill-from-github.py --repo dreamlovesu32/chemcore --path `
   ChemCoreSkills/research_tools/development/chemcore-development
 ```
 
-## 校验
+## Validation
 
-检查 CLI skill 文档是否覆盖当前运行时暴露的 commands 和 formats：
+Check that the CLI-facing skill documentation is still in sync with the runtime
+commands and formats:
 
 ```powershell
 python .\ChemCoreSkills\chemistry_and_materials\chemical_documents\chemcore-cli\scripts\check_cli_skill_sync.py --suite-root .\ChemCoreSkills --json
 ```
 
-检查开发 helper 是否可用：
+Check that the development helper is available:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\ChemCoreSkills\research_tools\development\chemcore-development\scripts\chemcore_check.ps1 -Help
 ```
 
-完整仓库验证：
+For a full repository verification, run:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\ChemCoreSkills\research_tools\development\chemcore-development\scripts\chemcore_check.ps1 -All
