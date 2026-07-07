@@ -266,6 +266,7 @@ node --check viewer/app.js
 - Agent POC 工作流：[English](./docs/agent-poc-workflow.md) / [中文](./docs/agent-poc-workflow.zh-CN.md)
 - ChemCore agent skills：[English](./ChemCoreSkills/README.md) / [中文](./ChemCoreSkills/README_ZH.md)
 - ChemCore CLI 命令指南：[English](./docs/chemcore-cli-guide.md) / [中文](./docs/chemcore-cli-guide.zh-CN.md)
+- CLI/GUI parity 清单：[docs/cli-gui-parity-checklist.md](./docs/cli-gui-parity-checklist.md)
 - CLI protocol contract：[docs/protocol](./docs/protocol/README.md)
 - Document Commit 合同：[English](./docs/document-commit-contract.md) / [中文](./docs/document-commit-contract.zh-CN.md)
 - 编辑器命令历史：[English](./docs/editor-command-history.md) / [中文](./docs/editor-command-history.zh-CN.md)

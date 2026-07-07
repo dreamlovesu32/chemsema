@@ -155,6 +155,18 @@ Current behavior:
 - selected molecule nodes or bonds update the molecule style color
 - selected line, bracket, symbol, and shape objects update their stroke and/or fill style color
 
+### `move-targets`, `rotate-targets`, `scale-targets`, `delete-targets`
+
+Apply command-script edits to explicit target sets without relying on the GUI
+selection state.
+
+Recorded data:
+
+- `targets`: nodes, bonds, scene objects, and label nodes
+- `delta` for `move-targets`
+- `center` and `degrees` for `rotate-targets`
+- `scaleX`, `scaleY`, and optional `pivot` for `scale-targets`
+
 ### `move-selection`
 
 Moves the current selected molecule parts.
@@ -197,6 +209,8 @@ new editing features should use semantic commands.
 The following actions are transient UI/runtime actions:
 
 - `copy-selection`: changes only the internal clipboard
+- `select-targets`, `select-all`, and `clear-selection`: change only current
+  in-memory selection unless followed by a document-changing command
 - `set-tool`
 - `set-template`
 - hover/focus updates

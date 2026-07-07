@@ -8,7 +8,7 @@ each installable skill is its own folder with a `SKILL.md` entrypoint.
 
 - `skills/chemcore-cli`
   - ChemCore CLI, protocol discovery, selectors, capture, command scripts,
-    label-query, and JSONL sessions.
+    selection/target editing, label-query, and JSONL sessions.
 - `skills/chemcore-office`
   - Office/OLE payloads, Word and PowerPoint paste behavior, editable object
     debugging, and clipboard verification.

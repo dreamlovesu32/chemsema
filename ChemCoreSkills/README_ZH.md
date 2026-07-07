@@ -8,7 +8,8 @@
 ## 技能列表
 
 - `skills/chemcore-cli`
-  - ChemCore CLI、协议、selector、capture、command script、label-query。
+  - ChemCore CLI、协议、selector、capture、command script、selection/target
+    editing、label-query 和 JSONL session。
 - `skills/chemcore-office`
   - Office/OLE payload、Word/PowerPoint 粘贴、可编辑对象调试。
 - `skills/chemcore-ocr-reconstruction`

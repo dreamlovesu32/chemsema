@@ -1,14 +1,14 @@
 {
   "schema": "chemcore.entrypoints.v1",
   "product": {
-    "name": "Chemcore",
+    "name": "ChemCore",
     "version": "1.0.0-beta.5",
     "identifier": "com.chemcore.desktop",
-    "description": "Chemcore is a desktop, browser, and CLI chemical drawing toolkit with editable ChemCore JSON, CDXML/CDX, SDF, SVG, and Office/OLE clipboard workflows."
+    "description": "ChemCore is a desktop, browser, and CLI chemical drawing toolkit with editable ChemCore JSON, CDXML/CDX, SDF, SVG, and Office/OLE clipboard workflows."
   },
   "entrypoints": {
     "gui": {
-      "name": "Chemcore desktop",
+      "name": "ChemCore desktop",
       "executable": "chemcore-desktop.exe",
       "installedPathHint": "<install-dir>\\chemcore-desktop.exe",
       "fileAssociations": ["ccjz", "ccjs", "cdxml", "cdx", "sdf", "sd"]
@@ -39,7 +39,7 @@
         "<install-dir>\\chemcore-office.exe",
         "<install-dir>\\resources\\chemcore-office.exe"
       ],
-      "purpose": "Registers the editable Chemcore OLE server and accepts CLI clipboard payloads for Office paste."
+      "purpose": "Registers the editable ChemCore OLE server and accepts CLI clipboard payloads for Office paste."
     }
   },
   "packaging": {
@@ -51,7 +51,7 @@
     "detailedGuideFile": "chemcore-cli-guide.md",
     "detailedGuideInstalledPathHint": "<install-dir>\\resources\\chemcore-cli-guide.md",
     "windowsAppPaths": ["chemcore-cli.exe"],
-    "pathRegistration": "The installer adds the Chemcore CLI directory to PATH. Open a new terminal after installing, then run `chemcore-cli guide --pretty`.",
+    "pathRegistration": "The installer adds the ChemCore CLI directory to PATH. Open a new terminal after installing, then run `chemcore-cli guide --pretty`.",
     "pathRegistrationFallback": "If machine PATH registration fails, the installer writes the current-user PATH. App Paths are also registered for ShellExecute-style launchers.",
     "consoleNote": "Console agents can call `chemcore-cli` from a new terminal after install, or read installedPathHints from this file and `chemcore-cli doctor`."
   },
@@ -60,7 +60,7 @@
       "key": "agent",
       "file": "chemcore-agent-guide.md",
       "language": "en",
-      "title": "Chemcore Agent Guide",
+      "title": "ChemCore Agent Guide",
       "installedPathHints": [
         "<install-dir>\\resources\\chemcore-agent-guide.md",
         "<install-dir>\\chemcore-agent-guide.md"
@@ -94,7 +94,7 @@
   },
   "agentWorkflow": [
     "Run `chemcore-cli version --pretty` to read product and protocol versions.",
-    "Run `chemcore-cli guide --pretty` first when using Chemcore without source-code context.",
+    "Run `chemcore-cli guide --pretty` first when using ChemCore without source-code context.",
     "Run `chemcore-cli guide --kind detailed --pretty` to locate the detailed English CLI guide.",
     "Run `chemcore-cli doctor --pretty` to identify the executable directory and install state.",
     "Run `chemcore-cli examples basic --pretty` for a minimal command script that creates an editable document.",
@@ -102,6 +102,7 @@
     "Run `chemcore-cli context <document> --target <selector> --out context.json --capture-out context.png --scale 5` to inspect nearby objects and relationships.",
     "Run `chemcore-cli detail <document> --target <selector> --out detail.json --pretty` to expand one id into exact object/molecule/node/bond JSON.",
     "Run `chemcore-cli capture <document> --target <selector> --out crop.png --scale 6` for deterministic high-resolution cropped inspection.",
+    "Use command JSON with `select-targets`, `select-all`, and `clear-selection` before GUI-style selection edits; the same commands work in `chemcore-cli run` and JSONL session `execute`.",
     "Run `chemcore-cli copy <document> --target <selector>` to place an editable Office/OLE payload on the Windows clipboard."
   ]
 }

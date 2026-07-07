@@ -1,4 +1,4 @@
-use super::session::{session_help_json, session_ready_json};
+use super::session::{handle_session_request, session_help_json, session_ready_json};
 use super::*;
 
 fn assert_close(actual: f64, expected: f64) {
@@ -186,4 +186,124 @@ fn session_reports_canonical_protocol_id() {
 
     let help = session_help_json();
     assert_eq!(help["protocol"], crate::protocol::SESSION_PROTOCOL_VERSION);
+    assert!(help["operations"]["execute"]["description"]
+        .as_str()
+        .expect("execute description")
+        .contains("select-targets"));
+}
+
+#[test]
+fn session_execute_selection_commands_drive_arrange() {
+    let mut engine = Engine::new();
+    let first: Value = serde_json::from_str(
+        &engine
+            .execute_command_json(
+                &json!({
+                    "type": "add-text",
+                    "position": { "x": 10.0, "y": 10.0 },
+                    "text": "A",
+                    "box": [0.0, 0.0, 10.0, 10.0]
+                })
+                .to_string(),
+            )
+            .expect("add first text"),
+    )
+    .expect("first result");
+    let second: Value = serde_json::from_str(
+        &engine
+            .execute_command_json(
+                &json!({
+                    "type": "add-text",
+                    "position": { "x": 40.0, "y": 30.0 },
+                    "text": "B",
+                    "box": [0.0, 0.0, 10.0, 10.0]
+                })
+                .to_string(),
+            )
+            .expect("add second text"),
+    )
+    .expect("second result");
+    let first_id = first["created"]["objects"][0].as_str().expect("first id");
+    let second_id = second["created"]["objects"][0].as_str().expect("second id");
+
+    let input = std::env::temp_dir().join(format!(
+        "chemcore-cli-session-selection-input-{}.ccjs",
+        std::process::id()
+    ));
+    let output = std::env::temp_dir().join(format!(
+        "chemcore-cli-session-selection-output-{}.ccjs",
+        std::process::id()
+    ));
+    fs::write(&input, engine.document_json().expect("document json")).expect("write input");
+
+    let mut session = None;
+    let (opened, exit) = handle_session_request(
+        &mut session,
+        json!({
+            "id": 1,
+            "op": "open",
+            "input": input.to_string_lossy()
+        }),
+    );
+    assert!(!exit);
+    assert_eq!(opened["ok"], true);
+
+    let (executed, exit) = handle_session_request(
+        &mut session,
+        json!({
+            "id": 2,
+            "op": "execute",
+            "commands": [
+                {
+                    "type": "select-targets",
+                    "targets": { "objects": [first_id, second_id] }
+                },
+                {
+                    "type": "apply-selection-arrange",
+                    "command": "align-left"
+                }
+            ]
+        }),
+    );
+    assert!(!exit);
+    assert_eq!(executed["ok"], true);
+    assert_eq!(
+        executed["result"]["results"][0]["commandType"],
+        "select-targets"
+    );
+    assert_eq!(
+        executed["result"]["results"][0]["result"]["output"]["counts"]["textObjects"],
+        2
+    );
+    assert_eq!(
+        executed["result"]["results"][1]["commandType"],
+        "apply-selection-arrange"
+    );
+    assert_eq!(executed["result"]["results"][1]["changed"], true);
+
+    let (saved, exit) = handle_session_request(
+        &mut session,
+        json!({
+            "id": 3,
+            "op": "save",
+            "out": output.to_string_lossy()
+        }),
+    );
+    assert!(!exit);
+    assert_eq!(saved["ok"], true);
+
+    let document: Value =
+        serde_json::from_str(&fs::read_to_string(&output).expect("saved document"))
+            .expect("saved json");
+    let text_x = document["objects"]
+        .as_array()
+        .expect("objects")
+        .iter()
+        .filter(|object| object["type"].as_str() == Some("text"))
+        .map(|object| object["transform"]["translate"][0].as_f64().expect("x"))
+        .collect::<Vec<_>>();
+    assert_eq!(text_x, vec![10.0, 10.0]);
+
+    let _ = fs::remove_file(input);
+    let _ = fs::remove_file(output);
 }

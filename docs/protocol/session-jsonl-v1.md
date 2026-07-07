@@ -51,6 +51,19 @@ stack or full snapshot history. `execute` responses report before/after
 revision and per-command results; callers should maintain durable history with
 git, temporary files, or their own logs.
 
+## Selection State
+
+`execute` accepts the same command JSON as one-shot `new` and `run`.
+Selection state persists in the session until another command changes it, the
+document is closed, or the process exits. Use `select-targets`, `select-all`,
+and `clear-selection` before GUI-style selection commands such as
+`apply-selection-arrange`, `scale-selection`, `center-selection-on-page`,
+`apply-selection-color`, grouping, linking, style commands, delete, and cut.
+
+For stateless edits that should not depend on current selection, use explicit
+target commands such as `move-targets`, `rotate-targets`, `scale-targets`, and
+`delete-targets`.
+
 ## File Outputs
 
 `capture` and `save` may write files. File writes are verified before success is

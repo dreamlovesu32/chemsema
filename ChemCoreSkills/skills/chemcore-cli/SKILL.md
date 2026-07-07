@@ -41,8 +41,9 @@ Use this order for document work:
   `references/runtime-discovery.md`.
 - For selectors, targets, detail, context, and capture, read
   `references/document-inspection.md`.
-- For `new`, `run`, `plan-bond`, `plan-template`, and command JSON, read
-  `references/command-scripts.md`.
+- For `new`, `run`, `session execute`, command JSON, selection state, target
+  editing, arrange/group/link/style commands, `plan-bond`, and `plan-template`,
+  read `references/command-scripts.md`.
 - For `convert`, `export`, editable formats, and raster/vector output, read
   `references/formats-conversion.md`.
 - For chemical text, visible text, reverse labels, anchors, and

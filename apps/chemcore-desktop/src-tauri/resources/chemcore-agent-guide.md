@@ -1,6 +1,6 @@
-# Chemcore Agent Guide
+# ChemCore Agent Guide
 
-This guide gives automation agents a source-code-independent map of Chemcore.
+This guide gives automation agents a source-code-independent map of ChemCore.
 The CLI covers machine workflows. The desktop GUI covers interactive editing and
 visual inspection.
 
@@ -222,6 +222,20 @@ Run commands against an existing document:
 ```powershell
 chemcore-cli run input.cdxml commands.json --out edited.cdxml --results run-results.json --pretty
 ```
+
+The same command JSON works in JSONL session `execute`. Use `new`/`run` for
+stateless one-shot edits and `session` for repeated edits on one loaded
+document.
+
+Selection state is scriptable. Use `select-targets` for single-select or
+multi-select, `select-all` for GUI-style Select All, and `clear-selection` to
+reset. After selection, commands such as `apply-selection-arrange`,
+`scale-selection`, `center-selection-on-page`, `apply-selection-color`,
+`group-selection`, `ungroup-selection`, `link-selection`, `unlink-selection`,
+style commands, `delete-selection`, and `cut-selection` operate on the current
+selection. Use explicit target commands such as `move-targets`,
+`rotate-targets`, `scale-targets`, and `delete-targets` when the edit should not
+depend on current selection.
 
 Execution reports include per-command success, document hash/revision changes,
 created/updated/deleted targets, diagnostics, and invocation input/output paths.

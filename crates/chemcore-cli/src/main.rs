@@ -2616,4 +2616,64 @@ mod tests {
             1
         );
     }
+
+    #[test]
+    fn execution_report_selection_commands_drive_arrange() {
+        let mut engine = Engine::new();
+        let execution = execute_command_values(
+            &mut engine,
+            vec![
+                json!({
+                    "type": "add-text",
+                    "position": { "x": 10.0, "y": 10.0 },
+                    "text": "A",
+                    "box": [0.0, 0.0, 10.0, 10.0]
+                }),
+                json!({
+                    "type": "add-text",
+                    "position": { "x": 40.0, "y": 30.0 },
+                    "text": "B",
+                    "box": [0.0, 0.0, 10.0, 10.0]
+                }),
+                json!({
+                    "type": "select-targets",
+                    "targets": { "objects": ["obj_text_1", "obj_text_2"] }
+                }),
+                json!({
+                    "type": "apply-selection-arrange",
+                    "command": "align-left"
+                }),
+            ],
+            Some(&["objects".to_string()]),
+            false,
+        );
+
+        assert!(execution.ok);
+        assert_eq!(execution.report["commandCount"], 4);
+        assert_eq!(
+            execution.report["commands"][2]["commandType"],
+            "select-targets"
+        );
+        assert_eq!(execution.report["commands"][2]["changed"], false);
+        assert_eq!(
+            execution.report["commands"][2]["engineResult"]["output"]["counts"]["textObjects"],
+            2
+        );
+        assert_eq!(
+            execution.report["commands"][3]["commandType"],
+            "apply-selection-arrange"
+        );
+        assert_eq!(execution.report["commands"][3]["changed"], true);
+
+        let document: Value = serde_json::from_str(&document_json(&engine).expect("document json"))
+            .expect("document value");
+        let text_x = document["objects"]
+            .as_array()
+            .expect("objects")
+            .iter()
+            .filter(|object| object["type"].as_str() == Some("text"))
+            .map(|object| object["transform"]["translate"][0].as_f64().expect("x"))
+            .collect::<Vec<_>>();
+        assert_eq!(text_x, vec![10.0, 10.0]);
+    }
 }

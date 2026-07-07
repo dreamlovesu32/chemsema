@@ -351,6 +351,7 @@ needed analysis packages.
 - Agent POC workflow: [English](./docs/agent-poc-workflow.md) / [中文](./docs/agent-poc-workflow.zh-CN.md)
 - ChemCore agent skills: [English](./ChemCoreSkills/README.md) / [中文](./ChemCoreSkills/README_ZH.md)
 - ChemCore CLI command guide: [English](./docs/chemcore-cli-guide.md) / [中文](./docs/chemcore-cli-guide.zh-CN.md)
+- CLI/GUI parity checklist: [docs/cli-gui-parity-checklist.md](./docs/cli-gui-parity-checklist.md)
 - CLI protocol contracts: [docs/protocol](./docs/protocol/README.md)
 - Document commit contract: [English](./docs/document-commit-contract.md) / [中文](./docs/document-commit-contract.zh-CN.md)
 - Editor command history: [English](./docs/editor-command-history.md) / [中文](./docs/editor-command-history.zh-CN.md)

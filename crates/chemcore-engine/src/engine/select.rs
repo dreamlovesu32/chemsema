@@ -699,6 +699,50 @@ impl Engine {
         true
     }
 
+    pub(super) fn scale_targets_by_factors(
+        &mut self,
+        targets: &CommandTargetSet,
+        scale_x: f64,
+        scale_y: f64,
+        pivot: Option<Point>,
+    ) -> bool {
+        if targets.is_empty()
+            || !scale_x.is_finite()
+            || !scale_y.is_finite()
+            || scale_x <= 0.0
+            || scale_y <= 0.0
+            || ((scale_x - 1.0).abs() <= crate::EPSILON && (scale_y - 1.0).abs() <= crate::EPSILON)
+        {
+            return false;
+        }
+        let previous_selection = self.state.selection.clone();
+        self.state.selection = selection_from_command_targets(&self.state.document, targets);
+        let Some(bounds) = self.selection_rotation_bounds() else {
+            self.state.selection = previous_selection;
+            return false;
+        };
+        let Some(drag) = self.build_selection_resize_drag(
+            SelectionResizeHandle::SouthEast,
+            Point::new(bounds.max_x, bounds.max_y),
+        ) else {
+            self.state.selection = previous_selection;
+            return false;
+        };
+        let pivot = pivot.unwrap_or_else(|| Point::new(bounds.center_x(), bounds.center_y()));
+        self.push_undo_snapshot();
+        apply_selection_scale_to_document(
+            self,
+            &drag.node_originals,
+            &drag.object_originals,
+            pivot,
+            scale_x,
+            scale_y,
+        );
+        self.state.selection = previous_selection;
+        self.clear_interaction();
+        true
+    }
+
     pub fn update_selection_rotate(&mut self, point: Point, alt_key: bool) -> bool {
         self.with_transient_command(EditorCommand::RotateSelection, |engine| {
             engine.update_selection_rotate_untracked(point, alt_key)
@@ -1390,6 +1434,31 @@ impl Engine {
         self.state.selection = SelectionState::default();
         self.clear_interaction();
         changed
+    }
+
+    pub(super) fn select_targets_direct(&mut self, targets: &CommandTargetSet) -> bool {
+        let selection = selection_from_command_targets(&self.state.document, targets);
+        let changed = self.state.selection != selection;
+        self.state.selection = selection;
+        self.clear_interaction();
+        changed
+    }
+
+    pub(super) fn selection_command_output(&self, selection_changed: bool) -> JsonValue {
+        let selection = &self.state.selection;
+        json!({
+            "selectionChanged": selection_changed,
+            "empty": selection.is_empty(),
+            "selection": selection,
+            "counts": {
+                "textObjects": selection.text_objects.len(),
+                "graphicObjects": selection.arrow_objects.len(),
+                "moleculeObjects": selection.molecule_objects.len(),
+                "labelNodes": selection.label_nodes.len(),
+                "nodes": selection.nodes.len(),
+                "bonds": selection.bonds.len()
+            }
+        })
     }
 
     pub fn context_hit_test_json(&self, point: Point) -> String {

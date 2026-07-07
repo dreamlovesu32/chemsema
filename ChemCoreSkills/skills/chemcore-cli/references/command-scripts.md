@@ -8,6 +8,7 @@ chemcore-cli run input.cdxml commands.json --out edited.cdxml --results results.
 ```
 
 The command input is a JSON object or array. Use `-` to read JSON from stdin.
+The same command JSON is accepted by JSONL `session` operation `execute`.
 
 ## Reports
 
@@ -55,3 +56,49 @@ placement logic.
 Use `insert-template` when creating rings and standard fragments. Prefer the
 extended anchored form when attaching a ring to a focused atom or bond, because
 it reuses engine placement and overlap avoidance.
+
+## Selection State
+
+Use selection commands before GUI-style selection edits:
+
+```json
+[
+  {
+    "type": "select-targets",
+    "targets": {
+      "objects": ["text_1", "text_2"],
+      "nodes": [],
+      "bonds": [],
+      "labelNodes": []
+    }
+  },
+  { "type": "apply-selection-arrange", "command": "align-left" }
+]
+```
+
+- `select-targets` sets single-select or multi-select from explicit target ids.
+- `select-all` selects visible/editable document content.
+- `clear-selection` clears the current selection.
+- Selection commands change in-memory state, not document revision.
+
+After selecting, commands such as `apply-selection-arrange`,
+`scale-selection`, `center-selection-on-page`, `apply-selection-color`,
+`group-selection`, `ungroup-selection`, `link-selection`, `unlink-selection`,
+style commands, `apply-object-settings-to-selection`, `delete-selection`, and
+`cut-selection` can omit id arrays and use the current selection.
+
+## Target Editing
+
+Prefer explicit target commands when the edit should be stateless:
+
+```json
+{ "type": "move-targets", "targets": { "bonds": ["bond_1"] }, "delta": { "dx": 10, "dy": 0 } }
+```
+
+Use `rotate-targets` with `center` and `degrees`. Use `scale-targets` with
+`scaleX`, `scaleY`, and optional `pivot`; unequal factors perform scripted
+stretch. Use `delete-targets` for explicit deletion.
+
+Use `apply-object-settings-to-selection` for bond length, line width, bold
+width, bond spacing, margin width, and hash spacing. It accepts explicit
+`bond_ids`/`object_ids`, or the current selection after `select-targets`.

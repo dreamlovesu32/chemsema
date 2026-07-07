@@ -416,7 +416,7 @@ pub(super) fn session_help_json() -> Value {
             "detail": {"required": ["target"], "description": "Return one object/molecule/node/bond detail JSON."},
             "context": {"required": ["target"], "optional": ["targets", "radius", "captureOut", "scale", "width", "height", "limit"], "description": "Return nearby summaries and optionally a screenshot. target/targets may be a selector string or an array of selector strings."},
             "capture": {"required": ["target"], "optional": ["targets", "out", "format", "scale", "width", "height", "expand", "expandRel", "selectionOnly", "cropBounds"], "description": "Write a precise crop; target/targets may be a selector string or an array. Use selectionOnly with cropBounds to render aligned object-only layers."},
-            "execute": {"required": ["command or commands"], "optional": ["continueOnError"], "description": "Run one or more engine JSON commands against the in-memory document."},
+            "execute": {"required": ["command or commands"], "optional": ["continueOnError"], "description": "Run one or more engine JSON commands against the in-memory document. Selection commands such as select-targets, select-all, and clear-selection persist for later execute commands in the same session."},
             "save": {"required": ["out"], "optional": ["format"], "description": "Save the current in-memory document."},
             "status": {"description": "Return the open document summary."},
             "close": {"description": "Close the open document without saving."},

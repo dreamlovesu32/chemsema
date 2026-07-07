@@ -593,8 +593,35 @@ fn protocol_schemas_json() -> Value {
             "snapshots": "Per-command after snapshots and the top-level final snapshot are opt-in with --inspect-after <include>. Use --inspect-after none or --no-inspect-after to force no snapshots.",
             "errorPointers": "Execution reports include command index, commandType, document transition, changeSummary, and engine error message.",
             "editCommands": {
+                "selection-state": {
+                    "description": "Use select-targets, select-all, and clear-selection to drive GUI-style selection commands in new/run scripts and JSONL session execute requests. These commands change the in-memory selection but do not change the document revision."
+                },
+                "select-targets": {
+                    "description": "Sets the current engine selection from explicit nodes, bonds, objects, and labelNodes. Passing one object is single-select; passing multiple ids is multi-select."
+                },
+                "select-all": {
+                    "description": "Selects visible text and graphic objects plus editable molecule nodes, bonds, label nodes, and molecule objects, matching the GUI Select All action."
+                },
+                "clear-selection": {
+                    "description": "Clears the current in-memory selection."
+                },
                 "add-bond": {
                     "description": "Creates a ChemCore bond from begin to end with order and variant. Optional doublePlacement left/right/center, or double.placement, freezes an explicit double-bond placement while preserving the default automatic behavior when omitted."
+                },
+                "move-targets": {
+                    "description": "Moves explicit nodes, bonds, objects, or labelNodes by delta dx/dy without relying on current selection."
+                },
+                "rotate-targets": {
+                    "description": "Rotates explicit nodes, bonds, objects, or labelNodes around center by degrees."
+                },
+                "scale-targets": {
+                    "description": "Scales explicit nodes, bonds, objects, or labelNodes by scaleX/scaleY around optional pivot. Use unequal factors for scripted stretch."
+                },
+                "selection-layout": {
+                    "description": "After select-targets or select-all, GUI selection commands such as apply-selection-arrange, scale-selection, center-selection-on-page, apply-selection-color, delete-selection, group-selection, ungroup-selection, link-selection, and unlink-selection operate on the current selection."
+                },
+                "apply-object-settings-to-selection": {
+                    "description": "Applies bondLength, lineWidth, boldWidth, bondSpacing, marginWidth, or hashSpacing to explicit bond_ids/object_ids. Use this for bond width and other object setting changes."
                 }
             },
             "planningCommands": {
@@ -653,14 +680,14 @@ pub(crate) fn about_value() -> Value {
         "schema": ENTRYPOINTS_SCHEMA_VERSION,
         "protocols": protocol_versions_value(),
         "product": {
-            "name": "Chemcore",
+            "name": "ChemCore",
             "version": env!("CARGO_PKG_VERSION"),
             "identifier": "com.chemcore.desktop",
-            "description": "Chemcore is a desktop, browser, and CLI chemical drawing toolkit with editable ChemCore JSON, CDXML/CDX, SDF, SVG, and Office/OLE clipboard workflows."
+            "description": "ChemCore is a desktop, browser, and CLI chemical drawing toolkit with editable ChemCore JSON, CDXML/CDX, SDF, SVG, and Office/OLE clipboard workflows."
         },
         "entrypoints": {
             "gui": {
-                "name": "Chemcore desktop",
+                "name": "ChemCore desktop",
                 "executable": "chemcore-desktop.exe",
                 "installedPathHint": "<install-dir>\\chemcore-desktop.exe",
                 "fileAssociations": ["ccjz", "ccjs", "cdxml", "cdx", "sdf", "sd"]
@@ -689,7 +716,7 @@ pub(crate) fn about_value() -> Value {
                     "<install-dir>\\chemcore-office.exe",
                     "<install-dir>\\resources\\chemcore-office.exe"
                 ],
-                "purpose": "Registers the editable Chemcore OLE server and accepts CLI clipboard payloads for Office paste."
+                "purpose": "Registers the editable ChemCore OLE server and accepts CLI clipboard payloads for Office paste."
             }
         },
         "packaging": {
@@ -701,7 +728,7 @@ pub(crate) fn about_value() -> Value {
             "detailedGuideInstalledPathHint": "<install-dir>\\resources\\chemcore-cli-guide.md",
             "installer": "NSIS x64",
             "windowsAppPaths": ["chemcore-cli.exe"],
-            "pathRegistration": "The installer adds the Chemcore CLI directory to PATH. Open a new terminal after installing, then run `chemcore-cli guide --pretty`.",
+            "pathRegistration": "The installer adds the ChemCore CLI directory to PATH. Open a new terminal after installing, then run `chemcore-cli guide --pretty`.",
             "pathRegistrationFallback": "If machine PATH registration fails, the installer writes the current-user PATH. App Paths are also registered for ShellExecute-style launchers.",
             "consoleNote": "Console agents can call `chemcore-cli` from a new terminal after install, or read installedPathHints from this file and `chemcore-cli doctor`."
         },
@@ -713,7 +740,7 @@ pub(crate) fn about_value() -> Value {
             "clipboardOutput": ["windows-office-ole", "chemcore-payload-json"]
         },
         "agentWorkflow": [
-            "Run `chemcore-cli guide --pretty` first when using Chemcore without source-code context.",
+            "Run `chemcore-cli guide --pretty` first when using ChemCore without source-code context.",
             "Run `chemcore-cli guide --kind detailed --pretty` to locate the detailed English CLI guide.",
             "Run `chemcore-cli doctor --pretty` to identify the executable directory and install state.",
             "Run `chemcore-cli examples basic --pretty` for a minimal command script that creates an editable document.",
@@ -721,6 +748,7 @@ pub(crate) fn about_value() -> Value {
             "Run `chemcore-cli context <document> --target <selector> --out context.json --capture-out context.png --scale 5` to inspect nearby objects and relationships.",
             "Run `chemcore-cli detail <document> --target <selector> --out detail.json --pretty` to expand one id into exact object/molecule/node/bond JSON.",
             "Run `chemcore-cli capture <document> --target <selector> --out crop.png --scale 6` for deterministic high-resolution cropped inspection.",
+            "Use command JSON with `select-targets`, `select-all`, and `clear-selection` before GUI-style selection edits; the same commands work in `chemcore-cli run` and JSONL session `execute`.",
             "Run `chemcore-cli copy <document> --target <selector>` to place an editable Office/OLE payload on the Windows clipboard."
         ]
     })
@@ -744,7 +772,7 @@ fn protocol_versions_value() -> Value {
 pub(crate) fn version_value() -> Value {
     json!({
         "ok": true,
-        "product": "Chemcore",
+        "product": "ChemCore",
         "cli": "chemcore-cli",
         "version": env!("CARGO_PKG_VERSION"),
         "protocol": CLI_PROTOCOL_VERSION,
@@ -816,8 +844,8 @@ fn agent_guide_spec() -> GuideSpec {
         key: "agent",
         file: AGENT_GUIDE_FILE,
         language: "en",
-        title: "Chemcore Agent Guide",
-        summary: "Quick machine-oriented guide for Chemcore CLI discovery, precise capture, context lookup, detail lookup, editing, and Office clipboard workflows.",
+        title: "ChemCore Agent Guide",
+        summary: "Quick machine-oriented guide for ChemCore CLI discovery, precise capture, context lookup, detail lookup, editing, and Office clipboard workflows.",
     }
 }
 

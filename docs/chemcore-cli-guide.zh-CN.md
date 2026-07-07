@@ -1196,7 +1196,46 @@ electron
 
 ## 11. 通用目标编辑
 
-### 11.1 移动对象、节点、键
+命令脚本在单次调用模式（`new`/`run`）和 JSONL session 模式（`session` +
+`execute`）中使用同一套 JSON 命令。选择命令会修改当前内存中的选区，供同一
+脚本或同一 session 后续命令使用；选择命令本身不会修改文档 revision。
+
+### 11.1 选择状态
+
+选择明确目标：
+
+```json
+{
+  "type": "select-targets",
+  "targets": {
+    "nodes": ["node_1"],
+    "bonds": ["bond_1"],
+    "objects": ["text_1", "arrow_1"],
+    "labelNodes": []
+  }
+}
+```
+
+传一个目标就是单选，传多个目标就是多选。全选当前可见/可编辑内容：
+
+```json
+{ "type": "select-all" }
+```
+
+清空当前选区：
+
+```json
+{ "type": "clear-selection" }
+```
+
+执行 `select-targets` 或 `select-all` 后，GUI 风格的选择命令可以省略 id 数组，
+直接作用在当前选区上。这包括 `apply-selection-arrange`、`scale-selection`、
+`center-selection-on-page`、`apply-selection-color`、`apply-selection-order`、
+`group-selection`、`ungroup-selection`、`link-selection`、`unlink-selection`、
+`apply-text-style`、`apply-bond-style`、`apply-line-style`、图形/括号/轨道样式命令、
+`apply-object-settings-to-selection`、`delete-selection` 和 `cut-selection`。
+
+### 11.2 移动对象、节点、键
 
 ```json
 {
@@ -1211,7 +1250,7 @@ electron
 }
 ```
 
-### 11.2 旋转对象、节点、键
+### 11.3 旋转对象、节点、键
 
 ```json
 {
@@ -1227,7 +1266,26 @@ electron
 }
 ```
 
-### 11.3 删除对象、节点、键
+### 11.4 缩放或拉伸目标
+
+```json
+{
+  "type": "scale-targets",
+  "targets": {
+    "nodes": ["node_1", "node_2"],
+    "bonds": ["bond_1"],
+    "objects": ["text_1"]
+  },
+  "scaleX": 1.25,
+  "scaleY": 0.8,
+  "pivot": { "x": 200.0, "y": 200.0 }
+}
+```
+
+省略 `pivot` 时，会以目标边界框中心为缩放中心。`scaleX` 和 `scaleY` 相同
+时是等比缩放，不同则是脚本化拉伸。
+
+### 11.5 删除对象、节点、键
 
 ```json
 {
@@ -1252,7 +1310,37 @@ electron
 
 ## 12. 排列、分组和层级
 
-### 12.1 调整层级
+### 12.1 排列当前选区
+
+```json
+[
+  {
+    "type": "select-targets",
+    "targets": { "objects": ["text_1", "text_2", "text_3"] }
+  },
+  {
+    "type": "apply-selection-arrange",
+    "command": "align-left"
+  }
+]
+```
+
+`command` 可选值：
+
+```text
+align-left
+align-right
+align-top
+align-bottom
+align-h-center
+align-v-center
+distribute-h
+distribute-v
+flip-h
+flip-v
+```
+
+### 12.2 调整层级
 
 ```json
 {
@@ -1275,7 +1363,9 @@ forward
 backward
 ```
 
-### 12.2 分组
+省略 `objectIds` 时，会使用当前选区。
+
+### 12.3 分组
 
 ```json
 {
@@ -1284,7 +1374,9 @@ backward
 }
 ```
 
-### 12.3 取消分组
+省略 `object_ids` 时，会使用当前选区。
+
+### 12.4 取消分组
 
 ```json
 {
@@ -1293,7 +1385,9 @@ backward
 }
 ```
 
-### 12.4 链接和取消链接
+省略 `object_ids` 时，会使用当前选区。
+
+### 12.5 链接和取消链接
 
 ```json
 {
@@ -1308,6 +1402,9 @@ backward
   "object_ids": ["bracket_1", "text_1"]
 }
 ```
+
+省略 `object_ids` 时，会使用当前选区。链接和取消链接要求选区里有一个类似括号的
+图形对象和一个文本对象。
 
 ## 13. 文档样式和对象设置
 

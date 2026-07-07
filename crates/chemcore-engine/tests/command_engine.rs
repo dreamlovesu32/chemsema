@@ -919,6 +919,41 @@ fn move_targets_moves_bond_endpoints_by_delta() {
 }
 
 #[test]
+fn scale_targets_stretches_bond_endpoints_by_factor() {
+    let mut engine = Engine::new();
+    let add = execute(
+        &mut engine,
+        json!({
+            "type": "add-bond",
+            "begin": { "x": 100.0, "y": 100.0 },
+            "end": { "x": 148.0, "y": 100.0 },
+            "order": 1,
+            "variant": "single"
+        }),
+    );
+    let first_node_id = created_node_id(&add, 0);
+    let second_node_id = created_node_id(&add, 1);
+    let bond_id = created_bond_id(&add);
+
+    let scaled = execute(
+        &mut engine,
+        json!({
+            "type": "scale-targets",
+            "targets": { "bonds": [bond_id] },
+            "scaleX": 2.0,
+            "scaleY": 1.0,
+            "pivot": { "x": 100.0, "y": 100.0 }
+        }),
+    );
+
+    assert_eq!(scaled["changed"], true);
+    assert_eq!(scaled["command"]["type"], "scale-targets");
+    let document = document_value(&engine);
+    assert_eq!(node_position(&document, &first_node_id), (100.0, 100.0));
+    assert_eq!(node_position(&document, &second_node_id), (196.0, 100.0));
+}
+
+#[test]
 fn moving_under_crossing_bond_marks_over_bond_for_incremental_render() {
     let mut engine = Engine::new();
     engine
@@ -988,6 +1023,171 @@ fn rotate_targets_rotates_text_object_by_degrees() {
     let object = find_object(&document, &object_id);
     assert_eq!(object["transform"]["translate"], json!([120.0, 80.0]));
     assert_eq!(object["transform"]["rotate"], 90.0);
+}
+
+#[test]
+fn select_targets_enables_selection_arrange_command() {
+    let mut engine = Engine::new();
+    let first = execute(
+        &mut engine,
+        json!({
+            "type": "add-text",
+            "position": { "x": 10.0, "y": 10.0 },
+            "text": "A",
+            "box": [0.0, 0.0, 10.0, 10.0]
+        }),
+    );
+    let second = execute(
+        &mut engine,
+        json!({
+            "type": "add-text",
+            "position": { "x": 40.0, "y": 30.0 },
+            "text": "B",
+            "box": [0.0, 0.0, 10.0, 10.0]
+        }),
+    );
+    let third = execute(
+        &mut engine,
+        json!({
+            "type": "add-text",
+            "position": { "x": 100.0, "y": 50.0 },
+            "text": "C",
+            "box": [0.0, 0.0, 30.0, 10.0]
+        }),
+    );
+    let object_ids = vec![
+        created_object_id(&first),
+        created_object_id(&second),
+        created_object_id(&third),
+    ];
+
+    let selected = execute(
+        &mut engine,
+        json!({
+            "type": "select-targets",
+            "targets": { "objects": object_ids }
+        }),
+    );
+
+    assert_eq!(selected["changed"], false);
+    assert_eq!(selected["output"]["selectionChanged"], true);
+    assert_eq!(selected["output"]["counts"]["textObjects"], 3);
+
+    let arranged = execute(
+        &mut engine,
+        json!({
+            "type": "apply-selection-arrange",
+            "command": "align-left"
+        }),
+    );
+
+    assert_eq!(arranged["changed"], true);
+    assert_eq!(arranged["command"]["type"], "apply-selection-arrange");
+    let document = document_value(&engine);
+    for object_id in selected["output"]["selection"]["textObjects"]
+        .as_array()
+        .expect("selected text objects")
+        .iter()
+        .filter_map(Value::as_str)
+    {
+        let object = find_object(&document, object_id);
+        assert_eq!(object["transform"]["translate"][0], 10.0);
+    }
+}
+
+#[test]
+fn select_targets_can_drive_group_selection_without_ids() {
+    let mut engine = Engine::new();
+    let first = execute(
+        &mut engine,
+        json!({
+            "type": "add-text",
+            "position": { "x": 10.0, "y": 10.0 },
+            "text": "A"
+        }),
+    );
+    let second = execute(
+        &mut engine,
+        json!({
+            "type": "add-text",
+            "position": { "x": 40.0, "y": 30.0 },
+            "text": "B"
+        }),
+    );
+    let object_ids = vec![created_object_id(&first), created_object_id(&second)];
+    execute(
+        &mut engine,
+        json!({
+            "type": "select-targets",
+            "targets": { "objects": object_ids }
+        }),
+    );
+
+    let grouped = execute(&mut engine, json!({ "type": "group-selection" }));
+
+    assert_eq!(grouped["changed"], true);
+    assert_eq!(grouped["command"]["type"], "group-selection");
+    let document = document_value(&engine);
+    let groups = document["objects"]
+        .as_array()
+        .expect("objects")
+        .iter()
+        .filter(|object| object["type"].as_str() == Some("group"))
+        .collect::<Vec<_>>();
+    assert_eq!(groups.len(), 1);
+    assert_eq!(groups[0]["children"].as_array().expect("children").len(), 2);
+}
+
+#[test]
+fn select_all_and_clear_selection_report_current_selection() {
+    let mut engine = Engine::new();
+    execute(
+        &mut engine,
+        json!({
+            "type": "add-bond",
+            "begin": { "x": 100.0, "y": 100.0 },
+            "end": { "x": 148.0, "y": 100.0 },
+            "order": 1,
+            "variant": "single"
+        }),
+    );
+    let text = execute(
+        &mut engine,
+        json!({
+            "type": "add-text",
+            "position": { "x": 120.0, "y": 80.0 },
+            "text": "colored"
+        }),
+    );
+    let text_id = created_object_id(&text);
+
+    let selected = execute(&mut engine, json!({ "type": "select-all" }));
+
+    assert_eq!(selected["changed"], false);
+    assert_eq!(selected["output"]["selectionChanged"], true);
+    assert_eq!(selected["output"]["counts"]["textObjects"], 1);
+    assert_eq!(selected["output"]["counts"]["moleculeObjects"], 1);
+    assert_eq!(selected["output"]["counts"]["nodes"], 2);
+    assert_eq!(selected["output"]["counts"]["bonds"], 1);
+
+    let colored = execute(
+        &mut engine,
+        json!({
+            "type": "apply-selection-color",
+            "color": "#336699"
+        }),
+    );
+
+    assert_eq!(colored["changed"], true);
+    let document = document_value(&engine);
+    let text_object = find_object(&document, &text_id);
+    let style_id = text_object["styleRef"].as_str().expect("text style ref");
+    assert_eq!(document["styles"][style_id]["fill"], "#336699");
+
+    let cleared = execute(&mut engine, json!({ "type": "clear-selection" }));
+    assert_eq!(cleared["changed"], false);
+    assert_eq!(cleared["output"]["selectionChanged"], true);
+    assert_eq!(cleared["output"]["empty"], true);
 }
 
 #[test]

@@ -2004,6 +2004,27 @@ impl Engine {
                     self.inspect_document_output(&include),
                 ));
             }
+            EditorCommand::SelectTargets { targets } => {
+                let selection_changed = self.select_targets_direct(&targets);
+                return Ok(self.readonly_command_result(
+                    Some(command),
+                    self.selection_command_output(selection_changed),
+                ));
+            }
+            EditorCommand::SelectAll => {
+                let selection_changed = self.select_all();
+                return Ok(self.readonly_command_result(
+                    Some(command),
+                    self.selection_command_output(selection_changed),
+                ));
+            }
+            EditorCommand::ClearSelection => {
+                let selection_changed = self.clear_selection();
+                return Ok(self.readonly_command_result(
+                    Some(command),
+                    self.selection_command_output(selection_changed),
+                ));
+            }
             EditorCommand::PlanBond {
                 begin,
                 cursor,
@@ -2226,10 +2247,12 @@ impl Engine {
                 bold,
                 no_go,
             } => {
-                self.state.selection = SelectionState {
-                    arrow_objects: object_ids,
-                    ..SelectionState::default()
-                };
+                if !object_ids.is_empty() {
+                    self.state.selection = SelectionState {
+                        arrow_objects: object_ids,
+                        ..SelectionState::default()
+                    };
+                }
                 self.apply_arrow_options_to_selection(
                     variant, head_size, curve, head_style, tail_style, head, tail, bold, no_go,
                 )
@@ -2283,62 +2306,80 @@ impl Engine {
                 object_ids,
                 command,
             } => {
-                self.state.selection = SelectionState {
-                    arrow_objects: object_ids,
-                    ..SelectionState::default()
-                };
+                if !object_ids.is_empty() {
+                    self.state.selection =
+                        scene_object_selection_from_ids(&self.state.document, &object_ids);
+                }
                 self.apply_selection_order_command(&command)
             }
             EditorCommand::ApplySelectionColor { color } => self.apply_color_to_selection(&color),
             EditorCommand::ApplyShapeStyle { object_ids, style } => {
-                self.state.selection = SelectionState {
-                    arrow_objects: object_ids,
-                    ..SelectionState::default()
-                };
+                if !object_ids.is_empty() {
+                    self.state.selection = SelectionState {
+                        arrow_objects: object_ids,
+                        ..SelectionState::default()
+                    };
+                }
                 self.apply_shape_style_to_selection(&style)
             }
             EditorCommand::ApplyBracketKind { object_ids, kind } => {
-                self.state.selection = SelectionState {
-                    arrow_objects: object_ids,
-                    ..SelectionState::default()
-                };
+                if !object_ids.is_empty() {
+                    self.state.selection = SelectionState {
+                        arrow_objects: object_ids,
+                        ..SelectionState::default()
+                    };
+                }
                 self.apply_bracket_kind_to_selection(&kind)
             }
             EditorCommand::ApplyOrbitalTemplate {
                 object_ids,
                 template,
             } => {
-                self.state.selection = SelectionState {
-                    arrow_objects: object_ids,
-                    ..SelectionState::default()
-                };
+                if !object_ids.is_empty() {
+                    self.state.selection = SelectionState {
+                        arrow_objects: object_ids,
+                        ..SelectionState::default()
+                    };
+                }
                 self.apply_orbital_template_to_selection(&template)
             }
             EditorCommand::ApplyOrbitalStyle { object_ids, style } => {
-                self.state.selection = SelectionState {
-                    arrow_objects: object_ids,
-                    ..SelectionState::default()
-                };
+                if !object_ids.is_empty() {
+                    self.state.selection = SelectionState {
+                        arrow_objects: object_ids,
+                        ..SelectionState::default()
+                    };
+                }
                 self.apply_orbital_style_to_selection(&style)
             }
             EditorCommand::ApplyOrbitalPhase { object_ids, phase } => {
-                self.state.selection = SelectionState {
-                    arrow_objects: object_ids,
-                    ..SelectionState::default()
-                };
+                if !object_ids.is_empty() {
+                    self.state.selection = SelectionState {
+                        arrow_objects: object_ids,
+                        ..SelectionState::default()
+                    };
+                }
                 self.apply_orbital_phase_to_selection(&phase)
             }
             EditorCommand::ApplyLineStyle { object_ids, style } => {
-                self.state.selection = SelectionState {
-                    arrow_objects: object_ids,
-                    ..SelectionState::default()
-                };
+                if !object_ids.is_empty() {
+                    self.state.selection = SelectionState {
+                        arrow_objects: object_ids,
+                        ..SelectionState::default()
+                    };
+                }
                 self.apply_line_style_to_selection(&style)
             }
-            EditorCommand::ApplyBondStyle { bond_ids, style } => self
-                .with_command(command.clone(), |engine| {
+            EditorCommand::ApplyBondStyle { bond_ids, style } => {
+                let bond_ids = if bond_ids.is_empty() {
+                    self.state.selection.bonds.clone()
+                } else {
+                    bond_ids
+                };
+                self.with_command(command.clone(), |engine| {
                     engine.apply_bond_style_to_bond_ids_untracked(&bond_ids, &style)
-                }),
+                })
+            }
             EditorCommand::ApplyTextStyle {
                 text_object_ids,
                 label_node_ids,
@@ -2346,12 +2387,15 @@ impl Engine {
                 command,
                 value,
             } => {
-                self.state.selection = SelectionState {
-                    text_objects: text_object_ids,
-                    label_nodes: label_node_ids,
-                    nodes: node_ids,
-                    ..SelectionState::default()
-                };
+                if !text_object_ids.is_empty() || !label_node_ids.is_empty() || !node_ids.is_empty()
+                {
+                    self.state.selection = SelectionState {
+                        text_objects: text_object_ids,
+                        label_nodes: label_node_ids,
+                        nodes: node_ids,
+                        ..SelectionState::default()
+                    };
+                }
                 self.apply_text_style_to_selection(&command, &value)
             }
             EditorCommand::SetChemicalCheckForSelection { enabled } => {
@@ -2360,27 +2404,31 @@ impl Engine {
             EditorCommand::ExpandLabelsInSelection => self.expand_labels_in_selection(),
             EditorCommand::CenterSelectionOnPage => self.center_selection_on_page(),
             EditorCommand::GroupSelection { object_ids } => {
-                self.state.selection = SelectionState {
-                    arrow_objects: object_ids,
-                    ..SelectionState::default()
-                };
+                if !object_ids.is_empty() {
+                    self.state.selection =
+                        scene_object_selection_from_ids(&self.state.document, &object_ids);
+                }
                 self.group_selection()
             }
             EditorCommand::UngroupSelection { object_ids } => {
-                self.state.selection = SelectionState {
-                    arrow_objects: object_ids,
-                    ..SelectionState::default()
-                };
+                if !object_ids.is_empty() {
+                    self.state.selection =
+                        scene_object_selection_from_ids(&self.state.document, &object_ids);
+                }
                 self.ungroup_selection()
             }
             EditorCommand::LinkSelection { object_ids } => {
-                self.state.selection =
-                    scene_object_selection_from_ids(&self.state.document, &object_ids);
+                if !object_ids.is_empty() {
+                    self.state.selection =
+                        scene_object_selection_from_ids(&self.state.document, &object_ids);
+                }
                 self.link_selection()
             }
             EditorCommand::UnlinkSelection { object_ids } => {
-                self.state.selection =
-                    scene_object_selection_from_ids(&self.state.document, &object_ids);
+                if !object_ids.is_empty() {
+                    self.state.selection =
+                        scene_object_selection_from_ids(&self.state.document, &object_ids);
+                }
                 self.unlink_selection()
             }
             EditorCommand::JoinSelection => self.join_selection(),
@@ -2395,6 +2443,14 @@ impl Engine {
             } => self.with_command(command.clone(), |engine| {
                 engine.rotate_targets_by_degrees(&targets, center, degrees)
             }),
+            EditorCommand::ScaleTargets {
+                targets,
+                scale_x,
+                scale_y,
+                pivot,
+            } => self.with_command(command.clone(), |engine| {
+                engine.scale_targets_by_factors(&targets, scale_x, scale_y, pivot)
+            }),
             EditorCommand::ScaleSelection { percent } => self.scale_selection(percent),
             EditorCommand::ApplyObjectSettings { settings } => self.apply_object_settings(settings),
             EditorCommand::ApplyObjectSettingsToSelection {
@@ -2402,11 +2458,13 @@ impl Engine {
                 object_ids,
                 settings,
             } => {
-                self.state.selection = SelectionState {
-                    bonds: bond_ids,
-                    arrow_objects: object_ids,
-                    ..SelectionState::default()
-                };
+                if !bond_ids.is_empty() || !object_ids.is_empty() {
+                    self.state.selection = SelectionState {
+                        bonds: bond_ids,
+                        arrow_objects: object_ids,
+                        ..SelectionState::default()
+                    };
+                }
                 self.apply_object_settings_to_selection(SelectedObjectSettings {
                     bond_length: settings.bond_length,
                     line_width: settings.line_width,
@@ -4415,6 +4473,9 @@ fn editor_command_type_name(command: &EditorCommand) -> &'static str {
         EditorCommand::ExportDocument { .. } => "export-document",
         EditorCommand::ConvertDocument { .. } => "convert-document",
         EditorCommand::InspectDocument { .. } => "inspect-document",
+        EditorCommand::SelectTargets { .. } => "select-targets",
+        EditorCommand::SelectAll => "select-all",
+        EditorCommand::ClearSelection => "clear-selection",
         EditorCommand::PlanBond { .. } => "plan-bond",
         EditorCommand::PlanTemplate { .. } => "plan-template",
         EditorCommand::AddBond { .. } => "add-bond",
@@ -4458,6 +4519,7 @@ fn editor_command_type_name(command: &EditorCommand) -> &'static str {
         EditorCommand::JoinSelection => "join-selection",
         EditorCommand::MoveTargets { .. } => "move-targets",
         EditorCommand::RotateTargets { .. } => "rotate-targets",
+        EditorCommand::ScaleTargets { .. } => "scale-targets",
         EditorCommand::MoveSelection => "move-selection",
         EditorCommand::RotateSelection => "rotate-selection",
         EditorCommand::ResizeSelection => "resize-selection",

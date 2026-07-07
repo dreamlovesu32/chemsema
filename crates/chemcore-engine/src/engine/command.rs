@@ -159,6 +159,11 @@ pub enum EditorCommand {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         include: Vec<String>,
     },
+    SelectTargets {
+        targets: CommandTargetSet,
+    },
+    SelectAll,
+    ClearSelection,
     PlanBond {
         begin: CommandAnchor,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -302,9 +307,8 @@ pub enum EditorCommand {
         before_rf: f64,
     },
     ApplyArrowStyle {
-        #[serde(alias = "objectIds")]
+        #[serde(default, alias = "objectIds")]
         object_ids: Vec<String>,
-        variant: ArrowVariant,
         #[serde(alias = "headSize")]
         head_size: ArrowHeadSize,
         curve: ArrowCurve,
@@ -317,6 +321,7 @@ pub enum EditorCommand {
         bold: bool,
         #[serde(alias = "noGo")]
         no_go: ArrowNoGo,
+        variant: ArrowVariant,
     },
     CycleBondStyle {
         #[serde(alias = "bondId")]
@@ -365,7 +370,7 @@ pub enum EditorCommand {
         command: String,
     },
     ApplySelectionOrder {
-        #[serde(alias = "objectIds")]
+        #[serde(default, alias = "objectIds")]
         object_ids: Vec<String>,
         command: String,
     },
@@ -373,46 +378,46 @@ pub enum EditorCommand {
         color: String,
     },
     ApplyShapeStyle {
-        #[serde(alias = "objectIds")]
+        #[serde(default, alias = "objectIds")]
         object_ids: Vec<String>,
         style: String,
     },
     ApplyBracketKind {
-        #[serde(alias = "objectIds")]
+        #[serde(default, alias = "objectIds")]
         object_ids: Vec<String>,
         kind: String,
     },
     ApplyOrbitalTemplate {
-        #[serde(alias = "objectIds")]
+        #[serde(default, alias = "objectIds")]
         object_ids: Vec<String>,
         template: String,
     },
     ApplyOrbitalStyle {
-        #[serde(alias = "objectIds")]
+        #[serde(default, alias = "objectIds")]
         object_ids: Vec<String>,
         style: String,
     },
     ApplyOrbitalPhase {
-        #[serde(alias = "objectIds")]
+        #[serde(default, alias = "objectIds")]
         object_ids: Vec<String>,
         phase: String,
     },
     ApplyLineStyle {
-        #[serde(alias = "objectIds")]
+        #[serde(default, alias = "objectIds")]
         object_ids: Vec<String>,
         style: String,
     },
     ApplyBondStyle {
-        #[serde(alias = "bondIds")]
+        #[serde(default, alias = "bondIds")]
         bond_ids: Vec<String>,
         style: String,
     },
     ApplyTextStyle {
-        #[serde(alias = "textObjectIds")]
+        #[serde(default, alias = "textObjectIds")]
         text_object_ids: Vec<String>,
-        #[serde(alias = "labelNodeIds")]
+        #[serde(default, alias = "labelNodeIds")]
         label_node_ids: Vec<String>,
-        #[serde(alias = "nodeIds")]
+        #[serde(default, alias = "nodeIds")]
         node_ids: Vec<String>,
         command: String,
         value: String,
@@ -423,15 +428,19 @@ pub enum EditorCommand {
     ExpandLabelsInSelection,
     CenterSelectionOnPage,
     GroupSelection {
+        #[serde(default, alias = "objectIds")]
         object_ids: Vec<String>,
     },
     UngroupSelection {
+        #[serde(default, alias = "objectIds")]
         object_ids: Vec<String>,
     },
     LinkSelection {
+        #[serde(default, alias = "objectIds")]
         object_ids: Vec<String>,
     },
     UnlinkSelection {
+        #[serde(default, alias = "objectIds")]
         object_ids: Vec<String>,
     },
     JoinSelection,
@@ -443,6 +452,15 @@ pub enum EditorCommand {
         targets: CommandTargetSet,
         center: Point,
         degrees: f64,
+    },
+    ScaleTargets {
+        targets: CommandTargetSet,
+        #[serde(rename = "scaleX", alias = "scale_x")]
+        scale_x: f64,
+        #[serde(rename = "scaleY", alias = "scale_y")]
+        scale_y: f64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pivot: Option<Point>,
     },
     MoveSelection,
     RotateSelection,
@@ -465,7 +483,9 @@ pub enum EditorCommand {
         settings: ObjectSettings,
     },
     ApplyObjectSettingsToSelection {
+        #[serde(default, alias = "bondIds")]
         bond_ids: Vec<String>,
+        #[serde(default, alias = "objectIds")]
         object_ids: Vec<String>,
         settings: ObjectSettingsPatch,
     },

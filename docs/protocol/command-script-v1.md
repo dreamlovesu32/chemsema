@@ -43,3 +43,25 @@ reports target deltas.
 Reports are lightweight by default. Use `--inspect-after <include>` to request
 per-command and final snapshots. Use `--inspect-after none` or
 `--no-inspect-after` to force no snapshots.
+
+## Selection State
+
+Command scripts support GUI-style selection state:
+
+- `select-targets` sets the current selection from explicit `targets`.
+- `select-all` selects visible text/graphic objects and editable molecule
+  nodes, bonds, label nodes, and molecule objects.
+- `clear-selection` clears the current selection.
+
+These commands do not change the document revision. Later commands in the same
+`new`/`run` script can use the current selection. The same command JSON is used
+by JSONL session `execute`.
+
+Selection-driven commands include `apply-selection-arrange`, `scale-selection`,
+`center-selection-on-page`, `apply-selection-color`, `apply-selection-order`,
+`group-selection`, `ungroup-selection`, `link-selection`, `unlink-selection`,
+style commands, `apply-object-settings-to-selection`, `delete-selection`, and
+`cut-selection`.
+
+Target-driven commands that do not depend on current selection include
+`move-targets`, `rotate-targets`, `scale-targets`, and `delete-targets`.

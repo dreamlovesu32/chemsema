@@ -1276,7 +1276,50 @@ electron
 
 ## 11. General Target Editing
 
-### 11.1 Move Targets
+Command scripts run in both one-shot mode (`new`/`run`) and JSONL session mode
+(`session` + `execute`). Selection commands change the current in-memory
+selection for later commands in the same script or session, but they do not
+change the document revision by themselves.
+
+### 11.1 Selection State
+
+Select explicit targets:
+
+```json
+{
+  "type": "select-targets",
+  "targets": {
+    "nodes": ["node_1"],
+    "bonds": ["bond_1"],
+    "objects": ["text_1", "arrow_1"],
+    "labelNodes": []
+  }
+}
+```
+
+Use one target for single-select and multiple targets for multi-select. Select
+everything visible/editable:
+
+```json
+{ "type": "select-all" }
+```
+
+Clear the current selection:
+
+```json
+{ "type": "clear-selection" }
+```
+
+After `select-targets` or `select-all`, GUI-style selection commands can omit
+their id arrays and operate on the current selection. This applies to
+`apply-selection-arrange`, `scale-selection`, `center-selection-on-page`,
+`apply-selection-color`, `apply-selection-order`, `group-selection`,
+`ungroup-selection`, `link-selection`, `unlink-selection`, `apply-text-style`,
+`apply-bond-style`, `apply-line-style`, shape/bracket/orbital style commands,
+`apply-object-settings-to-selection`, `delete-selection`, and
+`cut-selection`.
+
+### 11.2 Move Targets
 
 ```json
 {
@@ -1291,7 +1334,7 @@ electron
 }
 ```
 
-### 11.2 Rotate Targets
+### 11.3 Rotate Targets
 
 ```json
 {
@@ -1307,7 +1350,26 @@ electron
 }
 ```
 
-### 11.3 Delete Targets
+### 11.4 Scale Or Stretch Targets
+
+```json
+{
+  "type": "scale-targets",
+  "targets": {
+    "nodes": ["node_1", "node_2"],
+    "bonds": ["bond_1"],
+    "objects": ["text_1"]
+  },
+  "scaleX": 1.25,
+  "scaleY": 0.8,
+  "pivot": { "x": 200.0, "y": 200.0 }
+}
+```
+
+Omit `pivot` to scale around the selected target bounds center. Use equal
+`scaleX`/`scaleY` for uniform scaling and unequal values for scripted stretch.
+
+### 11.5 Delete Targets
 
 ```json
 {
@@ -1332,7 +1394,37 @@ Target fields:
 
 ## 12. Arrange, Group, And Z Order
 
-### 12.1 Z Order
+### 12.1 Arrange Current Selection
+
+```json
+[
+  {
+    "type": "select-targets",
+    "targets": { "objects": ["text_1", "text_2", "text_3"] }
+  },
+  {
+    "type": "apply-selection-arrange",
+    "command": "align-left"
+  }
+]
+```
+
+`command` values:
+
+```text
+align-left
+align-right
+align-top
+align-bottom
+align-h-center
+align-v-center
+distribute-h
+distribute-v
+flip-h
+flip-v
+```
+
+### 12.2 Z Order
 
 ```json
 {
@@ -1355,7 +1447,9 @@ forward
 backward
 ```
 
-### 12.2 Group
+When `objectIds` is omitted, the command uses the current selection.
+
+### 12.3 Group
 
 ```json
 {
@@ -1364,7 +1458,9 @@ backward
 }
 ```
 
-### 12.3 Ungroup
+When `object_ids` is omitted, the command uses the current selection.
+
+### 12.4 Ungroup
 
 ```json
 {
@@ -1373,7 +1469,9 @@ backward
 }
 ```
 
-### 12.4 Link And Unlink
+When `object_ids` is omitted, the command uses the current selection.
+
+### 12.5 Link And Unlink
 
 ```json
 {
@@ -1388,6 +1486,9 @@ backward
   "object_ids": ["bracket_1", "text_1"]
 }
 ```
+
+When `object_ids` is omitted, the command uses the current selection. Link and
+unlink expect one bracket-like graphic object and one text object.
 
 ## 13. Document Style And Object Settings
 
