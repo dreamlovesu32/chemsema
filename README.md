@@ -4,13 +4,13 @@
 
 [![CI](https://github.com/dreamlovesu32/chemcore/actions/workflows/ci.yml/badge.svg)](https://github.com/dreamlovesu32/chemcore/actions/workflows/ci.yml)
 [![Demo](https://img.shields.io/badge/demo-GitHub%20Pages-2ea44f)](https://dreamlovesu32.github.io/chemcore/)
-[![Windows installer](https://img.shields.io/badge/Windows-installer-0078d4)](https://github.com/dreamlovesu32/chemcore/releases/download/v1.0.0-beta.5/Chemcore_1.0.0-beta.5_x64-setup.exe)
+[![Windows installer](https://img.shields.io/badge/Windows-installer-0078d4)](https://github.com/dreamlovesu32/chemcore/releases/download/v1.0.0-beta.6/Chemcore_1.0.0-beta.6_x64-setup.exe)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](./LICENSE)
-[![Version](https://img.shields.io/badge/version-1.0.0--beta.5-orange)](https://github.com/dreamlovesu32/chemcore/releases/tag/v1.0.0-beta.5)
+[![Version](https://img.shields.io/badge/version-1.0.0--beta.6-orange)](https://github.com/dreamlovesu32/chemcore/releases/tag/v1.0.0-beta.6)
 
-ChemCore is an open-source chemistry structure editor built from scratch for everyday research drawing, publication layout, and Office copy/paste workflows at ChemDraw-level fidelity. Windows users can try the current beta with the [ChemCore 1.0.0-beta.5 x64 installer](https://github.com/dreamlovesu32/chemcore/releases/download/v1.0.0-beta.5/Chemcore_1.0.0-beta.5_x64-setup.exe). The installer includes the desktop app and the Windows Office/OLE integration service; it is not code-signed yet, so Windows may show a SmartScreen warning during this beta stage. It is a chemistry editor rather than a generic cheminformatics toolkit. Maintainer: Jiajun ZHANG, [dreamlovesu@hotmail.com](mailto:dreamlovesu@hotmail.com). Feedback, issues, real CDXML files, and contributions are very welcome. The long-term goal is to make ChemCore a free research infrastructure platform that can later grow into automation, batch processing, AI-assisted research interfaces, and more carefully designed scientific software.
+ChemCore is an open-source chemistry structure editor built from scratch for everyday research drawing, publication layout, and Office copy/paste workflows at ChemDraw-level fidelity. Windows users can try the current beta with the [ChemCore 1.0.0-beta.6 x64 installer](https://github.com/dreamlovesu32/chemcore/releases/download/v1.0.0-beta.6/Chemcore_1.0.0-beta.6_x64-setup.exe). The installer includes the desktop app and the Windows Office/OLE integration service; it is not code-signed yet, so Windows may show a SmartScreen warning during this beta stage. It is a chemistry editor rather than a generic cheminformatics toolkit. Maintainer: Jiajun ZHANG, [dreamlovesu@hotmail.com](mailto:dreamlovesu@hotmail.com). Feedback, issues, real CDXML files, and contributions are very welcome. The long-term goal is to make ChemCore a free research infrastructure platform that can later grow into automation, batch processing, AI-assisted research interfaces, and more carefully designed scientific software.
 
-The core architecture is a shared Rust engine with a lightweight Web interface and a headless CLI surface. Rust owns the document model, editing commands, hit testing, chemical label rules, implicit hydrogen logic, CDXML/CDX import/export, render primitive generation, and vector output needed by Office/OLE. The front end mainly collects events, manages UI state, and presents the result, so the visual editor can stay friendly to human researchers. The CLI calls the same engine directly for file inspection, format conversion, document generation, and JSON command execution, which gives scripts and agents a stable way to create, inspect, and modify documents without driving the GUI. Rust is used because this type of editor depends on long-lived geometry code, format parsers, and interaction state machines where memory safety, testability, performance, and typed boundaries matter. The same engine can compile to WASM for the browser and run as native code for the desktop shell, CLI, and Windows Office integration; the desktop app uses Tauri/WebView2, so the UI can remain Web-based while behavior stays centralized in the cross-platform core.
+The core architecture is a shared Rust engine with a lightweight Web interface and a headless CLI surface. Rust owns the document model, editing commands, hit testing, chemical label rules, implicit hydrogen logic, CDXML/CDX import/export, render primitive generation, and vector output needed by Office/OLE. The front end mainly collects events, manages UI state, and presents the result, so the visual editor can stay friendly to human researchers. The CLI calls the same engine directly for file inspection, format conversion, document generation, and JSON command execution, which gives scripts and agents a stable way to create, inspect, and modify documents without driving the GUI. Rust is used because this type of editor depends on long-lived geometry code, format parsers, and interaction state machines where memory safety, testability, performance, and typed boundaries matter. The same engine can compile to WASM for the browser and HarmonyOS PC shell, and run as native code for the desktop shell, CLI, and Windows Office integration; the desktop app uses Tauri/WebView2, so the UI can remain Web-based while behavior stays centralized in the cross-platform core.
 
 ![ChemCore editor interface](./docs/assets/readme/product-screenshot.png)
 
@@ -105,13 +105,15 @@ discovering them.
 
 ## Current Status
 
-Current version: `1.0.0-beta.5`.
+Current version: `1.0.0-beta.6`.
 
 The Windows x64 installer is available from the
-[v1.0.0-beta.5 release](https://github.com/dreamlovesu32/chemcore/releases/tag/v1.0.0-beta.5).
+[v1.0.0-beta.6 release](https://github.com/dreamlovesu32/chemcore/releases/tag/v1.0.0-beta.6).
 It bundles the Tauri/WebView2 desktop app, file associations, and the
-Office/OLE integration service. The installer is still a beta build and is not
-code-signed yet. The browser demo is published through GitHub Pages:
+Office/OLE integration service. The first-stage HarmonyOS PC shell is available
+from source for DevEco Studio experiments, but it is not part of the Windows
+installer. The installer is still a beta build and is not code-signed yet. The
+browser demo is published through GitHub Pages:
 <https://dreamlovesu32.github.io/chemcore/>.
 
 ## Product Highlights

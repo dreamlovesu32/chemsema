@@ -2,6 +2,24 @@
 
 All notable public changes to ChemCore are tracked here.
 
+## 1.0.0-beta.6
+
+HarmonyOS PC groundwork, stronger GUI parity coverage, expanded agent/CLI
+workflows, and another round of editor fidelity fixes.
+
+- Added the first-stage HarmonyOS PC shell. The new `apps/chemcore-harmony` project packages the existing web viewer and shared Rust/WASM engine into an ArkWeb rawfile app for desktop-class `2in1` devices, with DevEco-oriented build/signing templates, app icons, viewer sync/build wrappers, and smoke/bridge regressions for Open/Save/New, document tabs, clipboard handoff, window titles, and rawfile assets.
+- Isolated the browser, Tauri desktop, and Harmony host shells. Harmony now uses a native-frame top bar with compact system-style document tabs and no custom desktop window controls, while the Tauri shell keeps its own custom titlebar and browser mode keeps browser-native behavior.
+- Expanded end-to-end GUI regression coverage for the shared viewer surface, including file open/save/export, `Ctrl+S`, internal copy/paste/cut, toolbar icons, cursor styles, selection overlays, delete-tool behavior, zoom, document style presets, host-shell isolation, toolbar health, Harmony bridge behavior, and large-CDXML speed checks.
+- Moved more interaction feedback and preview behavior into the shared Rust/WASM engine path. Bond creation previews, object-coordinate previews, render-target queries, hover/focus feedback, graphic hit radii, preview dependency tracking, zoom anchoring, and empty-document rendering now behave more consistently across browser, desktop, and Harmony.
+- Fixed selection and deletion edge cases across the editor. Click-select and box-select now both render bond center selection dots without white strokes, tiny endpoint box selections match click endpoint affordances, focused double bonds degrade to single bonds before deletion, triple-bond and endpoint deletion behavior remain covered, and very short wavy bonds render without invalid amplitude ranges.
+- Expanded the CLI's image and capture workflow. `convert`/`export` can write PNG, `capture` can default to a temp PNG, quiet reports return machine-readable output paths, and multi-target `capture`/`context` supports selection-only crops, repeated or semicolon selectors, explicit crop bounds, expansion, fixed output sizing, PNG/SVG output, and render metadata.
+- Added GUI-parity editing commands for agents and scripts. `select-targets`, `select-all`, `clear-selection`, selection-driven arrange/style/delete/group/link operations, `plan-bond`, `plan-template`, `insert-template`, explicit double-bond placement, and bond line-weight overrides let CLI/JSONL workflows use the same semantics as the GUI instead of simulating pointer gestures.
+- Improved label, OCR, and command-driven chemistry workflows. `label-query` now supports source-text and reverse visible-text lookup with connection and hydrogen-anchor semantics; direct commands can edit node charge and hydrogen labels, preserve label source text, and keep measured endpoint boxes, glyph polygons, and label text positions for imported or OCR-derived labels.
+- Improved CDXML/document import fidelity for disconnected structures and style defaults. Imported CDXML molecule fragments are preserved, disconnected chemistry is split into separate molecule objects by default, crossing disconnected fixtures remain covered, and ACS/document style defaults persist through import, commands, rendering, labels, bonds, SDF/CDXML paths, and export.
+- Fixed Office full-document copy behavior and refreshed desktop/Office architecture documentation so full-document and target-specific clipboard/OLE payload paths stay clear while chemical logic remains in the shared engine.
+- Added the public ChemCore Codex skill suite and agent examples. The release includes CLI, development, drawing-agent, and Office skills with English/Chinese guidance, install/sync helpers, runtime discovery, session helpers, repo hygiene/build references, plus a complete reaction-agent POC with request, commands, captures, context/detail/targets JSON, Office payload output, CDXML/SVG output, and a runner.
+- Updated the English and Chinese README, CLI guides, command-script and JSONL session protocol notes, CLI-GUI parity checklist, editor command history, project rules, architecture docs, and public metadata. The shared browser/Harmony WASM engine artifact was rebuilt so all shipped shells use the updated engine behavior.
+
 ## 1.0.0-beta.5
 
 Agent-focused CLI expansion, installable entry points, and another round of

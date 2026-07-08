@@ -2,6 +2,23 @@
 
 ChemCore 的公开变更记录会保存在这里。
 
+## 1.0.0-beta.6
+
+鸿蒙 PC 端基础、GUI 一致性回归、agent/CLI 工作流扩展，以及新一轮编辑器保真度修复。
+
+- 新增第一阶段鸿蒙 PC 端壳。新的 `apps/chemcore-harmony` 工程把现有 Web Viewer 和共享 Rust/WASM 内核打包进 ArkWeb rawfile 应用，面向桌面级 `2in1` 设备，并加入 DevEco 构建/签名模板、应用图标、viewer 同步/构建脚本，以及覆盖打开、保存、新建、文档标签页、剪贴板桥接、窗口标题和 rawfile 资源的 smoke/bridge 回归。
+- 隔离浏览器、Tauri 桌面端和鸿蒙宿主壳行为。鸿蒙端现在使用 native-frame 顶栏和紧凑系统风格文档标签页，不显示桌面端自绘窗口控制；Tauri 桌面端保留自己的自绘标题栏；浏览器模式保持浏览器原生行为。
+- 扩展共享 viewer 的端到端 GUI 回归，覆盖打开、保存、导出、`Ctrl+S`、应用内复制/粘贴/剪切、工具栏图标、光标、选择覆盖层、删除工具、缩放、文档样式预设、宿主壳隔离、工具栏健康、鸿蒙桥接和大 CDXML 速度检查。
+- 将更多交互反馈和预览行为移动到共享 Rust/WASM engine 路径。键创建预览、对象坐标预览、渲染目标查询、悬停/聚焦反馈、图形命中半径、预览依赖追踪、缩放锚点和空文档渲染现在在浏览器、桌面端和鸿蒙端之间更一致。
+- 修复编辑器选择和删除边界问题。点击选中和框选键都会渲染键中心选择点且不再用白色描边盖住键线；极小端点框选与点击端点能力一致；删除工具点击已聚焦双键时会先降级为单键再删除；三键降级、端点删除和极短 wavy bond 渲染也都有回归覆盖。
+- 扩展 CLI 图片和截图工作流。`convert`/`export` 可以写出 PNG，`capture` 省略 `--out` 时可默认写入临时 PNG，quiet report 返回机器可读输出路径；多目标 `capture`/`context` 支持 selection-only 裁图、重复或分号 selector、显式裁剪框、扩边、固定输出尺寸、PNG/SVG 输出和渲染元数据。
+- 新增面向 agent 和脚本的 GUI 同语义编辑命令。`select-targets`、`select-all`、`clear-selection`、基于选择态的排列/样式/删除/组合/链接操作、`plan-bond`、`plan-template`、`insert-template`、显式双键位置和键线粗细覆盖，让 CLI/JSONL 工作流可以使用 GUI 同款语义，而不是模拟鼠标。
+- 改进标签、OCR 和命令式化学编辑工作流。`label-query` 支持源文本和可见文本反查，并包含连接与含氢锚点语义；直接命令可编辑节点电荷和氢标签，保留 label source text，并保留导入或 OCR 得到的端点框、glyph polygon 和 label text position。
+- 改进 CDXML/文档导入保真度和样式默认值。导入时保留 CDXML molecule fragment，默认把断开的化学结构拆成独立 molecule object，保留交叉但断开的 fixture 覆盖；ACS/文档样式默认值会贯穿导入、命令、渲染、标签、键、SDF/CDXML 路径和导出。
+- 修复 Office 全文档复制行为，并刷新桌面/Office 架构文档，确保全文档和目标级剪贴板/OLE payload 路径清晰，同时化学逻辑仍保留在共享 engine 中。
+- 新增公开的 ChemCore Codex skill 套件和 agent 示例。本版本包含 CLI、development、drawing-agent、Office skills 及中英文说明、安装/同步脚本、运行时发现、session helper、仓库卫生和构建测试参考，并加入完整 reaction-agent POC：请求、命令、截图、context/detail/targets JSON、Office payload、CDXML/SVG 输出和运行器。
+- 更新中英文 README、CLI 指南、command-script/JSONL session 协议说明、CLI-GUI parity checklist、编辑器命令历史、项目规则、架构文档和公开元数据；同时重建共享浏览器/鸿蒙 WASM engine artifact，使所有壳使用最新内核行为。
+
 ## 1.0.0-beta.5
 
 - 加入正式的 CLI 协议/版本报告、面向机器的 protocol contract、agent demo
