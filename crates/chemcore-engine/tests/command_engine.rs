@@ -321,6 +321,32 @@ fn execute_command_json_add_bond_accepts_line_weight_override() {
 }
 
 #[test]
+fn execute_command_json_add_bond_accepts_stroke_override() {
+    let mut engine = Engine::new();
+
+    let result = execute(
+        &mut engine,
+        json!({
+            "type": "add-bond",
+            "begin": { "x": 100.0, "y": 100.0 },
+            "end": { "x": 148.0, "y": 100.0 },
+            "order": 1,
+            "variant": "single",
+            "stroke": "#cc3355"
+        }),
+    );
+    let bond_id = created_bond_id(&result);
+    let document = document_value(&engine);
+    let bond = find_bond(&document, &bond_id);
+    assert_eq!(bond["stroke"], "#cc3355");
+
+    execute(&mut engine, json!({ "type": "undo" }));
+    execute(&mut engine, json!({ "type": "redo" }));
+    let redone = find_bond(&document_value(&engine), &bond_id);
+    assert_eq!(redone["stroke"], "#cc3355");
+}
+
+#[test]
 fn plan_bond_returns_engine_landing_geometry_without_changing_document() {
     let mut engine = Engine::new();
 

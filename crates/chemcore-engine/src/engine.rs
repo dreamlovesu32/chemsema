@@ -1709,6 +1709,25 @@ impl Engine {
         explicit_double: Option<DoubleBond>,
         line_weights_override: Option<crate::BondLineWeights>,
     ) -> bool {
+        self.add_bond_between_with_style_override(
+            anchor,
+            end,
+            order,
+            explicit_double,
+            line_weights_override,
+            None,
+        )
+    }
+
+    fn add_bond_between_with_style_override(
+        &mut self,
+        anchor: BondAnchor,
+        end: BondAnchor,
+        order: u8,
+        explicit_double: Option<DoubleBond>,
+        line_weights_override: Option<crate::BondLineWeights>,
+        stroke_override: Option<String>,
+    ) -> bool {
         let command = EditorCommand::AddBond {
             begin: CommandAnchor::from(&anchor),
             end: CommandAnchor::from(&end),
@@ -1716,7 +1735,8 @@ impl Engine {
             variant: self.state.tool.bond_variant,
             double_placement: explicit_double.as_ref().map(|double| double.placement),
             double: None,
-            line_weights: None,
+            line_weights: line_weights_override.clone(),
+            stroke: stroke_override.clone(),
         };
         self.with_command(command, |engine| {
             engine.add_bond_between_untracked(
@@ -1725,6 +1745,7 @@ impl Engine {
                 order,
                 explicit_double,
                 line_weights_override,
+                stroke_override,
             )
         })
     }
@@ -1736,6 +1757,7 @@ impl Engine {
         order: u8,
         explicit_double: Option<DoubleBond>,
         line_weights_override: Option<crate::BondLineWeights>,
+        stroke_override: Option<String>,
     ) -> bool {
         if anchor
             .object_id
@@ -1800,7 +1822,7 @@ impl Engine {
             double: pending_double,
             stereo: pending_stereo,
             stroke_width,
-            stroke: None,
+            stroke: stroke_override,
             bold_width: Some(bold_width),
             wedge_width: Some(wedge_width),
             label_clip_margin: None,
@@ -2075,15 +2097,17 @@ impl Engine {
                 double_placement,
                 double,
                 line_weights,
+                stroke,
             } => {
                 let previous_tool = self.state.tool.clone();
                 self.state.tool.bond_variant = variant;
-                let changed = self.add_bond_between_with_double_override(
+                let changed = self.add_bond_between_with_style_override(
                     bond_anchor_from_command(begin),
                     bond_anchor_from_command(end),
                     order,
                     command_double_bond_override(double_placement, double),
                     line_weights,
+                    stroke,
                 );
                 self.state.tool = previous_tool;
                 changed

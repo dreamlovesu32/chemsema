@@ -230,6 +230,8 @@ pub enum EditorCommand {
             skip_serializing_if = "Option::is_none"
         )]
         line_weights: Option<BondLineWeights>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        stroke: Option<String>,
     },
     AddArrow {
         begin: CommandAnchor,

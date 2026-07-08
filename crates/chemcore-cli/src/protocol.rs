@@ -606,7 +606,7 @@ fn protocol_schemas_json() -> Value {
                     "description": "Clears the current in-memory selection."
                 },
                 "add-bond": {
-                    "description": "Creates a ChemCore bond from begin to end with order and variant. Optional doublePlacement left/right/center, or double.placement, freezes an explicit double-bond placement while preserving the default automatic behavior when omitted."
+                    "description": "Creates a ChemCore bond from begin to end with order and variant. Optional stroke preserves explicit bond color; optional doublePlacement left/right/center, or double.placement, freezes an explicit double-bond placement while preserving the default automatic behavior when omitted."
                 },
                 "move-targets": {
                     "description": "Moves explicit nodes, bonds, objects, or labelNodes by delta dx/dy without relying on current selection."
