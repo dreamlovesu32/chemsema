@@ -129,12 +129,14 @@ const numericDialogHost = createNumericDialogHost({
     renderDocumentChange(result);
   },
 });
-const isDesktopShell = !!desktopFileHost?.available;
+const isDesktopShell = !!desktopFileHost?.usesCustomWindowChrome;
+const isNativeFrameShell = !!desktopFileHost?.available && !isDesktopShell;
 let sharedGlyphProfiles = null;
 const sharedGlyphProfilesReady = loadSharedGlyphProfiles();
 
 document.body.classList.toggle("desktop-shell", isDesktopShell);
-document.body.classList.toggle("browser-shell", !isDesktopShell);
+document.body.classList.toggle("native-frame-shell", isNativeFrameShell);
+document.body.classList.toggle("browser-shell", !desktopFileHost?.available);
 
 const DEFAULT_TEXT_FONT_SIZE = 10;
 const BRACKET_LABEL_FONT_SIZE = 7.5;

@@ -485,6 +485,22 @@ fn selection_box_bounds(engine: &Engine) -> [f64; 4] {
     [x, y, x + width, y + height]
 }
 
+fn selection_bond_dots(engine: &Engine) -> Vec<RenderPrimitive> {
+    engine
+        .render_list()
+        .into_iter()
+        .filter(|primitive| {
+            matches!(
+                primitive,
+                RenderPrimitive::Circle {
+                    role: RenderRole::SelectionBondDot,
+                    ..
+                }
+            )
+        })
+        .collect()
+}
+
 fn primitive_object_id(primitive: &RenderPrimitive) -> Option<&str> {
     match primitive {
         RenderPrimitive::Line { object_id, .. }
@@ -7221,6 +7237,40 @@ fn select_tool_click_on_endpoint_selects_atom_box() {
 }
 
 #[test]
+fn select_tool_box_selecting_endpoint_matches_click_endpoint_affordance() {
+    let mut clicked = Engine::new();
+    clicked.set_tool_state(bond_tool());
+    click(&mut clicked, px(300.0), px(260.0));
+    clicked.set_tool_state(select_tool());
+    clicked.select_at_point(Point::new(FIRST_END_X, FIRST_END_Y), false);
+
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, px(300.0), px(260.0));
+    engine.set_tool_state(select_tool());
+
+    engine.select_in_rect(
+        Point::new(FIRST_END_X - px(2.0), FIRST_END_Y - px(2.0)),
+        Point::new(FIRST_END_X + px(2.0), FIRST_END_Y + px(2.0)),
+        false,
+    );
+
+    assert_eq!(engine.state().selection.nodes, vec!["n_2"]);
+    assert!(engine.state().selection.bonds.is_empty());
+    assert_eq!(clicked.state().selection.nodes, engine.state().selection.nodes);
+    assert_eq!(clicked.state().selection.bonds, engine.state().selection.bonds);
+    assert!(engine.render_list().iter().any(|primitive| matches!(
+        primitive,
+        RenderPrimitive::Rect {
+            role: RenderRole::SelectionNode,
+            ..
+        }
+    )));
+    assert_eq!(selection_bond_dots(&clicked).len(), 1);
+    assert_eq!(selection_bond_dots(&engine).len(), 1);
+}
+
+#[test]
 fn select_tool_click_on_bond_does_not_render_outer_region_box() {
     let mut engine = Engine::new();
     engine.set_tool_state(bond_tool());
@@ -7244,6 +7294,16 @@ fn select_tool_click_on_bond_does_not_render_outer_region_box() {
             ..
         }
     )));
+    let bond_dots = selection_bond_dots(&engine);
+    assert_eq!(bond_dots.len(), 1);
+    assert!(matches!(
+        &bond_dots[0],
+        RenderPrimitive::Circle {
+            stroke,
+            stroke_width,
+            ..
+        } if stroke == "none" && *stroke_width == 0.0
+    ));
 }
 
 fn shape_payload_point(engine: &Engine, key: &str) -> Point {
@@ -8493,6 +8553,11 @@ fn select_tool_box_selecting_whole_fragment_renders_component_box() {
             }
         )
     }));
+    assert_eq!(
+        selection_bond_dots(&engine).len(),
+        1,
+        "box-selecting a complete single-bond fragment should keep the selected bond center affordance"
+    );
 }
 
 #[test]

@@ -58,6 +58,13 @@ export function createEditorOverlayRenderer(options) {
     return primitive.radius;
   }
 
+  function shouldHideEndpointFeedbackForTool(primitive, editorState) {
+    if (editorState?.activeTool !== "templates" && editorState?.activeTool !== "chain") {
+      return false;
+    }
+    return primitive?.role === "hover-endpoint" || primitive?.role === "preview-end";
+  }
+
   function appendTemporaryTextLabel(overlay, attrs, text) {
     overlay.appendChild(makeSvgNode("text", {
       ...attrs,
@@ -167,6 +174,14 @@ export function createEditorOverlayRenderer(options) {
 
     if (primitive.role?.startsWith("selection-rotate-")) {
       return normalizeSelectionRotatePrimitiveForViewport(primitive, strokeWidth, selectionBounds);
+    }
+
+    if (primitive.role === "selection-bond-dot" && primitive.kind === "circle") {
+      return {
+        ...primitive,
+        strokeWidth: 0,
+        stroke_width: undefined,
+      };
     }
 
     if (
@@ -578,6 +593,9 @@ export function createEditorOverlayRenderer(options) {
       }));
     }
     for (const primitive of primitives) {
+      if (shouldHideEndpointFeedbackForTool(primitive, editorState)) {
+        continue;
+      }
       if (options.shouldHidePrimitiveForActiveEndpointEditor(primitive)) {
         continue;
       }

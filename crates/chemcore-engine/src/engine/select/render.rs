@@ -486,6 +486,11 @@ pub(super) fn render_selected_fragment_content(
                     acc
                 });
                 push_selection_box(out, group_bounds, RenderRole::SelectionBox);
+                for item in items {
+                    if matches!(item.kind, FragmentItemKind::Bond) {
+                        push_selection_bond_dot(out, item.center);
+                    }
+                }
                 continue;
             }
             if items.len() == 1 {

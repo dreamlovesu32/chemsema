@@ -73,6 +73,10 @@ export class DesktopFileHost {
     return typeof this.invoke === "function";
   }
 
+  get usesCustomWindowChrome() {
+    return true;
+  }
+
   initialize() {
     this.invoke = globalThis.__TAURI__?.core?.invoke || null;
     this.listen = globalThis.__TAURI__?.event?.listen || null;
@@ -264,7 +268,230 @@ export class DesktopFileHost {
   }
 }
 
+function pathFileName(value) {
+  const text = String(value || "").trim();
+  if (!text) {
+    return "";
+  }
+  try {
+    const decoded = decodeURIComponent(text);
+    const lastSegment = decoded.split(/[\\/]/).filter(Boolean).pop() || "";
+    return lastSegment.split("?")[0].split("#")[0];
+  } catch {
+    return text.split(/[\\/]/).filter(Boolean).pop() || "";
+  }
+}
+
+function formatFromPath(value) {
+  const fileName = pathFileName(value).toLowerCase();
+  const extension = fileName.includes(".") ? fileName.split(".").pop() : "";
+  return extension || null;
+}
+
+export class HarmonyFileHost {
+  constructor() {
+    this.bridge = null;
+    this.pending = new Map();
+    this.nextRequestId = 1;
+    this.previousResolver = null;
+    this.clipboardPayload = null;
+  }
+
+  get available() {
+    return typeof this.bridge?.postMessage === "function";
+  }
+
+  get usesCustomWindowChrome() {
+    return false;
+  }
+
+  initialize() {
+    this.bridge = globalThis.chemcoreHarmony || null;
+    if (!this.available) {
+      return this;
+    }
+    this.previousResolver = globalThis.__chemcoreHarmonyResolve;
+    globalThis.__chemcoreHarmonyResolve = (id, responseJson) => {
+      if (this.pending.has(id)) {
+        this.resolveRequest(id, responseJson);
+        return true;
+      }
+      return this.previousResolver?.(id, responseJson) ?? false;
+    };
+    return this;
+  }
+
+  resolveRequest(id, responseJson) {
+    const entry = this.pending.get(id);
+    if (!entry) {
+      return;
+    }
+    this.pending.delete(id);
+    clearTimeout(entry.timer);
+    let response = null;
+    try {
+      response = typeof responseJson === "string" ? JSON.parse(responseJson) : responseJson;
+    } catch (error) {
+      entry.reject(error);
+      return;
+    }
+    if (!response?.ok) {
+      entry.reject(new Error(response?.error || "Harmony bridge command failed."));
+      return;
+    }
+    entry.resolve(response.value ?? null);
+  }
+
+  invoke(command, payload = {}) {
+    if (!this.available) {
+      return Promise.reject(new Error("Harmony bridge is not available."));
+    }
+    const id = `harmony-${Date.now()}-${this.nextRequestId++}`;
+    const message = JSON.stringify({ id, command, payload });
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error(`Harmony bridge command timed out: ${command}`));
+      }, 60000);
+      this.pending.set(id, { command, resolve, reject, timer });
+      try {
+        const accepted = this.bridge.postMessage(message);
+        if (accepted === false || accepted === "false") {
+          clearTimeout(timer);
+          this.pending.delete(id);
+          reject(new Error(`Harmony bridge rejected command: ${command}`));
+        }
+      } catch (error) {
+        clearTimeout(timer);
+        this.pending.delete(id);
+        reject(error);
+      }
+    });
+  }
+
+  async chooseOpenPath() {
+    const selected = await this.invoke("chooseOpenPath");
+    return normalizeDesktopPath(selected);
+  }
+
+  async chooseSavePath(suggestedName) {
+    const selected = await this.invoke("chooseSavePath", { suggestedName });
+    return normalizeDesktopPath(selected);
+  }
+
+  async chooseExportSavePath(suggestedName, extension) {
+    const selected = await this.invoke("chooseExportSavePath", { suggestedName, extension });
+    return normalizeDesktopPath(selected);
+  }
+
+  async readPath(path) {
+    const normalizedPath = requireDesktopPath(path, "open");
+    const opened = await this.invoke("readPath", { path: normalizedPath });
+    return {
+      path: opened?.path || normalizedPath,
+      fileName: opened?.fileName || pathFileName(normalizedPath) || "Untitled",
+      format: opened?.format || formatFromPath(normalizedPath),
+      text: opened?.text || "",
+    };
+  }
+
+  async writePath(path, content, format = null) {
+    const normalizedPath = requireDesktopPath(path, "save");
+    const saved = await this.invoke("writePath", { path: normalizedPath, content, format });
+    return {
+      path: saved?.path || normalizedPath,
+      fileName: saved?.fileName || pathFileName(normalizedPath),
+    };
+  }
+
+  async writeTransientPath(path, content) {
+    return this.writePath(path, content, formatFromPath(path));
+  }
+
+  async writeBase64(path, contentBase64) {
+    const normalizedPath = requireDesktopPath(path, "export");
+    const saved = await this.invoke("writeBase64", { path: normalizedPath, contentBase64 });
+    return {
+      path: saved?.path || normalizedPath,
+      fileName: saved?.fileName || pathFileName(normalizedPath),
+    };
+  }
+
+  async exportEmf() {
+    throw new Error("EMF export is not available on HarmonyOS.");
+  }
+
+  async writeClipboard(payload) {
+    this.clipboardPayload = payload || null;
+    return this.invoke("writeClipboard", { payload });
+  }
+
+  async readClipboard() {
+    if (this.clipboardPayload) {
+      return this.clipboardPayload;
+    }
+    return null;
+  }
+
+  async setWindowTitle(title) {
+    return this.invoke("setWindowTitle", { title });
+  }
+
+  async traceEvent(event, detail = null) {
+    try {
+      await this.invoke("traceEvent", { event, detail: traceValue(detail), timestamp: Date.now() });
+    } catch {
+      // Tracing must never break document operations.
+    }
+  }
+
+  async confirmApplyStylePreset() {
+    return true;
+  }
+
+  async recentFiles() {
+    return [];
+  }
+
+  async clearRecentFiles() {
+    return true;
+  }
+
+  async takeStartupOpenPaths() {
+    return [];
+  }
+
+  async takeDetachedDocument() {
+    return null;
+  }
+
+  async listenMenu() {}
+  async listenOpenPaths() {}
+  async listenWindowCloseRequested() {}
+  async minimizeWindow() {}
+  async toggleMaximizeWindow() {}
+  async closeWindow() {}
+  async destroyWindow() {}
+  async startWindowDrag() {}
+  async isWindowMaximized() { return false; }
+
+  dispose() {
+    for (const entry of this.pending.values()) {
+      clearTimeout(entry.timer);
+      entry.reject(new Error("Harmony file host was disposed."));
+    }
+    this.pending.clear();
+    if (globalThis.__chemcoreHarmonyResolve && this.previousResolver) {
+      globalThis.__chemcoreHarmonyResolve = this.previousResolver;
+    }
+  }
+}
+
 export function createDesktopFileHost() {
   const host = new DesktopFileHost().initialize();
-  return host.available ? host : null;
+  if (host.available) {
+    return host;
+  }
+  const harmonyHost = new HarmonyFileHost().initialize();
+  return harmonyHost.available ? harmonyHost : null;
 }

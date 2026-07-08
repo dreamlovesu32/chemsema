@@ -80,6 +80,12 @@ body.desktop-shell {
   grid-template-rows: 42px minmax(0, 1fr);
 }
 
+body.native-frame-shell {
+  display: grid;
+  grid-template-rows: 46px minmax(0, 1fr);
+  background: #f7f8fa;
+}
+
 body.browser-shell {
   display: block;
 }
@@ -126,6 +132,11 @@ body.desktop-shell .editor-shell {
   grid-template-rows: var(--editor-topbar-height) minmax(0, 1fr) var(--selection-status-bar-height);
 }
 
+body.native-frame-shell .editor-shell {
+  height: auto;
+  min-height: 0;
+}
+
 .editor-topbar {
   grid-column: 1 / -1;
   grid-row: 1;
@@ -154,6 +165,33 @@ body.desktop-shell .editor-topbar {
 body.desktop-shell .desktop-titlebar {
   display: flex;
   align-items: end;
+}
+
+body.native-frame-shell .desktop-titlebar {
+  display: flex;
+  align-items: center;
+  height: 46px;
+  background: #edf2f7;
+  border-bottom-color: #d7dfe8;
+}
+
+body.native-frame-shell .desktop-titlebar::after {
+  content: "";
+  flex: 0 0 132px;
+  align-self: stretch;
+  pointer-events: none;
+}
+
+body.native-frame-shell .window-controls {
+  display: none;
+}
+
+body.native-frame-shell .titlebar-brand {
+  display: flex;
+}
+
+body.native-frame-shell .titlebar-drag-region {
+  display: block;
 }
 
 .titlebar-brand {
@@ -296,6 +334,71 @@ body.is-window-maximized .window-icon-restore {
 
 body.browser-shell .document-tabbar {
   display: none;
+}
+
+body.native-frame-shell .document-tabbar {
+  flex: 0 1 auto;
+  align-items: center;
+  max-width: calc(100% - 230px);
+  padding: 6px 6px 6px 0;
+  gap: 6px;
+}
+
+body.native-frame-shell .document-tabs {
+  align-items: center;
+  gap: 4px;
+}
+
+body.native-frame-shell .document-tab {
+  width: clamp(150px, 20vw, 300px);
+  min-width: 150px;
+  max-width: 300px;
+  height: 32px;
+  gap: 7px;
+  padding: 0 7px 0 11px;
+  border-bottom-color: transparent;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.28);
+  color: #344451;
+}
+
+body.native-frame-shell .document-tab:hover {
+  background: rgba(255, 255, 255, 0.58);
+}
+
+body.native-frame-shell .document-tab.is-active {
+  height: 32px;
+  background: #ffffff;
+  border-color: rgba(176, 185, 196, 0.92);
+  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.1);
+}
+
+body.native-frame-shell .document-tab.is-active .document-tab-title {
+  font-weight: 600;
+}
+
+body.native-frame-shell .document-tab-close {
+  width: 24px;
+  height: 24px;
+}
+
+body.native-frame-shell .document-tab.is-active .document-tab-close,
+body.native-frame-shell .document-tab:hover .document-tab-close,
+body.native-frame-shell .document-tab:focus-within .document-tab-close {
+  opacity: 0.68;
+}
+
+body.native-frame-shell .document-tab-new {
+  width: 32px;
+  height: 32px;
+  margin: 0 4px 0 2px;
+  color: #344451;
+  font-size: 21px;
+}
+
+body.native-frame-shell .document-tab-close svg {
+  width: 17px;
+  height: 17px;
 }
 
 .document-tabs {

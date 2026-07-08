@@ -1,0 +1,10 @@
+{
+  "modelVersion": "5.0.0",
+  "name": "chemcore-harmony",
+  "version": "1.0.0",
+  "description": "ChemCore HarmonyOS PC shell",
+  "main": "",
+  "author": "ChemCore",
+  "license": "Apache-2.0",
+  "dependencies": {}
+}

@@ -27,6 +27,8 @@ build/
 build-wasm/
 dist/
 target/
+.hvigor/
+oh_modules/
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake

@@ -32,6 +32,7 @@ export function createBrowserDocumentTabs(options) {
     },
   };
   const isDesktopShell = Boolean(options.isDesktopShell());
+  const canUseBrowserTabs = !isDesktopShell && !desktopFileHost?.available;
   const appRuntimeReady = options.appRuntimeReady();
   const finishActiveTextEditor = (...args) => options.finishActiveTextEditor(...args);
   const syncDocumentFromEngine = (...args) => options.syncDocumentFromEngine(...args);
@@ -96,7 +97,7 @@ export function createBrowserDocumentTabs(options) {
   }
   
   function clearBrowserPendingDocumentUrlParam() {
-    if (isDesktopShell || typeof window === "undefined") {
+    if (!canUseBrowserTabs || typeof window === "undefined") {
       return;
     }
     const url = new URL(window.location.href);
@@ -214,7 +215,7 @@ export function createBrowserDocumentTabs(options) {
   
   async function openBrowserDroppedFilesInNewTabs(files) {
     const droppedFiles = Array.from(files || []).filter(Boolean);
-    if (!droppedFiles.length || isDesktopShell) {
+    if (!droppedFiles.length || !canUseBrowserTabs) {
       return { opened: [], fallback: droppedFiles };
     }
     const opened = [];
@@ -255,7 +256,7 @@ export function createBrowserDocumentTabs(options) {
   }
   
   async function takeBrowserPendingDocument() {
-    if (isDesktopShell || typeof window === "undefined") {
+    if (!canUseBrowserTabs || typeof window === "undefined") {
       return null;
     }
     const id = new URL(window.location.href).searchParams.get(BROWSER_PENDING_DOCUMENT_PARAM);
@@ -368,9 +369,9 @@ export function createBrowserDocumentTabs(options) {
   async function newDocumentTab() {
     await appRuntimeReady;
     await finishActiveTextEditor(true);
-    const reuseActiveTab = activeDocumentTabIsBlankUntitled() && !currentDocumentIsDirty();
+    const reuseActiveTab = canUseBrowserTabs && activeDocumentTabIsBlankUntitled() && !currentDocumentIsDirty();
     saveActiveDocumentTabState();
-    if (!isDesktopShell && !reuseActiveTab && openBrowserBlankDocumentTab()) {
+    if (canUseBrowserTabs && !reuseActiveTab && openBrowserBlankDocumentTab()) {
       return;
     }
     if (!reuseActiveTab) {
@@ -453,7 +454,7 @@ export function createBrowserDocumentTabs(options) {
     if (!file) {
       return;
     }
-    if (!isDesktopShell && await openBrowserFileInNewTab(file)) {
+    if (canUseBrowserTabs && await openBrowserFileInNewTab(file)) {
       return;
     }
     await appRuntimeReady;

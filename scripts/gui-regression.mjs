@@ -1,0 +1,487 @@
+import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import net from "node:net";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { chromium } from "playwright";
+
+const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
+const host = "127.0.0.1";
+const port = Number(process.env.CHEMCORE_DESKTOP_DEV_PORT || 8767);
+const baseUrl = `http://${host}:${port}/viewer/`;
+const edgePath = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
+const tmpDir = join(rootDir, "tmp", "gui-regression");
+
+function waitForPort(timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  return new Promise((resolve, reject) => {
+    const attempt = () => {
+      const socket = net.connect({ host, port }, () => {
+        socket.end();
+        resolve(true);
+      });
+      socket.on("error", () => {
+        socket.destroy();
+        if (Date.now() >= deadline) {
+          reject(new Error(`Timed out waiting for ${host}:${port}`));
+        } else {
+          setTimeout(attempt, 100);
+        }
+      });
+    };
+    attempt();
+  });
+}
+
+function portIsOpen() {
+  return new Promise((resolve) => {
+    const socket = net.connect({ host, port }, () => {
+      socket.end();
+      resolve(true);
+    });
+    socket.on("error", () => {
+      socket.destroy();
+      resolve(false);
+    });
+  });
+}
+
+async function ensureServer() {
+  if (await portIsOpen()) {
+    return null;
+  }
+  const child = spawn(process.execPath, ["scripts/desktop-dev-server.mjs"], {
+    cwd: rootDir,
+    stdio: "ignore",
+    windowsHide: true,
+  });
+  await waitForPort();
+  return child;
+}
+
+function capturePageErrors(page, errors) {
+  page.on("console", (message) => {
+    if (message.type() === "error") {
+      errors.push(message.text());
+    }
+  });
+  page.on("pageerror", (error) => errors.push(error.message));
+}
+
+async function installBrowserMocks(context) {
+  await context.addInitScript(() => {
+    const encoder = new TextEncoder();
+    window.__chemcoreSavePickerWrites = [];
+    window.__chemcoreSavePickerQueue = [];
+    window.__chemcoreSetSavePickerQueue = (names) => {
+      window.__chemcoreSavePickerQueue = Array.from(names || []);
+    };
+    window.confirm = () => true;
+
+    try {
+      Object.defineProperty(window, "showOpenFilePicker", {
+        value: undefined,
+        configurable: true,
+      });
+    } catch {
+      window.showOpenFilePicker = undefined;
+    }
+
+    Object.defineProperty(window, "showSaveFilePicker", {
+      configurable: true,
+      value: async (options = {}) => {
+        const name = window.__chemcoreSavePickerQueue.shift()
+          || options.suggestedName
+          || "chemcore-document.ccjz";
+        const record = {
+          name,
+          suggestedName: options.suggestedName || null,
+          byteLength: 0,
+          text: "",
+          chunkTypes: [],
+          closed: false,
+        };
+        window.__chemcoreSavePickerWrites.push(record);
+        return {
+          name,
+          async createWritable() {
+            return {
+              async write(chunk) {
+                record.chunkTypes.push(chunk?.constructor?.name || typeof chunk);
+                if (typeof chunk === "string") {
+                  record.text += chunk;
+                  record.byteLength += encoder.encode(chunk).byteLength;
+                  return;
+                }
+                if (chunk instanceof Blob) {
+                  record.byteLength += chunk.size;
+                  try {
+                    record.text += await chunk.text();
+                  } catch {
+                    // Binary blobs are still covered by byteLength.
+                  }
+                  return;
+                }
+                if (chunk instanceof ArrayBuffer) {
+                  record.byteLength += chunk.byteLength;
+                  return;
+                }
+                if (ArrayBuffer.isView(chunk)) {
+                  record.byteLength += chunk.byteLength;
+                  return;
+                }
+                if (chunk != null) {
+                  const text = String(chunk);
+                  record.text += text;
+                  record.byteLength += encoder.encode(text).byteLength;
+                }
+              },
+              async close() {
+                record.closed = true;
+              },
+            };
+          },
+        };
+      },
+    });
+  });
+}
+
+async function openViewer(context, errors, viewport = { width: 1400, height: 1000 }) {
+  const page = await context.newPage({ viewport });
+  page.setDefaultTimeout(12000);
+  capturePageErrors(page, errors);
+  await page.goto(`${baseUrl}?v=${Date.now()}`, { waitUntil: "domcontentloaded" });
+  await waitForReady(page);
+  return page;
+}
+
+async function waitForReady(page) {
+  await page.waitForFunction(
+    () => !!window.__chemcoreDebug?.state?.editorEngine && !!window.__chemcoreDebug?.document,
+    null,
+    { timeout: 30000 },
+  );
+}
+
+async function drawBondWithMouse(page) {
+  await page.locator('button[data-tool="bond"]').click();
+  const box = await page.locator("#viewer-container").boundingBox();
+  assert(box, "Viewer container is not visible.");
+  const start = { x: box.x + box.width / 2 - 90, y: box.y + box.height / 2 };
+  const end = { x: start.x + 130, y: start.y };
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(end.x, end.y, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForFunction(() => document.querySelectorAll("[data-bond-id]").length > 0);
+}
+
+async function documentSummary(page) {
+  return page.evaluate(() => {
+    const doc = window.__chemcoreDebug?.document || null;
+    const resources = Object.values(doc?.resources || {});
+    const resourceBonds = resources.reduce((sum, resource) => sum + (resource?.data?.bonds?.length || 0), 0);
+    const resourceNodes = resources.reduce((sum, resource) => sum + (resource?.data?.nodes?.length || 0), 0);
+    const selectionBounds = JSON.parse(window.__chemcoreDebug?.state?.editorEngine?.selectionBoundsJson?.() || "null");
+    return {
+      title: doc?.document?.title || null,
+      currentFileName: window.__chemcoreDebug?.state?.currentFileName || null,
+      objects: doc?.objects?.length || 0,
+      resourceBonds,
+      resourceNodes,
+      renderedBonds: document.querySelectorAll("[data-bond-id]").length,
+      renderedNodes: document.querySelectorAll("[data-node-id]").length,
+      selectionBounds,
+      activeTool: window.__chemcoreDebug?.editorState?.activeTool || null,
+      bondToolbarButtons: document.querySelectorAll('#secondary-toolbar [data-secondary-value^="bond-"]').length,
+      blankToolbarIcons: [...document.querySelectorAll("#secondary-toolbar button")]
+        .filter((button) => !button.querySelector("svg")).length,
+    };
+  });
+}
+
+async function setSaveQueue(page, names) {
+  await page.evaluate((nextNames) => {
+    window.__chemcoreSetSavePickerQueue(nextNames);
+  }, names);
+}
+
+async function saveWrites(page) {
+  return page.evaluate(() => window.__chemcoreSavePickerWrites);
+}
+
+async function waitForSaveWrite(page, index) {
+  await page.waitForFunction(
+    (targetIndex) => window.__chemcoreSavePickerWrites?.[targetIndex]?.closed === true,
+    index,
+  );
+  return (await saveWrites(page))[index];
+}
+
+async function verifyToolbarAndCursor(page) {
+  const tools = [
+    { tool: "bond", minSecondary: 11 },
+    { tool: "arrow", minSecondary: 6 },
+    { tool: "shape", minSecondary: 5 },
+    { tool: "templates", minSecondary: 5 },
+  ];
+  for (const item of tools) {
+    await page.locator(`button[data-tool="${item.tool}"]`).click();
+    await page.waitForFunction((tool) => {
+      return document.querySelector(`button[data-tool="${tool}"]`)?.classList.contains("is-active");
+    }, item.tool);
+    const state = await page.evaluate((tool) => {
+      const container = document.querySelector("#viewer-container");
+      const svg = document.querySelector("#viewer-svg");
+      const active = document.querySelector(`button[data-tool="${tool}"]`);
+      return {
+        tool,
+        active: active?.classList.contains("is-active") || false,
+        activeHasSvg: !!active?.querySelector("svg"),
+        secondaryButtons: document.querySelectorAll("#secondary-toolbar button").length,
+        secondarySvgs: document.querySelectorAll("#secondary-toolbar button svg").length,
+        containerCursor: getComputedStyle(container).cursor,
+        svgCursor: getComputedStyle(svg).cursor,
+      };
+    }, item.tool);
+    assert.equal(state.active, true, `${item.tool} did not become active: ${JSON.stringify(state)}`);
+    assert.equal(state.activeHasSvg, true, `${item.tool} tool button lost its icon: ${JSON.stringify(state)}`);
+    assert(
+      state.secondaryButtons >= item.minSecondary && state.secondarySvgs >= item.minSecondary,
+      `${item.tool} secondary toolbar has blank/missing icons: ${JSON.stringify(state)}`,
+    );
+    assert(
+      state.containerCursor !== "" && state.svgCursor !== "",
+      `${item.tool} cursor styles were not applied: ${JSON.stringify(state)}`,
+    );
+  }
+}
+
+async function firstBondScreenGeometry(page) {
+  return page.evaluate(() => {
+    const svg = document.querySelector("#viewer-svg");
+    const bond = document.querySelector('[data-role="document-bond"][data-bond-id]');
+    if (!svg || !bond) {
+      return null;
+    }
+    const toScreen = (x, y) => {
+      const point = svg.createSVGPoint();
+      point.x = x;
+      point.y = y;
+      const transformed = point.matrixTransform(svg.getScreenCTM());
+      return { x: transformed.x, y: transformed.y };
+    };
+    if (bond.tagName.toLowerCase() === "line") {
+      const start = toScreen(Number(bond.getAttribute("x1")), Number(bond.getAttribute("y1")));
+      const end = toScreen(Number(bond.getAttribute("x2")), Number(bond.getAttribute("y2")));
+      return {
+        start,
+        end,
+        center: { x: (start.x + end.x) * 0.5, y: (start.y + end.y) * 0.5 },
+      };
+    }
+    const box = bond.getBBox();
+    const start = toScreen(box.x, box.y + box.height * 0.5);
+    const end = toScreen(box.x + box.width, box.y + box.height * 0.5);
+    return {
+      start,
+      end,
+      center: { x: (start.x + end.x) * 0.5, y: (start.y + end.y) * 0.5 },
+    };
+  });
+}
+
+async function selectionOverlayRoles(page) {
+  return page.evaluate(() => [...document.querySelectorAll('#viewer-svg [data-role^="selection-"]')]
+    .map((element) => ({
+      role: element.getAttribute("data-role"),
+      tag: element.tagName.toLowerCase(),
+      fill: element.getAttribute("fill"),
+      stroke: element.getAttribute("stroke"),
+      strokeWidth: element.getAttribute("stroke-width"),
+    })));
+}
+
+function assertBondSelectionDot(roles, label) {
+  const dots = roles.filter((entry) => entry.role === "selection-bond-dot");
+  assert.equal(dots.length, 1, `${label} should render exactly one selected bond center dot: ${JSON.stringify(roles)}`);
+  assert(
+    dots.every((dot) => dot.stroke !== "#ffffff" && dot.strokeWidth === "0"),
+    `${label} selected bond dot should not paint a white stroke over the bond: ${JSON.stringify(dots)}`,
+  );
+}
+
+async function verifySelectionOverlayConsistency(page) {
+  await drawBondWithMouse(page);
+  const geometry = await firstBondScreenGeometry(page);
+  assert(geometry, "Could not locate the drawn bond for selection overlay checks.");
+
+  await page.locator('button[data-tool="select"]').click();
+  await page.mouse.click(geometry.center.x, geometry.center.y);
+  await page.waitForFunction(() => document.querySelector('[data-role="selection-bond-dot"]'));
+  const clickRoles = await selectionOverlayRoles(page);
+  assert(clickRoles.some((entry) => entry.role === "selection-bond"), `Click-select did not render the bond box: ${JSON.stringify(clickRoles)}`);
+  assert(!clickRoles.some((entry) => entry.role === "selection-box"), `Click-select should not render an outer component box: ${JSON.stringify(clickRoles)}`);
+  assertBondSelectionDot(clickRoles, "Click-select");
+
+  const margin = 18;
+  await page.mouse.move(geometry.start.x - margin, geometry.start.y - margin);
+  await page.mouse.down();
+  await page.mouse.move(geometry.end.x + margin, geometry.end.y + margin, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForFunction(() => document.querySelector('[data-role="selection-box"]'));
+  const boxRoles = await selectionOverlayRoles(page);
+  assert(boxRoles.some((entry) => entry.role === "selection-box"), `Box-select did not render the component selection box: ${JSON.stringify(boxRoles)}`);
+  assertBondSelectionDot(boxRoles, "Box-select");
+}
+
+async function verifyCopyPasteCut(page) {
+  await drawBondWithMouse(page);
+  const before = await documentSummary(page);
+  await page.keyboard.press("Control+A");
+  await page.waitForFunction(() => JSON.parse(window.__chemcoreDebug.state.editorEngine.selectionBoundsJson() || "null"));
+  const selected = await documentSummary(page);
+  assert(selected.selectionBounds, `Ctrl+A did not create a selection: ${JSON.stringify(selected)}`);
+
+  await page.locator('button[data-command="copy"]').click();
+  const copied = await page.evaluate(() => {
+    const engine = window.__chemcoreDebug.state.editorEngine;
+    return {
+      hasClipboard: engine.hasClipboard?.() || false,
+      fragmentLength: engine.clipboardSelectionJson?.()?.length || 0,
+      documentLength: engine.clipboardDocumentJson?.()?.length || 0,
+    };
+  });
+  assert(copied.hasClipboard && copied.fragmentLength > 20, `Copy did not populate the internal clipboard: ${JSON.stringify(copied)}`);
+
+  await page.locator('button[data-command="paste"]').click();
+  await page.waitForFunction((count) => document.querySelectorAll("[data-bond-id]").length > count, before.renderedBonds);
+  const pasted = await documentSummary(page);
+  assert(pasted.renderedBonds > before.renderedBonds, `Paste did not duplicate the selected structure: ${JSON.stringify({ before, pasted })}`);
+
+  await page.keyboard.press("Control+A");
+  await page.locator('button[data-command="cut"]').click();
+  await page.waitForFunction(() => document.querySelectorAll("[data-bond-id]").length === 0);
+  const cut = await documentSummary(page);
+  assert.equal(cut.renderedBonds, 0, `Cut did not remove selected content: ${JSON.stringify(cut)}`);
+
+  await page.locator('button[data-command="paste"]').click();
+  await page.waitForFunction(() => document.querySelectorAll("[data-bond-id]").length > 0);
+  const restored = await documentSummary(page);
+  assert(restored.renderedBonds > 0, `Paste after cut did not restore content: ${JSON.stringify(restored)}`);
+}
+
+async function verifySaveAsFormats(page) {
+  await drawBondWithMouse(page);
+  await setSaveQueue(page, ["gui-save.ccjs", "gui-export.cdxml", "gui-export.svg", "gui-save-again.ccjz"]);
+
+  await page.locator('button[data-command="save-as"]').click();
+  const ccjs = await waitForSaveWrite(page, 0);
+  assert.equal(ccjs.name, "gui-save.ccjs");
+  assert(ccjs.text.includes('"objects"') && JSON.parse(ccjs.text).resources, "Save As .ccjs did not write a ChemCore JSON document.");
+
+  await page.locator('button[data-command="save-as"]').click();
+  const cdxml = await waitForSaveWrite(page, 1);
+  assert.equal(cdxml.name, "gui-export.cdxml");
+  assert(/<CDXML\b/i.test(cdxml.text), "Save As .cdxml did not write CDXML content.");
+
+  await page.locator('button[data-command="save-as"]').click();
+  const svg = await waitForSaveWrite(page, 2);
+  assert.equal(svg.name, "gui-export.svg");
+  assert(/<svg\b/i.test(svg.text), "Save As .svg did not write SVG content.");
+
+  await page.keyboard.press("Control+S");
+  const ccjz = await waitForSaveWrite(page, 3);
+  assert.equal(ccjz.name, "gui-save-again.ccjz");
+  assert(ccjz.byteLength > 100, `Ctrl+S .ccjz save was unexpectedly small: ${JSON.stringify(ccjz)}`);
+}
+
+async function createOpenFixture(context, errors) {
+  const page = await openViewer(context, errors);
+  await drawBondWithMouse(page);
+  const documentJson = await page.evaluate(() => window.__chemcoreDebug.state.editorEngine.documentJson());
+  await page.close();
+  const fixturePath = join(tmpDir, "gui-open-source.ccjs");
+  writeFileSync(fixturePath, `${JSON.stringify(JSON.parse(documentJson), null, 2)}\n`, "utf8");
+  return fixturePath;
+}
+
+async function verifyOpenButton(context, errors, fixturePath) {
+  const page = await openViewer(context, errors);
+  const popupPromise = page.waitForEvent("popup", { timeout: 8000 }).catch(() => null);
+  const chooserPromise = page.waitForEvent("filechooser");
+  await page.locator('button[data-command="open"]').click();
+  const chooser = await chooserPromise;
+  await chooser.setFiles(fixturePath);
+  const popup = await popupPromise;
+  const openedPage = popup || page;
+  if (popup) {
+    capturePageErrors(popup, errors);
+    popup.setDefaultTimeout(12000);
+  }
+  await waitForReady(openedPage);
+  await openedPage.waitForFunction(() => document.querySelectorAll("[data-bond-id]").length > 0);
+  const opened = await documentSummary(openedPage);
+  assert.equal(opened.currentFileName, "gui-open-source.ccjs", `Open did not preserve the file name: ${JSON.stringify(opened)}`);
+  assert(opened.renderedBonds > 0 && opened.resourceBonds > 0, `Open did not render the saved document: ${JSON.stringify(opened)}`);
+  await openedPage.close();
+  if (popup) {
+    await page.close().catch(() => {});
+  }
+}
+
+async function verifyZoomAndStyleMenu(page) {
+  await page.locator("#zoom-input").selectOption("150");
+  const zoom = await page.locator("#zoom-input").inputValue();
+  assert.equal(zoom, "150", "Zoom select did not accept 150%.");
+
+  await page.locator("#document-style-button").click();
+  await page.locator('[data-document-style-preset="acs-document-1996"]').click();
+  const styleState = await page.evaluate(() => ({
+    menuHidden: document.querySelector("#document-style-menu")?.hidden,
+    preset: window.__chemcoreDebug?.state?.editorEngine?.documentStylePreset?.() || null,
+  }));
+  assert.equal(styleState.menuHidden, true, `Style menu did not close after selection: ${JSON.stringify(styleState)}`);
+  assert.equal(styleState.preset, "acs-document-1996", `Style preset was not applied: ${JSON.stringify(styleState)}`);
+}
+
+let server = null;
+let browser = null;
+try {
+  mkdirSync(tmpDir, { recursive: true });
+  server = await ensureServer();
+  browser = await chromium.launch({
+    headless: true,
+    executablePath: existsSync(edgePath) ? edgePath : undefined,
+  });
+  const context = await browser.newContext({ acceptDownloads: true });
+  await installBrowserMocks(context);
+  const errors = [];
+
+  const fixturePath = await createOpenFixture(context, errors);
+  await verifyOpenButton(context, errors, fixturePath);
+
+  const page = await openViewer(context, errors);
+  await verifyToolbarAndCursor(page);
+  await verifySelectionOverlayConsistency(page);
+  await page.close();
+
+  const editPage = await openViewer(context, errors);
+  await verifyCopyPasteCut(editPage);
+  await editPage.close();
+
+  const savePage = await openViewer(context, errors);
+  await verifySaveAsFormats(savePage);
+  await verifyZoomAndStyleMenu(savePage);
+  await savePage.close();
+
+  assert.equal(errors.length, 0, `GUI regression saw console/page errors:\n${errors.join("\n")}`);
+  console.log("[gui-regression] ok (open, save-as ccjs/cdxml/svg, ctrl+s ccjz, copy/paste/cut, toolbar icons, cursors, selection overlay, zoom, style)");
+} finally {
+  await browser?.close();
+  if (server) {
+    server.kill();
+  }
+}

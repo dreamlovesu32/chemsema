@@ -1763,12 +1763,31 @@ impl Engine {
                 };
                 let begin_point = entry.world_point_for_node(begin);
                 let end_point = entry.world_point_for_node(end);
-                if segment_selected(begin_point, end_point) {
+                let (select_start, select_end) =
+                    Self::bond_region_selection_segment(begin_point, end_point);
+                if segment_selected(select_start, select_end) {
                     selection.bonds.push(bond.id.clone());
                 }
             }
         }
         selection
+    }
+
+    fn bond_region_selection_segment(begin: Point, end: Point) -> (Point, Point) {
+        let dx = end.x - begin.x;
+        let dy = end.y - begin.y;
+        let length = (dx * dx + dy * dy).sqrt();
+        let inset = ENDPOINT_HIT_RADIUS.min(length * 0.45);
+        if length <= crate::EPSILON || inset <= crate::EPSILON {
+            let center = Point::new((begin.x + end.x) * 0.5, (begin.y + end.y) * 0.5);
+            return (center, center);
+        }
+        let ux = dx / length;
+        let uy = dy / length;
+        (
+            Point::new(begin.x + ux * inset, begin.y + uy * inset),
+            Point::new(end.x - ux * inset, end.y - uy * inset),
+        )
     }
 
     fn selection_hit_bounds(&self) -> Vec<AxisBounds> {

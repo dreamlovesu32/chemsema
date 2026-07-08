@@ -1,0 +1,1 @@
+# Obfuscation is disabled for the first HarmonyOS shell.

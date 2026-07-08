@@ -99,8 +99,8 @@ pub(super) fn push_selection_bond_dot(out: &mut Vec<RenderPrimitive>, center: Po
         center,
         radius: SELECTION_BOND_DOT_RADIUS,
         fill: "rgba(47,111,237,0.9)".to_string(),
-        stroke: "#ffffff".to_string(),
-        stroke_width: crate::px_to_pt(1.0),
+        stroke: "none".to_string(),
+        stroke_width: 0.0,
     });
 }
 
