@@ -1182,7 +1182,7 @@ fn context_hit_test_reports_object_without_mutating_selection() {
 }
 
 #[test]
-fn complete_molecule_selection_keeps_bond_center_dot() {
+fn complete_molecule_selection_suppresses_internal_selection_dots() {
     let mut engine = Engine::new();
     engine
         .load_document_json(
@@ -1212,7 +1212,7 @@ fn complete_molecule_selection_keeps_bond_center_dot() {
             )
         })
         .count();
-    assert_eq!(dot_count, 1);
+    assert_eq!(dot_count, 0);
 }
 
 #[test]
@@ -1343,7 +1343,7 @@ fn select_all_selects_document_surface_without_expanding_groups() {
             && (*y + *height) >= 80.0
     }));
 
-    let bond_dot_count = engine
+    let internal_dot_count = engine
         .render_list()
         .into_iter()
         .filter(|primitive| {
@@ -1356,7 +1356,7 @@ fn select_all_selects_document_surface_without_expanding_groups() {
             )
         })
         .count();
-    assert_eq!(bond_dot_count, 1);
+    assert_eq!(internal_dot_count, 0);
     assert!(!engine.select_all());
 }
 

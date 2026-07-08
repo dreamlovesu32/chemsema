@@ -8561,8 +8561,8 @@ fn select_tool_box_selecting_whole_fragment_renders_component_box() {
     }));
     assert_eq!(
         selection_bond_dots(&engine).len(),
-        1,
-        "box-selecting a complete single-bond fragment should keep the selected bond center affordance"
+        0,
+        "box-selecting a complete single-bond fragment should suppress internal bond center affordances"
     );
 }
 
