@@ -744,7 +744,13 @@ fn render_wavy_bond(
     }
     let unit = direction.normalized();
     let normal = Vector::new(-unit.y, unit.x);
-    let amplitude = (1.875 * (stroke_width / VIEWER_BOND_STROKE)).clamp(0.8, length * 0.18);
+    let max_amplitude = length * 0.18;
+    let desired_amplitude = 1.875 * (stroke_width / VIEWER_BOND_STROKE);
+    let amplitude = if max_amplitude < 0.8 {
+        max_amplitude.max(EPSILON)
+    } else {
+        desired_amplitude.clamp(0.8, max_amplitude)
+    };
     let mut half_wave_count = ((length / amplitude).round() as usize).max(4);
     if half_wave_count % 2 != 0 {
         half_wave_count += 1;

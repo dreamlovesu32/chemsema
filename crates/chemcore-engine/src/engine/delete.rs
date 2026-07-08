@@ -133,21 +133,12 @@ impl Engine {
             });
             return self.remove_text_object(Some(object_id.as_str()));
         }
-        if let Some(endpoint) =
-            crate::hit_test_endpoint(&self.state.document, point, crate::ENDPOINT_HIT_RADIUS)
-        {
-            self.state.overlay.hover_endpoint = Some(endpoint.clone());
-            if endpoint.label_anchor.is_some() {
-                return self.remove_endpoint_label(&endpoint.node_id);
-            }
-            return match mode {
-                FocusedDeleteMode::DeleteToolClick => {
-                    self.remove_endpoint_connected_bonds(&endpoint.node_id)
-                }
-                FocusedDeleteMode::CommandKey => {
-                    self.remove_endpoint_and_connected_bonds_for_delete_key(&endpoint.node_id)
-                }
-            };
+        let endpoint_hit =
+            crate::hit_test_endpoint(&self.state.document, point, self.endpoint_hit_radius());
+        if let Some(endpoint) = endpoint_hit.clone().filter(|endpoint| {
+            endpoint.label_anchor.is_some() || endpoint.distance <= self.endpoint_focus_radius()
+        }) {
+            return self.delete_endpoint_hit(endpoint, mode);
         }
         if let Some(center) =
             crate::hit_test_bond_center(&self.state.document, point, crate::BOND_CENTER_HIT_RADIUS)
@@ -160,7 +151,29 @@ impl Engine {
                 FocusedDeleteMode::CommandKey => self.remove_bond(&center.bond_id),
             };
         }
+        if let Some(endpoint) = endpoint_hit {
+            return self.delete_endpoint_hit(endpoint, mode);
+        }
         false
+    }
+
+    fn delete_endpoint_hit(
+        &mut self,
+        endpoint: crate::EndpointHit,
+        mode: FocusedDeleteMode,
+    ) -> bool {
+        self.state.overlay.hover_endpoint = Some(endpoint.clone());
+        if endpoint.label_anchor.is_some() {
+            return self.remove_endpoint_label(&endpoint.node_id);
+        }
+        match mode {
+            FocusedDeleteMode::DeleteToolClick => {
+                self.remove_endpoint_connected_bonds(&endpoint.node_id)
+            }
+            FocusedDeleteMode::CommandKey => {
+                self.remove_endpoint_and_connected_bonds_for_delete_key(&endpoint.node_id)
+            }
+        }
     }
 
     fn remove_endpoint_label(&mut self, node_id: &str) -> bool {

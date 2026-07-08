@@ -7257,8 +7257,14 @@ fn select_tool_box_selecting_endpoint_matches_click_endpoint_affordance() {
 
     assert_eq!(engine.state().selection.nodes, vec!["n_2"]);
     assert!(engine.state().selection.bonds.is_empty());
-    assert_eq!(clicked.state().selection.nodes, engine.state().selection.nodes);
-    assert_eq!(clicked.state().selection.bonds, engine.state().selection.bonds);
+    assert_eq!(
+        clicked.state().selection.nodes,
+        engine.state().selection.nodes
+    );
+    assert_eq!(
+        clicked.state().selection.bonds,
+        engine.state().selection.bonds
+    );
     assert!(engine.render_list().iter().any(|primitive| matches!(
         primitive,
         RenderPrimitive::Rect {
@@ -9049,6 +9055,83 @@ fn hovered_bond_style_shortcut_accepts_wavy_alias() {
 }
 
 #[test]
+fn very_short_wavy_bond_renders_without_invalid_amplitude() {
+    let mut engine = Engine::new();
+    let document = json!({
+        "format": { "name": "chemcore", "version": "0.1" },
+        "document": {
+            "id": "doc_short_wavy",
+            "title": "short wavy bond",
+            "page": { "width": 120.0, "height": 80.0, "background": "#ffffff" }
+        },
+        "styles": {
+            "style_molecule_default": {
+                "kind": "molecule",
+                "stroke": "#000000",
+                "strokeWidth": DEFAULT_BOND_STROKE,
+                "fontFamily": "Arial",
+                "fontSize": chemcore_engine::DEFAULT_MOLECULE_LABEL_FONT_SIZE_PT
+            }
+        },
+        "objects": [{
+            "id": "obj_molecule_001",
+            "type": "molecule",
+            "visible": true,
+            "zIndex": 10,
+            "transform": { "translate": [0.0, 0.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+            "styleRef": "style_molecule_default",
+            "payload": { "resourceRef": "mol_001" }
+        }],
+        "resources": {
+            "mol_001": {
+                "type": "molecule_fragment2d",
+                "encoding": "chemcore.molecule.fragment2d",
+                "data": {
+                    "schema": "chemcore.molecule.fragment2d",
+                    "bbox": [10.0, 10.0, 12.0, 4.0],
+                    "nodes": [{
+                        "id": "n1",
+                        "element": "C",
+                        "atomicNumber": 6,
+                        "position": [10.0, 10.0],
+                        "charge": 0,
+                        "numHydrogens": 0
+                    }, {
+                        "id": "n2",
+                        "element": "C",
+                        "atomicNumber": 6,
+                        "position": [12.0, 10.0],
+                        "charge": 0,
+                        "numHydrogens": 0
+                    }],
+                    "bonds": [{
+                        "id": "b1",
+                        "begin": "n1",
+                        "end": "n2",
+                        "order": 1,
+                        "lineStyles": { "main": "wavy" }
+                    }]
+                }
+            }
+        }
+    });
+    engine
+        .load_document_json(&document.to_string())
+        .expect("document should load");
+
+    let primitives = engine.render_list();
+
+    assert!(primitives.iter().any(|primitive| matches!(
+        primitive,
+        RenderPrimitive::Path {
+            role: RenderRole::DocumentBond,
+            bond_id,
+            ..
+        } if bond_id.as_deref() == Some("b1")
+    )));
+}
+
+#[test]
 fn hovered_bond_style_shortcut_noops_without_hover() {
     let mut engine = Engine::new();
     engine.set_tool_state(bond_tool());
@@ -9774,6 +9857,77 @@ fn delete_tool_click_degrades_double_before_removing_bond() {
 
     click(&mut engine, center.x, center.y);
     assert_eq!(fragment_counts(&engine), (0, 0));
+}
+
+#[test]
+fn delete_tool_click_uses_focused_bond_center_before_wide_endpoint_hit() {
+    let mut engine = Engine::new();
+    let document = json!({
+        "format": { "name": "chemcore", "version": "0.1" },
+        "document": {
+            "id": "doc_short_double",
+            "title": "short double bond",
+            "page": { "width": 220.0, "height": 180.0, "background": "#ffffff" }
+        },
+        "styles": {
+            "style_molecule_default": {
+                "kind": "molecule",
+                "stroke": "#000000",
+                "strokeWidth": DEFAULT_BOND_STROKE,
+                "fontFamily": "Arial",
+                "fontSize": chemcore_engine::DEFAULT_MOLECULE_LABEL_FONT_SIZE_PT
+            }
+        },
+        "objects": [{
+            "id": "obj_molecule_001",
+            "type": "molecule",
+            "visible": true,
+            "zIndex": 10,
+            "transform": { "translate": [0.0, 0.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+            "styleRef": "style_molecule_default",
+            "payload": { "resourceRef": "mol_001" }
+        }],
+        "resources": {
+            "mol_001": {
+                "type": "molecule_fragment2d",
+                "encoding": "chemcore.molecule.fragment2d",
+                "data": {
+                    "schema": "chemcore.molecule.fragment2d",
+                    "bbox": [95.0, 95.0, 20.0, 10.0],
+                    "nodes": [{
+                        "id": "n1",
+                        "element": "C",
+                        "atomicNumber": 6,
+                        "position": [100.0, 100.0],
+                        "charge": 0,
+                        "numHydrogens": 0
+                    }, {
+                        "id": "n2",
+                        "element": "C",
+                        "atomicNumber": 6,
+                        "position": [110.0, 100.0],
+                        "charge": 0,
+                        "numHydrogens": 0
+                    }],
+                    "bonds": [{ "id": "b1", "begin": "n1", "end": "n2", "order": 2 }]
+                }
+            }
+        }
+    });
+    engine
+        .load_document_json(&document.to_string())
+        .expect("document should load");
+
+    let center = Point::new(105.0, 100.0);
+    engine.set_tool_state(delete_tool());
+    hover(&mut engine, center.x, center.y);
+    assert!(engine.state().overlay.hover_bond_center.is_some());
+    assert!(engine.state().overlay.hover_endpoint.is_none());
+
+    click(&mut engine, center.x, center.y);
+
+    assert_eq!(bond_order(&engine, "b1"), Some(1));
+    assert_eq!(fragment_counts(&engine), (2, 1));
 }
 
 #[test]

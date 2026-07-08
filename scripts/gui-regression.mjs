@@ -337,6 +337,72 @@ async function verifySelectionOverlayConsistency(page) {
   assertBondSelectionDot(boxRoles, "Box-select");
 }
 
+function makeShortDoubleBondDocument() {
+  return {
+    format: { name: "chemcore", version: "0.1" },
+    document: {
+      id: "doc_short_double",
+      title: "short double bond",
+      page: { width: 220, height: 180, background: "#ffffff" },
+    },
+    styles: {
+      style_molecule_default: {
+        kind: "molecule",
+        stroke: "#000000",
+        strokeWidth: 1,
+        fontFamily: "Arial",
+        fontSize: 10,
+      },
+    },
+    objects: [{
+      id: "obj_molecule_001",
+      type: "molecule",
+      visible: true,
+      zIndex: 10,
+      transform: { translate: [0, 0], rotate: 0, scale: [1, 1] },
+      styleRef: "style_molecule_default",
+      payload: { resourceRef: "mol_001" },
+    }],
+    resources: {
+      mol_001: {
+        type: "molecule_fragment2d",
+        encoding: "chemcore.molecule.fragment2d",
+        data: {
+          schema: "chemcore.molecule.fragment2d",
+          bbox: [95, 95, 20, 10],
+          nodes: [
+            { id: "n1", element: "C", atomicNumber: 6, position: [100, 100], charge: 0, numHydrogens: 0 },
+            { id: "n2", element: "C", atomicNumber: 6, position: [110, 100], charge: 0, numHydrogens: 0 },
+          ],
+          bonds: [{ id: "b1", begin: "n1", end: "n2", order: 2 }],
+        },
+      },
+    },
+  };
+}
+
+async function verifyDeleteToolFocusedBondCenter(page) {
+  await page.evaluate((doc) => window.__chemcoreDebug.loadDocumentForTest(doc), makeShortDoubleBondDocument());
+  await page.waitForFunction(() => document.querySelector('[data-bond-id="b1"]'));
+  await page.locator('button[data-tool="delete"]').click();
+  const center = await page.evaluate(() => window.__chemcoreDebug.worldToClient(105, 100));
+
+  await page.mouse.move(center.x, center.y);
+  await page.mouse.click(center.x, center.y);
+
+  await page.waitForFunction(() => {
+    const doc = JSON.parse(window.__chemcoreDebug.state.editorEngine.documentJson());
+    return doc.resources?.mol_001?.data?.bonds?.[0]?.order === 1;
+  });
+  const after = await page.evaluate(() => {
+    const doc = JSON.parse(window.__chemcoreDebug.state.editorEngine.documentJson());
+    return doc.resources?.mol_001?.data || null;
+  });
+  assert.equal(after?.nodes?.length, 2, `Delete tool removed the short double bond endpoint: ${JSON.stringify(after)}`);
+  assert.equal(after?.bonds?.length, 1, `Delete tool removed the short double bond instead of degrading it: ${JSON.stringify(after)}`);
+  assert.equal(after?.bonds?.[0]?.order, 1, `Delete tool did not degrade the focused double bond: ${JSON.stringify(after)}`);
+}
+
 async function verifyCopyPasteCut(page) {
   await drawBondWithMouse(page);
   const before = await documentSummary(page);
@@ -466,6 +532,7 @@ try {
   const page = await openViewer(context, errors);
   await verifyToolbarAndCursor(page);
   await verifySelectionOverlayConsistency(page);
+  await verifyDeleteToolFocusedBondCenter(page);
   await page.close();
 
   const editPage = await openViewer(context, errors);
@@ -478,7 +545,7 @@ try {
   await savePage.close();
 
   assert.equal(errors.length, 0, `GUI regression saw console/page errors:\n${errors.join("\n")}`);
-  console.log("[gui-regression] ok (open, save-as ccjs/cdxml/svg, ctrl+s ccjz, copy/paste/cut, toolbar icons, cursors, selection overlay, zoom, style)");
+  console.log("[gui-regression] ok (open, save-as ccjs/cdxml/svg, ctrl+s ccjz, copy/paste/cut, toolbar icons, cursors, selection overlay, delete tool, zoom, style)");
 } finally {
   await browser?.close();
   if (server) {
