@@ -70,13 +70,16 @@ Key differences currently aligned with ChemDraw:
 | Bond length | `30.0pt` | `14.4pt` | Existing structure geometry is scaled by this ratio when switching templates |
 | Ordinary line width | `1.0pt` | `0.6pt` | Used for ordinary bonds, narrow wedge ends, and shape line width |
 | Bold bond width | `4.0pt` | `2.0pt` | Template width for bold solid bonds |
-| Solid/hashed wedge wide end | `6.0pt` | `3.0pt` | Fixed template value, not derived proportionally from bond length |
-| Label clip retreat | `1.2pt` | `0.8pt` | Extra distance by which a bond end retreats from label glyph/box; ChemDraw rule is `max(0, margin width - 0.8pt)` |
+| Solid/hashed wedge wide end | `4.0pt` | `2.0pt` | Same value as `BoldWidth`; do not derive a separate wedge multiplier |
+| Label clip natural outset | source `MarginWidth` | source `MarginWidth` | Absolute pt value from the source template; it does not scale with label font size |
+| Label clip circle radius | `2 * MarginWidth` | `2 * MarginWidth` | Absolute pt value derived from the source template margin |
 | Hash spacing | `2.7pt` | `2.5pt` | Template spacing for the hash family |
 | Bond spacing | `12%` | `18%` | Double-bond inner spacing formula uses actual bond length and this percentage |
 | Margin width | `2.0pt` | `1.6pt` | White margin around upper bonds at non-endpoint bond-bond crossings |
 
-Wedge wide-end width, label clip retreat, and margin width are template parameters and should not be inferred backward from bond length. The Default and ACS templates can keep their own fixed widths and fixed retreats at the same time; engine switching rewrites bond-level fields.
+Wedge wide-end width, label clip natural outset, label clip circle radius, and margin width are template parameters and should not be inferred backward from bond length. CDXML import must use the source template numbers directly; do not infer an "ACS" label clipping mode from `MarginWidth`.
+
+For CDXML imports, label clipping geometry is parameterized by the source `MarginWidth`: natural outset is exactly `MarginWidth`, and circular anchor radius is exactly `2 * MarginWidth`. These values are absolute points and must not be multiplied by the label font size or glyph height.
 
 ## Unified Decision Order
 
@@ -178,7 +181,7 @@ Hash bonds are a separate model: a bold solid body plus white cut segments.
 - The body is a trapezoid.
 - The wide-end width is fixed, and the narrow-end width is fixed as a very short top edge.
 - In ordinary main-bond contact, the wide end may deform by contour intersection.
-- If the wide end meets a label, it should avoid pressing into the label first.
+- If the wide end meets a label, solid wedge label clipping uses the centerline-clipped endpoint only. Do not add an extra wide-end margin retreat for solid wedges.
 - When length changes, endpoint width definitions should be preserved first, then trapezoid side edges are updated.
 
 ## Hashed Wedge Bonds
@@ -202,7 +205,7 @@ Hash bonds are a separate model: a bold solid body plus white cut segments.
 
 ## One-Sided Double Bonds
 
-A one-sided double bond consists of one main bond and one secondary line.
+A one-sided double bond consists of one main bond and one secondary line. For CDXML-compatible spacing, the inner gap is `(actual bond length + stroke width) * bondSpacing / 100`; the center distance between two normal-weight lines is this inner gap plus one stroke width.
 
 ### Automatic Side Selection
 

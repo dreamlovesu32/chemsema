@@ -20,17 +20,13 @@ const DEFAULT_CENTERED_LABEL_FONT_SIZE: f64 = crate::DEFAULT_CENTERED_LABEL_FONT
 const TEXT_EDIT_BOX_WIDTH: f64 = crate::px_to_pt(8.0);
 const IMPLICIT_HYDROGEN_LABEL_META_KEY: &str = "implicitHydrogenLabel";
 
-pub(crate) fn glyph_clip_profile_for_style_preset(preset: &str) -> GlyphClipProfile {
-    if preset == super::ACS_DOCUMENT_1996_PRESET {
-        GlyphClipProfile::AcsDocument1996
-    } else {
-        GlyphClipProfile::Default
-    }
+pub(crate) fn glyph_clip_profile_for_margin_width(margin_width: f64) -> GlyphClipProfile {
+    GlyphClipProfile::from_margin_width(margin_width)
 }
 
 impl Engine {
     fn glyph_clip_profile(&self) -> GlyphClipProfile {
-        glyph_clip_profile_for_style_preset(&self.document_style_preset)
+        glyph_clip_profile_for_margin_width(self.options.margin_width)
     }
 }
 
@@ -184,7 +180,7 @@ pub(crate) fn make_periodic_element_node_label(text: &str, position: [f64; 2]) -
         false,
         false,
         None,
-        GlyphClipProfile::Default,
+        GlyphClipProfile::from_margin_width(crate::DEFAULT_BOND_MARGIN_WIDTH_PT.value()),
     )
 }
 
@@ -1624,7 +1620,7 @@ pub(super) fn apply_node_label_text_edit(
         connection_angles,
         anchor_position,
         false,
-        GlyphClipProfile::Default,
+        GlyphClipProfile::from_margin_width(crate::DEFAULT_BOND_MARGIN_WIDTH_PT.value()),
     )
 }
 

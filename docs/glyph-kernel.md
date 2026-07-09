@@ -48,13 +48,17 @@ The current clipping scheme is intentionally data-driven and deterministic:
 1. Layout still starts from the normalized ink box in `glyph_profiles.json`.
 2. The actual clipping polygon is loaded from `glyph_clip_polygons.json`.
 3. ASCII uppercase letters use precomputed polygons built from:
-   - natural outline dilation: `0.30 * glyph height`
+   - canonical natural outline dilation: `1.0pt` at the `10pt` reference font size
    - inward anchor offset: `0.22 * glyph height`
-   - anchor circle radius: `0.60 * glyph height`
+   - canonical anchor circle radius: `2.0pt` at the `10pt` reference font size
 4. Non-uppercase symbols use natural-outline dilation only:
-   - natural outline dilation: `0.30 * glyph height`
-5. Unknown visible characters missing from the clip manifest fall back
-   to a conservative rectangle expanded by `0.30 * glyph height` on all sides.
+   - canonical natural outline dilation: `1.0pt` at the `10pt` reference font size
+5. Runtime label clipping remaps the outside dilation to the document source
+   margin as an absolute pt value. For CDXML import, natural dilation equals
+   `MarginWidth` and anchor circle radius equals `2 * MarginWidth`; neither value
+   scales with the actual label font size.
+6. Unknown visible characters missing from the clip manifest are manifest
+   generation failures; runtime clipping does not synthesize replacement shapes.
 
 The detailed uppercase anchor rules are documented in:
 
@@ -70,8 +74,9 @@ python scripts/generate-glyph-clip-polygons.py
 ```
 
 The current clip manifest is generated from `Arial` outline geometry and locked to
-the tuned ratios above. Runtime renderers consume these precomputed petal/corner
-rules.
+the canonical point values above. Runtime renderers consume these precomputed
+petal/corner rules and remap their outside dilation from the canonical source
+margin to the document source margin.
 
 ## Consumer Chain
 

@@ -134,11 +134,6 @@ pub fn parse_cdxml_document(cdxml: &str, title: Option<&str>) -> Result<Chemcore
         &bonded_node_ids,
     );
     apply_cdxml_groups(&root, &mut objects);
-    let glyph_clip_profile = cdxml_glyph_clip_profile(defaults.margin_width);
-    let document_style_preset = match glyph_clip_profile {
-        crate::GlyphClipProfile::AcsDocument1996 => "acs-document-1996",
-        crate::GlyphClipProfile::Default => "default",
-    };
     let mut document = ChemcoreDocument {
         format: FormatInfo {
             name: "chemcore".to_string(),
@@ -170,19 +165,16 @@ pub fn parse_cdxml_document(cdxml: &str, title: Option<&str>) -> Result<Chemcore
             }),
         },
         style: DocumentStyleInfo {
-            preset: document_style_preset.to_string(),
+            preset: "default".to_string(),
             defaults: BTreeMap::from([
                 ("bondLength".to_string(), defaults.bond_length),
                 ("lineWidth".to_string(), defaults.line_width),
                 ("boldWidth".to_string(), defaults.bold_width),
-                ("wedgeWidth".to_string(), defaults.bold_width * 1.5),
+                ("wedgeWidth".to_string(), defaults.bold_width),
                 ("labelClipMargin".to_string(), 0.0),
                 ("hashSpacing".to_string(), defaults.hash_spacing),
                 ("bondSpacing".to_string(), defaults.bond_spacing),
-                (
-                    "marginWidth".to_string(),
-                    crate::DEFAULT_BOND_MARGIN_WIDTH_PT.value(),
-                ),
+                ("marginWidth".to_string(), defaults.margin_width),
                 ("graphicLineWidth".to_string(), defaults.line_width),
                 ("labelFontSize".to_string(), defaults.label_size),
                 ("textFontSize".to_string(), defaults.caption_size),
@@ -1190,10 +1182,6 @@ fn node_label(
     } else {
         Vec::new()
     };
-    let glyph_clip_profile_name = match glyph_clip_profile {
-        crate::GlyphClipProfile::AcsDocument1996 => "acs-document-1996",
-        crate::GlyphClipProfile::Default => "default",
-    };
     Some(NodeLabel {
         text: text.clone(),
         source_text: Some(text.clone()),
@@ -1239,7 +1227,8 @@ fn node_label(
                     "labelJustification": empty_as_null(text_el.attr("LabelJustification")),
                     "justification": empty_as_null(text_el.attr("Justification")),
                     "marginWidth": defaults.margin_width,
-                    "glyphClipProfile": glyph_clip_profile_name,
+                    "naturalOutsetPt": glyph_clip_profile.natural_outset_pt,
+                    "circleRadiusPt": glyph_clip_profile.circle_radius_pt,
                 }
             },
             "sourceRuns": source_runs,
@@ -1248,11 +1237,7 @@ fn node_label(
 }
 
 fn cdxml_glyph_clip_profile(margin_width: f64) -> crate::GlyphClipProfile {
-    if (margin_width - 1.6).abs() <= 0.25 {
-        crate::GlyphClipProfile::AcsDocument1996
-    } else {
-        crate::GlyphClipProfile::Default
-    }
+    crate::GlyphClipProfile::from_margin_width(margin_width)
 }
 
 fn attr_eq_ignore_ascii_case(value: Option<&str>, expected: &str) -> bool {
@@ -1506,7 +1491,7 @@ fn cdxml_apply_line_style_for_double_placement(
 }
 
 fn cdxml_import_wedge_width(_stroke_width: f64, bold_width: f64) -> f64 {
-    (bold_width * 1.5).max(crate::DEFAULT_BOND_STROKE)
+    bold_width.max(crate::DEFAULT_BOND_STROKE)
 }
 
 fn cdxml_bond_order(value: Option<&str>) -> u8 {

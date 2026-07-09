@@ -2795,7 +2795,7 @@ fn load_cdxml_document_preserves_imported_acs_drawing_options() {
     assert!((engine.options().bond_length - 14.4).abs() < 0.05);
     assert!((engine.options().bond_stroke_width - 0.6).abs() < 0.01);
     assert!((engine.options().bold_bond_width - 2.0).abs() < 0.05);
-    assert!((engine.options().wedge_width - 3.0).abs() < 0.05);
+    assert!((engine.options().wedge_width - 2.0).abs() < 0.05);
     assert!((engine.options().hash_spacing - 2.5).abs() < 0.05);
     assert!((engine.options().bond_spacing - 18.0).abs() < 0.05);
     assert!(engine.options().label_clip_margin.abs() < 0.01);
@@ -2872,9 +2872,9 @@ fn load_cdxml_document_derives_wedge_width_from_imported_bold_width() {
     assert!((engine.options().bond_length - 14.4).abs() < 0.05);
     assert!((engine.options().bond_stroke_width - 0.99).abs() < 0.01);
     assert!((engine.options().bold_bond_width - 2.01).abs() < 0.01);
-    assert!((engine.options().wedge_width - 3.015).abs() < 0.01);
+    assert!((engine.options().wedge_width - 2.01).abs() < 0.01);
     assert!(engine.options().label_clip_margin.abs() < 0.01);
-    assert!((engine.options().margin_width - 2.0).abs() < 0.01);
+    assert!((engine.options().margin_width - 1.7).abs() < 0.01);
 
     let bond = &engine
         .state()
@@ -2883,14 +2883,17 @@ fn load_cdxml_document_derives_wedge_width_from_imported_bold_width() {
         .expect("editable fragment should exist")
         .fragment
         .bonds[0];
-    assert!((bond.wedge_width.unwrap_or_default() - 3.015).abs() < 0.01);
+    assert!((bond.wedge_width.unwrap_or_default() - 2.01).abs() < 0.01);
     assert_eq!(bond.label_clip_margin, None);
     assert_eq!(bond.margin_width, None);
 }
 
 #[test]
 fn load_cdxml_document_does_not_import_margin_width_as_label_retreat() {
-    fn imported_label_clip_profile(line_width: f64, margin_width: f64) -> (f64, Option<String>) {
+    fn imported_label_clip_profile(
+        line_width: f64,
+        margin_width: f64,
+    ) -> (f64, Option<(f64, f64)>) {
         let cdxml = format!(
             r#"<?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >
@@ -2923,11 +2926,10 @@ fn load_cdxml_document_does_not_import_margin_width_as_label_retreat() {
                     .iter()
                     .find_map(|node| node.label.as_ref())
                     .and_then(|label| {
-                        label
-                            .meta
-                            .pointer("/import/cdxml/glyphClipProfile")
-                            .and_then(serde_json::Value::as_str)
-                            .map(str::to_string)
+                        let meta = label.meta.pointer("/import/cdxml")?;
+                        let natural = meta.get("naturalOutsetPt")?.as_f64()?;
+                        let radius = meta.get("circleRadiusPt")?.as_f64()?;
+                        Some((natural, radius))
                     })
             });
         (engine.options().label_clip_margin, profile)
@@ -2938,9 +2940,9 @@ fn load_cdxml_document_does_not_import_margin_width_as_label_retreat() {
     let (wide_margin, wide_margin_profile) = imported_label_clip_profile(0.60, 5.00);
 
     assert!(normal.abs() < 0.01, "{normal}");
-    assert_eq!(normal_profile.as_deref(), Some("acs-document-1996"));
-    assert_eq!(wide_line_profile.as_deref(), Some("acs-document-1996"));
-    assert_eq!(wide_margin_profile.as_deref(), Some("default"));
+    assert_eq!(normal_profile, Some((1.6, 3.2)));
+    assert_eq!(wide_line_profile, Some((1.6, 3.2)));
+    assert_eq!(wide_margin_profile, Some((5.0, 10.0)));
     assert!(
         (wide_line - normal).abs() < 0.01,
         "CDXML MarginWidth should not become label retreat: {normal} {wide_line}"
@@ -5911,8 +5913,8 @@ fn render_cdxml_single_character_atom_label_uses_text_primitive() {
         })
         .expect("N label should render as text");
 
-    assert!((text.0 - 6.4).abs() < 0.001, "{text:?}");
-    assert!((text.1 - 15.63).abs() < 0.001, "{text:?}");
+    assert!((text.0 - 6.44).abs() < 0.001, "{text:?}");
+    assert!((text.1 - 15.69).abs() < 0.001, "{text:?}");
     assert_eq!(
         text.2
             .iter()
@@ -6250,8 +6252,9 @@ fn parse_cdxml_double_bond_spacing_uses_bond_spacing_percent() {
 
     assert_eq!(center_ys.len(), 2, "{center_ys:?}");
     let center_distance = center_ys[1] - center_ys[0];
+    let expected_center_distance = (14.4 + 0.6) * 0.18 + 0.6;
     assert!(
-        (center_distance - 14.4 * 0.18).abs() < 0.001,
+        (center_distance - expected_center_distance).abs() < 0.001,
         "{center_distance}"
     );
 }
@@ -9813,7 +9816,7 @@ fn render_document_retreats_hashed_wedge_against_double_dashed_center_double_out
 }
 
 #[test]
-fn render_document_scales_side_double_offset_with_bond_length() {
+fn render_document_uses_length_plus_stroke_for_side_double_offset() {
     let short_document = fragment_document(
         json!([
             { "id": "n1", "element": "C", "atomicNumber": 6, "position": [20.0, 40.0], "charge": 0, "numHydrogens": 0 },
@@ -9864,9 +9867,15 @@ fn render_document_scales_side_double_offset_with_bond_length() {
         .map(|(from, to)| ((from.y + to.y) / 2.0 - 80.0).abs())
         .max_by(|a, b| a.total_cmp(b))
         .unwrap();
+    let expected_short_offset = (36.0 + 0.85) * 0.12 + 0.85;
+    let expected_long_offset = (72.0 + 0.85) * 0.12 + 0.85;
     assert!(
-        (long_offset - short_offset * 2.0).abs() < 0.05,
-        "{short_offset} {long_offset}"
+        (short_offset - expected_short_offset).abs() < 0.05,
+        "{short_offset}"
+    );
+    assert!(
+        (long_offset - expected_long_offset).abs() < 0.05,
+        "{long_offset}"
     );
 }
 
@@ -10433,12 +10442,12 @@ fn render_document_clips_center_double_lines_against_glyph_polygon_only() {
                 "label": {
                     "text": "•",
                     "position": [49.0, 42.5],
-                    "box": [49.4, 37.0, 50.6, 43.0],
+                    "box": [49.4, 36.5, 50.6, 43.5],
                     "glyphPolygons": [[
-                        [49.4, 37.0],
-                        [50.6, 37.0],
-                        [50.6, 43.0],
-                        [49.4, 43.0]
+                        [49.4, 36.5],
+                        [50.6, 36.5],
+                        [50.6, 43.5],
+                        [49.4, 43.5]
                     ]]
                 }
             },
@@ -10623,7 +10632,7 @@ fn render_document_ignores_legacy_label_clip_margin_for_glyph_polygons() {
 }
 
 #[test]
-fn render_document_retreats_solid_wedge_cap_from_labeled_wide_endpoint() {
+fn render_document_clips_solid_wedge_wide_endpoint_on_centerline_only() {
     let document = fragment_document(
         json!([
             { "id": "n1", "element": "C", "atomicNumber": 6, "position": [42.0, 54.0], "charge": 0, "numHydrogens": 0 },
@@ -10653,7 +10662,7 @@ fn render_document_retreats_solid_wedge_cap_from_labeled_wide_endpoint() {
             "end": "n2",
             "order": 1,
             "strokeWidth": 0.6,
-            "wedgeWidth": 3.0,
+            "wedgeWidth": 2.0,
             "stereo": { "kind": "solid-wedge", "wideEnd": "end" }
         }]),
     );
@@ -10662,25 +10671,14 @@ fn render_document_retreats_solid_wedge_cap_from_labeled_wide_endpoint() {
         .into_iter()
         .find_map(|(bond_id, points)| (bond_id == "b1").then_some(points))
         .expect("solid wedge should render");
-    let cap_near_label = [polygon[1], polygon[2]];
-    let min_clearance = cap_near_label
-        .iter()
-        .map(|point| point.distance(Point::new(27.0, 70.0)))
-        .fold(f64::INFINITY, f64::min);
-    let cap_touches_u_glyph = cap_near_label.iter().any(|point| {
-        point.x >= 26.0 - 0.01
-            && point.x <= 29.3 + 0.01
-            && point.y >= 65.0 - 0.01
-            && point.y <= 72.4 + 0.01
-    });
+    let cap_center = Point::new(
+        (polygon[1].x + polygon[2].x) * 0.5,
+        (polygon[1].y + polygon[2].y) * 0.5,
+    );
 
     assert!(
-        min_clearance > 1.45,
-        "wide wedge cap should retreat from the attached label glyphs: {polygon:?}"
-    );
-    assert!(
-        !cap_touches_u_glyph,
-        "wide wedge cap polygon should not press into the terminal u glyph: {polygon:?}"
+        (cap_center.x - 29.3).abs() < 0.02,
+        "solid wedge should stop at the centerline label clip, without a wide-cap retreat: {polygon:?}"
     );
 }
 
@@ -11279,7 +11277,7 @@ fn render_document_uses_explicit_solid_wedge_wide_and_tip_widths() {
                 "order": 1,
                 "strokeWidth": 0.6,
                 "boldWidth": 2.0,
-                "wedgeWidth": 3.0,
+                "wedgeWidth": 2.0,
                 "stereo": {
                     "kind": "solid-wedge",
                     "wideEnd": "end"
@@ -11311,7 +11309,7 @@ fn render_document_uses_explicit_solid_wedge_wide_and_tip_widths() {
         ((polygon[1].x - polygon[2].x).powi(2) + (polygon[1].y - polygon[2].y).powi(2)).sqrt();
 
     assert!((tip_width - 0.6).abs() < 0.01, "{tip_width}");
-    assert!((wide_width - 3.0).abs() < 0.01, "{wide_width}");
+    assert!((wide_width - 2.0).abs() < 0.01, "{wide_width}");
 }
 
 #[test]
@@ -11359,7 +11357,7 @@ fn render_document_uses_acs_template_wedge_width_for_legacy_json_without_wedge_w
     let wide_width =
         ((polygon[1].x - polygon[2].x).powi(2) + (polygon[1].y - polygon[2].y).powi(2)).sqrt();
 
-    assert!((wide_width - 3.0).abs() < 0.01, "{wide_width}");
+    assert!((wide_width - 2.0).abs() < 0.01, "{wide_width}");
 }
 
 #[test]
@@ -11463,10 +11461,8 @@ fn render_document_uses_extended_intersections_for_solid_wedge_three_way_contact
         ]),
     );
 
-    let expected_up_wedge_intersection = chemcore_engine::Point::new(
-        cdxml_cm_to_pt(7.5537589823596605),
-        cdxml_cm_to_pt(6.295896144157522),
-    );
+    let expected_up_wedge_intersection =
+        chemcore_engine::Point::new(213.67988530243116, 180.97541638534994);
     let contact_center = chemcore_engine::Point::new(cdxml_cm_to_pt(7.5), cdxml_cm_to_pt(6.5));
     let polygons = object_bond_polygons_with_ids(&render_document(&document));
     let up = polygons

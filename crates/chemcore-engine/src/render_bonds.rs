@@ -54,11 +54,7 @@ pub(super) fn render_fragment_bond(
     if let Some(stereo) = bond_stereo_kind(bond) {
         let wide_label_margin = solid_wedge_half_width_for_bond(bond, stroke_width);
         match stereo {
-            BondStereoKind::SolidWedgeBegin
-            | BondStereoKind::HashedWedgeBegin
-            | BondStereoKind::HollowWedgeBegin
-                if begin_has_label =>
-            {
+            BondStereoKind::HashedWedgeBegin if begin_has_label => {
                 start = clip_point_out_of_label_bounds_with_margin(
                     start,
                     finish,
@@ -67,11 +63,7 @@ pub(super) fn render_fragment_bond(
                     wide_label_margin,
                 );
             }
-            BondStereoKind::SolidWedgeEnd
-            | BondStereoKind::HashedWedgeEnd
-            | BondStereoKind::HollowWedgeEnd
-                if end_has_label =>
-            {
+            BondStereoKind::HashedWedgeEnd if end_has_label => {
                 finish = clip_point_out_of_label_bounds_with_margin(
                     finish,
                     start,
@@ -935,11 +927,6 @@ fn compute_fragment_solid_wedge_points(
     let normal = Vector::new(-unit.y, unit.x);
     let tip_half_width = solid_wedge_tip_half_width(stroke_width);
     let width = solid_wedge_half_width_for_bond(bond, stroke_width);
-    let end_inset = if wide_has_label {
-        end_inset.max(width)
-    } else {
-        end_inset
-    };
     let tip_plus = Point::new(
         start.x + normal.x * tip_half_width,
         start.y + normal.y * tip_half_width,

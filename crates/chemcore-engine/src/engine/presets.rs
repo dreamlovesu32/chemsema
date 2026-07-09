@@ -92,7 +92,7 @@ impl Engine {
         apply_existing_document_style_preset(&mut self.state.document, &next_options);
         update_document_object_settings_defaults(&mut self.state.document, &next_options);
         let glyph_clip_profile =
-            super::text_edit::glyph_clip_profile_for_style_preset(&self.document_style_preset);
+            super::text_edit::glyph_clip_profile_for_margin_width(next_options.margin_width);
         if let Some(mut entry) = self.state.document.editable_fragment_mut() {
             refresh_attached_node_label_geometry_for_all_nodes_with_profile(
                 entry.fragment,
@@ -429,7 +429,8 @@ impl Engine {
         apply_existing_document_style_preset(&mut self.state.document, &next_options);
         update_document_object_settings_defaults(&mut self.state.document, &next_options);
         update_document_style_info_defaults(&mut self.state.document, preset, &next_options);
-        let glyph_clip_profile = super::text_edit::glyph_clip_profile_for_style_preset(preset);
+        let glyph_clip_profile =
+            super::text_edit::glyph_clip_profile_for_margin_width(next_options.margin_width);
         if let Some(mut entry) = self.state.document.editable_fragment_mut() {
             refresh_attached_node_label_geometry_for_all_nodes_with_profile(
                 entry.fragment,
@@ -772,7 +773,7 @@ fn document_style_preset_options(preset: &str) -> EditorOptions {
             bond_length: 14.4,
             bond_stroke_width: 0.6,
             bold_bond_width: 2.0,
-            wedge_width: 3.0,
+            wedge_width: 2.0,
             label_clip_margin: 0.0,
             hash_spacing: 2.5,
             bond_spacing: 18.0,
@@ -907,7 +908,7 @@ pub(super) fn editor_options_from_imported_cdxml_document(
 }
 
 fn derived_wedge_width(bold_width: f64) -> f64 {
-    (bold_width * 1.5).max(crate::DEFAULT_BOND_STROKE)
+    bold_width.max(crate::DEFAULT_BOND_STROKE)
 }
 
 fn derived_label_clip_margin(_margin_width: f64) -> f64 {

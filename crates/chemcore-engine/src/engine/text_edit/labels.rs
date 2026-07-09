@@ -1493,14 +1493,21 @@ fn cdxml_imported_label_flow_override(label: &crate::NodeLabel) -> Option<LabelF
 }
 
 fn glyph_clip_profile_for_label(label: &crate::NodeLabel) -> GlyphClipProfile {
-    match label
-        .meta
-        .pointer("/import/cdxml/glyphClipProfile")
-        .and_then(serde_json::Value::as_str)
+    let cdxml_meta = label.meta.pointer("/import/cdxml");
+    if let Some(natural_outset_pt) = cdxml_meta
+        .and_then(|meta| meta.get("naturalOutsetPt"))
+        .and_then(serde_json::Value::as_f64)
     {
-        Some("acs-document-1996") => GlyphClipProfile::AcsDocument1996,
-        _ => GlyphClipProfile::Default,
+        return GlyphClipProfile {
+            natural_outset_pt,
+            circle_radius_pt: natural_outset_pt * 2.0,
+        };
     }
+    let margin_width = cdxml_meta
+        .and_then(|meta| meta.get("marginWidth"))
+        .and_then(serde_json::Value::as_f64)
+        .unwrap_or(crate::DEFAULT_BOND_MARGIN_WIDTH_PT.value());
+    GlyphClipProfile::from_margin_width(margin_width)
 }
 
 fn node_label_glyph_polygons_are_authoritative(label: &crate::NodeLabel) -> bool {

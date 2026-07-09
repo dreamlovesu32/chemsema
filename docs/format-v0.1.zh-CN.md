@@ -481,7 +481,7 @@ text 对象表示带定位信息的富文本内容。
   "order": 1,
   "strokeWidth": 0.6,
   "boldWidth": 2.0,
-  "wedgeWidth": 3.0,
+  "wedgeWidth": 2.0,
   "hashSpacing": 2.5,
   "bondSpacing": 18.0,
   "marginWidth": 1.6,
@@ -551,7 +551,7 @@ text 对象表示带定位信息的富文本内容。
 | --- | ---: | ---: |
 | `strokeWidth` | `1.0` | `0.6` |
 | `boldWidth` | `4.0` | `2.0` |
-| `wedgeWidth` | `6.0` | `3.0` |
+| `wedgeWidth` | `4.0` | `2.0` |
 | `hashSpacing` | `2.7` | `2.5` |
 | `bondSpacing` | `12.0` | `18.0` |
 | `marginWidth` | `2.0` | `1.6` |

@@ -83,6 +83,8 @@ struct SharedGlyphProfiles {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GlyphClipPolygonJson {
+    bbox_px: [u32; 4],
+    glyph_height_px: u32,
     points: Vec<[f64; 2]>,
 }
 
@@ -91,18 +93,17 @@ struct GlyphClipPolygonJson {
 struct SharedGlyphClipPolygonsJson {
     version: u32,
     coordinate_system: Option<String>,
-    natural_outset_ratio: f64,
-    acs_natural_outset_ratio: Option<f64>,
+    pixels_per_pt: Option<f64>,
+    natural_outset_pt: f64,
     green_inset_ratio: f64,
-    circle_radius_ratio: f64,
-    acs_circle_radius_ratio: Option<f64>,
+    circle_radius_pt: f64,
     glyphs: HashMap<String, GlyphClipPolygonJson>,
-    #[serde(default)]
-    acs_glyphs: HashMap<String, GlyphClipPolygonJson>,
 }
 
 #[derive(Debug, Clone)]
 struct GlyphClipPolygon {
+    bbox_px: [u32; 4],
+    glyph_height_px: u32,
     points: Vec<[f64; 2]>,
 }
 
@@ -111,13 +112,11 @@ struct GlyphClipPolygon {
 struct SharedGlyphClipPolygons {
     version: u32,
     coordinate_system: GlyphClipCoordinateSystem,
-    natural_outset_ratio: f64,
-    acs_natural_outset_ratio: f64,
+    pixels_per_pt: f64,
+    natural_outset_pt: f64,
     green_inset_ratio: f64,
-    circle_radius_ratio: f64,
-    acs_circle_radius_ratio: f64,
+    circle_radius_pt: f64,
     glyphs: HashMap<char, GlyphClipPolygon>,
-    acs_glyphs: HashMap<char, GlyphClipPolygon>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -126,10 +125,20 @@ enum GlyphClipCoordinateSystem {
     HeightCentered,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum GlyphClipProfile {
-    Default,
-    AcsDocument1996,
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GlyphClipProfile {
+    pub natural_outset_pt: f64,
+    pub circle_radius_pt: f64,
+}
+
+impl GlyphClipProfile {
+    pub fn from_margin_width(margin_width: f64) -> Self {
+        let natural_outset_pt = margin_width.max(0.0);
+        Self {
+            natural_outset_pt,
+            circle_radius_pt: natural_outset_pt * 2.0,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -251,7 +260,7 @@ pub fn build_label_glyph_polygons(
         position,
         box_value,
         fallback_font_size,
-        GlyphClipProfile::Default,
+        GlyphClipProfile::from_margin_width(crate::DEFAULT_BOND_MARGIN_WIDTH_PT.value()),
     )
 }
 
@@ -697,7 +706,10 @@ fn charge_sign_baseline_adjustment(
 }
 
 fn shape_polygon(placement: &GlyphPlacement) -> Option<Vec<[f64; 2]>> {
-    shape_polygon_with_profile(placement, GlyphClipProfile::Default)
+    shape_polygon_with_profile(
+        placement,
+        GlyphClipProfile::from_margin_width(crate::DEFAULT_BOND_MARGIN_WIDTH_PT.value()),
+    )
 }
 
 fn shape_polygon_with_profile(
@@ -710,43 +722,59 @@ fn shape_polygon_with_profile(
     // The shared manifest stores normalized glyph outlines. Height-centered
     // mapping keeps narrow capitals such as I from losing their side margin.
     let manifest = shared_glyph_clip_polygons();
-    let glyphs = match profile {
-        GlyphClipProfile::Default => &manifest.glyphs,
-        GlyphClipProfile::AcsDocument1996 => {
-            if manifest.acs_glyphs.is_empty() {
-                &manifest.glyphs
-            } else {
-                &manifest.acs_glyphs
-            }
-        }
-    };
-    glyphs.get(&placement.codepoint).map(|polygon| {
+    manifest.glyphs.get(&placement.codepoint).map(|polygon| {
         map_normalized_polygon(
-            &polygon.points,
+            polygon,
             placement.ink_box_px,
             manifest.coordinate_system,
+            manifest.pixels_per_pt,
+            manifest.natural_outset_pt,
+            profile,
         )
     })
 }
 
 fn map_normalized_polygon(
-    points: &[[f64; 2]],
+    polygon: &GlyphClipPolygon,
     ink_box: [f64; 4],
     coordinate_system: GlyphClipCoordinateSystem,
+    pixels_per_pt: f64,
+    source_natural_outset_pt: f64,
+    profile: GlyphClipProfile,
 ) -> Vec<[f64; 2]> {
     let [x1, y1, x2, y2] = ink_box;
     let width = (x2 - x1).max(0.1);
     let height = (y2 - y1).max(0.1);
     match coordinate_system {
-        GlyphClipCoordinateSystem::LegacyInkBox => points
+        GlyphClipCoordinateSystem::LegacyInkBox => polygon
+            .points
             .iter()
             .map(|point| [x1 + point[0] * width, y1 + point[1] * height])
             .collect(),
         GlyphClipCoordinateSystem::HeightCentered => {
             let center_x = (x1 + x2) * 0.5;
-            points
+            let source_height = f64::from(polygon.glyph_height_px).max(1.0);
+            let source_width = f64::from(polygon.bbox_px[2].saturating_sub(polygon.bbox_px[0]));
+            let source_x_min = -0.5 * source_width / source_height;
+            let source_x_max = 0.5 * source_width / source_height;
+            let source_extra_scale = if source_natural_outset_pt > crate::EPSILON {
+                profile.natural_outset_pt / source_natural_outset_pt / pixels_per_pt
+            } else {
+                0.0
+            };
+            polygon
+                .points
                 .iter()
-                .map(|point| [center_x + point[0] * height, y1 + point[1] * height])
+                .map(|point| {
+                    let base_x = point[0].clamp(source_x_min, source_x_max);
+                    let base_y = point[1].clamp(0.0, 1.0);
+                    let extra_x = (point[0] - base_x) * source_height * source_extra_scale;
+                    let extra_y = (point[1] - base_y) * source_height * source_extra_scale;
+                    [
+                        center_x + base_x * height + extra_x,
+                        y1 + base_y * height + extra_y,
+                    ]
+                })
                 .collect()
         }
     }
@@ -1058,22 +1086,8 @@ impl SharedGlyphClipPolygons {
             glyphs.insert(
                 character,
                 GlyphClipPolygon {
-                    points: value.points,
-                },
-            );
-        }
-        let mut acs_glyphs = HashMap::new();
-        for (key, value) in manifest.acs_glyphs {
-            let mut chars = key.chars();
-            let character = chars
-                .next()
-                .filter(|_| chars.next().is_none())
-                .unwrap_or_else(|| {
-                    panic!("ACS glyph clip manifest key must be exactly one character: {key:?}")
-                });
-            acs_glyphs.insert(
-                character,
-                GlyphClipPolygon {
+                    bbox_px: value.bbox_px,
+                    glyph_height_px: value.glyph_height_px,
                     points: value.points,
                 },
             );
@@ -1086,17 +1100,11 @@ impl SharedGlyphClipPolygons {
         Self {
             version: manifest.version,
             coordinate_system,
-            natural_outset_ratio: manifest.natural_outset_ratio,
-            acs_natural_outset_ratio: manifest
-                .acs_natural_outset_ratio
-                .unwrap_or(manifest.natural_outset_ratio),
+            pixels_per_pt: manifest.pixels_per_pt.unwrap_or(1.0).max(1.0),
+            natural_outset_pt: manifest.natural_outset_pt,
             green_inset_ratio: manifest.green_inset_ratio,
-            circle_radius_ratio: manifest.circle_radius_ratio,
-            acs_circle_radius_ratio: manifest
-                .acs_circle_radius_ratio
-                .unwrap_or(manifest.circle_radius_ratio),
+            circle_radius_pt: manifest.circle_radius_pt,
             glyphs,
-            acs_glyphs,
         }
     }
 }
@@ -1263,15 +1271,12 @@ mod tests {
             manifest.coordinate_system,
             GlyphClipCoordinateSystem::HeightCentered
         );
-        assert!((manifest.natural_outset_ratio - 0.27).abs() < 1e-9);
-        assert!((manifest.acs_natural_outset_ratio - 0.18).abs() < 1e-9);
+        assert!((manifest.pixels_per_pt - 24.0).abs() < 1e-9);
+        assert!((manifest.natural_outset_pt - 1.0).abs() < 1e-9);
         assert!((manifest.green_inset_ratio - 0.22).abs() < 1e-9);
-        assert!((manifest.circle_radius_ratio - 0.54).abs() < 1e-9);
-        assert!((manifest.acs_circle_radius_ratio - 0.36).abs() < 1e-9);
+        assert!((manifest.circle_radius_pt - 2.0).abs() < 1e-9);
         assert!(manifest.glyphs.contains_key(&'N'));
         assert!(manifest.glyphs.contains_key(&'+'));
-        assert!(manifest.acs_glyphs.contains_key(&'N'));
-        assert!(manifest.acs_glyphs.contains_key(&'+'));
     }
 
     #[test]
@@ -1303,30 +1308,34 @@ mod tests {
     }
 
     #[test]
-    fn acs_profile_keeps_previous_label_retreat_polygon() {
+    fn source_margin_width_controls_label_retreat_polygon() {
         let placement = layout_glyph('O', ScriptKind::Normal, LayoutConfig::default(), 0.0, 0.0);
-        let default_polygon =
-            shape_polygon_with_profile(&placement, GlyphClipProfile::Default).unwrap();
-        let acs_polygon =
-            shape_polygon_with_profile(&placement, GlyphClipProfile::AcsDocument1996).unwrap();
+        let default_polygon = shape_polygon_with_profile(
+            &placement,
+            GlyphClipProfile::from_margin_width(crate::DEFAULT_BOND_MARGIN_WIDTH_PT.value()),
+        )
+        .unwrap();
+        let source_polygon =
+            shape_polygon_with_profile(&placement, GlyphClipProfile::from_margin_width(1.6))
+                .unwrap();
         let default_bounds = polygon_bounds(&default_polygon);
-        let acs_bounds = polygon_bounds(&acs_polygon);
+        let source_bounds = polygon_bounds(&source_polygon);
 
         assert!(
-            default_bounds[0] < acs_bounds[0],
-            "{default_bounds:?} vs {acs_bounds:?}"
+            default_bounds[0] < source_bounds[0],
+            "{default_bounds:?} vs {source_bounds:?}"
         );
         assert!(
-            default_bounds[1] < acs_bounds[1],
-            "{default_bounds:?} vs {acs_bounds:?}"
+            default_bounds[1] < source_bounds[1],
+            "{default_bounds:?} vs {source_bounds:?}"
         );
         assert!(
-            default_bounds[2] > acs_bounds[2],
-            "{default_bounds:?} vs {acs_bounds:?}"
+            default_bounds[2] > source_bounds[2],
+            "{default_bounds:?} vs {source_bounds:?}"
         );
         assert!(
-            default_bounds[3] > acs_bounds[3],
-            "{default_bounds:?} vs {acs_bounds:?}"
+            default_bounds[3] > source_bounds[3],
+            "{default_bounds:?} vs {source_bounds:?}"
         );
     }
 
@@ -1355,9 +1364,12 @@ mod tests {
             .get(&'+')
             .expect("+ should be present in the clip manifest");
         let expected = map_normalized_polygon(
-            &manifest_polygon.points,
+            manifest_polygon,
             placement.ink_box_px,
             manifest.coordinate_system,
+            manifest.pixels_per_pt,
+            manifest.natural_outset_pt,
+            GlyphClipProfile::from_margin_width(crate::DEFAULT_BOND_MARGIN_WIDTH_PT.value()),
         );
         let bounds = polygon_bounds(&polygon);
         assert_eq!(polygon, expected);

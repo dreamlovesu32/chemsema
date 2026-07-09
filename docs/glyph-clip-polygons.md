@@ -48,18 +48,25 @@ Ordinary text layout metrics are defined by `glyph_profiles.json`; `glyph_clip_p
 Clipping polygons for ASCII uppercase letters `A-Z` are generated offline by this fixed process:
 
 1. Start from real `Arial` glyph outlines.
-2. Apply natural dilation: `0.18 * glyph height`.
+2. Apply the canonical natural dilation: `1.0pt` at the `10pt` reference font size.
 3. Collect glyph anchor points.
 4. Offset anchors inward uniformly by `0.22 * glyph height`.
-5. Add circular reinforcement centered on the offset point, with radius `0.36 * glyph height`.
+5. Add circular reinforcement centered on the offset point, with radius `2.0pt` at the `10pt` reference font size.
 6. Take the union of the natural dilation region and the circular reinforcement region.
 7. Discretize the result into normalized polygons and write them to `shared/glyph_clip_polygons.json`.
+
+At runtime, the inside of the normalized glyph contour follows the measured glyph
+box, but the outside dilation is remapped from the manifest's canonical `1.0pt`
+to the document source margin. For CDXML import, natural dilation is exactly the
+source `MarginWidth` in absolute pt, and circular reinforcement radius is exactly
+`2 * MarginWidth`. These values do not scale with the label font size.
 
 ### 3. Other Symbols
 
 Visible characters other than ASCII uppercase letters use uniform natural dilation:
 
-- natural dilation: `0.18 * glyph height`
+- canonical natural dilation: `1.0pt` at the `10pt` reference font size, remapped
+  at runtime to the document source margin in absolute pt
 
 ### 4. Manifest Completeness
 

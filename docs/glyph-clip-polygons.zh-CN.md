@@ -48,26 +48,29 @@
 ASCII 大写字母 `A-Z` 的裁剪多边形按下面的固定流程离线生成：
 
 1. 从 `Arial` 真实字形轮廓出发。
-2. 做自然外扩：`0.30 * glyph height`。
+2. 做基准自然外扩：`10pt` 参考字号下为 `1.0pt`。
 3. 取字形锚点。
 4. 锚点统一向字形内部偏移：`0.22 * glyph height`。
-5. 以偏移后的点为圆心，做圆补强：半径 `0.60 * glyph height`。
+5. 以偏移后的点为圆心，做圆补强：`10pt` 参考字号下半径为 `2.0pt`。
 6. 把“自然外扩区域”和“圆补强区域”取并集。
 7. 结果离散为归一化多边形，写入 `shared/glyph_clip_polygons.json`。
+
+运行时，归一化字形轮廓内部跟随实际测得的 glyph box；轮廓外部的外扩量则从
+manifest 的基准 `1.0pt` 重新映射到文档源 margin。CDXML 导入时，自然外扩严格
+等于源 `MarginWidth` 的绝对 pt，圆补强半径严格等于 `2 * MarginWidth`。这两个
+值不随 label 字号缩放。
 
 ### 3. 其他符号
 
 除了 ASCII 大写字母以外，其余可见字符使用统一自然外扩：
 
-- 自然外扩：`0.30 * glyph height`
+- 基准自然外扩：`10pt` 参考字号下为 `1.0pt`，运行时重新映射到文档源 margin 的绝对 pt
 
 ### 4. 未知字符兜底
 
-如果字符可见，但没有出现在 `glyph_clip_polygons.json` 中，运行时兜底几何为：
-
-- 以 ink box 为基准
-- 上下左右统一外扩 `0.30 * glyph height`
-- 生成保守矩形
+每个 `glyph_profiles.json` 中列出的可见字符，都必须在 `glyph_clip_polygons.json`
+里有生成多边形。运行时 label clipping 不再为缺失的可见字符即时合成替代几何；
+缺失覆盖属于 manifest 生成或测试失败。
 
 ## 大写字母锚点表
 

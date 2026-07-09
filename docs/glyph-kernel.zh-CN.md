@@ -44,12 +44,14 @@ Rust engine 现在消费三个共享 manifest：
 1. Layout 仍从 `glyph_profiles.json` 中的归一化 ink box 开始。
 2. 实际裁剪多边形从 `glyph_clip_polygons.json` 读取。
 3. ASCII 大写字母使用预计算多边形，构成包括：
-   - 自然轮廓外扩：`0.30 * glyph height`
+   - 基准自然轮廓外扩：`10pt` 参考字号下为 `1.0pt`
    - 内向锚点偏移：`0.22 * glyph height`
-   - 锚点圆半径：`0.60 * glyph height`
+   - 基准锚点圆半径：`10pt` 参考字号下为 `2.0pt`
 4. 非大写符号只使用自然轮廓外扩：
-   - 自然轮廓外扩：`0.30 * glyph height`
-5. 缺失于 clip manifest 的未知可见字符，兜底为上下左右各外扩 `0.30 * glyph height` 的保守矩形。
+   - 基准自然轮廓外扩：`10pt` 参考字号下为 `1.0pt`
+5. 运行时把轮廓外扩量重新映射到文档源 margin 的绝对 pt。CDXML 导入时，自然外扩等于
+   `MarginWidth`，锚点圆半径等于 `2 * MarginWidth`；二者都不随实际 label 字号缩放。
+6. 缺失于 clip manifest 的可见字符属于 manifest 生成失败；运行时不再即时合成替代形状。
 
 详细的大写字母锚点规则见：
 
@@ -64,7 +66,7 @@ python scripts/generate-glyph-profiles.py
 python scripts/generate-glyph-clip-polygons.py
 ```
 
-当前 clip manifest 来自 `Arial` 轮廓几何，并固定为上面的调校比例。运行时渲染器消费这些预计算的 petal/corner 规则。
+当前 clip manifest 来自 `Arial` 轮廓几何，并固定为上面的基准 pt 值。运行时渲染器消费这些预计算的 petal/corner 规则，并把外扩量从基准源 margin 映射到文档源 margin。
 
 ## 消费链路
 

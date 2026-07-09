@@ -78,7 +78,7 @@ pub(super) fn multi_bond_inner_gap(
         .and_then(|bond| bond.bond_spacing)
         .map(|spacing| spacing / 100.0)
         .unwrap_or(DEFAULT_MULTI_BOND_CENTER_SPACING_RATIO);
-    (start.distance(end) * spacing_ratio - stroke_width).max(stroke_width * 0.5)
+    ((start.distance(end) + stroke_width) * spacing_ratio).max(stroke_width * 0.5)
 }
 
 pub(super) fn double_bond_center_distance_for_weights(
@@ -117,7 +117,8 @@ pub(super) fn double_bond_offset_distance(start: Point, end: Point, stroke_width
 }
 
 pub(super) fn triple_bond_offset_distance(start: Point, end: Point, stroke_width: f64) -> f64 {
-    multi_bond_inner_gap(None, start, end, stroke_width) + stroke_width
+    let spacing_ratio = DEFAULT_MULTI_BOND_CENTER_SPACING_RATIO;
+    (start.distance(end) * spacing_ratio).max(stroke_width * 1.5)
 }
 
 pub(super) fn solid_wedge_half_width_for_bond(bond: &Bond, stroke_width: f64) -> f64 {
@@ -145,10 +146,12 @@ pub(super) fn margin_width_for_bond(bond: &Bond, stroke_width: f64) -> f64 {
 }
 
 pub(super) fn solid_wedge_width_for_legacy_bond_template(bond: &Bond, stroke_width: f64) -> f64 {
-    if is_acs_document_1996_bond_template(bond, stroke_width) {
-        3.0
+    if let Some(bold_width) = bond.bold_width {
+        bold_width
+    } else if is_acs_document_1996_bond_template(bond, stroke_width) {
+        2.0
     } else {
-        crate::SOLID_WEDGE_WIDTH_PT.value()
+        BOLD_BOND_WIDTH
     }
 }
 

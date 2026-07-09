@@ -352,7 +352,7 @@ mod tests {
             bond_length: 30.0,
             bond_stroke_width: 1.0,
             bold_bond_width: 4.0,
-            wedge_width: 6.0,
+            wedge_width: 4.0,
             label_clip_margin: 0.0,
             hash_spacing: 2.7,
             bond_spacing: 12.0,
@@ -362,7 +362,7 @@ mod tests {
         assert_eq!(options.bond_length_world_pt(), WorldPt(30.0));
         assert_eq!(options.bond_stroke_world_pt(), WorldPt(1.0));
         assert_eq!(options.bold_bond_width_world_pt(), WorldPt(4.0));
-        assert_eq!(options.wedge_width_world_pt(), WorldPt(6.0));
+        assert_eq!(options.wedge_width_world_pt(), WorldPt(4.0));
         assert_eq!(options.label_clip_margin_world_pt(), WorldPt(0.0));
         assert_eq!(options.hash_spacing_world_pt(), WorldPt(2.7));
         assert_eq!(options.bond_spacing_percent(), 12.0);
