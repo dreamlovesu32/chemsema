@@ -1,6 +1,6 @@
 use super::*;
 
-pub(super) fn add_target_arg(
+pub(crate) fn add_target_arg(
     target: &mut Option<TargetSelector>,
     next: TargetSelector,
 ) -> Result<(), String> {

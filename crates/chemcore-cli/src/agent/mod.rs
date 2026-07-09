@@ -253,11 +253,11 @@ mod targets;
 mod tests;
 
 pub(crate) use capture::capture_command;
-pub(crate) use clipboard::copy_command;
+pub(crate) use clipboard::{copy_command, export_document_for_target};
 pub(crate) use context::context_command;
 pub(crate) use detail::detail_command;
 pub(crate) use session::session_command;
-pub(crate) use target::parse_target_selector;
+pub(crate) use target::{add_target_arg, parse_target_selector};
 pub(crate) use targets::targets_command;
 
 use capture::*;

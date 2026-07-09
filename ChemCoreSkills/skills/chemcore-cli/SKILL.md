@@ -31,7 +31,8 @@ Use this order for document work:
 5. `detail` to expand one object, molecule, node, or bond.
 6. `capture` for deterministic SVG/PNG crops.
 7. `new` or `run` with command scripts for edits.
-8. `convert` or `export` for document and image format output.
+8. `convert` or `export` for whole-document output, or target-only editable
+   subset output with `--target`/`--targets`.
 9. `copy` for Windows Office/OLE clipboard payloads.
 10. `session` for repeated work on one document.
 
@@ -67,6 +68,9 @@ python scripts\check_cli_skill_sync.py --suite-root ..\..\..\.. --json
 - Do not invent selectors; discover them from `targets` or `context`.
 - Do not manually calculate label reversal, generated hydrogens, or chemical
   anchors when `label-query` can answer.
+- Do not manually assemble temporary CCJS just to export part of a document;
+  discover selectors with `targets` and use `convert`/`export --target` for
+  editable subset output.
 - Preserve original document semantics when the visible drawing intentionally
   disagrees with default chemical rewriting; use `defaultChemical:false` when
   appropriate.

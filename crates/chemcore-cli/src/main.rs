@@ -761,10 +761,71 @@ fn convert_command(args: &[String]) -> Result<(), String> {
     let mut input = None;
     let mut output = None;
     let mut format = None;
+    let mut target = None;
+    let mut selection_only = false;
     let mut raster = RasterOutputOptions::default();
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
+            "--target" | "-t" | "--targets" => {
+                index += 1;
+                agent::add_target_arg(
+                    &mut target,
+                    agent::parse_target_selector(
+                        args.get(index)
+                            .ok_or_else(|| "--target requires a selector.".to_string())?,
+                    )?,
+                )?;
+            }
+            "--object" => {
+                index += 1;
+                agent::add_target_arg(
+                    &mut target,
+                    agent::TargetSelector::Object(
+                        args.get(index)
+                            .ok_or_else(|| "--object requires an object id.".to_string())?
+                            .clone(),
+                    ),
+                )?;
+            }
+            "--molecule" => {
+                index += 1;
+                let value = args
+                    .get(index)
+                    .ok_or_else(|| "--molecule requires a non-negative integer.".to_string())?;
+                agent::add_target_arg(
+                    &mut target,
+                    agent::TargetSelector::Molecule(
+                        value.parse::<usize>().map_err(|_| {
+                            "--molecule requires a non-negative integer.".to_string()
+                        })?,
+                    ),
+                )?;
+            }
+            "--node" => {
+                index += 1;
+                agent::add_target_arg(
+                    &mut target,
+                    agent::TargetSelector::Node(
+                        args.get(index)
+                            .ok_or_else(|| "--node requires a node id.".to_string())?
+                            .clone(),
+                    ),
+                )?;
+            }
+            "--bond" => {
+                index += 1;
+                agent::add_target_arg(
+                    &mut target,
+                    agent::TargetSelector::Bond(
+                        args.get(index)
+                            .ok_or_else(|| "--bond requires a bond id.".to_string())?
+                            .clone(),
+                    ),
+                )?;
+            }
+            "--all" => agent::add_target_arg(&mut target, agent::TargetSelector::All)?,
+            "--selection-only" => selection_only = true,
             "--format" | "-f" => {
                 index += 1;
                 format = Some(
@@ -808,8 +869,29 @@ fn convert_command(args: &[String]) -> Result<(), String> {
         "convert/export requires an output path; primary document output has no default path."
             .to_string()
     })?;
-    let engine = load_engine_from_file(&input)?;
+    if selection_only && target.is_none() {
+        return Err(
+            "--selection-only requires --target, --targets, or a target shortcut.".to_string(),
+        );
+    }
+    let mut engine = load_engine_from_file(&input)?;
+    if let Some(target) = target {
+        engine = engine_for_export_target(&engine, &target)?;
+    }
     write_engine_output_with_raster(&engine, &output, format.as_deref(), raster)
+}
+
+fn engine_for_export_target(
+    engine: &Engine,
+    target: &agent::TargetSelector,
+) -> Result<Engine, String> {
+    let document = serde_json::from_str(&document_json(engine)?)
+        .map_err(|error| format!("Failed to parse engine document JSON: {error}"))?;
+    let export_document = agent::export_document_for_target(&document, target)?;
+    let export_json = serde_json::to_string(&export_document).map_err(|error| error.to_string())?;
+    let mut export_engine = Engine::new();
+    export_engine.load_document_json(&export_json)?;
+    Ok(export_engine)
 }
 
 fn run_command_script(args: &[String]) -> Result<(), String> {

@@ -1,5 +1,7 @@
 use super::*;
 
+const EXPORT_SELECTION_MARGIN: f64 = 20.0;
+
 pub(crate) fn copy_command(args: &[String]) -> Result<(), String> {
     let mut input = None;
     let mut target = None;
@@ -150,6 +152,158 @@ pub(super) fn clipboard_document_for_target(
     clipboard_document.document.title = "Chemcore Clipboard Selection".to_string();
     set_clipboard_selection_bounds_meta(&mut clipboard_document, bounds);
     Ok(clipboard_document)
+}
+
+pub(crate) fn export_document_for_target(
+    document: &ChemcoreDocument,
+    target: &TargetSelector,
+) -> Result<ChemcoreDocument, String> {
+    if matches!(target, TargetSelector::Bounds(_)) {
+        return Err(
+            "Bounds targets cannot be exported as editable documents. Use capture for bounds crops."
+                .to_string(),
+        );
+    }
+    let bounds = target_bounds(document, target)?;
+    let mut export_document = editable_document_for_target(document, target)?;
+    export_document.document.id = "doc_export_selection".to_string();
+    export_document.document.title = "ChemCore Export Selection".to_string();
+    if !matches!(target, TargetSelector::All) {
+        compact_document_to_bounds(&mut export_document, bounds, EXPORT_SELECTION_MARGIN);
+    }
+    set_export_selection_meta(&mut export_document, bounds, target);
+    Ok(export_document)
+}
+
+fn editable_document_for_target(
+    document: &ChemcoreDocument,
+    target: &TargetSelector,
+) -> Result<ChemcoreDocument, String> {
+    match target {
+        TargetSelector::All => Ok(document.clone()),
+        TargetSelector::Object(id) => clipboard_document_for_object(document, id),
+        TargetSelector::Molecule(index) => {
+            let object_id = molecule_object_id(document, *index)?;
+            clipboard_document_for_object(document, &object_id)
+        }
+        TargetSelector::Node(id) => {
+            clipboard_document_for_fragment_target(document, Some(id.as_str()), None)
+        }
+        TargetSelector::Bond(id) => {
+            clipboard_document_for_fragment_target(document, None, Some(id.as_str()))
+        }
+        TargetSelector::Bounds(_) => Err(
+            "Bounds targets cannot be exported as editable documents. Use capture for bounds crops."
+                .to_string(),
+        ),
+        TargetSelector::Selection(targets) => editable_document_for_selection(document, targets),
+    }
+}
+
+fn editable_document_for_selection(
+    document: &ChemcoreDocument,
+    targets: &[TargetSelector],
+) -> Result<ChemcoreDocument, String> {
+    let mut out = document.clone();
+    out.objects.clear();
+    for target in targets {
+        match target {
+            TargetSelector::Object(_) | TargetSelector::Molecule(_) => {
+                let selected = editable_document_for_target(document, target)?;
+                for object in selected.objects {
+                    merge_scene_object_path(&mut out.objects, object);
+                }
+            }
+            TargetSelector::Selection(nested) => {
+                let selected = editable_document_for_selection(document, nested)?;
+                for object in selected.objects {
+                    merge_scene_object_path(&mut out.objects, object);
+                }
+            }
+            TargetSelector::All => {
+                return Err("Use target 'all' by itself for whole-document export.".to_string());
+            }
+            TargetSelector::Node(_) | TargetSelector::Bond(_) => {
+                return Err("Multi-target editable export currently supports object and molecule selectors. Export node/bond targets one at a time.".to_string());
+            }
+            TargetSelector::Bounds(_) => {
+                return Err("Bounds targets cannot be exported as editable documents. Use capture for bounds crops.".to_string());
+            }
+        }
+    }
+    if out.objects.is_empty() {
+        return Err("Selection did not resolve to any exportable object.".to_string());
+    }
+    Ok(out)
+}
+
+fn merge_scene_object_path(objects: &mut Vec<SceneObject>, object: SceneObject) {
+    if let Some(existing) = objects
+        .iter_mut()
+        .find(|candidate| candidate.id == object.id)
+    {
+        if object.children.is_empty() {
+            *existing = object;
+            return;
+        }
+        for child in object.children {
+            merge_scene_object_path(&mut existing.children, child);
+        }
+        return;
+    }
+    objects.push(object);
+}
+
+fn compact_document_to_bounds(document: &mut ChemcoreDocument, bounds: [f64; 4], margin: f64) {
+    let dx = margin - bounds[0];
+    let dy = margin - bounds[1];
+    translate_rendered_scene_objects(&mut document.objects, dx, dy);
+    document.document.page.width = (bounds[2] - bounds[0]).max(1.0) + margin * 2.0;
+    document.document.page.height = (bounds[3] - bounds[1]).max(1.0) + margin * 2.0;
+}
+
+fn translate_rendered_scene_objects(objects: &mut [SceneObject], dx: f64, dy: f64) {
+    for object in objects {
+        if object.object_type == "group" {
+            translate_rendered_scene_objects(&mut object.children, dx, dy);
+            continue;
+        }
+        object.transform.translate[0] += dx;
+        object.transform.translate[1] += dy;
+    }
+}
+
+fn set_export_selection_meta(
+    document: &mut ChemcoreDocument,
+    bounds: [f64; 4],
+    target: &TargetSelector,
+) {
+    if !document.document.meta.is_object() {
+        document.document.meta = json!({});
+    }
+    let Some(meta) = document.document.meta.as_object_mut() else {
+        return;
+    };
+    let export = meta.entry("export").or_insert_with(|| json!({}));
+    if !export.is_object() {
+        *export = json!({});
+    }
+    if let Some(export) = export.as_object_mut() {
+        export.insert("selectionTarget".to_string(), target.to_json());
+        export.insert(
+            "selectionBounds".to_string(),
+            json!({
+                "minX": bounds[0],
+                "minY": bounds[1],
+                "maxX": bounds[2],
+                "maxY": bounds[3],
+            }),
+        );
+        export.insert(
+            "selectionMargin".to_string(),
+            json!(EXPORT_SELECTION_MARGIN),
+        );
+    }
 }
 
 pub(super) fn clipboard_document_for_object(

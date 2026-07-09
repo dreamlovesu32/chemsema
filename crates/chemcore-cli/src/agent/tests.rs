@@ -59,6 +59,132 @@ fn default_output_warnings_are_machine_readable() {
 }
 
 #[test]
+fn export_document_for_object_target_compacts_page() {
+    let mut engine = Engine::new();
+    let first: Value = serde_json::from_str(
+        &engine
+            .execute_command_json(
+                &json!({
+                    "type": "add-text",
+                    "position": { "x": 100.0, "y": 120.0 },
+                    "text": "A",
+                    "box": [0.0, 0.0, 10.0, 10.0]
+                })
+                .to_string(),
+            )
+            .expect("add first text"),
+    )
+    .expect("first result");
+    let first_id = first["created"]["objects"][0]
+        .as_str()
+        .expect("first id")
+        .to_string();
+
+    engine
+        .execute_command_json(
+            &json!({
+                "type": "add-text",
+                "position": { "x": 300.0, "y": 120.0 },
+                "text": "B",
+                "box": [0.0, 0.0, 10.0, 10.0]
+            })
+            .to_string(),
+        )
+        .expect("add second text");
+
+    let document = engine_document(&engine).expect("document");
+    let target = TargetSelector::Object(first_id.clone());
+    let bounds = target_bounds(&document, &target).expect("target bounds");
+    let exported = export_document_for_target(&document, &target).expect("export object");
+
+    assert_eq!(exported.objects.len(), 1);
+    assert_eq!(exported.objects[0].id, first_id);
+    assert_close(exported.objects[0].transform.translate[0], 20.0);
+    assert_close(exported.objects[0].transform.translate[1], 20.0);
+    assert_close(exported.document.page.width, bounds[2] - bounds[0] + 40.0);
+    assert_close(exported.document.page.height, bounds[3] - bounds[1] + 40.0);
+    assert_eq!(
+        exported.document.meta["export"]["selectionTarget"]["kind"],
+        "object"
+    );
+}
+
+#[test]
+fn export_document_for_multi_object_selection_keeps_only_selected_objects() {
+    let mut engine = Engine::new();
+    let first: Value = serde_json::from_str(
+        &engine
+            .execute_command_json(
+                &json!({
+                    "type": "add-text",
+                    "position": { "x": 100.0, "y": 120.0 },
+                    "text": "A",
+                    "box": [0.0, 0.0, 10.0, 10.0]
+                })
+                .to_string(),
+            )
+            .expect("add first text"),
+    )
+    .expect("first result");
+    let second: Value = serde_json::from_str(
+        &engine
+            .execute_command_json(
+                &json!({
+                    "type": "add-text",
+                    "position": { "x": 300.0, "y": 120.0 },
+                    "text": "B",
+                    "box": [0.0, 0.0, 10.0, 10.0]
+                })
+                .to_string(),
+            )
+            .expect("add second text"),
+    )
+    .expect("second result");
+    engine
+        .execute_command_json(
+            &json!({
+                "type": "add-text",
+                "position": { "x": 500.0, "y": 120.0 },
+                "text": "C",
+                "box": [0.0, 0.0, 10.0, 10.0]
+            })
+            .to_string(),
+        )
+        .expect("add third text");
+    let first_id = first["created"]["objects"][0]
+        .as_str()
+        .expect("first id")
+        .to_string();
+    let second_id = second["created"]["objects"][0]
+        .as_str()
+        .expect("second id")
+        .to_string();
+
+    let document = engine_document(&engine).expect("document");
+    let target = TargetSelector::Selection(vec![
+        TargetSelector::Object(first_id.clone()),
+        TargetSelector::Object(second_id.clone()),
+    ]);
+    let bounds = target_bounds(&document, &target).expect("target bounds");
+    let exported = export_document_for_target(&document, &target).expect("export selection");
+
+    let ids = exported
+        .objects
+        .iter()
+        .map(|object| object.id.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(ids, vec![first_id.as_str(), second_id.as_str()]);
+    assert_close(exported.objects[0].transform.translate[0], 20.0);
+    assert_close(exported.objects[1].transform.translate[0], 220.0);
+    assert_close(exported.document.page.width, bounds[2] - bounds[0] + 40.0);
+    assert_close(exported.document.page.height, bounds[3] - bounds[1] + 40.0);
+    assert_eq!(
+        exported.document.meta["export"]["selectionTarget"]["targetCount"],
+        2
+    );
+}
+
+#[test]
 fn expands_view_box_with_absolute_and_relative_sides() {
     let view_box = expanded_view_box(
         [10.0, 20.0, 30.0, 60.0],

@@ -162,15 +162,15 @@ const COMMAND_SPECS: &[CommandSpec] = &[
     },
     CommandSpec {
         name: "convert",
-        summary: "Convert an editable document between ChemCore, CDXML/CDX, SDF, SVG, and PNG export formats.",
-        usage: "chemcore-cli convert <input> <output> [--format <format>] [--scale <n>|--width <px>|--height <px>]",
-        example: "chemcore-cli convert input.cdxml output.png --scale 6",
+        summary: "Convert a whole editable document, or an editable target subset, between ChemCore, CDXML/CDX, SDF, SVG, and PNG export formats.",
+        usage: "chemcore-cli convert <input> <output> [--target <selector> ...|--targets <selector;selector>] [--selection-only] [--format <format>] [--scale <n>|--width <px>|--height <px>]",
+        example: "chemcore-cli convert input.cdxml molecule-1.cdxml --target molecule:1",
     },
     CommandSpec {
         name: "export",
-        summary: "Alias of convert for export-oriented workflows.",
-        usage: "chemcore-cli export <input> <output> [--format <format>] [--scale <n>|--width <px>|--height <px>]",
-        example: "chemcore-cli export input.cdxml output.png --scale 6",
+        summary: "Alias of convert for export-oriented workflows, including target-only document export.",
+        usage: "chemcore-cli export <input> <output> [--target <selector> ...|--targets <selector;selector>] [--selection-only] [--format <format>] [--scale <n>|--width <px>|--height <px>]",
+        example: "chemcore-cli export input.cdxml selection.svg --targets object:obj_a;object:obj_b",
     },
 ];
 
