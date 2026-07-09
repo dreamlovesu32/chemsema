@@ -1,4 +1,5 @@
 use super::*;
+use crate::NodeLabel;
 
 pub(super) fn world_point(object: &SceneObject, node: &Node) -> Point {
     Point::new(
@@ -25,23 +26,160 @@ pub(super) fn label_polygons_world(node: &Node, object: &SceneObject) -> Vec<Vec
             label
                 .glyph_polygons()
                 .into_iter()
-                .map(|polygon| {
-                    compact_polygon_points(
-                        polygon
-                            .into_iter()
-                            .map(|point| {
-                                Point::new(
-                                    point.x + object.transform.translate[0],
-                                    point.y + object.transform.translate[1],
-                                )
-                            })
-                            .collect(),
-                    )
-                })
+                .map(|polygon| polygon_to_world(polygon, object))
                 .filter(|polygon| polygon.len() >= 3)
                 .collect()
         })
         .unwrap_or_default()
+}
+
+pub(super) fn label_clip_polygons_world(node: &Node, object: &SceneObject) -> Vec<Vec<Point>> {
+    node.label
+        .as_ref()
+        .map(|label| {
+            label_clip_polygons(label)
+                .into_iter()
+                .map(|polygon| polygon_to_world(polygon, object))
+                .filter(|polygon| polygon.len() >= 3)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn polygon_to_world(polygon: Vec<Point>, object: &SceneObject) -> Vec<Point> {
+    compact_polygon_points(
+        polygon
+            .into_iter()
+            .map(|point| {
+                Point::new(
+                    point.x + object.transform.translate[0],
+                    point.y + object.transform.translate[1],
+                )
+            })
+            .collect(),
+    )
+}
+
+#[derive(Debug, Clone, Copy)]
+struct GlyphClipInfo {
+    index: usize,
+    bounds: RectBox,
+    center_x: f64,
+    center_y: f64,
+    height: f64,
+}
+
+fn label_clip_polygons(label: &NodeLabel) -> Vec<Vec<Point>> {
+    let mut polygons = label.glyph_polygons();
+    let mut glyphs: Vec<GlyphClipInfo> = polygons
+        .iter()
+        .enumerate()
+        .filter_map(|(index, polygon)| {
+            let bounds = polygon_bounds(polygon)?;
+            Some(GlyphClipInfo {
+                index,
+                bounds,
+                center_x: (bounds.x1 + bounds.x2) * 0.5,
+                center_y: (bounds.y1 + bounds.y2) * 0.5,
+                height: (bounds.y2 - bounds.y1).max(0.0),
+            })
+        })
+        .filter(|glyph| label_glyph_can_join_horizontal_clip(label, glyph.index))
+        .collect();
+    if glyphs.len() < 2 {
+        return polygons;
+    }
+
+    glyphs.sort_by(|left, right| {
+        left.center_y
+            .total_cmp(&right.center_y)
+            .then_with(|| left.center_x.total_cmp(&right.center_x))
+    });
+
+    let mut rows: Vec<Vec<GlyphClipInfo>> = Vec::new();
+    for glyph in glyphs {
+        if let Some(row) = rows.iter_mut().find(|row| {
+            row.last()
+                .is_some_and(|previous| horizontal_clip_glyphs_share_row(*previous, glyph))
+        }) {
+            row.push(glyph);
+        } else {
+            rows.push(vec![glyph]);
+        }
+    }
+
+    for mut row in rows {
+        if row.len() < 2 {
+            continue;
+        }
+        row.sort_by(|left, right| left.center_x.total_cmp(&right.center_x));
+        if let Some(rect) = horizontal_label_internal_clip_rect(&row) {
+            polygons.push(rect);
+        }
+    }
+
+    polygons
+}
+
+fn label_glyph_can_join_horizontal_clip(label: &NodeLabel, glyph_index: usize) -> bool {
+    !matches!(
+        label_glyph_script(label, glyph_index),
+        Some("subscript" | "superscript")
+    )
+}
+
+fn label_glyph_script(label: &NodeLabel, glyph_index: usize) -> Option<&str> {
+    let mut remaining = glyph_index;
+    let runs = if !label.line_runs.is_empty() {
+        label.line_runs.iter().flatten().collect::<Vec<_>>()
+    } else {
+        label.runs.iter().collect::<Vec<_>>()
+    };
+    for run in runs {
+        let count = run.text.chars().count();
+        if remaining < count {
+            return run.script.as_deref();
+        }
+        remaining = remaining.saturating_sub(count);
+    }
+    None
+}
+
+fn horizontal_clip_glyphs_share_row(left: GlyphClipInfo, right: GlyphClipInfo) -> bool {
+    let vertical_overlap =
+        (left.bounds.y2.min(right.bounds.y2) - left.bounds.y1.max(right.bounds.y1)).max(0.0);
+    let min_height = left.height.min(right.height);
+    if min_height <= EPSILON || vertical_overlap < min_height * 0.45 {
+        return false;
+    }
+    let max_height = left.height.max(right.height);
+    if (left.center_y - right.center_y).abs() > max_height * 0.45 {
+        return false;
+    }
+    let gap = right.bounds.x1 - left.bounds.x2;
+    gap <= max_height * 0.65
+}
+
+fn horizontal_label_internal_clip_rect(row: &[GlyphClipInfo]) -> Option<Vec<Point>> {
+    let first = row.first()?;
+    let last = row.last()?;
+    if last.center_x <= first.center_x + EPSILON {
+        return None;
+    }
+    let y1 = row
+        .iter()
+        .map(|glyph| glyph.bounds.y1)
+        .fold(f64::INFINITY, f64::min);
+    let y2 = row
+        .iter()
+        .map(|glyph| glyph.bounds.y2)
+        .fold(f64::NEG_INFINITY, f64::max);
+    Some(vec![
+        Point::new(first.center_x, y1),
+        Point::new(last.center_x, y1),
+        Point::new(last.center_x, y2),
+        Point::new(first.center_x, y2),
+    ])
 }
 
 pub(super) fn segment_intersection_fraction(
@@ -323,6 +461,83 @@ pub(super) fn clip_segment_out_of_label_geometry(
 }
 
 #[allow(clippy::too_many_arguments)]
+pub(super) fn clip_wedge_segment_out_of_label_geometry(
+    start: Point,
+    end: Point,
+    start_rect: Option<RectBox>,
+    start_polygons: &[Vec<Point>],
+    start_half_width: f64,
+    end_rect: Option<RectBox>,
+    end_polygons: &[Vec<Point>],
+    end_half_width: f64,
+    margin: f64,
+) -> Option<(Point, Point)> {
+    let direction = Vector::new(end.x - start.x, end.y - start.y);
+    let length = direction.length();
+    if length <= EPSILON {
+        return None;
+    }
+    let unit = direction.normalized();
+    let normal = Vector::new(-unit.y, unit.x);
+    let start_retreat = wedge_endpoint_label_retreat(
+        start,
+        end,
+        unit,
+        normal,
+        start_rect,
+        start_polygons,
+        start_half_width,
+        margin,
+        length,
+    );
+    let end_retreat = wedge_endpoint_label_retreat(
+        end,
+        start,
+        Vector::new(-unit.x, -unit.y),
+        normal,
+        end_rect,
+        end_polygons,
+        end_half_width,
+        margin,
+        length,
+    );
+    let (clipped_start, clipped_end) =
+        apply_segment_endpoint_retreats(start, end, start_retreat, end_retreat);
+    (clipped_start.distance(clipped_end) > EPSILON).then_some((clipped_start, clipped_end))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn wedge_endpoint_label_retreat(
+    endpoint: Point,
+    opposite: Point,
+    axis_from_endpoint: Vector,
+    normal: Vector,
+    rect: Option<RectBox>,
+    polygons: &[Vec<Point>],
+    endpoint_half_width: f64,
+    margin: f64,
+    axis_length: f64,
+) -> f64 {
+    let mut retreat: f64 = 0.0;
+    for side in [0.0, 1.0, -1.0] {
+        let endpoint_offset = endpoint_half_width * side;
+        let ray_start = Point::new(
+            endpoint.x + normal.x * endpoint_offset,
+            endpoint.y + normal.y * endpoint_offset,
+        );
+        let ray_end = Point::new(
+            opposite.x + normal.x * endpoint_offset,
+            opposite.y + normal.y * endpoint_offset,
+        );
+        let clipped = clip_point_out_of_label_geometry(ray_start, ray_end, rect, polygons, margin);
+        let projected = (clipped.x - ray_start.x) * axis_from_endpoint.x
+            + (clipped.y - ray_start.y) * axis_from_endpoint.y;
+        retreat = retreat.max(projected.clamp(0.0, axis_length));
+    }
+    retreat
+}
+
+#[allow(clippy::too_many_arguments)]
 pub(super) fn render_fragment_line(
     out: &mut Vec<RenderPrimitive>,
     object: &SceneObject,
@@ -394,11 +609,11 @@ pub(super) fn render_fragment_line_with_profiles(
 ) {
     let start_polygons = node_map
         .get(bond.begin.as_str())
-        .map(|node| label_polygons_world(node, object))
+        .map(|node| label_clip_polygons_world(node, object))
         .unwrap_or_default();
     let end_polygons = node_map
         .get(bond.end.as_str())
-        .map(|node| label_polygons_world(node, object))
+        .map(|node| label_clip_polygons_world(node, object))
         .unwrap_or_default();
     let start_has_label = node_map
         .get(bond.begin.as_str())

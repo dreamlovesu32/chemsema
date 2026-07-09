@@ -54,8 +54,9 @@ pub(crate) use bounds::{
     shape_object_visual_bounds,
 };
 use labels::{
-    clip_segment_out_of_label_geometry, label_box_world, label_polygons_world,
-    render_fragment_line, render_fragment_line_with_profiles, world_point,
+    clip_segment_out_of_label_geometry, clip_wedge_segment_out_of_label_geometry, label_box_world,
+    label_clip_polygons_world, label_polygons_world, render_fragment_line,
+    render_fragment_line_with_profiles, world_point,
 };
 use style_payload::*;
 

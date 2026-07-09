@@ -25,8 +25,8 @@ pub(super) fn render_fragment_bond(
     let mut finish = actual_finish;
     let begin_box = label_box_world(begin, object);
     let end_box = label_box_world(end, object);
-    let begin_polygons = label_polygons_world(begin, object);
-    let end_polygons = label_polygons_world(end, object);
+    let begin_polygons = label_clip_polygons_world(begin, object);
+    let end_polygons = label_clip_polygons_world(end, object);
     let begin_has_label = begin
         .label
         .as_ref()
@@ -36,22 +36,40 @@ pub(super) fn render_fragment_bond(
         .as_ref()
         .is_some_and(|label| label.has_visible_text());
 
+    let stereo = bond_stereo_kind(bond);
     let label_clip_margin = label_clip_margin_for_bond(bond, stroke_width);
-    let Some((clipped_start, clipped_finish)) = clip_segment_out_of_label_geometry(
-        start,
-        finish,
-        begin_box,
-        &begin_polygons,
-        end_box,
-        &end_polygons,
-        label_clip_margin,
-    ) else {
+    let clipped_segment = if let Some(stereo) = stereo {
+        let (begin_half_width, end_half_width) =
+            wedge_endpoint_half_widths(bond, stereo, stroke_width);
+        clip_wedge_segment_out_of_label_geometry(
+            start,
+            finish,
+            begin_box,
+            &begin_polygons,
+            begin_half_width,
+            end_box,
+            &end_polygons,
+            end_half_width,
+            label_clip_margin,
+        )
+    } else {
+        clip_segment_out_of_label_geometry(
+            start,
+            finish,
+            begin_box,
+            &begin_polygons,
+            end_box,
+            &end_polygons,
+            label_clip_margin,
+        )
+    };
+    let Some((clipped_start, clipped_finish)) = clipped_segment else {
         return;
     };
     start = clipped_start;
     finish = clipped_finish;
 
-    if let Some(stereo) = bond_stereo_kind(bond) {
+    if let Some(stereo) = stereo {
         let direction = Vector::new(finish.x - start.x, finish.y - start.y);
         if direction.x * direction.x + direction.y * direction.y <= EPSILON {
             return;
@@ -541,6 +559,23 @@ fn render_outer_bond_lines(
             start_endpoint_profile,
             end_endpoint_profile,
         );
+    }
+}
+
+fn wedge_endpoint_half_widths(
+    bond: &Bond,
+    stereo: BondStereoKind,
+    stroke_width: f64,
+) -> (f64, f64) {
+    let tip_half_width = solid_wedge_tip_half_width(stroke_width);
+    let wide_half_width = solid_wedge_half_width_for_bond(bond, stroke_width);
+    match stereo {
+        BondStereoKind::SolidWedgeBegin
+        | BondStereoKind::HashedWedgeBegin
+        | BondStereoKind::HollowWedgeBegin => (wide_half_width, tip_half_width),
+        BondStereoKind::SolidWedgeEnd
+        | BondStereoKind::HashedWedgeEnd
+        | BondStereoKind::HollowWedgeEnd => (tip_half_width, wide_half_width),
     }
 }
 

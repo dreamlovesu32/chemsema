@@ -10668,7 +10668,90 @@ fn render_document_ignores_legacy_label_clip_margin_for_glyph_polygons() {
 }
 
 #[test]
-fn render_document_clips_solid_wedge_wide_endpoint_on_centerline_only() {
+fn render_document_treats_horizontal_label_interior_as_rectangular_clip() {
+    let document = fragment_document(
+        json!([
+            { "id": "n1", "element": "C", "atomicNumber": 6, "position": [27.0, 40.0], "charge": 0, "numHydrogens": 0 },
+            {
+                "id": "n2",
+                "element": "C",
+                "atomicNumber": 6,
+                "position": [27.0, 16.0],
+                "charge": 0,
+                "numHydrogens": 0,
+                "label": {
+                    "text": "Ph",
+                    "position": [27.0, 20.0],
+                    "box": [20.0, 10.0, 34.0, 22.0],
+                    "runs": [{ "text": "Ph", "fontFamily": "Arial", "fontSize": 10.0, "script": "normal" }],
+                    "glyphPolygons": [
+                        [[20.0, 10.0], [24.0, 10.0], [24.0, 22.0], [20.0, 22.0]],
+                        [[30.0, 10.0], [34.0, 10.0], [34.0, 22.0], [30.0, 22.0]]
+                    ]
+                }
+            }
+        ]),
+        json!([{ "id": "b1", "begin": "n1", "end": "n2", "order": 1, "strokeWidth": 0.85 }]),
+    );
+
+    let polygon = object_bond_polygons_with_ids(&render_document(&document))
+        .into_iter()
+        .find_map(|(bond_id, points)| (bond_id == "b1").then_some(points))
+        .expect("bond polygon should render");
+    let (from, to) = bond_axis_from_points(&polygon).expect("bond axis");
+    let label_endpoint = if from.y < to.y { from } else { to };
+
+    assert!(
+        (label_endpoint.y - 22.0).abs() < 0.02,
+        "horizontal multi-character labels should clip through the internal rectangular block: {polygon:?}"
+    );
+}
+
+#[test]
+fn render_document_does_not_rectangularize_vertically_separated_label_glyphs() {
+    let document = fragment_document(
+        json!([
+            { "id": "n1", "element": "C", "atomicNumber": 6, "position": [45.0, 20.0], "charge": 0, "numHydrogens": 0 },
+            {
+                "id": "n2",
+                "element": "N",
+                "atomicNumber": 7,
+                "position": [22.0, 20.0],
+                "charge": 0,
+                "numHydrogens": 0,
+                "label": {
+                    "text": "NH",
+                    "position": [22.0, 24.0],
+                    "box": [20.0, 6.0, 34.0, 26.0],
+                    "runs": [
+                        { "text": "N", "fontFamily": "Arial", "fontSize": 10.0, "script": "normal" },
+                        { "text": "H", "fontFamily": "Arial", "fontSize": 7.0, "script": "superscript" }
+                    ],
+                    "glyphPolygons": [
+                        [[20.0, 14.0], [24.0, 14.0], [24.0, 26.0], [20.0, 26.0]],
+                        [[30.0, 6.0], [34.0, 6.0], [34.0, 12.0], [30.0, 12.0]]
+                    ]
+                }
+            }
+        ]),
+        json!([{ "id": "b1", "begin": "n1", "end": "n2", "order": 1, "strokeWidth": 0.85 }]),
+    );
+
+    let polygon = object_bond_polygons_with_ids(&render_document(&document))
+        .into_iter()
+        .find_map(|(bond_id, points)| (bond_id == "b1").then_some(points))
+        .expect("bond polygon should render");
+    let (from, to) = bond_axis_from_points(&polygon).expect("bond axis");
+    let label_endpoint = if from.x < to.x { from } else { to };
+
+    assert!(
+        (label_endpoint.x - 24.0).abs() < 0.02,
+        "vertically separated or superscript glyphs should not enlarge the baseline atom-label clip: {polygon:?}"
+    );
+}
+
+#[test]
+fn render_document_clips_solid_wedge_wide_endpoint_against_outline_lines() {
     let document = fragment_document(
         json!([
             { "id": "n1", "element": "C", "atomicNumber": 6, "position": [42.0, 54.0], "charge": 0, "numHydrogens": 0 },
@@ -10713,13 +10796,13 @@ fn render_document_clips_solid_wedge_wide_endpoint_on_centerline_only() {
     );
 
     assert!(
-        (cap_center.x - 29.3).abs() < 0.02,
-        "solid wedge should stop at the centerline label clip, without a wide-cap retreat: {polygon:?}"
+        polygon[1].x >= 29.3 - 0.02 && polygon[2].x > 30.0 && cap_center.x > 29.9,
+        "solid wedge should use the most conservative label retreat from its center and outline lines: {polygon:?}"
     );
 }
 
 #[test]
-fn render_document_clips_hashed_wedge_wide_endpoint_like_solid_wedge_label_clip() {
+fn render_document_clips_hashed_wedge_wide_endpoint_against_outline_lines() {
     let document = fragment_document(
         json!([
             { "id": "n1", "element": "C", "atomicNumber": 6, "position": [42.0, 54.0], "charge": 0, "numHydrogens": 0 },
@@ -10761,8 +10844,8 @@ fn render_document_clips_hashed_wedge_wide_endpoint_like_solid_wedge_label_clip(
         cap_points.iter().map(|point| point.x).sum::<f64>() / cap_points.len() as f64;
 
     assert!(
-        (cap_center_x - 29.3).abs() < 0.02,
-        "hashed wedge label clipping should match solid wedge centerline clipping without an extra wide-cap retreat: {points:?}"
+        cap_center_x > 29.9,
+        "hashed wedge label clipping should use the same outline-aware retreat as solid wedges: {points:?}"
     );
 }
 
