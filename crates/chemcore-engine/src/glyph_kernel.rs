@@ -726,6 +726,7 @@ fn shape_polygon_with_profile(
         map_normalized_polygon(
             polygon,
             placement.ink_box_px,
+            placement.codepoint.is_ascii_uppercase(),
             manifest.coordinate_system,
             manifest.pixels_per_pt,
             manifest.natural_outset_pt,
@@ -737,6 +738,7 @@ fn shape_polygon_with_profile(
 fn map_normalized_polygon(
     polygon: &GlyphClipPolygon,
     ink_box: [f64; 4],
+    uses_anchor_circle: bool,
     coordinate_system: GlyphClipCoordinateSystem,
     pixels_per_pt: f64,
     source_natural_outset_pt: f64,
@@ -757,12 +759,13 @@ fn map_normalized_polygon(
             let source_width = f64::from(polygon.bbox_px[2].saturating_sub(polygon.bbox_px[0]));
             let source_x_min = -0.5 * source_width / source_height;
             let source_x_max = 0.5 * source_width / source_height;
-            let source_extra_scale = if source_natural_outset_pt > crate::EPSILON {
-                profile.natural_outset_pt / source_natural_outset_pt / pixels_per_pt
-            } else {
-                0.0
-            };
-            polygon
+            let source_extra_scale =
+                if uses_anchor_circle && source_natural_outset_pt > crate::EPSILON {
+                    profile.natural_outset_pt / source_natural_outset_pt / pixels_per_pt
+                } else {
+                    1.0 / pixels_per_pt
+                };
+            let mapped: Vec<[f64; 2]> = polygon
                 .points
                 .iter()
                 .map(|point| {
@@ -775,9 +778,134 @@ fn map_normalized_polygon(
                         y1 + base_y * height + extra_y,
                     ]
                 })
-                .collect()
+                .collect();
+            if uses_anchor_circle {
+                mapped
+            } else {
+                outset_polygon(mapped, profile.natural_outset_pt - source_natural_outset_pt)
+            }
         }
     }
+}
+
+fn outset_polygon(points: Vec<[f64; 2]>, distance: f64) -> Vec<[f64; 2]> {
+    if points.len() < 3 || distance.abs() <= crate::EPSILON {
+        return points;
+    }
+    let signed_area = polygon_area_signed(&points);
+    if signed_area.abs() <= crate::EPSILON {
+        return points;
+    }
+    let outward_sign = if signed_area >= 0.0 { 1.0 } else { -1.0 };
+    let count = points.len();
+    let mut shifted_edges = Vec::with_capacity(count);
+    for index in 0..count {
+        let start = points[index];
+        let end = points[(index + 1) % count];
+        let dx = end[0] - start[0];
+        let dy = end[1] - start[1];
+        let length = dx.hypot(dy);
+        if length <= crate::EPSILON {
+            shifted_edges.push((start, [1.0, 0.0], [0.0, 0.0]));
+            continue;
+        }
+        let direction = [dx / length, dy / length];
+        let normal = if outward_sign > 0.0 {
+            [direction[1], -direction[0]]
+        } else {
+            [-direction[1], direction[0]]
+        };
+        shifted_edges.push((
+            [
+                start[0] + normal[0] * distance,
+                start[1] + normal[1] * distance,
+            ],
+            direction,
+            normal,
+        ));
+    }
+
+    let mut out = Vec::with_capacity(count);
+    let miter_limit = distance.abs() * 4.0 + 0.25;
+    for index in 0..count {
+        let previous = (index + count - 1) % count;
+        let current = index;
+        let vertex = points[index];
+        let point = intersect_offset_edges(
+            shifted_edges[previous].0,
+            shifted_edges[previous].1,
+            shifted_edges[current].0,
+            shifted_edges[current].1,
+        )
+        .filter(|point| (point[0] - vertex[0]).hypot(point[1] - vertex[1]) <= miter_limit)
+        .unwrap_or_else(|| {
+            let normal = [
+                shifted_edges[previous].2[0] + shifted_edges[current].2[0],
+                shifted_edges[previous].2[1] + shifted_edges[current].2[1],
+            ];
+            let length = normal[0].hypot(normal[1]);
+            if length <= crate::EPSILON {
+                [
+                    vertex[0] + shifted_edges[current].2[0] * distance,
+                    vertex[1] + shifted_edges[current].2[1] * distance,
+                ]
+            } else {
+                [
+                    vertex[0] + normal[0] / length * distance,
+                    vertex[1] + normal[1] / length * distance,
+                ]
+            }
+        });
+        if out
+            .last()
+            .is_some_and(|last: &[f64; 2]| (last[0] - point[0]).hypot(last[1] - point[1]) <= 1e-6)
+        {
+            continue;
+        }
+        out.push(point);
+    }
+    if out.len() >= 2
+        && out
+            .first()
+            .zip(out.last())
+            .is_some_and(|(first, last)| (first[0] - last[0]).hypot(first[1] - last[1]) <= 1e-6)
+    {
+        out.pop();
+    }
+    out
+}
+
+fn intersect_offset_edges(
+    first_point: [f64; 2],
+    first_direction: [f64; 2],
+    second_point: [f64; 2],
+    second_direction: [f64; 2],
+) -> Option<[f64; 2]> {
+    let denom = first_direction[0] * second_direction[1] - first_direction[1] * second_direction[0];
+    if denom.abs() <= crate::EPSILON {
+        return None;
+    }
+    let offset = [
+        second_point[0] - first_point[0],
+        second_point[1] - first_point[1],
+    ];
+    let t = (offset[0] * second_direction[1] - offset[1] * second_direction[0]) / denom;
+    Some([
+        first_point[0] + first_direction[0] * t,
+        first_point[1] + first_direction[1] * t,
+    ])
+}
+
+fn polygon_area_signed(points: &[[f64; 2]]) -> f64 {
+    if points.len() < 3 {
+        return 0.0;
+    }
+    let mut area = 0.0;
+    for index in 0..points.len() {
+        let next = (index + 1) % points.len();
+        area += points[index][0] * points[next][1] - points[next][0] * points[index][1];
+    }
+    area * 0.5
 }
 
 fn make_preview_row(
@@ -1263,6 +1391,62 @@ mod tests {
         bounds
     }
 
+    fn point_inside_polygon(point: [f64; 2], polygon: &[[f64; 2]]) -> bool {
+        if polygon.len() < 3 {
+            return false;
+        }
+        let mut inside = false;
+        let mut previous = polygon.len() - 1;
+        for current in 0..polygon.len() {
+            let first = polygon[current];
+            let second = polygon[previous];
+            if ((first[1] > point[1]) != (second[1] > point[1]))
+                && point[0]
+                    < (second[0] - first[0]) * (point[1] - first[1]) / (second[1] - first[1])
+                        + first[0]
+            {
+                inside = !inside;
+            }
+            previous = current;
+        }
+        inside
+    }
+
+    fn segment_intersection_t(
+        start: [f64; 2],
+        end: [f64; 2],
+        first: [f64; 2],
+        second: [f64; 2],
+    ) -> Option<f64> {
+        let direction = [end[0] - start[0], end[1] - start[1]];
+        let edge = [second[0] - first[0], second[1] - first[1]];
+        let denom = direction[0] * edge[1] - direction[1] * edge[0];
+        if denom.abs() <= crate::EPSILON {
+            return None;
+        }
+        let offset = [first[0] - start[0], first[1] - start[1]];
+        let t = (offset[0] * edge[1] - offset[1] * edge[0]) / denom;
+        let u = (offset[0] * direction[1] - offset[1] * direction[0]) / denom;
+        ((0.0..=1.0).contains(&t) && (0.0..=1.0).contains(&u)).then_some(t)
+    }
+
+    fn polygon_exit_distance(start: [f64; 2], end: [f64; 2], polygon: &[[f64; 2]]) -> Option<f64> {
+        let start_inside = point_inside_polygon(start, polygon);
+        let mut best_t: Option<f64> = None;
+        for index in 0..polygon.len() {
+            let next = (index + 1) % polygon.len();
+            if let Some(t) = segment_intersection_t(start, end, polygon[index], polygon[next]) {
+                if t <= crate::EPSILON && !start_inside {
+                    continue;
+                }
+                if best_t.is_none_or(|current| t > current) {
+                    best_t = Some(t);
+                }
+            }
+        }
+        best_t.map(|t| (end[0] - start[0]).hypot(end[1] - start[1]) * t)
+    }
+
     #[test]
     fn clip_manifest_is_locked_to_current_tuned_ratios() {
         let manifest = shared_glyph_clip_polygons();
@@ -1340,6 +1524,31 @@ mod tests {
     }
 
     #[test]
+    fn source_margin_width_expands_lowercase_internal_bays() {
+        let placement = layout_glyph('r', ScriptKind::Normal, LayoutConfig::default(), 0.0, 0.0);
+        let one_pt_polygon =
+            shape_polygon_with_profile(&placement, GlyphClipProfile::from_margin_width(1.0))
+                .expect("r should have clip geometry");
+        let source_polygon =
+            shape_polygon_with_profile(&placement, GlyphClipProfile::from_margin_width(1.6))
+                .expect("r should have clip geometry");
+        let bounds = polygon_bounds(&one_pt_polygon);
+        let start = [
+            bounds[0] + (bounds[2] - bounds[0]) * 0.5,
+            bounds[1] + (bounds[3] - bounds[1]) * 0.5,
+        ];
+        let end = [start[0] + 14.0, start[1] + 6.7];
+        let one_pt_exit =
+            polygon_exit_distance(start, end, &one_pt_polygon).expect("ray should exit 1pt r");
+        let source_exit =
+            polygon_exit_distance(start, end, &source_polygon).expect("ray should exit 1.6pt r");
+        assert!(
+            source_exit >= one_pt_exit + 0.45,
+            "{one_pt_exit} vs {source_exit}; source margin must expand lowercase glyph bays"
+        );
+    }
+
+    #[test]
     fn narrow_uppercase_i_expansion_is_not_scaled_by_ink_width() {
         let placement = layout_glyph('I', ScriptKind::Normal, LayoutConfig::default(), 0.0, 0.0);
         let polygon = shape_polygon(&placement).expect("I should have clip geometry");
@@ -1366,6 +1575,7 @@ mod tests {
         let expected = map_normalized_polygon(
             manifest_polygon,
             placement.ink_box_px,
+            false,
             manifest.coordinate_system,
             manifest.pixels_per_pt,
             manifest.natural_outset_pt,
