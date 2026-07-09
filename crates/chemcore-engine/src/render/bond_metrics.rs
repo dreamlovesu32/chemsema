@@ -78,7 +78,7 @@ pub(super) fn multi_bond_inner_gap(
         .and_then(|bond| bond.bond_spacing)
         .map(|spacing| spacing / 100.0)
         .unwrap_or(DEFAULT_MULTI_BOND_CENTER_SPACING_RATIO);
-    ((start.distance(end) + stroke_width) * spacing_ratio).max(stroke_width * 0.5)
+    (start.distance(end) * spacing_ratio - stroke_width).max(stroke_width * 1.5)
 }
 
 pub(super) fn double_bond_center_distance_for_weights(

@@ -6252,7 +6252,7 @@ fn parse_cdxml_double_bond_spacing_uses_bond_spacing_percent() {
 
     assert_eq!(center_ys.len(), 2, "{center_ys:?}");
     let center_distance = center_ys[1] - center_ys[0];
-    let expected_center_distance = (14.4 + 0.6) * 0.18 + 0.6;
+    let expected_center_distance = 14.4 * 0.18;
     assert!(
         (center_distance - expected_center_distance).abs() < 0.001,
         "{center_distance}"
@@ -6413,6 +6413,42 @@ fn parse_cdxml_matches_default_and_acs_double_bond_spacing_samples() {
         assert_eq!(
             dashed_bond.line_styles.right,
             chemcore_engine::BondLinePattern::Dashed
+        );
+    }
+}
+
+#[test]
+fn parse_cdxml_double_bond_spacing_uses_chemdraw_line_width_floor() {
+    for (name, line_width, bond_length, bond_spacing, expected_center_distance) in [
+        ("acs", 0.60, 14.40, 18.0, 2.592),
+        ("default", 1.00, 30.00, 12.0, 3.600),
+        ("thick-short", 1.98, 22.68, 12.0, 4.950),
+    ] {
+        let end_x = 100.0 + bond_length;
+        let cdxml = format!(
+            r#"<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >
+<CDXML CreationProgram="ChemDraw 22.2.0.3300" FractionalWidths="yes" LineWidth="{line_width:.2}" BoldWidth="4.00" BondLength="{bond_length:.2}" BondSpacing="{bond_spacing:.0}" HashSpacing="2.70" MarginWidth="2.00" LabelSize="10">
+  <page id="1" BoundingBox="0 0 200 100">
+    <fragment id="2" BoundingBox="90 90 140 110">
+      <n id="3" p="100.00 100.00"/>
+      <n id="4" p="{end_x:.2} 100.00"/>
+      <b id="5" B="3" E="4" Order="2"/>
+    </fragment>
+  </page>
+</CDXML>"#
+        );
+        let document = parse_cdxml_document(&cdxml, Some(name)).expect("cdxml should parse");
+        let rendered = imported_double_bond_center_spacing(&document, "obj_mol_001");
+        let formula = imported_double_bond_formula_spacing(&document, "obj_mol_001");
+
+        assert!(
+            (rendered - expected_center_distance).abs() < 0.01,
+            "{name}: expected {expected_center_distance}, rendered {rendered}"
+        );
+        assert!(
+            (formula - expected_center_distance).abs() < 0.01,
+            "{name}: expected {expected_center_distance}, formula {formula}"
         );
     }
 }
@@ -6704,7 +6740,7 @@ fn imported_double_bond_formula_spacing(document: &ChemcoreDocument, object_id: 
     };
     let first_width = line_width(bond.line_weights.left);
     let second_width = line_width(bond.line_weights.right);
-    (length * ratio - stroke_width).max(stroke_width * 0.5) + 0.5 * (first_width + second_width)
+    (length * ratio - stroke_width).max(stroke_width * 1.5) + 0.5 * (first_width + second_width)
 }
 
 fn imported_vertical_line_metrics(
@@ -9816,7 +9852,7 @@ fn render_document_retreats_hashed_wedge_against_double_dashed_center_double_out
 }
 
 #[test]
-fn render_document_uses_length_plus_stroke_for_side_double_offset() {
+fn render_document_uses_length_percent_with_line_width_floor_for_side_double_offset() {
     let short_document = fragment_document(
         json!([
             { "id": "n1", "element": "C", "atomicNumber": 6, "position": [20.0, 40.0], "charge": 0, "numHydrogens": 0 },
@@ -9867,8 +9903,8 @@ fn render_document_uses_length_plus_stroke_for_side_double_offset() {
         .map(|(from, to)| ((from.y + to.y) / 2.0 - 80.0).abs())
         .max_by(|a, b| a.total_cmp(b))
         .unwrap();
-    let expected_short_offset = (36.0 + 0.85) * 0.12 + 0.85;
-    let expected_long_offset = (72.0 + 0.85) * 0.12 + 0.85;
+    let expected_short_offset = (36.0_f64 * 0.12).max(2.5 * 0.85);
+    let expected_long_offset = (72.0_f64 * 0.12).max(2.5 * 0.85);
     assert!(
         (short_offset - expected_short_offset).abs() < 0.05,
         "{short_offset}"

@@ -74,7 +74,7 @@ Key differences currently aligned with ChemDraw:
 | Label clip natural outset | source `MarginWidth` | source `MarginWidth` | Absolute pt value from the source template; it does not scale with label font size |
 | Label clip circle radius | `2 * MarginWidth` | `2 * MarginWidth` | Absolute pt value derived from the source template margin |
 | Hash spacing | `2.7pt` | `2.5pt` | Template spacing for the hash family |
-| Bond spacing | `12%` | `18%` | Double-bond inner spacing formula uses actual bond length and this percentage |
+| Bond spacing | `12%` | `18%` | Double-bond spacing percentage used with the actual bond length and the line-width floor |
 | Margin width | `2.0pt` | `1.6pt` | White margin around upper bonds at non-endpoint bond-bond crossings |
 
 Wedge wide-end width, label clip natural outset, label clip circle radius, and margin width are template parameters and should not be inferred backward from bond length. CDXML import must use the source template numbers directly; do not infer an "ACS" label clipping mode from `MarginWidth`.
@@ -205,7 +205,19 @@ Hash bonds are a separate model: a bold solid body plus white cut segments.
 
 ## One-Sided Double Bonds
 
-A one-sided double bond consists of one main bond and one secondary line. For CDXML-compatible spacing, the inner gap is `(actual bond length + stroke width) * bondSpacing / 100`; the center distance between two normal-weight lines is this inner gap plus one stroke width.
+A one-sided double bond consists of one main bond and one secondary line. For CDXML-compatible spacing, `bondSpacing` is a percentage applied to the actual bond length, but ChemDraw also enforces a line-width floor. The inner gap is:
+
+```text
+max(actual bond length * bondSpacing / 100 - lineWidth, 1.5 * lineWidth)
+```
+
+The center distance is that inner gap plus half of each rendered line width. For two normal-weight lines, this simplifies to:
+
+```text
+max(actual bond length * bondSpacing / 100, 2.5 * lineWidth)
+```
+
+This is not a style-template branch: ACS, default, and custom CDXML documents use the same rule with their source `LineWidth`, `BondLength`, and `BondSpacing` values.
 
 ### Automatic Side Selection
 
