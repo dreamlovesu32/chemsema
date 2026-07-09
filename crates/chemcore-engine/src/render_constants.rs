@@ -14,7 +14,8 @@ pub const HASH_TARGET_GAP_LENGTH_PT: WorldPt = world_pt(1.9);
 pub const DEFAULT_HASH_SPACING_PT: WorldPt = HASH_WEDGE_SPACING_PT;
 pub const SOLID_WEDGE_END_INSET_PT: WorldPt = world_pt(0.0);
 pub const BOLD_BOND_WIDTH_PT: WorldPt = world_pt(4.0);
-pub const SOLID_WEDGE_WIDTH_PT: WorldPt = BOLD_BOND_WIDTH_PT;
+pub const WEDGE_BOLD_WIDTH_MULTIPLIER: f64 = 1.5;
+pub const SOLID_WEDGE_WIDTH_PT: WorldPt = world_pt(6.0);
 
 pub const HASH_WEDGE_INITIAL_HALF_WIDTH_PT: WorldPt = css_px(0.42).to_world_pt();
 pub const HASH_WEDGE_PROGRESS_BASE_HALF_WIDTH_PT: WorldPt = css_px(0.16).to_world_pt();

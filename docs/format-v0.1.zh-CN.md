@@ -481,7 +481,7 @@ text 对象表示带定位信息的富文本内容。
   "order": 1,
   "strokeWidth": 0.6,
   "boldWidth": 2.0,
-  "wedgeWidth": 2.0,
+  "wedgeWidth": 3.0,
   "hashSpacing": 2.5,
   "bondSpacing": 18.0,
   "marginWidth": 1.6,
@@ -527,7 +527,7 @@ text 对象表示带定位信息的富文本内容。
 - `order`：数字键级
 - `strokeWidth`：普通键线宽，单位为 pt
 - `boldWidth`：粗实键模板宽度，单位为 pt
-- `wedgeWidth`：实锲形键和虚锲形键宽端总宽，单位为 pt；这是模板参数，不从键长反推
+- `wedgeWidth`：实锲形键和空心锲形键宽端总宽，单位为 pt；CDXML 源模板导入时按 `1.5 * BoldWidth` 派生，不从键长反推
 - `labelClipMargin`：旧文件兼容字段；新文档不得写出，渲染也忽略它，因为 glyph polygon 已经定义裁剪边界
 - `hashSpacing`：hash / hashed wedge 模板间距，单位为 pt
 - `bondSpacing`：双键间距百分比，对应 ChemDraw `BondSpacing`
@@ -551,7 +551,7 @@ text 对象表示带定位信息的富文本内容。
 | --- | ---: | ---: |
 | `strokeWidth` | `1.0` | `0.6` |
 | `boldWidth` | `4.0` | `2.0` |
-| `wedgeWidth` | `4.0` | `2.0` |
+| `wedgeWidth` | `6.0` | `3.0` |
 | `hashSpacing` | `2.7` | `2.5` |
 | `bondSpacing` | `12.0` | `18.0` |
 | `marginWidth` | `2.0` | `1.6` |

@@ -1522,7 +1522,7 @@ fn document_json_persists_document_style_defaults_for_later_edits() {
         serde_json::from_str(&saved).expect("document should be valid json");
     assert_eq!(saved_value["style"]["preset"], "acs-document-1996");
     assert_eq!(saved_value["style"]["defaults"]["lineWidth"], 0.6);
-    assert_eq!(saved_value["style"]["defaults"]["wedgeWidth"], 2.0);
+    assert_eq!(saved_value["style"]["defaults"]["wedgeWidth"], 3.0);
 
     let mut loaded = Engine::new();
     loaded
@@ -1549,7 +1549,7 @@ fn document_json_persists_document_style_defaults_for_later_edits() {
     let bond = entry.fragment.bonds.last().expect("bond should be added");
     assert_eq!(bond.stroke_width, 0.6);
     assert_eq!(bond.bold_width, Some(2.0));
-    assert_eq!(bond.wedge_width, Some(2.0));
+    assert_eq!(bond.wedge_width, Some(3.0));
     assert_eq!(bond.hash_spacing, Some(2.5));
 }
 

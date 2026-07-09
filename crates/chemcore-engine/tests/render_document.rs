@@ -2795,7 +2795,7 @@ fn load_cdxml_document_preserves_imported_acs_drawing_options() {
     assert!((engine.options().bond_length - 14.4).abs() < 0.05);
     assert!((engine.options().bond_stroke_width - 0.6).abs() < 0.01);
     assert!((engine.options().bold_bond_width - 2.0).abs() < 0.05);
-    assert!((engine.options().wedge_width - 2.0).abs() < 0.05);
+    assert!((engine.options().wedge_width - 3.0).abs() < 0.05);
     assert!((engine.options().hash_spacing - 2.5).abs() < 0.05);
     assert!((engine.options().bond_spacing - 18.0).abs() < 0.05);
     assert!(engine.options().label_clip_margin.abs() < 0.01);
@@ -2852,7 +2852,7 @@ fn load_cdxml_document_preserves_imported_label_font_size() {
 }
 
 #[test]
-fn load_cdxml_document_derives_wedge_width_from_imported_bold_width() {
+fn load_cdxml_document_derives_wedge_width_from_imported_bold_width_multiplier() {
     let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >
 <CDXML BondLength="14.40" LineWidth="0.99" BoldWidth="2.01" HashSpacing="2.49" BondSpacing="18" MarginWidth="1.7" LabelSize="10">
@@ -2872,7 +2872,7 @@ fn load_cdxml_document_derives_wedge_width_from_imported_bold_width() {
     assert!((engine.options().bond_length - 14.4).abs() < 0.05);
     assert!((engine.options().bond_stroke_width - 0.99).abs() < 0.01);
     assert!((engine.options().bold_bond_width - 2.01).abs() < 0.01);
-    assert!((engine.options().wedge_width - 2.01).abs() < 0.01);
+    assert!((engine.options().wedge_width - 3.015).abs() < 0.01);
     assert!(engine.options().label_clip_margin.abs() < 0.01);
     assert!((engine.options().margin_width - 1.7).abs() < 0.01);
 
@@ -2883,7 +2883,7 @@ fn load_cdxml_document_derives_wedge_width_from_imported_bold_width() {
         .expect("editable fragment should exist")
         .fragment
         .bonds[0];
-    assert!((bond.wedge_width.unwrap_or_default() - 2.01).abs() < 0.01);
+    assert!((bond.wedge_width.unwrap_or_default() - 3.015).abs() < 0.01);
     assert_eq!(bond.label_clip_margin, None);
     assert_eq!(bond.margin_width, None);
 }
@@ -11393,7 +11393,7 @@ fn render_document_uses_acs_template_wedge_width_for_legacy_json_without_wedge_w
     let wide_width =
         ((polygon[1].x - polygon[2].x).powi(2) + (polygon[1].y - polygon[2].y).powi(2)).sqrt();
 
-    assert!((wide_width - 2.0).abs() < 0.01, "{wide_width}");
+    assert!((wide_width - 3.0).abs() < 0.01, "{wide_width}");
 }
 
 #[test]
@@ -11498,7 +11498,7 @@ fn render_document_uses_extended_intersections_for_solid_wedge_three_way_contact
     );
 
     let expected_up_wedge_intersection =
-        chemcore_engine::Point::new(213.67988530243116, 180.97541638534994);
+        chemcore_engine::Point::new(214.1234207734643, 178.46000173212423);
     let contact_center = chemcore_engine::Point::new(cdxml_cm_to_pt(7.5), cdxml_cm_to_pt(6.5));
     let polygons = object_bond_polygons_with_ids(&render_document(&document));
     let up = polygons

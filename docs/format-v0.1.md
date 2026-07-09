@@ -491,7 +491,7 @@ Example bonds:
   "order": 1,
   "strokeWidth": 0.6,
   "boldWidth": 2.0,
-  "wedgeWidth": 2.0,
+  "wedgeWidth": 3.0,
   "hashSpacing": 2.5,
   "bondSpacing": 18.0,
   "marginWidth": 1.6,
@@ -538,7 +538,7 @@ Bond fields:
 - `order`: numeric bond order
 - `strokeWidth`: normal bond stroke width in pt
 - `boldWidth`: bold bond template width in pt
-- `wedgeWidth`: solid and hashed wedge wide-end template width in pt
+- `wedgeWidth`: solid and hollow wedge wide-end template width in pt; CDXML source templates derive it as `1.5 * BoldWidth`
 - `labelClipMargin`: legacy compatibility field; new documents must not emit it,
   and renderers ignore it because glyph polygons define the clipping boundary
 - `hashSpacing`: hash / hashed wedge template spacing in pt
@@ -563,7 +563,7 @@ Current built-in template values:
 | --- | ---: | ---: |
 | `strokeWidth` | `1.0` | `0.6` |
 | `boldWidth` | `4.0` | `2.0` |
-| `wedgeWidth` | `4.0` | `2.0` |
+| `wedgeWidth` | `6.0` | `3.0` |
 | `hashSpacing` | `2.7` | `2.5` |
 | `bondSpacing` | `12.0` | `18.0` |
 | `marginWidth` | `2.0` | `1.6` |

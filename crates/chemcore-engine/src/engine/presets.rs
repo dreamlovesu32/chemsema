@@ -773,7 +773,7 @@ fn document_style_preset_options(preset: &str) -> EditorOptions {
             bond_length: 14.4,
             bond_stroke_width: 0.6,
             bold_bond_width: 2.0,
-            wedge_width: 2.0,
+            wedge_width: 3.0,
             label_clip_margin: 0.0,
             hash_spacing: 2.5,
             bond_spacing: 18.0,
@@ -908,7 +908,7 @@ pub(super) fn editor_options_from_imported_cdxml_document(
 }
 
 fn derived_wedge_width(bold_width: f64) -> f64 {
-    bold_width.max(crate::DEFAULT_BOND_STROKE)
+    (bold_width * crate::WEDGE_BOLD_WIDTH_MULTIPLIER).max(crate::DEFAULT_BOND_STROKE)
 }
 
 fn derived_label_clip_margin(_margin_width: f64) -> f64 {

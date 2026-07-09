@@ -70,14 +70,14 @@ Key differences currently aligned with ChemDraw:
 | Bond length | `30.0pt` | `14.4pt` | Existing structure geometry is scaled by this ratio when switching templates |
 | Ordinary line width | `1.0pt` | `0.6pt` | Used for ordinary bonds, narrow wedge ends, and shape line width |
 | Bold bond width | `4.0pt` | `2.0pt` | Template width for bold solid bonds |
-| Solid/hashed wedge wide end | `4.0pt` | `2.0pt` | Same value as `BoldWidth`; do not derive a separate wedge multiplier |
+| Solid/hollow wedge wide end | `6.0pt` | `3.0pt` | `1.5 * BoldWidth`; hollow wedges share the solid wedge outline |
 | Label clip natural outset | source `MarginWidth` | source `MarginWidth` | Absolute pt value from the source template; it does not scale with label font size |
 | Label clip circle radius | `2 * MarginWidth` | `2 * MarginWidth` | Absolute pt value derived from the source template margin |
 | Hash spacing | `2.7pt` | `2.5pt` | Template spacing for the hash family |
 | Bond spacing | `12%` | `18%` | Double-bond spacing percentage used with the actual bond length and the line-width floor |
 | Margin width | `2.0pt` | `1.6pt` | White margin around upper bonds at non-endpoint bond-bond crossings |
 
-Wedge wide-end width, label clip natural outset, label clip circle radius, and margin width are template parameters and should not be inferred backward from bond length. CDXML import must use the source template numbers directly; do not infer an "ACS" label clipping mode from `MarginWidth`.
+Wedge wide-end width, label clip natural outset, label clip circle radius, and margin width are template parameters and should not be inferred backward from bond length. CDXML import derives the solid/hollow wedge wide end as `1.5 * BoldWidth` from the source template and uses the source label clipping numbers directly; do not infer an "ACS" label clipping mode from `MarginWidth`.
 
 For CDXML imports, label clipping geometry is parameterized by the source `MarginWidth`: natural outset is exactly `MarginWidth`, and circular anchor radius is exactly `2 * MarginWidth`. These values are absolute points and must not be multiplied by the label font size or glyph height.
 

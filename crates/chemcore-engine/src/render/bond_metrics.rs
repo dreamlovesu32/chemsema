@@ -147,11 +147,11 @@ pub(super) fn margin_width_for_bond(bond: &Bond, stroke_width: f64) -> f64 {
 
 pub(super) fn solid_wedge_width_for_legacy_bond_template(bond: &Bond, stroke_width: f64) -> f64 {
     if let Some(bold_width) = bond.bold_width {
-        bold_width
+        bold_width * crate::WEDGE_BOLD_WIDTH_MULTIPLIER
     } else if is_acs_document_1996_bond_template(bond, stroke_width) {
-        2.0
+        2.0 * crate::WEDGE_BOLD_WIDTH_MULTIPLIER
     } else {
-        BOLD_BOND_WIDTH
+        BOLD_BOND_WIDTH * crate::WEDGE_BOLD_WIDTH_MULTIPLIER
     }
 }
 

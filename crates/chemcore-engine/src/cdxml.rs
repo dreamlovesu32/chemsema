@@ -170,7 +170,10 @@ pub fn parse_cdxml_document(cdxml: &str, title: Option<&str>) -> Result<Chemcore
                 ("bondLength".to_string(), defaults.bond_length),
                 ("lineWidth".to_string(), defaults.line_width),
                 ("boldWidth".to_string(), defaults.bold_width),
-                ("wedgeWidth".to_string(), defaults.bold_width),
+                (
+                    "wedgeWidth".to_string(),
+                    cdxml_import_wedge_width(defaults.line_width, defaults.bold_width),
+                ),
                 ("labelClipMargin".to_string(), 0.0),
                 ("hashSpacing".to_string(), defaults.hash_spacing),
                 ("bondSpacing".to_string(), defaults.bond_spacing),
@@ -1491,7 +1494,7 @@ fn cdxml_apply_line_style_for_double_placement(
 }
 
 fn cdxml_import_wedge_width(_stroke_width: f64, bold_width: f64) -> f64 {
-    bold_width.max(crate::DEFAULT_BOND_STROKE)
+    (bold_width * crate::WEDGE_BOLD_WIDTH_MULTIPLIER).max(crate::DEFAULT_BOND_STROKE)
 }
 
 fn cdxml_bond_order(value: Option<&str>) -> u8 {
