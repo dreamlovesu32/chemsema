@@ -10719,6 +10719,54 @@ fn render_document_clips_solid_wedge_wide_endpoint_on_centerline_only() {
 }
 
 #[test]
+fn render_document_clips_hashed_wedge_wide_endpoint_like_solid_wedge_label_clip() {
+    let document = fragment_document(
+        json!([
+            { "id": "n1", "element": "C", "atomicNumber": 6, "position": [42.0, 54.0], "charge": 0, "numHydrogens": 0 },
+            {
+                "id": "n2",
+                "element": "C",
+                "atomicNumber": 6,
+                "position": [27.0, 70.0],
+                "charge": 0,
+                "numHydrogens": 0,
+                "label": {
+                    "text": "t-Bu",
+                    "position": [27.0, 73.5],
+                    "box": [12.0, 65.0, 29.3, 72.4],
+                    "glyphPolygons": [
+                        [[12.0, 65.0], [16.0, 65.0], [16.0, 72.4], [12.0, 72.4]],
+                        [[17.0, 65.0], [21.0, 65.0], [21.0, 72.4], [17.0, 72.4]],
+                        [[22.0, 65.0], [25.0, 65.0], [25.0, 72.4], [22.0, 72.4]],
+                        [[26.0, 65.0], [29.3, 65.0], [29.3, 72.4], [26.0, 72.4]]
+                    ]
+                }
+            }
+        ]),
+        json!([{
+            "id": "b1",
+            "begin": "n1",
+            "end": "n2",
+            "order": 1,
+            "strokeWidth": 0.6,
+            "wedgeWidth": 2.0,
+            "stereo": { "kind": "hashed-wedge", "wideEnd": "end" }
+        }]),
+    );
+
+    let points = object_bond_points_for_id(&render_document(&document), "b1");
+    assert!(!points.is_empty(), "hashed wedge should render stripes");
+    let cap_points = closest_points_to_target(&points, Point::new(27.0, 70.0), 2);
+    let cap_center_x =
+        cap_points.iter().map(|point| point.x).sum::<f64>() / cap_points.len() as f64;
+
+    assert!(
+        (cap_center_x - 29.3).abs() < 0.02,
+        "hashed wedge label clipping should match solid wedge centerline clipping without an extra wide-cap retreat: {points:?}"
+    );
+}
+
+#[test]
 fn render_document_acs_template_does_not_add_label_clip_margin() {
     let document = fragment_document(
         json!([

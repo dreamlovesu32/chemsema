@@ -190,6 +190,7 @@ Hash bonds are a separate model: a bold solid body plus white cut segments.
 - Black segments are arranged along the trapezoid main axis.
 - Black segment lengths remain equal.
 - White segment lengths may vary within range; the count changes only when out of range.
+- If either endpoint meets a label, label clipping is identical to solid wedge label clipping: use the centerline-clipped endpoint and do not add an extra wide-cap or hash-family retreat.
 
 ### Hashed Wedge Bonds And Ordinary Main Bonds
 
