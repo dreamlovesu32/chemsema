@@ -1214,6 +1214,36 @@ fn normalize_node_label_payload(
     {
         rebuild_node_label_glyph_polygons(label, node_position, node_atomic_number, anchor_side);
     }
+    refresh_imported_node_label_active_box(label);
+}
+
+fn refresh_imported_node_label_active_box(label: &mut NodeLabel) {
+    if label.meta.pointer("/import/cdxml/boundingBox").is_none()
+        || node_label_glyph_polygons_are_authoritative(label)
+    {
+        return;
+    }
+    let Some(position) = label.position else {
+        return;
+    };
+    let font_size = label
+        .font_size
+        .unwrap_or(DEFAULT_MOLECULE_LABEL_FONT_SIZE_PT);
+    let source_box = label.bbox();
+    let align = label.align.as_deref().unwrap_or("left");
+    let Some(ink_box) = crate::build_label_ink_box(
+        &label.runs,
+        &label.line_runs,
+        position,
+        source_box,
+        font_size,
+        align,
+    ) else {
+        return;
+    };
+    let ink_box = ink_box.map(round2);
+    label.box_field = Some(ink_box);
+    label.box_value = Some(ink_box);
 }
 
 fn node_label_glyph_polygons_are_authoritative(label: &NodeLabel) -> bool {
@@ -2177,6 +2207,107 @@ mod tests {
         )
         .expect("glyph polygon should have bounds");
         Point::new((bounds[0] + bounds[2]) * 0.5, (bounds[1] + bounds[3]) * 0.5)
+    }
+
+    #[test]
+    fn imported_label_rebuilds_active_box_from_current_glyph_metrics() {
+        let stale_box = [16.0, 15.0, 31.0, 34.0];
+        let document = parse_document_json(
+            &json!({
+                "format": { "name": "chemcore", "version": "0.1" },
+                "document": {
+                    "id": "doc_stale_label_box",
+                    "title": "stale label box",
+                    "page": { "width": 80.0, "height": 60.0, "background": "#ffffff" }
+                },
+                "objects": [{
+                    "id": "obj_molecule_001",
+                    "type": "molecule",
+                    "visible": true,
+                    "zIndex": 10,
+                    "payload": { "resourceRef": "mol_001" }
+                }],
+                "resources": {
+                    "mol_001": {
+                        "type": "molecule_fragment2d",
+                        "encoding": "chemcore.molecule.fragment2d",
+                        "data": {
+                            "schema": "chemcore.molecule.fragment2d",
+                            "bbox": [0.0, 0.0, 80.0, 60.0],
+                            "nodes": [{
+                                "id": "label",
+                                "element": "C",
+                                "atomicNumber": 6,
+                                "position": [20.0, 20.0],
+                                "charge": 0,
+                                "numHydrogens": 0,
+                                "isPlaceholder": true,
+                                "label": {
+                                    "text": "OCF3",
+                                    "sourceText": "OCF3",
+                                    "position": [16.0, 24.0],
+                                    "box": stale_box,
+                                    "boxField": stale_box,
+                                    "runs": [{
+                                        "text": "OCF3",
+                                        "fontFamily": "Arial",
+                                        "fontSize": 10.0,
+                                        "fontWeight": 700,
+                                        "fontStyle": "normal",
+                                        "script": "normal"
+                                    }],
+                                    "align": "left",
+                                    "anchor": "start",
+                                    "attachment": "node",
+                                    "fontFamily": "Arial",
+                                    "fontSize": 10.0,
+                                    "meta": {
+                                        "import": { "cdxml": { "boundingBox": stale_box } }
+                                    }
+                                }
+                            }, {
+                                "id": "neighbor",
+                                "element": "C",
+                                "atomicNumber": 6,
+                                "position": [20.0, 36.0],
+                                "charge": 0,
+                                "numHydrogens": 0
+                            }],
+                            "bonds": [{
+                                "id": "bond",
+                                "begin": "label",
+                                "end": "neighbor",
+                                "order": 1
+                            }]
+                        }
+                    }
+                }
+            })
+            .to_string(),
+        )
+        .expect("document should parse");
+        let label = document
+            .editable_fragments()
+            .iter()
+            .find_map(|entry| entry.fragment.nodes.iter().find(|node| node.id == "label"))
+            .and_then(|node| node.label.as_ref())
+            .expect("imported label");
+        let active_box = label.bbox().expect("active label box");
+
+        assert_ne!(active_box, stale_box);
+        assert!(
+            active_box[2] - active_box[0] > 20.0,
+            "the active box must cover the full OCF3 run: {active_box:?}"
+        );
+        assert!(
+            active_box[3] - active_box[1] < 15.0,
+            "the stale source height must not leak into the active box: {active_box:?}"
+        );
+        assert_eq!(
+            label.meta.pointer("/import/cdxml/boundingBox"),
+            Some(&json!(stale_box)),
+            "raw import evidence must remain available for round-trip diagnostics"
+        );
     }
 
     #[test]

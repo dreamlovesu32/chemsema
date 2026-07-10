@@ -5839,7 +5839,7 @@ fn parse_cdxml_auto_double_bond_prefers_alternating_ring_over_short_fused_cycle(
 }
 
 #[test]
-fn parse_cdxml_attached_atom_label_preserves_source_bbox_size() {
+fn parse_cdxml_attached_atom_label_rebuilds_active_bbox_from_glyph_metrics() {
     let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >
 <CDXML BondLength="14.40" LineWidth="0.99" BoldWidth="2.01" HashSpacing="2.49" BondSpacing="18" LabelSize="10">
@@ -5864,10 +5864,16 @@ fn parse_cdxml_attached_atom_label_preserves_source_bbox_size() {
         .and_then(|fragment| fragment.nodes.iter().find(|node| node.id == "n1"))
         .and_then(|node| node.label.as_ref())
         .expect("N label should import");
-    let bbox = label.bbox().expect("N label should keep bbox");
+    let bbox = label.bbox().expect("N label should have an active bbox");
+    let height = bbox[3] - bbox[1];
     assert!(
-        ((bbox[3] - bbox[1]) - 8.34).abs() < 0.01,
-        "attached CDXML atom labels should keep ChemDraw bbox height, got {bbox:?}"
+        (7.0..8.0).contains(&height),
+        "attached CDXML labels should use current glyph ink height, got {bbox:?}"
+    );
+    assert_eq!(
+        label.meta.pointer("/import/cdxml/boundingBox"),
+        Some(&json!([6.4, 7.56, 13.62, 15.9])),
+        "the original ChemDraw box should remain import evidence"
     );
     assert!(
         !label.glyph_polygons.is_empty(),

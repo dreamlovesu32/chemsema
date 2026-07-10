@@ -522,6 +522,11 @@ text 对象表示带定位信息的富文本内容。
 - `meta.sourceRuns`：可选，结构标签编辑前的源 runs；用于重新打开编辑器和
   重新生成方向相关显示文本
 
+对于 CDXML/CDX 导入，源 `<t BoundingBox>` 只保存在
+`meta.import.cdxml.boundingBox`。native 活动 `box` / `boxField` 必须根据当前
+label runs、baseline、alignment 和共享 glyph metrics 重新生成。导入框只是
+可能失效的源缓存证据，不得覆盖 ChemCore 当前标签几何。
+
 键字段：
 
 - `order`：数字键级

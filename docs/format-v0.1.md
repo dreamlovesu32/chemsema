@@ -533,6 +533,12 @@ Molecule label fields:
 - `meta.sourceRuns`: optional source runs for reopening the structure-label editor
   and regenerating direction-dependent display text
 
+For CDXML/CDX imports, the source `<t BoundingBox>` is preserved only as
+`meta.import.cdxml.boundingBox`. The native active `box` / `boxField` is rebuilt
+from the current label runs, baseline, alignment, and shared glyph metrics.
+Imported bounding boxes are cached source evidence and may be stale; they must
+not override current ChemCore label geometry.
+
 Bond fields:
 
 - `order`: numeric bond order

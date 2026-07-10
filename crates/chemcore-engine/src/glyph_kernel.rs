@@ -311,6 +311,68 @@ pub fn build_label_glyph_polygons_with_profile(
     polygons
 }
 
+pub(crate) fn build_label_ink_box(
+    runs: &[LabelRun],
+    line_runs: &[Vec<LabelRun>],
+    position: [f64; 2],
+    box_value: Option<[f64; 4]>,
+    fallback_font_size: f64,
+    align: &str,
+) -> Option<[f64; 4]> {
+    let lines: Vec<Vec<LabelRun>> = if !line_runs.is_empty() {
+        line_runs.to_vec()
+    } else if !runs.is_empty() {
+        vec![runs.to_vec()]
+    } else {
+        return None;
+    };
+    let line_height = box_value
+        .filter(|_| lines.len() > 1)
+        .map(|value| (value[3] - value[1]) / lines.len() as f64)
+        .unwrap_or_else(|| (fallback_font_size * 1.05).max(fallback_font_size));
+    let box_top = box_value
+        .filter(|_| lines.len() > 1)
+        .map(|value| value[1])
+        .unwrap_or(position[1] - line_height * 0.82);
+    let mut bounds: Option<[f64; 4]> = None;
+
+    for (line_index, line) in lines.iter().enumerate() {
+        let baseline_y = if lines.len() == 1 {
+            position[1]
+        } else {
+            box_top + line_height * line_index as f64 + line_height * 0.82
+        };
+        let placements = glyph_placements_for_runs(line, 0.0, baseline_y, fallback_font_size);
+        let advance = placements
+            .last()
+            .map(|placement| placement.origin_x_px + placement.advance_px)
+            .unwrap_or(0.0);
+        let start_x = match align {
+            "center" => position[0] - advance * 0.5,
+            "right" => position[0] - advance,
+            _ => position[0],
+        };
+        for placement in placements.into_iter().filter(|placement| placement.visible) {
+            let ink = [
+                placement.ink_box_px[0] + start_x,
+                placement.ink_box_px[1],
+                placement.ink_box_px[2] + start_x,
+                placement.ink_box_px[3],
+            ];
+            bounds = Some(match bounds {
+                Some(current) => [
+                    current[0].min(ink[0]),
+                    current[1].min(ink[1]),
+                    current[2].max(ink[2]),
+                    current[3].max(ink[3]),
+                ],
+                None => ink,
+            });
+        }
+    }
+    bounds
+}
+
 pub fn render_glyph_preview_svg(pattern_specs: &[&str]) -> String {
     let patterns: Vec<PatternSpec> = pattern_specs
         .iter()
