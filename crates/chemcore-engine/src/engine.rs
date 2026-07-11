@@ -30,7 +30,9 @@ use self::text_edit::{
 };
 pub(crate) use self::text_edit::{
     formula_hydrogen_count_for_node, refresh_attached_node_label_geometry_for_all_nodes,
+    refresh_attached_node_label_geometry_for_all_nodes_with_profile,
     refresh_attached_node_label_geometry_for_node,
+    refresh_attached_node_label_geometry_for_node_without_implicit_hydrogen_refresh,
 };
 pub use self::text_edit::{
     TextEditLayout, TextEditLayoutCaret, TextEditLayoutCaretOffset, TextEditLayoutLine,

@@ -4988,7 +4988,7 @@ fn parse_cdxml_imports_published_formula_face_node_labels_with_subscripts() {
 }
 
 #[test]
-fn load_cdxml_document_preserves_single_character_below_label_position() {
+fn load_cdxml_document_uses_internal_single_character_below_label_position() {
     let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >
 <CDXML BondLength="14.40" LineWidth="0.60" LabelSize="10" color="0" bgcolor="1">
@@ -5063,12 +5063,12 @@ fn load_cdxml_document_preserves_single_character_below_label_position() {
         Some("Below")
     );
     assert!(
-        (world_position[0] - 268.70).abs() < 0.01,
-        "single-character CDXML labels should keep source baseline x, got {world_position:?}"
+        (world_position[0] - 268.72).abs() < 0.01,
+        "single-character CDXML labels should use internal below-label x, got {world_position:?}"
     );
     assert!(
-        (world_position[1] - 143.60).abs() < 0.01,
-        "single-character CDXML labels should keep source baseline y, got {world_position:?}"
+        (world_position[1] - 142.07).abs() < 0.01,
+        "single-character CDXML labels should use internal below-label y, got {world_position:?}"
     );
 }
 
@@ -5860,15 +5860,19 @@ fn parse_cdxml_attached_atom_label_rebuilds_active_bbox_from_glyph_metrics() {
     let label = document
         .resources
         .values()
-        .find_map(|resource| resource.data.as_fragment())
-        .and_then(|fragment| fragment.nodes.iter().find(|node| node.id == "n1"))
+        .find_map(|resource| {
+            resource
+                .data
+                .as_fragment()
+                .and_then(|fragment| fragment.nodes.iter().find(|node| node.atomic_number == 7))
+        })
         .and_then(|node| node.label.as_ref())
         .expect("N label should import");
     let bbox = label.bbox().expect("N label should have an active bbox");
     let height = bbox[3] - bbox[1];
     assert!(
-        (7.0..8.0).contains(&height),
-        "attached CDXML labels should use current glyph ink height, got {bbox:?}"
+        (height - 8.9).abs() < 0.01,
+        "attached CDXML labels should use the internal molecule-label line advance, got {bbox:?}"
     );
     assert_eq!(
         label.meta.pointer("/import/cdxml/boundingBox"),
@@ -5878,6 +5882,35 @@ fn parse_cdxml_attached_atom_label_rebuilds_active_bbox_from_glyph_metrics() {
     assert!(
         !label.glyph_polygons.is_empty(),
         "refresh should still populate glyph polygons for clipping"
+    );
+
+    let displaced_cdxml = cdxml
+        .replace("p=\"6.40 15.90\"", "p=\"31.00 -17.00\"")
+        .replace(
+            "BoundingBox=\"6.40 7.56 13.62 15.90\"",
+            "BoundingBox=\"-80 -60 140 190\"",
+        );
+    let displaced_document = parse_cdxml_document(&displaced_cdxml, Some("displaced atom label"))
+        .expect("CDXML with displaced source geometry should parse");
+    let displaced_label = displaced_document
+        .resources
+        .values()
+        .find_map(|resource| resource.data.as_fragment())
+        .and_then(|fragment| fragment.nodes.iter().find(|node| node.id == "n1"))
+        .and_then(|node| node.label.as_ref())
+        .expect("displaced N label should import");
+    assert_eq!(
+        displaced_label.position, label.position,
+        "source text position must not affect active node-label layout"
+    );
+    assert_eq!(
+        displaced_label.bbox(),
+        label.bbox(),
+        "source BoundingBox must not affect active node-label layout"
+    );
+    assert_eq!(
+        displaced_label.glyph_polygons, label.glyph_polygons,
+        "source text geometry must not affect active clipping geometry"
     );
 }
 
@@ -5937,6 +5970,179 @@ fn render_cdxml_single_character_atom_label_uses_text_primitive() {
             ..
         } if node_id.as_deref() == Some("n1") && *role == RenderRole::DocumentText
     )));
+}
+
+#[test]
+fn parse_cdxml_node_label_preserves_explicit_nonchemical_semantics() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<CDXML BondLength="14.40" LineWidth="0.60" MarginWidth="1.60">
+  <page id="p1" BoundingBox="0 0 40 24">
+    <fragment id="f1" BoundingBox="0 0 40 24">
+      <n id="n1" p="10 12" Element="7">
+        <t p="-20 40" BoundingBox="-80 -60 140 190" InterpretChemically="no">
+          <s font="3" size="10" color="0" face="96">NH2</s>
+        </t>
+      </n>
+      <n id="n2" p="24 12"/>
+      <b id="b1" B="n1" E="n2"/>
+    </fragment>
+  </page>
+</CDXML>"#;
+    let document =
+        parse_cdxml_document(cdxml, Some("nonchemical label")).expect("CDXML should parse");
+    let label = document
+        .resources
+        .values()
+        .find_map(|resource| resource.data.as_fragment())
+        .and_then(|fragment| fragment.nodes.iter().find(|node| node.atomic_number == 7))
+        .and_then(|node| node.label.as_ref())
+        .expect("NH2 label should import");
+
+    assert_eq!(label.text, "NH2");
+    assert_eq!(label.meta.pointer("/defaultChemical"), Some(&json!(false)));
+    assert_eq!(
+        label.meta.pointer("/sourceRuns/0/script"),
+        Some(&json!("normal"))
+    );
+    let exported = document_to_cdxml(&document);
+    assert!(
+        exported.contains("InterpretChemically=\"no\""),
+        "{exported}"
+    );
+    assert!(exported.contains("BoundingBox="), "{exported}");
+}
+
+#[test]
+fn parse_cdxml_preserves_document_drawing_defaults_without_using_cached_label_geometry() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<CDXML FractionalWidths="no" InterpretChemically="no" ShowTerminalCarbonLabels="yes" ShowNonTerminalCarbonLabels="yes" HideImplicitHydrogens="yes" LabelFont="4" LabelSize="11" LabelFace="98" CaptionFont="5" CaptionSize="9" CaptionFace="2" LineWidth="0.72" BoldWidth="3.20" BondLength="17.50" BondSpacing="21" HashSpacing="2.20" MarginWidth="1.60" ChainAngle="109.5" LabelJustification="Right" CaptionJustification="Center" PrintMargins="12 13 14 15" color="2">
+  <fonttable>
+    <font id="4" charset="iso-8859-1" name="Times New Roman"/>
+    <font id="5" charset="iso-8859-1" name="Courier New"/>
+  </fonttable>
+  <page id="p1" BoundingBox="0 0 80 40">
+    <fragment id="f1" BoundingBox="0 0 50 24">
+      <n id="n1" p="10 12" Element="7">
+        <t p="-20 40" BoundingBox="-80 -60 140 190">
+          <s color="0">NH2</s>
+        </t>
+      </n>
+      <n id="n2" p="28 12"/>
+      <b id="b1" B="n1" E="n2"/>
+    </fragment>
+    <t id="txt1" p="60 14" BoundingBox="45 5 75 18">
+      <s color="0">note</s>
+    </t>
+  </page>
+</CDXML>"#;
+    let document = parse_cdxml_document(cdxml, Some("defaults")).expect("CDXML should parse");
+    let defaults = document
+        .document
+        .meta
+        .pointer("/import/cdxml/defaults")
+        .expect("CDXML defaults should be preserved");
+
+    assert_eq!(defaults.get("chainAngle"), Some(&json!(109.5)));
+    assert_eq!(defaults.get("labelFont"), Some(&json!(4)));
+    assert_eq!(defaults.get("labelFace"), Some(&json!(98)));
+    assert_eq!(defaults.get("captionFont"), Some(&json!(5)));
+    assert_eq!(defaults.get("captionFace"), Some(&json!(2)));
+    assert_eq!(defaults.get("labelJustification"), Some(&json!("Right")));
+    assert_eq!(defaults.get("captionJustification"), Some(&json!("Center")));
+    assert_eq!(defaults.get("fractionalWidths"), Some(&json!(false)));
+    assert_eq!(defaults.get("interpretChemically"), Some(&json!(false)));
+    assert_eq!(defaults.get("showTerminalCarbonLabels"), Some(&json!(true)));
+    assert_eq!(
+        defaults.get("showNonTerminalCarbonLabels"),
+        Some(&json!(true))
+    );
+    assert_eq!(defaults.get("hideImplicitHydrogens"), Some(&json!(true)));
+    assert_eq!(
+        defaults.get("printMargins"),
+        Some(&json!([12.0, 13.0, 14.0, 15.0]))
+    );
+    assert_eq!(
+        document.style.defaults.get("chainAngle").copied(),
+        Some(109.5)
+    );
+    assert_eq!(document.style.defaults.get("labelFont").copied(), Some(4.0));
+    assert_eq!(
+        document.style.defaults.get("captionFace").copied(),
+        Some(2.0)
+    );
+
+    let label = document
+        .resources
+        .values()
+        .find_map(|resource| resource.data.as_fragment())
+        .and_then(|fragment| fragment.nodes.iter().find(|node| node.id == "n1"))
+        .and_then(|node| node.label.as_ref())
+        .expect("node label should import");
+    assert_eq!(label.font_family.as_deref(), Some("Times New Roman"));
+    assert_eq!(label.font_size, Some(11.0));
+    assert_eq!(label.align.as_deref(), Some("right"));
+    assert_eq!(label.meta.pointer("/defaultChemical"), Some(&json!(false)));
+    assert_eq!(
+        label.meta.pointer("/sourceRuns/0/fontStyle"),
+        Some(&json!("italic"))
+    );
+    assert_eq!(
+        label.meta.pointer("/sourceRuns/0/script"),
+        Some(&json!("normal")),
+        "root InterpretChemically=no keeps the visible text non-chemical even when LabelFace has chemical bits"
+    );
+    assert_ne!(
+        label.bbox(),
+        Some([-80.0, -60.0, 140.0, 190.0]),
+        "source BoundingBox must remain evidence, not active node-label geometry"
+    );
+
+    let text_object = document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "text")
+        .expect("free text should import");
+    let style = document
+        .styles
+        .get(text_object.style_ref.as_deref().expect("text style ref"))
+        .expect("text style should exist");
+    assert_eq!(style.get("fontFamily"), Some(&json!("Courier New")));
+    assert_eq!(style.get("fontSize"), Some(&json!(9.0)));
+    assert_eq!(
+        text_object.payload.extra.get("align"),
+        Some(&json!("center"))
+    );
+    assert_eq!(
+        text_object
+            .payload
+            .extra
+            .get("runs")
+            .and_then(|runs| runs.pointer("/0/fontStyle")),
+        Some(&json!("italic"))
+    );
+
+    let exported = document_to_cdxml(&document);
+    for expected in [
+        "FractionalWidths=\"no\"",
+        "InterpretChemically=\"no\"",
+        "ShowTerminalCarbonLabels=\"yes\"",
+        "ShowNonTerminalCarbonLabels=\"yes\"",
+        "HideImplicitHydrogens=\"yes\"",
+        "LabelFont=\"4\"",
+        "LabelFace=\"98\"",
+        "CaptionFont=\"5\"",
+        "CaptionFace=\"2\"",
+        "ChainAngle=\"109.5\"",
+        "LabelJustification=\"Right\"",
+        "CaptionJustification=\"Center\"",
+        "PrintMargins=\"12 13 14 15\"",
+        "color=\"2\"",
+    ] {
+        assert!(
+            exported.contains(expected),
+            "missing {expected} in {exported}"
+        );
+    }
 }
 
 #[test]
@@ -6350,6 +6556,11 @@ fn parse_cdxml_node_labels_use_internal_attached_layout() {
     assert!(exported.contains("NumHydrogens=\"1\""), "{exported}");
     assert!(exported.contains("LabelAlignment=\"Above\""), "{exported}");
     assert!(exported.contains("LineStarts=\"2 4\""), "{exported}");
+    assert!(exported.contains("BoundingBox="), "{exported}");
+    assert!(
+        exported.contains("InterpretChemically=\"yes\""),
+        "{exported}"
+    );
     assert!(exported.contains("face=\"96\""), "{exported}");
 
     let reimported =

@@ -1149,31 +1149,43 @@ fn shape_oval_geometry_is_valid(extra: &BTreeMap<String, Value>) -> bool {
 }
 
 pub(crate) fn normalize_fragment_label_payloads(document: &mut ChemcoreDocument) {
+    let margin_width = document
+        .style
+        .defaults
+        .get("marginWidth")
+        .copied()
+        .filter(|value| value.is_finite() && *value > EPSILON)
+        .unwrap_or(crate::DEFAULT_BOND_MARGIN_WIDTH_PT.value());
+    let line_width = document
+        .style
+        .defaults
+        .get("lineWidth")
+        .copied()
+        .filter(|value| value.is_finite() && *value > EPSILON)
+        .unwrap_or(crate::DEFAULT_BOND_STROKE);
+    let glyph_clip_profile = crate::GlyphClipProfile::from_margin_width(margin_width);
     for resource in document.resources.values_mut() {
         let Some(fragment) = resource.data.as_fragment_mut() else {
             continue;
         };
-        let node_positions: BTreeMap<String, [f64; 2]> = fragment
+        let node_ids: Vec<String> = fragment
             .nodes
             .iter()
-            .map(|node| (node.id.clone(), node.position))
+            .filter(|node| node.label.is_some())
+            .map(|node| node.id.clone())
             .collect();
-        let anchor_sides: BTreeMap<String, ImportedLabelAnchorSide> = fragment
-            .nodes
-            .iter()
-            .filter_map(|node| {
-                imported_label_anchor_side_for_node(node, &fragment.bonds, &node_positions)
-                    .map(|side| (node.id.clone(), side))
-            })
-            .collect();
+        for node_id in node_ids {
+            crate::engine::refresh_attached_node_label_geometry_for_node_without_implicit_hydrogen_refresh(
+                fragment,
+                [0.0, 0.0],
+                &node_id,
+                line_width,
+                Some(glyph_clip_profile),
+            );
+        }
         for node in &mut fragment.nodes {
             if let Some(label) = &mut node.label {
-                normalize_node_label_payload(
-                    label,
-                    node.position,
-                    node.atomic_number,
-                    anchor_sides.get(&node.id).copied(),
-                );
+                normalize_node_label_payload(label, node.position, glyph_clip_profile);
             }
         }
     }
@@ -1182,8 +1194,7 @@ pub(crate) fn normalize_fragment_label_payloads(document: &mut ChemcoreDocument)
 fn normalize_node_label_payload(
     label: &mut NodeLabel,
     node_position: [f64; 2],
-    node_atomic_number: u8,
-    anchor_side: Option<ImportedLabelAnchorSide>,
+    glyph_clip_profile: crate::GlyphClipProfile,
 ) {
     if label.position.is_none() {
         label.position = Some(node_position);
@@ -1207,72 +1218,15 @@ fn normalize_node_label_payload(
         let position = label.position.unwrap_or(node_position);
         label.box_field = Some(default_node_label_box(position, &label.text, font_size));
     }
-    if (label.glyph_polygons.is_empty()
-        || label.meta.pointer("/import/cdxml/boundingBox").is_some()
-        || label.meta.pointer("/measuredGeometry/box").is_some())
-        && !node_label_glyph_polygons_are_authoritative(label)
-    {
-        rebuild_node_label_glyph_polygons(label, node_position, node_atomic_number, anchor_side);
+    if label.glyph_polygons.is_empty() {
+        rebuild_node_label_glyph_polygons(label, node_position, glyph_clip_profile);
     }
-    refresh_imported_node_label_active_box(label);
-}
-
-fn refresh_imported_node_label_active_box(label: &mut NodeLabel) {
-    if label.meta.pointer("/import/cdxml/boundingBox").is_none()
-        || node_label_glyph_polygons_are_authoritative(label)
-    {
-        return;
-    }
-    let Some(position) = label.position else {
-        return;
-    };
-    let font_size = label
-        .font_size
-        .unwrap_or(DEFAULT_MOLECULE_LABEL_FONT_SIZE_PT);
-    let source_box = label.bbox();
-    let align = label.align.as_deref().unwrap_or("left");
-    let Some(ink_box) = crate::build_label_ink_box(
-        &label.runs,
-        &label.line_runs,
-        position,
-        source_box,
-        font_size,
-        align,
-    ) else {
-        return;
-    };
-    let ink_box = ink_box.map(round2);
-    label.box_field = Some(ink_box);
-    label.box_value = Some(ink_box);
-}
-
-fn node_label_glyph_polygons_are_authoritative(label: &NodeLabel) -> bool {
-    (label
-        .meta
-        .get("glyphPolygonsAuthoritative")
-        .and_then(Value::as_bool)
-        == Some(true)
-        || label
-            .meta
-            .get("ocrGlyphPolygonsAuthoritative")
-            .and_then(Value::as_bool)
-            == Some(true))
-        && !label.glyph_polygons.is_empty()
-}
-
-fn node_label_measured_text_position_is_authoritative(label: &NodeLabel) -> bool {
-    label
-        .meta
-        .get("measuredTextPositionAuthoritative")
-        .and_then(Value::as_bool)
-        == Some(true)
 }
 
 fn rebuild_node_label_glyph_polygons(
     label: &mut NodeLabel,
     node_position: [f64; 2],
-    node_atomic_number: u8,
-    anchor_side: Option<ImportedLabelAnchorSide>,
+    glyph_clip_profile: crate::GlyphClipProfile,
 ) {
     if !label.has_visible_text() {
         label.glyph_polygons.clear();
@@ -1303,12 +1257,13 @@ fn rebuild_node_label_glyph_polygons(
             .unwrap_or_else(|| {
                 (label.text.chars().count() as f64 * font_size * 0.55).max(font_size)
             });
-        crate::build_label_glyph_polygons(
+        crate::build_label_glyph_polygons_with_profile(
             single_line_runs,
             line_runs,
             [round2(position[0] - width * 0.5), position[1]],
             local_bbox,
             font_size,
+            glyph_clip_profile,
         )
     } else if align == "right" {
         let width = local_bbox
@@ -1317,315 +1272,24 @@ fn rebuild_node_label_glyph_polygons(
             .unwrap_or_else(|| {
                 (label.text.chars().count() as f64 * font_size * 0.55).max(font_size)
             });
-        crate::build_label_glyph_polygons(
+        crate::build_label_glyph_polygons_with_profile(
             single_line_runs,
             line_runs,
             [round2(position[0] - width), position[1]],
             local_bbox,
             font_size,
+            glyph_clip_profile,
         )
     } else {
-        crate::build_label_glyph_polygons(
+        crate::build_label_glyph_polygons_with_profile(
             single_line_runs,
             line_runs,
             position,
             local_bbox,
             font_size,
+            glyph_clip_profile,
         )
     };
-
-    if !node_label_measured_text_position_is_authoritative(label)
-        && !imported_cdxml_bullet_carbon_node_label(label, node_atomic_number)
-    {
-        align_imported_node_label_glyph_anchor(label, node_position, anchor_side);
-    }
-}
-
-fn imported_cdxml_bullet_carbon_node_label(label: &NodeLabel, node_atomic_number: u8) -> bool {
-    node_atomic_number == 6
-        && label.attachment.as_deref() == Some("node")
-        && label.source_text.as_deref().unwrap_or(label.text.as_str()) == "•"
-        && label.meta.pointer("/import/cdxml/boundingBox").is_some()
-        && label.meta.pointer("/import/cdxml/textPosition").is_some()
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ImportedLabelAnchorSide {
-    Left,
-    Right,
-}
-
-fn imported_label_anchor_side_for_node(
-    node: &Node,
-    bonds: &[Bond],
-    node_positions: &BTreeMap<String, [f64; 2]>,
-) -> Option<ImportedLabelAnchorSide> {
-    node.label.as_ref()?;
-    let mut side = None;
-    for bond in bonds {
-        let other_id = if bond.begin == node.id {
-            &bond.end
-        } else if bond.end == node.id {
-            &bond.begin
-        } else {
-            continue;
-        };
-        let other_position = node_positions.get(other_id)?;
-        let dx = other_position[0] - node.position[0];
-        if dx.abs() <= EPSILON {
-            continue;
-        }
-        let next_side = if dx > 0.0 {
-            ImportedLabelAnchorSide::Right
-        } else {
-            ImportedLabelAnchorSide::Left
-        };
-        if side.is_some_and(|current| current != next_side) {
-            return None;
-        }
-        side = Some(next_side);
-    }
-    side
-}
-
-fn align_imported_node_label_glyph_anchor(
-    label: &mut NodeLabel,
-    node_position: [f64; 2],
-    anchor_side: Option<ImportedLabelAnchorSide>,
-) {
-    if label.attachment.as_deref() != Some("node")
-        || label.meta.pointer("/import/cdxml/boundingBox").is_none()
-    {
-        return;
-    }
-    let Some(anchor) = imported_node_label_anchor_point(label, anchor_side) else {
-        return;
-    };
-    let delta_x = round2(node_position[0] - anchor[0]);
-    let delta_y = round2(node_position[1] - anchor[1]);
-    if delta_x.abs() > EPSILON || delta_y.abs() > EPSILON {
-        for polygon in &mut label.glyph_polygons {
-            for point in polygon {
-                point[0] = round2(point[0] + delta_x);
-                point[1] = round2(point[1] + delta_y);
-            }
-        }
-    }
-
-    if let Some(bbox) = &mut label.box_field {
-        if delta_x.abs() > EPSILON || delta_y.abs() > EPSILON {
-            bbox[0] = round2(bbox[0] + delta_x);
-            bbox[1] = round2(bbox[1] + delta_y);
-            bbox[2] = round2(bbox[2] + delta_x);
-            bbox[3] = round2(bbox[3] + delta_y);
-            if let Some(position) = &mut label.position {
-                position[0] = round2(position[0] + delta_x);
-                position[1] = round2(position[1] + delta_y);
-            }
-            if let Some(box_value) = &mut label.box_value {
-                box_value[0] = round2(box_value[0] + delta_x);
-                box_value[1] = round2(box_value[1] + delta_y);
-                box_value[2] = round2(box_value[2] + delta_x);
-                box_value[3] = round2(box_value[3] + delta_y);
-            }
-        }
-    } else if let Some(bbox) = &mut label.box_value {
-        if delta_x.abs() > EPSILON || delta_y.abs() > EPSILON {
-            bbox[0] = round2(bbox[0] + delta_x);
-            bbox[1] = round2(bbox[1] + delta_y);
-            bbox[2] = round2(bbox[2] + delta_x);
-            bbox[3] = round2(bbox[3] + delta_y);
-            if let Some(position) = &mut label.position {
-                position[0] = round2(position[0] + delta_x);
-                position[1] = round2(position[1] + delta_y);
-            }
-        }
-    }
-}
-
-fn imported_node_label_anchor_point(
-    label: &NodeLabel,
-    anchor_side: Option<ImportedLabelAnchorSide>,
-) -> Option<[f64; 2]> {
-    if label.glyph_polygons.is_empty() {
-        return None;
-    }
-    if let Some(anchor_point) = imported_node_label_stacked_anchor_point(label) {
-        return Some(anchor_point);
-    }
-    if let Some(anchor_side) = anchor_side {
-        return imported_node_label_side_anchor_point(label, anchor_side);
-    }
-    if label.align.as_deref() == Some("center") && label.glyph_polygons.len() > 1 {
-        let x = label
-            .bbox()
-            .map(|bbox| (bbox[0] + bbox[2]) * 0.5)
-            .or_else(|| glyph_polygon_bounds(&label.glyph_polygons).map(|b| (b[0] + b[2]) * 0.5))?;
-        let first_glyph_bounds = glyph_single_polygon_bounds(label.glyph_polygons.first()?)?;
-        return Some([x, (first_glyph_bounds[1] + first_glyph_bounds[3]) * 0.5]);
-    }
-    let polygon = if label.align.as_deref() == Some("right") {
-        label.glyph_polygons.last()?
-    } else {
-        label.glyph_polygons.first()?
-    };
-    glyph_single_polygon_bounds(polygon)
-        .map(|bounds| [(bounds[0] + bounds[2]) * 0.5, (bounds[1] + bounds[3]) * 0.5])
-}
-
-fn imported_node_label_stacked_anchor_point(label: &NodeLabel) -> Option<[f64; 2]> {
-    let anchor_line = imported_node_label_stacked_anchor_line(label)?;
-    let polygon_index = imported_node_label_line_anchor_polygon_index(label, anchor_line, 0)?;
-    let polygon = label.glyph_polygons.get(polygon_index)?;
-    glyph_single_polygon_bounds(polygon)
-        .map(|bounds| [(bounds[0] + bounds[2]) * 0.5, (bounds[1] + bounds[3]) * 0.5])
-}
-
-fn imported_node_label_stacked_anchor_line(label: &NodeLabel) -> Option<usize> {
-    let line_count = if !label.line_runs.is_empty() {
-        label.line_runs.len()
-    } else if !label.lines.is_empty() {
-        label.lines.len()
-    } else {
-        return None;
-    };
-    if line_count < 2 {
-        return None;
-    }
-    let cdxml_alignment = label
-        .meta
-        .pointer("/import/cdxml/labelAlignment")
-        .and_then(Value::as_str);
-    match (label.layout.as_deref(), cdxml_alignment) {
-        (Some("attached-group-above"), _) | (_, Some("Above")) => Some(line_count - 1),
-        (Some("attached-group-below"), _) | (_, Some("Below")) => Some(0),
-        _ => None,
-    }
-}
-
-fn imported_node_label_line_anchor_polygon_index(
-    label: &NodeLabel,
-    anchor_line: usize,
-    anchor_char: usize,
-) -> Option<usize> {
-    if !label.line_runs.is_empty() {
-        let mut index = 0usize;
-        for (line_index, runs) in label.line_runs.iter().enumerate() {
-            let line_len: usize = runs.iter().map(|run| run.text.chars().count()).sum();
-            if line_index == anchor_line {
-                return (anchor_char < line_len).then_some(index + anchor_char);
-            }
-            index += line_len;
-        }
-        return None;
-    }
-
-    let mut index = 0usize;
-    for (line_index, line) in label.lines.iter().enumerate() {
-        let line_len = line.chars().count();
-        if line_index == anchor_line {
-            return (anchor_char < line_len).then_some(index + anchor_char);
-        }
-        index += line_len;
-    }
-    None
-}
-
-fn imported_node_label_side_anchor_point(
-    label: &NodeLabel,
-    anchor_side: ImportedLabelAnchorSide,
-) -> Option<[f64; 2]> {
-    let candidate = imported_node_label_side_anchor_candidate(label, anchor_side, true)
-        .or_else(|| imported_node_label_side_anchor_candidate(label, anchor_side, false))?;
-    glyph_single_polygon_bounds(candidate)
-        .map(|bounds| [(bounds[0] + bounds[2]) * 0.5, (bounds[1] + bounds[3]) * 0.5])
-}
-
-fn imported_node_label_side_anchor_candidate(
-    label: &NodeLabel,
-    anchor_side: ImportedLabelAnchorSide,
-    baseline_only: bool,
-) -> Option<&Vec<[f64; 2]>> {
-    let candidates = label
-        .glyph_polygons
-        .iter()
-        .enumerate()
-        .filter_map(|(index, polygon)| {
-            (!baseline_only || node_label_glyph_is_baseline(label, index)).then_some(polygon)
-        });
-    match anchor_side {
-        ImportedLabelAnchorSide::Left => candidates.min_by(|left, right| {
-            glyph_polygon_center_x(left).total_cmp(&glyph_polygon_center_x(right))
-        }),
-        ImportedLabelAnchorSide::Right => candidates.max_by(|left, right| {
-            glyph_polygon_center_x(left).total_cmp(&glyph_polygon_center_x(right))
-        }),
-    }
-}
-
-fn node_label_glyph_is_baseline(label: &NodeLabel, glyph_index: usize) -> bool {
-    !matches!(
-        node_label_glyph_script(label, glyph_index),
-        Some("subscript" | "superscript")
-    )
-}
-
-fn node_label_glyph_script(label: &NodeLabel, glyph_index: usize) -> Option<&str> {
-    let mut remaining = glyph_index;
-    let line_runs = label.line_runs.iter().flat_map(|line| line.iter());
-    let runs: Box<dyn Iterator<Item = &LabelRun> + '_> = if label.line_runs.is_empty() {
-        Box::new(label.runs.iter())
-    } else {
-        Box::new(line_runs)
-    };
-    for run in runs {
-        let run_len = run.text.chars().count();
-        if remaining < run_len {
-            return run.script.as_deref();
-        }
-        remaining -= run_len;
-    }
-    None
-}
-
-fn glyph_polygon_center_x(polygon: &[[f64; 2]]) -> f64 {
-    glyph_single_polygon_bounds(polygon)
-        .map(|bounds| (bounds[0] + bounds[2]) * 0.5)
-        .unwrap_or(0.0)
-}
-
-fn glyph_single_polygon_bounds(polygon: &[[f64; 2]]) -> Option<[f64; 4]> {
-    let mut iter = polygon.iter();
-    let first = iter.next()?;
-    let mut min_x = first[0];
-    let mut min_y = first[1];
-    let mut max_x = first[0];
-    let mut max_y = first[1];
-    for point in iter {
-        min_x = min_x.min(point[0]);
-        min_y = min_y.min(point[1]);
-        max_x = max_x.max(point[0]);
-        max_y = max_y.max(point[1]);
-    }
-    Some([min_x, min_y, max_x, max_y])
-}
-
-fn glyph_polygon_bounds(polygons: &[Vec<[f64; 2]>]) -> Option<[f64; 4]> {
-    let mut min_x = f64::INFINITY;
-    let mut min_y = f64::INFINITY;
-    let mut max_x = f64::NEG_INFINITY;
-    let mut max_y = f64::NEG_INFINITY;
-    let mut found = false;
-    for polygon in polygons {
-        for point in polygon {
-            found = true;
-            min_x = min_x.min(point[0]);
-            min_y = min_y.min(point[1]);
-            max_x = max_x.max(point[0]);
-            max_y = max_y.max(point[1]);
-        }
-    }
-    found.then_some([min_x, min_y, max_x, max_y])
 }
 
 fn default_node_label_box(position: [f64; 2], text: &str, font_size: f64) -> [f64; 4] {
@@ -1692,6 +1356,7 @@ fn default_document_style_preset() -> String {
 fn default_document_style_defaults() -> BTreeMap<String, f64> {
     BTreeMap::from([
         ("bondLength".to_string(), DEFAULT_BOND_LENGTH_PT),
+        ("chainAngle".to_string(), 120.0),
         ("lineWidth".to_string(), DEFAULT_BOND_STROKE_PT),
         ("boldWidth".to_string(), crate::BOLD_BOND_WIDTH_PT.value()),
         (
@@ -1717,6 +1382,10 @@ fn default_document_style_defaults() -> BTreeMap<String, f64> {
             DEFAULT_MOLECULE_LABEL_FONT_SIZE_PT,
         ),
         ("textFontSize".to_string(), DEFAULT_TEXT_FONT_SIZE_PT),
+        ("labelFont".to_string(), 3.0),
+        ("captionFont".to_string(), 3.0),
+        ("labelFace".to_string(), 96.0),
+        ("captionFace".to_string(), 0.0),
     ])
 }
 

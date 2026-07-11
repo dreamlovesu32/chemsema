@@ -78,6 +78,18 @@ This command runs Rust tests, rebuilds engine WASM, checks viewer syntax, and co
   from CDXML, but it must translate them into ChemCore's native node-label
   model. Label anchors, display ordering, glyph polygons, and bond retreat stay
   owned by the Rust engine.
+- CDXML drawing defaults are real document style parameters, not cached layout
+  geometry. Import must preserve known root parameters such as `BondLength`,
+  `LineWidth`, `BoldWidth`, `HashSpacing`, `BondSpacing`, `MarginWidth`,
+  `ChainAngle`, `LabelFont`, `LabelSize`, `LabelFace`, `CaptionFont`,
+  `CaptionSize`, `CaptionFace`, justification defaults, display flags, and
+  print margins; export should write the current defaults back. These
+  parameters may guide ChemCore's own layout and rendering.
+- Attached molecule-label `BoundingBox`, `p`, and similar CDXML cached geometry
+  are provenance/round-trip evidence only. They must not become active label
+  anchors, active label boxes, or bond-retreat geometry. Label retreat is
+  computed from ChemCore glyph polygons and the current document `MarginWidth`
+  profile.
 - `meta.import.cdxml` is provenance and round-trip/debug metadata for data that
   actually came from CDXML. Source-neutral measured label geometry from
   screenshots, pasted images, or other non-CDXML inputs must not be encoded as

@@ -313,7 +313,7 @@ pub(super) fn make_centered_node_label_from_runs(
     let layout = layout_label_text(text, &decision);
     let (lines, line_runs) = layout_display_runs(&display_runs, &decision);
     let anchor_char = label_anchor_char_for_layout(&line_runs, &layout);
-    let line_height = (font_size * 1.05).max(font_size);
+    let line_height = crate::molecule_label_line_advance(font_size);
     let estimated_width = lines
         .iter()
         .zip(line_runs.iter())
@@ -474,6 +474,7 @@ pub(super) fn make_centered_node_label_from_runs(
         align: Some("left".to_string()),
         layout: Some(match decision.flow {
             LabelFlow::StackAbove => "attached-group-above".to_string(),
+            LabelFlow::StackBelow => "attached-group-below".to_string(),
             _ => "attached-group".to_string(),
         }),
         attachment: Some("node".to_string()),
@@ -510,9 +511,6 @@ pub(super) fn label_layout_decision_for_text_mode(
 ) -> crate::LabelLayoutDecision {
     let mut decision = decide_label_layout(connection_angles, false, false);
     if !is_chemical_label {
-        if !matches!(decision.flow, LabelFlow::Reverse) {
-            decision.flow = LabelFlow::Forward;
-        }
         decision.anchor = crate::LabelAnchorPolicy::WholeLabel;
         return decision;
     }
@@ -1260,6 +1258,22 @@ pub(crate) fn refresh_attached_node_label_geometry_for_node_with_profile(
     );
 }
 
+pub(crate) fn refresh_attached_node_label_geometry_for_node_without_implicit_hydrogen_refresh(
+    fragment: &mut crate::MoleculeFragment,
+    object_translate: [f64; 2],
+    node_id: &str,
+    stroke_width: f64,
+    glyph_clip_profile: Option<GlyphClipProfile>,
+) {
+    refresh_attached_node_label_geometry_for_node_inner(
+        fragment,
+        object_translate,
+        node_id,
+        stroke_width,
+        glyph_clip_profile,
+    );
+}
+
 pub(super) fn refresh_attached_node_label_geometry_for_node_inner(
     fragment: &mut crate::MoleculeFragment,
     object_translate: [f64; 2],
@@ -1373,6 +1387,8 @@ fn refresh_element_valence_recognition_for_node(
 pub(super) fn is_generated_centered_label(label: &crate::NodeLabel) -> bool {
     label.align.as_deref() == Some("center")
         && label.anchor.as_deref() == Some("middle")
+        && label.attachment.as_deref() != Some("node")
+        && label.meta.pointer("/import/cdxml/boundingBox").is_none()
         && label.glyph_polygons.is_empty()
         && label.runs.len() == 1
 }
@@ -1388,9 +1404,37 @@ fn is_cdxml_imported_attached_label(label: &crate::NodeLabel) -> bool {
         && label.meta.pointer("/import/cdxml/boundingBox").is_some()
 }
 
+fn is_explicitly_nonchemical_cdxml_label(label: &crate::NodeLabel) -> bool {
+    label
+        .meta
+        .pointer("/import/cdxml/interpretChemicallyExplicit")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+        && !label
+            .meta
+            .get("defaultChemical")
+            .and_then(Value::as_bool)
+            .unwrap_or(true)
+}
+
 fn is_source_measured_attached_label(label: &crate::NodeLabel) -> bool {
     label.attachment.as_deref() == Some("node")
         && label.meta.pointer("/measuredGeometry/box").is_some()
+}
+
+fn measured_label_geometry_is_authoritative(label: &crate::NodeLabel) -> bool {
+    label.attachment.as_deref() == Some("node")
+        && label.meta.pointer("/import/cdxml/boundingBox").is_none()
+        && label.meta.pointer("/measuredGeometry/box").is_some()
+        && label
+            .meta
+            .pointer("/measuredGeometry/textPosition")
+            .is_some()
+        && label
+            .meta
+            .get("measuredTextPositionAuthoritative")
+            .and_then(serde_json::Value::as_bool)
+            == Some(true)
 }
 
 fn is_cdxml_imported_right_aligned_attached_label(label: &crate::NodeLabel) -> bool {
@@ -1416,179 +1460,42 @@ fn is_cdxml_imported_centered_attached_label(label: &crate::NodeLabel) -> bool {
         && label.meta.pointer("/import/cdxml/boundingBox").is_some()
 }
 
-fn cdxml_imported_label_alignment_is_horizontal_only(label: &crate::NodeLabel) -> bool {
-    let alignment = label
-        .meta
-        .pointer("/import/cdxml/labelAlignment")
-        .and_then(serde_json::Value::as_str);
-    match alignment {
-        Some(value) => matches!(value, "Left" | "Center" | "Right"),
-        None => true,
-    }
-}
-
-fn measured_label_alignment_is_horizontal_only(label: &crate::NodeLabel) -> bool {
-    let alignment = label
-        .meta
-        .pointer("/measuredGeometry/labelAlignment")
-        .and_then(serde_json::Value::as_str);
-    match alignment {
-        Some(value) => matches!(value, "Left" | "Center" | "Right"),
-        None => true,
-    }
-}
-
-fn imported_cdxml_label_geometry_is_authoritative(label: &crate::NodeLabel) -> bool {
-    label.attachment.as_deref() == Some("node")
-        && cdxml_imported_label_alignment_is_horizontal_only(label)
-        && label.meta.pointer("/import/cdxml/boundingBox").is_some()
-        && label.meta.pointer("/import/cdxml/textPosition").is_some()
-}
-
-fn measured_label_geometry_is_authoritative(label: &crate::NodeLabel) -> bool {
-    label.attachment.as_deref() == Some("node")
-        && measured_label_alignment_is_horizontal_only(label)
-        && label.meta.pointer("/measuredGeometry/box").is_some()
-        && label
-            .meta
-            .pointer("/measuredGeometry/textPosition")
-            .is_some()
-        && label
-            .meta
-            .get("measuredTextPositionAuthoritative")
-            .and_then(serde_json::Value::as_bool)
-            == Some(true)
-}
-
-fn imported_cdxml_single_character_label_geometry_is_authoritative(
-    label: &crate::NodeLabel,
-    text: &str,
-) -> bool {
-    label.attachment.as_deref() == Some("node")
-        && label.meta.pointer("/import/cdxml/boundingBox").is_some()
-        && label.meta.pointer("/import/cdxml/textPosition").is_some()
-        && !text.contains('\n')
-        && text.chars().count() == 1
-}
-
-fn measured_single_character_label_geometry_is_authoritative(
-    label: &crate::NodeLabel,
-    text: &str,
-) -> bool {
-    measured_label_geometry_is_authoritative(label)
-        && !text.contains('\n')
-        && text.chars().count() == 1
-}
-
 fn cdxml_imported_label_flow_override(label: &crate::NodeLabel) -> Option<LabelFlow> {
-    match label
+    let display = label
+        .meta
+        .pointer("/import/cdxml/labelDisplay")
+        .and_then(serde_json::Value::as_str);
+    let alignment = label
         .meta
         .pointer("/import/cdxml/labelAlignment")
+        .and_then(serde_json::Value::as_str);
+    let justification = label
+        .meta
+        .pointer("/import/cdxml/justification")
         .and_then(serde_json::Value::as_str)
+        .or_else(|| {
+            label
+                .meta
+                .pointer("/import/cdxml/labelJustification")
+                .and_then(serde_json::Value::as_str)
+        });
+    match display
+        .filter(|value| matches!(*value, "Above" | "Below"))
+        .or_else(|| alignment.filter(|value| matches!(*value, "Above" | "Below")))
     {
         Some("Above") => Some(LabelFlow::StackAbove),
         Some("Below") => Some(LabelFlow::StackBelow),
-        _ => None,
+        _ => match display.or(justification).or(alignment) {
+            Some("Left") | Some("Center") => Some(LabelFlow::Forward),
+            Some("Right") => Some(LabelFlow::Reverse),
+            _ => None,
+        },
     }
 }
 
 fn glyph_clip_profile_for_label(label: &crate::NodeLabel) -> GlyphClipProfile {
-    let cdxml_meta = label.meta.pointer("/import/cdxml");
-    if let Some(natural_outset_pt) = cdxml_meta
-        .and_then(|meta| meta.get("naturalOutsetPt"))
-        .and_then(serde_json::Value::as_f64)
-    {
-        return GlyphClipProfile {
-            natural_outset_pt,
-            circle_radius_pt: natural_outset_pt * 2.0,
-        };
-    }
-    let margin_width = cdxml_meta
-        .and_then(|meta| meta.get("marginWidth"))
-        .and_then(serde_json::Value::as_f64)
-        .unwrap_or(crate::DEFAULT_BOND_MARGIN_WIDTH_PT.value());
-    GlyphClipProfile::from_margin_width(margin_width)
-}
-
-fn node_label_glyph_polygons_are_authoritative(label: &crate::NodeLabel) -> bool {
-    (label
-        .meta
-        .get("glyphPolygonsAuthoritative")
-        .and_then(serde_json::Value::as_bool)
-        == Some(true)
-        || label
-            .meta
-            .get("ocrGlyphPolygonsAuthoritative")
-            .and_then(serde_json::Value::as_bool)
-            == Some(true))
-        && !label.glyph_polygons.is_empty()
-}
-
-fn refreshed_authoritative_label_display(
-    label: &crate::NodeLabel,
-    source_text: &str,
-    source_runs: &[LabelRun],
-    decision: &crate::LabelLayoutDecision,
-) -> crate::NodeLabel {
-    let mut next_label = label.clone();
-    if source_text.trim().is_empty() {
-        return next_label;
-    }
-
-    let layout = layout_label_text(source_text, &decision);
-    let font_family = label
-        .font_family
-        .clone()
-        .unwrap_or_else(|| DEFAULT_TEXT_FONT_FAMILY.to_string());
-    let font_size = WorldPt(label.font_size.unwrap_or(DEFAULT_TEXT_FONT_SIZE)).value();
-    let fill = label
-        .fill
-        .clone()
-        .unwrap_or_else(|| DEFAULT_TEXT_FILL.to_string());
-    let display_runs = display_runs_from_source_runs(source_runs, &font_family, font_size, &fill);
-    let (lines, line_runs) = layout_display_runs(&display_runs, &decision);
-
-    next_label.text = layout.rendered_text;
-    next_label.runs = if line_runs.len() == 1 {
-        line_runs.first().cloned().unwrap_or_default()
-    } else {
-        Vec::new()
-    };
-    next_label.line_runs = if line_runs.len() > 1 {
-        line_runs.clone()
-    } else {
-        Vec::new()
-    };
-    next_label.lines = if lines.len() > 1 { lines } else { Vec::new() };
-    set_meta_object_field(
-        &mut next_label.meta,
-        "sourceRuns",
-        Some(serde_json::to_value(source_runs).unwrap_or(Value::Array(Vec::new()))),
-    );
-
-    if node_label_glyph_polygons_are_authoritative(label) {
-        return next_label;
-    }
-
-    if let Some(bbox) = label.bbox() {
-        let baseline_y = label
-            .position
-            .map(|position| position[1])
-            .unwrap_or_else(|| round2(bbox[1] + font_size * 0.82));
-        next_label.glyph_polygons = build_label_glyph_polygons(
-            if line_runs.len() == 1 {
-                line_runs.first().map(Vec::as_slice).unwrap_or(&[])
-            } else {
-                &[]
-            },
-            if line_runs.len() > 1 { &line_runs } else { &[] },
-            [round2(bbox[0]), baseline_y],
-            Some(bbox),
-            font_size,
-        );
-    }
-
-    next_label
+    let _ = label;
+    GlyphClipProfile::from_margin_width(crate::DEFAULT_BOND_MARGIN_WIDTH_PT.value())
 }
 
 pub(super) fn refreshed_attached_node_label(
@@ -1613,6 +1520,9 @@ pub(super) fn refreshed_attached_node_label(
     if is_generated_centered_label(label) {
         return Some(make_centered_node_label(&label.text, local_anchor));
     }
+    if measured_label_geometry_is_authoritative(label) {
+        return Some(label.clone());
+    }
     let text = if implicit_hydrogen_label_is_user_edited(label) {
         source_text.clone()
     } else {
@@ -1624,8 +1534,7 @@ pub(super) fn refreshed_attached_node_label(
         && !is_source_measured_attached_label(label)
         && !is_cdxml_imported_right_aligned_attached_label(label)
         && !is_cdxml_imported_single_character_centered_label(label)
-        && !(is_cdxml_imported_centered_attached_label(label)
-            && should_use_internal_whole_label_layout)
+        && !is_cdxml_imported_centered_attached_label(label)
     {
         return None;
     }
@@ -1638,9 +1547,14 @@ pub(super) fn refreshed_attached_node_label(
         .fill
         .clone()
         .unwrap_or_else(|| DEFAULT_TEXT_FILL.to_string());
-    let source_runs = source_runs_for_attached_label(node, source_runs, &text, label);
+    let source_runs = if is_explicitly_nonchemical_cdxml_label(label) {
+        source_runs
+    } else {
+        source_runs_for_attached_label(node, source_runs, &text, label)
+    };
     let layout_as_grouped_attached_label = source_runs_are_chemical(&source_runs)
-        || is_cdxml_imported_attached_label(label)
+        || (is_cdxml_imported_attached_label(label)
+            && !is_explicitly_nonchemical_cdxml_label(label))
         || is_source_measured_attached_label(label);
     let mut decision = label_layout_decision_for_text_mode(
         &text,
@@ -1657,39 +1571,14 @@ pub(super) fn refreshed_attached_node_label(
     if let Some(flow) = cdxml_imported_label_flow_override(label) {
         decision.flow = flow;
     }
-    if imported_cdxml_single_character_label_geometry_is_authoritative(label, &text) {
-        return Some(label.clone());
-    }
-    if measured_single_character_label_geometry_is_authoritative(label, &text) {
-        return Some(label.clone());
-    }
-    if measured_label_geometry_is_authoritative(label)
-        && !matches!(decision.flow, LabelFlow::StackAbove | LabelFlow::StackBelow)
-        && !should_use_internal_whole_label_layout
-    {
-        return Some(label.clone());
-    }
-    if imported_cdxml_label_geometry_is_authoritative(label) {
-        if matches!(decision.flow, LabelFlow::Reverse)
-            && is_cdxml_imported_right_aligned_attached_label(label)
-            && !should_use_internal_whole_label_layout
-        {
-            return Some(refreshed_authoritative_label_display(
-                label,
-                &text,
-                &source_runs,
-                &decision,
-            ));
-        }
-        if !matches!(decision.flow, LabelFlow::StackAbove | LabelFlow::StackBelow)
-            && !should_use_internal_whole_label_layout
-        {
-            return Some(label.clone());
-        }
-    }
     let display_runs = display_runs_from_source_runs(&source_runs, &font_family, font_size, &fill);
     let (anchor_offset, box_value) =
         current_node_label_editor_geometry(node, object_translate, &connection_angles);
+    let (anchor_offset, box_value) = if is_cdxml_imported_attached_label(label) {
+        (None, None)
+    } else {
+        (anchor_offset, box_value)
+    };
     let session = TextEditSession {
         target: TextEditTarget::EndpointLabel {
             node_id: node_id.to_string(),
@@ -1702,7 +1591,7 @@ pub(super) fn refreshed_attached_node_label(
         font_size: Some(font_size),
         fill: Some(fill.clone()),
         align: Some("left".to_string()),
-        line_height: Some((font_size * 1.05).max(font_size)),
+        line_height: Some(crate::molecule_label_line_advance(font_size)),
         box_value,
         anchor_offset,
         text_position: None,
@@ -1725,11 +1614,45 @@ pub(super) fn refreshed_attached_node_label(
         false,
         false,
         layout_as_grouped_attached_label,
-        cdxml_imported_label_flow_override(label),
+        Some(decision.flow.clone()),
         glyph_clip_profile.unwrap_or_else(|| glyph_clip_profile_for_label(label)),
     );
+    if is_cdxml_imported_single_character_centered_label(label) {
+        if let Some(mut bbox) = next_label.bbox() {
+            let delta_x = round2(local_anchor[0] - (bbox[0] + bbox[2]) * 0.5);
+            bbox[0] = round2(bbox[0] + delta_x);
+            bbox[2] = round2(bbox[2] + delta_x);
+            next_label.box_field = Some(bbox);
+            next_label.box_value = Some(bbox);
+            for polygon in &mut next_label.glyph_polygons {
+                for point in polygon {
+                    point[0] = round2(point[0] + delta_x);
+                }
+            }
+            if let Some(position) = &mut next_label.position {
+                position[0] = local_anchor[0];
+            }
+        }
+        next_label.align = Some("center".to_string());
+        next_label.anchor = Some("middle".to_string());
+        next_label.layout = Some("attached-group-center".to_string());
+    } else if is_cdxml_imported_right_aligned_attached_label(label) {
+        let right = next_label.bbox().map(|bbox| bbox[2]);
+        if let (Some(position), Some(right)) = (&mut next_label.position, right) {
+            position[0] = right;
+        }
+        next_label.align = Some("right".to_string());
+        next_label.anchor = Some("end".to_string());
+    }
     if let Some(import_meta) = label.meta.get("import").cloned() {
         set_meta_object_field(&mut next_label.meta, "import", Some(import_meta));
+    }
+    if let Some(default_chemical) = label.meta.get("defaultChemical").cloned() {
+        set_meta_object_field(
+            &mut next_label.meta,
+            "defaultChemical",
+            Some(default_chemical),
+        );
     }
     if let Some(measured_geometry) = label.meta.get("measuredGeometry").cloned() {
         set_meta_object_field(

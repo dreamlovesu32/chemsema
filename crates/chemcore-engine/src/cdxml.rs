@@ -33,6 +33,28 @@ struct CdxmlDefaults {
     margin_width: f64,
     label_size: f64,
     caption_size: f64,
+    chain_angle: f64,
+    label_font: u32,
+    caption_font: u32,
+    label_face: u32,
+    caption_face: u32,
+    label_justification: CdxmlJustification,
+    caption_justification: CdxmlJustification,
+    fractional_widths: bool,
+    interpret_chemically: Option<bool>,
+    show_atom_query: bool,
+    show_atom_stereo: bool,
+    show_atom_enhanced_stereo: bool,
+    show_atom_number: bool,
+    show_residue_id: bool,
+    show_bond_query: bool,
+    show_bond_rxn: bool,
+    show_bond_stereo: bool,
+    show_terminal_carbon_labels: bool,
+    show_non_terminal_carbon_labels: bool,
+    hide_implicit_hydrogens: bool,
+    print_margins: [f64; 4],
+    color: u32,
 }
 
 impl Default for CdxmlDefaults {
@@ -46,6 +68,47 @@ impl Default for CdxmlDefaults {
             margin_width: crate::DEFAULT_BOND_MARGIN_WIDTH_PT.value(),
             label_size: crate::DEFAULT_MOLECULE_LABEL_FONT_SIZE_PT,
             caption_size: crate::DEFAULT_TEXT_FONT_SIZE_PT,
+            chain_angle: 120.0,
+            label_font: 3,
+            caption_font: 3,
+            label_face: 96,
+            caption_face: 0,
+            label_justification: CdxmlJustification::Auto,
+            caption_justification: CdxmlJustification::Left,
+            fractional_widths: true,
+            interpret_chemically: None,
+            show_atom_query: true,
+            show_atom_stereo: false,
+            show_atom_enhanced_stereo: true,
+            show_atom_number: false,
+            show_residue_id: false,
+            show_bond_query: true,
+            show_bond_rxn: true,
+            show_bond_stereo: false,
+            show_terminal_carbon_labels: false,
+            show_non_terminal_carbon_labels: false,
+            hide_implicit_hydrogens: false,
+            print_margins: [36.0, 36.0, 36.0, 36.0],
+            color: 0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CdxmlJustification {
+    Auto,
+    Left,
+    Center,
+    Right,
+}
+
+impl CdxmlJustification {
+    fn as_cdxml(self) -> &'static str {
+        match self {
+            Self::Auto => "Auto",
+            Self::Left => "Left",
+            Self::Center => "Center",
+            Self::Right => "Right",
         }
     }
 }
@@ -128,6 +191,7 @@ pub fn parse_cdxml_document(cdxml: &str, title: Option<&str>) -> Result<Chemcore
         &root,
         &mut objects,
         &mut styles,
+        defaults,
         &colors,
         &fonts,
         &display_fragment_ids,
@@ -159,6 +223,28 @@ pub fn parse_cdxml_document(cdxml: &str, title: Option<&str>) -> Result<Chemcore
                             "marginWidth": defaults.margin_width,
                             "labelSize": defaults.label_size,
                             "captionSize": defaults.caption_size,
+                            "chainAngle": defaults.chain_angle,
+                            "labelFont": defaults.label_font,
+                            "labelFace": defaults.label_face,
+                            "captionFont": defaults.caption_font,
+                            "captionFace": defaults.caption_face,
+                            "labelJustification": defaults.label_justification.as_cdxml(),
+                            "captionJustification": defaults.caption_justification.as_cdxml(),
+                            "fractionalWidths": defaults.fractional_widths,
+                            "interpretChemically": defaults.interpret_chemically,
+                            "showAtomQuery": defaults.show_atom_query,
+                            "showAtomStereo": defaults.show_atom_stereo,
+                            "showAtomEnhancedStereo": defaults.show_atom_enhanced_stereo,
+                            "showAtomNumber": defaults.show_atom_number,
+                            "showResidueID": defaults.show_residue_id,
+                            "showBondQuery": defaults.show_bond_query,
+                            "showBondRxn": defaults.show_bond_rxn,
+                            "showBondStereo": defaults.show_bond_stereo,
+                            "showTerminalCarbonLabels": defaults.show_terminal_carbon_labels,
+                            "showNonTerminalCarbonLabels": defaults.show_non_terminal_carbon_labels,
+                            "hideImplicitHydrogens": defaults.hide_implicit_hydrogens,
+                            "printMargins": defaults.print_margins,
+                            "color": defaults.color,
                         }
                     }
                 },
@@ -168,6 +254,7 @@ pub fn parse_cdxml_document(cdxml: &str, title: Option<&str>) -> Result<Chemcore
             preset: "default".to_string(),
             defaults: BTreeMap::from([
                 ("bondLength".to_string(), defaults.bond_length),
+                ("chainAngle".to_string(), defaults.chain_angle),
                 ("lineWidth".to_string(), defaults.line_width),
                 ("boldWidth".to_string(), defaults.bold_width),
                 (
@@ -181,6 +268,10 @@ pub fn parse_cdxml_document(cdxml: &str, title: Option<&str>) -> Result<Chemcore
                 ("graphicLineWidth".to_string(), defaults.line_width),
                 ("labelFontSize".to_string(), defaults.label_size),
                 ("textFontSize".to_string(), defaults.caption_size),
+                ("labelFont".to_string(), defaults.label_font as f64),
+                ("captionFont".to_string(), defaults.caption_font as f64),
+                ("labelFace".to_string(), defaults.label_face as f64),
+                ("captionFace".to_string(), defaults.caption_face as f64),
             ]),
         },
         styles,
@@ -526,6 +617,7 @@ fn scale_json_key_as_length_array(key: &str) -> bool {
 }
 
 fn cdxml_defaults(root: &XmlNode) -> CdxmlDefaults {
+    let fallback = CdxmlDefaults::default();
     CdxmlDefaults {
         bond_length: parse_f64(root.attr("BondLength")).unwrap_or(crate::DEFAULT_BOND_LENGTH),
         line_width: parse_f64(root.attr("LineWidth")).unwrap_or(crate::DEFAULT_BOND_STROKE),
@@ -540,7 +632,70 @@ fn cdxml_defaults(root: &XmlNode) -> CdxmlDefaults {
             .unwrap_or(crate::DEFAULT_MOLECULE_LABEL_FONT_SIZE_PT),
         caption_size: parse_f64(root.attr("CaptionSize"))
             .unwrap_or(crate::DEFAULT_TEXT_FONT_SIZE_PT),
+        chain_angle: parse_f64(root.attr("ChainAngle")).unwrap_or(fallback.chain_angle),
+        label_font: parse_u32(root.attr("LabelFont")).unwrap_or(fallback.label_font),
+        caption_font: parse_u32(root.attr("CaptionFont")).unwrap_or(fallback.caption_font),
+        label_face: parse_u32(root.attr("LabelFace")).unwrap_or(fallback.label_face),
+        caption_face: parse_u32(root.attr("CaptionFace")).unwrap_or(fallback.caption_face),
+        label_justification: parse_cdxml_justification(root.attr("LabelJustification"))
+            .unwrap_or(fallback.label_justification),
+        caption_justification: parse_cdxml_justification(root.attr("CaptionJustification"))
+            .unwrap_or(fallback.caption_justification),
+        fractional_widths: parse_cdxml_bool(root.attr("FractionalWidths"))
+            .unwrap_or(fallback.fractional_widths),
+        interpret_chemically: parse_cdxml_bool(root.attr("InterpretChemically")),
+        show_atom_query: parse_cdxml_bool(root.attr("ShowAtomQuery"))
+            .unwrap_or(fallback.show_atom_query),
+        show_atom_stereo: parse_cdxml_bool(root.attr("ShowAtomStereo"))
+            .unwrap_or(fallback.show_atom_stereo),
+        show_atom_enhanced_stereo: parse_cdxml_bool(root.attr("ShowAtomEnhancedStereo"))
+            .unwrap_or(fallback.show_atom_enhanced_stereo),
+        show_atom_number: parse_cdxml_bool(root.attr("ShowAtomNumber"))
+            .unwrap_or(fallback.show_atom_number),
+        show_residue_id: parse_cdxml_bool(root.attr("ShowResidueID"))
+            .unwrap_or(fallback.show_residue_id),
+        show_bond_query: parse_cdxml_bool(root.attr("ShowBondQuery"))
+            .unwrap_or(fallback.show_bond_query),
+        show_bond_rxn: parse_cdxml_bool(root.attr("ShowBondRxn")).unwrap_or(fallback.show_bond_rxn),
+        show_bond_stereo: parse_cdxml_bool(root.attr("ShowBondStereo"))
+            .unwrap_or(fallback.show_bond_stereo),
+        show_terminal_carbon_labels: parse_cdxml_bool(root.attr("ShowTerminalCarbonLabels"))
+            .unwrap_or(fallback.show_terminal_carbon_labels),
+        show_non_terminal_carbon_labels: parse_cdxml_bool(root.attr("ShowNonTerminalCarbonLabels"))
+            .unwrap_or(fallback.show_non_terminal_carbon_labels),
+        hide_implicit_hydrogens: parse_cdxml_bool(root.attr("HideImplicitHydrogens"))
+            .unwrap_or(fallback.hide_implicit_hydrogens),
+        print_margins: parse_cdxml_margins(root.attr("PrintMargins"))
+            .unwrap_or(fallback.print_margins),
+        color: parse_u32(root.attr("color")).unwrap_or(fallback.color),
     }
+}
+
+fn parse_cdxml_bool(value: Option<&str>) -> Option<bool> {
+    match value?.trim().to_ascii_lowercase().as_str() {
+        "yes" | "true" | "1" => Some(true),
+        "no" | "false" | "0" => Some(false),
+        _ => None,
+    }
+}
+
+fn parse_cdxml_justification(value: Option<&str>) -> Option<CdxmlJustification> {
+    match value?.trim().to_ascii_lowercase().as_str() {
+        "auto" => Some(CdxmlJustification::Auto),
+        "left" | "start" => Some(CdxmlJustification::Left),
+        "center" | "middle" => Some(CdxmlJustification::Center),
+        "right" | "end" => Some(CdxmlJustification::Right),
+        _ => None,
+    }
+}
+
+fn parse_cdxml_margins(value: Option<&str>) -> Option<[f64; 4]> {
+    let parts: Vec<f64> = value?
+        .split_whitespace()
+        .take(4)
+        .filter_map(|part| part.parse().ok())
+        .collect();
+    (parts.len() == 4).then_some([parts[0], parts[1], parts[2], parts[3]])
 }
 
 fn default_cdxml_styles(defaults: CdxmlDefaults) -> BTreeMap<String, Value> {
@@ -697,10 +852,13 @@ fn normalize_fragment(
             }
         }),
     };
-    crate::engine::refresh_attached_node_label_geometry_for_all_nodes(
+    crate::engine::refresh_attached_node_label_geometry_for_all_nodes_with_profile(
         &mut fragment,
         origin,
         defaults.line_width,
+        Some(crate::GlyphClipProfile::from_margin_width(
+            defaults.margin_width,
+        )),
     );
     infer_cdxml_ring_double_bond_placements(&mut fragment);
     Some(fragment)
@@ -1059,6 +1217,16 @@ fn node_label(
         return None;
     }
     let bbox = parse_bbox(text_el.attr("BoundingBox"));
+    let explicit_interpret_chemically = parse_cdxml_bool(text_el.attr("InterpretChemically"))
+        .or_else(|| parse_cdxml_bool(node.attr("InterpretChemically")))
+        .or(defaults.interpret_chemically);
+    let parent_face = parse_u32(text_el.attr("face")).unwrap_or(defaults.label_face);
+    let run_has_chemical_face = text_el
+        .direct_children("s")
+        .any(|run| parse_u32(run.attr("face")).unwrap_or(parent_face) & 96 == 96);
+    let interpret_chemically = explicit_interpret_chemically
+        .unwrap_or_else(|| run_has_chemical_face || node.attr("Element").is_some());
+    let default_label_font = defaults.label_font.to_string();
     let parent_font = text_el
         .attr("font")
         .or_else(|| {
@@ -1066,7 +1234,7 @@ fn node_label(
                 .direct_children("s")
                 .find_map(|run| run.attr("font"))
         })
-        .unwrap_or("3");
+        .unwrap_or(default_label_font.as_str());
     let parent_color = text_el
         .attr("color")
         .or_else(|| {
@@ -1079,16 +1247,16 @@ fn node_label(
         text_el
             .direct_children("s")
             .find_map(|run| parse_f64(run.attr("size")))
-            .unwrap_or(10.0)
+            .unwrap_or(defaults.label_size)
     });
-    let source_runs: Vec<LabelRun> = text_el
+    let mut source_runs: Vec<LabelRun> = text_el
         .direct_children("s")
         .filter_map(|run| {
             let run_text = run.full_text();
             (!run_text.is_empty()).then(|| {
                 label_source_run(
                     &run_text,
-                    parse_u32(run.attr("face")).unwrap_or(0),
+                    parse_u32(run.attr("face")).unwrap_or(parent_face),
                     run.attr("font").unwrap_or(parent_font),
                     run.attr("color").unwrap_or(parent_color),
                     parse_f64(run.attr("size")).unwrap_or(parent_size),
@@ -1098,6 +1266,13 @@ fn node_label(
             })
         })
         .collect();
+    for run in &mut source_runs {
+        match (interpret_chemically, run.script.as_deref()) {
+            (true, None | Some("normal")) => run.script = Some("chemical".to_string()),
+            (false, Some("chemical")) => run.script = Some("normal".to_string()),
+            _ => {}
+        }
+    }
     let runs: Vec<LabelRun> = text_el
         .direct_children("s")
         .flat_map(|run| {
@@ -1107,7 +1282,7 @@ fn node_label(
             } else {
                 label_display_runs(
                     &run_text,
-                    parse_u32(run.attr("face")).unwrap_or(0),
+                    parse_u32(run.attr("face")).unwrap_or(parent_face),
                     run.attr("font").unwrap_or(parent_font),
                     run.attr("color").unwrap_or(parent_color),
                     parse_f64(run.attr("size")).unwrap_or(parent_size),
@@ -1118,78 +1293,30 @@ fn node_label(
         })
         .collect();
     let text_position = parse_xy(text_el.attr("p")).or_else(|| parse_xy(node.attr("p")));
-    let local_position =
-        text_position.map(|point| [round2(point[0] - origin[0]), round2(point[1] - origin[1])]);
-    let local_bbox = bbox.map(|bbox| {
-        [
-            round2(bbox[0] - origin[0]),
-            round2(bbox[1] - origin[1]),
-            round2(bbox[2] - origin[0]),
-            round2(bbox[3] - origin[1]),
-        ]
-    });
+    let local_node_position = parse_xy(node.attr("p"))
+        .map(|point| [round2(point[0] - origin[0]), round2(point[1] - origin[1])]);
     let label_display = node.attr("LabelDisplay");
     let label_justification = text_el
         .attr("Justification")
-        .or_else(|| text_el.attr("LabelJustification"));
+        .or_else(|| text_el.attr("LabelJustification"))
+        .or(Some(defaults.label_justification.as_cdxml()));
     let inferred_align = infer_cdxml_label_align(
-        text_position,
-        bbox,
         label_display,
         label_justification,
         text_el.attr("LabelAlignment"),
     );
     let is_centered = inferred_align == "center";
-    let glyph_clip_profile = cdxml_glyph_clip_profile(defaults.margin_width);
-    let glyph_polygons = if let Some(position) = local_position {
-        if inferred_align == "center" {
-            let width = local_bbox
-                .map(|bbox| (bbox[2] - bbox[0]).abs())
-                .filter(|width| *width > EPSILON)
-                .unwrap_or_else(|| {
-                    (text.chars().count() as f64 * parent_size * 0.55).max(parent_size)
-                });
-            crate::build_label_glyph_polygons_with_profile(
-                &runs,
-                &[],
-                [round2(position[0] - width * 0.5), position[1]],
-                local_bbox,
-                parent_size,
-                glyph_clip_profile,
-            )
-        } else if inferred_align == "right" {
-            let width = local_bbox
-                .map(|bbox| (bbox[2] - bbox[0]).abs())
-                .filter(|width| *width > EPSILON)
-                .unwrap_or_else(|| {
-                    (text.chars().count() as f64 * parent_size * 0.55).max(parent_size)
-                });
-            crate::build_label_glyph_polygons_with_profile(
-                &runs,
-                &[],
-                [round2(position[0] - width), position[1]],
-                local_bbox,
-                parent_size,
-                glyph_clip_profile,
-            )
-        } else {
-            crate::build_label_glyph_polygons_with_profile(
-                &runs,
-                &[],
-                position,
-                local_bbox,
-                parent_size,
-                glyph_clip_profile,
-            )
-        }
-    } else {
-        Vec::new()
+    let layout = match cdxml_label_flow(label_display, text_el.attr("LabelAlignment")) {
+        Some(crate::LabelFlow::StackAbove) => Some("attached-group-above".to_string()),
+        Some(crate::LabelFlow::StackBelow) => Some("attached-group-below".to_string()),
+        _ if is_centered => Some("attached-group-center".to_string()),
+        _ => None,
     };
     Some(NodeLabel {
         text: text.clone(),
         source_text: Some(text.clone()),
-        position: local_position,
-        box_field: local_bbox,
+        position: local_node_position,
+        box_field: None,
         runs,
         line_runs: Vec::new(),
         lines: if text.contains('\n') {
@@ -1198,7 +1325,7 @@ fn node_label(
             Vec::new()
         },
         align: Some(inferred_align.to_string()),
-        layout: is_centered.then(|| "attached-group-center".to_string()),
+        layout,
         attachment: Some("node".to_string()),
         anchor: Some(
             match inferred_align {
@@ -1216,12 +1343,13 @@ fn node_label(
         ),
         fill: Some(colors.resolve(Some(parent_color))),
         font_size: Some(parent_size),
-        glyph_polygons,
-        box_value: local_bbox,
+        glyph_polygons: Vec::new(),
+        box_value: None,
         meta: json!({
             "import": {
                 "cdxml": {
                     "font": parent_font,
+                    "face": parent_face,
                     "color": parent_color,
                     "textPosition": text_position,
                     "boundingBox": bbox,
@@ -1229,18 +1357,21 @@ fn node_label(
                     "labelAlignment": empty_as_null(text_el.attr("LabelAlignment")),
                     "labelJustification": empty_as_null(text_el.attr("LabelJustification")),
                     "justification": empty_as_null(text_el.attr("Justification")),
+                    "interpretChemically": interpret_chemically,
+                    "interpretChemicallyExplicit": explicit_interpret_chemically.is_some(),
                     "marginWidth": defaults.margin_width,
-                    "naturalOutsetPt": glyph_clip_profile.natural_outset_pt,
-                    "circleRadiusPt": glyph_clip_profile.circle_radius_pt,
+                    "naturalOutsetPt": defaults.margin_width,
+                    "circleRadiusPt": defaults.margin_width * 2.0,
                 }
+            },
+            "defaultChemical": interpret_chemically,
+            "implicitHydrogenLabel": {
+                "source": "cdxml",
+                "userEdited": true,
             },
             "sourceRuns": source_runs,
         }),
     })
-}
-
-fn cdxml_glyph_clip_profile(margin_width: f64) -> crate::GlyphClipProfile {
-    crate::GlyphClipProfile::from_margin_width(margin_width)
 }
 
 fn attr_eq_ignore_ascii_case(value: Option<&str>, expected: &str) -> bool {
@@ -1248,35 +1379,42 @@ fn attr_eq_ignore_ascii_case(value: Option<&str>, expected: &str) -> bool {
 }
 
 fn infer_cdxml_label_align(
-    text_position: Option<[f64; 2]>,
-    bbox: Option<[f64; 4]>,
     label_display: Option<&str>,
     label_justification: Option<&str>,
     label_alignment: Option<&str>,
 ) -> &'static str {
-    if let (Some([x, _]), Some([left, _, right, _])) = (text_position, bbox) {
-        let center = (left + right) * 0.5;
-        let tolerance = ((right - left).abs() * 0.2).clamp(0.5, 2.0);
-        if (x - center).abs() <= tolerance {
-            return "center";
-        }
-        if (x - right).abs() <= tolerance {
-            return "right";
-        }
-        if (x - left).abs() <= tolerance {
-            return "left";
-        }
-    }
-    if attr_eq_ignore_ascii_case(label_justification, "Center")
-        || attr_eq_ignore_ascii_case(label_display, "Center")
-    {
+    if attr_eq_ignore_ascii_case(label_display, "Center") {
         "center"
-    } else if attr_eq_ignore_ascii_case(label_justification, "Right")
-        || attr_eq_ignore_ascii_case(label_alignment, "Right")
-    {
+    } else if attr_eq_ignore_ascii_case(label_display, "Right") {
+        "right"
+    } else if attr_eq_ignore_ascii_case(label_display, "Left") {
+        "left"
+    } else if attr_eq_ignore_ascii_case(label_justification, "Center") {
+        "center"
+    } else if attr_eq_ignore_ascii_case(label_justification, "Right") {
+        "right"
+    } else if attr_eq_ignore_ascii_case(label_justification, "Left") {
+        "left"
+    } else if attr_eq_ignore_ascii_case(label_alignment, "Center") {
+        "center"
+    } else if attr_eq_ignore_ascii_case(label_alignment, "Right") {
         "right"
     } else {
         "left"
+    }
+}
+
+fn cdxml_label_flow(
+    label_display: Option<&str>,
+    label_alignment: Option<&str>,
+) -> Option<crate::LabelFlow> {
+    let value = label_display
+        .filter(|value| matches!(*value, "Above" | "Below"))
+        .or(label_alignment);
+    match value {
+        Some("Above") => Some(crate::LabelFlow::StackAbove),
+        Some("Below") => Some(crate::LabelFlow::StackBelow),
+        _ => None,
     }
 }
 

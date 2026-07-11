@@ -1,0 +1,15 @@
+{
+  "schema": "chemcore-skill-runtime.v1",
+  "product": "ChemCore",
+  "version": "1.0.0-beta.6",
+  "protocol": "chemcore-cli-protocol.v1",
+  "platforms": {
+    "win-x64": {
+      "path": "bin/win-x64/chemcore-cli.exe",
+      "size": 11652096,
+      "sha256": "467B117BD922A854A436315B2958B689CF13A0682061CFA9AC9A977E71A4A7AE",
+      "signed": false,
+      "signature": "unsigned"
+    }
+  }
+}

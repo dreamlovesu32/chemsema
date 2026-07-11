@@ -77,6 +77,16 @@ npm run verify
   CDXML 的 `t` 位置、bounding box、runs、对齐和上下标信息，但必须把这些
   信息转成 ChemCore 原生 node-label 模型。label 锚点、显示顺序、glyph
   polygons 和 bond retreat 仍由 Rust engine 统一负责。
+- CDXML 绘图默认值是真实文档样式参数，不是缓存布局几何。导入必须保留已知
+  根参数，例如 `BondLength`、`LineWidth`、`BoldWidth`、`HashSpacing`、
+  `BondSpacing`、`MarginWidth`、`ChainAngle`、`LabelFont`、`LabelSize`、
+  `LabelFace`、`CaptionFont`、`CaptionSize`、`CaptionFace`、默认对齐、
+  显示开关和打印边距；导出应写回当前默认值。这些参数可以参与 ChemCore
+  自己的 layout 和渲染。
+- attached molecule label 的 `BoundingBox`、`p` 等 CDXML 缓存几何只属于
+  provenance、round-trip 或调试证据。它们不能变成活动 label 锚点、活动
+  label box 或 bond-retreat 几何。标签退让必须由 ChemCore glyph polygons
+  和当前文档 `MarginWidth` profile 计算。
 - `meta.import.cdxml` 只表示数据确实来自 CDXML 时的 provenance、round-trip
   或调试元数据。截图、粘贴图片或其他非 CDXML 输入得到的 measured label
   geometry 不能写成 `import.cdxml`，也不能依赖 CDXML-import 的锚点兼容路径；

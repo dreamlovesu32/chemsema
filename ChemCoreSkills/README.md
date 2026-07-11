@@ -7,7 +7,9 @@ each installable skill is its own folder with a `SKILL.md` entrypoint.
 ## Skills
 
 `skills/chemcore-cli` is the primary public skill. Install this one first for
-normal agent use.
+normal agent use. It can be distributed as a self-contained skill with a
+prebuilt `chemcore-cli` runtime under `assets/bin/<platform>`, so normal users
+do not need Rust, Cargo, Node, or a source checkout.
 
 - `skills/chemcore-cli`
   - ChemCore CLI, protocol discovery, selectors, capture, command scripts,
@@ -31,7 +33,8 @@ maintainer and contributor workflows inside the repository.
 
 Codex expects installed skills to be direct children of `$CODEX_HOME/skills`.
 Use the flatten script to copy the nested skill folders into an installable
-directory.
+directory. The current Windows x64 `chemcore-cli` skill includes a bundled CLI
+runtime at `assets/bin/win-x64/chemcore-cli.exe`.
 
 PowerShell:
 
@@ -104,6 +107,17 @@ ChemCoreSkills/skills/chemcore-drawing-agent
 ChemCoreSkills/skills/chemcore-development
 ```
 
+For a skill-only user install, publish or install `ChemCoreSkills/skills/chemcore-cli`
+with its `assets/` directory intact. If the bundled runtime for the user's
+platform is missing, install ChemCore CLI separately and expose it on `PATH` or
+set `CHEMCORE_CLI`.
+
+The bundled Windows runtime is currently unsigned. Publish the skill-only
+archive with `SHA256SUMS.txt`, keep `assets/runtime-manifest.json` intact, and
+tell users to verify the checksum before installing. Users who do not want to
+run the bundled runtime can set `CHEMCORE_CLI` to a separately trusted
+executable.
+
 With the bundled installer helper, pass all paths after one `--path` flag:
 
 ```powershell
@@ -115,6 +129,12 @@ python install-skill-from-github.py --repo dreamlovesu32/chemcore --path `
 ```
 
 ## Validation
+
+Build a local unsigned skill-only archive:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\ChemCoreSkills\package_chemcore_cli_skill.ps1 -OutDir .\dist\chemcore-skills -Clean
+```
 
 Check that the CLI-facing skill documentation is still in sync with the runtime
 commands and formats:

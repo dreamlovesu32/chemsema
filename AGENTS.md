@@ -79,6 +79,14 @@ contracts live in `docs/`.
 - CDXML import is an input adapter. It may translate CDXML positions, boxes,
   runs, alignment, and script information into ChemCore's native model, but it
   must not become a second label-layout engine.
+- CDXML root drawing defaults such as bond widths, bond spacing, `MarginWidth`,
+  `ChainAngle`, label/caption font defaults, justification defaults, display
+  flags, and print margins are document style parameters. Preserve known
+  values on import and write current defaults on export.
+- Attached molecule-label `BoundingBox`, `p`, and similar CDXML cached geometry
+  are not active layout authority. Label anchors and bond retreat must be
+  recomputed by the Rust engine from native label runs, glyph polygons, and the
+  current `MarginWidth` profile.
 - Source-neutral measured label geometry from screenshots, pasted images, or
   other non-CDXML inputs must not be encoded as `meta.import.cdxml`.
 

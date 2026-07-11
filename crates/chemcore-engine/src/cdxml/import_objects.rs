@@ -1246,6 +1246,7 @@ pub(super) fn append_text_objects(
     root: &XmlNode,
     objects: &mut Vec<SceneObject>,
     styles: &mut BTreeMap<String, Value>,
+    defaults: CdxmlDefaults,
     colors: &CdxmlColorTable,
     fonts: &BTreeMap<String, String>,
     display_fragment_ids: &BTreeSet<String>,
@@ -1261,6 +1262,7 @@ pub(super) fn append_text_objects(
         &mut index,
         objects,
         styles,
+        defaults,
         colors,
         fonts,
         display_fragment_ids,
@@ -1277,6 +1279,7 @@ pub(super) fn append_text_objects_recursive(
     index: &mut usize,
     objects: &mut Vec<SceneObject>,
     styles: &mut BTreeMap<String, Value>,
+    defaults: CdxmlDefaults,
     colors: &CdxmlColorTable,
     fonts: &BTreeMap<String, String>,
     display_fragment_ids: &BTreeSet<String>,
@@ -1321,6 +1324,7 @@ pub(super) fn append_text_objects_recursive(
             current_z.unwrap_or(30),
             next_text_role,
             styles,
+            defaults,
             colors,
             fonts,
         ) {
@@ -1338,6 +1342,7 @@ pub(super) fn append_text_objects_recursive(
             index,
             objects,
             styles,
+            defaults,
             colors,
             fonts,
             display_fragment_ids,
@@ -1369,6 +1374,7 @@ fn text_object(
     z_index: i32,
     role: CdxmlTextObjectRole,
     styles: &mut BTreeMap<String, Value>,
+    defaults: CdxmlDefaults,
     colors: &CdxmlColorTable,
     fonts: &BTreeMap<String, String>,
 ) -> Option<SceneObject> {
@@ -1386,12 +1392,14 @@ fn text_object(
     let align = node
         .attr("Justification")
         .or_else(|| node.attr("LabelJustification"))
-        .unwrap_or("Left")
+        .unwrap_or(defaults.caption_justification.as_cdxml())
         .to_ascii_lowercase();
+    let default_caption_font = defaults.caption_font.to_string();
     let font_id = node
         .attr("font")
         .or_else(|| node.direct_children("s").find_map(|run| run.attr("font")))
-        .unwrap_or("3");
+        .unwrap_or(default_caption_font.as_str());
+    let face = parse_u32(node.attr("face")).unwrap_or(defaults.caption_face);
     let color_id = node
         .attr("color")
         .or_else(|| node.direct_children("s").find_map(|run| run.attr("color")))
@@ -1399,7 +1407,7 @@ fn text_object(
     let font_size = parse_f64(node.attr("size")).unwrap_or_else(|| {
         node.direct_children("s")
             .find_map(|run| parse_f64(run.attr("size")))
-            .unwrap_or(10.0)
+            .unwrap_or(defaults.caption_size)
     });
     let style_id = format!("style_text_{index:03}");
     styles.entry(style_id.clone()).or_insert_with(|| {
@@ -1421,7 +1429,7 @@ fn text_object(
             } else {
                 label_display_runs(
                     &run_text,
-                    parse_u32(run.attr("face")).unwrap_or(0),
+                    parse_u32(run.attr("face")).unwrap_or(face),
                     run.attr("font").unwrap_or(font_id),
                     run.attr("color").unwrap_or(color_id),
                     parse_f64(run.attr("size")).unwrap_or(font_size),

@@ -27,6 +27,11 @@ fn fragment_label_font_size(label: &crate::NodeLabel) -> f64 {
             size = Some(size.map_or(run_size, |current| current.max(run_size)));
         }
     }
+    for run in label.line_runs.iter().flatten() {
+        if let Some(run_size) = run.font_size {
+            size = Some(size.map_or(run_size, |current| current.max(run_size)));
+        }
+    }
     size.unwrap_or(DEFAULT_MOLECULE_LABEL_FONT_SIZE_PT)
 }
 
@@ -657,19 +662,17 @@ pub(super) fn render_fragment_label(
     }
 
     let label_box = label_box_world(node, object);
-    let line_height = label_box
-        .map(|box_value| (box_value.y2 - box_value.y1) / lines.len() as f64)
-        .unwrap_or(font_size * 1.05);
+    let line_height = crate::molecule_label_line_advance(font_size);
     let box_top = label_box
         .map(|box_value| box_value.y1)
         .unwrap_or(world_position.y - line_height * 0.82);
     for (index, line) in lines.iter().enumerate() {
-        let baseline_y = box_top + line_height * index as f64 + line_height * 0.82;
+        let baseline_y = box_top + line_height * index as f64 + font_size * 0.82;
         push_text_for_node(
             out,
             world_position.x,
             baseline_y,
-            Some(line_height * 0.82),
+            Some(font_size * 0.82),
             String::new(),
             font_size,
             font_family.clone(),

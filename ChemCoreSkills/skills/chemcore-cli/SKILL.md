@@ -7,8 +7,10 @@ description: Use ChemCore CLI for chemical document inspection, editing, capture
 
 ## Core Workflow
 
-Use the CLI as the machine contract for ChemCore. Prefer runtime discovery over
-memory:
+Use the CLI as the machine contract for ChemCore. The public skill is
+self-contained when it includes a platform runtime under `assets/bin`; do not
+ask users to install Rust, Cargo, Node, or build ChemCore from source for normal
+CLI work. Prefer runtime discovery over memory:
 
 ```powershell
 chemcore-cli version --pretty
@@ -38,7 +40,7 @@ Use this order for document work:
 
 ## Read References As Needed
 
-- For locating the executable and handling repo vs installed builds, read
+- For locating the executable and handling bundled vs installed builds, read
   `references/runtime-discovery.md`.
 - For selectors, targets, detail, context, and capture, read
   `references/document-inspection.md`.
@@ -64,6 +66,9 @@ python scripts\check_cli_skill_sync.py --suite-root ..\..\..\.. --json
 
 ## Guardrails
 
+- Treat source checkout builds as development work. Use the
+  `chemcore-development` skill for `cargo run`, package rebuilding, and local
+  release validation.
 - Do not parse console text when a JSON output path exists.
 - Do not invent selectors; discover them from `targets` or `context`.
 - Do not manually calculate label reversal, generated hydrogens, or chemical

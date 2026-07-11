@@ -1288,12 +1288,27 @@ fn update_document_style_info_defaults(
     preset: &str,
     options: &EditorOptions,
 ) {
+    let previous = document.style.defaults.clone();
+    let chain_angle = previous.get("chainAngle").copied().unwrap_or(120.0);
+    let label_font_size = previous
+        .get("labelFontSize")
+        .copied()
+        .unwrap_or(crate::DEFAULT_MOLECULE_LABEL_FONT_SIZE_PT);
+    let text_font_size = previous
+        .get("textFontSize")
+        .copied()
+        .unwrap_or(crate::DEFAULT_TEXT_FONT_SIZE_PT);
+    let label_font = previous.get("labelFont").copied().unwrap_or(3.0);
+    let caption_font = previous.get("captionFont").copied().unwrap_or(3.0);
+    let label_face = previous.get("labelFace").copied().unwrap_or(96.0);
+    let caption_face = previous.get("captionFace").copied().unwrap_or(0.0);
     document.style.preset = normalize_document_style_preset_or_custom(preset).to_string();
     document.style.defaults = BTreeMap::from([
         (
             "bondLength".to_string(),
             options.bond_length_world_pt().value(),
         ),
+        ("chainAngle".to_string(), chain_angle),
         (
             "lineWidth".to_string(),
             options.bond_stroke_world_pt().value(),
@@ -1320,11 +1335,12 @@ fn update_document_style_info_defaults(
             "graphicLineWidth".to_string(),
             options.graphic_stroke_world_pt().value(),
         ),
-        (
-            "labelFontSize".to_string(),
-            crate::DEFAULT_MOLECULE_LABEL_FONT_SIZE_PT,
-        ),
-        ("textFontSize".to_string(), crate::DEFAULT_TEXT_FONT_SIZE_PT),
+        ("labelFontSize".to_string(), label_font_size),
+        ("textFontSize".to_string(), text_font_size),
+        ("labelFont".to_string(), label_font),
+        ("captionFont".to_string(), caption_font),
+        ("labelFace".to_string(), label_face),
+        ("captionFace".to_string(), caption_face),
     ]);
 }
 

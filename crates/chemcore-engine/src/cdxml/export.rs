@@ -8,7 +8,7 @@ use std::fmt::Write;
 
 use super::{
     colors::{rgb_fractions, CdxmlColorTable},
-    element_symbol, CdxmlDefaults,
+    element_symbol, CdxmlDefaults, CdxmlJustification,
 };
 
 pub fn document_to_cdxml(document: &ChemcoreDocument) -> String {
@@ -58,6 +58,153 @@ fn export_cdxml_defaults(document: &ChemcoreDocument) -> CdxmlDefaults {
         if let Some(value) = import_defaults.get("captionSize").and_then(Value::as_f64) {
             defaults.caption_size = value;
         }
+        if let Some(value) = import_defaults.get("chainAngle").and_then(Value::as_f64) {
+            defaults.chain_angle = value;
+        }
+        if let Some(value) = import_defaults.get("labelFont").and_then(value_u32) {
+            defaults.label_font = value;
+        }
+        if let Some(value) = import_defaults.get("labelFace").and_then(value_u32) {
+            defaults.label_face = value;
+        }
+        if let Some(value) = import_defaults.get("captionFont").and_then(value_u32) {
+            defaults.caption_font = value;
+        }
+        if let Some(value) = import_defaults.get("captionFace").and_then(value_u32) {
+            defaults.caption_face = value;
+        }
+        if let Some(value) = import_defaults
+            .get("labelJustification")
+            .and_then(value_cdxml_justification)
+        {
+            defaults.label_justification = value;
+        }
+        if let Some(value) = import_defaults
+            .get("captionJustification")
+            .and_then(value_cdxml_justification)
+        {
+            defaults.caption_justification = value;
+        }
+        if let Some(value) = import_defaults
+            .get("fractionalWidths")
+            .and_then(Value::as_bool)
+        {
+            defaults.fractional_widths = value;
+        }
+        if let Some(value) = import_defaults
+            .get("interpretChemically")
+            .and_then(Value::as_bool)
+        {
+            defaults.interpret_chemically = Some(value);
+        }
+        if let Some(value) = import_defaults
+            .get("showAtomQuery")
+            .and_then(Value::as_bool)
+        {
+            defaults.show_atom_query = value;
+        }
+        if let Some(value) = import_defaults
+            .get("showAtomStereo")
+            .and_then(Value::as_bool)
+        {
+            defaults.show_atom_stereo = value;
+        }
+        if let Some(value) = import_defaults
+            .get("showAtomEnhancedStereo")
+            .and_then(Value::as_bool)
+        {
+            defaults.show_atom_enhanced_stereo = value;
+        }
+        if let Some(value) = import_defaults
+            .get("showAtomNumber")
+            .and_then(Value::as_bool)
+        {
+            defaults.show_atom_number = value;
+        }
+        if let Some(value) = import_defaults
+            .get("showResidueID")
+            .and_then(Value::as_bool)
+        {
+            defaults.show_residue_id = value;
+        }
+        if let Some(value) = import_defaults
+            .get("showBondQuery")
+            .and_then(Value::as_bool)
+        {
+            defaults.show_bond_query = value;
+        }
+        if let Some(value) = import_defaults.get("showBondRxn").and_then(Value::as_bool) {
+            defaults.show_bond_rxn = value;
+        }
+        if let Some(value) = import_defaults
+            .get("showBondStereo")
+            .and_then(Value::as_bool)
+        {
+            defaults.show_bond_stereo = value;
+        }
+        if let Some(value) = import_defaults
+            .get("showTerminalCarbonLabels")
+            .and_then(Value::as_bool)
+        {
+            defaults.show_terminal_carbon_labels = value;
+        }
+        if let Some(value) = import_defaults
+            .get("showNonTerminalCarbonLabels")
+            .and_then(Value::as_bool)
+        {
+            defaults.show_non_terminal_carbon_labels = value;
+        }
+        if let Some(value) = import_defaults
+            .get("hideImplicitHydrogens")
+            .and_then(Value::as_bool)
+        {
+            defaults.hide_implicit_hydrogens = value;
+        }
+        if let Some(value) = import_defaults.get("printMargins").and_then(value_margins) {
+            defaults.print_margins = value;
+        }
+        if let Some(value) = import_defaults.get("color").and_then(value_u32) {
+            defaults.color = value;
+        }
+    }
+    if let Some(value) = document.style.defaults.get("bondLength") {
+        defaults.bond_length = *value;
+    }
+    if let Some(value) = document.style.defaults.get("chainAngle") {
+        defaults.chain_angle = *value;
+    }
+    if let Some(value) = document.style.defaults.get("lineWidth") {
+        defaults.line_width = *value;
+    }
+    if let Some(value) = document.style.defaults.get("boldWidth") {
+        defaults.bold_width = *value;
+    }
+    if let Some(value) = document.style.defaults.get("hashSpacing") {
+        defaults.hash_spacing = *value;
+    }
+    if let Some(value) = document.style.defaults.get("bondSpacing") {
+        defaults.bond_spacing = *value;
+    }
+    if let Some(value) = document.style.defaults.get("marginWidth") {
+        defaults.margin_width = *value;
+    }
+    if let Some(value) = document.style.defaults.get("labelFontSize") {
+        defaults.label_size = *value;
+    }
+    if let Some(value) = document.style.defaults.get("textFontSize") {
+        defaults.caption_size = *value;
+    }
+    if let Some(value) = document.style.defaults.get("labelFont") {
+        defaults.label_font = value.round().max(0.0) as u32;
+    }
+    if let Some(value) = document.style.defaults.get("labelFace") {
+        defaults.label_face = value.round().max(0.0) as u32;
+    }
+    if let Some(value) = document.style.defaults.get("captionFont") {
+        defaults.caption_font = value.round().max(0.0) as u32;
+    }
+    if let Some(value) = document.style.defaults.get("captionFace") {
+        defaults.caption_face = value.round().max(0.0) as u32;
     }
     if let Some(style) = document.styles.get("style_molecule_default") {
         if let Some(value) = style_number_value(style, "strokeWidth") {
@@ -98,6 +245,38 @@ fn export_cdxml_defaults(document: &ChemcoreDocument) -> CdxmlDefaults {
     defaults
 }
 
+fn value_u32(value: &Value) -> Option<u32> {
+    value
+        .as_u64()
+        .and_then(|value| u32::try_from(value).ok())
+        .or_else(|| {
+            value
+                .as_f64()
+                .filter(|value| value.is_finite() && *value >= 0.0)
+                .map(|value| value.round() as u32)
+        })
+}
+
+fn value_cdxml_justification(value: &Value) -> Option<CdxmlJustification> {
+    match value.as_str()?.trim().to_ascii_lowercase().as_str() {
+        "auto" => Some(CdxmlJustification::Auto),
+        "left" | "start" => Some(CdxmlJustification::Left),
+        "center" | "middle" => Some(CdxmlJustification::Center),
+        "right" | "end" => Some(CdxmlJustification::Right),
+        _ => None,
+    }
+}
+
+fn value_margins(value: &Value) -> Option<[f64; 4]> {
+    let values = value.as_array()?;
+    Some([
+        values.first()?.as_f64()?,
+        values.get(1)?.as_f64()?,
+        values.get(2)?.as_f64()?,
+        values.get(3)?.as_f64()?,
+    ])
+}
+
 struct CdxmlDocumentWriter<'a> {
     document: &'a ChemcoreDocument,
     next_id: u64,
@@ -133,17 +312,39 @@ impl<'a> CdxmlDocumentWriter<'a> {
         out.push_str("<!DOCTYPE CDXML SYSTEM \"http://www.cambridgesoft.com/xml/cdxml.dtd\" >\n");
         write!(
             out,
-            "<CDXML CreationProgram=\"ChemCore\" Name=\"{}\" BoundingBox=\"{}\" WindowPosition=\"0 0\" WindowSize=\"-32768 -32768\" WindowIsZoomed=\"yes\" FractionalWidths=\"yes\" InterpretChemically=\"yes\" ShowAtomQuery=\"yes\" ShowAtomStereo=\"no\" ShowAtomEnhancedStereo=\"yes\" ShowAtomNumber=\"no\" ShowResidueID=\"no\" ShowBondQuery=\"yes\" ShowBondRxn=\"yes\" ShowBondStereo=\"no\" ShowTerminalCarbonLabels=\"no\" ShowNonTerminalCarbonLabels=\"no\" HideImplicitHydrogens=\"no\" LabelFont=\"3\" LabelSize=\"{}\" LabelFace=\"96\" CaptionFont=\"3\" CaptionSize=\"{}\" CaptionFace=\"0\" LineWidth=\"{}\" BoldWidth=\"{}\" BondLength=\"{}\" BondSpacing=\"{}\" HashSpacing=\"{}\" MarginWidth=\"{}\" ChainAngle=\"120\" LabelJustification=\"Auto\" CaptionJustification=\"Left\" PrintMargins=\"36 36 36 36\" color=\"0\" bgcolor=\"{}\">\n",
+            "<CDXML CreationProgram=\"ChemCore\" Name=\"{}\" BoundingBox=\"{}\" WindowPosition=\"0 0\" WindowSize=\"-32768 -32768\" WindowIsZoomed=\"yes\" FractionalWidths=\"{}\" InterpretChemically=\"{}\" ShowAtomQuery=\"{}\" ShowAtomStereo=\"{}\" ShowAtomEnhancedStereo=\"{}\" ShowAtomNumber=\"{}\" ShowResidueID=\"{}\" ShowBondQuery=\"{}\" ShowBondRxn=\"{}\" ShowBondStereo=\"{}\" ShowTerminalCarbonLabels=\"{}\" ShowNonTerminalCarbonLabels=\"{}\" HideImplicitHydrogens=\"{}\" LabelFont=\"{}\" LabelSize=\"{}\" LabelFace=\"{}\" CaptionFont=\"{}\" CaptionSize=\"{}\" CaptionFace=\"{}\" LineWidth=\"{}\" BoldWidth=\"{}\" BondLength=\"{}\" BondSpacing=\"{}\" HashSpacing=\"{}\" MarginWidth=\"{}\" ChainAngle=\"{}\" LabelJustification=\"{}\" CaptionJustification=\"{}\" PrintMargins=\"{}\" color=\"{}\" bgcolor=\"{}\">\n",
             xml_escape_attr(&self.document.document.title),
             root_bbox,
+            fmt_cdxml_bool(self.defaults.fractional_widths),
+            fmt_cdxml_bool(self.defaults.interpret_chemically.unwrap_or(true)),
+            fmt_cdxml_bool(self.defaults.show_atom_query),
+            fmt_cdxml_bool(self.defaults.show_atom_stereo),
+            fmt_cdxml_bool(self.defaults.show_atom_enhanced_stereo),
+            fmt_cdxml_bool(self.defaults.show_atom_number),
+            fmt_cdxml_bool(self.defaults.show_residue_id),
+            fmt_cdxml_bool(self.defaults.show_bond_query),
+            fmt_cdxml_bool(self.defaults.show_bond_rxn),
+            fmt_cdxml_bool(self.defaults.show_bond_stereo),
+            fmt_cdxml_bool(self.defaults.show_terminal_carbon_labels),
+            fmt_cdxml_bool(self.defaults.show_non_terminal_carbon_labels),
+            fmt_cdxml_bool(self.defaults.hide_implicit_hydrogens),
+            self.defaults.label_font,
             fmt_num(self.defaults.label_size),
+            self.defaults.label_face,
+            self.defaults.caption_font,
             fmt_num(self.defaults.caption_size),
+            self.defaults.caption_face,
             fmt_num(self.defaults.line_width),
             fmt_num(self.defaults.bold_width),
             fmt_num(self.defaults.bond_length),
             fmt_num(self.defaults.bond_spacing),
             fmt_num(self.defaults.hash_spacing),
             fmt_num(self.defaults.margin_width),
+            fmt_num(self.defaults.chain_angle),
+            self.defaults.label_justification.as_cdxml(),
+            self.defaults.caption_justification.as_cdxml(),
+            fmt_margins(self.defaults.print_margins),
+            self.defaults.color,
             self.colors.background_id(),
         )
         .expect("writing CDXML root should not fail");
@@ -384,6 +585,14 @@ impl<'a> CdxmlDocumentWriter<'a> {
             (
                 "LabelJustification",
                 cdxml_justification(label.align.as_deref()).to_string(),
+            ),
+            (
+                "InterpretChemically",
+                if cdxml_node_label_interpret_chemically(label) {
+                    "yes".to_string()
+                } else {
+                    "no".to_string()
+                },
             ),
             ("UTF8Text", text.to_string()),
         ];
@@ -1600,11 +1809,23 @@ fn charge_suffix(charge: i32) -> String {
 fn cdxml_node_label_alignment(label: &NodeLabel) -> &'static str {
     if label.layout.as_deref() == Some("attached-group-above") {
         "Above"
+    } else if label.layout.as_deref() == Some("attached-group-below") {
+        "Below"
     } else if label.layout.as_deref() == Some("attached-group-center") {
         "Right"
     } else {
         "Auto"
     }
+}
+
+fn cdxml_node_label_interpret_chemically(label: &NodeLabel) -> bool {
+    if let Some(value) = label.meta.get("defaultChemical").and_then(Value::as_bool) {
+        return value;
+    }
+    label_source_runs_for_export(label)
+        .unwrap_or_else(|| label.runs.clone())
+        .iter()
+        .any(|run| run.script.as_deref() == Some("chemical"))
 }
 
 fn cdxml_label_line_starts(label: &NodeLabel) -> Option<String> {
@@ -1869,6 +2090,24 @@ fn fmt_num(value: f64) -> String {
     } else {
         out
     }
+}
+
+fn fmt_cdxml_bool(value: bool) -> &'static str {
+    if value {
+        "yes"
+    } else {
+        "no"
+    }
+}
+
+fn fmt_margins(value: [f64; 4]) -> String {
+    format!(
+        "{} {} {} {}",
+        fmt_num(value[0]),
+        fmt_num(value[1]),
+        fmt_num(value[2]),
+        fmt_num(value[3])
+    )
 }
 
 fn fmt_point(point: Point) -> String {

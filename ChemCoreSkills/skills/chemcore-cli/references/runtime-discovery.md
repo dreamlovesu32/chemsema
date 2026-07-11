@@ -1,7 +1,8 @@
 # Runtime Discovery
 
 Use runtime discovery before assuming CLI paths, protocol details, or command
-options.
+options. The public `chemcore-cli` skill must work without asking users to
+install Rust, Cargo, Node, or a source checkout.
 
 ## Finding ChemCore CLI
 
@@ -9,13 +10,39 @@ Preferred order:
 
 1. `$env:CHEMCORE_CLI` if set and executable.
 2. `chemcore-cli` on `PATH`.
-3. The current repo's `target/release/chemcore-cli.exe`.
-4. The current repo's `target/debug/chemcore-cli.exe`.
-5. `npm run cli --` or `cargo run -p chemcore-cli --` from the repo root.
+3. The skill-bundled runtime declared in `assets/runtime-manifest.json`.
+4. The default skill-bundled runtime at `assets/bin/<platform>/chemcore-cli`
+   or `assets/bin/<platform>/chemcore-cli.exe` on Windows.
 
 Use `scripts/find_chemcore_cli.ps1` for this lookup. Use
 `scripts/run_chemcore_cli.py` when a task should work from either an installed
-build or a checkout.
+runtime or the self-contained skill runtime.
+
+Do not run `cargo`, `npm`, or repo-local build commands from this skill. If the
+user is working inside a ChemCore source checkout and needs build/test/package
+behavior, switch to the `chemcore-development` skill.
+
+## Bundled Runtime Layout
+
+Package prebuilt runtimes inside the skill:
+
+```text
+assets/
+  runtime-manifest.json
+  bin/
+    win-x64/
+      chemcore-cli.exe
+    macos-arm64/
+      chemcore-cli
+    macos-x64/
+      chemcore-cli
+    linux-x64/
+      chemcore-cli
+```
+
+`runtime-manifest.json` maps each supported platform tag to a path under
+`assets/`. Platform tags use `<os>-<arch>`, such as `win-x64`,
+`macos-arm64`, and `linux-x64`.
 
 ## First Commands
 

@@ -539,6 +539,15 @@ from the current label runs, baseline, alignment, and shared glyph metrics.
 Imported bounding boxes are cached source evidence and may be stale; they must
 not override current ChemCore label geometry.
 
+CDXML/CDX root drawing defaults are preserved under
+`document.meta.import.cdxml.defaults` and mirrored into numeric
+`document.style.defaults` when the native style schema can represent them.
+Known defaults include bond length, chain angle, line width, bold width, hash
+spacing, bond spacing, margin width, label/caption font ids, label/caption
+faces, label/caption sizes, justification defaults, display flags, and print
+margins. These are style parameters; unlike cached label boxes, they may guide
+ChemCore's own rendering and export.
+
 Bond fields:
 
 - `order`: numeric bond order
@@ -549,8 +558,9 @@ Bond fields:
   and renderers ignore it because glyph polygons define the clipping boundary
 - `hashSpacing`: hash / hashed wedge template spacing in pt
 - `bondSpacing`: double-bond spacing percentage, matching CDXML `BondSpacing`
-- `marginWidth`: white margin width around the overpassing bond when two bonds
-  cross without sharing an endpoint; this applies only to bond-vs-bond crossing
+- `marginWidth`: source margin width in pt. It drives glyph-polygon expansion for
+  bond-vs-label retreat and also applies to bond-vs-bond crossing knockout where
+  applicable.
 - `lineStyles`: line patterns for `main | left | right`, each one of
   `solid | dashed | wavy`
 - `lineWeights`: line weights for `main | left | right`, each one of
@@ -573,6 +583,7 @@ Current built-in template values:
 | `hashSpacing` | `2.7` | `2.5` |
 | `bondSpacing` | `12.0` | `18.0` |
 | `marginWidth` | `2.0` | `1.6` |
+| `chainAngle` | `120.0` | `120.0` |
 
 ## Line Object
 

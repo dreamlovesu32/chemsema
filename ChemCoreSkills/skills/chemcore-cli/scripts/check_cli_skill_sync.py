@@ -5,21 +5,13 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
-
-def find_repo_root(start: Path) -> Path | None:
-    current = start.resolve()
-    for candidate in [current, *current.parents]:
-        if (candidate / "Cargo.toml").exists() and (candidate / "package.json").exists():
-            return candidate
-    return None
+from chemcore_runtime import find_cli
 
 
 def find_suite_root(start: Path) -> Path:
@@ -30,25 +22,8 @@ def find_suite_root(start: Path) -> Path:
     return current
 
 
-def cli_command() -> tuple[list[str], Path | None]:
-    env_path = os.environ.get("CHEMCORE_CLI")
-    if env_path and Path(env_path).is_file():
-        return [env_path], None
-    path_cli = shutil.which("chemcore-cli")
-    if path_cli:
-        return [path_cli], None
-    repo = find_repo_root(Path.cwd()) or find_repo_root(Path(__file__).resolve())
-    if repo:
-        for rel in ("target/release/chemcore-cli.exe", "target/debug/chemcore-cli.exe"):
-            exe = repo / rel
-            if exe.is_file():
-                return [str(exe)], None
-        return ["cargo", "run", "-p", "chemcore-cli", "--"], repo
-    raise FileNotFoundError("chemcore-cli was not found. Build it or set CHEMCORE_CLI.")
-
-
 def runtime_capabilities() -> dict[str, Any]:
-    command, cwd = cli_command()
+    command, cwd, _source = find_cli()
     result = subprocess.run(
         [*command, "capabilities"],
         cwd=cwd,

@@ -4,9 +4,9 @@ use super::{
     TextEditLayoutRequest,
 };
 use crate::{
-    build_label_glyph_polygons, build_label_glyph_polygons_with_profile, decide_label_layout,
-    layout_label_text, round2, round6, Bond, BondLineWeight, DoubleBondPlacement, EndpointHit,
-    GlyphClipProfile, LabelFlow, LabelRun, Point, WorldPoint, WorldPt,
+    build_label_glyph_polygons_with_profile, decide_label_layout, layout_label_text, round2,
+    round6, Bond, BondLineWeight, DoubleBondPlacement, EndpointHit, GlyphClipProfile, LabelFlow,
+    LabelRun, Point, WorldPoint, WorldPt,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -47,6 +47,7 @@ pub(crate) use self::labels::{
     refresh_attached_node_label_geometry_for_all_nodes_with_profile,
     refresh_attached_node_label_geometry_for_node,
     refresh_attached_node_label_geometry_for_node_with_profile,
+    refresh_attached_node_label_geometry_for_node_without_implicit_hydrogen_refresh,
     refresh_element_valence_recognition_for_all_nodes, standalone_element_hydrogen_count,
 };
 use self::layout::*;

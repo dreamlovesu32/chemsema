@@ -12,39 +12,60 @@ function Test-ExecutablePath {
     return (Test-Path -LiteralPath $Path -PathType Leaf)
 }
 
-function Find-RepoRootFrom {
-    param([string]$Start)
-    $current = (Resolve-Path -LiteralPath $Start).Path
-    while ($true) {
-        if ((Test-Path -LiteralPath (Join-Path $current "Cargo.toml")) -and
-            (Test-Path -LiteralPath (Join-Path $current "package.json"))) {
-            return $current
-        }
-        $parent = Split-Path -Parent $current
-        if ($parent -eq $current -or [string]::IsNullOrEmpty($parent)) {
-            return $null
-        }
-        $current = $parent
+function Get-PlatformTag {
+    $arch = switch ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture) {
+        "X64" { "x64" }
+        "Arm64" { "arm64" }
+        default { $_.ToString().ToLowerInvariant() }
     }
+    if ($IsWindows -or $env:OS -eq "Windows_NT") {
+        return "win-$arch"
+    }
+    if ($IsMacOS) {
+        return "macos-$arch"
+    }
+    if ($IsLinux) {
+        return "linux-$arch"
+    }
+    return "unknown-$arch"
+}
+
+function Get-ExecutableName {
+    if ($IsWindows -or $env:OS -eq "Windows_NT") {
+        return "chemcore-cli.exe"
+    }
+    return "chemcore-cli"
 }
 
 $candidates = @()
+$sources = @{}
 if ($env:CHEMCORE_CLI) {
     $candidates += $env:CHEMCORE_CLI
+    $sources[$env:CHEMCORE_CLI] = "CHEMCORE_CLI"
 }
 
 $pathCommand = Get-Command chemcore-cli -ErrorAction SilentlyContinue
 if ($pathCommand) {
     $candidates += $pathCommand.Source
+    $sources[$pathCommand.Source] = "PATH"
 }
 
-$repoRoot = Find-RepoRootFrom $PSScriptRoot
-if (-not $repoRoot) {
-    $repoRoot = Find-RepoRootFrom (Get-Location).Path
+$skillRoot = Split-Path -Parent $PSScriptRoot
+$platformTag = Get-PlatformTag
+$manifestPath = Join-Path $skillRoot "assets\runtime-manifest.json"
+if (Test-Path -LiteralPath $manifestPath -PathType Leaf) {
+    $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    $entry = $manifest.platforms.$platformTag
+    if ($entry -and $entry.path) {
+        $candidate = Join-Path (Join-Path $skillRoot "assets") $entry.path
+        $candidates += $candidate
+        $sources[$candidate] = "bundled:$platformTag"
+    }
 }
-if ($repoRoot) {
-    $candidates += (Join-Path $repoRoot "target\release\chemcore-cli.exe")
-    $candidates += (Join-Path $repoRoot "target\debug\chemcore-cli.exe")
+$bundledDefault = Join-Path $skillRoot (Join-Path "assets\bin\$platformTag" (Get-ExecutableName))
+if (-not ($candidates -contains $bundledDefault)) {
+    $candidates += $bundledDefault
+    $sources[$bundledDefault] = "bundled:$platformTag"
 }
 
 foreach ($candidate in $candidates) {
@@ -54,7 +75,8 @@ foreach ($candidate in $candidates) {
             [pscustomobject]@{
                 ok = $true
                 path = $resolved
-                repoRoot = $repoRoot
+                source = $sources[$candidate]
+                platform = $platformTag
             } | ConvertTo-Json -Depth 4
         } else {
             $resolved
@@ -67,10 +89,11 @@ if ($Json) {
     [pscustomobject]@{
         ok = $false
         path = $null
-        repoRoot = $repoRoot
-        message = "chemcore-cli.exe was not found. Build it or set CHEMCORE_CLI."
+        source = $null
+        platform = $platformTag
+        message = "chemcore-cli was not found. Install the self-contained ChemCore CLI skill, install ChemCore CLI on PATH, or set CHEMCORE_CLI. Source checkout builds are handled by the chemcore-development skill."
     } | ConvertTo-Json -Depth 4
 } else {
-    Write-Error "chemcore-cli.exe was not found. Build it or set CHEMCORE_CLI."
+    Write-Error "chemcore-cli was not found. Install the self-contained ChemCore CLI skill, install ChemCore CLI on PATH, or set CHEMCORE_CLI. Source checkout builds are handled by the chemcore-development skill."
 }
 exit 1

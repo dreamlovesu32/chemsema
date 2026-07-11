@@ -8,6 +8,8 @@
 ## 技能列表
 
 `skills/chemcore-cli` 是主要对外 skill。普通 agent 使用时优先安装这个。
+它可以作为 self-contained skill 发布，在 `assets/bin/<platform>` 内置预编译
+`chemcore-cli`，所以普通用户不需要安装 Rust、Cargo、Node，也不需要源码仓库。
 
 - `skills/chemcore-cli`
   - ChemCore CLI、协议、selector、capture、command script、selection/target
@@ -53,6 +55,16 @@ Linux/macOS 或 Git Bash:
 ```
 
 安装后重启 Codex，让新 skill 被重新发现。
+
+当前 Windows x64 的 `chemcore-cli` skill 已内置
+`assets/bin/win-x64/chemcore-cli.exe`。做 skill-only 用户分发时，必须保留
+`assets/` 目录；如果目标平台暂时没有内置 runtime，再让用户安装 ChemCore CLI
+并放入 `PATH`，或设置 `CHEMCORE_CLI`。
+
+当前内置的 Windows runtime 尚未代码签名。发布 skill-only 压缩包时，同时发布
+`SHA256SUMS.txt`，保留 `assets/runtime-manifest.json`，并提醒用户安装前校验
+checksum。不想运行内置 runtime 的用户可以把 `CHEMCORE_CLI` 指向自己信任的
+可执行文件。
 
 ## 安装到 Claude Code
 
@@ -118,6 +130,12 @@ python install-skill-from-github.py --repo dreamlovesu32/chemcore --path `
 ```
 
 ## 校验
+
+构建本地 unsigned skill-only 压缩包：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\ChemCoreSkills\package_chemcore_cli_skill.ps1 -OutDir .\dist\chemcore-skills -Clean
+```
 
 检查 CLI skill 文档是否覆盖当前运行时暴露的 commands 和 formats：
 
