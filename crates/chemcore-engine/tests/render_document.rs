@@ -6389,6 +6389,129 @@ fn parse_cdxml_parenthesized_attached_label_reverses_inner_groups() {
 }
 
 #[test]
+fn parse_cdxml_centered_multichar_label_uses_internal_center_anchor() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >
+<CDXML BondLength="14.40" LineWidth="0.60" LabelSize="10" color="0" bgcolor="1">
+  <colortable>
+    <color r="1" g="1" b="1"/>
+    <color r="0" g="0" b="0"/>
+    <color r="1" g="0" b="0"/>
+  </colortable>
+  <page id="p1" BoundingBox="0 0 60 30">
+    <fragment id="f1" BoundingBox="0 0 60 30">
+      <n id="n1" p="10 12" NodeType="Fragment" LabelDisplay="Center">
+        <t p="10 16" BoundingBox="-80 -60 140 190" LabelJustification="Center" Justification="Center" LabelAlignment="Right" UTF8Text="CF3">
+          <s font="3" size="10" color="2" face="96">CF3</s>
+        </t>
+      </n>
+      <n id="n2" p="26 12"/>
+      <b id="b1" B="n1" E="n2"/>
+    </fragment>
+  </page>
+</CDXML>"#;
+    let document = parse_cdxml_document(cdxml, Some("centered CF3 label"))
+        .expect("centered CF3 CDXML should parse");
+    let fragment = document
+        .resources
+        .values()
+        .find_map(|resource| resource.data.as_fragment())
+        .expect("fragment should import");
+    let node = fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == "n1")
+        .expect("CF3 node should import");
+    let label = node.label.as_ref().expect("CF3 label should import");
+    let bbox = label.bbox().expect("CF3 label should have a rebuilt bbox");
+
+    assert_eq!(label.text, "CF3");
+    assert_eq!(label.source_text.as_deref(), Some("CF3"));
+    assert_eq!(label.align.as_deref(), Some("center"));
+    assert_eq!(label.anchor.as_deref(), Some("middle"));
+    assert_eq!(label.layout.as_deref(), Some("attached-group-center"));
+    assert!(
+        ((bbox[0] + bbox[2]) * 0.5 - node.position[0]).abs() < 0.01,
+        "CDXML LabelDisplay=Center must center the internally rebuilt label box on the node: bbox={bbox:?}, node={node:?}"
+    );
+    assert_ne!(
+        bbox,
+        [-80.0, -60.0, 140.0, 190.0],
+        "source BoundingBox must remain provenance, not active label geometry"
+    );
+    assert_eq!(
+        label.meta.pointer("/import/cdxml/labelDisplay"),
+        Some(&json!("Center"))
+    );
+}
+
+#[test]
+fn parse_cdxml_label_display_overrides_auto_reversal_without_losing_chemistry() {
+    let cdxml = include_str!("fixtures/label-display-modes.cdxml");
+    let document = parse_cdxml_document(cdxml, Some("label display modes"))
+        .expect("label display mode CDXML should parse");
+    let mut labels: std::collections::BTreeMap<
+        String,
+        Vec<(&chemcore_engine::Node, &chemcore_engine::NodeLabel)>,
+    > = std::collections::BTreeMap::new();
+    for resource in document.resources.values() {
+        if let Some(fragment) = resource.data.as_fragment() {
+            for node in &fragment.nodes {
+                if let Some(label) = &node.label {
+                    if label.source_text.as_deref() == Some("CF3") {
+                        let display = label
+                            .meta
+                            .pointer("/import/cdxml/labelDisplay")
+                            .and_then(serde_json::Value::as_str)
+                            .unwrap_or("Auto");
+                        labels
+                            .entry(display.to_string())
+                            .or_default()
+                            .push((node, label));
+                    }
+                }
+            }
+        }
+    }
+
+    let auto_label = labels["Auto"]
+        .iter()
+        .map(|(_, label)| *label)
+        .find(|label| label.text == "F3C")
+        .expect("Auto CF3 should still reverse to visible F3C on a left-side connection");
+    assert_eq!(auto_label.source_text.as_deref(), Some("CF3"));
+
+    for (_, right_label) in &labels["Right"] {
+        assert_eq!(right_label.source_text.as_deref(), Some("CF3"));
+        assert_eq!(right_label.text, "CF3");
+        assert_eq!(right_label.align.as_deref(), Some("right"));
+        assert_eq!(right_label.anchor.as_deref(), Some("end"));
+    }
+
+    let (center_node, center_label) = labels["Center"]
+        .iter()
+        .find(|(_, label)| label.text == "CF3")
+        .copied()
+        .expect("LabelDisplay=Center CF3 should import");
+    let center_box = center_label.bbox().expect("center label box");
+    assert_eq!(center_label.source_text.as_deref(), Some("CF3"));
+    assert_eq!(center_label.text, "CF3");
+    assert_eq!(center_label.align.as_deref(), Some("center"));
+    assert_eq!(center_label.anchor.as_deref(), Some("middle"));
+    assert!(
+        ((center_box[0] + center_box[2]) * 0.5 - center_node.position[0]).abs() < 0.01,
+        "LabelDisplay=Center should center the rebuilt label box on the node"
+    );
+
+    for (_, left_label) in &labels["Left"] {
+        assert_eq!(left_label.source_text.as_deref(), Some("CF3"));
+        assert_eq!(left_label.text, "CF3");
+        assert_eq!(left_label.align.as_deref(), Some("left"));
+        assert_eq!(left_label.anchor.as_deref(), Some("start"));
+    }
+}
+
+#[test]
 fn parse_cdxml_attached_sulfur_label_uses_elliptical_clip_geometry() {
     let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >

@@ -16,6 +16,7 @@ pub enum LabelFlow {
 #[serde(rename_all = "kebab-case")]
 pub enum LabelAnchorPolicy {
     FirstGlyph,
+    LastGlyph,
     OriginalFirstGroup,
     FirstGroupLeadGlyph,
     WholeLabel,
@@ -283,13 +284,18 @@ pub fn layout_label_text(text: &str, decision: &LabelLayoutDecision) -> LabelLay
     match decision.flow {
         LabelFlow::Forward => {
             let rendered_text = groups.concat();
+            let anchor_char = if decision.anchor == LabelAnchorPolicy::LastGlyph {
+                rendered_text.chars().count().saturating_sub(1)
+            } else {
+                0
+            };
             LabelLayout {
                 flow: decision.flow.clone(),
                 anchor: decision.anchor.clone(),
                 lines: vec![rendered_text.clone()],
                 rendered_text,
                 anchor_line: 0,
-                anchor_char: 0,
+                anchor_char,
             }
         }
         LabelFlow::Reverse => {

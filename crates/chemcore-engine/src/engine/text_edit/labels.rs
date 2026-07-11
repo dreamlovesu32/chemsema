@@ -295,7 +295,7 @@ pub(super) fn make_centered_node_label_from_runs(
     preserve_measured_box: bool,
     treat_as_literal_text_mode: bool,
     force_grouped_attached_layout: bool,
-    forced_flow: Option<LabelFlow>,
+    forced_decision: Option<crate::LabelLayoutDecision>,
     glyph_clip_profile: GlyphClipProfile,
 ) -> crate::NodeLabel {
     let mut decision = label_layout_decision_for_text_mode(
@@ -307,8 +307,8 @@ pub(super) fn make_centered_node_label_from_runs(
             source_runs_are_chemical(&source_runs) || force_grouped_attached_layout
         },
     );
-    if let Some(flow) = forced_flow {
-        decision.flow = flow;
+    if let Some(forced_decision) = forced_decision {
+        decision = forced_decision;
     }
     let layout = layout_label_text(text, &decision);
     let (lines, line_runs) = layout_display_runs(&display_runs, &decision);
@@ -1443,24 +1443,19 @@ fn is_cdxml_imported_right_aligned_attached_label(label: &crate::NodeLabel) -> b
         && label.meta.pointer("/import/cdxml/boundingBox").is_some()
 }
 
-fn is_cdxml_imported_single_character_centered_label(label: &crate::NodeLabel) -> bool {
-    is_cdxml_imported_centered_attached_label(label)
-        && label
-            .source_text
-            .as_deref()
-            .unwrap_or(label.text.as_str())
-            .chars()
-            .count()
-            == 1
-}
-
 fn is_cdxml_imported_centered_attached_label(label: &crate::NodeLabel) -> bool {
     label.attachment.as_deref() == Some("node")
-        && label.align.as_deref() == Some("center")
+        && label
+            .meta
+            .pointer("/import/cdxml/labelDisplay")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|value| value.eq_ignore_ascii_case("Center"))
         && label.meta.pointer("/import/cdxml/boundingBox").is_some()
 }
 
-fn cdxml_imported_label_flow_override(label: &crate::NodeLabel) -> Option<LabelFlow> {
+fn cdxml_imported_label_layout_override(
+    label: &crate::NodeLabel,
+) -> Option<crate::LabelLayoutDecision> {
     let display = label
         .meta
         .pointer("/import/cdxml/labelDisplay")
@@ -1479,15 +1474,46 @@ fn cdxml_imported_label_flow_override(label: &crate::NodeLabel) -> Option<LabelF
                 .pointer("/import/cdxml/labelJustification")
                 .and_then(serde_json::Value::as_str)
         });
-    match display
+    let vertical_display = display
         .filter(|value| matches!(*value, "Above" | "Below"))
-        .or_else(|| alignment.filter(|value| matches!(*value, "Above" | "Below")))
-    {
-        Some("Above") => Some(LabelFlow::StackAbove),
-        Some("Below") => Some(LabelFlow::StackBelow),
-        _ => match display.or(justification).or(alignment) {
-            Some("Left") | Some("Center") => Some(LabelFlow::Forward),
-            Some("Right") => Some(LabelFlow::Reverse),
+        .or_else(|| alignment.filter(|value| matches!(*value, "Above" | "Below")));
+    match vertical_display {
+        Some("Above") => {
+            return Some(crate::LabelLayoutDecision {
+                flow: LabelFlow::StackAbove,
+                anchor: crate::LabelAnchorPolicy::FirstGroupLeadGlyph,
+            });
+        }
+        Some("Below") => {
+            return Some(crate::LabelLayoutDecision {
+                flow: LabelFlow::StackBelow,
+                anchor: crate::LabelAnchorPolicy::FirstGroupLeadGlyph,
+            });
+        }
+        _ => {}
+    }
+    match display {
+        Some("Left") => Some(crate::LabelLayoutDecision {
+            flow: LabelFlow::Forward,
+            anchor: crate::LabelAnchorPolicy::FirstGlyph,
+        }),
+        Some("Right") => Some(crate::LabelLayoutDecision {
+            flow: LabelFlow::Forward,
+            anchor: crate::LabelAnchorPolicy::LastGlyph,
+        }),
+        Some("Center") => Some(crate::LabelLayoutDecision {
+            flow: LabelFlow::Forward,
+            anchor: crate::LabelAnchorPolicy::WholeLabel,
+        }),
+        _ => match justification {
+            Some("Right") => Some(crate::LabelLayoutDecision {
+                flow: LabelFlow::Reverse,
+                anchor: crate::LabelAnchorPolicy::OriginalFirstGroup,
+            }),
+            Some("Left") | Some("Center") => Some(crate::LabelLayoutDecision {
+                flow: LabelFlow::Forward,
+                anchor: crate::LabelAnchorPolicy::FirstGlyph,
+            }),
             _ => None,
         },
     }
@@ -1533,7 +1559,6 @@ pub(super) fn refreshed_attached_node_label(
     if !is_attached_node_label(label)
         && !is_source_measured_attached_label(label)
         && !is_cdxml_imported_right_aligned_attached_label(label)
-        && !is_cdxml_imported_single_character_centered_label(label)
         && !is_cdxml_imported_centered_attached_label(label)
     {
         return None;
@@ -1568,8 +1593,8 @@ pub(super) fn refreshed_attached_node_label(
         decision.flow = LabelFlow::Reverse;
         decision.anchor = crate::LabelAnchorPolicy::OriginalFirstGroup;
     }
-    if let Some(flow) = cdxml_imported_label_flow_override(label) {
-        decision.flow = flow;
+    if let Some(override_decision) = cdxml_imported_label_layout_override(label) {
+        decision = override_decision;
     }
     let display_runs = display_runs_from_source_runs(&source_runs, &font_family, font_size, &fill);
     let (anchor_offset, box_value) =
@@ -1614,10 +1639,10 @@ pub(super) fn refreshed_attached_node_label(
         false,
         false,
         layout_as_grouped_attached_label,
-        Some(decision.flow.clone()),
+        Some(decision.clone()),
         glyph_clip_profile.unwrap_or_else(|| glyph_clip_profile_for_label(label)),
     );
-    if is_cdxml_imported_single_character_centered_label(label) {
+    if is_cdxml_imported_centered_attached_label(label) {
         if let Some(mut bbox) = next_label.bbox() {
             let delta_x = round2(local_anchor[0] - (bbox[0] + bbox[2]) * 0.5);
             bbox[0] = round2(bbox[0] + delta_x);
