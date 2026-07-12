@@ -35,6 +35,12 @@ Stable operations include:
 - `close`
 - `exit`
 
+`execute` accepts normal command objects/arrays and
+`chemcore.command-transaction.v1` envelopes. Put transaction fields directly in
+the execute request, or pass a nested `transaction` object. Use transaction
+`dryRun:true` to get execution, diff, and scope validation without mutating the
+open session document.
+
 ## Script Helper
 
 Use `scripts/session_jsonl.py`:

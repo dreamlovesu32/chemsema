@@ -7,7 +7,8 @@ chemcore-cli new commands.json --out output.ccjs --results results.json --docume
 chemcore-cli run input.cdxml commands.json --out edited.cdxml --results results.json --inspect-after summary,objects,molecules --pretty
 ```
 
-The command input is a JSON object or array. Use `-` to read JSON from stdin.
+The command input is a JSON object, array, or
+`chemcore.command-transaction.v1` envelope. Use `-` to read JSON from stdin.
 The same command JSON is accepted by JSONL `session` operation `execute`.
 
 ## Reports
@@ -21,6 +22,42 @@ Results include:
 - document hash and revision transitions
 
 Use `--inspect-after <include>` only when a structural snapshot is needed.
+
+## Transactions
+
+Use a transaction envelope when an edit must prove it stayed in scope:
+
+```json
+{
+  "schema": "chemcore.command-transaction.v1",
+  "preconditions": {
+    "expectedDocumentHash": "64-char-sha256",
+    "requiredSelectors": ["object:obj_editor_molecule", "node:n_1"]
+  },
+  "scope": {
+    "editableTargets": ["object:obj_editor_molecule"],
+    "includeReferencedResources": true,
+    "allowCreate": false,
+    "allowDelete": false,
+    "forbidChangesOutsideScope": true
+  },
+  "options": { "atomic": true, "dryRun": true },
+  "commands": [
+    { "type": "replace-node-label", "node_id": "n_1", "label": "OMe" }
+  ],
+  "postconditions": [
+    { "type": "document-valid" },
+    { "type": "no-unexpected-changes" }
+  ]
+}
+```
+
+- `dryRun:true` reports execution, diff, allowed selectors, and unexpected
+  changes without mutating or saving the document.
+- `editableTargets` is the only modification scope. Seeing nearby objects in a
+  bundle/capture does not grant permission to edit them.
+- Session `execute` accepts the transaction fields directly or under
+  `transaction`.
 
 ## Add Bond
 

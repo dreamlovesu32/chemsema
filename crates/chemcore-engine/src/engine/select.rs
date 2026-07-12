@@ -196,6 +196,7 @@ enum SelectionMoveMode {
     },
 }
 
+#[derive(Clone)]
 pub(super) struct SelectionMoveDrag {
     start: Point,
     node_originals: Vec<NodeMoveOriginal>,
@@ -206,6 +207,7 @@ pub(super) struct SelectionMoveDrag {
     changed: bool,
 }
 
+#[derive(Clone)]
 pub(super) struct SelectionRotateDrag {
     center: Point,
     start_angle: f64,
@@ -297,6 +299,7 @@ struct ObjectResizeOriginal {
     object: SceneObject,
 }
 
+#[derive(Clone)]
 pub(super) struct SelectionResizeDrag {
     handle: SelectionResizeHandle,
     bounds: AxisBounds,

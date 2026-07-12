@@ -7,6 +7,7 @@ shorter and stricter than the user guides.
 - [Selectors v1](./selector-v1.md)
 - [JSONL Session v1](./session-jsonl-v1.md)
 - [Command Script v1](./command-script-v1.md)
+- [Command Transaction v1](./command-transaction-v1.md)
 - [Capture Manifest v1](./capture-manifest-v1.md)
 - [Agent Bundle v1](./agent-bundle-v1.md)
 - [Document Diff v1](./document-diff-v1.md)

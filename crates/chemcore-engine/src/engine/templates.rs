@@ -23,6 +23,7 @@ enum TemplateAnchor {
     },
 }
 
+#[derive(Clone)]
 pub(super) struct TemplateDrag {
     start: Point,
     current: Point,

@@ -67,6 +67,7 @@ are useful, but automation should prefer canonical names.
 - [Selectors](./selector-v1.md)
 - [JSONL Session](./session-jsonl-v1.md)
 - [Command Scripts](./command-script-v1.md)
+- [Command Transactions](./command-transaction-v1.md)
 - [Capture Manifest](./capture-manifest-v1.md)
 - [Agent Bundle](./agent-bundle-v1.md)
 - [Document Diff](./document-diff-v1.md)

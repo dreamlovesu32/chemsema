@@ -250,6 +250,7 @@ mod output;
 mod session;
 mod target;
 mod targets;
+mod transaction;
 
 #[cfg(test)]
 mod tests;
@@ -263,6 +264,7 @@ pub(crate) use diff::diff_command;
 pub(crate) use session::session_command;
 pub(crate) use target::{add_target_arg, parse_target_selector};
 pub(crate) use targets::targets_command;
+pub(crate) use transaction::{execute_transaction_script, is_transaction_script};
 
 use bundle::*;
 use capture::*;

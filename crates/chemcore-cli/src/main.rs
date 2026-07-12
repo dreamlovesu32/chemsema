@@ -651,13 +651,28 @@ fn new_command(args: &[String]) -> Result<(), String> {
             },
         }),
     );
-    write_optional_document_json(
-        &mut execution,
-        &engine,
-        document_json_output.as_deref(),
-        "documentJson",
-    );
-    if execution.ok {
+    if script_execution_is_dry_run(&execution) {
+        set_dry_run_document_json_skip(&mut execution, document_json_output.as_deref());
+    } else {
+        write_optional_document_json(
+            &mut execution,
+            &engine,
+            document_json_output.as_deref(),
+            "documentJson",
+        );
+    }
+    if execution.ok && script_execution_is_dry_run(&execution) {
+        set_report_field(
+            &mut execution.report,
+            "save",
+            json!({
+                "ok": true,
+                "skipped": true,
+                "reason": "transaction dryRun=true",
+                "warning": "Dry-run transactions do not write document output.",
+            }),
+        );
+    } else if execution.ok {
         match write_engine_output(&engine, &output, save_format.as_deref()) {
             Ok(()) => set_report_field(
                 &mut execution.report,
@@ -1011,14 +1026,29 @@ fn run_command_script(args: &[String]) -> Result<(), String> {
             "output": output_io,
         }),
     );
-    write_optional_document_json(
-        &mut execution,
-        &engine,
-        document_json_output.as_deref(),
-        "documentJson",
-    );
+    if script_execution_is_dry_run(&execution) {
+        set_dry_run_document_json_skip(&mut execution, document_json_output.as_deref());
+    } else {
+        write_optional_document_json(
+            &mut execution,
+            &engine,
+            document_json_output.as_deref(),
+            "documentJson",
+        );
+    }
 
-    if execution.ok {
+    if execution.ok && script_execution_is_dry_run(&execution) {
+        set_report_field(
+            &mut execution.report,
+            "save",
+            json!({
+                "ok": true,
+                "skipped": true,
+                "reason": "transaction dryRun=true",
+                "warning": "Dry-run transactions do not write document output.",
+            }),
+        );
+    } else if execution.ok {
         if let Some(output) = output.as_deref() {
             match write_engine_output(&engine, output, save_format.as_deref()) {
                 Ok(()) => set_report_field(
@@ -1102,7 +1132,47 @@ fn execute_command_file(
     inspect_after: Option<&[String]>,
     continue_on_error: bool,
 ) -> ScriptExecution {
-    let commands = match read_command_values(script) {
+    let value = match read_command_script_value(script) {
+        Ok(value) => value,
+        Err(error) => {
+            let script_before_hash = document_hash(engine);
+            let script_before_revision = engine.revision();
+            let mut report = json!({
+                "ok": false,
+                "commandCount": 0,
+                "executedCount": 0,
+                "failedCount": 0,
+                "failedIndex": null,
+                "failedIndices": [],
+                "continueOnError": continue_on_error,
+                "commands": [],
+                "error": {
+                    "stage": "read-script",
+                    "message": error,
+                },
+            });
+            append_script_document_summary(
+                &mut report,
+                script_before_hash,
+                script_before_revision,
+                engine,
+            );
+            return ScriptExecution {
+                ok: false,
+                error_message: Some(error.clone()),
+                report,
+            };
+        }
+    };
+    if agent::is_transaction_script(&value) {
+        let transaction = agent::execute_transaction_script(engine, &value);
+        return ScriptExecution {
+            ok: transaction.ok,
+            report: transaction.report,
+            error_message: transaction.error_message,
+        };
+    }
+    let commands = match command_values_from_script_value(value) {
         Ok(commands) => commands,
         Err(error) => {
             let script_before_hash = document_hash(engine);
@@ -1589,6 +1659,31 @@ fn write_optional_document_json(
     }
 }
 
+fn script_execution_is_dry_run(execution: &ScriptExecution) -> bool {
+    execution
+        .report
+        .pointer("/transaction/dryRun")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+}
+
+fn set_dry_run_document_json_skip(execution: &mut ScriptExecution, path: Option<&str>) {
+    let Some(path) = path else {
+        return;
+    };
+    set_report_field(
+        &mut execution.report,
+        "documentJson",
+        json!({
+            "ok": true,
+            "path": path,
+            "skipped": true,
+            "reason": "transaction dryRun=true",
+            "warning": "Dry-run transactions do not write document JSON output.",
+        }),
+    );
+}
+
 fn command_type_name(command: &Value) -> Value {
     command
         .get("type")
@@ -1839,7 +1934,7 @@ fn write_engine_output_to_stdout(engine: &Engine, format: &str) -> Result<(), St
     }
 }
 
-fn read_command_values(path: &str) -> Result<Vec<Value>, String> {
+fn read_command_script_value(path: &str) -> Result<Value, String> {
     let text = if path == "-" {
         let mut input = String::new();
         io::stdin()
@@ -1850,8 +1945,15 @@ fn read_command_values(path: &str) -> Result<Vec<Value>, String> {
         fs::read_to_string(path).map_err(|error| format!("Failed to read {path}: {error}"))?
     };
     let text = text.trim_start_matches('\u{feff}');
-    let value: Value = serde_json::from_str(text)
-        .map_err(|error| format!("Invalid command JSON in {path}: {error}"))?;
+    serde_json::from_str(text).map_err(|error| format!("Invalid command JSON in {path}: {error}"))
+}
+
+#[cfg(test)]
+fn read_command_values(path: &str) -> Result<Vec<Value>, String> {
+    command_values_from_script_value(read_command_script_value(path)?)
+}
+
+fn command_values_from_script_value(value: Value) -> Result<Vec<Value>, String> {
     match value {
         Value::Array(commands) => Ok(commands),
         Value::Object(_) => Ok(vec![value]),
@@ -2357,6 +2459,14 @@ mod tests {
             protocol::schema_topic_key("command-script"),
             Some("commandScript")
         );
+        assert_eq!(
+            protocol::schema_topic_key("command-transaction"),
+            Some("commandScript")
+        );
+        assert_eq!(
+            protocol::schema_topic_key("transaction"),
+            Some("commandScript")
+        );
     }
 
     #[test]
@@ -2384,6 +2494,7 @@ mod tests {
         let capture_doc = include_str!("../../../docs/protocol/capture-manifest-v1.md");
         let bundle_doc = include_str!("../../../docs/protocol/agent-bundle-v1.md");
         let diff_doc = include_str!("../../../docs/protocol/document-diff-v1.md");
+        let transaction_doc = include_str!("../../../docs/protocol/command-transaction-v1.md");
         let error_doc = include_str!("../../../docs/protocol/error-model-v1.md");
         let entrypoints_doc = include_str!("../../../docs/protocol/entrypoints-v1.md");
 
@@ -2393,6 +2504,7 @@ mod tests {
         assert!(capture_doc.contains(protocol::CAPTURE_MANIFEST_VERSION));
         assert!(bundle_doc.contains(protocol::AGENT_BUNDLE_SCHEMA_VERSION));
         assert!(diff_doc.contains(protocol::DOCUMENT_DIFF_SCHEMA_VERSION));
+        assert!(transaction_doc.contains(protocol::COMMAND_TRANSACTION_SCHEMA_VERSION));
         assert!(error_doc.contains(protocol::ERROR_MODEL_VERSION));
         assert!(entrypoints_doc.contains(protocol::ENTRYPOINTS_SCHEMA_VERSION));
     }
@@ -2770,5 +2882,113 @@ mod tests {
             .map(|object| object["transform"]["translate"][0].as_f64().expect("x"))
             .collect::<Vec<_>>();
         assert_eq!(text_x, vec![10.0, 10.0]);
+    }
+
+    #[test]
+    fn transaction_dry_run_reports_diff_without_mutating_engine() {
+        let mut engine = Engine::new();
+        engine
+            .execute_command_json(
+                &json!({
+                    "type": "add-bond",
+                    "begin": { "x": 20.0, "y": 20.0 },
+                    "end": { "x": 60.0, "y": 20.0 },
+                    "order": 1,
+                    "variant": "single"
+                })
+                .to_string(),
+            )
+            .unwrap();
+        let before_hash = document_hash(&engine).unwrap();
+        let before_revision = engine.revision();
+
+        let execution = agent::execute_transaction_script(
+            &mut engine,
+            &json!({
+                "schema": "chemcore.command-transaction.v1",
+                "preconditions": {
+                    "expectedDocumentHash": before_hash,
+                    "expectedRevision": before_revision,
+                    "requiredSelectors": ["object:obj_editor_molecule", "node:n_1"]
+                },
+                "scope": {
+                    "editableTargets": ["object:obj_editor_molecule"],
+                    "includeDescendants": true,
+                    "includeReferencedResources": true,
+                    "allowCreate": false,
+                    "allowDelete": false,
+                    "forbidChangesOutsideScope": true
+                },
+                "options": { "atomic": true, "dryRun": true },
+                "commands": [
+                    { "type": "replace-node-label", "node_id": "n_1", "label": "OMe" }
+                ],
+                "postconditions": [
+                    { "type": "document-valid" },
+                    { "type": "no-unexpected-changes" },
+                    { "type": "selector-exists", "selector": "object:obj_editor_molecule" }
+                ]
+            }),
+        );
+
+        assert!(execution.ok);
+        assert_eq!(execution.report["transaction"]["dryRun"], true);
+        assert_eq!(execution.report["transaction"]["applied"], false);
+        assert_eq!(document_hash(&engine).unwrap(), before_hash);
+        assert_eq!(engine.revision(), before_revision);
+        assert!(execution.report["diff"]["nodes"]["updated"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("node:n_1")));
+        assert_eq!(execution.report["scope"]["unexpectedChanges"], json!([]));
+    }
+
+    #[test]
+    fn transaction_rejects_out_of_scope_changes_and_rolls_back() {
+        let mut engine = Engine::new();
+        engine
+            .execute_command_json(
+                &json!({
+                    "type": "add-bond",
+                    "begin": { "x": 20.0, "y": 20.0 },
+                    "end": { "x": 60.0, "y": 20.0 },
+                    "order": 1,
+                    "variant": "single"
+                })
+                .to_string(),
+            )
+            .unwrap();
+        let before_hash = document_hash(&engine).unwrap();
+
+        let execution = agent::execute_transaction_script(
+            &mut engine,
+            &json!({
+                "schema": "chemcore.command-transaction.v1",
+                "scope": {
+                    "editableTargets": ["object:obj_editor_molecule"],
+                    "includeReferencedResources": true,
+                    "allowCreate": false,
+                    "allowDelete": false,
+                    "forbidChangesOutsideScope": true
+                },
+                "commands": [
+                    {
+                        "type": "add-text",
+                        "position": { "x": 100.0, "y": 100.0 },
+                        "text": "outside"
+                    }
+                ],
+                "postconditions": [{ "type": "no-unexpected-changes" }]
+            }),
+        );
+
+        assert!(!execution.ok);
+        assert_eq!(execution.report["error"]["stage"], "scope");
+        assert_eq!(document_hash(&engine).unwrap(), before_hash);
+        assert!(execution.report["scope"]["unexpectedChanges"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|change| change["section"] == "objects" && change["action"] == "created"));
     }
 }

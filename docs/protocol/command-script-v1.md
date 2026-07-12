@@ -7,8 +7,10 @@ chemcore-cli new commands.json --out output.cdxml --results results.json
 chemcore-cli run input.cdxml commands.json --out edited.cdxml --results results.json
 ```
 
-The input may be a single JSON object command or an array of command objects.
-Use `-` instead of a file path to read the command JSON from stdin.
+The input may be a single JSON object command, an array of command objects, or
+the optional transaction envelope defined in
+[Command Transaction v1](./command-transaction-v1.md). Use `-` instead of a
+file path to read the command JSON from stdin.
 
 ## Stable Report Fields
 

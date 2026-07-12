@@ -54,7 +54,9 @@ git, temporary files, or their own logs.
 
 ## Selection State
 
-`execute` accepts the same command JSON as one-shot `new` and `run`.
+`execute` accepts the same command JSON as one-shot `new` and `run`, including
+`chemcore.command-transaction.v1` envelopes directly in the request body or
+under a `transaction` field.
 Selection state persists in the session until another command changes it, the
 document is closed, or the process exits. Use `select-targets`, `select-all`,
 and `clear-selection` before GUI-style selection commands such as
@@ -64,6 +66,10 @@ and `clear-selection` before GUI-style selection commands such as
 For stateless edits that should not depend on current selection, use explicit
 target commands such as `move-targets`, `rotate-targets`, `scale-targets`, and
 `delete-targets`.
+
+Transaction requests execute on a cloned engine state first. They may declare
+hash/revision preconditions, editable scope, `dryRun`, and postconditions, and
+they report structured diff plus unexpected scope changes.
 
 ## File Outputs
 

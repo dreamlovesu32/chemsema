@@ -87,7 +87,7 @@ chemcore-cli about [--pretty] [--out <path>]
 chemcore-cli capabilities [--pretty] [--out <path>]
 chemcore-cli doctor [--pretty] [--out <path>]
 chemcore-cli examples [basic|capture-copy|all] [--pretty] [--out <path>]
-chemcore-cli schema [protocol|commands|targets|capture|context|bundle|detail|diff|guide|copy|json-output|command-script|all] [--pretty] [--out <path>]
+chemcore-cli schema [protocol|commands|targets|capture|context|bundle|detail|diff|guide|copy|json-output|command-script|command-transaction|all] [--pretty] [--out <path>]
 chemcore-cli inspect <input> [--include summary,objects,molecules,resources,styles] [--out <path>] [--pretty]
 chemcore-cli targets <input> [--out <path>] [--pretty]
 chemcore-cli context <input> --target <selector> [--target <selector> ...] [--targets <selector;selector>] [--radius <pt>] [--out <context.json>] [--capture-out <path.svg|path.png>] [--scale <n>|--width <px>|--height <px>] [--pretty]
@@ -151,6 +151,12 @@ source 候选既合法又能渲染回可见文本，反向报告会推荐
 - `manifest.json` 明确区分 `editableScope` 和 `visualScope`。视觉上下文可以包含附近的非目标对象；只有 editable scope 是允许修改的范围。
 - `context.json` 保留 `selectionBoxRelation` 和 `isTarget`，调用方可以区分明确选中的对象和只是出现在截图里的邻居。
 - `diff` 按 object/resource/style/node/bond 身份比较两个可编辑文档，报告创建、更新、删除和字段级变化。
+
+事务式编辑：
+
+- `new`、`run` 和 JSONL session `execute` 除了普通 command object/array，也接受 `chemcore.command-transaction.v1` envelope。
+- Transaction 会检查可选的 document hash/revision 前置条件，在 clone 的 engine state 上执行命令，用结构化 diff 校验 `scope.editableTargets`，全部通过后才替换原状态。
+- `dryRun: true` 会报告执行结果、diff、允许 selector 和 unexpected changes，但不会修改当前打开的文档，也不会写出文档输出文件。
 
 导入缓存规则：
 

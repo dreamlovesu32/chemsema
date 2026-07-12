@@ -313,6 +313,16 @@ pub(super) fn session_execute(
     document: &mut SessionDocument,
     request: &Value,
 ) -> Result<Value, String> {
+    if let Some(transaction) = request.get("transaction").filter(|value| value.is_object()) {
+        let execution = execute_transaction_script(&mut document.engine, transaction);
+        document.refresh_document()?;
+        return Ok(execution.report);
+    }
+    if is_transaction_script(request) {
+        let execution = execute_transaction_script(&mut document.engine, request);
+        document.refresh_document()?;
+        return Ok(execution.report);
+    }
     let commands = session_request_commands(request)?;
     let continue_on_error =
         request_bool(request, &["continueOnError", "continue-on-error"])?.unwrap_or(false);

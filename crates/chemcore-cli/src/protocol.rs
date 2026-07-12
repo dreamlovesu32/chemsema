@@ -11,6 +11,7 @@ pub(crate) const SESSION_PROTOCOL_VERSION: &str = "chemcore-cli-session-jsonl.v1
 pub(crate) const CAPTURE_MANIFEST_VERSION: &str = "chemcore-cli-capture-manifest.v1";
 pub(crate) const AGENT_BUNDLE_SCHEMA_VERSION: &str = "chemcore.agent.bundle.v1";
 pub(crate) const DOCUMENT_DIFF_SCHEMA_VERSION: &str = "chemcore.document.diff.v1";
+pub(crate) const COMMAND_TRANSACTION_SCHEMA_VERSION: &str = "chemcore.command-transaction.v1";
 pub(crate) const ERROR_MODEL_VERSION: &str = "chemcore-cli-error.v1";
 pub(crate) const ENTRYPOINTS_SCHEMA_VERSION: &str = "chemcore.entrypoints.v1";
 
@@ -75,7 +76,7 @@ const COMMAND_SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "schema",
         summary: "Return machine-readable command, target, and capture schemas.",
-        usage: "chemcore-cli schema [protocol|commands|targets|capture|context|bundle|detail|diff|guide|copy|json-output|command-script|all] [--pretty] [--out <path>]",
+        usage: "chemcore-cli schema [protocol|commands|targets|capture|context|bundle|detail|diff|guide|copy|json-output|command-script|command-transaction|all] [--pretty] [--out <path>]",
         example: "chemcore-cli schema capture --pretty",
     },
     CommandSpec {
@@ -369,7 +370,7 @@ fn command_error_suggestions(
         })],
         _ if message.contains("Unknown schema topic") => vec![json!({
             "action": "choose_schema_topic",
-            "accepted": ["protocol", "commands", "targets", "bounds", "capture", "context", "bundle", "detail", "diff", "guide", "copy", "session", "label-query", "json-output", "command-script", "all"],
+            "accepted": ["protocol", "commands", "targets", "bounds", "capture", "context", "bundle", "detail", "diff", "guide", "copy", "session", "label-query", "json-output", "command-script", "command-transaction", "all"],
             "example": "chemcore-cli schema capture --pretty",
         })],
         _ => spec
@@ -520,6 +521,7 @@ fn protocol_schemas_json() -> Value {
             "captureManifest": CAPTURE_MANIFEST_VERSION,
             "agentBundle": AGENT_BUNDLE_SCHEMA_VERSION,
             "documentDiff": DOCUMENT_DIFF_SCHEMA_VERSION,
+            "commandTransaction": COMMAND_TRANSACTION_SCHEMA_VERSION,
             "errorModel": ERROR_MODEL_VERSION,
             "entrypoints": ENTRYPOINTS_SCHEMA_VERSION,
             "compatibility": "v1 fields are intended to remain backward compatible throughout the 1.0 beta line unless explicitly marked experimental."
@@ -620,6 +622,15 @@ fn protocol_schemas_json() -> Value {
         },
         "commandScript": {
             "input": "A JSON object command or an array of command objects.",
+            "transactionEnvelope": {
+                "schema": COMMAND_TRANSACTION_SCHEMA_VERSION,
+                "description": "Optional envelope accepted by new/run and JSONL session execute. It declares preconditions, editable scope, atomic/dryRun options, commands, and postconditions.",
+                "preconditions": ["expectedDocumentHash", "expectedRevision", "requiredSelectors"],
+                "scope": ["editableTargets", "includeDescendants", "includeReferencedResources", "allowCreate", "allowDelete", "forbidChangesOutsideScope"],
+                "options": ["atomic", "dryRun", "continueOnError"],
+                "postconditions": ["document-valid", "no-unexpected-changes", "selector-exists"],
+                "report": "Transaction reports include preconditions, execution, structured document diff, scope allowedSelectors/unexpectedChanges, postconditions, and transaction.applied."
+            },
             "stdin": "Use '-' for commands.json to read JSON from stdin.",
             "audit": "new/run results are lightweight by default. They include top-level and per-command document hash/revision transitions plus selector-form created/updated/deleted summaries.",
             "historyPolicy": "The CLI does not maintain an undo stack or per-step snapshot history. Agents should maintain history with git, temp files, or their own logs.",
@@ -797,8 +808,9 @@ fn protocol_versions_value() -> Value {
         "selector": SELECTOR_PROTOCOL_VERSION,
         "session": SESSION_PROTOCOL_VERSION,
         "captureManifest": CAPTURE_MANIFEST_VERSION,
-        "agentBundle": AGENT_BUNDLE_SCHEMA_VERSION,
-        "documentDiff": DOCUMENT_DIFF_SCHEMA_VERSION,
+            "agentBundle": AGENT_BUNDLE_SCHEMA_VERSION,
+            "documentDiff": DOCUMENT_DIFF_SCHEMA_VERSION,
+            "commandTransaction": COMMAND_TRANSACTION_SCHEMA_VERSION,
         "errorModel": ERROR_MODEL_VERSION,
         "entrypoints": ENTRYPOINTS_SCHEMA_VERSION,
     })
@@ -1221,7 +1233,7 @@ pub(crate) fn schema_command(args: &[String]) -> Result<(), String> {
         json!({ "ok": true, "topic": topic, "schema": schema })
     } else {
         return Err(format!(
-            "Unknown schema topic '{topic}'. Expected protocol, commands, targets, bounds, capture, context, bundle, detail, diff, guide, copy, session, label-query, json-output, command-script, or all."
+            "Unknown schema topic '{topic}'. Expected protocol, commands, targets, bounds, capture, context, bundle, detail, diff, guide, copy, session, label-query, json-output, command-script, command-transaction, or all."
         ));
     };
     write_json_value(value, output.as_deref(), pretty)
@@ -1244,6 +1256,7 @@ pub(crate) fn schema_topic_key(topic: &str) -> Option<&'static str> {
         "json-output" | "jsonOutput" | "stdout" | "output" | "pretty" => Some("jsonOutput"),
         "examples" => Some("commandScript"),
         "command-script" | "commandScript" | "commands-json" => Some("commandScript"),
+        "command-transaction" | "transaction" | "transaction-script" => Some("commandScript"),
         _ => None,
     }
 }

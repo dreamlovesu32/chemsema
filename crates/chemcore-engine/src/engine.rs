@@ -279,6 +279,7 @@ pub struct TextEditLayoutRequest {
     pub selection: Option<TextEditSelection>,
 }
 
+#[derive(Clone)]
 pub struct Engine {
     state: EngineState,
     drag: Option<DragState>,

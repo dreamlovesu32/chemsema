@@ -103,7 +103,7 @@ chemcore-cli about [--pretty] [--out <path>]
 chemcore-cli capabilities [--pretty] [--out <path>]
 chemcore-cli doctor [--pretty] [--out <path>]
 chemcore-cli examples [basic|capture-copy|all] [--pretty] [--out <path>]
-chemcore-cli schema [protocol|commands|targets|capture|context|bundle|detail|diff|guide|copy|json-output|command-script|all] [--pretty] [--out <path>]
+chemcore-cli schema [protocol|commands|targets|capture|context|bundle|detail|diff|guide|copy|json-output|command-script|command-transaction|all] [--pretty] [--out <path>]
 chemcore-cli inspect <input> [--include summary,objects,molecules,resources,styles] [--out <path>] [--pretty]
 chemcore-cli targets <input> [--out <path>] [--pretty]
 chemcore-cli context <input> --target <selector> [--target <selector> ...] [--targets <selector;selector>] [--radius <pt>] [--out <context.json>] [--capture-out <path.svg|path.png>] [--scale <n>|--width <px>|--height <px>] [--pretty]
@@ -170,6 +170,12 @@ Object-grounded bundle and diff:
 - `manifest.json` separates `editableScope` from `visualScope`. Visual context can contain nearby non-target objects; only editable scope is authorized for modification.
 - `context.json` keeps `selectionBoxRelation` and `isTarget`, so callers can tell selected objects from merely visible neighbors.
 - `diff` compares two editable documents by object/resource/style/node/bond identity and reports created, updated, deleted, and field-level changes.
+
+Transactional edits:
+
+- `new`, `run`, and JSONL session `execute` accept `chemcore.command-transaction.v1` envelopes in addition to plain command objects and command arrays.
+- Transactions check optional document hash/revision preconditions, run commands on a cloned engine state, validate the structured diff against `scope.editableTargets`, and only apply the clone when checks pass.
+- `dryRun: true` reports execution, diff, allowed selectors, and unexpected changes without mutating the open document or writing document outputs.
 
 Import cache policy:
 

@@ -865,3 +865,75 @@ fn session_execute_selection_commands_drive_arrange() {
     let _ = fs::remove_file(input);
     let _ = fs::remove_file(output);
 }
+
+#[test]
+fn session_execute_accepts_transaction_envelope() {
+    let mut engine = Engine::new();
+    engine
+        .execute_command_json(
+            &json!({
+                "type": "add-bond",
+                "begin": { "x": 20.0, "y": 20.0 },
+                "end": { "x": 60.0, "y": 20.0 },
+                "order": 1,
+                "variant": "single"
+            })
+            .to_string(),
+        )
+        .expect("add bond");
+    let input = std::env::temp_dir().join(format!(
+        "chemcore-cli-session-transaction-input-{}.ccjs",
+        std::process::id()
+    ));
+    fs::write(&input, engine.document_json().expect("document json")).expect("write input");
+
+    let mut session = None;
+    let (opened, exit) = handle_session_request(
+        &mut session,
+        json!({
+            "id": 1,
+            "op": "open",
+            "input": input.to_string_lossy()
+        }),
+    );
+    assert!(!exit);
+    assert_eq!(opened["ok"], true);
+    let before_revision = opened["result"]["revision"].as_u64().expect("revision");
+
+    let (executed, exit) = handle_session_request(
+        &mut session,
+        json!({
+            "id": 2,
+            "op": "execute",
+            "schema": "chemcore.command-transaction.v1",
+            "preconditions": {
+                "expectedRevision": before_revision,
+                "requiredSelectors": ["object:obj_editor_molecule", "node:n_1"]
+            },
+            "scope": {
+                "editableTargets": ["object:obj_editor_molecule"],
+                "includeReferencedResources": true,
+                "allowCreate": false,
+                "allowDelete": false,
+                "forbidChangesOutsideScope": true
+            },
+            "commands": [
+                { "type": "replace-node-label", "node_id": "n_1", "label": "OMe" }
+            ],
+            "postconditions": [
+                { "type": "document-valid" },
+                { "type": "no-unexpected-changes" }
+            ]
+        }),
+    );
+    assert!(!exit);
+    assert_eq!(executed["ok"], true);
+    assert_eq!(executed["result"]["transaction"]["applied"], true);
+    assert_eq!(
+        executed["result"]["diff"]["nodes"]["updated"],
+        json!(["node:n_1"])
+    );
+    assert_eq!(executed["result"]["scope"]["unexpectedChanges"], json!([]));
+
+    let _ = fs::remove_file(input);
+}

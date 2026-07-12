@@ -34,7 +34,9 @@ Use this order for document work:
 6. `capture` for deterministic SVG/PNG crops.
 7. `bundle` when one selector needs detail, context, capture, editable subset,
    identity map, and manifest artifacts together.
-8. `new` or `run` with command scripts for edits.
+8. `new` or `run` with command scripts for edits; use
+   `chemcore.command-transaction.v1` envelopes for scoped dry-runs or atomic
+   guarded edits.
 9. `diff` to compare before/after editable documents by structured IDs.
 10. `convert` or `export` for whole-document output, or target-only editable
    subset output with `--target`/`--targets`.

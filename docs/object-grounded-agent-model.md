@@ -18,7 +18,7 @@ agent one shared selector across:
 - `context`
 - `capture`
 - `bundle`
-- `run` or session `execute`
+- transactional `run` or session `execute`
 - `diff`
 - target-only `convert`/`export`
 
@@ -40,6 +40,18 @@ objects that are visible inside the selection box or expanded neighborhood.
 Those objects remain read-only unless they are explicitly part of the target
 selectors. `context.json` preserves `selectionBoxRelation` and `isTarget` so
 callers can distinguish target content from visible context.
+
+## Transaction Boundary
+
+`chemcore.command-transaction.v1` is the mutation boundary for object-grounded
+agents. A transaction declares the document hash/revision it believes it is
+editing, the selectors it is allowed to modify, whether creation/deletion is
+allowed, and postconditions such as `document-valid` and
+`no-unexpected-changes`.
+
+Transactions execute on a cloned engine state first. The structured diff is then
+checked against editable scope. Only a passing non-dry-run transaction replaces
+the original state.
 
 ## CML Boundary
 
