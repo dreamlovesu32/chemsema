@@ -1,6 +1,6 @@
 [package]
 name = "chemcore-cli"
-version = "1.0.0-beta.6"
+version = "1.0.0-beta.7"
 description = "Headless ChemCore command-line tools for document inspection, conversion, export, and command scripts."
 edition.workspace = true
 license.workspace = true

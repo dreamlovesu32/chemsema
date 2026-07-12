@@ -2,6 +2,41 @@
 
 ChemCore 的公开变更记录会保存在这里。
 
+## 1.0.0-beta.7
+
+对象级 agent 工作流、事务式 CLI 编辑、结构化文档 diff，以及围绕可编辑化学文档的
+公开定位调整。
+
+- 新增 `chemcore-cli` Object-Grounded Agent Layer。新的 `bundle` 命令可以把一个
+  target selector 打包成完整工作单元，包含 `target.json`、`context.json`、
+  确定性的 `capture.png`/`capture.svg`、只包含目标范围的可编辑子文档、
+  `identity-map.json`、`provenance.json`，以及明确区分 editable scope 和
+  visual scope 的 manifest。
+- 新增结构化文档 diff：`chemcore-cli diff` 会按 object、resource、style、
+  molecule node、molecule bond 和字段路径身份比较 ChemCore 文档，而不是做原始
+  JSON 文本 diff。这样 before/after 报告可以用于 agent 审计、回归测试和人工确认。
+- 新增事务式 command-script 支持。transaction envelope 可以声明期望的 document
+  hash/revision、必需 selector、可编辑范围、是否允许创建/删除、dry-run 行为、
+  atomic 执行，以及 document-valid、selector-exists、no-unexpected-changes 等
+  postconditions。
+- 扩展 JSONL session 工作流，支持 `bundle` 和 transaction execution。长驻 agent
+  session 可以在同一个已载入文档上完成检查、打包、dry-run、编辑和验证，不需要
+  反复解析文件或切换协议。
+- 增强 bundle provenance 和 selector identity tracking。provenance 会记录隐私友好
+  的源文件元数据、source document hash、source bounds、visual bounds、子文档平移、
+  editable subset 计数和 identity-map 摘要，默认不把本地绝对路径写入持久 artifact。
+- 新增真实对象级 workflow 示例：
+  `examples/agent/07-object-grounded-edit`。该示例基于 `figure1.cdxml`，对一个真实
+  molecule object 执行 bundle、before/after capture、dry-run transaction、受范围
+  约束的 node-label 修改、结构化 diff、完整文档导出、target-only 可编辑导出，并
+  生成 `acceptance.json` 验收报告。
+- 更新 CLI protocol 文档、runtime schema/capabilities discovery、command-script 与
+  session 指南、中英文 CLI guide，以及 ChemCore CLI skill 参考，使新 bundle、diff、
+  transaction、identity-map 和 provenance 契约都能被机器调用方发现。
+- 重构中英文 README 的前部定位，把 ChemCore 更明确地描述为可编辑化学文档平台，
+  并突出同一套对象身份如何贯穿可视化编辑、Office 工作流、CLI 检查、受范围约束的
+  agent 修改、验证和可编辑导出。
+
 ## 1.0.0-beta.6
 
 鸿蒙 PC 端基础、GUI 一致性回归、agent/CLI 工作流扩展，以及新一轮编辑器保真度修复。

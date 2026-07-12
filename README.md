@@ -4,15 +4,117 @@
 
 [![CI](https://github.com/dreamlovesu32/chemcore/actions/workflows/ci.yml/badge.svg)](https://github.com/dreamlovesu32/chemcore/actions/workflows/ci.yml)
 [![Demo](https://img.shields.io/badge/demo-GitHub%20Pages-2ea44f)](https://dreamlovesu32.github.io/chemcore/)
-[![Windows installer](https://img.shields.io/badge/Windows-installer-0078d4)](https://github.com/dreamlovesu32/chemcore/releases/download/v1.0.0-beta.6/Chemcore_1.0.0-beta.6_x64-setup.exe)
+[![Windows installer](https://img.shields.io/badge/Windows-installer-0078d4)](https://github.com/dreamlovesu32/chemcore/releases/download/v1.0.0-beta.7/Chemcore_1.0.0-beta.7_x64-setup.exe)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](./LICENSE)
-[![Version](https://img.shields.io/badge/version-1.0.0--beta.6-orange)](https://github.com/dreamlovesu32/chemcore/releases/tag/v1.0.0-beta.6)
+[![Version](https://img.shields.io/badge/version-1.0.0--beta.7-orange)](https://github.com/dreamlovesu32/chemcore/releases/tag/v1.0.0-beta.7)
 
-ChemCore is an open-source chemistry structure editor built from scratch for everyday research drawing, publication layout, and Office copy/paste workflows at ChemDraw-level fidelity. Windows users can try the current beta with the [ChemCore 1.0.0-beta.6 x64 installer](https://github.com/dreamlovesu32/chemcore/releases/download/v1.0.0-beta.6/Chemcore_1.0.0-beta.6_x64-setup.exe). The installer includes the desktop app and the Windows Office/OLE integration service; it is not code-signed yet, so Windows may show a SmartScreen warning during this beta stage. It is a chemistry editor rather than a generic cheminformatics toolkit. Maintainer: Jiajun ZHANG, [dreamlovesu@hotmail.com](mailto:dreamlovesu@hotmail.com). Feedback, issues, real CDXML files, and contributions are very welcome. The long-term goal is to make ChemCore a free research infrastructure platform that can later grow into automation, batch processing, AI-assisted research interfaces, and more carefully designed scientific software.
+ChemCore is an open-source platform for editable chemical documents. It is
+built around the daily work of drawing structures, arranging reaction schemes,
+importing and exporting ChemDraw files, and moving editable chemistry through
+Word and PowerPoint without losing the ability to come back and edit it.
 
-The core architecture is a shared Rust engine with a lightweight Web interface and a headless CLI surface. Rust owns the document model, editing commands, hit testing, chemical label rules, implicit hydrogen logic, CDXML/CDX import/export, render primitive generation, and vector output needed by Office/OLE. The front end mainly collects events, manages UI state, and presents the result, so the visual editor can stay friendly to human researchers. The CLI calls the same engine directly for file inspection, format conversion, document generation, and JSON command execution, which gives scripts and agents a stable way to create, inspect, and modify documents without driving the GUI. Rust is used because this type of editor depends on long-lived geometry code, format parsers, and interaction state machines where memory safety, testability, performance, and typed boundaries matter. The same engine can compile to WASM for the browser and HarmonyOS PC shell, and run as native code for the desktop shell, CLI, and Windows Office integration; the desktop app uses Tauri/WebView2, so the UI can remain Web-based while behavior stays centralized in the cross-platform core.
+The same Rust engine powers the browser editor, Windows desktop app, Office/OLE
+integration service, and headless CLI. That shared core owns document identity,
+chemical editing commands, hit testing, label semantics, CDXML/CDX
+import/export, render primitives, structured diffing, and editable export. The
+goal is not only to display chemistry, but to preserve enough document state
+that humans, scripts, and agents can all operate on the same objects.
+
+For AI agents, ChemCore exposes that document model directly: one selector can
+move through structured inspection, local visual rendering, scoped editing,
+provenance, validation, and editable export without changing identity.
+
+```text
+CDXML / CCJS
+      |
+targets -> object:obj_mol_001
+      |-- detail.json
+      |-- context.json
+      |-- capture.png
+      |-- bundle/
+      |     |-- editable-subset.ccjs
+      |     |-- identity-map.json
+      |     `-- provenance.json
+      |-- transaction
+      |-- diff.json
+      `-- target.cdxml
+```
+
+For researchers, ChemCore is a visual editor for structures, schemes, figures,
+and Office documents. For agents, it is an object-grounded operation layer:
+agents can target a single object, read only the necessary data, inspect the
+matching local pixels, perform a range-limited edit, and prove that unrelated
+parts of the document were not changed.
+
+Windows users can try the current beta with the [ChemCore 1.0.0-beta.7 x64 installer](https://github.com/dreamlovesu32/chemcore/releases/download/v1.0.0-beta.7/Chemcore_1.0.0-beta.7_x64-setup.exe). The installer includes the desktop app and the Windows Office/OLE integration service; it is not code-signed yet, so Windows may show a SmartScreen warning during this beta stage. Maintainer: Jiajun ZHANG, [dreamlovesu@hotmail.com](mailto:dreamlovesu@hotmail.com). Feedback, issues, real CDXML files, and contributions are very welcome. The long-term goal is to make ChemCore a free research infrastructure platform that can grow into automation, batch processing, AI-assisted research interfaces, and more carefully designed scientific software.
 
 ![ChemCore editor interface](./docs/assets/readme/product-screenshot.png)
+
+## Object-Grounded Agent CLI
+
+ChemCore's CLI is a protocol surface over the same engine used by the editor.
+It is designed for agents that need to work on real chemical figures without
+reading the whole document, guessing from screenshots, or treating exported
+images as the source of truth.
+
+The central unit is a selector such as `object:obj_mol_004` or
+`node:1176604361`. That selector is stable across:
+
+- discovery with `targets`
+- raw structural inspection with `detail`
+- nearby layout inspection with `context`
+- deterministic local visual rendering with `capture`
+- object-grounded packaging with `bundle`
+- scoped command execution with `run`
+- before/after auditing with `diff`
+- editable subset export with `export --target`
+
+`bundle` is the handoff point for an agent work unit. It writes
+`target.json`, `context.json`, `capture.png` or `capture.svg`, a target-only
+editable subset, `identity-map.json`, `provenance.json`, and `manifest.json`.
+The manifest separates editable scope from visual scope: nearby arrows, labels,
+or molecules may appear in the image and context, but they are not editable
+unless they are part of the declared target scope.
+
+Transactions add a safety layer before mutation. An agent can state the
+expected document hash or revision, the selectors it is allowed to edit,
+whether creation or deletion is allowed, whether the run is a dry run, and
+which postconditions must hold. Structured `diff` then compares documents by
+ChemCore ids and field paths, so the result can be audited by an agent, a test,
+or a human reviewer.
+
+```bash
+chemcore-cli targets figure1.cdxml --pretty
+chemcore-cli bundle figure1.cdxml --target object:obj_mol_004 --out-dir tmp/mol-bundle --context-radius 55 --capture-format png --subset-format ccjs --pretty
+chemcore-cli run figure1.cdxml transaction.json --out edited.ccjs --results report.json --pretty
+chemcore-cli diff before.ccjs edited.ccjs --out diff.json --pretty
+chemcore-cli export edited.ccjs target.cdxml --target object:obj_mol_004 --format cdxml
+```
+
+The checked-in [object-grounded edit example](./examples/agent/07-object-grounded-edit/)
+runs this loop on the public [figure1.cdxml](./figure1.cdxml) fixture: it
+selects one real molecule object, changes one labeled node, verifies that no
+unexpected selectors changed, and exports both the modified full document and
+the modified target molecule.
+
+Precise capture is one visible part of that interface. It crops the same visual
+region a GUI selection box would cover: the requested object or multi-selection
+defines the frame, while everything visible inside that frame is rendered into
+the PNG/SVG. Context queries use the same target model and return the
+surrounding objects with ids, directions, distances, `inside`/`partial`
+selection-box membership, group ancestry, and link metadata.
+
+Examples generated from the public [figure1.cdxml](./figure1.cdxml) fixture:
+
+| Exact object crop | Context crop around an arrow object | Multi-target selection crop |
+| --- | --- | --- |
+| ![Precise CLI crop of object obj_bracket_001](./docs/assets/readme/agent-cli/precise-bracket-object.png) | ![CLI context crop around arrow object obj_line_001](./docs/assets/readme/agent-cli/line-context.png) | ![CLI multi-target crop from a bracket object and nearby text target](./docs/assets/readme/agent-cli/multi-target-bracket-text.png) |
+
+The context command that produced the middle image also returns structured ids
+for the same region. For example, around `object:obj_line_001` it reports the
+target arrow itself, the partly overlapping molecule
+`object:obj_cdxml_merged_molecule`, the partly overlapping condition text
+`object:obj_text_008`, and the nearby lower text `object:obj_text_025`.
 
 ## Project History
 
@@ -47,77 +149,6 @@ and the README comparison image is regenerated from those refreshed assets.
 The original CDXML files are tracked at the repository root:
 [figure1.cdxml](./figure1.cdxml) and [figure2.cdxml](./figure2.cdxml).
 
-## Agent-Oriented CLI
-
-ChemCore also treats agents as first-class callers, not as scripts that have to
-drive the GUI by guessing from screen pixels. The CLI is a deterministic engine
-surface for machine workflows: it can discover stable selectors, return
-object/bond/node ids, inspect raw object details, answer neighborhood queries,
-create precise visual crops, execute JSON editing commands, and report what
-changed after each operation.
-
-ChemCore gives AI agents a shared object identity across structured inspection,
-local visual rendering, deterministic editing, structured diffing, and editable
-export.
-
-```text
-CDXML / CCJS
-      |
-targets -> object:obj_mol_001
-      |-- detail.json
-      |-- context.json
-      |-- capture.png
-      |-- bundle/
-      |-- transaction-ready diff.json
-      `-- target.cdxml
-```
-
-The design goal is to give an agent both structure and pixels. Structured JSON
-tells it which objects exist, where they are, how they relate through groups or
-links, and whether a command created, updated, or deleted anything. Precise
-PNG/SVG capture gives it a high-resolution visual view of the exact region it
-is reasoning about. One-shot commands are convenient for isolated file tasks,
-while JSONL `session` mode and CDXML import caching keep repeated work on large
-documents fast. Output paths are verified after writing, and command errors
-include recoverable usage hints instead of bare failure codes.
-
-`bundle` turns one selector into a complete object-grounded work unit:
-`target.json`, `context.json`, `capture.png` or `capture.svg`, a target-only
-editable subset, an identity map, and a manifest that separates editable scope
-from visual scope. `diff` compares editable documents by ChemCore ids and
-structured fields, giving later dry-run and transaction flows a reusable
-before/after audit.
-
-Precise capture is one visible part of that interface. It crops the same visual
-region a GUI selection box would cover: the requested object or multi-selection
-defines the frame, while everything visible inside that frame is rendered into
-the PNG/SVG. Context queries use the same target model and return the
-surrounding objects with ids, directions, distances, `inside`/`partial`
-selection-box membership, group ancestry, and link metadata.
-
-Examples generated from the public [figure1.cdxml](./figure1.cdxml) fixture:
-
-| Exact object crop | Context crop around an arrow object | Multi-target selection crop |
-| --- | --- | --- |
-| ![Precise CLI crop of object obj_bracket_001](./docs/assets/readme/agent-cli/precise-bracket-object.png) | ![CLI context crop around arrow object obj_line_001](./docs/assets/readme/agent-cli/line-context.png) | ![CLI multi-target crop from a bracket object and nearby text target](./docs/assets/readme/agent-cli/multi-target-bracket-text.png) |
-
-The context command that produced the middle image also returns structured ids
-for the same region. For example, around `object:obj_line_001` it reports the
-target arrow itself, the partly overlapping molecule
-`object:obj_cdxml_merged_molecule`, the partly overlapping condition text
-`object:obj_text_008`, and the nearby lower text `object:obj_text_025`.
-
-```bash
-chemcore-cli guide
-chemcore-cli version --pretty
-chemcore-cli targets figure1.cdxml --pretty
-chemcore-cli detail figure1.cdxml --target object:obj_bracket_001 --pretty
-chemcore-cli context figure1.cdxml --target object:obj_line_001 --radius 45 --expand-left 10 --expand-right 10 --expand-top 34 --expand-bottom 34 --capture-out tmp/line-context.png --out tmp/line-context.json --pretty
-chemcore-cli capture figure1.cdxml --target object:obj_bracket_001 --out tmp/bracket.png --width 1200 --expand 8 --pretty
-chemcore-cli bundle figure1.cdxml --target object:obj_bracket_001 --out-dir tmp/bracket-bundle --context-radius 40 --capture-format png --subset-format ccjs --pretty
-chemcore-cli diff before.ccjs after.ccjs --out tmp/diff.json --pretty
-```
-
 ## Agent Skills
 
 ChemCore includes a dedicated agent skill suite in
@@ -130,10 +161,10 @@ discovering them.
 
 ## Current Status
 
-Current version: `1.0.0-beta.6`.
+Current version: `1.0.0-beta.7`.
 
 The Windows x64 installer is available from the
-[v1.0.0-beta.6 release](https://github.com/dreamlovesu32/chemcore/releases/tag/v1.0.0-beta.6).
+[v1.0.0-beta.7 release](https://github.com/dreamlovesu32/chemcore/releases/tag/v1.0.0-beta.7).
 It bundles the Tauri/WebView2 desktop app, file associations, and the
 Office/OLE integration service. The first-stage HarmonyOS PC shell is available
 from source for DevEco Studio experiments, but it is not part of the Windows

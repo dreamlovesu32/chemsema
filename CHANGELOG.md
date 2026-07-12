@@ -2,6 +2,48 @@
 
 All notable public changes to ChemCore are tracked here.
 
+## 1.0.0-beta.7
+
+Object-grounded agent workflows, transactional CLI editing, structured
+document diffs, and clearer public positioning around editable chemical
+documents.
+
+- Added the Object-Grounded Agent Layer for `chemcore-cli`. The new `bundle`
+  command packages a target selector into a complete work unit with
+  `target.json`, `context.json`, deterministic `capture.png`/`capture.svg`, an
+  editable target-only subset, `identity-map.json`, `provenance.json`, and a
+  manifest that separates editable scope from visual scope.
+- Added structured document diffing with `chemcore-cli diff`. Diffs compare
+  ChemCore documents by object, resource, style, molecule node, molecule bond,
+  and field path identity instead of raw JSON text, making before/after reports
+  usable for agent audit, regression tests, and user review.
+- Added transactional command-script support for agent edits. Transaction
+  envelopes can declare expected document hash/revision, required selectors,
+  editable scope, create/delete policy, dry-run behavior, atomic execution, and
+  postconditions such as document validity, selector existence, and
+  no-unexpected-changes.
+- Extended JSONL session workflows with `bundle` and transaction execution so
+  long-lived agent sessions can inspect, package, dry-run, edit, and validate a
+  loaded document without reparsing or switching protocols.
+- Added stable bundle provenance and selector identity tracking. Bundle
+  provenance records privacy-preserving source metadata, source document hash,
+  source bounds, visual bounds, subset translation, editable subset counts, and
+  identity-map summaries without persisting local absolute paths.
+- Added a real object-grounded workflow example at
+  `examples/agent/07-object-grounded-edit`. The example runs on
+  `figure1.cdxml`, bundles one molecule object, captures before/after views,
+  dry-runs and executes a scoped node-label edit, generates a structured diff,
+  exports both the full edited document and target-only editable subsets, and
+  writes an `acceptance.json` report.
+- Updated CLI protocol documentation, runtime schema/capabilities discovery,
+  command-script and session guides, English/Chinese CLI guides, and ChemCore
+  CLI skill references for the new bundle, diff, transaction, identity-map, and
+  provenance contracts.
+- Refocused the English and Chinese README around editable chemical documents
+  and the shared object identity that connects visual editing, Office
+  workflows, CLI inspection, scoped agent editing, validation, and editable
+  export.
+
 ## 1.0.0-beta.6
 
 HarmonyOS PC groundwork, stronger GUI parity coverage, expanded agent/CLI
