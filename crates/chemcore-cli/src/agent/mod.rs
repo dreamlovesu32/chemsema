@@ -1,4 +1,4 @@
-﻿use crate::{
+use crate::{
     document_json, ensure_output_parent_path, infer_format_from_path, load_engine_from_file,
     verify_file_written, verify_file_written_exact, write_engine_output, write_json_value,
     write_text_output,
@@ -9,7 +9,7 @@ use chemcore_engine::{
     RenderPrimitive, ResourceData, SceneObject,
 };
 use serde_json::{json, Map, Value};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
@@ -240,10 +240,12 @@ struct DetailOptions {
     include_resource: bool,
 }
 
+mod bundle;
 mod capture;
 mod clipboard;
 mod context;
 mod detail;
+mod diff;
 mod output;
 mod session;
 mod target;
@@ -252,14 +254,17 @@ mod targets;
 #[cfg(test)]
 mod tests;
 
+pub(crate) use bundle::bundle_command;
 pub(crate) use capture::capture_command;
 pub(crate) use clipboard::{copy_command, export_document_for_target};
 pub(crate) use context::context_command;
 pub(crate) use detail::detail_command;
+pub(crate) use diff::diff_command;
 pub(crate) use session::session_command;
 pub(crate) use target::{add_target_arg, parse_target_selector};
 pub(crate) use targets::targets_command;
 
+use bundle::*;
 use capture::*;
 use context::*;
 use detail::*;

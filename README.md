@@ -56,6 +56,22 @@ object/bond/node ids, inspect raw object details, answer neighborhood queries,
 create precise visual crops, execute JSON editing commands, and report what
 changed after each operation.
 
+ChemCore gives AI agents a shared object identity across structured inspection,
+local visual rendering, deterministic editing, structured diffing, and editable
+export.
+
+```text
+CDXML / CCJS
+      |
+targets -> object:obj_mol_001
+      |-- detail.json
+      |-- context.json
+      |-- capture.png
+      |-- bundle/
+      |-- transaction-ready diff.json
+      `-- target.cdxml
+```
+
 The design goal is to give an agent both structure and pixels. Structured JSON
 tells it which objects exist, where they are, how they relate through groups or
 links, and whether a command created, updated, or deleted anything. Precise
@@ -64,6 +80,13 @@ is reasoning about. One-shot commands are convenient for isolated file tasks,
 while JSONL `session` mode and CDXML import caching keep repeated work on large
 documents fast. Output paths are verified after writing, and command errors
 include recoverable usage hints instead of bare failure codes.
+
+`bundle` turns one selector into a complete object-grounded work unit:
+`target.json`, `context.json`, `capture.png` or `capture.svg`, a target-only
+editable subset, an identity map, and a manifest that separates editable scope
+from visual scope. `diff` compares editable documents by ChemCore ids and
+structured fields, giving later dry-run and transaction flows a reusable
+before/after audit.
 
 Precise capture is one visible part of that interface. It crops the same visual
 region a GUI selection box would cover: the requested object or multi-selection
@@ -91,6 +114,8 @@ chemcore-cli targets figure1.cdxml --pretty
 chemcore-cli detail figure1.cdxml --target object:obj_bracket_001 --pretty
 chemcore-cli context figure1.cdxml --target object:obj_line_001 --radius 45 --expand-left 10 --expand-right 10 --expand-top 34 --expand-bottom 34 --capture-out tmp/line-context.png --out tmp/line-context.json --pretty
 chemcore-cli capture figure1.cdxml --target object:obj_bracket_001 --out tmp/bracket.png --width 1200 --expand 8 --pretty
+chemcore-cli bundle figure1.cdxml --target object:obj_bracket_001 --out-dir tmp/bracket-bundle --context-radius 40 --capture-format png --subset-format ccjs --pretty
+chemcore-cli diff before.ccjs after.ccjs --out tmp/diff.json --pretty
 ```
 
 ## Agent Skills

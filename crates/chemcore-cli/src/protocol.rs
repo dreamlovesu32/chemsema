@@ -9,6 +9,8 @@ pub(crate) const CLI_PROTOCOL_VERSION: &str = "chemcore-cli-protocol.v1";
 pub(crate) const SELECTOR_PROTOCOL_VERSION: &str = "chemcore-selector.v1";
 pub(crate) const SESSION_PROTOCOL_VERSION: &str = "chemcore-cli-session-jsonl.v1";
 pub(crate) const CAPTURE_MANIFEST_VERSION: &str = "chemcore-cli-capture-manifest.v1";
+pub(crate) const AGENT_BUNDLE_SCHEMA_VERSION: &str = "chemcore.agent.bundle.v1";
+pub(crate) const DOCUMENT_DIFF_SCHEMA_VERSION: &str = "chemcore.document.diff.v1";
 pub(crate) const ERROR_MODEL_VERSION: &str = "chemcore-cli-error.v1";
 pub(crate) const ENTRYPOINTS_SCHEMA_VERSION: &str = "chemcore.entrypoints.v1";
 
@@ -73,7 +75,7 @@ const COMMAND_SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "schema",
         summary: "Return machine-readable command, target, and capture schemas.",
-        usage: "chemcore-cli schema [protocol|commands|targets|capture|context|detail|guide|copy|json-output|command-script|all] [--pretty] [--out <path>]",
+        usage: "chemcore-cli schema [protocol|commands|targets|capture|context|bundle|detail|diff|guide|copy|json-output|command-script|all] [--pretty] [--out <path>]",
         example: "chemcore-cli schema capture --pretty",
     },
     CommandSpec {
@@ -131,6 +133,12 @@ const COMMAND_SPECS: &[CommandSpec] = &[
         example: "chemcore-cli context input.cdxml --target molecule:1 --radius 80 --out context.json --capture-out context.png --scale 5 --pretty",
     },
     CommandSpec {
+        name: "bundle",
+        summary: "Write an object-grounded agent bundle with target detail, context, capture, editable subset, identity map, and manifest.",
+        usage: "chemcore-cli bundle <input> --target <selector> [--target <selector> ...] [--targets <selector;selector>] --out-dir <directory> [--context-radius <pt>] [--capture-format png|svg] [--capture-width <px>] [--capture-height <px>] [--capture-scale <n>] [--subset-format ccjs|ccjz|cdxml|cdx|sdf] [--pretty]",
+        example: "chemcore-cli bundle input.cdxml --target object:obj_mol_001 --out-dir output/bundle --context-radius 40 --capture-format png --subset-format ccjs --pretty",
+    },
+    CommandSpec {
         name: "detail",
         summary: "Return one target's detail JSON after targets/context discovery.",
         usage: "chemcore-cli detail <input> --target <object:id|molecule:index|node:id|bond:id> [--summary-only] [--include-resource] [--out <detail.json>] [--pretty]",
@@ -171,6 +179,12 @@ const COMMAND_SPECS: &[CommandSpec] = &[
         summary: "Alias of convert for export-oriented workflows, including target-only document export.",
         usage: "chemcore-cli export <input> <output> [--target <selector> ...|--targets <selector;selector>] [--selection-only] [--format <format>] [--scale <n>|--width <px>|--height <px>]",
         example: "chemcore-cli export input.cdxml selection.svg --targets object:obj_a;object:obj_b",
+    },
+    CommandSpec {
+        name: "diff",
+        summary: "Compare two editable documents by document ids and structure instead of JSON text.",
+        usage: "chemcore-cli diff <before> <after> --out <diff.json> [--pretty]",
+        example: "chemcore-cli diff before.ccjs after.ccjs --out diff.json --pretty",
     },
 ];
 
@@ -355,7 +369,7 @@ fn command_error_suggestions(
         })],
         _ if message.contains("Unknown schema topic") => vec![json!({
             "action": "choose_schema_topic",
-            "accepted": ["protocol", "commands", "targets", "bounds", "capture", "context", "detail", "guide", "copy", "session", "label-query", "json-output", "command-script", "all"],
+            "accepted": ["protocol", "commands", "targets", "bounds", "capture", "context", "bundle", "detail", "diff", "guide", "copy", "session", "label-query", "json-output", "command-script", "all"],
             "example": "chemcore-cli schema capture --pretty",
         })],
         _ => spec
@@ -504,6 +518,8 @@ fn protocol_schemas_json() -> Value {
             "selector": SELECTOR_PROTOCOL_VERSION,
             "session": SESSION_PROTOCOL_VERSION,
             "captureManifest": CAPTURE_MANIFEST_VERSION,
+            "agentBundle": AGENT_BUNDLE_SCHEMA_VERSION,
+            "documentDiff": DOCUMENT_DIFF_SCHEMA_VERSION,
             "errorModel": ERROR_MODEL_VERSION,
             "entrypoints": ENTRYPOINTS_SCHEMA_VERSION,
             "compatibility": "v1 fields are intended to remain backward compatible throughout the 1.0 beta line unless explicitly marked experimental."
@@ -553,6 +569,15 @@ fn protocol_schemas_json() -> Value {
             "screenshot": "Pass --capture-out <path.svg|path.png> to render the same context bounds. The capture object includes render.mode, render.primitiveCount, and render.targets when a screenshot is written.",
             "usage": command_spec("context").map(|spec| spec.usage).unwrap_or("")
         },
+        "bundle": {
+            "schema": AGENT_BUNDLE_SCHEMA_VERSION,
+            "description": "Writes an object-grounded bundle directory for one target or multi-target selection.",
+            "artifacts": ["manifest.json", "target.json", "context.json", "editable-subset.<format>", "capture.png|capture.svg", "identity-map.json"],
+            "scope": "editableScope lists the target-only editable subset. visualScope describes the capture/context region and may include visible non-target objects. Seeing an object in context does not grant edit scope.",
+            "verification": "manifest artifactVerification entries include path, format, verified, bytes, and sha256. integrity reports allResourcesResolved, allStylesResolved, captureVerified, and editableSubsetValid.",
+            "sessionOperation": "JSONL session supports op=bundle with target, outDir, contextRadius, captureFormat, scale/width/height, subsetFormat, and pretty.",
+            "usage": command_spec("bundle").map(|spec| spec.usage).unwrap_or("")
+        },
         "detail": {
             "description": "Returns a single object's, molecule's, node's, or bond's detail JSON. Use targets/context first to discover selectors, then detail to expand one selector.",
             "rawPolicy": "By default, detail includes raw JSON for the selected entity. Use --summary-only for ids/bounds/relationship metadata only. Use --include-resource to embed the referenced molecule/text/json resource when inspecting an object.",
@@ -562,10 +587,18 @@ fn protocol_schemas_json() -> Value {
         "session": {
             "description": "Starts a JSON Lines protocol over stdin/stdout. The process keeps one Engine and parsed ChemCore document in memory until close or exit.",
             "protocol": SESSION_PROTOCOL_VERSION,
-            "operations": ["open", "targets", "detail", "context", "capture", "execute", "save", "status", "close", "exit"],
+            "operations": ["open", "targets", "detail", "context", "bundle", "capture", "execute", "save", "status", "close", "exit"],
             "ready": "The first stdout line is a ready event. Send one compact JSON request per line and read one compact JSON response per line.",
             "historyPolicy": "The session does not persist undo history. execute responses report before/after revision and per-command results; callers should maintain history with git, files, or their own log.",
             "usage": command_spec("session").map(|spec| spec.usage).unwrap_or("")
+        },
+        "diff": {
+            "schema": DOCUMENT_DIFF_SCHEMA_VERSION,
+            "description": "Compares two editable documents by IDs and structure rather than raw JSON text.",
+            "sections": ["document", "page", "objects", "resources", "styles", "nodes", "bonds", "changes", "counts", "unexpectedChanges"],
+            "changes": "Field changes include selector, path, before, and after. Created/updated/deleted selectors are sorted deterministically.",
+            "futureUse": "The same internal diff is intended for dry-run transaction reports, allowed scope validation, and no-unexpected-changes postconditions.",
+            "usage": command_spec("diff").map(|spec| spec.usage).unwrap_or("")
         },
         "guide": {
             "description": "Returns installed guide metadata. Use --kind agent for the quick agent guide, --kind detailed for the detailed English CLI guide, or --kind all for both.",
@@ -606,7 +639,7 @@ fn protocol_schemas_json() -> Value {
                     "description": "Clears the current in-memory selection."
                 },
                 "add-bond": {
-                    "description": "Creates a ChemCore bond from begin to end with order and variant. Optional stroke preserves explicit bond color; optional doublePlacement left/right/center, or double.placement, freezes an explicit double-bond placement while preserving the default automatic behavior when omitted."
+                    "description": "Creates a ChemCore bond from begin to end with order and variant. Optional wideEnd begin/end sets the wide endpoint for wedge, hashed-wedge, and hollow-wedge variants without reversing the bond connection direction. Optional stroke preserves explicit bond color; optional doublePlacement left/right/center, or double.placement, freezes an explicit double-bond placement while preserving the default automatic behavior when omitted."
                 },
                 "move-targets": {
                     "description": "Moves explicit nodes, bonds, objects, or labelNodes by delta dx/dy without relying on current selection."
@@ -764,6 +797,8 @@ fn protocol_versions_value() -> Value {
         "selector": SELECTOR_PROTOCOL_VERSION,
         "session": SESSION_PROTOCOL_VERSION,
         "captureManifest": CAPTURE_MANIFEST_VERSION,
+        "agentBundle": AGENT_BUNDLE_SCHEMA_VERSION,
+        "documentDiff": DOCUMENT_DIFF_SCHEMA_VERSION,
         "errorModel": ERROR_MODEL_VERSION,
         "entrypoints": ENTRYPOINTS_SCHEMA_VERSION,
     })
@@ -1186,7 +1221,7 @@ pub(crate) fn schema_command(args: &[String]) -> Result<(), String> {
         json!({ "ok": true, "topic": topic, "schema": schema })
     } else {
         return Err(format!(
-            "Unknown schema topic '{topic}'. Expected protocol, commands, targets, bounds, capture, context, detail, guide, copy, session, label-query, json-output, command-script, or all."
+            "Unknown schema topic '{topic}'. Expected protocol, commands, targets, bounds, capture, context, bundle, detail, diff, guide, copy, session, label-query, json-output, command-script, or all."
         ));
     };
     write_json_value(value, output.as_deref(), pretty)
@@ -1199,7 +1234,9 @@ pub(crate) fn schema_topic_key(topic: &str) -> Option<&'static str> {
         "bounds" => Some("bounds"),
         "capture" => Some("capture"),
         "context" | "nearby" | "neighbors" => Some("context"),
+        "bundle" | "agent-bundle" | "object-bundle" => Some("bundle"),
         "detail" | "details" | "describe" | "show" | "object-detail" => Some("detail"),
+        "diff" | "document-diff" | "compare" => Some("diff"),
         "guide" | "agent-guide" | "docs" | "documentation" => Some("guide"),
         "copy" | "clipboard" => Some("copy"),
         "session" | "jsonl" | "daemon" => Some("session"),

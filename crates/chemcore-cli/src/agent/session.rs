@@ -134,6 +134,7 @@ pub(super) fn handle_session_request(
             detail_report(&document.input, &document.document, &target, options)
         }),
         "context" => with_session(session, |document| session_context(document, &request)),
+        "bundle" => with_session(session, |document| session_bundle(document, &request)),
         "capture" | "screenshot" => {
             with_session(session, |document| session_capture(document, &request))
         }
@@ -228,6 +229,34 @@ pub(super) fn session_context(
         );
     }
     Ok(report)
+}
+
+pub(super) fn session_bundle(document: &SessionDocument, request: &Value) -> Result<Value, String> {
+    let target = request_required_target(request)?;
+    ensure_bundle_target_is_editable(&target)?;
+    let out_dir = request_required_string(request, &["outDir", "out-dir", "outputDir"])?;
+    let context_radius =
+        request_f64(request, &["contextRadius", "context-radius", "radius"])?.unwrap_or(40.0);
+    let capture_format = request_string(request, &["captureFormat", "capture-format"])?
+        .map(|format| parse_capture_format(&format))
+        .transpose()?
+        .unwrap_or(CaptureFormat::Png);
+    let subset_format = request_string(request, &["subsetFormat", "subset-format"])?
+        .map(|format| parse_subset_format(&format))
+        .transpose()?
+        .unwrap_or_else(|| "ccjs".to_string());
+    let pretty = request_bool(request, &["pretty"])?.unwrap_or(false);
+    let options = BundleOptions {
+        input: document.input.clone(),
+        target,
+        out_dir: PathBuf::from(out_dir),
+        context_radius,
+        capture_format,
+        raster: request_raster_options(request)?,
+        subset_format,
+        pretty,
+    };
+    bundle_document(&document.engine, &document.document, &options)
 }
 
 pub(super) fn session_capture(
@@ -415,6 +444,7 @@ pub(super) fn session_help_json() -> Value {
             "targets": {"description": "Return stable selectors and bounds for the open document."},
             "detail": {"required": ["target"], "description": "Return one object/molecule/node/bond detail JSON."},
             "context": {"required": ["target"], "optional": ["targets", "radius", "captureOut", "scale", "width", "height", "limit"], "description": "Return nearby summaries and optionally a screenshot. target/targets may be a selector string or an array of selector strings."},
+            "bundle": {"required": ["target", "outDir"], "optional": ["contextRadius", "captureFormat", "scale", "width", "height", "subsetFormat", "pretty"], "description": "Write an object-grounded bundle with detail, context, capture, editable subset, identity map, and manifest artifacts."},
             "capture": {"required": ["target"], "optional": ["targets", "out", "format", "scale", "width", "height", "expand", "expandRel", "selectionOnly", "cropBounds"], "description": "Write a precise crop; target/targets may be a selector string or an array. Use selectionOnly with cropBounds to render aligned object-only layers."},
             "execute": {"required": ["command or commands"], "optional": ["continueOnError"], "description": "Run one or more engine JSON commands against the in-memory document. Selection commands such as select-targets, select-all, and clear-selection persist for later execute commands in the same session."},
             "save": {"required": ["out"], "optional": ["format"], "description": "Save the current in-memory document."},

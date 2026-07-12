@@ -169,6 +169,7 @@ pub(crate) fn export_document_for_target(
     export_document.document.id = "doc_export_selection".to_string();
     export_document.document.title = "ChemCore Export Selection".to_string();
     if !matches!(target, TargetSelector::All) {
+        prune_unreferenced_resources_and_styles(&mut export_document);
         compact_document_to_bounds(&mut export_document, bounds, EXPORT_SELECTION_MARGIN);
     }
     set_export_selection_meta(&mut export_document, bounds, target);
@@ -252,6 +253,32 @@ fn merge_scene_object_path(objects: &mut Vec<SceneObject>, object: SceneObject) 
         return;
     }
     objects.push(object);
+}
+
+fn prune_unreferenced_resources_and_styles(document: &mut ChemcoreDocument) {
+    let mut resource_refs = BTreeSet::new();
+    let mut style_refs = BTreeSet::new();
+    collect_scene_object_dependencies(&document.objects, &mut resource_refs, &mut style_refs);
+    document
+        .resources
+        .retain(|id, _| resource_refs.contains(id));
+    document.styles.retain(|id, _| style_refs.contains(id));
+}
+
+fn collect_scene_object_dependencies(
+    objects: &[SceneObject],
+    resource_refs: &mut BTreeSet<String>,
+    style_refs: &mut BTreeSet<String>,
+) {
+    for object in objects {
+        if let Some(resource_ref) = object.payload.resource_ref.as_ref() {
+            resource_refs.insert(resource_ref.clone());
+        }
+        if let Some(style_ref) = object.style_ref.as_ref() {
+            style_refs.insert(style_ref.clone());
+        }
+        collect_scene_object_dependencies(&object.children, resource_refs, style_refs);
+    }
 }
 
 fn compact_document_to_bounds(document: &mut ChemcoreDocument, bounds: [f64; 4], margin: f64) {

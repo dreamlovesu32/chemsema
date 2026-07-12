@@ -32,17 +32,20 @@ Use this order for document work:
 4. `context` to inspect neighborhoods and selection boxes.
 5. `detail` to expand one object, molecule, node, or bond.
 6. `capture` for deterministic SVG/PNG crops.
-7. `new` or `run` with command scripts for edits.
-8. `convert` or `export` for whole-document output, or target-only editable
+7. `bundle` when one selector needs detail, context, capture, editable subset,
+   identity map, and manifest artifacts together.
+8. `new` or `run` with command scripts for edits.
+9. `diff` to compare before/after editable documents by structured IDs.
+10. `convert` or `export` for whole-document output, or target-only editable
    subset output with `--target`/`--targets`.
-9. `copy` for Windows Office/OLE clipboard payloads.
-10. `session` for repeated work on one document.
+11. `copy` for Windows Office/OLE clipboard payloads.
+12. `session` for repeated work on one document.
 
 ## Read References As Needed
 
 - For locating the executable and handling bundled vs installed builds, read
   `references/runtime-discovery.md`.
-- For selectors, targets, detail, context, and capture, read
+- For selectors, targets, detail, context, capture, bundle, and diff, read
   `references/document-inspection.md`.
 - For `new`, `run`, `session execute`, command JSON, selection state, target
   editing, arrange/group/link/style commands, `plan-bond`, and `plan-template`,

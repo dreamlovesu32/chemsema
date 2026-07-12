@@ -1,11 +1,443 @@
 use super::session::{handle_session_request, session_help_json, session_ready_json};
 use super::*;
 
+fn temp_path(name: &str) -> PathBuf {
+    std::env::temp_dir().join(format!("chemcore-cli-test-{}-{}", std::process::id(), name))
+}
+
+fn write_engine_temp(engine: &Engine, name: &str) -> PathBuf {
+    let path = temp_path(name);
+    fs::write(&path, engine.document_json().expect("document json")).expect("write document");
+    path
+}
+
+fn repo_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .expect("repo root")
+        .to_path_buf()
+}
+
 fn assert_close(actual: f64, expected: f64) {
     assert!(
         (actual - expected).abs() < 0.000_001,
         "expected {expected}, got {actual}"
     );
+}
+
+#[test]
+fn bundle_for_object_writes_verified_artifacts_and_identity_map() {
+    let mut engine = Engine::new();
+    let added: Value = serde_json::from_str(
+        &engine
+            .execute_command_json(
+                &json!({
+                    "type": "add-text",
+                    "position": { "x": 100.0, "y": 120.0 },
+                    "text": "target",
+                    "box": [0.0, 0.0, 40.0, 12.0]
+                })
+                .to_string(),
+            )
+            .expect("add text"),
+    )
+    .expect("result");
+    engine
+        .execute_command_json(
+            &json!({
+                "type": "add-text",
+                "position": { "x": 112.0, "y": 122.0 },
+                "text": "neighbor",
+                "box": [0.0, 0.0, 42.0, 12.0]
+            })
+            .to_string(),
+        )
+        .expect("add neighbor");
+    let target_id = added["created"]["objects"][0].as_str().unwrap().to_string();
+    let input = write_engine_temp(&engine, "bundle-object-input.ccjs");
+    let out_dir = temp_path("bundle-object");
+    let _ = fs::remove_dir_all(&out_dir);
+    let document = engine_document(&engine).expect("document");
+
+    let manifest = bundle_document(
+        &engine,
+        &document,
+        &BundleOptions {
+            input: input.display().to_string(),
+            target: TargetSelector::Object(target_id.clone()),
+            out_dir: out_dir.clone(),
+            context_radius: 8.0,
+            capture_format: CaptureFormat::Svg,
+            raster: RasterOptions::default(),
+            subset_format: "ccjs".to_string(),
+            pretty: true,
+        },
+    )
+    .expect("bundle");
+
+    assert_eq!(manifest["schema"], "chemcore.agent.bundle.v1");
+    assert_eq!(manifest["integrity"]["allResourcesResolved"], true);
+    assert_eq!(manifest["integrity"]["allStylesResolved"], true);
+    for file in [
+        "manifest.json",
+        "target.json",
+        "context.json",
+        "editable-subset.ccjs",
+        "capture.svg",
+        "identity-map.json",
+    ] {
+        assert!(out_dir.join(file).is_file(), "missing {file}");
+    }
+    let identity: Value =
+        serde_json::from_str(&fs::read_to_string(out_dir.join("identity-map.json")).unwrap())
+            .unwrap();
+    assert!(identity["entries"].as_array().unwrap().iter().any(|entry| {
+        entry["sourceSelector"] == format!("object:{target_id}")
+            && entry["bundleSelector"] == format!("object:{target_id}")
+    }));
+    let subset: Value =
+        serde_json::from_str(&fs::read_to_string(out_dir.join("editable-subset.ccjs")).unwrap())
+            .unwrap();
+    let object_ids = subset["objects"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|object| object["id"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(object_ids, vec![target_id.as_str()]);
+    let context: Value =
+        serde_json::from_str(&fs::read_to_string(out_dir.join("context.json")).unwrap()).unwrap();
+    assert!(context["context"]["objects"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(
+            |entry| entry["isTarget"] == false && entry["selectionBoxRelation"].as_str().is_some()
+        ));
+
+    let _ = fs::remove_file(input);
+    let _ = fs::remove_dir_all(out_dir);
+}
+
+#[test]
+fn bundle_supports_molecule_multi_object_and_group_targets() {
+    let mut engine = Engine::new();
+    engine
+        .execute_command_json(
+            &json!({
+                "type": "add-bond",
+                "begin": { "x": 20.0, "y": 20.0 },
+                "end": { "x": 60.0, "y": 20.0 },
+                "order": 1,
+                "variant": "single"
+            })
+            .to_string(),
+        )
+        .expect("add bond");
+    let first: Value = serde_json::from_str(
+        &engine
+            .execute_command_json(
+                &json!({
+                    "type": "add-text",
+                    "position": { "x": 100.0, "y": 100.0 },
+                    "text": "A",
+                    "box": [0.0, 0.0, 10.0, 10.0]
+                })
+                .to_string(),
+            )
+            .expect("add first"),
+    )
+    .unwrap();
+    let second: Value = serde_json::from_str(
+        &engine
+            .execute_command_json(
+                &json!({
+                    "type": "add-text",
+                    "position": { "x": 130.0, "y": 100.0 },
+                    "text": "B",
+                    "box": [0.0, 0.0, 10.0, 10.0]
+                })
+                .to_string(),
+            )
+            .expect("add second"),
+    )
+    .unwrap();
+    let first_id = first["created"]["objects"][0].as_str().unwrap().to_string();
+    let second_id = second["created"]["objects"][0]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let group: Value = serde_json::from_str(
+        &engine
+            .execute_command_json(
+                &json!({
+                    "type": "group-selection",
+                    "object_ids": [first_id, second_id]
+                })
+                .to_string(),
+            )
+            .expect("group"),
+    )
+    .unwrap();
+    let group_id = group["created"]["objects"][0].as_str().unwrap().to_string();
+    let input = write_engine_temp(&engine, "bundle-targets-input.ccjs");
+    let document = engine_document(&engine).expect("document");
+    let cases = [
+        ("molecule", TargetSelector::Molecule(0)),
+        (
+            "multi",
+            TargetSelector::Selection(vec![
+                TargetSelector::Object(first_id.clone()),
+                TargetSelector::Object(second_id.clone()),
+            ]),
+        ),
+        ("group", TargetSelector::Object(group_id)),
+    ];
+    for (name, target) in cases {
+        let out_dir = temp_path(&format!("bundle-{name}"));
+        let _ = fs::remove_dir_all(&out_dir);
+        let manifest = bundle_document(
+            &engine,
+            &document,
+            &BundleOptions {
+                input: input.display().to_string(),
+                target,
+                out_dir: out_dir.clone(),
+                context_radius: 4.0,
+                capture_format: CaptureFormat::Svg,
+                raster: RasterOptions::default(),
+                subset_format: "ccjs".to_string(),
+                pretty: false,
+            },
+        )
+        .expect("bundle case");
+        assert_eq!(manifest["ok"], true, "{name}");
+        assert!(out_dir.join("editable-subset.ccjs").is_file());
+        let _ = fs::remove_dir_all(out_dir);
+    }
+    let _ = fs::remove_file(input);
+}
+
+#[test]
+fn bundle_fails_when_editable_subset_has_missing_references() {
+    let mut document = ChemcoreDocument::blank();
+    document.objects[0].style_ref = Some("missing_style".to_string());
+    document.objects[0].payload.resource_ref = Some("missing_resource".to_string());
+    document.resources.clear();
+    let engine = Engine::new();
+    let out_dir = temp_path("bundle-missing-reference");
+    let error = bundle_document(
+        &engine,
+        &document,
+        &BundleOptions {
+            input: "missing-input.ccjs".to_string(),
+            target: TargetSelector::Object("obj_editor_molecule".to_string()),
+            out_dir,
+            context_radius: 4.0,
+            capture_format: CaptureFormat::Svg,
+            raster: RasterOptions::default(),
+            subset_format: "ccjs".to_string(),
+            pretty: false,
+        },
+    )
+    .unwrap_err();
+    assert!(error.contains("unresolved references"));
+}
+
+#[test]
+fn bundle_json_outputs_are_deterministic_across_runs() {
+    let mut engine = Engine::new();
+    engine
+        .execute_command_json(
+            &json!({
+                "type": "add-text",
+                "position": { "x": 100.0, "y": 120.0 },
+                "text": "stable",
+                "box": [0.0, 0.0, 30.0, 12.0]
+            })
+            .to_string(),
+        )
+        .expect("add text");
+    let input = write_engine_temp(&engine, "bundle-deterministic-input.ccjs");
+    let document = engine_document(&engine).expect("document");
+    let mut manifests = Vec::new();
+    for index in 0..2 {
+        let out_dir = temp_path(&format!("bundle-deterministic-{index}"));
+        let _ = fs::remove_dir_all(&out_dir);
+        manifests.push(
+            bundle_document(
+                &engine,
+                &document,
+                &BundleOptions {
+                    input: input.display().to_string(),
+                    target: TargetSelector::Object("obj_text_1".to_string()),
+                    out_dir: out_dir.clone(),
+                    context_radius: 4.0,
+                    capture_format: CaptureFormat::Svg,
+                    raster: RasterOptions::default(),
+                    subset_format: "ccjs".to_string(),
+                    pretty: false,
+                },
+            )
+            .expect("bundle"),
+        );
+        let _ = fs::remove_dir_all(out_dir);
+    }
+    assert_eq!(
+        manifests[0]["artifactVerification"],
+        manifests[1]["artifactVerification"]
+    );
+    assert_eq!(manifests[0]["target"], manifests[1]["target"]);
+    assert_eq!(manifests[0]["editableScope"], manifests[1]["editableScope"]);
+    let _ = fs::remove_file(input);
+}
+
+#[test]
+fn document_diff_reports_structural_changes_by_selector() {
+    let mut before = Engine::new();
+    before
+        .execute_command_json(
+            &json!({
+                "type": "add-bond",
+                "begin": { "x": 20.0, "y": 20.0 },
+                "end": { "x": 60.0, "y": 20.0 },
+                "order": 1,
+                "variant": "single"
+            })
+            .to_string(),
+        )
+        .expect("add bond");
+    let mut after = Engine::new();
+    after
+        .load_document_json(&before.document_json().expect("before json"))
+        .expect("load after");
+    after
+        .execute_command_json(
+            &json!({
+                "type": "replace-node-label",
+                "node_id": "n_1",
+                "label": "OMe"
+            })
+            .to_string(),
+        )
+        .expect("label");
+    after
+        .execute_command_json(
+            &json!({
+                "type": "apply-bond-style",
+                "bondIds": ["b_3"],
+                "style": "double-center"
+            })
+            .to_string(),
+        )
+        .expect("bond style");
+    after
+        .execute_command_json(
+            &json!({
+                "type": "move-targets",
+                "targets": { "objects": ["obj_editor_molecule"] },
+                "delta": { "dx": 5.0, "dy": 0.0 }
+            })
+            .to_string(),
+        )
+        .expect("move");
+    let diff = diff::document_diff(
+        &engine_document(&before).unwrap(),
+        &engine_document(&after).unwrap(),
+    )
+    .unwrap();
+    assert!(!diff.equal());
+    assert!(diff.value["nodes"]["updated"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("node:n_1")));
+    assert!(diff.value["bonds"]["updated"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("bond:b_3")));
+    assert!(diff.value["objects"]["updated"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("object:obj_editor_molecule")));
+    assert!(diff.value["changes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|change| {
+            change["selector"] == "node:n_1" && change["path"].as_str().unwrap().contains("label")
+        }));
+}
+
+#[test]
+fn document_diff_reports_creation_deletion_and_unchanged_documents() {
+    let before = ChemcoreDocument::blank();
+    let mut after = ChemcoreDocument::blank();
+    after.objects.push(SceneObject {
+        id: "obj_extra".to_string(),
+        object_type: "text".to_string(),
+        name: "text".to_string(),
+        visible: true,
+        locked: false,
+        z_index: 20,
+        transform: chemcore_engine::Transform::identity(),
+        style_ref: None,
+        meta: Value::Null,
+        payload: chemcore_engine::ObjectPayload {
+            resource_ref: None,
+            bbox: Some([0.0, 0.0, 10.0, 10.0]),
+            extra: BTreeMap::new(),
+        },
+        children: Vec::new(),
+    });
+    let created = diff::document_diff(&before, &after).unwrap();
+    assert!(created.value["objects"]["created"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("object:obj_extra")));
+    let deleted = diff::document_diff(&after, &before).unwrap();
+    assert!(deleted.value["objects"]["deleted"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("object:obj_extra")));
+    let unchanged = diff::document_diff(&before, &before).unwrap();
+    assert!(unchanged.equal());
+    assert!(unchanged.value["changes"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn figure_cdxml_files_support_bundle_integration() {
+    for file in ["figure1.cdxml", "figure2.cdxml"] {
+        let path = repo_root().join(file);
+        let engine = load_engine_from_file(&path.display().to_string()).expect("load figure");
+        let document = engine_document(&engine).expect("document");
+        let object = document
+            .scene_objects()
+            .into_iter()
+            .find(|object| object.visible && object.object_type != "group")
+            .expect("visible object");
+        let out_dir = temp_path(&format!("bundle-{file}"));
+        let _ = fs::remove_dir_all(&out_dir);
+        let manifest = bundle_document(
+            &engine,
+            &document,
+            &BundleOptions {
+                input: path.display().to_string(),
+                target: TargetSelector::Object(object.id.clone()),
+                out_dir: out_dir.clone(),
+                context_radius: 4.0,
+                capture_format: CaptureFormat::Svg,
+                raster: RasterOptions::default(),
+                subset_format: "ccjs".to_string(),
+                pretty: false,
+            },
+        )
+        .expect("figure bundle");
+        assert_eq!(manifest["ok"], true);
+        assert_eq!(manifest["schema"], "chemcore.agent.bundle.v1");
+        assert!(out_dir.join("editable-subset.ccjs").is_file());
+        let _ = fs::remove_dir_all(out_dir);
+    }
 }
 
 #[test]

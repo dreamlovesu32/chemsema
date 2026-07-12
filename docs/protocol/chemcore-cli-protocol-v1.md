@@ -37,6 +37,7 @@ The following command names are stable in v1:
 - `inspect`
 - `targets`
 - `context`
+- `bundle`
 - `detail`
 - `capture`
 - `copy`
@@ -45,6 +46,7 @@ The following command names are stable in v1:
 - `run`
 - `convert`
 - `export`
+- `diff`
 
 Aliases such as `details`, `describe`, and `show` are convenience aliases. They
 are useful, but automation should prefer canonical names.
@@ -66,5 +68,7 @@ are useful, but automation should prefer canonical names.
 - [JSONL Session](./session-jsonl-v1.md)
 - [Command Scripts](./command-script-v1.md)
 - [Capture Manifest](./capture-manifest-v1.md)
+- [Agent Bundle](./agent-bundle-v1.md)
+- [Document Diff](./document-diff-v1.md)
 - [Error Model](./error-model-v1.md)
 - [Entrypoints](./entrypoints-v1.md)

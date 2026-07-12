@@ -13,6 +13,8 @@ from typing import Any
 
 from chemcore_runtime import find_cli
 
+REQUIRED_SKILL_COMMANDS = ("bundle", "diff")
+
 
 def find_suite_root(start: Path) -> Path:
     current = start.resolve()
@@ -62,7 +64,14 @@ def main() -> int:
     caps = runtime_capabilities()
     text = markdown_text(suite_root)
 
-    commands = [item["name"] for item in caps.get("commands", []) if isinstance(item, dict) and "name" in item]
+    commands = sorted(
+        {
+            item["name"]
+            for item in caps.get("commands", [])
+            if isinstance(item, dict) and "name" in item
+        }
+        | set(REQUIRED_SKILL_COMMANDS)
+    )
     formats = sorted(
         {
             str(fmt)

@@ -103,10 +103,11 @@ chemcore-cli about [--pretty] [--out <path>]
 chemcore-cli capabilities [--pretty] [--out <path>]
 chemcore-cli doctor [--pretty] [--out <path>]
 chemcore-cli examples [basic|capture-copy|all] [--pretty] [--out <path>]
-chemcore-cli schema [protocol|commands|targets|capture|context|detail|guide|copy|json-output|command-script|all] [--pretty] [--out <path>]
+chemcore-cli schema [protocol|commands|targets|capture|context|bundle|detail|diff|guide|copy|json-output|command-script|all] [--pretty] [--out <path>]
 chemcore-cli inspect <input> [--include summary,objects,molecules,resources,styles] [--out <path>] [--pretty]
 chemcore-cli targets <input> [--out <path>] [--pretty]
 chemcore-cli context <input> --target <selector> [--target <selector> ...] [--targets <selector;selector>] [--radius <pt>] [--out <context.json>] [--capture-out <path.svg|path.png>] [--scale <n>|--width <px>|--height <px>] [--pretty]
+chemcore-cli bundle <input> --target <selector> [--target <selector> ...] [--targets <selector;selector>] --out-dir <directory> [--context-radius <pt>] [--capture-format png|svg] [--capture-width <px>] [--capture-height <px>] [--capture-scale <n>] [--subset-format ccjs|ccjz|cdxml|cdx|sdf] [--pretty]
 chemcore-cli detail <input> --target <object:id|molecule:index|node:id|bond:id> [--summary-only] [--include-resource] [--out <detail.json>] [--pretty]
 chemcore-cli capture <input> --target <selector> [--target <selector> ...] [--targets <selector;selector>] [--selection-only] [--crop-bounds <minX,minY,maxX,maxY>] [--out <path.svg|path.png>] [--scale <n>|--width <px>|--height <px>] [--expand <pt>] [--expand-rel <fraction>] [--pretty]
 chemcore-cli copy <input> [--target <selector>] [--payload <payload.json>] [--no-copy] [--pretty]
@@ -115,6 +116,7 @@ chemcore-cli new [commands.json|-] --out <path> [--save-format <format>] [--resu
 chemcore-cli run <input> <commands.json|-> [--out <path>] [--save-format <format>] [--results <path>] [--document-json <path>] [--inspect-after <include|none>] [--pretty] [--quiet]
 chemcore-cli convert <input> <output> [--format <format>] [--scale <n>|--width <px>|--height <px>]
 chemcore-cli export <input> <output> [--format <format>] [--scale <n>|--width <px>|--height <px>]
+chemcore-cli diff <before> <after> --out <diff.json> [--pretty]
 chemcore-cli label-query --text <source-label> [--connection-angle <deg> ...] [--connection-count <n>] [--no-default-chemical] [--pretty]
 chemcore-cli label-query --visible-text <visible-label> [--connection-angle <deg> ...] [--connection-count <n>] [--pretty]
 ```
@@ -131,6 +133,8 @@ npm run cli -- run input.cdxml commands.json --out output.cdxml --results result
 npm run cli -- convert input.cdxml output.svg
 npm run cli -- convert input.cdxml output.png --scale 6
 npm run cli -- convert input.cdxml output.ccjs
+npm run cli -- bundle input.cdxml --target molecule:0 --out-dir molecule-0-bundle --context-radius 40 --capture-format png --subset-format ccjs --pretty
+npm run cli -- diff before.ccjs after.ccjs --out diff.json --pretty
 ```
 
 Label query calls:
@@ -159,6 +163,13 @@ File output policy:
 - `copy` may omit `--payload`; it then writes the clipboard payload JSON into the OS temp `chemcore-cli` directory, reports the exact path in `payload.path`, and emits a `default_payload_path` warning.
 - `new`, `convert`, and `export` require explicit output paths because they create primary document files.
 - Every file-writing command verifies after writing that the target exists, is a regular file, and has the expected or minimum byte size. A failed verification is a command failure.
+
+Object-grounded bundle and diff:
+
+- `bundle` writes a directory containing `manifest.json`, `target.json`, `context.json`, `editable-subset.<format>`, `capture.png` or `capture.svg`, and `identity-map.json`.
+- `manifest.json` separates `editableScope` from `visualScope`. Visual context can contain nearby non-target objects; only editable scope is authorized for modification.
+- `context.json` keeps `selectionBoxRelation` and `isTarget`, so callers can tell selected objects from merely visible neighbors.
+- `diff` compares two editable documents by object/resource/style/node/bond identity and reports created, updated, deleted, and field-level changes.
 
 Import cache policy:
 

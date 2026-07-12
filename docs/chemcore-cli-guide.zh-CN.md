@@ -87,10 +87,11 @@ chemcore-cli about [--pretty] [--out <path>]
 chemcore-cli capabilities [--pretty] [--out <path>]
 chemcore-cli doctor [--pretty] [--out <path>]
 chemcore-cli examples [basic|capture-copy|all] [--pretty] [--out <path>]
-chemcore-cli schema [protocol|commands|targets|capture|context|detail|guide|copy|json-output|command-script|all] [--pretty] [--out <path>]
+chemcore-cli schema [protocol|commands|targets|capture|context|bundle|detail|diff|guide|copy|json-output|command-script|all] [--pretty] [--out <path>]
 chemcore-cli inspect <input> [--include summary,objects,molecules,resources,styles] [--out <path>] [--pretty]
 chemcore-cli targets <input> [--out <path>] [--pretty]
 chemcore-cli context <input> --target <selector> [--target <selector> ...] [--targets <selector;selector>] [--radius <pt>] [--out <context.json>] [--capture-out <path.svg|path.png>] [--scale <n>|--width <px>|--height <px>] [--pretty]
+chemcore-cli bundle <input> --target <selector> [--target <selector> ...] [--targets <selector;selector>] --out-dir <directory> [--context-radius <pt>] [--capture-format png|svg] [--capture-width <px>] [--capture-height <px>] [--capture-scale <n>] [--subset-format ccjs|ccjz|cdxml|cdx|sdf] [--pretty]
 chemcore-cli detail <input> --target <object:id|molecule:index|node:id|bond:id> [--summary-only] [--include-resource] [--out <detail.json>] [--pretty]
 chemcore-cli capture <input> --target <selector> [--target <selector> ...] [--targets <selector;selector>] [--selection-only] [--crop-bounds <minX,minY,maxX,maxY>] [--out <path.svg|path.png>] [--scale <n>|--width <px>|--height <px>] [--expand <pt>] [--expand-rel <fraction>] [--pretty]
 chemcore-cli copy <input> [--target <selector>] [--payload <payload.json>] [--no-copy] [--pretty]
@@ -99,6 +100,7 @@ chemcore-cli new [commands.json|-] --out <path> [--save-format <format>] [--resu
 chemcore-cli run <input> <commands.json|-> [--out <path>] [--save-format <format>] [--results <path>] [--document-json <path>] [--inspect-after <include|none>] [--pretty] [--quiet]
 chemcore-cli convert <input> <output> [--format <format>] [--scale <n>|--width <px>|--height <px>]
 chemcore-cli export <input> <output> [--format <format>] [--scale <n>|--width <px>|--height <px>]
+chemcore-cli diff <before> <after> --out <diff.json> [--pretty]
 chemcore-cli label-query --text <source-label> [--connection-angle <deg> ...] [--connection-count <n>] [--no-default-chemical] [--pretty]
 chemcore-cli label-query --visible-text <visible-label> [--connection-angle <deg> ...] [--connection-count <n>] [--pretty]
 ```
@@ -115,6 +117,8 @@ npm run cli -- run input.cdxml commands.json --out output.cdxml --results result
 npm run cli -- convert input.cdxml output.svg
 npm run cli -- convert input.cdxml output.png --scale 6
 npm run cli -- convert input.cdxml output.ccjs
+npm run cli -- bundle input.cdxml --target molecule:0 --out-dir molecule-0-bundle --context-radius 40 --capture-format png --subset-format ccjs --pretty
+npm run cli -- diff before.ccjs after.ccjs --out diff.json --pretty
 ```
 
 标签查询示例：
@@ -140,6 +144,13 @@ source 候选既合法又能渲染回可见文本，反向报告会推荐
 - `copy` 可以省略 `--payload`；此时会把剪贴板 payload JSON 写到系统临时目录下的 `chemcore-cli` 子目录，在 `payload.path` 返回真实路径，并给出 `default_payload_path` warning。
 - `new`、`convert`、`export` 会创建主要文档文件，需要显式给输出路径。
 - 所有写文件命令都会在写完后检查目标是否存在、是否为普通文件、以及字节数是否符合预期或最低要求。校验失败就是命令失败。
+
+对象级 bundle 和 diff：
+
+- `bundle` 会写出 `manifest.json`、`target.json`、`context.json`、`editable-subset.<format>`、`capture.png` 或 `capture.svg`、以及 `identity-map.json`。
+- `manifest.json` 明确区分 `editableScope` 和 `visualScope`。视觉上下文可以包含附近的非目标对象；只有 editable scope 是允许修改的范围。
+- `context.json` 保留 `selectionBoxRelation` 和 `isTarget`，调用方可以区分明确选中的对象和只是出现在截图里的邻居。
+- `diff` 按 object/resource/style/node/bond 身份比较两个可编辑文档，报告创建、更新、删除和字段级变化。
 
 导入缓存规则：
 

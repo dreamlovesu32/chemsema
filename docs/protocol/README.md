@@ -8,6 +8,8 @@ shorter and stricter than the user guides.
 - [JSONL Session v1](./session-jsonl-v1.md)
 - [Command Script v1](./command-script-v1.md)
 - [Capture Manifest v1](./capture-manifest-v1.md)
+- [Agent Bundle v1](./agent-bundle-v1.md)
+- [Document Diff v1](./document-diff-v1.md)
 - [Error Model v1](./error-model-v1.md)
 - [Entrypoints v1](./entrypoints-v1.md)
 

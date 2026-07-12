@@ -1715,6 +1715,7 @@ impl Engine {
             anchor,
             end,
             order,
+            None,
             explicit_double,
             line_weights_override,
             None,
@@ -1726,6 +1727,7 @@ impl Engine {
         anchor: BondAnchor,
         end: BondAnchor,
         order: u8,
+        wide_end_override: Option<String>,
         explicit_double: Option<DoubleBond>,
         line_weights_override: Option<crate::BondLineWeights>,
         stroke_override: Option<String>,
@@ -1735,6 +1737,7 @@ impl Engine {
             end: CommandAnchor::from(&end),
             order,
             variant: self.state.tool.bond_variant,
+            wide_end: wide_end_override.clone(),
             double_placement: explicit_double.as_ref().map(|double| double.placement),
             double: None,
             line_weights: line_weights_override.clone(),
@@ -1745,6 +1748,7 @@ impl Engine {
                 anchor,
                 end,
                 order,
+                wide_end_override,
                 explicit_double,
                 line_weights_override,
                 stroke_override,
@@ -1757,6 +1761,7 @@ impl Engine {
         anchor: BondAnchor,
         end: BondAnchor,
         order: u8,
+        wide_end_override: Option<String>,
         explicit_double: Option<DoubleBond>,
         line_weights_override: Option<crate::BondLineWeights>,
         stroke_override: Option<String>,
@@ -1797,7 +1802,7 @@ impl Engine {
         let pending_line_styles = self.pending_line_styles();
         let pending_line_weights =
             line_weights_override.unwrap_or_else(|| self.pending_line_weights());
-        let pending_stereo = self.pending_bond_stereo();
+        let pending_stereo = self.pending_bond_stereo_with_wide_end(wide_end_override.as_deref());
         let order = order.max(1);
         let pending_double = if order >= 2 { explicit_double } else { None }.or_else(|| {
             self.pending_double_state_for_new_bond_in_anchor_fragment(
@@ -2096,6 +2101,7 @@ impl Engine {
                 end,
                 order,
                 variant,
+                wide_end,
                 double_placement,
                 double,
                 line_weights,
@@ -2107,6 +2113,7 @@ impl Engine {
                     bond_anchor_from_command(begin),
                     bond_anchor_from_command(end),
                     order,
+                    wide_end,
                     command_double_bond_override(double_placement, double),
                     line_weights,
                     stroke,
@@ -3652,18 +3659,30 @@ impl Engine {
     }
 
     fn pending_bond_stereo(&self) -> Option<BondStereo> {
+        self.pending_bond_stereo_with_wide_end(None)
+    }
+
+    fn pending_bond_stereo_with_wide_end(
+        &self,
+        wide_end_override: Option<&str>,
+    ) -> Option<BondStereo> {
+        let wide_end = match wide_end_override {
+            Some("begin") => "begin",
+            Some("end") => "end",
+            _ => "end",
+        };
         match self.state.tool.bond_variant {
             BondVariant::Wedge => Some(BondStereo {
                 kind: "solid-wedge".to_string(),
-                wide_end: "end".to_string(),
+                wide_end: wide_end.to_string(),
             }),
             BondVariant::HashedWedge => Some(BondStereo {
                 kind: "hashed-wedge".to_string(),
-                wide_end: "end".to_string(),
+                wide_end: wide_end.to_string(),
             }),
             BondVariant::HollowWedge => Some(BondStereo {
                 kind: "hollow-wedge".to_string(),
-                wide_end: "end".to_string(),
+                wide_end: wide_end.to_string(),
             }),
             _ => None,
         }

@@ -87,6 +87,8 @@ fn run() -> CliResult<()> {
             .map_err(|error| CliError::for_command("capture", error)),
         "context" => agent::context_command(&args[1..])
             .map_err(|error| CliError::for_command("context", error)),
+        "bundle" => agent::bundle_command(&args[1..])
+            .map_err(|error| CliError::for_command("bundle", error)),
         "detail" | "details" | "describe" | "show" => agent::detail_command(&args[1..])
             .map_err(|error| CliError::for_command("detail", error)),
         "copy" => {
@@ -103,6 +105,9 @@ fn run() -> CliResult<()> {
         }
         "export" => {
             convert_command(&args[1..]).map_err(|error| CliError::for_command("export", error))
+        }
+        "diff" => {
+            agent::diff_command(&args[1..]).map_err(|error| CliError::for_command("diff", error))
         }
         "run" => {
             run_command_script(&args[1..]).map_err(|error| CliError::for_command("run", error))
@@ -2330,8 +2335,12 @@ mod tests {
         assert_eq!(protocol::schema_topic_key("context"), Some("context"));
         assert_eq!(protocol::schema_topic_key("nearby"), Some("context"));
         assert_eq!(protocol::schema_topic_key("neighbors"), Some("context"));
+        assert_eq!(protocol::schema_topic_key("bundle"), Some("bundle"));
+        assert_eq!(protocol::schema_topic_key("agent-bundle"), Some("bundle"));
         assert_eq!(protocol::schema_topic_key("detail"), Some("detail"));
         assert_eq!(protocol::schema_topic_key("object-detail"), Some("detail"));
+        assert_eq!(protocol::schema_topic_key("diff"), Some("diff"));
+        assert_eq!(protocol::schema_topic_key("document-diff"), Some("diff"));
         assert_eq!(protocol::schema_topic_key("guide"), Some("guide"));
         assert_eq!(protocol::schema_topic_key("agent-guide"), Some("guide"));
         assert_eq!(protocol::schema_topic_key("clipboard"), Some("copy"));
@@ -2373,6 +2382,8 @@ mod tests {
         let selector_doc = include_str!("../../../docs/protocol/selector-v1.md");
         let session_doc = include_str!("../../../docs/protocol/session-jsonl-v1.md");
         let capture_doc = include_str!("../../../docs/protocol/capture-manifest-v1.md");
+        let bundle_doc = include_str!("../../../docs/protocol/agent-bundle-v1.md");
+        let diff_doc = include_str!("../../../docs/protocol/document-diff-v1.md");
         let error_doc = include_str!("../../../docs/protocol/error-model-v1.md");
         let entrypoints_doc = include_str!("../../../docs/protocol/entrypoints-v1.md");
 
@@ -2380,6 +2391,8 @@ mod tests {
         assert!(selector_doc.contains(protocol::SELECTOR_PROTOCOL_VERSION));
         assert!(session_doc.contains(protocol::SESSION_PROTOCOL_VERSION));
         assert!(capture_doc.contains(protocol::CAPTURE_MANIFEST_VERSION));
+        assert!(bundle_doc.contains(protocol::AGENT_BUNDLE_SCHEMA_VERSION));
+        assert!(diff_doc.contains(protocol::DOCUMENT_DIFF_SCHEMA_VERSION));
         assert!(error_doc.contains(protocol::ERROR_MODEL_VERSION));
         assert!(entrypoints_doc.contains(protocol::ENTRYPOINTS_SCHEMA_VERSION));
     }

@@ -216,6 +216,13 @@ pub enum EditorCommand {
         variant: BondVariant,
         #[serde(
             default,
+            rename = "wideEnd",
+            alias = "wide_end",
+            skip_serializing_if = "Option::is_none"
+        )]
+        wide_end: Option<String>,
+        #[serde(
+            default,
             rename = "doublePlacement",
             alias = "double_placement",
             skip_serializing_if = "Option::is_none"

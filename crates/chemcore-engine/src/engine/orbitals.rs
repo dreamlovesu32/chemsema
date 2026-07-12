@@ -566,6 +566,7 @@ mod tests {
                 end: CommandAnchor::from(Point::new(260.0, 300.0)),
                 order: 1,
                 variant: BondVariant::Single,
+                wide_end: None,
                 double_placement: None,
                 double: None,
                 line_weights: None,

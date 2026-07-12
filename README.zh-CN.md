@@ -38,7 +38,28 @@ Jiajun ZHANG, Pinhong Chen,* Guosheng Liu*, Copper-Catalyzed Site- and Enantiose
 
 ChemCore 也把 agent 当作一等调用方来设计，而不是让机器靠猜屏幕像素去模拟 GUI 操作。CLI 是一层确定性的 engine 接口：它可以发现稳定 selector，返回 object/bond/node id，查看原始对象详情，查询目标周边关系，生成精确视觉裁图，执行 JSON 编辑命令，并报告每一步到底改了什么。
 
+ChemCore 让 AI agent 在结构化检查、局部视觉观察、确定性修改、结构化 diff
+和可编辑导出之间，共享同一套对象身份。
+
+```text
+CDXML / CCJS
+      |
+targets -> object:obj_mol_001
+      |-- detail.json
+      |-- context.json
+      |-- capture.png
+      |-- bundle/
+      |-- transaction-ready diff.json
+      `-- target.cdxml
+```
+
 这套设计的目标是同时给 agent 结构信息和视觉信息。结构化 JSON 会告诉它文档里有哪些对象、对象在哪里、group/link 关系是什么，以及一次命令新建、更新或删除了哪些内容。PNG/SVG 精确截图则提供对应区域的高清视觉视图。单命令适合独立文件任务；JSONL `session` 模式和 CDXML 导入缓存让大文件上的连续操作不必反复解析。输出文件写完会校验路径和字节数；命令出错时会返回可恢复的 usage 提示，而不是只给一个失败码。
+
+`bundle` 会把一个 selector 收束成完整的对象级工作单元：`target.json`、
+`context.json`、`capture.png` 或 `capture.svg`、只包含目标范围的可编辑子文档、
+identity map 和 manifest。manifest 会明确区分 editable scope 与 visual
+scope。`diff` 按 ChemCore id 和结构字段比较两个可编辑文档，为后续 dry-run、
+transaction 和范围校验提供可复用的 before/after 审计。
 
 精确截图只是这套接口里最容易看见的一部分。它会裁出和 GUI 选择框一致的视觉范围：目标 object 或多选目标负责定义截图框，而这个框里实际可见的内容都会进入 PNG/SVG。context 查询使用同一套 target 模型，并返回周边对象的 id、方向、距离、`inside`/`partial` 选择框关系、group 层级和 link 信息。
 
@@ -60,6 +81,8 @@ chemcore-cli targets figure1.cdxml --pretty
 chemcore-cli detail figure1.cdxml --target object:obj_bracket_001 --pretty
 chemcore-cli context figure1.cdxml --target object:obj_line_001 --radius 45 --expand-left 10 --expand-right 10 --expand-top 34 --expand-bottom 34 --capture-out tmp/line-context.png --out tmp/line-context.json --pretty
 chemcore-cli capture figure1.cdxml --target object:obj_bracket_001 --out tmp/bracket.png --width 1200 --expand 8 --pretty
+chemcore-cli bundle figure1.cdxml --target object:obj_bracket_001 --out-dir tmp/bracket-bundle --context-radius 40 --capture-format png --subset-format ccjs --pretty
+chemcore-cli diff before.ccjs after.ccjs --out tmp/diff.json --pretty
 ```
 
 ## Agent Skills

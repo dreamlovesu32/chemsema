@@ -13,7 +13,8 @@ line:
 {"id":1,"op":"targets"}
 {"id":2,"op":"detail","target":"molecule:0"}
 {"id":3,"op":"capture","target":"molecule:0","out":"molecule.png","width":1800}
-{"id":4,"op":"exit"}
+{"id":4,"op":"bundle","target":"molecule:0","outDir":"molecule-0-bundle","captureFormat":"svg"}
+{"id":5,"op":"exit"}
 ```
 
 Responses include `ok`, `id`, `op`, and either `result` or `error`.
@@ -26,6 +27,7 @@ Stable operations include:
 - `targets`
 - `detail`
 - `context`
+- `bundle`
 - `capture`
 - `execute`
 - `save`

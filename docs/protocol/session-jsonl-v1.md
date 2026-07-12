@@ -23,6 +23,7 @@ Stable operations:
 - `targets`
 - `detail`
 - `context`
+- `bundle`
 - `capture`
 - `execute`
 - `save`
@@ -66,5 +67,5 @@ target commands such as `move-targets`, `rotate-targets`, `scale-targets`, and
 
 ## File Outputs
 
-`capture` and `save` may write files. File writes are verified before success is
-reported. Prefer explicit output paths in automation.
+`bundle`, `capture`, and `save` may write files. File writes are verified before
+success is reported. Prefer explicit output paths in automation.
