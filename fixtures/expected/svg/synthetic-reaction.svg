@@ -1,9 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="203.6" height="62.57" viewBox="14.4 0 203.6 62.57">
+<svg xmlns="http://www.w3.org/2000/svg" width="203.6" height="62.8" viewBox="14.4 0 203.6 62.8">
   <text x="24" y="18" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">Synthetic reaction fixture</tspan></text>
-  <text x="185.92" y="48.67" font-size="10" dominant-baseline="alphabetic" text-anchor="end" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">O</tspan></text>
-  <text x="76.12" y="48.67" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">OH</tspan></text>
-  <polygon points="187.067826,42.78 210,42.78 210,42.18 187.067826,42.18" fill="#000000" stroke="none" stroke-width="0" />
-  <polygon points="187.09,47.82 210,47.82 210,47.22 187.09,47.22" fill="#000000" stroke="none" stroke-width="0" />
+  <text x="185.92" y="48.9" font-size="10" dominant-baseline="alphabetic" text-anchor="end" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">O</tspan></text>
+  <text x="76.12" y="48.9" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">OH</tspan></text>
+  <polygon points="187.092174,42.78 210,42.78 210,42.18 187.092174,42.18" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="187.266667,47.82 210,47.82 210,47.22 187.266667,47.22" fill="#000000" stroke="none" stroke-width="0" />
   <polygon points="24,45.3 52,45.3 52,44.7 24,44.7" fill="#000000" stroke="none" stroke-width="0" />
   <polygon points="52,45.3 74.45,45.3 74.45,44.7 52,44.7" fill="#000000" stroke="none" stroke-width="0" />
   <polyline points="112,45 152.75,45" fill="none" stroke="#000000" stroke-width="0.6" stroke-linecap="butt" stroke-linejoin="miter" />

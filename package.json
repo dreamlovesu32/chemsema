@@ -57,6 +57,7 @@
     "stability": "node scripts/stability-report.mjs",
     "stability:fixtures": "node scripts/generate-stability-fixtures.mjs",
     "verify": "node scripts/verify.mjs",
+    "readme:comparison": "node scripts/regenerate-readme-comparison.mjs",
     "screenshot": "node scripts/viewer-screenshot.mjs",
     "screenshot:svg": "node scripts/viewer-svg-screenshot.mjs",
     "test": "node scripts/test.mjs"

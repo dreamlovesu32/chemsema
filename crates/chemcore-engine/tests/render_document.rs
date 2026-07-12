@@ -3131,6 +3131,101 @@ fn cdxml_imported_bonds_use_engine_glyph_retreat() {
 }
 
 #[test]
+fn cdxml_imported_f_label_margin_expands_internal_bar_clip() {
+    fn imported_f_endpoint_distance(margin_width: f64) -> (f64, f64, usize) {
+        let cdxml = format!(
+            r#"<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >
+<CDXML BondLength="14.40" LineWidth="0.60" BoldWidth="2.00" HashSpacing="2.50" BondSpacing="18" MarginWidth="{margin_width:.2}" LabelSize="10">
+  <page id="p1" BoundingBox="0 0 70 40">
+    <fragment id="f1" BoundingBox="0 0 70 40">
+      <n id="n13" p="37.41 12.17"/>
+      <n id="n14" p="24.94 4.97" Element="9" InterpretChemically="yes">
+        <t p="21.91 8.87" BoundingBox="21.91 0.67 28.01 9.57" LabelJustification="Left" LabelAlignment="Auto">
+          <s font="3" size="10" color="0" face="96">F</s>
+        </t>
+      </n>
+      <b id="b28" B="n13" E="n14"/>
+    </fragment>
+  </page>
+</CDXML>"#
+        );
+        let document =
+            parse_cdxml_document(&cdxml, Some("imported F clip")).expect("cdxml should parse");
+        let entry = document.editable_fragment().expect("editable fragment");
+        let f_node = entry
+            .fragment
+            .nodes
+            .iter()
+            .find(|node| node.id == "n14")
+            .expect("F node should import");
+        let label = f_node.label.as_ref().expect("F label should import");
+        let import_meta = label
+            .meta
+            .pointer("/import/cdxml")
+            .expect("CDXML label import metadata should exist");
+        assert_eq!(
+            import_meta
+                .get("naturalOutsetPt")
+                .and_then(|value| value.as_f64()),
+            Some(margin_width)
+        );
+        assert!(
+            !label.glyph_polygons.is_empty(),
+            "imported F label should carry glyph clip polygons"
+        );
+
+        let f_world = Point::new(
+            entry.object.transform.translate[0] + f_node.position[0],
+            entry.object.transform.translate[1] + f_node.position[1],
+        );
+        let polygon = render_document(&document)
+            .into_iter()
+            .find_map(|primitive| match primitive {
+                RenderPrimitive::Polygon {
+                    role: RenderRole::DocumentBond,
+                    object_id,
+                    bond_id,
+                    points,
+                    ..
+                } if object_id.as_deref() == Some("obj_mol_001")
+                    && bond_id.as_deref() == Some("b28") =>
+                {
+                    Some(points)
+                }
+                _ => None,
+            })
+            .expect("F bond polygon should render");
+        let (from, to) = bond_axis_from_points(&polygon).expect("bond axis");
+        let label_endpoint = if from.distance(f_world) < to.distance(f_world) {
+            from
+        } else {
+            to
+        };
+        (
+            label_endpoint.distance(f_world),
+            import_meta
+                .get("marginWidth")
+                .and_then(|value| value.as_f64())
+                .unwrap_or_default(),
+            label.glyph_polygons[0].len(),
+        )
+    }
+
+    let (one_pt_distance, one_pt_margin, one_pt_points) = imported_f_endpoint_distance(1.0);
+    let (two_pt_distance, two_pt_margin, two_pt_points) = imported_f_endpoint_distance(2.0);
+
+    assert_eq!(one_pt_margin, 1.0);
+    assert_eq!(two_pt_margin, 2.0);
+    assert!(one_pt_points > 8);
+    assert!(two_pt_points > 8);
+    assert!(
+        two_pt_distance > one_pt_distance + 0.45,
+        "imported F internal-bar clipping must expand with MarginWidth: {one_pt_distance} -> {two_pt_distance}"
+    );
+}
+
+#[test]
 fn render_document_does_not_join_bold_bond_at_labeled_endpoint() {
     let document = fragment_document(
         json!([
@@ -5199,7 +5294,7 @@ fn load_cdxml_document_uses_internal_single_character_below_label_position() {
         "single-character CDXML labels should use internal below-label x, got {world_position:?}"
     );
     assert!(
-        (world_position[1] - 142.07).abs() < 0.01,
+        (world_position[1] - 143.60).abs() < 0.01,
         "single-character CDXML labels should use internal below-label y, got {world_position:?}"
     );
 }
@@ -5263,9 +5358,13 @@ fn parse_cdxml_keeps_numeric_suffix_node_label_anchored_on_letter() {
             .and_then(serde_json::Value::as_str),
         Some("invalid")
     );
+    let invalid_anchor = anchor_of(invalid_label, 0);
+    let invalid_line_anchor_y = invalid_label.position.expect("invalid label baseline")[1]
+        - invalid_label.font_size.unwrap_or(10.0) * 0.39;
     assert!(
-        anchor_of(invalid_label, 0).distance(invalid_node.point()) < 0.01,
-        "invalid labels should prefer non-script glyph anchors over subscript/superscript glyphs: node={invalid_node:?}, label={invalid_label:?}"
+        (invalid_anchor.x - invalid_node.position[0]).abs() < 0.01
+            && (invalid_line_anchor_y - invalid_node.position[1]).abs() < 0.01,
+        "invalid labels should prefer non-script glyph x anchors and label-line y anchors over subscript/superscript glyphs: node={invalid_node:?}, label={invalid_label:?}"
     );
 }
 
@@ -6047,6 +6146,57 @@ fn parse_cdxml_attached_atom_label_rebuilds_active_bbox_from_glyph_metrics() {
 }
 
 #[test]
+fn parse_cdxml_right_aligned_attached_labels_use_line_anchor_y() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >
+<CDXML BondLength="30.00" LineWidth="1.00" BoldWidth="4.00" HashSpacing="2.70" BondSpacing="12" MarginWidth="2.00" LabelSize="10">
+  <page id="p1" BoundingBox="0 0 120 170">
+    <fragment id="f1" BoundingBox="20 20 80 150">
+      <n id="c1" p="70 40" AS="N"/>
+      <n id="rprime" p="40 40" NodeType="GenericNickname" GenericNickname="R" NumHydrogens="0" AS="N">
+        <t p="40.95 43.90" BoundingBox="31.82 35.56 40.95 43.90" LabelJustification="Right" Justification="Right" LabelAlignment="Right">
+          <s font="3" size="10" color="0">R&apos;</s>
+        </t>
+      </n>
+      <b id="b1" B="c1" E="rprime"/>
+      <n id="c2" p="70 90" AS="N"/>
+      <n id="me" p="40 90" NodeType="GenericNickname" GenericNickname="Me" NumHydrogens="0" AS="N">
+        <t p="42.78 93.90" BoundingBox="30.00 85.56 42.78 93.90" LabelJustification="Right" Justification="Right" LabelAlignment="Right">
+          <s font="3" size="10" color="0">Me</s>
+        </t>
+      </n>
+      <b id="b2" B="c2" E="me"/>
+      <n id="c3" p="70 140" AS="N"/>
+      <n id="ar" p="40 140" NodeType="GenericNickname" GenericNickname="Ar" NumHydrogens="0" AS="N">
+        <t p="41.67 143.90" BoundingBox="30.00 135.56 41.67 143.90" LabelJustification="Right" Justification="Right" LabelAlignment="Right">
+          <s font="3" size="10" color="0">Ar</s>
+        </t>
+      </n>
+      <b id="b3" B="c3" E="ar"/>
+    </fragment>
+  </page>
+</CDXML>"#;
+    let document =
+        parse_cdxml_document(cdxml, Some("right attached labels")).expect("cdxml should parse");
+    for node_id in ["rprime", "me", "ar"] {
+        let node = document
+            .resources
+            .values()
+            .filter_map(|resource| resource.data.as_fragment())
+            .find_map(|fragment| fragment.nodes.iter().find(|node| node.id == node_id))
+            .expect("node should import");
+        let label = node.label.as_ref().expect("node label should import");
+        let baseline = label.position.expect("label should have a baseline")[1];
+        assert!(
+            (baseline - node.position[1] - 3.9).abs() < 0.01,
+            "{node_id} baseline should follow ChemDraw's line-anchor y, got node={:?} label={:?}",
+            node.position,
+            label.position
+        );
+    }
+}
+
+#[test]
 fn render_cdxml_single_character_atom_label_uses_text_primitive() {
     let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >
@@ -6084,8 +6234,8 @@ fn render_cdxml_single_character_atom_label_uses_text_primitive() {
         })
         .expect("N label should render as text");
 
-    assert!((text.0 - 6.44).abs() < 0.001, "{text:?}");
-    assert!((text.1 - 15.69).abs() < 0.001, "{text:?}");
+    assert!((text.0 - 6.42).abs() < 0.001, "{text:?}");
+    assert!((text.1 - 15.90).abs() < 0.001, "{text:?}");
     assert_eq!(
         text.2
             .iter()
@@ -6514,9 +6664,12 @@ fn parse_cdxml_parenthesized_attached_label_reverses_inner_groups() {
         },
     );
     let nitrogen_center = Point::new((bounds[0] + bounds[2]) * 0.5, (bounds[1] + bounds[3]) * 0.5);
+    let line_anchor_y =
+        label.position.expect("right label baseline")[1] - label.font_size.unwrap_or(10.0) * 0.39;
     assert!(
-        nitrogen_center.distance(Point::new(node.position[0], node.position[1])) < 0.01,
-        "right-side N(PhSO2)2 labels should keep the original N glyph anchored to the node: label={label:?}, node={node:?}"
+        (nitrogen_center.x - node.position[0]).abs() < 0.01
+            && (line_anchor_y - node.position[1]).abs() < 0.01,
+        "right-side N(PhSO2)2 labels should keep the original N glyph x and label-line y anchored to the node: label={label:?}, node={node:?}"
     );
 }
 
@@ -6791,8 +6944,8 @@ fn parse_cdxml_node_labels_use_internal_attached_layout() {
     let hydrogen_center = glyph_center(0);
     let nitrogen_center = glyph_center(1);
     assert!(
-        nitrogen_center.distance(Point::new(node.position[0], node.position[1])) < 0.01,
-        "stacked NH labels should anchor the original first atom glyph to the node: H={hydrogen_center:?}, N={nitrogen_center:?}, node={:?}",
+        (nitrogen_center.x - node.position[0]).abs() < 0.01,
+        "stacked NH labels should anchor the original first atom glyph horizontally to the node: H={hydrogen_center:?}, N={nitrogen_center:?}, node={:?}",
         node.position
     );
     assert!(

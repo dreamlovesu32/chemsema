@@ -21,6 +21,12 @@ contracts live in `docs/`.
 - Mention validation and rebuilt artifacts only when they matter to users or
   release consumers, such as shared WASM artifacts, installers, or platform
   packages.
+- Before cutting or replacing a public version, regenerate and review the README
+  editor screenshot and published CDXML comparison assets with the current
+  engine. Commit the refreshed `docs/assets/readme/product-screenshot.png`,
+  `docs/assets/readme/comparison/figure*.chemcore.svg`,
+  `docs/assets/readme/comparison/figure*.chemcore.emf`, and
+  `docs/assets/readme/comparison/published-cdxml-comparison.svg`.
 
 ## Engine And Viewer Boundary
 
@@ -87,6 +93,14 @@ contracts live in `docs/`.
   are not active layout authority. Label anchors and bond retreat must be
   recomputed by the Rust engine from native label runs, glyph polygons, and the
   current `MarginWidth` profile.
+- Do not reintroduce a per-bond `label_clip_margin`/`labelClipMargin` retreat
+  path for atom labels. Bond-to-label retreat is glyph clipping: the rendered
+  bond body must be clipped against glyph polygons generated from the current
+  `MarginWidth` profile.
+- `MarginWidth` natural glyph extension applies to every visible glyph edge,
+  including internal bays and stroke ends that sit inside the glyph's overall
+  bounding box. Do not approximate it by scaling only geometry outside the
+  whole glyph bbox.
 - Source-neutral measured label geometry from screenshots, pasted images, or
   other non-CDXML inputs must not be encoded as `meta.import.cdxml`.
 

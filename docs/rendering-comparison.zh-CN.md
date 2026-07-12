@@ -44,6 +44,23 @@ npm run emf:compare-oracle -- --out tmp/emf-oracle figure1.cdxml figure2.cdxml
 
 README 中的对比资产位于 `docs/assets/readme/comparison/`，由这些输出以及 ChemCore 的 `cdxml_to_svg` 和 Office EMF 写出路径生成。默认 GitHub Actions CI 使用开源、无专有依赖的回归检查；ChemDraw 和 Office oracle 检查保留为本地 Windows 工作流。
 
+## README 发布资产
+
+每一次公开版本发布或替换 release，都必须用即将发布的 engine 重新刷新 README 视觉资产：
+
+```bash
+cargo run -p chemcore-cli -- convert figure1.cdxml docs/assets/readme/comparison/figure1.chemcore.svg --format svg
+cargo run -p chemcore-cli -- convert figure2.cdxml docs/assets/readme/comparison/figure2.chemcore.svg --format svg
+cargo run -p chemcore-engine --example cdxml_to_clipboard_payload -- figure1.cdxml tmp/readme-assets/figure1.chemcore.payload.json
+cargo run -p chemcore-engine --example cdxml_to_clipboard_payload -- figure2.cdxml tmp/readme-assets/figure2.chemcore.payload.json
+cargo run -p chemcore-office -- --write-emf-payload tmp/readme-assets/figure1.chemcore.payload.json docs/assets/readme/comparison/figure1.chemcore.emf
+cargo run -p chemcore-office -- --write-emf-payload tmp/readme-assets/figure2.chemcore.payload.json docs/assets/readme/comparison/figure2.chemcore.emf
+npm run readme:comparison
+npm run screenshot -- http://127.0.0.1:8767/viewer/ docs/assets/readme/product-screenshot.png figure1.cdxml
+```
+
+这些生成文件属于 release artifact，不是临时输出。打 tag 前需要人工查看刷新后的对比图和编辑器截图。
+
 ## 添加公开 Fixture
 
 请使用 synthetic chemistry、化简布局，或维护者本人绘制且权利边界清楚的文件。公开 fixture 应可共享、足够小，并且权利边界清楚。

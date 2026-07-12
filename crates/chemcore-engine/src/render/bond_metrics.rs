@@ -143,14 +143,6 @@ pub(super) fn solid_wedge_tip_half_width(stroke_width: f64) -> f64 {
     stroke_width * 0.5
 }
 
-pub(super) fn label_clip_margin_for_bond(
-    _document: &ChemcoreDocument,
-    _bond: &Bond,
-    _stroke_width: f64,
-) -> f64 {
-    0.0
-}
-
 pub(super) fn document_margin_width_for_bond(
     document: &ChemcoreDocument,
     bond: &Bond,

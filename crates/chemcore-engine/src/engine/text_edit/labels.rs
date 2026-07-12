@@ -428,6 +428,8 @@ pub(super) fn make_centered_node_label_from_runs(
                             layout.anchor_line,
                             anchor_char,
                             glyph_clip_profile,
+                            baseline_y,
+                            font_size,
                             &points,
                         )
                     })
@@ -515,17 +517,20 @@ fn label_anchor_point_for_layout(
     anchor_line: usize,
     anchor_char: usize,
     glyph_clip_profile: GlyphClipProfile,
+    baseline_y: f64,
+    font_size: f64,
     polygon: &[Point],
 ) -> Option<Point> {
     let bounds = label_polygon_bounds(polygon)?;
+    let anchor_y = baseline_y - font_size * crate::MOLECULE_LABEL_ANCHOR_BASELINE_RATIO;
     if label_char_at(line_runs, anchor_line, anchor_char).is_some_and(crate::is_prime_anchor_suffix)
     {
         return Some(Point::new(
             bounds[2] - glyph_clip_profile.natural_outset_pt,
-            (bounds[1] + bounds[3]) * 0.5,
+            anchor_y,
         ));
     }
-    polygon_anchor_point(polygon)
+    polygon_anchor_point(polygon).map(|point| Point::new(point.x, anchor_y))
 }
 
 fn label_polygon_bounds(polygon: &[Point]) -> Option<[f64; 4]> {

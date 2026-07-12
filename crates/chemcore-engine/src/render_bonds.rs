@@ -37,32 +37,29 @@ pub(super) fn render_fragment_bond(
         .is_some_and(|label| label.has_visible_text());
 
     let stereo = bond_stereo_kind(bond);
-    let label_clip_margin = label_clip_margin_for_bond(document, bond, stroke_width);
     let clipped_segment = if let Some(stereo) = stereo {
         let (begin_half_width, end_half_width) =
             wedge_endpoint_half_widths(bond, stereo, stroke_width);
-        clip_wedge_segment_out_of_label_geometry(
+        clip_body_segment_out_of_label_geometry(
             start,
             finish,
             begin_box,
             &begin_polygons,
             begin_half_width,
-            label_clip_margin,
             end_box,
             &end_polygons,
             end_half_width,
-            label_clip_margin,
         )
     } else {
-        clip_segment_out_of_label_geometry(
+        clip_body_segment_out_of_label_geometry(
             start,
             finish,
             begin_box,
             &begin_polygons,
-            label_clip_margin,
+            stroke_width * 0.5,
             end_box,
             &end_polygons,
-            label_clip_margin,
+            stroke_width * 0.5,
         )
     };
     let Some((clipped_start, clipped_finish)) = clipped_segment else {

@@ -363,7 +363,6 @@ pub(super) fn clip_point_out_of_label_geometry(
     end: Point,
     rect: Option<RectBox>,
     polygons: &[Vec<Point>],
-    _margin: f64,
 ) -> Point {
     // Prefer per-glyph polygons when they exist; bounding boxes are only a
     // fallback for imported or legacy labels without glyph geometry.
@@ -374,47 +373,15 @@ pub(super) fn clip_point_out_of_label_geometry(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn clip_segment_out_of_label_geometry(
-    start: Point,
-    end: Point,
-    start_rect: Option<RectBox>,
-    start_polygons: &[Vec<Point>],
-    start_margin: f64,
-    end_rect: Option<RectBox>,
-    end_polygons: &[Vec<Point>],
-    end_margin: f64,
-) -> Option<(Point, Point)> {
-    let direction = Vector::new(end.x - start.x, end.y - start.y);
-    let length_sq = direction.x * direction.x + direction.y * direction.y;
-    if length_sq <= EPSILON {
-        return None;
-    }
-
-    let clipped_start =
-        clip_point_out_of_label_geometry(start, end, start_rect, start_polygons, start_margin);
-    let clipped_end =
-        clip_point_out_of_label_geometry(end, start, end_rect, end_polygons, end_margin);
-    let start_t = ((clipped_start.x - start.x) * direction.x
-        + (clipped_start.y - start.y) * direction.y)
-        / length_sq;
-    let end_t = ((clipped_end.x - start.x) * direction.x + (clipped_end.y - start.y) * direction.y)
-        / length_sq;
-
-    (end_t > start_t + EPSILON).then_some((clipped_start, clipped_end))
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(super) fn clip_wedge_segment_out_of_label_geometry(
+pub(super) fn clip_body_segment_out_of_label_geometry(
     start: Point,
     end: Point,
     start_rect: Option<RectBox>,
     start_polygons: &[Vec<Point>],
     start_half_width: f64,
-    start_margin: f64,
     end_rect: Option<RectBox>,
     end_polygons: &[Vec<Point>],
     end_half_width: f64,
-    end_margin: f64,
 ) -> Option<(Point, Point)> {
     let direction = Vector::new(end.x - start.x, end.y - start.y);
     let length = direction.length();
@@ -431,7 +398,6 @@ pub(super) fn clip_wedge_segment_out_of_label_geometry(
         start_rect,
         start_polygons,
         start_half_width,
-        start_margin,
         length,
     );
     let end_retreat = wedge_endpoint_label_retreat(
@@ -442,7 +408,6 @@ pub(super) fn clip_wedge_segment_out_of_label_geometry(
         end_rect,
         end_polygons,
         end_half_width,
-        end_margin,
         length,
     );
     let (clipped_start, clipped_end) =
@@ -459,7 +424,6 @@ fn wedge_endpoint_label_retreat(
     rect: Option<RectBox>,
     polygons: &[Vec<Point>],
     endpoint_half_width: f64,
-    margin: f64,
     axis_length: f64,
 ) -> f64 {
     let mut retreat: f64 = 0.0;
@@ -473,7 +437,7 @@ fn wedge_endpoint_label_retreat(
             opposite.x + normal.x * endpoint_offset,
             opposite.y + normal.y * endpoint_offset,
         );
-        let clipped = clip_point_out_of_label_geometry(ray_start, ray_end, rect, polygons, margin);
+        let clipped = clip_point_out_of_label_geometry(ray_start, ray_end, rect, polygons);
         let projected = (clipped.x - ray_start.x) * axis_from_endpoint.x
             + (clipped.y - ray_start.y) * axis_from_endpoint.y;
         retreat = retreat.max(projected.clamp(0.0, axis_length));
@@ -531,7 +495,7 @@ pub(super) fn render_fragment_line(
 #[allow(clippy::too_many_arguments)]
 pub(super) fn render_fragment_line_with_profiles(
     out: &mut Vec<RenderPrimitive>,
-    document: &ChemcoreDocument,
+    _document: &ChemcoreDocument,
     object: &SceneObject,
     contact_kernel: &MainBondContactKernel,
     bonds: &[Bond],
@@ -583,16 +547,16 @@ pub(super) fn render_fragment_line_with_profiles(
         end_endpoint_profile_override
     };
     let Some((clipped_start, clipped_end)) = (if clip_against_label_geometry {
-        let label_clip_margin = label_clip_margin_for_bond(document, bond, stroke_width);
-        clip_segment_out_of_label_geometry(
+        let half_width = line_weight_stroke_width_for_bond(bond, stroke_width, line_weight) * 0.5;
+        clip_body_segment_out_of_label_geometry(
             start,
             end,
             start_box,
             &start_polygons,
-            label_clip_margin,
+            half_width,
             end_box,
             &end_polygons,
-            label_clip_margin,
+            half_width,
         )
     } else {
         Some((start, end))

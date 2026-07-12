@@ -87,6 +87,14 @@ fn endpoint_from_anchor(anchor: Point, angle: f64) -> Point {
     anchor.translated(direction_from_angle(angle).scaled(DEFAULT_BOND_LENGTH))
 }
 
+fn endpoint_from_anchor_toward(anchor: Point, target: Point) -> Point {
+    endpoint_from_anchor(anchor, angle_between(anchor, target))
+}
+
+fn fixture_label_anchor_y(label_position_y: f64) -> f64 {
+    label_position_y - chemcore_engine::DEFAULT_MOLECULE_LABEL_FONT_SIZE_PT * 0.39
+}
+
 fn rotate_point_around(point: Point, center: Point, degrees: f64) -> Point {
     let radians = degrees.to_radians();
     let cos = radians.cos();
@@ -101,6 +109,7 @@ fn rotate_point_around(point: Point, center: Point, degrees: f64) -> Point {
 
 const FIRST_START_X: f64 = px(300.0);
 const FIRST_START_Y: f64 = px(260.0);
+const FIRST_LABEL_POSITION_Y: f64 = px(260.0);
 const FIRST_END_X: f64 = 250.98;
 const FIRST_END_Y: f64 = 180.0;
 const FIRST_END_HOVER_X: f64 = FIRST_END_X + px(1.0);
@@ -4686,9 +4695,13 @@ fn hover_focuses_label_glyph_anchor() {
     });
 
     let hover = engine.state().overlay.hover_endpoint.as_ref().unwrap();
+    let expected_anchor_y = fixture_label_anchor_y(FIRST_LABEL_POSITION_Y);
     assert_eq!(hover.node_id, "n1");
     assert!((hover.point.x - px(305.0)).abs() < 0.001, "{hover:?}");
-    assert!((hover.point.y - px(260.0)).abs() < 0.001, "{hover:?}");
+    assert!(
+        (hover.point.y - expected_anchor_y).abs() < 0.001,
+        "{hover:?}"
+    );
     let anchor = hover
         .label_anchor
         .as_ref()
@@ -4737,7 +4750,10 @@ fn click_on_label_glyph_uses_rightmost_group_anchor_for_default_bond() {
 
     let entry = engine.state().document.editable_fragment().unwrap();
     let last = entry.fragment.nodes.last().unwrap();
-    let expected = endpoint_from_anchor(px_point(313.0, 260.0), 0.0);
+    let expected = endpoint_from_anchor(
+        Point::new(px(313.0), fixture_label_anchor_y(FIRST_LABEL_POSITION_Y)),
+        0.0,
+    );
     assert!(
         (last.position[0] - expected.x).abs() < 0.01,
         "{:?}",
@@ -4782,7 +4798,7 @@ fn single_group_label_right_anchor_uses_terminal_letter_but_not_digit() {
             "{label}: {right_group_point:?}"
         );
         assert!(
-            (right_group_point.y - px(260.0)).abs() < 0.01,
+            (right_group_point.y - fixture_label_anchor_y(FIRST_LABEL_POSITION_Y)).abs() < 0.01,
             "{label}: {right_group_point:?}"
         );
     }
@@ -4825,13 +4841,17 @@ fn drag_from_label_glyph_uses_focused_glyph_for_vertical_bond() {
 
     let entry = engine.state().document.editable_fragment().unwrap();
     let last = entry.fragment.nodes.last().unwrap();
+    let expected = endpoint_from_anchor_toward(
+        Point::new(px(305.0), fixture_label_anchor_y(FIRST_LABEL_POSITION_Y)),
+        px_point(305.0, 220.0),
+    );
     assert!(
-        (last.position[0] - px(305.0)).abs() < 0.01,
+        (last.position[0] - expected.x).abs() < 0.01,
         "{:?}",
         last.position
     );
     assert!(
-        (last.position[1] - FIRST_END_TRIPLE_EXTEND_Y).abs() < 0.01,
+        (last.position[1] - expected.y).abs() < 0.01,
         "{:?}",
         last.position
     );
@@ -4886,7 +4906,7 @@ fn drag_from_connected_label_uses_rightmost_group_uppercase_anchor() {
         last.position
     );
     assert!(
-        (last.position[1] - FIRST_START_Y).abs() < 0.01,
+        (last.position[1] - fixture_label_anchor_y(FIRST_LABEL_POSITION_Y)).abs() < 0.01,
         "{:?}",
         last.position
     );
@@ -4929,7 +4949,10 @@ fn drag_from_middle_label_glyph_uses_leftmost_anchor_for_leftward_bond() {
 
     let entry = engine.state().document.editable_fragment().unwrap();
     let last = entry.fragment.nodes.last().unwrap();
-    let expected = endpoint_from_anchor(px_point(297.0, 260.0), 180.0);
+    let expected = endpoint_from_anchor(
+        Point::new(px(297.0), fixture_label_anchor_y(FIRST_LABEL_POSITION_Y)),
+        180.0,
+    );
     assert!(
         (last.position[0] - expected.x).abs() < 0.01,
         "{:?}",
@@ -4979,7 +5002,8 @@ fn drag_from_rightmost_label_glyph_keeps_clicked_glyph_for_rightward_bond() {
 
     let entry = engine.state().document.editable_fragment().unwrap();
     let last = entry.fragment.nodes.last().unwrap();
-    let expected = endpoint_from_anchor(px_point(321.0, 260.0), 0.0);
+    let anchor = Point::new(px(321.0), fixture_label_anchor_y(FIRST_LABEL_POSITION_Y));
+    let expected = endpoint_from_anchor(anchor, 15.0);
     assert!(
         (last.position[0] - expected.x).abs() < 0.01,
         "{:?}",
@@ -11580,7 +11604,7 @@ fn bracket_symbol_drag_from_label_glyph_orbits_around_clicked_glyph() {
         Some("plus")
     );
     assert_eq!(round_to_2(symbol.transform.translate[0]), 27.83);
-    assert_eq!(round_to_2(symbol.transform.translate[1]), 16.83);
+    assert_eq!(round_to_2(symbol.transform.translate[1]), 15.93);
 }
 
 #[test]

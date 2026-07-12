@@ -306,6 +306,17 @@ Later rules must not overturn geometry topology already determined by earlier ru
 - If a node has a visible label, perform label clipping first.
 - Label clipping occurs before bond contact.
 - Final bond geometry should satisfy both label clipping and node-contact rules.
+- Endpoint label clipping is defined only by the glyph clip polygons generated
+  from glyph geometry and source `MarginWidth`. Do not add a separate
+  per-bond `labelClipMargin` or post-hoc retreat value.
+- `MarginWidth` natural extension applies to every visible glyph edge,
+  including internal stroke bays and stroke ends that remain inside the
+  glyph's overall bounding box. Runtime mapping must not scale only the
+  outside of the whole glyph bbox.
+- For rendered bonds with thickness, the whole bond body must be clipped out of
+  the glyph clip polygon. Ordinary, dashed, bold, and multi-line bonds should
+  evaluate the center line plus both body boundary lines for the current visual
+  half-width and use the largest retreat required by those glyph intersections.
 
 ## Bond-Bond Crossings And White Margins
 

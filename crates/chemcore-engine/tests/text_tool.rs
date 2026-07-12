@@ -98,7 +98,17 @@ fn glyph_anchor(label: &chemcore_engine::NodeLabel, index: usize) -> Point {
         .get(index)
         .expect("label should have glyph polygons");
     let bounds = polygon_bounds(polygon);
-    Point::new((bounds[0] + bounds[2]) * 0.5, (bounds[1] + bounds[3]) * 0.5)
+    let anchor_y = label.position.map(|position| {
+        position[1]
+            - label
+                .font_size
+                .unwrap_or(chemcore_engine::DEFAULT_MOLECULE_LABEL_FONT_SIZE_PT)
+                * 0.39
+    });
+    Point::new(
+        (bounds[0] + bounds[2]) * 0.5,
+        anchor_y.unwrap_or((bounds[1] + bounds[3]) * 0.5),
+    )
 }
 
 fn polygon_bounds(points: &[[f64; 2]]) -> [f64; 4] {

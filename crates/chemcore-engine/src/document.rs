@@ -1363,7 +1363,6 @@ fn default_document_style_defaults() -> BTreeMap<String, f64> {
             "wedgeWidth".to_string(),
             crate::SOLID_WEDGE_WIDTH_PT.value(),
         ),
-        ("labelClipMargin".to_string(), 0.0),
         (
             "hashSpacing".to_string(),
             crate::DEFAULT_HASH_SPACING_PT.value(),
@@ -1850,6 +1849,7 @@ fn fragment_content_bbox(nodes: &[Node]) -> Option<[f64; 4]> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::MOLECULE_LABEL_ANCHOR_BASELINE_RATIO;
 
     fn polygon_bounds(polygon: &[[f64; 2]]) -> Option<[f64; 4]> {
         let mut iter = polygon.iter();
@@ -2100,13 +2100,27 @@ mod tests {
             .expect("right label node");
         let right_label = right_label_node.label.as_ref().expect("right label");
 
+        let left_anchor = glyph_center(left_label, 1);
+        let left_line_anchor_y = left_label.position.expect("left label baseline")[1]
+            - left_label
+                .font_size
+                .unwrap_or(DEFAULT_MOLECULE_LABEL_FONT_SIZE_PT)
+                * MOLECULE_LABEL_ANCHOR_BASELINE_RATIO;
         assert!(
-            glyph_center(left_label, 1).distance(left_label_node.point()) < 0.01,
-            "right-side bond should anchor Ph on h: node={left_label_node:?}, label={left_label:?}"
+            (left_anchor.x - left_label_node.position[0]).abs() < 0.01
+                && (left_line_anchor_y - left_label_node.position[1]).abs() < 0.01,
+            "right-side bond should anchor Ph on h horizontally and the label line vertically: node={left_label_node:?}, label={left_label:?}"
         );
+        let right_anchor = glyph_center(right_label, 0);
+        let right_line_anchor_y = right_label.position.expect("right label baseline")[1]
+            - right_label
+                .font_size
+                .unwrap_or(DEFAULT_MOLECULE_LABEL_FONT_SIZE_PT)
+                * MOLECULE_LABEL_ANCHOR_BASELINE_RATIO;
         assert!(
-            glyph_center(right_label, 0).distance(right_label_node.point()) < 0.01,
-            "left-side bond should anchor 2-NP on 2: node={right_label_node:?}, label={right_label:?}"
+            (right_anchor.x - right_label_node.position[0]).abs() < 0.01
+                && (right_line_anchor_y - right_label_node.position[1]).abs() < 0.01,
+            "left-side bond should anchor 2-NP on 2 horizontally and the label line vertically: node={right_label_node:?}, label={right_label:?}"
         );
     }
 
@@ -2617,12 +2631,15 @@ mod tests {
         let resource = document.resources.get("frag_1").expect("resource");
         let fragment = resource.data.as_fragment().expect("fragment");
         let label = fragment.nodes[0].label.as_ref().expect("label");
-        let bounds = polygon_bounds(&label.glyph_polygons[0]).expect("bounds");
-        let center_y = (bounds[1] + bounds[3]) * 0.5;
+        let line_anchor_y = label.position.expect("label baseline")[1]
+            - label
+                .font_size
+                .unwrap_or(DEFAULT_MOLECULE_LABEL_FONT_SIZE_PT)
+                * MOLECULE_LABEL_ANCHOR_BASELINE_RATIO;
 
         assert!(
-            (center_y - 30.0).abs() < 0.01,
-            "single-glyph imported node labels should be vertically recentered onto the node position, got bounds={bounds:?}",
+            (line_anchor_y - 30.0).abs() < 0.01,
+            "single-glyph imported node labels should align their ChemDraw-calibrated line anchor to the node position, got label={label:?}",
         );
     }
 }

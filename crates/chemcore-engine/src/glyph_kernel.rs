@@ -747,31 +747,59 @@ fn map_normalized_polygon(
             let source_width = f64::from(polygon.bbox_px[2].saturating_sub(polygon.bbox_px[0]));
             let source_x_min = -0.5 * source_width / source_height;
             let source_x_max = 0.5 * source_width / source_height;
-            let source_extra_scale =
-                if uses_anchor_circle && source_natural_outset_pt > crate::EPSILON {
-                    profile.natural_outset_pt / source_natural_outset_pt / pixels_per_pt
-                } else {
-                    1.0 / pixels_per_pt
-                };
-            let mapped: Vec<[f64; 2]> = polygon
-                .points
-                .iter()
-                .map(|point| {
-                    let base_x = point[0].clamp(source_x_min, source_x_max);
-                    let base_y = point[1].clamp(0.0, 1.0);
-                    let extra_x = (point[0] - base_x) * source_height * source_extra_scale;
-                    let extra_y = (point[1] - base_y) * source_height * source_extra_scale;
-                    [
-                        center_x + base_x * height + extra_x,
-                        y1 + base_y * height + extra_y,
-                    ]
-                })
-                .collect();
-            if uses_anchor_circle {
-                mapped
-            } else {
-                outset_polygon(mapped, profile.natural_outset_pt - source_natural_outset_pt)
+            let map_with_extra_scale = |extra_scale: f64| -> Vec<[f64; 2]> {
+                polygon
+                    .points
+                    .iter()
+                    .map(|point| {
+                        let base_x = point[0].clamp(source_x_min, source_x_max);
+                        let base_y = point[1].clamp(0.0, 1.0);
+                        let extra_x = (point[0] - base_x) * source_height * extra_scale;
+                        let extra_y = (point[1] - base_y) * source_height * extra_scale;
+                        [
+                            center_x + base_x * height + extra_x,
+                            y1 + base_y * height + extra_y,
+                        ]
+                    })
+                    .collect()
+            };
+            let mapped = map_with_extra_scale(1.0 / pixels_per_pt);
+            // `glyph_clip_polygons.json` is generated with the canonical
+            // 1pt natural dilation. Apply the document/source MarginWidth as a
+            // geometric outset after mapping so internal stroke edges and bays
+            // expand too, not only points outside the whole glyph bbox.
+            let natural_mapped =
+                outset_polygon(mapped, profile.natural_outset_pt - source_natural_outset_pt);
+            if uses_anchor_circle && source_natural_outset_pt > crate::EPSILON {
+                let circle_scaled = map_with_extra_scale(
+                    profile.natural_outset_pt / source_natural_outset_pt / pixels_per_pt,
+                );
+                if circle_scaled.len() == natural_mapped.len() {
+                    let center = [(x1 + x2) * 0.5, (y1 + y2) * 0.5];
+                    return circle_scaled
+                        .into_iter()
+                        .zip(natural_mapped)
+                        .map(|(circle_point, natural_point)| {
+                            let circle_distance =
+                                (circle_point[0] - center[0]).hypot(circle_point[1] - center[1]);
+                            let natural_distance =
+                                (natural_point[0] - center[0]).hypot(natural_point[1] - center[1]);
+                            if profile.natural_outset_pt >= source_natural_outset_pt {
+                                if circle_distance >= natural_distance {
+                                    circle_point
+                                } else {
+                                    natural_point
+                                }
+                            } else if circle_distance <= natural_distance {
+                                circle_point
+                            } else {
+                                natural_point
+                            }
+                        })
+                        .collect();
+                }
             }
+            natural_mapped
         }
     }
 }
@@ -1515,6 +1543,70 @@ mod tests {
         assert!(
             default_bounds[3] > source_bounds[3],
             "{default_bounds:?} vs {source_bounds:?}"
+        );
+    }
+
+    #[test]
+    fn source_margin_width_expands_every_visible_glyph_bounds() {
+        let config = LayoutConfig::default();
+        for ch in shared_glyph_profiles()
+            .specials
+            .iter()
+            .filter_map(|(ch, profile)| profile.visible.then_some(*ch))
+        {
+            let placement = layout_glyph(ch, ScriptKind::Normal, config, 0.0, 0.0);
+            let one_pt_polygon =
+                shape_polygon_with_profile(&placement, GlyphClipProfile::from_margin_width(1.0))
+                    .unwrap_or_else(|| panic!("{ch:?} should have 1pt clip geometry"));
+            let two_pt_polygon =
+                shape_polygon_with_profile(&placement, GlyphClipProfile::from_margin_width(2.0))
+                    .unwrap_or_else(|| panic!("{ch:?} should have 2pt clip geometry"));
+            let one_pt_bounds = polygon_bounds(&one_pt_polygon);
+            let two_pt_bounds = polygon_bounds(&two_pt_polygon);
+            assert!(
+                two_pt_bounds[0] <= one_pt_bounds[0] - 0.5,
+                "{ch:?}: {one_pt_bounds:?} vs {two_pt_bounds:?}"
+            );
+            assert!(
+                two_pt_bounds[1] <= one_pt_bounds[1] - 0.5,
+                "{ch:?}: {one_pt_bounds:?} vs {two_pt_bounds:?}"
+            );
+            assert!(
+                two_pt_bounds[2] >= one_pt_bounds[2] + 0.5,
+                "{ch:?}: {one_pt_bounds:?} vs {two_pt_bounds:?}"
+            );
+            assert!(
+                two_pt_bounds[3] >= one_pt_bounds[3] + 0.5,
+                "{ch:?}: {one_pt_bounds:?} vs {two_pt_bounds:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn source_margin_width_expands_uppercase_f_internal_middle_bar() {
+        let mut config = LayoutConfig::default();
+        config.font_size_px = 10.0;
+        let placement = layout_glyph('F', ScriptKind::Normal, config, 0.0, 0.0);
+        let one_pt_polygon =
+            shape_polygon_with_profile(&placement, GlyphClipProfile::from_margin_width(1.0))
+                .expect("F should have 1pt clip geometry");
+        let two_pt_polygon =
+            shape_polygon_with_profile(&placement, GlyphClipProfile::from_margin_width(2.0))
+                .expect("F should have 2pt clip geometry");
+        let ink_height = placement.ink_box_px[3] - placement.ink_box_px[1];
+        let ink_center_x = (placement.ink_box_px[0] + placement.ink_box_px[2]) * 0.5;
+        let middle_bar_right = [
+            ink_center_x + ink_height * 0.2619,
+            placement.ink_box_px[1] + ink_height * 0.4872,
+        ];
+        let ray_end = [middle_bar_right[0] + 12.0, middle_bar_right[1]];
+        let one_pt_exit = polygon_exit_distance(middle_bar_right, ray_end, &one_pt_polygon)
+            .expect("ray should exit 1pt F middle bar");
+        let two_pt_exit = polygon_exit_distance(middle_bar_right, ray_end, &two_pt_polygon)
+            .expect("ray should exit 2pt F middle bar");
+        assert!(
+            two_pt_exit >= one_pt_exit + 0.8,
+            "{one_pt_exit} vs {two_pt_exit}; source margin must expand F internal middle bar"
         );
     }
 

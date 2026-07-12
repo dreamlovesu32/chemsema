@@ -466,7 +466,7 @@ fn object_settings_to_options(settings: ObjectSettings) -> Option<EditorOptions>
         bond_stroke_width: line_width,
         bold_bond_width: bold_width,
         wedge_width: derived_wedge_width(bold_width),
-        label_clip_margin: derived_label_clip_margin(margin_width),
+        label_clip_margin: 0.0,
         hash_spacing,
         bond_spacing,
         margin_width,
@@ -874,7 +874,6 @@ fn apply_document_style_defaults(options: &mut EditorOptions, defaults: &BTreeMa
             }
             "boldWidth" if *value > crate::EPSILON => options.bold_bond_width = *value,
             "wedgeWidth" if *value > crate::EPSILON => options.wedge_width = *value,
-            "labelClipMargin" => options.label_clip_margin = *value,
             "hashSpacing" if *value > crate::EPSILON => options.hash_spacing = *value,
             "bondSpacing" if *value > crate::EPSILON => options.bond_spacing = *value,
             "marginWidth" if *value > crate::EPSILON => options.margin_width = *value,
@@ -899,7 +898,6 @@ pub(super) fn editor_options_from_imported_cdxml_document(
         options.bond_stroke_width *= editing_scale;
         options.bold_bond_width *= editing_scale;
         options.wedge_width *= editing_scale;
-        options.label_clip_margin *= editing_scale;
         options.hash_spacing *= editing_scale;
         options.margin_width *= editing_scale;
         options.graphic_stroke_width *= editing_scale;
@@ -909,10 +907,6 @@ pub(super) fn editor_options_from_imported_cdxml_document(
 
 fn derived_wedge_width(bold_width: f64) -> f64 {
     (bold_width * crate::WEDGE_BOLD_WIDTH_MULTIPLIER).max(crate::DEFAULT_BOND_STROKE)
-}
-
-fn derived_label_clip_margin(_margin_width: f64) -> f64 {
-    0.0
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -1321,7 +1315,6 @@ fn update_document_style_info_defaults(
             "wedgeWidth".to_string(),
             options.wedge_width_world_pt().value(),
         ),
-        ("labelClipMargin".to_string(), options.label_clip_margin),
         (
             "hashSpacing".to_string(),
             options.hash_spacing_world_pt().value(),

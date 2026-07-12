@@ -60,6 +60,9 @@ box, but the outside dilation is remapped from the manifest's canonical `1.0pt`
 to the document source margin. For CDXML import, natural dilation is exactly the
 source `MarginWidth` in absolute pt, and circular reinforcement radius is exactly
 `2 * MarginWidth`. These values do not scale with the label font size.
+The source margin remap is a polygon-level natural outset, so internal stroke
+bays and stroke ends inside the overall glyph bounding box expand by the same
+source `MarginWidth` as exterior edges.
 
 ### 3. Other Symbols
 

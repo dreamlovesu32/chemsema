@@ -140,6 +140,7 @@ fn label_editor_anchor_point(
     glyph_index: usize,
     polygon: &[Point],
 ) -> Option<Point> {
+    let anchor_y = label_line_anchor_y(label);
     let chars = label_visible_chars(label);
     if chars.len() == label.glyph_polygons.len()
         && chars
@@ -152,11 +153,11 @@ fn label_editor_anchor_point(
         {
             return Some(Point::new(
                 bounds[2] - natural_outset,
-                (bounds[1] + bounds[3]) * 0.5,
+                anchor_y.unwrap_or((bounds[1] + bounds[3]) * 0.5),
             ));
         }
     }
-    polygon_anchor_point(polygon)
+    polygon_anchor_point(polygon).map(|point| Point::new(point.x, anchor_y.unwrap_or(point.y)))
 }
 
 fn label_visible_chars(label: &crate::NodeLabel) -> Vec<char> {
@@ -178,6 +179,14 @@ fn label_natural_outset_pt(label: &crate::NodeLabel) -> Option<f64> {
     .into_iter()
     .find_map(|path| label.meta.pointer(path).and_then(serde_json::Value::as_f64))
     .filter(|value| value.is_finite() && *value >= 0.0)
+}
+
+fn label_line_anchor_y(label: &crate::NodeLabel) -> Option<f64> {
+    let position = label.position?;
+    let font_size = label
+        .font_size
+        .unwrap_or(crate::DEFAULT_MOLECULE_LABEL_FONT_SIZE_PT);
+    Some(position[1] - font_size * crate::MOLECULE_LABEL_ANCHOR_BASELINE_RATIO)
 }
 
 pub(super) fn current_node_label_editor_geometry(

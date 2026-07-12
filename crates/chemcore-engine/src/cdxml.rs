@@ -261,7 +261,6 @@ pub fn parse_cdxml_document(cdxml: &str, title: Option<&str>) -> Result<Chemcore
                     "wedgeWidth".to_string(),
                     cdxml_import_wedge_width(defaults.line_width, defaults.bold_width),
                 ),
-                ("labelClipMargin".to_string(), 0.0),
                 ("hashSpacing".to_string(), defaults.hash_spacing),
                 ("bondSpacing".to_string(), defaults.bond_spacing),
                 ("marginWidth".to_string(), defaults.margin_width),

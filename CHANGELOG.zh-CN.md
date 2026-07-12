@@ -38,7 +38,8 @@ ChemCore 的公开变更记录会保存在这里。
   agent 修改、验证和可编辑导出。
 - 改进真实论文 CDXML 图的渲染保真度。键与键相交时会保留 ChemDraw 风格的透明
   margin knockout；标签退让由 glyph clipping 和导入的 `MarginWidth` profile 驱动；
-  prime/apostrophe 结尾的原子标签也会使用和普通末端字母一致的 active anchor 逻辑。
+  attached molecule label 现在对末端字母、prime、上下标使用按 ChemDraw 校准的同一
+  行锚点。
 - 刷新 README 公开视觉素材，包括 ChemCore 编辑器界面截图，以及基于
   `figure1.cdxml` 和 `figure2.cdxml` 重新生成的 ChemDraw/ChemCore 对比资产。
 

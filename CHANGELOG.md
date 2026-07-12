@@ -46,8 +46,8 @@ documents.
 - Improved CDXML rendering fidelity for published reaction figures. Bond
   knockouts now preserve ChemDraw-style transparent margins when bonds cross,
   label retreat is driven by glyph clipping and the imported `MarginWidth`
-  profile, and prime/apostrophe atom labels use the same active anchor logic as
-  normal terminal letters.
+  profile, and attached molecule labels now use a ChemDraw-calibrated line
+  anchor for terminal letters, primes, superscripts, and subscripts.
 - Refreshed the public README visuals, including the ChemCore editor interface
   screenshot and the ChemDraw/ChemCore comparison assets generated from
   `figure1.cdxml` and `figure2.cdxml`.

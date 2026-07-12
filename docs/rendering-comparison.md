@@ -59,6 +59,25 @@ from those outputs and from ChemCore's `cdxml_to_svg` and Office EMF writers.
 The default GitHub Actions CI uses open-source, dependency-free regression
 checks; ChemDraw and Office oracle checks remain local Windows workflows.
 
+## README Release Assets
+
+Every public version release or release replacement must refresh the README
+visual assets with the engine being shipped:
+
+```bash
+cargo run -p chemcore-cli -- convert figure1.cdxml docs/assets/readme/comparison/figure1.chemcore.svg --format svg
+cargo run -p chemcore-cli -- convert figure2.cdxml docs/assets/readme/comparison/figure2.chemcore.svg --format svg
+cargo run -p chemcore-engine --example cdxml_to_clipboard_payload -- figure1.cdxml tmp/readme-assets/figure1.chemcore.payload.json
+cargo run -p chemcore-engine --example cdxml_to_clipboard_payload -- figure2.cdxml tmp/readme-assets/figure2.chemcore.payload.json
+cargo run -p chemcore-office -- --write-emf-payload tmp/readme-assets/figure1.chemcore.payload.json docs/assets/readme/comparison/figure1.chemcore.emf
+cargo run -p chemcore-office -- --write-emf-payload tmp/readme-assets/figure2.chemcore.payload.json docs/assets/readme/comparison/figure2.chemcore.emf
+npm run readme:comparison
+npm run screenshot -- http://127.0.0.1:8767/viewer/ docs/assets/readme/product-screenshot.png figure1.cdxml
+```
+
+The generated files are part of the release artifact set, not scratch outputs.
+Review the refreshed comparison image and editor screenshot before tagging.
+
 ## Adding Public Fixtures
 
 Use synthetic chemistry, reduced layouts, or maintainer-authored files with
