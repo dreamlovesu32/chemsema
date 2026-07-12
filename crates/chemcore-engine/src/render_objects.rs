@@ -136,17 +136,7 @@ pub(super) fn render_molecule_object(
             let contact_kernel =
                 build_main_bond_contact_kernel(document, object, &fragment.bonds, &node_map);
 
-            let mut rendered_bonds: Vec<&Bond> = Vec::new();
             for bond in &fragment.bonds {
-                render_bond_crossing_knockouts(
-                    out,
-                    document,
-                    object,
-                    &rendered_bonds,
-                    &node_map,
-                    bond,
-                    object_id.clone(),
-                );
                 render_fragment_bond(
                     out,
                     document,
@@ -158,7 +148,6 @@ pub(super) fn render_molecule_object(
                     &stroke,
                     object_id.clone(),
                 );
-                rendered_bonds.push(bond);
             }
             render_main_bond_contact_patches(out, &contact_kernel, &stroke, object_id.clone());
 
@@ -233,18 +222,8 @@ pub(super) fn render_molecule_object_targets(
         &contact_node_ids,
     );
 
-    let mut rendered_bonds: Vec<&Bond> = Vec::new();
     for bond in &fragment.bonds {
         if target_render_bond_ids.contains(&bond.id) {
-            render_bond_crossing_knockouts(
-                out,
-                document,
-                object,
-                &rendered_bonds,
-                &node_map,
-                bond,
-                object_id.clone(),
-            );
             render_fragment_bond(
                 out,
                 document,
@@ -257,7 +236,6 @@ pub(super) fn render_molecule_object_targets(
                 object_id.clone(),
             );
         }
-        rendered_bonds.push(bond);
     }
     render_main_bond_contact_patches(out, &contact_kernel, &stroke, object_id.clone());
 
@@ -327,87 +305,6 @@ fn expand_target_render_bond_ids_for_crossings(
     target_render_bond_ids.extend(extra);
 }
 
-fn render_bond_crossing_knockouts(
-    out: &mut Vec<RenderPrimitive>,
-    document: &ChemcoreDocument,
-    object: &SceneObject,
-    previous_bonds: &[&Bond],
-    node_map: &BTreeMap<&str, &Node>,
-    over_bond: &Bond,
-    object_id: Option<String>,
-) {
-    let Some((over_start, over_end)) = bond_world_segment(object, node_map, over_bond) else {
-        return;
-    };
-    let over_vector = Vector::new(over_end.x - over_start.x, over_end.y - over_start.y);
-    if over_vector.length() <= EPSILON {
-        return;
-    }
-    let over_unit = over_vector.normalized();
-    let over_normal = Vector::new(-over_unit.y, over_unit.x);
-    let over_stroke_width = bond_stroke_width(document, object, over_bond);
-    let margin_width = margin_width_for_bond(over_bond, over_stroke_width);
-    if margin_width <= EPSILON {
-        return;
-    }
-    let over_width = crossing_bond_visual_width(over_bond, over_start, over_end, over_stroke_width);
-
-    for under_bond in previous_bonds {
-        // Bonds are painted in document order. The current bond is the visual
-        // upper layer, so its knockout cuts only previously rendered bonds.
-        if bonds_share_endpoint(over_bond, under_bond) {
-            continue;
-        }
-        let Some((under_start, under_end)) = bond_world_segment(object, node_map, under_bond)
-        else {
-            continue;
-        };
-        let under_vector = Vector::new(under_end.x - under_start.x, under_end.y - under_start.y);
-        if under_vector.length() <= EPSILON {
-            continue;
-        }
-        let under_unit = under_vector.normalized();
-        let crossing_sin = vector_cross(over_unit, under_unit).abs();
-        if crossing_sin <= 0.1 {
-            continue;
-        }
-        let Some(center) =
-            interior_segment_intersection(over_start, over_end, under_start, under_end)
-        else {
-            continue;
-        };
-        let under_width = crossing_bond_visual_width(
-            under_bond,
-            under_start,
-            under_end,
-            bond_stroke_width(document, object, under_bond),
-        );
-        let half_length = (under_width * 0.5 / crossing_sin) + margin_width;
-        let half_width = (over_width * 0.5) + margin_width;
-        // A shallow crossing needs a longer cut along the upper bond direction;
-        // dividing by sin(theta) keeps the visible gap roughly constant.
-        push_bond_knockout_polygon(
-            out,
-            vec![
-                center
-                    .translated(over_unit.scaled(-half_length))
-                    .translated(over_normal.scaled(-half_width)),
-                center
-                    .translated(over_unit.scaled(half_length))
-                    .translated(over_normal.scaled(-half_width)),
-                center
-                    .translated(over_unit.scaled(half_length))
-                    .translated(over_normal.scaled(half_width)),
-                center
-                    .translated(over_unit.scaled(-half_length))
-                    .translated(over_normal.scaled(half_width)),
-            ],
-            object_id.clone(),
-            over_bond.id.clone(),
-        );
-    }
-}
-
 fn bonds_have_crossing_margin(
     object: &SceneObject,
     node_map: &BTreeMap<&str, &Node>,
@@ -464,64 +361,6 @@ fn interior_segment_intersection(a1: Point, a2: Point, b1: Point, b2: Point) -> 
         return None;
     }
     Some(Point::new(a1.x + a.x * t, a1.y + a.y * t))
-}
-
-fn crossing_bond_visual_width(bond: &Bond, start: Point, end: Point, stroke_width: f64) -> f64 {
-    if let Some(stereo_kind) = bond_stereo_kind(bond) {
-        return match stereo_kind {
-            BondStereoKind::SolidWedgeBegin
-            | BondStereoKind::SolidWedgeEnd
-            | BondStereoKind::HashedWedgeBegin
-            | BondStereoKind::HashedWedgeEnd
-            | BondStereoKind::HollowWedgeBegin
-            | BondStereoKind::HollowWedgeEnd => {
-                solid_wedge_half_width_for_bond(bond, stroke_width) * 2.0
-            }
-        };
-    }
-
-    match bond.order {
-        0 | 1 => line_weight_stroke_width_for_bond(bond, stroke_width, bond.line_weights.main),
-        2 => {
-            let side_mode = bond.double.as_ref().map(|double| double.placement);
-            let (first, second) = match side_mode {
-                Some(DoubleBondPlacement::Left) | Some(DoubleBondPlacement::Right) => (
-                    bond.line_weights.main,
-                    outer_line_weight_for_crossing(bond, side_mode),
-                ),
-                _ => (bond.line_weights.left, bond.line_weights.right),
-            };
-            let first_width = line_weight_stroke_width_for_bond(bond, stroke_width, first);
-            let second_width = line_weight_stroke_width_for_bond(bond, stroke_width, second);
-            double_bond_center_distance_for_bond_weights(
-                bond,
-                start,
-                end,
-                stroke_width,
-                first,
-                second,
-            ) + 0.5 * (first_width + second_width)
-        }
-        _ => {
-            let offset = triple_bond_offset_distance(start, end, stroke_width);
-            let left_width =
-                line_weight_stroke_width_for_bond(bond, stroke_width, bond.line_weights.left);
-            let right_width =
-                line_weight_stroke_width_for_bond(bond, stroke_width, bond.line_weights.right);
-            offset * 2.0 + 0.5 * (left_width + right_width)
-        }
-    }
-}
-
-fn outer_line_weight_for_crossing(
-    bond: &Bond,
-    side_mode: Option<DoubleBondPlacement>,
-) -> crate::BondLineWeight {
-    match side_mode {
-        Some(DoubleBondPlacement::Left) => bond.line_weights.left,
-        Some(DoubleBondPlacement::Right) => bond.line_weights.right,
-        _ => bond.line_weights.right,
-    }
 }
 
 fn render_fragment_node_invalid_marker(

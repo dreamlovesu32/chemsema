@@ -710,13 +710,17 @@ fn shape_polygon_with_profile(
         map_normalized_polygon(
             polygon,
             placement.ink_box_px,
-            placement.codepoint.is_ascii_uppercase(),
+            glyph_uses_anchor_circle(placement.codepoint),
             manifest.coordinate_system,
             manifest.pixels_per_pt,
             manifest.natural_outset_pt,
             profile,
         )
     })
+}
+
+fn glyph_uses_anchor_circle(codepoint: char) -> bool {
+    codepoint.is_ascii_uppercase() && !matches!(codepoint, 'O')
 }
 
 fn map_normalized_polygon(

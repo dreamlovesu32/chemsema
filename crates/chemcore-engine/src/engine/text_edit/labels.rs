@@ -423,7 +423,13 @@ pub(super) fn make_centered_node_label_from_runs(
                             .iter()
                             .map(|point| Point::new(point[0], point[1]))
                             .collect();
-                        polygon_anchor_point(&points)
+                        label_anchor_point_for_layout(
+                            &line_runs,
+                            layout.anchor_line,
+                            anchor_char,
+                            glyph_clip_profile,
+                            &points,
+                        )
                     })
             {
                 let dx = round2(position[0] - current_anchor.x);
@@ -502,6 +508,53 @@ fn label_anchor_polygon_index(
         index += line_len;
     }
     None
+}
+
+fn label_anchor_point_for_layout(
+    line_runs: &[Vec<LabelRun>],
+    anchor_line: usize,
+    anchor_char: usize,
+    glyph_clip_profile: GlyphClipProfile,
+    polygon: &[Point],
+) -> Option<Point> {
+    let bounds = label_polygon_bounds(polygon)?;
+    if label_char_at(line_runs, anchor_line, anchor_char).is_some_and(crate::is_prime_anchor_suffix)
+    {
+        return Some(Point::new(
+            bounds[2] - glyph_clip_profile.natural_outset_pt,
+            (bounds[1] + bounds[3]) * 0.5,
+        ));
+    }
+    polygon_anchor_point(polygon)
+}
+
+fn label_polygon_bounds(polygon: &[Point]) -> Option<[f64; 4]> {
+    if polygon.is_empty() {
+        return None;
+    }
+    let mut min_x = f64::INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+    for point in polygon {
+        min_x = min_x.min(point.x);
+        min_y = min_y.min(point.y);
+        max_x = max_x.max(point.x);
+        max_y = max_y.max(point.y);
+    }
+    Some([min_x, min_y, max_x, max_y])
+}
+
+fn label_char_at(
+    line_runs: &[Vec<LabelRun>],
+    anchor_line: usize,
+    anchor_char: usize,
+) -> Option<char> {
+    line_runs
+        .get(anchor_line)?
+        .iter()
+        .flat_map(|run| run.text.chars())
+        .nth(anchor_char)
 }
 
 pub(super) fn label_layout_decision_for_text_mode(

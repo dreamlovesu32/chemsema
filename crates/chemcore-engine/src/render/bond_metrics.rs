@@ -55,6 +55,13 @@ pub(super) fn line_weight_stroke_width_for_bond(
     }
 }
 
+pub(super) fn wavy_bond_amplitude_for_bond(bond: &Bond, stroke_width: f64) -> f64 {
+    bond.bold_width
+        .unwrap_or_else(|| line_weight_stroke_width(stroke_width, BondLineWeight::Bold))
+        .max(stroke_width)
+        * 0.5
+}
+
 pub(super) fn hash_target_gap_length_for_bond(bond: &Bond, stroke_width: f64) -> f64 {
     let scale = stroke_width / VIEWER_BOND_STROKE;
     let stripe_length = HASH_BLACK_SEGMENT_LENGTH * scale;
@@ -136,12 +143,28 @@ pub(super) fn solid_wedge_tip_half_width(stroke_width: f64) -> f64 {
     stroke_width * 0.5
 }
 
-pub(super) fn label_clip_margin_for_bond(_bond: &Bond, _stroke_width: f64) -> f64 {
+pub(super) fn label_clip_margin_for_bond(
+    _document: &ChemcoreDocument,
+    _bond: &Bond,
+    _stroke_width: f64,
+) -> f64 {
     0.0
 }
 
-pub(super) fn margin_width_for_bond(bond: &Bond, stroke_width: f64) -> f64 {
+pub(super) fn document_margin_width_for_bond(
+    document: &ChemcoreDocument,
+    bond: &Bond,
+    stroke_width: f64,
+) -> f64 {
     bond.margin_width
+        .or_else(|| {
+            document
+                .document
+                .meta
+                .pointer("/import/cdxml/defaults/marginWidth")
+                .and_then(serde_json::Value::as_f64)
+        })
+        .or_else(|| document.style.defaults.get("marginWidth").copied())
         .unwrap_or_else(|| margin_width_for_legacy_bond_template(bond, stroke_width))
 }
 

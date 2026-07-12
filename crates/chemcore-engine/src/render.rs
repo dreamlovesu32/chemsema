@@ -41,9 +41,8 @@ use object_render::{
     render_molecule_object_targets, render_shape_object, render_text_object,
 };
 use primitives::{
-    push_bond_knockout_polygon, push_bond_polygon, push_label_knockout_polygon, push_line,
-    push_node_polygon, push_path, push_polygon, push_polyline, push_text, push_text_for_node,
-    push_text_rotated,
+    push_bond_polygon, push_label_knockout_polygon, push_line, push_node_polygon, push_path,
+    push_polygon, push_polyline, push_text, push_text_for_node, push_text_rotated,
 };
 pub use primitives::{RenderPrimitive, RenderRole};
 
@@ -154,9 +153,11 @@ pub fn render_document(document: &ChemcoreDocument) -> Vec<RenderPrimitive> {
             .cmp(&b.z_index)
             .then_with(|| a.sequence.cmp(&b.sequence))
     });
-    out.into_iter()
+    let primitives: Vec<_> = out
+        .into_iter()
         .map(|primitive| primitive.primitive)
-        .collect()
+        .collect();
+    insert_bond_margin_silhouettes(document, primitives)
 }
 
 pub fn render_document_targets(
@@ -178,7 +179,225 @@ pub fn render_document_targets(
             false,
         );
     }
-    out
+    insert_bond_margin_silhouettes(document, out)
+}
+
+fn insert_bond_margin_silhouettes(
+    document: &ChemcoreDocument,
+    primitives: Vec<RenderPrimitive>,
+) -> Vec<RenderPrimitive> {
+    let bonds = collect_document_bond_render_info(document);
+    let mut rendered_bonds: Vec<&DocumentBondRenderInfo> = Vec::new();
+    let mut rendered_bond_keys = BTreeSet::new();
+    let mut with_silhouettes = Vec::with_capacity(primitives.len() * 2);
+    for primitive in primitives {
+        if let Some(knockout) =
+            bond_margin_silhouette(document, &bonds, &rendered_bonds, &primitive)
+        {
+            with_silhouettes.push(knockout);
+        }
+        if render_primitive_role(&primitive) == RenderRole::DocumentBond {
+            if let (Some(object_id), Some(bond_id)) = (
+                primitive_object_id(&primitive),
+                primitive_bond_id(&primitive),
+            ) {
+                let key = (Some(object_id.to_string()), bond_id.to_string());
+                if rendered_bond_keys.insert(key.clone()) {
+                    if let Some(info) = bonds.get(&key) {
+                        rendered_bonds.push(info);
+                    }
+                }
+            }
+        }
+        with_silhouettes.push(primitive);
+    }
+    with_silhouettes
+}
+
+#[derive(Debug)]
+struct DocumentBondRenderInfo {
+    object_id: Option<String>,
+    begin: String,
+    end: String,
+    start: Point,
+    end_point: Point,
+    margin_width: f64,
+}
+
+fn collect_document_bond_render_info(
+    document: &ChemcoreDocument,
+) -> BTreeMap<(Option<String>, String), DocumentBondRenderInfo> {
+    let mut bonds = BTreeMap::new();
+    collect_object_bond_render_info(document, &document.objects, &mut bonds);
+    bonds
+}
+
+fn collect_object_bond_render_info(
+    document: &ChemcoreDocument,
+    objects: &[SceneObject],
+    bonds: &mut BTreeMap<(Option<String>, String), DocumentBondRenderInfo>,
+) {
+    for object in objects {
+        if let Some(fragment) = molecule_fragment_for_object(document, object) {
+            let node_map: BTreeMap<&str, &Node> = fragment
+                .nodes
+                .iter()
+                .map(|node| (node.id.as_str(), node))
+                .collect();
+            for bond in &fragment.bonds {
+                let (Some(begin), Some(end)) = (
+                    node_map.get(bond.begin.as_str()),
+                    node_map.get(bond.end.as_str()),
+                ) else {
+                    continue;
+                };
+                let start = Point::new(
+                    object.transform.translate[0] + begin.position[0],
+                    object.transform.translate[1] + begin.position[1],
+                );
+                let end_point = Point::new(
+                    object.transform.translate[0] + end.position[0],
+                    object.transform.translate[1] + end.position[1],
+                );
+                if start.distance(end_point) <= EPSILON {
+                    continue;
+                }
+                let stroke_width = bond_stroke_width(document, object, bond);
+                let object_id = Some(object.id.clone());
+                bonds.insert(
+                    (object_id.clone(), bond.id.clone()),
+                    DocumentBondRenderInfo {
+                        object_id,
+                        begin: bond.begin.clone(),
+                        end: bond.end.clone(),
+                        start,
+                        end_point,
+                        margin_width: document_margin_width_for_bond(document, bond, stroke_width),
+                    },
+                );
+            }
+        }
+        collect_object_bond_render_info(document, &object.children, bonds);
+    }
+}
+
+fn bond_margin_silhouette(
+    document: &ChemcoreDocument,
+    bonds: &BTreeMap<(Option<String>, String), DocumentBondRenderInfo>,
+    rendered_bonds: &[&DocumentBondRenderInfo],
+    primitive: &RenderPrimitive,
+) -> Option<RenderPrimitive> {
+    if render_primitive_role(primitive) != RenderRole::DocumentBond {
+        return None;
+    }
+    let bond_id = primitive_bond_id(primitive)?;
+    let object_id = primitive_object_id(primitive).map(str::to_string);
+    let bond = bonds
+        .get(&(object_id.clone(), bond_id.to_string()))
+        .or_else(|| bonds.get(&(None, bond_id.to_string())))?;
+    if bond.margin_width <= EPSILON
+        || !rendered_bonds
+            .iter()
+            .any(|under_bond| document_bonds_cross_for_margin(under_bond, bond))
+    {
+        return None;
+    }
+    Some(knockout_silhouette_for_primitive(
+        primitive,
+        &document.document.page.background,
+        bond.margin_width,
+    ))
+}
+
+fn document_bonds_cross_for_margin(
+    under_bond: &DocumentBondRenderInfo,
+    over_bond: &DocumentBondRenderInfo,
+) -> bool {
+    if under_bond.object_id == over_bond.object_id
+        && (under_bond.begin == over_bond.begin
+            || under_bond.begin == over_bond.end
+            || under_bond.end == over_bond.begin
+            || under_bond.end == over_bond.end)
+    {
+        return false;
+    }
+    let under_vector = Vector::new(
+        under_bond.end_point.x - under_bond.start.x,
+        under_bond.end_point.y - under_bond.start.y,
+    );
+    let over_vector = Vector::new(
+        over_bond.end_point.x - over_bond.start.x,
+        over_bond.end_point.y - over_bond.start.y,
+    );
+    if under_vector.length() <= EPSILON || over_vector.length() <= EPSILON {
+        return false;
+    }
+    let crossing_sin =
+        target_render_vector_cross(under_vector.normalized(), over_vector.normalized()).abs();
+    if crossing_sin <= 0.1 {
+        return false;
+    }
+    target_render_segment_intersection(
+        under_bond.start,
+        under_bond.end_point,
+        over_bond.start,
+        over_bond.end_point,
+    )
+    .is_some()
+}
+
+fn knockout_silhouette_for_primitive(
+    primitive: &RenderPrimitive,
+    background: &str,
+    margin_width: f64,
+) -> RenderPrimitive {
+    let mut knockout = primitive.clone();
+    match &mut knockout {
+        RenderPrimitive::Line {
+            role,
+            stroke,
+            stroke_width,
+            ..
+        } => {
+            *role = RenderRole::DocumentKnockout;
+            *stroke = background.to_string();
+            *stroke_width += margin_width * 2.0;
+        }
+        RenderPrimitive::Polygon {
+            role,
+            fill,
+            stroke,
+            stroke_width,
+            ..
+        } => {
+            *role = RenderRole::DocumentKnockout;
+            *fill = background.to_string();
+            *stroke = background.to_string();
+            *stroke_width += margin_width * 2.0;
+        }
+        RenderPrimitive::Polyline {
+            role,
+            stroke,
+            stroke_width,
+            ..
+        }
+        | RenderPrimitive::Path {
+            role,
+            stroke,
+            stroke_width,
+            ..
+        } => {
+            *role = RenderRole::DocumentKnockout;
+            *stroke = background.to_string();
+            *stroke_width += margin_width * 2.0;
+        }
+        RenderPrimitive::FilledPath { role, fill, .. } => {
+            *role = RenderRole::DocumentKnockout;
+            *fill = background.to_string();
+        }
+        _ => {}
+    }
+    knockout
 }
 
 #[derive(Debug, Clone)]
@@ -495,6 +714,34 @@ fn primitive_node_id(primitive: &RenderPrimitive) -> Option<&str> {
         | RenderPrimitive::FilledPath { node_id, .. }
         | RenderPrimitive::Text { node_id, .. } => node_id.as_deref(),
         _ => None,
+    }
+}
+
+fn primitive_object_id(primitive: &RenderPrimitive) -> Option<&str> {
+    match primitive {
+        RenderPrimitive::Line { object_id, .. }
+        | RenderPrimitive::Circle { object_id, .. }
+        | RenderPrimitive::Polygon { object_id, .. }
+        | RenderPrimitive::Rect { object_id, .. }
+        | RenderPrimitive::Ellipse { object_id, .. }
+        | RenderPrimitive::Polyline { object_id, .. }
+        | RenderPrimitive::Path { object_id, .. }
+        | RenderPrimitive::FilledPath { object_id, .. }
+        | RenderPrimitive::Text { object_id, .. } => object_id.as_deref(),
+    }
+}
+
+fn render_primitive_role(primitive: &RenderPrimitive) -> RenderRole {
+    match primitive {
+        RenderPrimitive::Line { role, .. }
+        | RenderPrimitive::Circle { role, .. }
+        | RenderPrimitive::Polygon { role, .. }
+        | RenderPrimitive::Rect { role, .. }
+        | RenderPrimitive::Ellipse { role, .. }
+        | RenderPrimitive::Polyline { role, .. }
+        | RenderPrimitive::Path { role, .. }
+        | RenderPrimitive::FilledPath { role, .. }
+        | RenderPrimitive::Text { role, .. } => *role,
     }
 }
 

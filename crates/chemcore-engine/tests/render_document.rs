@@ -381,10 +381,141 @@ fn render_document_adds_margin_knockout_for_later_crossing_bond() {
         unreachable!("knockout is a polygon");
     };
     let bounds = primitive_polygon_bounds(points);
-    assert!((bounds[0] - 57.5).abs() < 0.001, "{bounds:?}");
-    assert!((bounds[1] - 57.5).abs() < 0.001, "{bounds:?}");
-    assert!((bounds[2] - 62.5).abs() < 0.001, "{bounds:?}");
-    assert!((bounds[3] - 62.5).abs() < 0.001, "{bounds:?}");
+    assert!((bounds[0] - 59.5).abs() < 0.001, "{bounds:?}");
+    assert!((bounds[1] - 20.0).abs() < 0.001, "{bounds:?}");
+    assert!((bounds[2] - 60.5).abs() < 0.001, "{bounds:?}");
+    assert!((bounds[3] - 100.0).abs() < 0.001, "{bounds:?}");
+}
+
+#[test]
+fn render_document_adds_wavy_margin_knockout_across_molecule_objects() {
+    let document: ChemcoreDocument = serde_json::from_value(json!({
+        "format": { "name": "chemcore", "version": "0.1" },
+        "document": {
+            "id": "doc_test",
+            "title": "test",
+            "page": { "width": 140.0, "height": 120.0, "background": "#ffffff" }
+        },
+        "style": {
+            "defaults": {
+                "lineWidth": 0.85,
+                "marginWidth": 2.0
+            }
+        },
+        "styles": {
+            "style_molecule_default": {
+                "kind": "molecule",
+                "stroke": "#000000",
+                "strokeWidth": 0.85,
+                "fontFamily": "Arial",
+                "fontSize": 11.0
+            }
+        },
+        "objects": [{
+            "id": "obj_under",
+            "type": "molecule",
+            "visible": true,
+            "zIndex": 10,
+            "transform": { "translate": [0.0, 0.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+            "styleRef": "style_molecule_default",
+            "payload": { "resourceRef": "mol_under", "bbox": [0.0, 0.0, 120.0, 80.0] }
+        }, {
+            "id": "obj_wavy",
+            "type": "molecule",
+            "visible": true,
+            "zIndex": 20,
+            "transform": { "translate": [0.0, 0.0], "rotate": 0.0, "scale": [1.0, 1.0] },
+            "styleRef": "style_molecule_default",
+            "payload": { "resourceRef": "mol_wavy", "bbox": [0.0, 0.0, 120.0, 80.0] }
+        }],
+        "resources": {
+            "mol_under": {
+                "type": "molecule_fragment2d",
+                "encoding": "chemcore.molecule.fragment2d",
+                "data": {
+                    "schema": "chemcore.molecule.fragment2d",
+                    "bbox": [0.0, 0.0, 120.0, 80.0],
+                    "nodes": [
+                        { "id": "u1", "element": "C", "atomicNumber": 6, "position": [20.0, 60.0], "charge": 0, "numHydrogens": 0 },
+                        { "id": "u2", "element": "C", "atomicNumber": 6, "position": [100.0, 60.0], "charge": 0, "numHydrogens": 0 }
+                    ],
+                    "bonds": [
+                        { "id": "b_under", "begin": "u1", "end": "u2", "order": 1, "strokeWidth": 0.85 }
+                    ]
+                }
+            },
+            "mol_wavy": {
+                "type": "molecule_fragment2d",
+                "encoding": "chemcore.molecule.fragment2d",
+                "data": {
+                    "schema": "chemcore.molecule.fragment2d",
+                    "bbox": [0.0, 0.0, 120.0, 80.0],
+                    "nodes": [
+                        { "id": "w1", "element": "C", "atomicNumber": 6, "position": [60.0, 35.0], "charge": 0, "numHydrogens": 0 },
+                        { "id": "w2", "element": "C", "atomicNumber": 6, "position": [60.0, 85.0], "charge": 0, "numHydrogens": 0 }
+                    ],
+                    "bonds": [
+                        {
+                            "id": "b_wavy",
+                            "begin": "w1",
+                            "end": "w2",
+                            "order": 1,
+                            "strokeWidth": 0.85,
+                            "lineStyles": { "main": "wavy" }
+                        }
+                    ]
+                }
+            }
+        }
+    }))
+    .expect("document should deserialize");
+
+    let primitives = render_document(&document);
+    let under_index = primitives
+        .iter()
+        .position(|primitive| {
+            matches!(
+                primitive,
+                RenderPrimitive::Polygon {
+                    role: RenderRole::DocumentBond,
+                    bond_id,
+                    ..
+                } if bond_id.as_deref() == Some("b_under")
+            )
+        })
+        .expect("under bond should render");
+    let knockout_index = primitives
+        .iter()
+        .position(|primitive| {
+            matches!(
+                primitive,
+                RenderPrimitive::Path {
+                    role: RenderRole::DocumentKnockout,
+                    bond_id,
+                    stroke,
+                    stroke_width,
+                    ..
+                } if bond_id.as_deref() == Some("b_wavy")
+                    && stroke == "#ffffff"
+                    && (*stroke_width - 4.85).abs() < 0.001
+            )
+        })
+        .expect("wavy over-bond should insert its own margin silhouette");
+    let wavy_index = primitives
+        .iter()
+        .position(|primitive| {
+            matches!(
+                primitive,
+                RenderPrimitive::Path {
+                    role: RenderRole::DocumentBond,
+                    bond_id,
+                    ..
+                } if bond_id.as_deref() == Some("b_wavy")
+            )
+        })
+        .expect("wavy bond should render");
+
+    assert!(under_index < knockout_index && knockout_index < wavy_index);
 }
 
 #[test]
@@ -2945,7 +3076,7 @@ fn load_cdxml_document_does_not_import_margin_width_as_label_retreat() {
     assert_eq!(wide_margin_profile, Some((5.0, 10.0)));
     assert!(
         (wide_line - normal).abs() < 0.01,
-        "CDXML MarginWidth should not become label retreat: {normal} {wide_line}"
+        "CDXML MarginWidth should not mutate the legacy global label clip option: {normal} {wide_line}"
     );
     assert!((wide_margin - normal).abs() < 0.01, "{wide_margin}");
 }
@@ -2954,12 +3085,12 @@ fn load_cdxml_document_does_not_import_margin_width_as_label_retreat() {
 fn cdxml_imported_bonds_use_engine_glyph_retreat() {
     let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >
-<CDXML BondLength="14.40" LineWidth="0.60" BoldWidth="2.00" HashSpacing="2.50" BondSpacing="18" MarginWidth="5.00" LabelSize="10">
-  <page id="p1" BoundingBox="0 0 50 30">
-    <fragment id="f1" BoundingBox="0 0 50 30">
+<CDXML BondLength="14.40" LineWidth="0.60" BoldWidth="2.00" HashSpacing="2.50" BondSpacing="18" MarginWidth="1.60" LabelSize="10">
+  <page id="p1" BoundingBox="0 0 70 30">
+    <fragment id="f1" BoundingBox="0 0 70 30">
       <n id="n1" p="10 15"/>
-      <n id="n2" p="24.4 15" Element="7">
-        <t p="20.8 18.9" BoundingBox="20.8 10.56 28.02 18.9" LabelJustification="Left">
+      <n id="n2" p="34.4 15" Element="7">
+        <t p="30.8 18.9" BoundingBox="30.8 10.56 38.02 18.9" LabelJustification="Left">
           <s font="3" size="10" color="0" face="96">N</s>
         </t>
       </n>
@@ -2992,9 +3123,10 @@ fn cdxml_imported_bonds_use_engine_glyph_retreat() {
     let (from, to) = bond_axis_from_points(&polygon).expect("bond axis");
     let label_endpoint = if from.x > to.x { from } else { to };
 
+    let retreat_from_text_origin = 30.8 - label_endpoint.x;
     assert!(
-        20.8 - label_endpoint.x > 0.55,
-        "imported bond should retreat from the N glyph using engine glyph clipping: {polygon:?}"
+        (0.75..=1.05).contains(&retreat_from_text_origin),
+        "imported bond should clip at the source-margin glyph polygon without adding a second MarginWidth retreat: {polygon:?}"
     );
 }
 
@@ -9046,7 +9178,7 @@ fn render_document_uses_label_glyph_polygons_for_knockout_and_endpoint_clipping(
     let start_x = centerlines[0].0.x.min(centerlines[0].1.x);
     assert!(
         (start_x - 23.0).abs() < 0.02,
-        "endpoint should be clipped at the glyph polygon boundary, not the full label box or a legacy margin: {centerlines:?}"
+        "endpoint should clip at the source-margin glyph polygon without adding a second margin retreat: {centerlines:?}"
     );
 }
 
@@ -10796,8 +10928,8 @@ fn render_document_clips_center_double_lines_individually_at_labeled_endpoint() 
             to
         };
         assert!(
-            (51.0..=52.0).contains(&endpoint.x),
-            "each parallel line should hit the label box boundary without a legacy margin: {polygon:?}"
+            (50.5..=51.5).contains(&endpoint.x),
+            "each parallel line should clip at the source-margin glyph polygon without adding endpoint-circle retreat: {polygon:?}"
         );
     }
 }
@@ -11003,7 +11135,7 @@ fn render_document_ignores_legacy_label_clip_margin_for_glyph_polygons() {
 
     assert!(
         (label_endpoint.x - 51.0).abs() < 0.02,
-        "glyph polygon clipping should stop at the polygon boundary and ignore legacy labelClipMargin: {polygon:?}"
+        "glyph polygon clipping should ignore legacy labelClipMargin and avoid adding a second margin retreat: {polygon:?}"
     );
 }
 
@@ -11043,7 +11175,7 @@ fn render_document_treats_horizontal_label_interior_as_rectangular_clip() {
 
     assert!(
         (label_endpoint.y - 22.0).abs() < 0.02,
-        "horizontal multi-character labels should clip through the internal rectangular block: {polygon:?}"
+        "horizontal multi-character labels should keep internal clipping without rectangularizing or adding a second margin retreat: {polygon:?}"
     );
 }
 
@@ -11086,7 +11218,7 @@ fn render_document_does_not_rectangularize_vertically_separated_label_glyphs() {
 
     assert!(
         (label_endpoint.x - 24.0).abs() < 0.02,
-        "vertically separated or superscript glyphs should not enlarge the baseline atom-label clip: {polygon:?}"
+        "vertically separated or superscript glyphs should not rectangularize or add a second margin retreat: {polygon:?}"
     );
 }
 
@@ -11238,7 +11370,7 @@ fn render_document_acs_template_does_not_add_label_clip_margin() {
 
     assert!(
         margin.abs() < 0.02,
-        "ACS label clipping should stop at the glyph boundary without a template margin: {margin} {polygon:?}"
+        "ACS label clipping should use the source-margin glyph polygon without adding a second margin retreat: {margin} {polygon:?}"
     );
 }
 

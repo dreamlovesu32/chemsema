@@ -43,6 +43,14 @@ documents.
   and the shared object identity that connects visual editing, Office
   workflows, CLI inspection, scoped agent editing, validation, and editable
   export.
+- Improved CDXML rendering fidelity for published reaction figures. Bond
+  knockouts now preserve ChemDraw-style transparent margins when bonds cross,
+  label retreat is driven by glyph clipping and the imported `MarginWidth`
+  profile, and prime/apostrophe atom labels use the same active anchor logic as
+  normal terminal letters.
+- Refreshed the public README visuals, including the ChemCore editor interface
+  screenshot and the ChemDraw/ChemCore comparison assets generated from
+  `figure1.cdxml` and `figure2.cdxml`.
 
 ## 1.0.0-beta.6
 

@@ -154,12 +154,24 @@ fn matching_close_paren(text: &str) -> Option<usize> {
 pub fn terminal_letter_anchor_offset(group: &str) -> usize {
     // Anchor the bond to the terminal letter in a group and ignore digits or
     // generated hydrogens that are visible text but not connection points.
+    // Prime marks in generic labels such as R' are part of the connection
+    // label identity in ChemDraw and should move the anchor to the visible
+    // suffix rather than leaving it at the R glyph center.
     group
         .chars()
         .enumerate()
-        .filter_map(|(index, character)| character.is_ascii_alphabetic().then_some(index))
+        .filter_map(|(index, character)| {
+            (character.is_ascii_alphabetic() || is_prime_anchor_suffix(character)).then_some(index)
+        })
         .last()
         .unwrap_or(0)
+}
+
+pub fn is_prime_anchor_suffix(character: char) -> bool {
+    matches!(
+        character,
+        '\'' | '\u{2019}' | '\u{2032}' | '\u{2033}' | '\u{2034}'
+    )
 }
 
 pub fn decide_label_layout(
@@ -403,6 +415,8 @@ mod tests {
         assert_eq!(terminal_letter_anchor_offset("Ph"), 1);
         assert_eq!(terminal_letter_anchor_offset("Ph2"), 1);
         assert_eq!(terminal_letter_anchor_offset("N3"), 0);
+        assert_eq!(terminal_letter_anchor_offset("R'"), 1);
+        assert_eq!(terminal_letter_anchor_offset("R\u{2032}"), 1);
     }
 
     #[test]
@@ -454,6 +468,10 @@ mod tests {
         let n3 = layout_label_text("N3", &decision);
         assert_eq!(n3.lines, vec!["N3"]);
         assert_eq!(n3.anchor_char, 0);
+
+        let r_prime = layout_label_text("R'", &decision);
+        assert_eq!(r_prime.lines, vec!["R'"]);
+        assert_eq!(r_prime.anchor_char, 1);
     }
 
     #[test]

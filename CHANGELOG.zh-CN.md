@@ -36,6 +36,11 @@ ChemCore 的公开变更记录会保存在这里。
 - 重构中英文 README 的前部定位，把 ChemCore 更明确地描述为可编辑化学文档平台，
   并突出同一套对象身份如何贯穿可视化编辑、Office 工作流、CLI 检查、受范围约束的
   agent 修改、验证和可编辑导出。
+- 改进真实论文 CDXML 图的渲染保真度。键与键相交时会保留 ChemDraw 风格的透明
+  margin knockout；标签退让由 glyph clipping 和导入的 `MarginWidth` profile 驱动；
+  prime/apostrophe 结尾的原子标签也会使用和普通末端字母一致的 active anchor 逻辑。
+- 刷新 README 公开视觉素材，包括 ChemCore 编辑器界面截图，以及基于
+  `figure1.cdxml` 和 `figure2.cdxml` 重新生成的 ChemDraw/ChemCore 对比资产。
 
 ## 1.0.0-beta.6
 

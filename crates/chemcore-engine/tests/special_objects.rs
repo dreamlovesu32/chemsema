@@ -71,7 +71,7 @@ fn parse_cdxml_imports_rest_fixture_special_bonds_and_table() {
             d,
             line_join,
             ..
-        } if bond_id == "28" && d.contains(" A ") && line_join.as_deref() == Some("bevel")
+        } if bond_id == "28" && d.contains(" C ") && line_join.as_deref() == Some("bevel")
     )));
     let hollow_wedge_paths: Vec<_> = primitives
         .iter()

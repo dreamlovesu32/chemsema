@@ -37,7 +37,7 @@ pub(super) fn render_fragment_bond(
         .is_some_and(|label| label.has_visible_text());
 
     let stereo = bond_stereo_kind(bond);
-    let label_clip_margin = label_clip_margin_for_bond(bond, stroke_width);
+    let label_clip_margin = label_clip_margin_for_bond(document, bond, stroke_width);
     let clipped_segment = if let Some(stereo) = stereo {
         let (begin_half_width, end_half_width) =
             wedge_endpoint_half_widths(bond, stereo, stroke_width);
@@ -47,6 +47,7 @@ pub(super) fn render_fragment_bond(
             begin_box,
             &begin_polygons,
             begin_half_width,
+            label_clip_margin,
             end_box,
             &end_polygons,
             end_half_width,
@@ -58,6 +59,7 @@ pub(super) fn render_fragment_bond(
             finish,
             begin_box,
             &begin_polygons,
+            label_clip_margin,
             end_box,
             &end_polygons,
             label_clip_margin,
@@ -102,6 +104,7 @@ pub(super) fn render_fragment_bond(
     if bond.order == 2 {
         render_double_bond(
             out,
+            document,
             object,
             contact_kernel,
             bonds,
@@ -125,6 +128,7 @@ pub(super) fn render_fragment_bond(
     if bond.order >= 3 {
         render_triple_bond(
             out,
+            document,
             object,
             contact_kernel,
             bonds,
@@ -147,6 +151,7 @@ pub(super) fn render_fragment_bond(
 
     render_fragment_line(
         out,
+        document,
         object,
         contact_kernel,
         bonds,
@@ -168,6 +173,7 @@ pub(super) fn render_fragment_bond(
 #[allow(clippy::too_many_arguments)]
 fn render_double_bond(
     out: &mut Vec<RenderPrimitive>,
+    document: &ChemcoreDocument,
     object: &SceneObject,
     contact_kernel: &MainBondContactKernel,
     bonds: &[Bond],
@@ -204,6 +210,7 @@ fn render_double_bond(
             );
             render_fragment_line(
                 out,
+                document,
                 object,
                 contact_kernel,
                 bonds,
@@ -222,6 +229,7 @@ fn render_double_bond(
             );
             render_outer_bond_lines(
                 out,
+                document,
                 object,
                 contact_kernel,
                 bonds,
@@ -253,6 +261,7 @@ fn render_double_bond(
             );
             render_center_double_bond_lines(
                 out,
+                document,
                 object,
                 contact_kernel,
                 bonds,
@@ -276,6 +285,7 @@ fn render_double_bond(
 #[allow(clippy::too_many_arguments)]
 fn render_center_double_bond_lines(
     out: &mut Vec<RenderPrimitive>,
+    document: &ChemcoreDocument,
     object: &SceneObject,
     contact_kernel: &MainBondContactKernel,
     bonds: &[Bond],
@@ -341,6 +351,7 @@ fn render_center_double_bond_lines(
         );
         render_fragment_line_with_profiles(
             out,
+            document,
             object,
             contact_kernel,
             bonds,
@@ -369,6 +380,7 @@ fn render_center_double_bond_lines(
 #[allow(clippy::too_many_arguments)]
 fn render_triple_bond(
     out: &mut Vec<RenderPrimitive>,
+    document: &ChemcoreDocument,
     object: &SceneObject,
     contact_kernel: &MainBondContactKernel,
     bonds: &[Bond],
@@ -390,6 +402,7 @@ fn render_triple_bond(
 
     render_fragment_line(
         out,
+        document,
         object,
         contact_kernel,
         bonds,
@@ -409,6 +422,7 @@ fn render_triple_bond(
 
     render_outer_bond_lines(
         out,
+        document,
         object,
         contact_kernel,
         bonds,
@@ -433,6 +447,7 @@ fn render_triple_bond(
 #[allow(clippy::too_many_arguments)]
 fn render_outer_bond_lines(
     out: &mut Vec<RenderPrimitive>,
+    document: &ChemcoreDocument,
     object: &SceneObject,
     contact_kernel: &MainBondContactKernel,
     bonds: &[Bond],
@@ -537,6 +552,7 @@ fn render_outer_bond_lines(
         );
         render_fragment_line_with_profiles(
             out,
+            document,
             object,
             contact_kernel,
             bonds,
@@ -748,40 +764,31 @@ fn render_wavy_bond(
     }
     let unit = direction.normalized();
     let normal = Vector::new(-unit.y, unit.x);
-    let max_amplitude = length * 0.18;
-    let desired_amplitude = 1.875 * (stroke_width / VIEWER_BOND_STROKE);
-    let amplitude = if max_amplitude < 0.8 {
-        max_amplitude.max(EPSILON)
-    } else {
-        desired_amplitude.clamp(0.8, max_amplitude)
-    };
-    let mut half_wave_count = ((length / amplitude).round() as usize).max(4);
-    if half_wave_count % 2 != 0 {
-        half_wave_count += 1;
+    let amplitude = wavy_bond_amplitude_for_bond(bond, stroke_width)
+        .min(length * 0.18)
+        .max(EPSILON);
+    let half_wave_count = ((length / amplitude).ceil() as usize).max(4);
+    let drawn_length = ((half_wave_count.saturating_sub(1)) as f64 * amplitude).min(length);
+    if drawn_length <= EPSILON {
+        return;
     }
-    let half_wave_step = length / half_wave_count as f64;
+    let half_wave_step = drawn_length / half_wave_count as f64;
+    let control = (amplitude * 0.552_284_749_830_793_6).min(half_wave_step * 0.5);
     let mut d = format!("M {:.4} {:.4}", start.x, start.y);
     let mut points = vec![start];
     for index in 0..half_wave_count {
-        let t = half_wave_step * (index + 1) as f64;
-        let endpoint_side = match (index + 1) % 4 {
-            1 => 1.0,
-            3 => -1.0,
-            _ => 0.0,
-        };
-        let end_point = Point::new(
-            start.x + unit.x * t + normal.x * amplitude * endpoint_side,
-            start.y + unit.y * t + normal.y * amplitude * endpoint_side,
-        );
-        let sweep = match (index + 1) % 4 {
-            1 | 2 => 0,
-            _ => 1,
-        };
+        let segment_start = wavy_bond_point(start, unit, normal, half_wave_step, amplitude, index);
+        let segment_end =
+            wavy_bond_point(start, unit, normal, half_wave_step, amplitude, index + 1);
+        let start_tangent = wavy_bond_tangent(unit, normal, index).scaled(control);
+        let end_tangent = wavy_bond_tangent(unit, normal, index + 1).scaled(control);
+        let control_1 = segment_start.translated(start_tangent);
+        let control_2 = segment_end.translated(end_tangent.scaled(-1.0));
         d.push_str(&format!(
-            " A {:.4},{:.4} 90 0,{} {:.4} {:.4}",
-            amplitude, amplitude, sweep, end_point.x, end_point.y
+            " C {:.4},{:.4} {:.4},{:.4} {:.4},{:.4}",
+            control_1.x, control_1.y, control_2.x, control_2.y, segment_end.x, segment_end.y
         ));
-        points.push(end_point);
+        points.push(segment_end);
     }
     out.push(RenderPrimitive::Path {
         role: RenderRole::DocumentBond,
@@ -797,6 +804,33 @@ fn render_wavy_bond(
         rotate: 0.0,
         rotate_center: None,
     });
+}
+
+fn wavy_bond_point(
+    start: Point,
+    unit: Vector,
+    normal: Vector,
+    step: f64,
+    amplitude: f64,
+    index: usize,
+) -> Point {
+    let side = match index % 4 {
+        1 => 1.0,
+        3 => -1.0,
+        _ => 0.0,
+    };
+    start
+        .translated(unit.scaled(step * index as f64))
+        .translated(normal.scaled(amplitude * side))
+}
+
+fn wavy_bond_tangent(unit: Vector, normal: Vector, index: usize) -> Vector {
+    match index % 4 {
+        0 => normal,
+        1 | 3 => unit,
+        2 => normal.scaled(-1.0),
+        _ => unreachable!(),
+    }
 }
 
 pub(super) fn compute_solid_wedge_points(

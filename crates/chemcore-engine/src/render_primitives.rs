@@ -353,15 +353,6 @@ pub(super) fn push_bond_polygon(
     });
 }
 
-pub(super) fn push_bond_knockout_polygon(
-    out: &mut Vec<RenderPrimitive>,
-    points: Vec<Point>,
-    object_id: Option<String>,
-    bond_id: String,
-) {
-    push_knockout_polygon_with_ids(out, points, object_id, None, Some(bond_id));
-}
-
 pub(super) fn push_label_knockout_polygon(
     out: &mut Vec<RenderPrimitive>,
     points: Vec<Point>,

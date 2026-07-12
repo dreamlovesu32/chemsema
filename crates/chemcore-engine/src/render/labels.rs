@@ -276,34 +276,6 @@ fn polygon_bounds(polygon: &[Point]) -> Option<RectBox> {
         .then_some(bounds)
 }
 
-fn rect_segment_exit_fraction(start: Point, end: Point, rect: RectBox) -> Option<f64> {
-    let corners = [
-        Point::new(rect.x1, rect.y1),
-        Point::new(rect.x2, rect.y1),
-        Point::new(rect.x2, rect.y2),
-        Point::new(rect.x1, rect.y2),
-    ];
-    let start_inside = rect.contains(start);
-    let mut best_t: Option<f64> = None;
-    for index in 0..corners.len() {
-        let next = (index + 1) % corners.len();
-        let Some(t) = segment_intersection_fraction(start, end, corners[index], corners[next])
-        else {
-            continue;
-        };
-        if t <= EPSILON && !start_inside {
-            continue;
-        }
-        if best_t.is_none_or(|current| t > current) {
-            best_t = Some(t);
-        }
-    }
-    if start_inside && best_t.is_none() {
-        best_t = Some(0.0);
-    }
-    best_t
-}
-
 pub(super) fn clip_point_out_of_polygons(
     start: Point,
     end: Point,
@@ -336,35 +308,6 @@ pub(super) fn clip_point_out_of_polygons(
             if best_t.is_none_or(|current| t > current) {
                 best_t = Some(t);
             }
-        }
-    }
-    best_t.map(|t| {
-        Point::new(
-            start.x + (end.x - start.x) * t,
-            start.y + (end.y - start.y) * t,
-        )
-    })
-}
-
-fn clip_point_out_of_expanded_polygon_bounds(
-    start: Point,
-    end: Point,
-    polygons: &[Vec<Point>],
-    margin: f64,
-) -> Option<Point> {
-    if margin <= EPSILON {
-        return None;
-    }
-    let mut best_t: Option<f64> = None;
-    for polygon in polygons {
-        let Some(bounds) = polygon_bounds(polygon) else {
-            continue;
-        };
-        let Some(t) = rect_segment_exit_fraction(start, end, bounds.expanded(margin)) else {
-            continue;
-        };
-        if best_t.is_none_or(|current| t > current) {
-            best_t = Some(t);
         }
     }
     best_t.map(|t| {
@@ -427,9 +370,7 @@ pub(super) fn clip_point_out_of_label_geometry(
     if polygons.is_empty() {
         return clip_point_out_of_box(start, end, rect, 0.0);
     }
-    clip_point_out_of_polygons(start, end, polygons)
-        .or_else(|| clip_point_out_of_expanded_polygon_bounds(start, end, polygons, 0.0))
-        .unwrap_or(start)
+    clip_point_out_of_polygons(start, end, polygons).unwrap_or(start)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -438,9 +379,10 @@ pub(super) fn clip_segment_out_of_label_geometry(
     end: Point,
     start_rect: Option<RectBox>,
     start_polygons: &[Vec<Point>],
+    start_margin: f64,
     end_rect: Option<RectBox>,
     end_polygons: &[Vec<Point>],
-    margin: f64,
+    end_margin: f64,
 ) -> Option<(Point, Point)> {
     let direction = Vector::new(end.x - start.x, end.y - start.y);
     let length_sq = direction.x * direction.x + direction.y * direction.y;
@@ -449,8 +391,9 @@ pub(super) fn clip_segment_out_of_label_geometry(
     }
 
     let clipped_start =
-        clip_point_out_of_label_geometry(start, end, start_rect, start_polygons, margin);
-    let clipped_end = clip_point_out_of_label_geometry(end, start, end_rect, end_polygons, margin);
+        clip_point_out_of_label_geometry(start, end, start_rect, start_polygons, start_margin);
+    let clipped_end =
+        clip_point_out_of_label_geometry(end, start, end_rect, end_polygons, end_margin);
     let start_t = ((clipped_start.x - start.x) * direction.x
         + (clipped_start.y - start.y) * direction.y)
         / length_sq;
@@ -467,10 +410,11 @@ pub(super) fn clip_wedge_segment_out_of_label_geometry(
     start_rect: Option<RectBox>,
     start_polygons: &[Vec<Point>],
     start_half_width: f64,
+    start_margin: f64,
     end_rect: Option<RectBox>,
     end_polygons: &[Vec<Point>],
     end_half_width: f64,
-    margin: f64,
+    end_margin: f64,
 ) -> Option<(Point, Point)> {
     let direction = Vector::new(end.x - start.x, end.y - start.y);
     let length = direction.length();
@@ -487,7 +431,7 @@ pub(super) fn clip_wedge_segment_out_of_label_geometry(
         start_rect,
         start_polygons,
         start_half_width,
-        margin,
+        start_margin,
         length,
     );
     let end_retreat = wedge_endpoint_label_retreat(
@@ -498,7 +442,7 @@ pub(super) fn clip_wedge_segment_out_of_label_geometry(
         end_rect,
         end_polygons,
         end_half_width,
-        margin,
+        end_margin,
         length,
     );
     let (clipped_start, clipped_end) =
@@ -540,6 +484,7 @@ fn wedge_endpoint_label_retreat(
 #[allow(clippy::too_many_arguments)]
 pub(super) fn render_fragment_line(
     out: &mut Vec<RenderPrimitive>,
+    document: &ChemcoreDocument,
     object: &SceneObject,
     contact_kernel: &MainBondContactKernel,
     bonds: &[Bond],
@@ -558,6 +503,7 @@ pub(super) fn render_fragment_line(
 ) {
     render_fragment_line_with_profiles(
         out,
+        document,
         object,
         contact_kernel,
         bonds,
@@ -585,6 +531,7 @@ pub(super) fn render_fragment_line(
 #[allow(clippy::too_many_arguments)]
 pub(super) fn render_fragment_line_with_profiles(
     out: &mut Vec<RenderPrimitive>,
+    document: &ChemcoreDocument,
     object: &SceneObject,
     contact_kernel: &MainBondContactKernel,
     bonds: &[Bond],
@@ -636,12 +583,13 @@ pub(super) fn render_fragment_line_with_profiles(
         end_endpoint_profile_override
     };
     let Some((clipped_start, clipped_end)) = (if clip_against_label_geometry {
-        let label_clip_margin = label_clip_margin_for_bond(bond, stroke_width);
+        let label_clip_margin = label_clip_margin_for_bond(document, bond, stroke_width);
         clip_segment_out_of_label_geometry(
             start,
             end,
             start_box,
             &start_polygons,
+            label_clip_margin,
             end_box,
             &end_polygons,
             label_clip_margin,

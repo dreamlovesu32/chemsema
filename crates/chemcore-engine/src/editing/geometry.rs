@@ -40,7 +40,8 @@ pub(super) fn label_anchor_geometries(
     }
     let glyph_points: Vec<Point> = glyph_polygons
         .iter()
-        .filter_map(|polygon| polygon_anchor_point(&polygon))
+        .enumerate()
+        .filter_map(|(index, polygon)| label_glyph_anchor_point(label, index, polygon))
         .map(|point| {
             Point::new(
                 point.x + entry.object.transform.translate[0],
@@ -182,6 +183,41 @@ pub(super) fn polygon_anchor_point(polygon: &[Point]) -> Option<Point> {
         max_y = max_y.max(point.y);
     }
     Some(Point::new((min_x + max_x) * 0.5, (min_y + max_y) * 0.5))
+}
+
+fn label_glyph_anchor_point(
+    label: &crate::NodeLabel,
+    glyph_index: usize,
+    polygon: &[Point],
+) -> Option<Point> {
+    let chars = label_visible_chars(label);
+    if chars.len() == label.glyph_polygons.len()
+        && chars
+            .get(glyph_index)
+            .copied()
+            .is_some_and(crate::is_prime_anchor_suffix)
+    {
+        if let (Some(bounds), Some(natural_outset)) =
+            (polygon_bounds(polygon), label_natural_outset_pt(label))
+        {
+            return Some(Point::new(
+                bounds[2] - natural_outset,
+                (bounds[1] + bounds[3]) * 0.5,
+            ));
+        }
+    }
+    polygon_anchor_point(polygon)
+}
+
+fn label_natural_outset_pt(label: &crate::NodeLabel) -> Option<f64> {
+    [
+        "/import/cdxml/naturalOutsetPt",
+        "/import/cdxml/marginWidth",
+        "/glyphClipProfile/naturalOutsetPt",
+    ]
+    .into_iter()
+    .find_map(|path| label.meta.pointer(path).and_then(serde_json::Value::as_f64))
+    .filter(|value| value.is_finite() && *value >= 0.0)
 }
 
 pub(super) fn polygon_bounds_world(polygon: &[Point], translate: [f64; 2]) -> Option<[f64; 4]> {

@@ -12162,8 +12162,8 @@ fn bond_tool_icons_are_rendered_with_kernel_bond_styles() {
     assert!(bold.contains(r#"fill="currentColor""#), "{bold}");
 
     let wavy = Engine::bond_tool_icon_svg(BondVariant::Wavy, 1.32, 3.68);
-    assert_eq!(wavy.matches(" A ").count(), 8, "{wavy}");
-    assert!(wavy.contains(r#"A 1.8750,1.8750"#), "{wavy}");
+    assert_eq!(wavy.matches(" C ").count(), 8, "{wavy}");
+    assert!(wavy.contains(r#"C 17.8377,7.7027"#), "{wavy}");
     assert!(wavy.contains(r#"stroke-width="1.32""#), "{wavy}");
 }
 
