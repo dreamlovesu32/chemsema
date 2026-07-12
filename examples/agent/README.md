@@ -37,6 +37,9 @@ npm run examples:agent
 - `06-reaction-poc`: run a compact external-review POC on a public reaction
   figure, producing context, before/after crops, editable output, and an audit
   report.
+- `07-object-grounded-edit`: run the object-grounded agent loop on a real
+  CDXML molecule target with bundle provenance, dry-run transaction, scoped
+  execution, diff, captures, and target-only editable exports.
 
 The checked-in JSON and PNG outputs are generated from the same scripts and act
 as lightweight regression examples.

@@ -28,9 +28,23 @@ The output directory contains:
 - `editable-subset.<format>`
 - `capture.png` or `capture.svg`
 - `identity-map.json`
+- `provenance.json`
 
 `manifest.json` includes `schema`, `source`, `target`, `editableScope`,
-`visualScope`, `artifacts`, `artifactVerification`, and `integrity`.
+`visualScope`, `artifacts`, `artifactVerification`, `integrity`, and
+`provenance`.
+
+`identity-map.json` uses `chemcore.identity-map.v1`. Entries are sorted by
+selector and preserve ChemCore object, resource, style, node, and bond ids
+when those ids survive in the editable subset. Each entry includes
+`sourceSelector`, `bundleSelector`, `kind`, `includedBecause`, and
+`sourceDocumentHash`.
+
+`provenance.json` uses `chemcore.agent.provenance.v1`. It records the
+privacy-preserving source file name, source file SHA-256, source document hash,
+document revision, target selector(s), source bounds, visual bounds, editable
+subset counts, identity-map summary, and the translation applied when the
+subset was compacted. It intentionally does not persist local absolute paths.
 
 ## Scope Rule
 

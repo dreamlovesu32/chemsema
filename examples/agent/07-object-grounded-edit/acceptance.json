@@ -1,0 +1,17 @@
+﻿{
+    "targetResolved":  true,
+    "bundleGenerated":  true,
+    "captureGenerated":  true,
+    "dryRunDidNotApply":  true,
+    "executeApplied":  true,
+    "expectedSelectorsChanged":  [
+                                     "node:1176604361",
+                                     "object:obj_mol_004"
+                                 ],
+    "nodeChanged":  true,
+    "objectChanged":  true,
+    "unexpectedSelectorCount":  0,
+    "fullDocumentValid":  true,
+    "subsetDocumentValid":  true,
+    "cdxmlRoundTripValid":  true
+}

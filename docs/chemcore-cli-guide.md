@@ -166,7 +166,7 @@ File output policy:
 
 Object-grounded bundle and diff:
 
-- `bundle` writes a directory containing `manifest.json`, `target.json`, `context.json`, `editable-subset.<format>`, `capture.png` or `capture.svg`, and `identity-map.json`.
+- `bundle` writes a directory containing `manifest.json`, `target.json`, `context.json`, `editable-subset.<format>`, `capture.png` or `capture.svg`, `identity-map.json`, and `provenance.json`.
 - `manifest.json` separates `editableScope` from `visualScope`. Visual context can contain nearby non-target objects; only editable scope is authorized for modification.
 - `context.json` keeps `selectionBoxRelation` and `isTarget`, so callers can tell selected objects from merely visible neighbors.
 - `diff` compares two editable documents by object/resource/style/node/bond identity and reports created, updated, deleted, and field-level changes.

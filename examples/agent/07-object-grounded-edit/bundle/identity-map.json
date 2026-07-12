@@ -1,0 +1,134 @@
+{
+  "entries": [
+    {
+      "bundleSelector": "bond:1176604362",
+      "includedBecause": "referenced-molecule-entity",
+      "kind": "bond",
+      "sourceDocumentHash": "880febac1eace591111d0c4366ccd77d871faf96c6b41463e5701abba6bee2b7",
+      "sourceSelector": "bond:1176604362"
+    },
+    {
+      "bundleSelector": "bond:1176604363",
+      "includedBecause": "referenced-molecule-entity",
+      "kind": "bond",
+      "sourceDocumentHash": "880febac1eace591111d0c4366ccd77d871faf96c6b41463e5701abba6bee2b7",
+      "sourceSelector": "bond:1176604363"
+    },
+    {
+      "bundleSelector": "bond:1176604364",
+      "includedBecause": "referenced-molecule-entity",
+      "kind": "bond",
+      "sourceDocumentHash": "880febac1eace591111d0c4366ccd77d871faf96c6b41463e5701abba6bee2b7",
+      "sourceSelector": "bond:1176604364"
+    },
+    {
+      "bundleSelector": "bond:1176604365",
+      "includedBecause": "referenced-molecule-entity",
+      "kind": "bond",
+      "sourceDocumentHash": "880febac1eace591111d0c4366ccd77d871faf96c6b41463e5701abba6bee2b7",
+      "sourceSelector": "bond:1176604365"
+    },
+    {
+      "bundleSelector": "bond:1176604366",
+      "includedBecause": "referenced-molecule-entity",
+      "kind": "bond",
+      "sourceDocumentHash": "880febac1eace591111d0c4366ccd77d871faf96c6b41463e5701abba6bee2b7",
+      "sourceSelector": "bond:1176604366"
+    },
+    {
+      "bundleSelector": "bond:1176604367",
+      "includedBecause": "referenced-molecule-entity",
+      "kind": "bond",
+      "sourceDocumentHash": "880febac1eace591111d0c4366ccd77d871faf96c6b41463e5701abba6bee2b7",
+      "sourceSelector": "bond:1176604367"
+    },
+    {
+      "bundleSelector": "bond:1176604368",
+      "includedBecause": "referenced-molecule-entity",
+      "kind": "bond",
+      "sourceDocumentHash": "880febac1eace591111d0c4366ccd77d871faf96c6b41463e5701abba6bee2b7",
+      "sourceSelector": "bond:1176604368"
+    },
+    {
+      "bundleSelector": "node:1176604346",
+      "includedBecause": "referenced-molecule-entity",
+      "kind": "node",
+      "sourceDocumentHash": "880febac1eace591111d0c4366ccd77d871faf96c6b41463e5701abba6bee2b7",
+      "sourceSelector": "node:1176604346"
+    },
+    {
+      "bundleSelector": "node:1176604347",
+      "includedBecause": "referenced-molecule-entity",
+      "kind": "node",
+      "sourceDocumentHash": "880febac1eace591111d0c4366ccd77d871faf96c6b41463e5701abba6bee2b7",
+      "sourceSelector": "node:1176604347"
+    },
+    {
+      "bundleSelector": "node:1176604350",
+      "includedBecause": "referenced-molecule-entity",
+      "kind": "node",
+      "sourceDocumentHash": "880febac1eace591111d0c4366ccd77d871faf96c6b41463e5701abba6bee2b7",
+      "sourceSelector": "node:1176604350"
+    },
+    {
+      "bundleSelector": "node:1176604351",
+      "includedBecause": "referenced-molecule-entity",
+      "kind": "node",
+      "sourceDocumentHash": "880febac1eace591111d0c4366ccd77d871faf96c6b41463e5701abba6bee2b7",
+      "sourceSelector": "node:1176604351"
+    },
+    {
+      "bundleSelector": "node:1176604352",
+      "includedBecause": "referenced-molecule-entity",
+      "kind": "node",
+      "sourceDocumentHash": "880febac1eace591111d0c4366ccd77d871faf96c6b41463e5701abba6bee2b7",
+      "sourceSelector": "node:1176604352"
+    },
+    {
+      "bundleSelector": "node:1176604359",
+      "includedBecause": "referenced-molecule-entity",
+      "kind": "node",
+      "sourceDocumentHash": "880febac1eace591111d0c4366ccd77d871faf96c6b41463e5701abba6bee2b7",
+      "sourceSelector": "node:1176604359"
+    },
+    {
+      "bundleSelector": "node:1176604360",
+      "includedBecause": "referenced-molecule-entity",
+      "kind": "node",
+      "sourceDocumentHash": "880febac1eace591111d0c4366ccd77d871faf96c6b41463e5701abba6bee2b7",
+      "sourceSelector": "node:1176604360"
+    },
+    {
+      "bundleSelector": "node:1176604361",
+      "includedBecause": "referenced-molecule-entity",
+      "kind": "node",
+      "sourceDocumentHash": "880febac1eace591111d0c4366ccd77d871faf96c6b41463e5701abba6bee2b7",
+      "sourceSelector": "node:1176604361"
+    },
+    {
+      "bundleSelector": "object:obj_mol_004",
+      "includedBecause": "editable-target-or-required-ancestor",
+      "kind": "object",
+      "sourceDocumentHash": "880febac1eace591111d0c4366ccd77d871faf96c6b41463e5701abba6bee2b7",
+      "sourceSelector": "object:obj_mol_004"
+    },
+    {
+      "bundleSelector": "resource:mol_004",
+      "includedBecause": "referenced-resource",
+      "kind": "resource",
+      "sourceDocumentHash": "880febac1eace591111d0c4366ccd77d871faf96c6b41463e5701abba6bee2b7",
+      "sourceSelector": "resource:mol_004"
+    },
+    {
+      "bundleSelector": "style:style_molecule_default",
+      "includedBecause": "referenced-style",
+      "kind": "style",
+      "sourceDocumentHash": "880febac1eace591111d0c4366ccd77d871faf96c6b41463e5701abba6bee2b7",
+      "sourceSelector": "style:style_molecule_default"
+    }
+  ],
+  "schema": "chemcore.identity-map.v1",
+  "selectorIdentityStable": true,
+  "sourceDocumentHash": "880febac1eace591111d0c4366ccd77d871faf96c6b41463e5701abba6bee2b7",
+  "sourceFileSha256": "661d3c67e971d258e8991b364b7bed8e74b8500b75e7dc443decbc573b91ba0c"
+}

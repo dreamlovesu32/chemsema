@@ -1,0 +1,1484 @@
+{
+  "bounds": {
+    "query": {
+      "height": 147.51000000000002,
+      "maxX": 334.86,
+      "maxY": 319.42,
+      "minX": 149.04000000000002,
+      "minY": 171.91,
+      "width": 185.82
+    },
+    "target": {
+      "height": 37.51000000000002,
+      "maxX": 279.86,
+      "maxY": 264.42,
+      "minX": 204.04000000000002,
+      "minY": 226.91,
+      "width": 75.82
+    }
+  },
+  "context": {
+    "bonds": [
+      {
+        "begin": "1176604346",
+        "bounds": {
+          "height": 8.0,
+          "maxX": 241.18,
+          "maxY": 249.38,
+          "minX": 218.78000000000003,
+          "minY": 241.38,
+          "width": 22.399999999999977
+        },
+        "end": "1176604347",
+        "id": "1176604362",
+        "isTarget": false,
+        "kind": "bond",
+        "moleculeIndex": 0,
+        "objectId": "obj_mol_004",
+        "order": 2,
+        "selectionBoxRelation": "inside",
+        "selector": "bond:1176604362",
+        "spatial": {
+          "centerDelta": {
+            "x": -11.969999999999999,
+            "y": -0.285000000000025
+          },
+          "centerDistance": 11.973392376432002,
+          "containsTarget": false,
+          "direction": "overlap",
+          "edgeGap": 0.0,
+          "insideTarget": true,
+          "overlapsTarget": true
+        }
+      },
+      {
+        "begin": "1176604347",
+        "bounds": {
+          "height": 8.0,
+          "maxX": 255.58,
+          "maxY": 249.38,
+          "minX": 233.18,
+          "minY": 241.38,
+          "width": 22.400000000000006
+        },
+        "end": "1176604350",
+        "id": "1176604363",
+        "isTarget": false,
+        "kind": "bond",
+        "moleculeIndex": 0,
+        "objectId": "obj_mol_004",
+        "order": 2,
+        "selectionBoxRelation": "inside",
+        "selector": "bond:1176604363",
+        "spatial": {
+          "centerDelta": {
+            "x": 2.4299999999999784,
+            "y": -0.285000000000025
+          },
+          "centerDistance": 2.446655880993465,
+          "containsTarget": false,
+          "direction": "overlap",
+          "edgeGap": 0.0,
+          "insideTarget": true,
+          "overlapsTarget": true
+        }
+      },
+      {
+        "begin": "1176604346",
+        "bounds": {
+          "height": 20.870000000000005,
+          "maxX": 226.78000000000003,
+          "maxY": 262.25,
+          "minX": 212.31,
+          "minY": 241.38,
+          "width": 14.470000000000027
+        },
+        "end": "1176604351",
+        "id": "1176604364",
+        "isTarget": false,
+        "kind": "bond",
+        "moleculeIndex": 0,
+        "objectId": "obj_mol_004",
+        "order": 1,
+        "selectionBoxRelation": "inside",
+        "selector": "bond:1176604364",
+        "spatial": {
+          "centerDelta": {
+            "x": -22.405,
+            "y": 6.149999999999977
+          },
+          "centerDistance": 23.233736785114868,
+          "containsTarget": false,
+          "direction": "overlap",
+          "edgeGap": 0.0,
+          "insideTarget": true,
+          "overlapsTarget": true
+        }
+      },
+      {
+        "begin": "1176604350",
+        "bounds": {
+          "height": 20.47,
+          "maxX": 262.78000000000003,
+          "maxY": 249.38,
+          "minX": 247.58,
+          "minY": 228.91,
+          "width": 15.200000000000017
+        },
+        "end": "1176604352",
+        "id": "1176604365",
+        "isTarget": false,
+        "kind": "bond",
+        "moleculeIndex": 0,
+        "objectId": "obj_mol_004",
+        "order": 1,
+        "selectionBoxRelation": "inside",
+        "selector": "bond:1176604365",
+        "spatial": {
+          "centerDelta": {
+            "x": 13.22999999999999,
+            "y": -6.520000000000039
+          },
+          "centerDistance": 14.749349138182343,
+          "containsTarget": false,
+          "direction": "overlap",
+          "edgeGap": 0.0,
+          "insideTarget": true,
+          "overlapsTarget": true
+        }
+      },
+      {
+        "begin": "1176604350",
+        "bounds": {
+          "height": 20.470000000000027,
+          "maxX": 262.78000000000003,
+          "maxY": 261.85,
+          "minX": 247.58,
+          "minY": 241.38,
+          "width": 15.200000000000017
+        },
+        "end": "1176604359",
+        "id": "1176604366",
+        "isTarget": false,
+        "kind": "bond",
+        "moleculeIndex": 0,
+        "objectId": "obj_mol_004",
+        "order": 1,
+        "selectionBoxRelation": "inside",
+        "selector": "bond:1176604366",
+        "spatial": {
+          "centerDelta": {
+            "x": 13.22999999999999,
+            "y": 5.949999999999989
+          },
+          "centerDistance": 14.506391694697879,
+          "containsTarget": false,
+          "direction": "overlap",
+          "edgeGap": 0.0,
+          "insideTarget": true,
+          "overlapsTarget": true
+        }
+      },
+      {
+        "begin": "1176604359",
+        "bounds": {
+          "height": 8.569999999999993,
+          "maxX": 277.17,
+          "maxY": 262.42,
+          "minX": 254.78000000000003,
+          "minY": 253.85000000000002,
+          "width": 22.389999999999986
+        },
+        "end": "1176604360",
+        "id": "1176604367",
+        "isTarget": false,
+        "kind": "bond",
+        "moleculeIndex": 0,
+        "objectId": "obj_mol_004",
+        "order": 1,
+        "selectionBoxRelation": "inside",
+        "selector": "bond:1176604367",
+        "spatial": {
+          "centerDelta": {
+            "x": 24.025000000000006,
+            "y": 12.46999999999997
+          },
+          "centerDistance": 27.068459967275558,
+          "containsTarget": false,
+          "direction": "overlap",
+          "edgeGap": 0.0,
+          "insideTarget": true,
+          "overlapsTarget": true
+        }
+      },
+      {
+        "begin": "1176604346",
+        "bounds": {
+          "height": 20.25999999999999,
+          "maxX": 226.78000000000003,
+          "maxY": 249.38,
+          "minX": 211.22000000000003,
+          "minY": 229.12,
+          "width": 15.560000000000002
+        },
+        "end": "1176604361",
+        "id": "1176604368",
+        "isTarget": false,
+        "kind": "bond",
+        "moleculeIndex": 0,
+        "objectId": "obj_mol_004",
+        "order": 1,
+        "selectionBoxRelation": "inside",
+        "selector": "bond:1176604368",
+        "spatial": {
+          "centerDelta": {
+            "x": -22.94999999999999,
+            "y": -6.4150000000000205
+          },
+          "centerDistance": 23.829702578924476,
+          "containsTarget": false,
+          "direction": "overlap",
+          "edgeGap": 0.0,
+          "insideTarget": true,
+          "overlapsTarget": true
+        }
+      },
+      {
+        "begin": "1176604619",
+        "bounds": {
+          "height": 15.199999999999989,
+          "maxX": 332.16999999999996,
+          "maxY": 259.38,
+          "minX": 311.7,
+          "minY": 244.18,
+          "width": 20.46999999999997
+        },
+        "end": "1176604620",
+        "id": "1176604671",
+        "isTarget": false,
+        "kind": "bond",
+        "moleculeIndex": 6,
+        "objectId": "obj_mol_010",
+        "order": 1,
+        "selectionBoxRelation": "outside",
+        "selector": "bond:1176604671",
+        "spatial": {
+          "centerDelta": {
+            "x": 79.98499999999993,
+            "y": 6.114999999999981
+          },
+          "centerDistance": 80.2184109166966,
+          "containsTarget": false,
+          "direction": "right",
+          "edgeGap": 31.839999999999975,
+          "insideTarget": false,
+          "overlapsTarget": false
+        }
+      },
+      {
+        "begin": "1176604620",
+        "bounds": {
+          "height": 22.399999999999977,
+          "maxX": 319.7,
+          "maxY": 273.78,
+          "minX": 311.7,
+          "minY": 251.38,
+          "width": 8.0
+        },
+        "end": "1176604621",
+        "id": "1176604672",
+        "isTarget": false,
+        "kind": "bond",
+        "moleculeIndex": 6,
+        "objectId": "obj_mol_010",
+        "order": 2,
+        "selectionBoxRelation": "outside",
+        "selector": "bond:1176604672",
+        "spatial": {
+          "centerDelta": {
+            "x": 73.74999999999997,
+            "y": 16.914999999999964
+          },
+          "centerDistance": 75.66491739901653,
+          "containsTarget": false,
+          "direction": "right",
+          "edgeGap": 31.839999999999975,
+          "insideTarget": false,
+          "overlapsTarget": false
+        }
+      },
+      {
+        "begin": "1176604621",
+        "bounds": {
+          "height": 15.200000000000045,
+          "maxX": 332.16999999999996,
+          "maxY": 280.98,
+          "minX": 311.7,
+          "minY": 265.78,
+          "width": 20.46999999999997
+        },
+        "end": "1176604622",
+        "id": "1176604673",
+        "isTarget": false,
+        "kind": "bond",
+        "moleculeIndex": 6,
+        "objectId": "obj_mol_010",
+        "order": 1,
+        "selectionBoxRelation": "outside",
+        "selector": "bond:1176604673",
+        "spatial": {
+          "centerDelta": {
+            "x": 79.98499999999993,
+            "y": 27.714999999999975
+          },
+          "centerDistance": 84.65058446342817,
+          "containsTarget": false,
+          "direction": "right",
+          "edgeGap": 31.869031990319353,
+          "insideTarget": false,
+          "overlapsTarget": false
+        }
+      },
+      {
+        "begin": "1176604616",
+        "bounds": {
+          "height": 15.199999999999989,
+          "maxX": 344.64,
+          "maxY": 259.38,
+          "minX": 324.16999999999996,
+          "minY": 244.18,
+          "width": 20.470000000000027
+        },
+        "end": "1176604619",
+        "id": "1176604670",
+        "isTarget": false,
+        "kind": "bond",
+        "moleculeIndex": 6,
+        "objectId": "obj_mol_010",
+        "order": 2,
+        "selectionBoxRelation": "outside",
+        "selector": "bond:1176604670",
+        "spatial": {
+          "centerDelta": {
+            "x": 92.45499999999996,
+            "y": 6.114999999999981
+          },
+          "centerDistance": 92.65700324314396,
+          "containsTarget": false,
+          "direction": "right",
+          "edgeGap": 44.309999999999945,
+          "insideTarget": false,
+          "overlapsTarget": false
+        }
+      },
+      {
+        "begin": "1176604622",
+        "bounds": {
+          "height": 15.200000000000045,
+          "maxX": 344.64,
+          "maxY": 280.98,
+          "minX": 324.16999999999996,
+          "minY": 265.78,
+          "width": 20.470000000000027
+        },
+        "end": "1176604623",
+        "id": "1176604674",
+        "isTarget": false,
+        "kind": "bond",
+        "moleculeIndex": 6,
+        "objectId": "obj_mol_010",
+        "order": 2,
+        "selectionBoxRelation": "outside",
+        "selector": "bond:1176604674",
+        "spatial": {
+          "centerDelta": {
+            "x": 92.45499999999996,
+            "y": 27.714999999999975
+          },
+          "centerDistance": 96.51967804546382,
+          "containsTarget": false,
+          "direction": "right",
+          "edgeGap": 44.330866222080466,
+          "insideTarget": false,
+          "overlapsTarget": false
+        }
+      }
+    ],
+    "molecules": [
+      {
+        "bondCount": 7,
+        "bounds": {
+          "height": 37.51000000000002,
+          "maxX": 279.86,
+          "maxY": 264.42,
+          "minX": 204.04000000000002,
+          "minY": 226.91,
+          "width": 75.82
+        },
+        "index": 0,
+        "isTarget": false,
+        "kind": "molecule",
+        "nodeCount": 8,
+        "objectId": "obj_mol_004",
+        "resourceRef": "mol_004",
+        "selectionBoxRelation": "inside",
+        "selector": "molecule:0",
+        "spatial": {
+          "centerDelta": {
+            "x": 0.0,
+            "y": 0.0
+          },
+          "centerDistance": 0.0,
+          "containsTarget": true,
+          "direction": "overlap",
+          "edgeGap": 0.0,
+          "insideTarget": true,
+          "overlapsTarget": true
+        }
+      },
+      {
+        "bondCount": 16,
+        "bounds": {
+          "height": 49.890000000000015,
+          "maxX": 399.51,
+          "maxY": 280.98,
+          "minX": 315.39,
+          "minY": 231.09,
+          "width": 84.12
+        },
+        "index": 6,
+        "isTarget": false,
+        "kind": "molecule",
+        "nodeCount": 16,
+        "objectId": "obj_mol_010",
+        "resourceRef": "mol_010",
+        "selectionBoxRelation": "outside",
+        "selector": "molecule:6",
+        "spatial": {
+          "centerDelta": {
+            "x": 115.49999999999997,
+            "y": 10.370000000000005
+          },
+          "centerDistance": 115.96459330330096,
+          "containsTarget": false,
+          "direction": "right",
+          "edgeGap": 35.52999999999997,
+          "insideTarget": false,
+          "overlapsTarget": false
+        }
+      }
+    ],
+    "nodes": [
+      {
+        "atomicNumber": 6,
+        "bounds": {
+          "height": 8.0,
+          "maxX": 226.78000000000003,
+          "maxY": 249.38,
+          "minX": 218.78000000000003,
+          "minY": 241.38,
+          "width": 8.0
+        },
+        "element": "C",
+        "id": "1176604346",
+        "isTarget": false,
+        "kind": "node",
+        "moleculeIndex": 0,
+        "objectId": "obj_mol_004",
+        "selectionBoxRelation": "inside",
+        "selector": "node:1176604346",
+        "spatial": {
+          "centerDelta": {
+            "x": -19.169999999999987,
+            "y": -0.285000000000025
+          },
+          "centerDistance": 19.17211842754993,
+          "containsTarget": false,
+          "direction": "overlap",
+          "edgeGap": 0.0,
+          "insideTarget": true,
+          "overlapsTarget": true
+        }
+      },
+      {
+        "atomicNumber": 6,
+        "bounds": {
+          "height": 8.900000000000006,
+          "maxX": 241.45000000000002,
+          "maxY": 248.45,
+          "minX": 235.45000000000002,
+          "minY": 239.54999999999998,
+          "width": 6.0
+        },
+        "element": "C",
+        "id": "1176604347",
+        "isTarget": false,
+        "kind": "node",
+        "moleculeIndex": 0,
+        "objectId": "obj_mol_004",
+        "selectionBoxRelation": "inside",
+        "selector": "node:1176604347",
+        "spatial": {
+          "centerDelta": {
+            "x": -3.5,
+            "y": -1.6650000000000205
+          },
+          "centerDistance": 3.875851519343855,
+          "containsTarget": false,
+          "direction": "overlap",
+          "edgeGap": 0.0,
+          "insideTarget": true,
+          "overlapsTarget": true
+        }
+      },
+      {
+        "atomicNumber": 6,
+        "bounds": {
+          "height": 8.0,
+          "maxX": 255.58,
+          "maxY": 249.38,
+          "minX": 247.58,
+          "minY": 241.38,
+          "width": 8.0
+        },
+        "element": "C",
+        "id": "1176604350",
+        "isTarget": false,
+        "kind": "node",
+        "moleculeIndex": 0,
+        "objectId": "obj_mol_004",
+        "selectionBoxRelation": "inside",
+        "selector": "node:1176604350",
+        "spatial": {
+          "centerDelta": {
+            "x": 9.629999999999995,
+            "y": -0.285000000000025
+          },
+          "centerDistance": 9.634216366679748,
+          "containsTarget": false,
+          "direction": "overlap",
+          "edgeGap": 0.0,
+          "insideTarget": true,
+          "overlapsTarget": true
+        }
+      },
+      {
+        "atomicNumber": 18,
+        "bounds": {
+          "height": 8.900000000000034,
+          "maxX": 217.97000000000003,
+          "maxY": 261.67,
+          "minX": 207.97000000000003,
+          "minY": 252.76999999999998,
+          "width": 10.0
+        },
+        "element": "Ar",
+        "id": "1176604351",
+        "isTarget": false,
+        "kind": "node",
+        "moleculeIndex": 0,
+        "objectId": "obj_mol_004",
+        "selectionBoxRelation": "inside",
+        "selector": "node:1176604351",
+        "spatial": {
+          "centerDelta": {
+            "x": -28.97999999999999,
+            "y": 11.555000000000007
+          },
+          "centerDistance": 31.198692680944173,
+          "containsTarget": false,
+          "direction": "overlap",
+          "edgeGap": 0.0,
+          "insideTarget": true,
+          "overlapsTarget": true
+        }
+      },
+      {
+        "atomicNumber": 6,
+        "bounds": {
+          "height": 8.900000000000006,
+          "maxX": 269.61,
+          "maxY": 237.29,
+          "minX": 255.21,
+          "minY": 228.39,
+          "width": 14.400000000000006
+        },
+        "element": "C",
+        "id": "1176604352",
+        "isTarget": false,
+        "kind": "node",
+        "moleculeIndex": 0,
+        "objectId": "obj_mol_004",
+        "selectionBoxRelation": "inside",
+        "selector": "node:1176604352",
+        "spatial": {
+          "centerDelta": {
+            "x": 20.460000000000008,
+            "y": -12.825000000000045
+          },
+          "centerDistance": 24.147302644394912,
+          "containsTarget": false,
+          "direction": "overlap",
+          "edgeGap": 0.0,
+          "insideTarget": true,
+          "overlapsTarget": true
+        }
+      },
+      {
+        "atomicNumber": 6,
+        "bounds": {
+          "height": 8.0,
+          "maxX": 262.78000000000003,
+          "maxY": 261.85,
+          "minX": 254.78000000000003,
+          "minY": 253.85000000000002,
+          "width": 8.0
+        },
+        "element": "C",
+        "id": "1176604359",
+        "isTarget": false,
+        "kind": "node",
+        "moleculeIndex": 0,
+        "objectId": "obj_mol_004",
+        "selectionBoxRelation": "inside",
+        "selector": "node:1176604359",
+        "spatial": {
+          "centerDelta": {
+            "x": 16.830000000000013,
+            "y": 12.185000000000002
+          },
+          "centerDistance": 20.777948045945262,
+          "containsTarget": false,
+          "direction": "overlap",
+          "edgeGap": 0.0,
+          "insideTarget": true,
+          "overlapsTarget": true
+        }
+      },
+      {
+        "atomicNumber": 6,
+        "bounds": {
+          "height": 8.900000000000034,
+          "maxX": 279.85,
+          "maxY": 262.8,
+          "minX": 268.20000000000005,
+          "minY": 253.89999999999998,
+          "width": 11.649999999999977
+        },
+        "element": "C",
+        "id": "1176604360",
+        "isTarget": false,
+        "kind": "node",
+        "moleculeIndex": 0,
+        "objectId": "obj_mol_004",
+        "selectionBoxRelation": "inside",
+        "selector": "node:1176604360",
+        "spatial": {
+          "centerDelta": {
+            "x": 32.07500000000002,
+            "y": 12.685000000000002
+          },
+          "centerDistance": 34.49224333092879,
+          "containsTarget": false,
+          "direction": "overlap",
+          "edgeGap": 0.0,
+          "insideTarget": true,
+          "overlapsTarget": true
+        }
+      },
+      {
+        "atomicNumber": 6,
+        "bounds": {
+          "height": 8.900000000000006,
+          "maxX": 217.98000000000002,
+          "maxY": 236.44,
+          "minX": 204.08,
+          "minY": 227.54,
+          "width": 13.900000000000006
+        },
+        "element": "C",
+        "id": "1176604361",
+        "isTarget": false,
+        "kind": "node",
+        "moleculeIndex": 0,
+        "objectId": "obj_mol_004",
+        "selectionBoxRelation": "inside",
+        "selector": "node:1176604361",
+        "spatial": {
+          "centerDelta": {
+            "x": -30.919999999999987,
+            "y": -13.675000000000011
+          },
+          "centerDistance": 33.809052412038994,
+          "containsTarget": false,
+          "direction": "overlap",
+          "edgeGap": 0.0,
+          "insideTarget": true,
+          "overlapsTarget": true
+        }
+      },
+      {
+        "atomicNumber": 6,
+        "bounds": {
+          "height": 8.0,
+          "maxX": 319.7,
+          "maxY": 259.38,
+          "minX": 311.7,
+          "minY": 251.38,
+          "width": 8.0
+        },
+        "element": "C",
+        "id": "1176604620",
+        "isTarget": false,
+        "kind": "node",
+        "moleculeIndex": 6,
+        "objectId": "obj_mol_010",
+        "selectionBoxRelation": "outside",
+        "selector": "node:1176604620",
+        "spatial": {
+          "centerDelta": {
+            "x": 73.74999999999997,
+            "y": 9.714999999999975
+          },
+          "centerDistance": 74.38712069303392,
+          "containsTarget": false,
+          "direction": "right",
+          "edgeGap": 31.839999999999975,
+          "insideTarget": false,
+          "overlapsTarget": false
+        }
+      },
+      {
+        "atomicNumber": 6,
+        "bounds": {
+          "height": 8.0,
+          "maxX": 319.7,
+          "maxY": 273.78,
+          "minX": 311.7,
+          "minY": 265.78,
+          "width": 8.0
+        },
+        "element": "C",
+        "id": "1176604621",
+        "isTarget": false,
+        "kind": "node",
+        "moleculeIndex": 6,
+        "objectId": "obj_mol_010",
+        "selectionBoxRelation": "outside",
+        "selector": "node:1176604621",
+        "spatial": {
+          "centerDelta": {
+            "x": 73.74999999999997,
+            "y": 24.114999999999952
+          },
+          "centerDistance": 77.59249786545084,
+          "containsTarget": false,
+          "direction": "right",
+          "edgeGap": 31.869031990319353,
+          "insideTarget": false,
+          "overlapsTarget": false
+        }
+      },
+      {
+        "atomicNumber": 6,
+        "bounds": {
+          "height": 8.0,
+          "maxX": 332.16999999999996,
+          "maxY": 252.18,
+          "minX": 324.16999999999996,
+          "minY": 244.18,
+          "width": 8.0
+        },
+        "element": "C",
+        "id": "1176604619",
+        "isTarget": false,
+        "kind": "node",
+        "moleculeIndex": 6,
+        "objectId": "obj_mol_010",
+        "selectionBoxRelation": "outside",
+        "selector": "node:1176604619",
+        "spatial": {
+          "centerDelta": {
+            "x": 86.21999999999994,
+            "y": 2.5149999999999864
+          },
+          "centerDistance": 86.25667293027242,
+          "containsTarget": false,
+          "direction": "right",
+          "edgeGap": 44.309999999999945,
+          "insideTarget": false,
+          "overlapsTarget": false
+        }
+      },
+      {
+        "atomicNumber": 6,
+        "bounds": {
+          "height": 8.0,
+          "maxX": 332.16999999999996,
+          "maxY": 280.98,
+          "minX": 324.16999999999996,
+          "minY": 272.98,
+          "width": 8.0
+        },
+        "element": "C",
+        "id": "1176604622",
+        "isTarget": false,
+        "kind": "node",
+        "moleculeIndex": 6,
+        "objectId": "obj_mol_010",
+        "selectionBoxRelation": "outside",
+        "selector": "node:1176604622",
+        "spatial": {
+          "centerDelta": {
+            "x": 86.21999999999994,
+            "y": 31.314999999999998
+          },
+          "centerDistance": 91.73067984594897,
+          "containsTarget": false,
+          "direction": "right",
+          "edgeGap": 45.12925547801554,
+          "insideTarget": false,
+          "overlapsTarget": false
+        }
+      }
+    ],
+    "objects": [
+      {
+        "bounds": {
+          "height": 37.51000000000002,
+          "maxX": 279.86,
+          "maxY": 264.42,
+          "minX": 204.04000000000002,
+          "minY": 226.91,
+          "width": 75.82
+        },
+        "id": "obj_mol_004",
+        "isTarget": true,
+        "kind": "object",
+        "name": "molecule 4",
+        "relationships": {
+          "ancestorIds": [],
+          "childIds": [],
+          "groupKind": null,
+          "isGroup": false,
+          "linkKind": null,
+          "linkedObjectIds": [],
+          "parentId": null
+        },
+        "selectionBoxRelation": "inside",
+        "selector": "object:obj_mol_004",
+        "spatial": {
+          "centerDelta": {
+            "x": 0.0,
+            "y": 0.0
+          },
+          "centerDistance": 0.0,
+          "containsTarget": true,
+          "direction": "overlap",
+          "edgeGap": 0.0,
+          "insideTarget": true,
+          "overlapsTarget": true
+        },
+        "type": "molecule",
+        "visible": true
+      },
+      {
+        "bounds": {
+          "height": 17.279999999999973,
+          "maxX": 221.57,
+          "maxY": 266.89,
+          "minX": 204.29,
+          "minY": 249.61,
+          "width": 17.28
+        },
+        "id": "obj_shape_orbital_002",
+        "isTarget": false,
+        "kind": "object",
+        "name": "orbital 2",
+        "relationships": {
+          "ancestorIds": [],
+          "childIds": [],
+          "groupKind": null,
+          "isGroup": false,
+          "linkKind": null,
+          "linkedObjectIds": [],
+          "parentId": null
+        },
+        "selectionBoxRelation": "partial",
+        "selector": "object:obj_shape_orbital_002",
+        "spatial": {
+          "centerDelta": {
+            "x": -29.02000000000001,
+            "y": 12.58499999999998
+          },
+          "centerDistance": 31.63135509269244,
+          "containsTarget": false,
+          "direction": "overlap",
+          "edgeGap": 0.0,
+          "insideTarget": false,
+          "overlapsTarget": true
+        },
+        "type": "shape",
+        "visible": true
+      },
+      {
+        "bounds": {
+          "height": 26.0,
+          "maxX": 287.37,
+          "maxY": 302.4,
+          "minX": 198.77,
+          "minY": 276.4,
+          "width": 88.6
+        },
+        "id": "obj_text_010",
+        "isTarget": false,
+        "kind": "object",
+        "name": "text 10",
+        "relationships": {
+          "ancestorIds": [],
+          "childIds": [],
+          "groupKind": null,
+          "isGroup": false,
+          "linkKind": null,
+          "linkedObjectIds": [],
+          "parentId": null
+        },
+        "selectionBoxRelation": "outside",
+        "selector": "object:obj_text_010",
+        "spatial": {
+          "centerDelta": {
+            "x": 1.1199999999999761,
+            "y": 43.73499999999996
+          },
+          "centerDistance": 43.74933856642859,
+          "containsTarget": false,
+          "direction": "below",
+          "edgeGap": 11.979999999999961,
+          "insideTarget": false,
+          "overlapsTarget": false
+        },
+        "type": "text",
+        "visible": true
+      },
+      {
+        "bounds": {
+          "height": 14.5,
+          "maxX": 220.15999999999994,
+          "maxY": 208.01999999999998,
+          "minX": 41.16,
+          "minY": 193.51999999999998,
+          "width": 178.99999999999994
+        },
+        "id": "obj_text_023",
+        "isTarget": false,
+        "kind": "object",
+        "name": "text 23",
+        "relationships": {
+          "ancestorIds": [],
+          "childIds": [],
+          "groupKind": null,
+          "isGroup": false,
+          "linkKind": null,
+          "linkedObjectIds": [],
+          "parentId": null
+        },
+        "selectionBoxRelation": "outside",
+        "selector": "object:obj_text_023",
+        "spatial": {
+          "centerDelta": {
+            "x": -111.29000000000005,
+            "y": -44.89500000000004
+          },
+          "centerDistance": 120.00427127815081,
+          "containsTarget": false,
+          "direction": "above",
+          "edgeGap": 18.890000000000015,
+          "insideTarget": false,
+          "overlapsTarget": false
+        },
+        "type": "text",
+        "visible": true
+      },
+      {
+        "bounds": {
+          "height": 84.05000000000001,
+          "maxX": 513.01,
+          "maxY": 301.5,
+          "minX": 307.51,
+          "minY": 217.45,
+          "width": 205.5
+        },
+        "id": "obj_shape_002",
+        "isTarget": false,
+        "kind": "object",
+        "name": "shape 2",
+        "relationships": {
+          "ancestorIds": [],
+          "childIds": [],
+          "groupKind": null,
+          "isGroup": false,
+          "linkKind": null,
+          "linkedObjectIds": [],
+          "parentId": null
+        },
+        "selectionBoxRelation": "outside",
+        "selector": "object:obj_shape_002",
+        "spatial": {
+          "centerDelta": {
+            "x": 168.30999999999997,
+            "y": 13.810000000000002
+          },
+          "centerDistance": 168.87561161991388,
+          "containsTarget": false,
+          "direction": "right",
+          "edgeGap": 27.649999999999977,
+          "insideTarget": false,
+          "overlapsTarget": false
+        },
+        "type": "shape",
+        "visible": true
+      },
+      {
+        "bounds": {
+          "height": 14.5,
+          "maxX": 175.48999999999998,
+          "maxY": 260.52,
+          "minX": 142.79,
+          "minY": 246.01999999999998,
+          "width": 32.69999999999999
+        },
+        "id": "obj_text_024",
+        "isTarget": false,
+        "kind": "object",
+        "name": "text 24",
+        "relationships": {
+          "ancestorIds": [],
+          "childIds": [],
+          "groupKind": null,
+          "isGroup": false,
+          "linkKind": null,
+          "linkedObjectIds": [],
+          "parentId": null
+        },
+        "selectionBoxRelation": "outside",
+        "selector": "object:obj_text_024",
+        "spatial": {
+          "centerDelta": {
+            "x": -82.81000000000003,
+            "y": 7.604999999999961
+          },
+          "centerDistance": 83.15847596607338,
+          "containsTarget": false,
+          "direction": "left",
+          "edgeGap": 28.55000000000004,
+          "insideTarget": false,
+          "overlapsTarget": false
+        },
+        "type": "text",
+        "visible": true
+      },
+      {
+        "bounds": {
+          "height": 49.890000000000015,
+          "maxX": 399.51,
+          "maxY": 280.98,
+          "minX": 315.39,
+          "minY": 231.09,
+          "width": 84.12
+        },
+        "id": "obj_mol_010",
+        "isTarget": false,
+        "kind": "object",
+        "name": "molecule 10",
+        "relationships": {
+          "ancestorIds": [],
+          "childIds": [],
+          "groupKind": null,
+          "isGroup": false,
+          "linkKind": null,
+          "linkedObjectIds": [],
+          "parentId": null
+        },
+        "selectionBoxRelation": "outside",
+        "selector": "object:obj_mol_010",
+        "spatial": {
+          "centerDelta": {
+            "x": 115.49999999999997,
+            "y": 10.370000000000005
+          },
+          "centerDistance": 115.96459330330096,
+          "containsTarget": false,
+          "direction": "right",
+          "edgeGap": 35.52999999999997,
+          "insideTarget": false,
+          "overlapsTarget": false
+        },
+        "type": "molecule",
+        "visible": true
+      }
+    ]
+  },
+  "counts": {
+    "bonds": 12,
+    "limit": 200,
+    "molecules": 2,
+    "nodes": 12,
+    "objects": 7
+  },
+  "expansion": {
+    "absolute": {
+      "bottom": 55.0,
+      "left": 55.0,
+      "right": 55.0,
+      "top": 55.0
+    },
+    "relative": {
+      "bottom": 0.0,
+      "left": 0.0,
+      "right": 0.0,
+      "top": 0.0
+    }
+  },
+  "input": "..\\..\\..\\figure1.cdxml",
+  "ok": true,
+  "relationships": {
+    "ancestorIds": [],
+    "childIds": [],
+    "groupKind": null,
+    "isGroup": false,
+    "linkKind": null,
+    "linkedObjectIds": [],
+    "parentId": null
+  },
+  "selectionBox": {
+    "bounds": {
+      "height": 37.51000000000002,
+      "maxX": 279.86,
+      "maxY": 264.42,
+      "minX": 204.04000000000002,
+      "minY": 226.91,
+      "width": 75.82
+    },
+    "contents": {
+      "bonds": {
+        "count": 7,
+        "items": [
+          {
+            "bounds": {
+              "height": 8.0,
+              "maxX": 241.18,
+              "maxY": 249.38,
+              "minX": 218.78000000000003,
+              "minY": 241.38,
+              "width": 22.399999999999977
+            },
+            "id": "1176604362",
+            "isTarget": false,
+            "kind": "bond",
+            "objectId": "obj_mol_004",
+            "selectionBoxRelation": "inside",
+            "selector": "bond:1176604362"
+          },
+          {
+            "bounds": {
+              "height": 8.0,
+              "maxX": 255.58,
+              "maxY": 249.38,
+              "minX": 233.18,
+              "minY": 241.38,
+              "width": 22.400000000000006
+            },
+            "id": "1176604363",
+            "isTarget": false,
+            "kind": "bond",
+            "objectId": "obj_mol_004",
+            "selectionBoxRelation": "inside",
+            "selector": "bond:1176604363"
+          },
+          {
+            "bounds": {
+              "height": 20.870000000000005,
+              "maxX": 226.78000000000003,
+              "maxY": 262.25,
+              "minX": 212.31,
+              "minY": 241.38,
+              "width": 14.470000000000027
+            },
+            "id": "1176604364",
+            "isTarget": false,
+            "kind": "bond",
+            "objectId": "obj_mol_004",
+            "selectionBoxRelation": "inside",
+            "selector": "bond:1176604364"
+          },
+          {
+            "bounds": {
+              "height": 20.47,
+              "maxX": 262.78000000000003,
+              "maxY": 249.38,
+              "minX": 247.58,
+              "minY": 228.91,
+              "width": 15.200000000000017
+            },
+            "id": "1176604365",
+            "isTarget": false,
+            "kind": "bond",
+            "objectId": "obj_mol_004",
+            "selectionBoxRelation": "inside",
+            "selector": "bond:1176604365"
+          },
+          {
+            "bounds": {
+              "height": 20.470000000000027,
+              "maxX": 262.78000000000003,
+              "maxY": 261.85,
+              "minX": 247.58,
+              "minY": 241.38,
+              "width": 15.200000000000017
+            },
+            "id": "1176604366",
+            "isTarget": false,
+            "kind": "bond",
+            "objectId": "obj_mol_004",
+            "selectionBoxRelation": "inside",
+            "selector": "bond:1176604366"
+          },
+          {
+            "bounds": {
+              "height": 8.569999999999993,
+              "maxX": 277.17,
+              "maxY": 262.42,
+              "minX": 254.78000000000003,
+              "minY": 253.85000000000002,
+              "width": 22.389999999999986
+            },
+            "id": "1176604367",
+            "isTarget": false,
+            "kind": "bond",
+            "objectId": "obj_mol_004",
+            "selectionBoxRelation": "inside",
+            "selector": "bond:1176604367"
+          },
+          {
+            "bounds": {
+              "height": 20.25999999999999,
+              "maxX": 226.78000000000003,
+              "maxY": 249.38,
+              "minX": 211.22000000000003,
+              "minY": 229.12,
+              "width": 15.560000000000002
+            },
+            "id": "1176604368",
+            "isTarget": false,
+            "kind": "bond",
+            "objectId": "obj_mol_004",
+            "selectionBoxRelation": "inside",
+            "selector": "bond:1176604368"
+          }
+        ],
+        "truncated": false
+      },
+      "molecules": {
+        "count": 1,
+        "items": [
+          {
+            "bounds": {
+              "height": 37.51000000000002,
+              "maxX": 279.86,
+              "maxY": 264.42,
+              "minX": 204.04000000000002,
+              "minY": 226.91,
+              "width": 75.82
+            },
+            "index": 0,
+            "isTarget": false,
+            "kind": "molecule",
+            "objectId": "obj_mol_004",
+            "selectionBoxRelation": "inside",
+            "selector": "molecule:0"
+          }
+        ],
+        "truncated": false
+      },
+      "nodes": {
+        "count": 8,
+        "items": [
+          {
+            "bounds": {
+              "height": 8.0,
+              "maxX": 226.78000000000003,
+              "maxY": 249.38,
+              "minX": 218.78000000000003,
+              "minY": 241.38,
+              "width": 8.0
+            },
+            "id": "1176604346",
+            "isTarget": false,
+            "kind": "node",
+            "objectId": "obj_mol_004",
+            "selectionBoxRelation": "inside",
+            "selector": "node:1176604346"
+          },
+          {
+            "bounds": {
+              "height": 8.900000000000006,
+              "maxX": 241.45000000000002,
+              "maxY": 248.45,
+              "minX": 235.45000000000002,
+              "minY": 239.54999999999998,
+              "width": 6.0
+            },
+            "id": "1176604347",
+            "isTarget": false,
+            "kind": "node",
+            "objectId": "obj_mol_004",
+            "selectionBoxRelation": "inside",
+            "selector": "node:1176604347"
+          },
+          {
+            "bounds": {
+              "height": 8.0,
+              "maxX": 255.58,
+              "maxY": 249.38,
+              "minX": 247.58,
+              "minY": 241.38,
+              "width": 8.0
+            },
+            "id": "1176604350",
+            "isTarget": false,
+            "kind": "node",
+            "objectId": "obj_mol_004",
+            "selectionBoxRelation": "inside",
+            "selector": "node:1176604350"
+          },
+          {
+            "bounds": {
+              "height": 8.900000000000034,
+              "maxX": 217.97000000000003,
+              "maxY": 261.67,
+              "minX": 207.97000000000003,
+              "minY": 252.76999999999998,
+              "width": 10.0
+            },
+            "id": "1176604351",
+            "isTarget": false,
+            "kind": "node",
+            "objectId": "obj_mol_004",
+            "selectionBoxRelation": "inside",
+            "selector": "node:1176604351"
+          },
+          {
+            "bounds": {
+              "height": 8.900000000000006,
+              "maxX": 269.61,
+              "maxY": 237.29,
+              "minX": 255.21,
+              "minY": 228.39,
+              "width": 14.400000000000006
+            },
+            "id": "1176604352",
+            "isTarget": false,
+            "kind": "node",
+            "objectId": "obj_mol_004",
+            "selectionBoxRelation": "inside",
+            "selector": "node:1176604352"
+          },
+          {
+            "bounds": {
+              "height": 8.0,
+              "maxX": 262.78000000000003,
+              "maxY": 261.85,
+              "minX": 254.78000000000003,
+              "minY": 253.85000000000002,
+              "width": 8.0
+            },
+            "id": "1176604359",
+            "isTarget": false,
+            "kind": "node",
+            "objectId": "obj_mol_004",
+            "selectionBoxRelation": "inside",
+            "selector": "node:1176604359"
+          },
+          {
+            "bounds": {
+              "height": 8.900000000000034,
+              "maxX": 279.85,
+              "maxY": 262.8,
+              "minX": 268.20000000000005,
+              "minY": 253.89999999999998,
+              "width": 11.649999999999977
+            },
+            "id": "1176604360",
+            "isTarget": false,
+            "kind": "node",
+            "objectId": "obj_mol_004",
+            "selectionBoxRelation": "inside",
+            "selector": "node:1176604360"
+          },
+          {
+            "bounds": {
+              "height": 8.900000000000006,
+              "maxX": 217.98000000000002,
+              "maxY": 236.44,
+              "minX": 204.08,
+              "minY": 227.54,
+              "width": 13.900000000000006
+            },
+            "id": "1176604361",
+            "isTarget": false,
+            "kind": "node",
+            "objectId": "obj_mol_004",
+            "selectionBoxRelation": "inside",
+            "selector": "node:1176604361"
+          }
+        ],
+        "truncated": false
+      },
+      "objects": {
+        "count": 2,
+        "items": [
+          {
+            "bounds": {
+              "height": 37.51000000000002,
+              "maxX": 279.86,
+              "maxY": 264.42,
+              "minX": 204.04000000000002,
+              "minY": 226.91,
+              "width": 75.82
+            },
+            "id": "obj_mol_004",
+            "isTarget": true,
+            "kind": "object",
+            "name": "molecule 4",
+            "selectionBoxRelation": "inside",
+            "selector": "object:obj_mol_004",
+            "type": "molecule"
+          },
+          {
+            "bounds": {
+              "height": 17.279999999999973,
+              "maxX": 221.57,
+              "maxY": 266.89,
+              "minX": 204.29,
+              "minY": 249.61,
+              "width": 17.28
+            },
+            "id": "obj_shape_orbital_002",
+            "isTarget": false,
+            "kind": "object",
+            "name": "orbital 2",
+            "selectionBoxRelation": "partial",
+            "selector": "object:obj_shape_orbital_002",
+            "type": "shape"
+          }
+        ],
+        "truncated": false
+      }
+    }
+  },
+  "target": {
+    "id": "obj_mol_004",
+    "kind": "object",
+    "selector": "object:obj_mol_004"
+  }
+}

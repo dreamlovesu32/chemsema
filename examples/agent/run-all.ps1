@@ -42,7 +42,8 @@ $examples = @(
   "03-edit-reaction-scheme",
   "04-session-workflow",
   "05-office-copy",
-  "06-reaction-poc"
+  "06-reaction-poc",
+  "07-object-grounded-edit"
 )
 
 Push-Location $root

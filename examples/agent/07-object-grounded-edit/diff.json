@@ -1,0 +1,4386 @@
+{
+  "bonds": {
+    "created": [],
+    "deleted": [],
+    "updated": []
+  },
+  "changes": [
+    {
+      "after": "left",
+      "before": "right",
+      "path": "resources.*.data.nodes.1176604361.label.align",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": "start",
+      "before": "end",
+      "path": "resources.*.data.nodes.1176604361.label.anchor",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -6.66,
+      "before": -0.03,
+      "path": "resources.*.data.nodes.1176604361.label.boxField[0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 0.28,
+      "before": -0.78,
+      "path": "resources.*.data.nodes.1176604361.label.boxField[1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 15.04,
+      "before": 13.87,
+      "path": "resources.*.data.nodes.1176604361.label.boxField[2]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 9.18,
+      "before": 8.12,
+      "path": "resources.*.data.nodes.1176604361.label.boxField[3]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -6.66,
+      "before": -0.03,
+      "path": "resources.*.data.nodes.1176604361.label.box[0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 0.28,
+      "before": -0.78,
+      "path": "resources.*.data.nodes.1176604361.label.box[1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 15.04,
+      "before": 13.87,
+      "path": "resources.*.data.nodes.1176604361.label.box[2]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 9.18,
+      "before": 8.12,
+      "path": "resources.*.data.nodes.1176604361.label.box[3]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 0.93,
+      "before": 7.56,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][0][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 10.04,
+      "before": 8.98,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][0][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -1.58,
+      "before": 5.05,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][10][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 9.77,
+      "before": 8.71,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][10][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -1.87,
+      "before": 4.76,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][11][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 9.97,
+      "before": 8.91,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][11][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -2.09,
+      "before": 4.54,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][12][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 9.97,
+      "before": 8.91,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][12][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -2.13,
+      "before": 4.5,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][13][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 10.04,
+      "before": 8.98,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][13][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -2.98,
+      "before": 3.65,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][14][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 10.04,
+      "before": 8.98,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][14][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -3.02,
+      "before": 3.61,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][15][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 9.97,
+      "before": 8.91,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][15][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -3.36,
+      "before": 3.27,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][16][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 9.9,
+      "before": 8.84,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][16][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -3.53,
+      "before": 3.1,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][17][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 9.77,
+      "before": 8.71,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][17][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -3.85,
+      "before": 2.78,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][18][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 9.27,
+      "before": 8.21,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][18][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -3.91,
+      "before": 2.72,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][19][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 9.04,
+      "before": 7.98,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][19][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 0.04,
+      "before": 6.67,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][1][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 10.04,
+      "before": 8.98,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][1][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -3.95,
+      "before": 2.68,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][20][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 9.11,
+      "before": 8.05,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][20][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -4.17,
+      "before": 2.46,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][21][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 9.11,
+      "before": 8.05,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][21][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -4.55,
+      "before": 2.08,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][22][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 9.77,
+      "before": 8.71,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][22][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -4.84,
+      "before": 1.79,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][23][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 9.97,
+      "before": 8.91,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][23][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -5.06,
+      "before": 1.57,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][24][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 9.97,
+      "before": 8.91,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][24][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -5.1,
+      "before": 1.53,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][25][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 10.04,
+      "before": 8.98,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][25][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -5.99,
+      "before": 0.64,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][26][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 10.04,
+      "before": 8.98,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][26][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -6.06,
+      "before": 0.57,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][27][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 9.97,
+      "before": 8.91,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][27][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -6.39,
+      "before": 0.24,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][28][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 9.97,
+      "before": 8.91,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][28][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -6.85,
+      "before": -0.22,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][29][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 9.77,
+      "before": 8.71,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][29][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -0.01,
+      "before": 6.62,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][2][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 9.97,
+      "before": 8.91,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][2][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -7.35,
+      "before": -0.72,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][30][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 9.27,
+      "before": 8.21,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][30][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -7.55,
+      "before": -0.92,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][31][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 8.81,
+      "before": 7.75,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][31][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -7.55,
+      "before": -0.92,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][32][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 8.48,
+      "before": 7.42,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][32][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -7.61,
+      "before": -0.98,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][33][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 8.44,
+      "before": 7.38,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][33][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -7.61,
+      "before": -0.98,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][34][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 1.18,
+      "before": 0.12,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][34][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -7.55,
+      "before": -0.92,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][35][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 1.11,
+      "before": 0.05,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][35][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -7.55,
+      "before": -0.92,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][36][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 0.78,
+      "before": -0.28,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][36][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -7.35,
+      "before": -0.72,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][37][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 0.32,
+      "before": -0.74,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][37][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -6.85,
+      "before": -0.22,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][38][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -0.18,
+      "before": -1.24,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][38][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -6.39,
+      "before": 0.24,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][39][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -0.38,
+      "before": -1.44,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][39][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -0.22,
+      "before": 6.41,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][3][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 9.97,
+      "before": 8.91,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][3][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -6.06,
+      "before": 0.57,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][40][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -0.38,
+      "before": -1.44,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][40][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -5.99,
+      "before": 0.64,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][41][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -0.44,
+      "before": -1.5,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][41][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -4.59,
+      "before": 2.04,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][42][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -0.44,
+      "before": -1.5,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][42][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -4.55,
+      "before": 2.08,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][43][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -0.38,
+      "before": -1.44,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][43][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -4.21,
+      "before": 2.42,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][44][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -0.31,
+      "before": -1.37,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][44][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -4.04,
+      "before": 2.59,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][45][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -0.18,
+      "before": -1.24,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][45][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -3.68,
+      "before": 2.95,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][46][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 0.39,
+      "before": -0.67,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][46][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -3.57,
+      "before": 3.06,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][47][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 0.82,
+      "before": -0.24,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][47][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -3.27,
+      "before": 3.36,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][48][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 1.01,
+      "before": -0.05,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][48][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -2.79,
+      "before": 3.84,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][49][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 1.52,
+      "before": 0.46,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][49][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -0.52,
+      "before": 6.11,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][4][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 9.77,
+      "before": 8.71,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][4][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -2.51,
+      "before": 4.12,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][50][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 1.97,
+      "before": 0.91,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][50][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -2.32,
+      "before": 4.31,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][51][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 1.6,
+      "before": 0.54,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][51][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -1.83,
+      "before": 4.8,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][52][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 1.08,
+      "before": 0.02,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][52][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -1.45,
+      "before": 5.18,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][53][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 0.75,
+      "before": -0.31,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][53][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -1.36,
+      "before": 5.27,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][54][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 0.75,
+      "before": -0.31,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][54][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -1.22,
+      "before": 5.41,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][55][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 0.32,
+      "before": -0.74,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][55][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -0.9,
+      "before": 5.73,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][56][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -0.18,
+      "before": -1.24,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][56][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -0.6,
+      "before": 6.03,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][57][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -0.38,
+      "before": -1.44,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][57][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -0.39,
+      "before": 6.24,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][58][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -0.38,
+      "before": -1.44,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][58][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -0.35,
+      "before": 6.28,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][59][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -0.44,
+      "before": -1.5,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][59][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -0.9,
+      "before": 5.73,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][5][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 9.11,
+      "before": 8.05,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][5][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 0.93,
+      "before": 7.56,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][60][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -0.44,
+      "before": -1.5,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][60][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 0.97,
+      "before": 7.6,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][61][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -0.38,
+      "before": -1.44,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][61][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 1.3,
+      "before": 7.93,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][62][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -0.38,
+      "before": -1.44,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][62][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 1.77,
+      "before": 8.4,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][63][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -0.18,
+      "before": -1.24,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][63][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 2.26,
+      "before": 8.89,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][64][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 0.32,
+      "before": -0.74,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][64][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 2.46,
+      "before": 9.09,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][65][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 0.78,
+      "before": -0.28,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][65][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 2.46,
+      "before": 9.09,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][66][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 1.11,
+      "before": 0.05,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][66][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 2.53,
+      "before": 9.16,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][67][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 1.18,
+      "before": 0.12,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][67][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 2.53,
+      "before": 9.16,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][68][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 8.44,
+      "before": 7.38,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][68][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 2.46,
+      "before": 9.09,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][69][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 8.48,
+      "before": 7.42,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][69][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -1.07,
+      "before": 5.56,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][6][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 9.11,
+      "before": 8.05,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][6][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 2.46,
+      "before": 9.09,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][70][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 8.81,
+      "before": 7.75,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][70][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 2.26,
+      "before": 8.89,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][71][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 9.27,
+      "before": 8.21,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][71][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 1.77,
+      "before": 8.4,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][72][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 9.77,
+      "before": 8.71,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][72][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 1.3,
+      "before": 7.93,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][73][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 9.97,
+      "before": 8.91,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][73][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 0.97,
+      "before": 7.6,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][74][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 9.97,
+      "before": 8.91,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][74][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 0.93,
+      "before": 7.56,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][75][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 10.04,
+      "before": 8.98,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][75][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -1.11,
+      "before": 5.52,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][7][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 9.04,
+      "before": 7.98,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][7][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -1.19,
+      "before": 5.44,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][8][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 9.04,
+      "before": 7.98,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][8][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -1.26,
+      "before": 5.37,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][9][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 9.27,
+      "before": 8.21,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[0][9][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 4.85,
+      "before": 11.48,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][0][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 10.25,
+      "before": 9.19,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][0][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 0.45,
+      "before": 7.08,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][10][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 7.0,
+      "before": 5.94,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][10][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 0.45,
+      "before": 7.08,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][11][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 6.95,
+      "before": 5.89,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][11][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 0.41,
+      "before": 7.04,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][12][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 6.91,
+      "before": 5.85,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][12][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 0.41,
+      "before": 7.04,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][13][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 6.65,
+      "before": 5.59,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][13][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 0.37,
+      "before": 7.0,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][14][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 6.61,
+      "before": 5.55,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][14][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 0.37,
+      "before": 7.0,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][15][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 5.19,
+      "before": 4.13,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][15][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 0.44,
+      "before": 7.07,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][16][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 5.12,
+      "before": 4.06,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][16][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 0.51,
+      "before": 7.14,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][17][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 4.54,
+      "before": 3.48,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][17][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 0.71,
+      "before": 7.34,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][18][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 3.92,
+      "before": 2.86,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][18][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 1.19,
+      "before": 7.82,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][19][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 3.02,
+      "before": 1.96,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][19][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 3.88,
+      "before": 10.51,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][1][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 10.25,
+      "before": 9.19,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][1][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 1.99,
+      "before": 8.62,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][20][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 2.22,
+      "before": 1.16,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][20][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 2.35,
+      "before": 8.98,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][21][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 1.99,
+      "before": 0.93,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][21][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 3.28,
+      "before": 9.91,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][22][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 1.61,
+      "before": 0.55,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][22][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 3.81,
+      "before": 10.44,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][23][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 1.54,
+      "before": 0.48,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][23][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 3.88,
+      "before": 10.51,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][24][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 1.47,
+      "before": 0.41,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][24][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 5.0,
+      "before": 11.63,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][25][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 1.47,
+      "before": 0.41,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][25][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 5.07,
+      "before": 11.7,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][26][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 1.54,
+      "before": 0.48,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][26][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 5.57,
+      "before": 12.2,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][27][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 1.61,
+      "before": 0.55,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][27][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 5.93,
+      "before": 12.56,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][28][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 1.72,
+      "before": 0.66,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][28][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 6.83,
+      "before": 13.46,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][29][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 2.21,
+      "before": 1.15,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][29][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 3.81,
+      "before": 10.44,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][2][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 10.18,
+      "before": 9.12,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][2][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 7.58,
+      "before": 14.21,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][30][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 2.96,
+      "before": 1.9,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][30][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 7.85,
+      "before": 14.48,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][31][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 3.34,
+      "before": 2.28,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][31][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 8.09,
+      "before": 14.72,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][32][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 3.84,
+      "before": 2.78,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][32][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 8.29,
+      "before": 14.92,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][33][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 4.45,
+      "before": 3.39,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][33][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 8.35,
+      "before": 14.98,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][34][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 4.95,
+      "before": 3.89,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][34][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 8.43,
+      "before": 15.06,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][35][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 5.02,
+      "before": 3.96,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][35][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 8.43,
+      "before": 15.06,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][36][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 5.68,
+      "before": 4.62,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][36][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 8.59,
+      "before": 15.22,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][37][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 6.02,
+      "before": 4.96,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][37][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 8.4,
+      "before": 15.03,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][38][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 6.21,
+      "before": 5.15,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][38][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 8.37,
+      "before": 15.0,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][39][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 6.49,
+      "before": 5.43,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][39][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 3.31,
+      "before": 9.94,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][3][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 10.11,
+      "before": 9.05,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][3][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 8.34,
+      "before": 14.97,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][40][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 6.56,
+      "before": 5.5,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][40][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 8.45,
+      "before": 15.08,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][41][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 6.97,
+      "before": 5.91,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][41][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 8.23,
+      "before": 14.86,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][42][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 7.82,
+      "before": 6.76,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][42][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 7.86,
+      "before": 14.49,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][43][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 8.56,
+      "before": 7.5,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][43][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 6.78,
+      "before": 13.41,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][44][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 9.65,
+      "before": 8.59,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][44][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 6.14,
+      "before": 12.77,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][45][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 9.96,
+      "before": 8.9,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][45][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 5.66,
+      "before": 12.29,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][46][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 10.11,
+      "before": 9.05,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][46][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 5.16,
+      "before": 11.79,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][47][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 10.18,
+      "before": 9.12,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][47][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 5.69,
+      "before": 12.32,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][48][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 9.66,
+      "before": 8.6,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][48][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 2.83,
+      "before": 9.46,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][4][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 9.96,
+      "before": 8.9,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][4][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 2.24,
+      "before": 8.87,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][5][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 9.67,
+      "before": 8.61,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][5][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 1.86,
+      "before": 8.49,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][6][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 9.41,
+      "before": 8.35,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][6][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 1.26,
+      "before": 7.89,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][7][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 8.8,
+      "before": 7.74,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][7][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 0.99,
+      "before": 7.62,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][8][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 8.41,
+      "before": 7.35,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][8][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 0.57,
+      "before": 7.2,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][9][0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 7.46,
+      "before": 6.4,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[1][9][1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": [
+        [
+          11.49,
+          10.24
+        ],
+        [
+          10.71,
+          10.24
+        ],
+        [
+          10.66,
+          10.17
+        ],
+        [
+          10.4,
+          10.17
+        ],
+        [
+          10.36,
+          10.1
+        ],
+        [
+          10.15,
+          10.1
+        ],
+        [
+          9.8,
+          9.97
+        ],
+        [
+          9.19,
+          9.64
+        ],
+        [
+          8.33,
+          8.85
+        ],
+        [
+          7.43,
+          7.94
+        ],
+        [
+          7.1,
+          7.64
+        ],
+        [
+          6.37,
+          6.6
+        ],
+        [
+          6.1,
+          6.0
+        ],
+        [
+          6.04,
+          5.48
+        ],
+        [
+          5.97,
+          5.44
+        ],
+        [
+          5.97,
+          4.22
+        ],
+        [
+          6.04,
+          4.18
+        ],
+        [
+          6.17,
+          3.45
+        ],
+        [
+          6.63,
+          2.54
+        ],
+        [
+          7.36,
+          1.72
+        ],
+        [
+          8.2,
+          0.88
+        ],
+        [
+          8.67,
+          0.35
+        ],
+        [
+          9.37,
+          -0.18
+        ],
+        [
+          9.76,
+          -0.38
+        ],
+        [
+          10.36,
+          -0.51
+        ],
+        [
+          10.4,
+          -0.58
+        ],
+        [
+          10.66,
+          -0.58
+        ],
+        [
+          10.71,
+          -0.64
+        ],
+        [
+          11.49,
+          -0.64
+        ],
+        [
+          11.53,
+          -0.58
+        ],
+        [
+          11.79,
+          -0.58
+        ],
+        [
+          11.83,
+          -0.51
+        ],
+        [
+          12.44,
+          -0.38
+        ],
+        [
+          12.91,
+          -0.11
+        ],
+        [
+          13.52,
+          0.35
+        ],
+        [
+          13.91,
+          0.75
+        ],
+        [
+          14.72,
+          1.63
+        ],
+        [
+          15.45,
+          2.41
+        ],
+        [
+          15.98,
+          3.36
+        ],
+        [
+          16.11,
+          4.01
+        ],
+        [
+          16.18,
+          4.05
+        ],
+        [
+          16.18,
+          4.4
+        ],
+        [
+          16.24,
+          4.44
+        ],
+        [
+          16.24,
+          5.22
+        ],
+        [
+          16.18,
+          5.26
+        ],
+        [
+          16.18,
+          5.61
+        ],
+        [
+          16.11,
+          5.65
+        ],
+        [
+          16.11,
+          5.87
+        ],
+        [
+          15.91,
+          6.43
+        ],
+        [
+          15.58,
+          7.04
+        ],
+        [
+          15.25,
+          7.47
+        ],
+        [
+          14.72,
+          7.99
+        ],
+        [
+          13.87,
+          8.91
+        ],
+        [
+          13.61,
+          9.18
+        ],
+        [
+          12.57,
+          9.91
+        ],
+        [
+          12.05,
+          10.1
+        ],
+        [
+          11.53,
+          10.17
+        ],
+        [
+          11.49,
+          10.24
+        ]
+      ],
+      "before": null,
+      "path": "resources.*.data.nodes.1176604361.label.glyphPolygons[2]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": null,
+      "before": true,
+      "path": "resources.*.data.nodes.1176604361.label.meta.defaultChemical",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": null,
+      "before": {
+        "source": "cdxml",
+        "userEdited": true
+      },
+      "path": "resources.*.data.nodes.1176604361.label.meta.implicitHydrogenLabel",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": null,
+      "before": {
+        "cdxml": {
+          "boundingBox": [
+            204.11,
+            228.71,
+            218.0,
+            237.15
+          ],
+          "circleRadiusPt": 3.18,
+          "color": "0",
+          "face": 96,
+          "font": "3",
+          "interpretChemically": true,
+          "interpretChemicallyExplicit": true,
+          "justification": "Right",
+          "labelAlignment": "Right",
+          "labelDisplay": null,
+          "labelJustification": "Right",
+          "marginWidth": 1.59,
+          "naturalOutsetPt": 1.59,
+          "textPosition": [
+            218.0,
+            237.05
+          ]
+        }
+      },
+      "path": "resources.*.data.nodes.1176604361.label.meta.import",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": "O",
+      "before": "C",
+      "path": "resources.*.data.nodes.1176604361.label.meta.labelRecognition.anchorAtom",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": "OMe",
+      "before": "Me",
+      "path": "resources.*.data.nodes.1176604361.label.meta.labelRecognition.canonicalLabel",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": "atom",
+      "before": "terminal",
+      "path": "resources.*.data.nodes.1176604361.label.meta.labelRecognition.components[0].kind",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": "O",
+      "before": "Me",
+      "path": "resources.*.data.nodes.1176604361.label.meta.labelRecognition.components[0].label",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": "O",
+      "before": "C",
+      "path": "resources.*.data.nodes.1176604361.label.meta.labelRecognition.components[0].leftAnchor",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": "O",
+      "before": "methyl",
+      "path": "resources.*.data.nodes.1176604361.label.meta.labelRecognition.components[0].name",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": "O",
+      "before": null,
+      "path": "resources.*.data.nodes.1176604361.label.meta.labelRecognition.components[0].rightAttachment",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": "O",
+      "before": "-CH3",
+      "path": "resources.*.data.nodes.1176604361.label.meta.labelRecognition.components[0].structure",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": {
+        "bondOrderToParent": 1,
+        "kind": "terminal",
+        "label": "Me",
+        "leftAnchor": "C",
+        "name": "methyl",
+        "parentIndex": 0,
+        "structure": "-CH3"
+      },
+      "before": null,
+      "path": "resources.*.data.nodes.1176604361.label.meta.labelRecognition.components[1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": "O",
+      "before": "C",
+      "path": "resources.*.data.nodes.1176604361.label.meta.labelRecognition.expansion.atoms[0].element",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": "o1",
+      "before": "c1",
+      "path": "resources.*.data.nodes.1176604361.label.meta.labelRecognition.expansion.atoms[0].id",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": null,
+      "before": 3,
+      "path": "resources.*.data.nodes.1176604361.label.meta.labelRecognition.expansion.atoms[0].numHydrogens",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": {
+        "element": "C",
+        "id": "c1",
+        "numHydrogens": 3
+      },
+      "before": null,
+      "path": "resources.*.data.nodes.1176604361.label.meta.labelRecognition.expansion.atoms[1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": "o1",
+      "before": "c1",
+      "path": "resources.*.data.nodes.1176604361.label.meta.labelRecognition.expansion.attachments[0].atomId",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": {
+        "begin": "o1",
+        "end": "c1",
+        "order": 1
+      },
+      "before": null,
+      "path": "resources.*.data.nodes.1176604361.label.meta.labelRecognition.expansion.bonds[0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": "-OMe",
+      "before": "-CH3",
+      "path": "resources.*.data.nodes.1176604361.label.meta.labelRecognition.formula",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": "valence-fragment",
+      "before": "terminal-fragment",
+      "path": "resources.*.data.nodes.1176604361.label.meta.labelRecognition.groupKind",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": "OMe",
+      "before": "Me",
+      "path": "resources.*.data.nodes.1176604361.label.meta.labelRecognition.label",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": "valence-parser",
+      "before": null,
+      "path": "resources.*.data.nodes.1176604361.label.meta.labelRecognition.source",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 400,
+      "before": 700,
+      "path": "resources.*.data.nodes.1176604361.label.meta.sourceRuns[0].fontWeight",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": "OMe",
+      "before": "Me",
+      "path": "resources.*.data.nodes.1176604361.label.meta.sourceRuns[0].text",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -6.66,
+      "before": 13.87,
+      "path": "resources.*.data.nodes.1176604361.label.position[0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 8.48,
+      "before": 7.42,
+      "path": "resources.*.data.nodes.1176604361.label.position[1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": 400,
+      "before": 700,
+      "path": "resources.*.data.nodes.1176604361.label.runs[0].fontWeight",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": "MeO",
+      "before": "Me",
+      "path": "resources.*.data.nodes.1176604361.label.runs[0].text",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": "OMe",
+      "before": "Me",
+      "path": "resources.*.data.nodes.1176604361.label.sourceText",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": "MeO",
+      "before": "Me",
+      "path": "resources.*.data.nodes.1176604361.label.text",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": "O",
+      "before": "C",
+      "path": "resources.*.data.nodes.1176604361.meta.labelRecognition.anchorAtom",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": "OMe",
+      "before": "Me",
+      "path": "resources.*.data.nodes.1176604361.meta.labelRecognition.canonicalLabel",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": "atom",
+      "before": "terminal",
+      "path": "resources.*.data.nodes.1176604361.meta.labelRecognition.components[0].kind",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": "O",
+      "before": "Me",
+      "path": "resources.*.data.nodes.1176604361.meta.labelRecognition.components[0].label",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": "O",
+      "before": "C",
+      "path": "resources.*.data.nodes.1176604361.meta.labelRecognition.components[0].leftAnchor",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": "O",
+      "before": "methyl",
+      "path": "resources.*.data.nodes.1176604361.meta.labelRecognition.components[0].name",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": "O",
+      "before": null,
+      "path": "resources.*.data.nodes.1176604361.meta.labelRecognition.components[0].rightAttachment",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": "O",
+      "before": "-CH3",
+      "path": "resources.*.data.nodes.1176604361.meta.labelRecognition.components[0].structure",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": {
+        "bondOrderToParent": 1,
+        "kind": "terminal",
+        "label": "Me",
+        "leftAnchor": "C",
+        "name": "methyl",
+        "parentIndex": 0,
+        "structure": "-CH3"
+      },
+      "before": null,
+      "path": "resources.*.data.nodes.1176604361.meta.labelRecognition.components[1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": "O",
+      "before": "C",
+      "path": "resources.*.data.nodes.1176604361.meta.labelRecognition.expansion.atoms[0].element",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": "o1",
+      "before": "c1",
+      "path": "resources.*.data.nodes.1176604361.meta.labelRecognition.expansion.atoms[0].id",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": null,
+      "before": 3,
+      "path": "resources.*.data.nodes.1176604361.meta.labelRecognition.expansion.atoms[0].numHydrogens",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": {
+        "element": "C",
+        "id": "c1",
+        "numHydrogens": 3
+      },
+      "before": null,
+      "path": "resources.*.data.nodes.1176604361.meta.labelRecognition.expansion.atoms[1]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": "o1",
+      "before": "c1",
+      "path": "resources.*.data.nodes.1176604361.meta.labelRecognition.expansion.attachments[0].atomId",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": {
+        "begin": "o1",
+        "end": "c1",
+        "order": 1
+      },
+      "before": null,
+      "path": "resources.*.data.nodes.1176604361.meta.labelRecognition.expansion.bonds[0]",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": "-OMe",
+      "before": "-CH3",
+      "path": "resources.*.data.nodes.1176604361.meta.labelRecognition.formula",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": "valence-fragment",
+      "before": "terminal-fragment",
+      "path": "resources.*.data.nodes.1176604361.meta.labelRecognition.groupKind",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": "OMe",
+      "before": "Me",
+      "path": "resources.*.data.nodes.1176604361.meta.labelRecognition.label",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": "valence-parser",
+      "before": null,
+      "path": "resources.*.data.nodes.1176604361.meta.labelRecognition.source",
+      "selector": "node:1176604361"
+    },
+    {
+      "after": -6.65,
+      "before": -0.07,
+      "path": "objects.obj_mol_004.payload.bbox[0]",
+      "selector": "object:obj_mol_004"
+    },
+    {
+      "after": 82.39,
+      "before": 75.82,
+      "path": "objects.obj_mol_004.payload.bbox[2]",
+      "selector": "object:obj_mol_004"
+    },
+    {
+      "after": -6.65,
+      "before": -0.07,
+      "path": "resources.mol_004.data.bbox[0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 82.39,
+      "before": 75.82,
+      "path": "resources.mol_004.data.bbox[2]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": "left",
+      "before": "right",
+      "path": "resources.mol_004.data.nodes[7].label.align",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": "start",
+      "before": "end",
+      "path": "resources.mol_004.data.nodes[7].label.anchor",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -6.66,
+      "before": -0.03,
+      "path": "resources.mol_004.data.nodes[7].label.boxField[0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 0.28,
+      "before": -0.78,
+      "path": "resources.mol_004.data.nodes[7].label.boxField[1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 15.04,
+      "before": 13.87,
+      "path": "resources.mol_004.data.nodes[7].label.boxField[2]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 9.18,
+      "before": 8.12,
+      "path": "resources.mol_004.data.nodes[7].label.boxField[3]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -6.66,
+      "before": -0.03,
+      "path": "resources.mol_004.data.nodes[7].label.box[0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 0.28,
+      "before": -0.78,
+      "path": "resources.mol_004.data.nodes[7].label.box[1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 15.04,
+      "before": 13.87,
+      "path": "resources.mol_004.data.nodes[7].label.box[2]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 9.18,
+      "before": 8.12,
+      "path": "resources.mol_004.data.nodes[7].label.box[3]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 0.93,
+      "before": 7.56,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][0][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 10.04,
+      "before": 8.98,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][0][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -1.58,
+      "before": 5.05,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][10][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 9.77,
+      "before": 8.71,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][10][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -1.87,
+      "before": 4.76,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][11][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 9.97,
+      "before": 8.91,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][11][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -2.09,
+      "before": 4.54,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][12][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 9.97,
+      "before": 8.91,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][12][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -2.13,
+      "before": 4.5,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][13][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 10.04,
+      "before": 8.98,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][13][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -2.98,
+      "before": 3.65,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][14][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 10.04,
+      "before": 8.98,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][14][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -3.02,
+      "before": 3.61,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][15][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 9.97,
+      "before": 8.91,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][15][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -3.36,
+      "before": 3.27,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][16][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 9.9,
+      "before": 8.84,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][16][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -3.53,
+      "before": 3.1,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][17][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 9.77,
+      "before": 8.71,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][17][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -3.85,
+      "before": 2.78,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][18][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 9.27,
+      "before": 8.21,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][18][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -3.91,
+      "before": 2.72,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][19][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 9.04,
+      "before": 7.98,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][19][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 0.04,
+      "before": 6.67,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][1][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 10.04,
+      "before": 8.98,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][1][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -3.95,
+      "before": 2.68,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][20][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 9.11,
+      "before": 8.05,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][20][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -4.17,
+      "before": 2.46,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][21][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 9.11,
+      "before": 8.05,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][21][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -4.55,
+      "before": 2.08,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][22][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 9.77,
+      "before": 8.71,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][22][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -4.84,
+      "before": 1.79,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][23][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 9.97,
+      "before": 8.91,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][23][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -5.06,
+      "before": 1.57,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][24][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 9.97,
+      "before": 8.91,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][24][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -5.1,
+      "before": 1.53,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][25][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 10.04,
+      "before": 8.98,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][25][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -5.99,
+      "before": 0.64,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][26][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 10.04,
+      "before": 8.98,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][26][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -6.06,
+      "before": 0.57,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][27][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 9.97,
+      "before": 8.91,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][27][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -6.39,
+      "before": 0.24,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][28][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 9.97,
+      "before": 8.91,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][28][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -6.85,
+      "before": -0.22,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][29][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 9.77,
+      "before": 8.71,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][29][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -0.01,
+      "before": 6.62,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][2][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 9.97,
+      "before": 8.91,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][2][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -7.35,
+      "before": -0.72,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][30][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 9.27,
+      "before": 8.21,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][30][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -7.55,
+      "before": -0.92,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][31][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 8.81,
+      "before": 7.75,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][31][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -7.55,
+      "before": -0.92,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][32][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 8.48,
+      "before": 7.42,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][32][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -7.61,
+      "before": -0.98,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][33][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 8.44,
+      "before": 7.38,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][33][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -7.61,
+      "before": -0.98,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][34][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 1.18,
+      "before": 0.12,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][34][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -7.55,
+      "before": -0.92,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][35][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 1.11,
+      "before": 0.05,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][35][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -7.55,
+      "before": -0.92,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][36][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 0.78,
+      "before": -0.28,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][36][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -7.35,
+      "before": -0.72,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][37][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 0.32,
+      "before": -0.74,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][37][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -6.85,
+      "before": -0.22,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][38][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -0.18,
+      "before": -1.24,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][38][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -6.39,
+      "before": 0.24,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][39][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -0.38,
+      "before": -1.44,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][39][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -0.22,
+      "before": 6.41,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][3][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 9.97,
+      "before": 8.91,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][3][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -6.06,
+      "before": 0.57,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][40][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -0.38,
+      "before": -1.44,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][40][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -5.99,
+      "before": 0.64,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][41][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -0.44,
+      "before": -1.5,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][41][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -4.59,
+      "before": 2.04,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][42][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -0.44,
+      "before": -1.5,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][42][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -4.55,
+      "before": 2.08,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][43][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -0.38,
+      "before": -1.44,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][43][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -4.21,
+      "before": 2.42,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][44][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -0.31,
+      "before": -1.37,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][44][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -4.04,
+      "before": 2.59,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][45][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -0.18,
+      "before": -1.24,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][45][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -3.68,
+      "before": 2.95,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][46][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 0.39,
+      "before": -0.67,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][46][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -3.57,
+      "before": 3.06,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][47][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 0.82,
+      "before": -0.24,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][47][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -3.27,
+      "before": 3.36,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][48][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 1.01,
+      "before": -0.05,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][48][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -2.79,
+      "before": 3.84,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][49][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 1.52,
+      "before": 0.46,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][49][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -0.52,
+      "before": 6.11,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][4][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 9.77,
+      "before": 8.71,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][4][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -2.51,
+      "before": 4.12,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][50][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 1.97,
+      "before": 0.91,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][50][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -2.32,
+      "before": 4.31,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][51][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 1.6,
+      "before": 0.54,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][51][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -1.83,
+      "before": 4.8,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][52][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 1.08,
+      "before": 0.02,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][52][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -1.45,
+      "before": 5.18,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][53][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 0.75,
+      "before": -0.31,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][53][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -1.36,
+      "before": 5.27,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][54][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 0.75,
+      "before": -0.31,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][54][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -1.22,
+      "before": 5.41,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][55][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 0.32,
+      "before": -0.74,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][55][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -0.9,
+      "before": 5.73,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][56][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -0.18,
+      "before": -1.24,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][56][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -0.6,
+      "before": 6.03,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][57][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -0.38,
+      "before": -1.44,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][57][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -0.39,
+      "before": 6.24,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][58][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -0.38,
+      "before": -1.44,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][58][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -0.35,
+      "before": 6.28,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][59][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -0.44,
+      "before": -1.5,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][59][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -0.9,
+      "before": 5.73,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][5][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 9.11,
+      "before": 8.05,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][5][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 0.93,
+      "before": 7.56,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][60][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -0.44,
+      "before": -1.5,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][60][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 0.97,
+      "before": 7.6,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][61][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -0.38,
+      "before": -1.44,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][61][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 1.3,
+      "before": 7.93,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][62][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -0.38,
+      "before": -1.44,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][62][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 1.77,
+      "before": 8.4,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][63][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -0.18,
+      "before": -1.24,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][63][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 2.26,
+      "before": 8.89,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][64][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 0.32,
+      "before": -0.74,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][64][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 2.46,
+      "before": 9.09,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][65][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 0.78,
+      "before": -0.28,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][65][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 2.46,
+      "before": 9.09,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][66][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 1.11,
+      "before": 0.05,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][66][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 2.53,
+      "before": 9.16,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][67][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 1.18,
+      "before": 0.12,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][67][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 2.53,
+      "before": 9.16,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][68][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 8.44,
+      "before": 7.38,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][68][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 2.46,
+      "before": 9.09,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][69][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 8.48,
+      "before": 7.42,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][69][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -1.07,
+      "before": 5.56,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][6][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 9.11,
+      "before": 8.05,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][6][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 2.46,
+      "before": 9.09,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][70][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 8.81,
+      "before": 7.75,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][70][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 2.26,
+      "before": 8.89,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][71][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 9.27,
+      "before": 8.21,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][71][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 1.77,
+      "before": 8.4,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][72][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 9.77,
+      "before": 8.71,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][72][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 1.3,
+      "before": 7.93,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][73][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 9.97,
+      "before": 8.91,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][73][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 0.97,
+      "before": 7.6,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][74][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 9.97,
+      "before": 8.91,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][74][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 0.93,
+      "before": 7.56,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][75][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 10.04,
+      "before": 8.98,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][75][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -1.11,
+      "before": 5.52,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][7][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 9.04,
+      "before": 7.98,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][7][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -1.19,
+      "before": 5.44,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][8][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 9.04,
+      "before": 7.98,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][8][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -1.26,
+      "before": 5.37,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][9][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 9.27,
+      "before": 8.21,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[0][9][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 4.85,
+      "before": 11.48,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][0][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 10.25,
+      "before": 9.19,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][0][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 0.45,
+      "before": 7.08,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][10][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 7.0,
+      "before": 5.94,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][10][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 0.45,
+      "before": 7.08,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][11][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 6.95,
+      "before": 5.89,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][11][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 0.41,
+      "before": 7.04,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][12][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 6.91,
+      "before": 5.85,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][12][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 0.41,
+      "before": 7.04,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][13][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 6.65,
+      "before": 5.59,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][13][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 0.37,
+      "before": 7.0,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][14][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 6.61,
+      "before": 5.55,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][14][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 0.37,
+      "before": 7.0,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][15][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 5.19,
+      "before": 4.13,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][15][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 0.44,
+      "before": 7.07,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][16][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 5.12,
+      "before": 4.06,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][16][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 0.51,
+      "before": 7.14,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][17][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 4.54,
+      "before": 3.48,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][17][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 0.71,
+      "before": 7.34,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][18][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 3.92,
+      "before": 2.86,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][18][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 1.19,
+      "before": 7.82,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][19][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 3.02,
+      "before": 1.96,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][19][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 3.88,
+      "before": 10.51,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][1][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 10.25,
+      "before": 9.19,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][1][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 1.99,
+      "before": 8.62,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][20][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 2.22,
+      "before": 1.16,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][20][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 2.35,
+      "before": 8.98,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][21][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 1.99,
+      "before": 0.93,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][21][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 3.28,
+      "before": 9.91,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][22][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 1.61,
+      "before": 0.55,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][22][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 3.81,
+      "before": 10.44,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][23][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 1.54,
+      "before": 0.48,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][23][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 3.88,
+      "before": 10.51,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][24][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 1.47,
+      "before": 0.41,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][24][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 5.0,
+      "before": 11.63,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][25][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 1.47,
+      "before": 0.41,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][25][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 5.07,
+      "before": 11.7,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][26][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 1.54,
+      "before": 0.48,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][26][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 5.57,
+      "before": 12.2,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][27][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 1.61,
+      "before": 0.55,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][27][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 5.93,
+      "before": 12.56,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][28][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 1.72,
+      "before": 0.66,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][28][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 6.83,
+      "before": 13.46,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][29][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 2.21,
+      "before": 1.15,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][29][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 3.81,
+      "before": 10.44,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][2][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 10.18,
+      "before": 9.12,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][2][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 7.58,
+      "before": 14.21,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][30][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 2.96,
+      "before": 1.9,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][30][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 7.85,
+      "before": 14.48,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][31][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 3.34,
+      "before": 2.28,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][31][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 8.09,
+      "before": 14.72,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][32][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 3.84,
+      "before": 2.78,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][32][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 8.29,
+      "before": 14.92,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][33][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 4.45,
+      "before": 3.39,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][33][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 8.35,
+      "before": 14.98,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][34][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 4.95,
+      "before": 3.89,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][34][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 8.43,
+      "before": 15.06,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][35][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 5.02,
+      "before": 3.96,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][35][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 8.43,
+      "before": 15.06,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][36][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 5.68,
+      "before": 4.62,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][36][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 8.59,
+      "before": 15.22,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][37][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 6.02,
+      "before": 4.96,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][37][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 8.4,
+      "before": 15.03,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][38][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 6.21,
+      "before": 5.15,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][38][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 8.37,
+      "before": 15.0,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][39][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 6.49,
+      "before": 5.43,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][39][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 3.31,
+      "before": 9.94,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][3][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 10.11,
+      "before": 9.05,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][3][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 8.34,
+      "before": 14.97,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][40][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 6.56,
+      "before": 5.5,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][40][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 8.45,
+      "before": 15.08,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][41][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 6.97,
+      "before": 5.91,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][41][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 8.23,
+      "before": 14.86,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][42][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 7.82,
+      "before": 6.76,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][42][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 7.86,
+      "before": 14.49,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][43][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 8.56,
+      "before": 7.5,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][43][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 6.78,
+      "before": 13.41,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][44][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 9.65,
+      "before": 8.59,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][44][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 6.14,
+      "before": 12.77,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][45][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 9.96,
+      "before": 8.9,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][45][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 5.66,
+      "before": 12.29,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][46][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 10.11,
+      "before": 9.05,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][46][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 5.16,
+      "before": 11.79,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][47][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 10.18,
+      "before": 9.12,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][47][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 5.69,
+      "before": 12.32,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][48][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 9.66,
+      "before": 8.6,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][48][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 2.83,
+      "before": 9.46,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][4][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 9.96,
+      "before": 8.9,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][4][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 2.24,
+      "before": 8.87,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][5][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 9.67,
+      "before": 8.61,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][5][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 1.86,
+      "before": 8.49,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][6][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 9.41,
+      "before": 8.35,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][6][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 1.26,
+      "before": 7.89,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][7][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 8.8,
+      "before": 7.74,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][7][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 0.99,
+      "before": 7.62,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][8][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 8.41,
+      "before": 7.35,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][8][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 0.57,
+      "before": 7.2,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][9][0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 7.46,
+      "before": 6.4,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[1][9][1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": [
+        [
+          11.49,
+          10.24
+        ],
+        [
+          10.71,
+          10.24
+        ],
+        [
+          10.66,
+          10.17
+        ],
+        [
+          10.4,
+          10.17
+        ],
+        [
+          10.36,
+          10.1
+        ],
+        [
+          10.15,
+          10.1
+        ],
+        [
+          9.8,
+          9.97
+        ],
+        [
+          9.19,
+          9.64
+        ],
+        [
+          8.33,
+          8.85
+        ],
+        [
+          7.43,
+          7.94
+        ],
+        [
+          7.1,
+          7.64
+        ],
+        [
+          6.37,
+          6.6
+        ],
+        [
+          6.1,
+          6.0
+        ],
+        [
+          6.04,
+          5.48
+        ],
+        [
+          5.97,
+          5.44
+        ],
+        [
+          5.97,
+          4.22
+        ],
+        [
+          6.04,
+          4.18
+        ],
+        [
+          6.17,
+          3.45
+        ],
+        [
+          6.63,
+          2.54
+        ],
+        [
+          7.36,
+          1.72
+        ],
+        [
+          8.2,
+          0.88
+        ],
+        [
+          8.67,
+          0.35
+        ],
+        [
+          9.37,
+          -0.18
+        ],
+        [
+          9.76,
+          -0.38
+        ],
+        [
+          10.36,
+          -0.51
+        ],
+        [
+          10.4,
+          -0.58
+        ],
+        [
+          10.66,
+          -0.58
+        ],
+        [
+          10.71,
+          -0.64
+        ],
+        [
+          11.49,
+          -0.64
+        ],
+        [
+          11.53,
+          -0.58
+        ],
+        [
+          11.79,
+          -0.58
+        ],
+        [
+          11.83,
+          -0.51
+        ],
+        [
+          12.44,
+          -0.38
+        ],
+        [
+          12.91,
+          -0.11
+        ],
+        [
+          13.52,
+          0.35
+        ],
+        [
+          13.91,
+          0.75
+        ],
+        [
+          14.72,
+          1.63
+        ],
+        [
+          15.45,
+          2.41
+        ],
+        [
+          15.98,
+          3.36
+        ],
+        [
+          16.11,
+          4.01
+        ],
+        [
+          16.18,
+          4.05
+        ],
+        [
+          16.18,
+          4.4
+        ],
+        [
+          16.24,
+          4.44
+        ],
+        [
+          16.24,
+          5.22
+        ],
+        [
+          16.18,
+          5.26
+        ],
+        [
+          16.18,
+          5.61
+        ],
+        [
+          16.11,
+          5.65
+        ],
+        [
+          16.11,
+          5.87
+        ],
+        [
+          15.91,
+          6.43
+        ],
+        [
+          15.58,
+          7.04
+        ],
+        [
+          15.25,
+          7.47
+        ],
+        [
+          14.72,
+          7.99
+        ],
+        [
+          13.87,
+          8.91
+        ],
+        [
+          13.61,
+          9.18
+        ],
+        [
+          12.57,
+          9.91
+        ],
+        [
+          12.05,
+          10.1
+        ],
+        [
+          11.53,
+          10.17
+        ],
+        [
+          11.49,
+          10.24
+        ]
+      ],
+      "before": null,
+      "path": "resources.mol_004.data.nodes[7].label.glyphPolygons[2]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": null,
+      "before": true,
+      "path": "resources.mol_004.data.nodes[7].label.meta.defaultChemical",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": null,
+      "before": {
+        "source": "cdxml",
+        "userEdited": true
+      },
+      "path": "resources.mol_004.data.nodes[7].label.meta.implicitHydrogenLabel",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": null,
+      "before": {
+        "cdxml": {
+          "boundingBox": [
+            204.11,
+            228.71,
+            218.0,
+            237.15
+          ],
+          "circleRadiusPt": 3.18,
+          "color": "0",
+          "face": 96,
+          "font": "3",
+          "interpretChemically": true,
+          "interpretChemicallyExplicit": true,
+          "justification": "Right",
+          "labelAlignment": "Right",
+          "labelDisplay": null,
+          "labelJustification": "Right",
+          "marginWidth": 1.59,
+          "naturalOutsetPt": 1.59,
+          "textPosition": [
+            218.0,
+            237.05
+          ]
+        }
+      },
+      "path": "resources.mol_004.data.nodes[7].label.meta.import",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": "O",
+      "before": "C",
+      "path": "resources.mol_004.data.nodes[7].label.meta.labelRecognition.anchorAtom",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": "OMe",
+      "before": "Me",
+      "path": "resources.mol_004.data.nodes[7].label.meta.labelRecognition.canonicalLabel",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": "atom",
+      "before": "terminal",
+      "path": "resources.mol_004.data.nodes[7].label.meta.labelRecognition.components[0].kind",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": "O",
+      "before": "Me",
+      "path": "resources.mol_004.data.nodes[7].label.meta.labelRecognition.components[0].label",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": "O",
+      "before": "C",
+      "path": "resources.mol_004.data.nodes[7].label.meta.labelRecognition.components[0].leftAnchor",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": "O",
+      "before": "methyl",
+      "path": "resources.mol_004.data.nodes[7].label.meta.labelRecognition.components[0].name",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": "O",
+      "before": null,
+      "path": "resources.mol_004.data.nodes[7].label.meta.labelRecognition.components[0].rightAttachment",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": "O",
+      "before": "-CH3",
+      "path": "resources.mol_004.data.nodes[7].label.meta.labelRecognition.components[0].structure",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": {
+        "bondOrderToParent": 1,
+        "kind": "terminal",
+        "label": "Me",
+        "leftAnchor": "C",
+        "name": "methyl",
+        "parentIndex": 0,
+        "structure": "-CH3"
+      },
+      "before": null,
+      "path": "resources.mol_004.data.nodes[7].label.meta.labelRecognition.components[1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": "O",
+      "before": "C",
+      "path": "resources.mol_004.data.nodes[7].label.meta.labelRecognition.expansion.atoms[0].element",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": "o1",
+      "before": "c1",
+      "path": "resources.mol_004.data.nodes[7].label.meta.labelRecognition.expansion.atoms[0].id",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": null,
+      "before": 3,
+      "path": "resources.mol_004.data.nodes[7].label.meta.labelRecognition.expansion.atoms[0].numHydrogens",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": {
+        "element": "C",
+        "id": "c1",
+        "numHydrogens": 3
+      },
+      "before": null,
+      "path": "resources.mol_004.data.nodes[7].label.meta.labelRecognition.expansion.atoms[1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": "o1",
+      "before": "c1",
+      "path": "resources.mol_004.data.nodes[7].label.meta.labelRecognition.expansion.attachments[0].atomId",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": {
+        "begin": "o1",
+        "end": "c1",
+        "order": 1
+      },
+      "before": null,
+      "path": "resources.mol_004.data.nodes[7].label.meta.labelRecognition.expansion.bonds[0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": "-OMe",
+      "before": "-CH3",
+      "path": "resources.mol_004.data.nodes[7].label.meta.labelRecognition.formula",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": "valence-fragment",
+      "before": "terminal-fragment",
+      "path": "resources.mol_004.data.nodes[7].label.meta.labelRecognition.groupKind",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": "OMe",
+      "before": "Me",
+      "path": "resources.mol_004.data.nodes[7].label.meta.labelRecognition.label",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": "valence-parser",
+      "before": null,
+      "path": "resources.mol_004.data.nodes[7].label.meta.labelRecognition.source",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 400,
+      "before": 700,
+      "path": "resources.mol_004.data.nodes[7].label.meta.sourceRuns[0].fontWeight",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": "OMe",
+      "before": "Me",
+      "path": "resources.mol_004.data.nodes[7].label.meta.sourceRuns[0].text",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": -6.66,
+      "before": 13.87,
+      "path": "resources.mol_004.data.nodes[7].label.position[0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 8.48,
+      "before": 7.42,
+      "path": "resources.mol_004.data.nodes[7].label.position[1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": 400,
+      "before": 700,
+      "path": "resources.mol_004.data.nodes[7].label.runs[0].fontWeight",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": "MeO",
+      "before": "Me",
+      "path": "resources.mol_004.data.nodes[7].label.runs[0].text",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": "OMe",
+      "before": "Me",
+      "path": "resources.mol_004.data.nodes[7].label.sourceText",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": "MeO",
+      "before": "Me",
+      "path": "resources.mol_004.data.nodes[7].label.text",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": "O",
+      "before": "C",
+      "path": "resources.mol_004.data.nodes[7].meta.labelRecognition.anchorAtom",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": "OMe",
+      "before": "Me",
+      "path": "resources.mol_004.data.nodes[7].meta.labelRecognition.canonicalLabel",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": "atom",
+      "before": "terminal",
+      "path": "resources.mol_004.data.nodes[7].meta.labelRecognition.components[0].kind",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": "O",
+      "before": "Me",
+      "path": "resources.mol_004.data.nodes[7].meta.labelRecognition.components[0].label",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": "O",
+      "before": "C",
+      "path": "resources.mol_004.data.nodes[7].meta.labelRecognition.components[0].leftAnchor",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": "O",
+      "before": "methyl",
+      "path": "resources.mol_004.data.nodes[7].meta.labelRecognition.components[0].name",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": "O",
+      "before": null,
+      "path": "resources.mol_004.data.nodes[7].meta.labelRecognition.components[0].rightAttachment",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": "O",
+      "before": "-CH3",
+      "path": "resources.mol_004.data.nodes[7].meta.labelRecognition.components[0].structure",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": {
+        "bondOrderToParent": 1,
+        "kind": "terminal",
+        "label": "Me",
+        "leftAnchor": "C",
+        "name": "methyl",
+        "parentIndex": 0,
+        "structure": "-CH3"
+      },
+      "before": null,
+      "path": "resources.mol_004.data.nodes[7].meta.labelRecognition.components[1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": "O",
+      "before": "C",
+      "path": "resources.mol_004.data.nodes[7].meta.labelRecognition.expansion.atoms[0].element",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": "o1",
+      "before": "c1",
+      "path": "resources.mol_004.data.nodes[7].meta.labelRecognition.expansion.atoms[0].id",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": null,
+      "before": 3,
+      "path": "resources.mol_004.data.nodes[7].meta.labelRecognition.expansion.atoms[0].numHydrogens",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": {
+        "element": "C",
+        "id": "c1",
+        "numHydrogens": 3
+      },
+      "before": null,
+      "path": "resources.mol_004.data.nodes[7].meta.labelRecognition.expansion.atoms[1]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": "o1",
+      "before": "c1",
+      "path": "resources.mol_004.data.nodes[7].meta.labelRecognition.expansion.attachments[0].atomId",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": {
+        "begin": "o1",
+        "end": "c1",
+        "order": 1
+      },
+      "before": null,
+      "path": "resources.mol_004.data.nodes[7].meta.labelRecognition.expansion.bonds[0]",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": "-OMe",
+      "before": "-CH3",
+      "path": "resources.mol_004.data.nodes[7].meta.labelRecognition.formula",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": "valence-fragment",
+      "before": "terminal-fragment",
+      "path": "resources.mol_004.data.nodes[7].meta.labelRecognition.groupKind",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": "OMe",
+      "before": "Me",
+      "path": "resources.mol_004.data.nodes[7].meta.labelRecognition.label",
+      "selector": "resource:mol_004"
+    },
+    {
+      "after": "valence-parser",
+      "before": null,
+      "path": "resources.mol_004.data.nodes[7].meta.labelRecognition.source",
+      "selector": "resource:mol_004"
+    }
+  ],
+  "counts": {
+    "bonds": 0,
+    "document": 0,
+    "fields": 624,
+    "nodes": 1,
+    "objects": 1,
+    "page": 0,
+    "resources": 1,
+    "styles": 0,
+    "total": 3
+  },
+  "document": {
+    "updated": false
+  },
+  "equal": false,
+  "nodes": {
+    "created": [],
+    "deleted": [],
+    "updated": [
+      "node:1176604361"
+    ]
+  },
+  "objects": {
+    "created": [],
+    "deleted": [],
+    "updated": [
+      "object:obj_mol_004"
+    ]
+  },
+  "ok": true,
+  "page": {
+    "updated": false
+  },
+  "resources": {
+    "created": [],
+    "deleted": [],
+    "updated": [
+      "resource:mol_004"
+    ]
+  },
+  "schema": "chemcore.document.diff.v1",
+  "styles": {
+    "created": [],
+    "deleted": [],
+    "updated": []
+  },
+  "unexpectedChanges": []
+}

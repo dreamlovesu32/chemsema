@@ -86,16 +86,42 @@ fn bundle_for_object_writes_verified_artifacts_and_identity_map() {
         "editable-subset.ccjs",
         "capture.svg",
         "identity-map.json",
+        "provenance.json",
     ] {
         assert!(out_dir.join(file).is_file(), "missing {file}");
     }
+    assert_eq!(manifest["artifacts"]["provenance"], "provenance.json");
+    assert_eq!(
+        manifest["provenance"]["derivedFrom"]["selector"],
+        format!("object:{target_id}")
+    );
     let identity: Value =
         serde_json::from_str(&fs::read_to_string(out_dir.join("identity-map.json")).unwrap())
             .unwrap();
     assert!(identity["entries"].as_array().unwrap().iter().any(|entry| {
         entry["sourceSelector"] == format!("object:{target_id}")
             && entry["bundleSelector"] == format!("object:{target_id}")
+            && entry["kind"] == "object"
+            && entry["includedBecause"] == "editable-target-or-required-ancestor"
     }));
+    assert_eq!(identity["selectorIdentityStable"], true);
+    let provenance: Value =
+        serde_json::from_str(&fs::read_to_string(out_dir.join("provenance.json")).unwrap())
+            .unwrap();
+    assert_eq!(provenance["schema"], "chemcore.agent.provenance.v1");
+    assert_eq!(provenance["source"]["privacy"]["absolutePathStored"], false);
+    assert_eq!(
+        provenance["source"]["path"],
+        input.file_name().and_then(|value| value.to_str()).unwrap()
+    );
+    assert_eq!(
+        provenance["derivedFrom"]["selector"],
+        format!("object:{target_id}")
+    );
+    assert_eq!(
+        provenance["identityMap"]["entryCount"],
+        identity["entries"].as_array().unwrap().len()
+    );
     let subset: Value =
         serde_json::from_str(&fs::read_to_string(out_dir.join("editable-subset.ccjs")).unwrap())
             .unwrap();

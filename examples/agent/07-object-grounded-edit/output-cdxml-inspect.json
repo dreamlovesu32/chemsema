@@ -1,0 +1,5716 @@
+{
+  "molecules": [
+    {
+      "bbox": [
+        10.49,
+        0.0,
+        71.91,
+        37.51
+      ],
+      "bondCount": 7,
+      "bonds": [
+        {
+          "begin": "5",
+          "end": "6",
+          "id": "18",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 2,
+          "stereo": null
+        },
+        {
+          "begin": "6",
+          "end": "7",
+          "id": "19",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 2,
+          "stereo": null
+        },
+        {
+          "begin": "5",
+          "end": "8",
+          "id": "20",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": {
+            "kind": "hashed-wedge",
+            "wideEnd": "end"
+          }
+        },
+        {
+          "begin": "7",
+          "end": "9",
+          "id": "21",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": {
+            "kind": "solid-wedge",
+            "wideEnd": "end"
+          }
+        },
+        {
+          "begin": "7",
+          "end": "10",
+          "id": "22",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "10",
+          "end": "11",
+          "id": "23",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "5",
+          "end": "12",
+          "id": "24",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        }
+      ],
+      "nodeCount": 8,
+      "nodes": [
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "5",
+          "label": null,
+          "position": [
+            25.32,
+            18.47
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "6",
+          "label": {
+            "bbox": [
+              37.99,
+              12.64,
+              43.99,
+              21.54
+            ],
+            "sourceText": "•",
+            "text": "•"
+          },
+          "position": [
+            39.72,
+            18.47
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "7",
+          "label": null,
+          "position": [
+            54.12,
+            18.47
+          ]
+        },
+        {
+          "atomicNumber": 18,
+          "charge": 0,
+          "element": "Ar",
+          "id": "8",
+          "label": {
+            "bbox": [
+              10.49,
+              25.86,
+              20.49,
+              34.76
+            ],
+            "sourceText": "Ar",
+            "text": "Ar"
+          },
+          "position": [
+            18.85,
+            31.34
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "9",
+          "label": {
+            "bbox": [
+              57.76,
+              1.49,
+              72.16,
+              10.39
+            ],
+            "sourceText": "CN",
+            "text": "CN"
+          },
+          "position": [
+            61.32,
+            6.0
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "10",
+          "label": null,
+          "position": [
+            61.32,
+            30.94
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "11",
+          "label": {
+            "bbox": [
+              70.75,
+              27.0,
+              82.4,
+              35.9
+            ],
+            "sourceText": "iPr",
+            "text": "iPr"
+          },
+          "position": [
+            75.71,
+            31.51
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "12",
+          "label": {
+            "bbox": [
+              13.9,
+              1.7,
+              35.6,
+              10.6
+            ],
+            "sourceText": "OMe",
+            "text": "OMe"
+          },
+          "position": [
+            17.76,
+            6.21
+          ]
+        }
+      ],
+      "objectId": "obj_mol_001",
+      "resourceRef": "mol_001"
+    },
+    {
+      "bbox": [
+        0.0,
+        0.0,
+        71.29,
+        33.8
+      ],
+      "bondCount": 7,
+      "bonds": [
+        {
+          "begin": "28",
+          "end": "29",
+          "id": "41",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "29",
+          "end": "30",
+          "id": "42",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 2,
+          "stereo": null
+        },
+        {
+          "begin": "30",
+          "end": "31",
+          "id": "43",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 2,
+          "stereo": null
+        },
+        {
+          "begin": "29",
+          "end": "32",
+          "id": "44",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "31",
+          "end": "33",
+          "id": "45",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "31",
+          "end": "34",
+          "id": "46",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "34",
+          "end": "35",
+          "id": "47",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        }
+      ],
+      "nodeCount": 8,
+      "nodes": [
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "28",
+          "label": {
+            "bbox": [
+              6.52,
+              0.07,
+              16.47,
+              8.97
+            ],
+            "sourceText": "R'",
+            "text": "R'"
+          },
+          "position": [
+            10.09,
+            4.59
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "29",
+          "label": null,
+          "position": [
+            17.29,
+            17.06
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "30",
+          "label": {
+            "bbox": [
+              29.96,
+              11.23,
+              35.96,
+              20.13
+            ],
+            "sourceText": "•",
+            "text": "•"
+          },
+          "position": [
+            31.69,
+            17.06
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "31",
+          "label": null,
+          "position": [
+            46.09,
+            17.06
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "32",
+          "label": {
+            "bbox": [
+              6.52,
+              25.01,
+              19.22,
+              33.91
+            ],
+            "sourceText": "R''",
+            "text": "R''"
+          },
+          "position": [
+            10.09,
+            29.53
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "33",
+          "label": {
+            "bbox": [
+              50.27,
+              0.07,
+              64.17,
+              8.97
+            ],
+            "sourceText": "FG",
+            "text": "FG"
+          },
+          "position": [
+            53.29,
+            4.59
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "34",
+          "label": null,
+          "position": [
+            53.29,
+            29.53
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "35",
+          "label": {
+            "bbox": [
+              64.11,
+              25.38,
+              71.31,
+              34.28
+            ],
+            "sourceText": "R",
+            "text": "R"
+          },
+          "position": [
+            67.68,
+            29.9
+          ]
+        }
+      ],
+      "objectId": "obj_mol_002",
+      "resourceRef": "mol_002"
+    },
+    {
+      "bbox": [
+        0.0,
+        0.0,
+        69.54,
+        45.76
+      ],
+      "bondCount": 8,
+      "bonds": [
+        {
+          "begin": "51",
+          "end": "52",
+          "id": "66",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "52",
+          "end": "53",
+          "id": "67",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 2,
+          "stereo": null
+        },
+        {
+          "begin": "53",
+          "end": "54",
+          "id": "68",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 2,
+          "stereo": null
+        },
+        {
+          "begin": "52",
+          "end": "55",
+          "id": "69",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "54",
+          "end": "56",
+          "id": "70",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "54",
+          "end": "57",
+          "id": "71",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "57",
+          "end": "58",
+          "id": "72",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "57",
+          "end": "59",
+          "id": "73",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        }
+      ],
+      "nodeCount": 9,
+      "nodes": [
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "51",
+          "label": {
+            "bbox": [
+              4.76,
+              -0.07,
+              14.71,
+              8.83
+            ],
+            "sourceText": "R'",
+            "text": "R'"
+          },
+          "position": [
+            8.33,
+            4.45
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "52",
+          "label": null,
+          "position": [
+            15.53,
+            16.92
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "53",
+          "label": {
+            "bbox": [
+              28.2,
+              11.09,
+              34.2,
+              19.99
+            ],
+            "sourceText": "•",
+            "text": "•"
+          },
+          "position": [
+            29.93,
+            16.92
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "54",
+          "label": null,
+          "position": [
+            44.33,
+            16.92
+          ]
+        },
+        {
+          "atomicNumber": 18,
+          "charge": 0,
+          "element": "Ar",
+          "id": "55",
+          "label": {
+            "bbox": [
+              -0.01,
+              23.91,
+              9.99,
+              32.81
+            ],
+            "sourceText": "Ar",
+            "text": "Ar"
+          },
+          "position": [
+            8.33,
+            29.39
+          ]
+        },
+        {
+          "atomicNumber": 1,
+          "charge": 0,
+          "element": "H",
+          "id": "56",
+          "label": {
+            "bbox": [
+              47.96,
+              -0.07,
+              55.16,
+              8.83
+            ],
+            "sourceText": "H",
+            "text": "H"
+          },
+          "position": [
+            51.53,
+            4.45
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "57",
+          "label": null,
+          "position": [
+            51.53,
+            29.39
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "58",
+          "label": {
+            "bbox": [
+              40.76,
+              37.34,
+              47.96,
+              46.24
+            ],
+            "sourceText": "R",
+            "text": "R"
+          },
+          "position": [
+            44.33,
+            41.86
+          ]
+        },
+        {
+          "atomicNumber": 1,
+          "charge": 0,
+          "element": "H",
+          "id": "59",
+          "label": {
+            "bbox": [
+              62.36,
+              24.87,
+              69.56,
+              33.77
+            ],
+            "sourceText": "H",
+            "text": "H"
+          },
+          "position": [
+            65.93,
+            29.39
+          ]
+        }
+      ],
+      "objectId": "obj_mol_003",
+      "resourceRef": "mol_003"
+    },
+    {
+      "bbox": [
+        0.0,
+        0.0,
+        69.55,
+        33.43
+      ],
+      "bondCount": 7,
+      "bonds": [
+        {
+          "begin": "75",
+          "end": "76",
+          "id": "88",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "76",
+          "end": "77",
+          "id": "89",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 2,
+          "stereo": null
+        },
+        {
+          "begin": "77",
+          "end": "78",
+          "id": "90",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 2,
+          "stereo": null
+        },
+        {
+          "begin": "76",
+          "end": "79",
+          "id": "91",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "78",
+          "end": "80",
+          "id": "92",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": {
+            "kind": "hashed-wedge",
+            "wideEnd": "end"
+          }
+        },
+        {
+          "begin": "78",
+          "end": "81",
+          "id": "93",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": {
+            "kind": "solid-wedge",
+            "wideEnd": "end"
+          }
+        },
+        {
+          "begin": "81",
+          "end": "82",
+          "id": "94",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        }
+      ],
+      "nodeCount": 8,
+      "nodes": [
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "75",
+          "label": {
+            "bbox": [
+              4.77,
+              0.07,
+              14.72,
+              8.97
+            ],
+            "sourceText": "R'",
+            "text": "R'"
+          },
+          "position": [
+            8.34,
+            4.59
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "76",
+          "label": null,
+          "position": [
+            15.54,
+            17.06
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "77",
+          "label": {
+            "bbox": [
+              28.21,
+              11.23,
+              34.21,
+              20.13
+            ],
+            "sourceText": "•",
+            "text": "•"
+          },
+          "position": [
+            29.94,
+            17.06
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "78",
+          "label": null,
+          "position": [
+            44.34,
+            17.06
+          ]
+        },
+        {
+          "atomicNumber": 18,
+          "charge": 0,
+          "element": "Ar",
+          "id": "79",
+          "label": {
+            "bbox": [
+              0.0,
+              24.05,
+              10.0,
+              32.95
+            ],
+            "sourceText": "Ar",
+            "text": "Ar"
+          },
+          "position": [
+            8.34,
+            29.53
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "80",
+          "label": {
+            "bbox": [
+              47.97,
+              0.07,
+              62.37,
+              8.97
+            ],
+            "sourceText": "CN",
+            "text": "CN"
+          },
+          "position": [
+            51.54,
+            4.59
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "81",
+          "label": null,
+          "position": [
+            51.54,
+            29.53
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "82",
+          "label": {
+            "bbox": [
+              62.37,
+              24.96,
+              69.57,
+              33.86
+            ],
+            "sourceText": "R",
+            "text": "R"
+          },
+          "position": [
+            65.94,
+            29.48
+          ]
+        }
+      ],
+      "objectId": "obj_mol_004",
+      "resourceRef": "mol_004"
+    },
+    {
+      "bbox": [
+        0.0,
+        0.0,
+        89.53,
+        56.9
+      ],
+      "bondCount": 34,
+      "bonds": [
+        {
+          "begin": "192",
+          "end": "193",
+          "id": "227",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "193",
+          "end": "194",
+          "id": "228",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "192",
+          "end": "195",
+          "id": "229",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "195",
+          "end": "196",
+          "id": "230",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "196",
+          "end": "197",
+          "id": "231",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "197",
+          "end": "198",
+          "id": "232",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "198",
+          "end": "192",
+          "id": "233",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 2,
+          "stereo": null
+        },
+        {
+          "begin": "194",
+          "end": "199",
+          "id": "234",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 2,
+          "stereo": null
+        },
+        {
+          "begin": "199",
+          "end": "200",
+          "id": "235",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "200",
+          "end": "201",
+          "id": "236",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "201",
+          "end": "202",
+          "id": "237",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "202",
+          "end": "194",
+          "id": "238",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "196",
+          "end": "203",
+          "id": "239",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": {
+            "kind": "solid-wedge",
+            "wideEnd": "end"
+          }
+        },
+        {
+          "begin": "203",
+          "end": "204",
+          "id": "240",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "204",
+          "end": "205",
+          "id": "241",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 2,
+          "stereo": null
+        },
+        {
+          "begin": "205",
+          "end": "197",
+          "id": "242",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": {
+            "kind": "solid-wedge",
+            "wideEnd": "begin"
+          }
+        },
+        {
+          "begin": "200",
+          "end": "206",
+          "id": "243",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": {
+            "kind": "hashed-wedge",
+            "wideEnd": "end"
+          }
+        },
+        {
+          "begin": "206",
+          "end": "207",
+          "id": "244",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 2,
+          "stereo": null
+        },
+        {
+          "begin": "207",
+          "end": "208",
+          "id": "245",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "208",
+          "end": "201",
+          "id": "246",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": {
+            "kind": "hashed-wedge",
+            "wideEnd": "begin"
+          }
+        },
+        {
+          "begin": "204",
+          "end": "209",
+          "id": "247",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "209",
+          "end": "210",
+          "id": "248",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 2,
+          "stereo": null
+        },
+        {
+          "begin": "210",
+          "end": "211",
+          "id": "249",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "211",
+          "end": "212",
+          "id": "250",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 2,
+          "stereo": null
+        },
+        {
+          "begin": "212",
+          "end": "205",
+          "id": "251",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "206",
+          "end": "213",
+          "id": "252",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "213",
+          "end": "214",
+          "id": "253",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 2,
+          "stereo": null
+        },
+        {
+          "begin": "214",
+          "end": "215",
+          "id": "254",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "215",
+          "end": "216",
+          "id": "255",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 2,
+          "stereo": null
+        },
+        {
+          "begin": "216",
+          "end": "207",
+          "id": "256",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "193",
+          "end": "217",
+          "id": "257",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "218",
+          "end": "193",
+          "id": "258",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "217",
+          "end": "219",
+          "id": "259",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "218",
+          "end": "220",
+          "id": "260",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        }
+      ],
+      "nodeCount": 29,
+      "nodes": [
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "192",
+          "label": null,
+          "position": [
+            35.9,
+            20.43
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "193",
+          "label": null,
+          "position": [
+            44.76,
+            15.31
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "194",
+          "label": null,
+          "position": [
+            53.63,
+            20.43
+          ]
+        },
+        {
+          "atomicNumber": 8,
+          "charge": 0,
+          "element": "O",
+          "id": "195",
+          "label": {
+            "bbox": [
+              23.46,
+              12.65,
+              29.7,
+              19.77
+            ],
+            "sourceText": "O",
+            "text": "O"
+          },
+          "position": [
+            26.55,
+            16.26
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "196",
+          "label": null,
+          "position": [
+            19.7,
+            23.87
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "197",
+          "label": null,
+          "position": [
+            24.81,
+            32.74
+          ]
+        },
+        {
+          "atomicNumber": 7,
+          "charge": 0,
+          "element": "N",
+          "id": "198",
+          "label": {
+            "bbox": [
+              31.98,
+              27.0,
+              37.74,
+              34.12
+            ],
+            "sourceText": "N",
+            "text": "N"
+          },
+          "position": [
+            34.83,
+            30.61
+          ]
+        },
+        {
+          "atomicNumber": 7,
+          "charge": 0,
+          "element": "N",
+          "id": "199",
+          "label": {
+            "bbox": [
+              51.85,
+              27.0,
+              57.61,
+              34.12
+            ],
+            "sourceText": "N",
+            "text": "N"
+          },
+          "position": [
+            54.7,
+            30.61
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "200",
+          "label": null,
+          "position": [
+            64.72,
+            32.74
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "201",
+          "label": null,
+          "position": [
+            69.83,
+            23.87
+          ]
+        },
+        {
+          "atomicNumber": 8,
+          "charge": 0,
+          "element": "O",
+          "id": "202",
+          "label": {
+            "bbox": [
+              59.89,
+              12.65,
+              66.13,
+              19.77
+            ],
+            "sourceText": "O",
+            "text": "O"
+          },
+          "position": [
+            62.98,
+            16.26
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "203",
+          "label": null,
+          "position": [
+            9.68,
+            26.0
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "204",
+          "label": null,
+          "position": [
+            8.61,
+            36.18
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "205",
+          "label": null,
+          "position": [
+            17.96,
+            40.35
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "206",
+          "label": null,
+          "position": [
+            71.57,
+            40.35
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "207",
+          "label": null,
+          "position": [
+            80.92,
+            36.18
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "208",
+          "label": null,
+          "position": [
+            79.85,
+            26.0
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "209",
+          "label": null,
+          "position": [
+            0.33,
+            42.2
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "210",
+          "label": null,
+          "position": [
+            1.4,
+            52.38
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "211",
+          "label": null,
+          "position": [
+            10.75,
+            56.55
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "212",
+          "label": null,
+          "position": [
+            19.03,
+            50.53
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "213",
+          "label": null,
+          "position": [
+            70.5,
+            50.53
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "214",
+          "label": null,
+          "position": [
+            78.78,
+            56.55
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "215",
+          "label": null,
+          "position": [
+            88.13,
+            52.38
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "216",
+          "label": null,
+          "position": [
+            89.2,
+            42.2
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "217",
+          "label": null,
+          "position": [
+            49.88,
+            6.44
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "218",
+          "label": null,
+          "position": [
+            39.65,
+            6.44
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "219",
+          "label": {
+            "bbox": [
+              57.03,
+              0.7,
+              80.15,
+              7.82
+            ],
+            "sourceText": "OTMS",
+            "text": "OTMS"
+          },
+          "position": [
+            60.12,
+            4.31
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "220",
+          "label": {
+            "bbox": [
+              9.85,
+              0.07,
+              32.97,
+              7.19
+            ],
+            "sourceText": "OTMS",
+            "text": "TMSO"
+          },
+          "position": [
+            29.82,
+            3.68
+          ]
+        }
+      ],
+      "objectId": "obj_mol_008",
+      "resourceRef": "mol_008"
+    },
+    {
+      "bbox": [
+        0.0,
+        0.0,
+        74.09,
+        34.1
+      ],
+      "bondCount": 7,
+      "bonds": [
+        {
+          "begin": "263",
+          "end": "264",
+          "id": "276",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 2,
+          "stereo": null
+        },
+        {
+          "begin": "264",
+          "end": "265",
+          "id": "277",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 2,
+          "stereo": null
+        },
+        {
+          "begin": "263",
+          "end": "266",
+          "id": "278",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": {
+            "kind": "hashed-wedge",
+            "wideEnd": "end"
+          }
+        },
+        {
+          "begin": "265",
+          "end": "267",
+          "id": "279",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": {
+            "kind": "solid-wedge",
+            "wideEnd": "end"
+          }
+        },
+        {
+          "begin": "265",
+          "end": "268",
+          "id": "280",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "268",
+          "end": "269",
+          "id": "281",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "263",
+          "end": "270",
+          "id": "282",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        }
+      ],
+      "nodeCount": 8,
+      "nodes": [
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "263",
+          "label": null,
+          "position": [
+            14.8,
+            17.06
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "264",
+          "label": {
+            "bbox": [
+              27.47,
+              11.23,
+              33.47,
+              20.13
+            ],
+            "sourceText": "•",
+            "text": "•"
+          },
+          "position": [
+            29.2,
+            17.06
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "265",
+          "label": null,
+          "position": [
+            43.6,
+            17.06
+          ]
+        },
+        {
+          "atomicNumber": 18,
+          "charge": 0,
+          "element": "Ar",
+          "id": "266",
+          "label": {
+            "bbox": [
+              -0.01,
+              24.45,
+              9.99,
+              33.35
+            ],
+            "sourceText": "Ar",
+            "text": "Ar"
+          },
+          "position": [
+            8.33,
+            29.93
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "267",
+          "label": {
+            "bbox": [
+              47.23,
+              0.07,
+              61.63,
+              8.97
+            ],
+            "sourceText": "CN",
+            "text": "CN"
+          },
+          "position": [
+            50.8,
+            4.59
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "268",
+          "label": null,
+          "position": [
+            50.8,
+            29.53
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "269",
+          "label": {
+            "bbox": [
+              57.67,
+              25.53,
+              74.17,
+              34.43
+            ],
+            "sourceText": "nBu",
+            "text": "nBu"
+          },
+          "position": [
+            65.19,
+            30.1
+          ]
+        },
+        {
+          "atomicNumber": 1,
+          "charge": 0,
+          "element": "H",
+          "id": "270",
+          "label": {
+            "bbox": [
+              3.68,
+              0.28,
+              10.88,
+              9.18
+            ],
+            "sourceText": "H",
+            "text": "H"
+          },
+          "position": [
+            7.25,
+            4.8
+          ]
+        }
+      ],
+      "objectId": "obj_mol_009",
+      "resourceRef": "mol_009"
+    },
+    {
+      "bbox": [
+        0.0,
+        0.0,
+        84.12,
+        49.89
+      ],
+      "bondCount": 16,
+      "bonds": [
+        {
+          "begin": "285",
+          "end": "286",
+          "id": "308",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "285",
+          "end": "287",
+          "id": "309",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "285",
+          "end": "288",
+          "id": "310",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 2,
+          "stereo": null
+        },
+        {
+          "begin": "285",
+          "end": "289",
+          "id": "311",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 2,
+          "stereo": null
+        },
+        {
+          "begin": "287",
+          "end": "290",
+          "id": "312",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 2,
+          "stereo": null
+        },
+        {
+          "begin": "290",
+          "end": "291",
+          "id": "313",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "291",
+          "end": "292",
+          "id": "314",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 2,
+          "stereo": null
+        },
+        {
+          "begin": "292",
+          "end": "293",
+          "id": "315",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "293",
+          "end": "294",
+          "id": "316",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 2,
+          "stereo": null
+        },
+        {
+          "begin": "294",
+          "end": "287",
+          "id": "317",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "286",
+          "end": "295",
+          "id": "318",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "286",
+          "end": "296",
+          "id": "319",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "295",
+          "end": "297",
+          "id": "320",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "295",
+          "end": "298",
+          "id": "321",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "295",
+          "end": "299",
+          "id": "322",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "294",
+          "end": "300",
+          "id": "323",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        }
+      ],
+      "nodeCount": 16,
+      "nodes": [
+        {
+          "atomicNumber": 16,
+          "charge": 0,
+          "element": "S",
+          "id": "285",
+          "label": {
+            "bbox": [
+              34.4,
+              12.57,
+              41.1,
+              21.47
+            ],
+            "sourceText": "S",
+            "text": "S"
+          },
+          "position": [
+            37.72,
+            17.09
+          ]
+        },
+        {
+          "atomicNumber": 7,
+          "charge": 0,
+          "element": "N",
+          "id": "286",
+          "label": {
+            "bbox": [
+              46.62,
+              19.77,
+              53.82,
+              28.67
+            ],
+            "sourceText": "N",
+            "text": "N"
+          },
+          "position": [
+            50.19,
+            24.29
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "287",
+          "label": null,
+          "position": [
+            25.25,
+            24.29
+          ]
+        },
+        {
+          "atomicNumber": 8,
+          "charge": 0,
+          "element": "O",
+          "id": "288",
+          "label": {
+            "bbox": [
+              26.65,
+              0.1,
+              34.45,
+              9.0
+            ],
+            "sourceText": "O",
+            "text": "O"
+          },
+          "position": [
+            30.52,
+            4.62
+          ]
+        },
+        {
+          "atomicNumber": 8,
+          "charge": 0,
+          "element": "O",
+          "id": "289",
+          "label": {
+            "bbox": [
+              41.05,
+              0.1,
+              48.85,
+              9.0
+            ],
+            "sourceText": "O",
+            "text": "O"
+          },
+          "position": [
+            44.92,
+            4.62
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "290",
+          "label": null,
+          "position": [
+            12.78,
+            17.09
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "291",
+          "label": null,
+          "position": [
+            0.31,
+            24.29
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "292",
+          "label": null,
+          "position": [
+            0.31,
+            38.69
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "293",
+          "label": null,
+          "position": [
+            12.78,
+            45.89
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "294",
+          "label": null,
+          "position": [
+            25.25,
+            38.69
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "295",
+          "label": null,
+          "position": [
+            62.76,
+            17.0
+          ]
+        },
+        {
+          "atomicNumber": 9,
+          "charge": 0,
+          "element": "F",
+          "id": "296",
+          "label": {
+            "bbox": [
+              47.19,
+              34.17,
+              53.29,
+              43.07
+            ],
+            "sourceText": "F",
+            "text": "F"
+          },
+          "position": [
+            50.21,
+            38.69
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "297",
+          "label": null,
+          "position": [
+            75.24,
+            24.18
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "298",
+          "label": null,
+          "position": [
+            62.76,
+            2.6
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "299",
+          "label": {
+            "bbox": [
+              71.91,
+              5.28,
+              84.21,
+              14.18
+            ],
+            "sourceText": "Ph",
+            "text": "Ph"
+          },
+          "position": [
+            75.23,
+            9.8
+          ]
+        },
+        {
+          "atomicNumber": 17,
+          "charge": 0,
+          "element": "Cl",
+          "id": "300",
+          "label": {
+            "bbox": [
+              34.15,
+              41.37,
+              43.55,
+              50.27
+            ],
+            "sourceText": "Cl",
+            "text": "Cl"
+          },
+          "position": [
+            37.72,
+            45.89
+          ]
+        }
+      ],
+      "objectId": "obj_mol_010",
+      "resourceRef": "mol_010"
+    },
+    {
+      "bbox": [
+        0.0,
+        0.0,
+        117.51,
+        64.04
+      ],
+      "bondCount": 21,
+      "bonds": [
+        {
+          "begin": "328",
+          "end": "329",
+          "id": "355",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "329",
+          "end": "330",
+          "id": "356",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "328",
+          "end": "331",
+          "id": "357",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "331",
+          "end": "332",
+          "id": "358",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "332",
+          "end": "333",
+          "id": "359",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "333",
+          "end": "334",
+          "id": "360",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "334",
+          "end": "328",
+          "id": "361",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 2,
+          "stereo": null
+        },
+        {
+          "begin": "330",
+          "end": "335",
+          "id": "362",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 2,
+          "stereo": null
+        },
+        {
+          "begin": "335",
+          "end": "336",
+          "id": "363",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "336",
+          "end": "337",
+          "id": "364",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "337",
+          "end": "338",
+          "id": "365",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "338",
+          "end": "330",
+          "id": "366",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "333",
+          "end": "339",
+          "id": "367",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": {
+            "kind": "solid-wedge",
+            "wideEnd": "end"
+          }
+        },
+        {
+          "begin": "336",
+          "end": "340",
+          "id": "368",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": {
+            "kind": "hashed-wedge",
+            "wideEnd": "end"
+          }
+        },
+        {
+          "begin": "329",
+          "end": "341",
+          "id": "369",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "341",
+          "end": "342",
+          "id": "370",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "342",
+          "end": "343",
+          "id": "371",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "343",
+          "end": "344",
+          "id": "372",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "344",
+          "end": "329",
+          "id": "373",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "332",
+          "end": "345",
+          "id": "374",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": {
+            "kind": "solid-wedge",
+            "wideEnd": "end"
+          }
+        },
+        {
+          "begin": "337",
+          "end": "346",
+          "id": "375",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": {
+            "kind": "hashed-wedge",
+            "wideEnd": "end"
+          }
+        }
+      ],
+      "nodeCount": 19,
+      "nodes": [
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "328",
+          "label": null,
+          "position": [
+            46.56,
+            29.67
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "329",
+          "label": null,
+          "position": [
+            59.03,
+            22.47
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "330",
+          "label": null,
+          "position": [
+            71.5,
+            29.67
+          ]
+        },
+        {
+          "atomicNumber": 8,
+          "charge": 0,
+          "element": "O",
+          "id": "331",
+          "label": {
+            "bbox": [
+              29.54,
+              19.29,
+              37.34,
+              28.19
+            ],
+            "sourceText": "O",
+            "text": "O"
+          },
+          "position": [
+            33.41,
+            23.81
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "332",
+          "label": null,
+          "position": [
+            23.77,
+            34.51
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "333",
+          "label": null,
+          "position": [
+            30.97,
+            46.98
+          ]
+        },
+        {
+          "atomicNumber": 7,
+          "charge": 0,
+          "element": "N",
+          "id": "334",
+          "label": {
+            "bbox": [
+              41.49,
+              39.47,
+              48.69,
+              48.37
+            ],
+            "sourceText": "N",
+            "text": "N"
+          },
+          "position": [
+            45.06,
+            43.99
+          ]
+        },
+        {
+          "atomicNumber": 7,
+          "charge": 0,
+          "element": "N",
+          "id": "335",
+          "label": {
+            "bbox": [
+              69.44,
+              39.47,
+              76.64,
+              48.37
+            ],
+            "sourceText": "N",
+            "text": "N"
+          },
+          "position": [
+            73.01,
+            43.99
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "336",
+          "label": null,
+          "position": [
+            87.09,
+            46.98
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "337",
+          "label": null,
+          "position": [
+            94.29,
+            34.51
+          ]
+        },
+        {
+          "atomicNumber": 8,
+          "charge": 0,
+          "element": "O",
+          "id": "338",
+          "label": {
+            "bbox": [
+              80.79,
+              19.29,
+              88.59,
+              28.19
+            ],
+            "sourceText": "O",
+            "text": "O"
+          },
+          "position": [
+            84.66,
+            23.81
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "339",
+          "label": {
+            "bbox": [
+              15.63,
+              55.61,
+              27.93,
+              64.51
+            ],
+            "sourceText": "Ph",
+            "text": "Ph"
+          },
+          "position": [
+            25.11,
+            60.14
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "340",
+          "label": {
+            "bbox": [
+              89.63,
+              55.62,
+              101.93,
+              64.52
+            ],
+            "sourceText": "Ph",
+            "text": "Ph"
+          },
+          "position": [
+            92.95,
+            60.14
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "341",
+          "label": null,
+          "position": [
+            70.68,
+            14.0
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "342",
+          "label": null,
+          "position": [
+            66.23,
+            0.31
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "343",
+          "label": null,
+          "position": [
+            51.83,
+            0.31
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "344",
+          "label": null,
+          "position": [
+            47.38,
+            14.0
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "345",
+          "label": {
+            "bbox": [
+              -0.03,
+              28.48,
+              12.27,
+              37.38
+            ],
+            "sourceText": "Ph",
+            "text": "Ph"
+          },
+          "position": [
+            9.45,
+            33.01
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "346",
+          "label": {
+            "bbox": [
+              105.29,
+              28.49,
+              117.59,
+              37.39
+            ],
+            "sourceText": "Ph",
+            "text": "Ph"
+          },
+          "position": [
+            108.61,
+            33.01
+          ]
+        }
+      ],
+      "objectId": "obj_mol_011",
+      "resourceRef": "mol_011"
+    },
+    {
+      "bbox": [
+        0.0,
+        0.0,
+        71.3,
+        45.75
+      ],
+      "bondCount": 8,
+      "bonds": [
+        {
+          "begin": "98",
+          "end": "99",
+          "id": "113",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "99",
+          "end": "100",
+          "id": "114",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 2,
+          "stereo": null
+        },
+        {
+          "begin": "100",
+          "end": "101",
+          "id": "115",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 2,
+          "stereo": null
+        },
+        {
+          "begin": "99",
+          "end": "102",
+          "id": "116",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "101",
+          "end": "103",
+          "id": "117",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "101",
+          "end": "104",
+          "id": "118",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "104",
+          "end": "105",
+          "id": "119",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "104",
+          "end": "106",
+          "id": "120",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        }
+      ],
+      "nodeCount": 9,
+      "nodes": [
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "98",
+          "label": {
+            "bbox": [
+              6.51,
+              -0.08,
+              16.46,
+              8.82
+            ],
+            "sourceText": "R'",
+            "text": "R'"
+          },
+          "position": [
+            10.08,
+            4.44
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "99",
+          "label": null,
+          "position": [
+            17.28,
+            16.91
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "100",
+          "label": {
+            "bbox": [
+              29.95,
+              11.08,
+              35.95,
+              19.98
+            ],
+            "sourceText": "•",
+            "text": "•"
+          },
+          "position": [
+            31.68,
+            16.91
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "101",
+          "label": null,
+          "position": [
+            46.08,
+            16.91
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "102",
+          "label": {
+            "bbox": [
+              6.51,
+              24.86,
+              19.21,
+              33.76
+            ],
+            "sourceText": "R''",
+            "text": "R''"
+          },
+          "position": [
+            10.08,
+            29.38
+          ]
+        },
+        {
+          "atomicNumber": 1,
+          "charge": 0,
+          "element": "H",
+          "id": "103",
+          "label": {
+            "bbox": [
+              49.71,
+              -0.08,
+              56.91,
+              8.82
+            ],
+            "sourceText": "H",
+            "text": "H"
+          },
+          "position": [
+            53.28,
+            4.44
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "104",
+          "label": null,
+          "position": [
+            53.28,
+            29.38
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "105",
+          "label": {
+            "bbox": [
+              42.51,
+              37.33,
+              49.71,
+              46.23
+            ],
+            "sourceText": "R",
+            "text": "R"
+          },
+          "position": [
+            46.08,
+            41.85
+          ]
+        },
+        {
+          "atomicNumber": 1,
+          "charge": 0,
+          "element": "H",
+          "id": "106",
+          "label": {
+            "bbox": [
+              64.11,
+              24.86,
+              71.31,
+              33.76
+            ],
+            "sourceText": "H",
+            "text": "H"
+          },
+          "position": [
+            67.68,
+            29.38
+          ]
+        }
+      ],
+      "objectId": "obj_mol_005",
+      "resourceRef": "mol_005"
+    },
+    {
+      "bbox": [
+        0.0,
+        0.0,
+        71.3,
+        33.28
+      ],
+      "bondCount": 7,
+      "bonds": [
+        {
+          "begin": "123",
+          "end": "124",
+          "id": "136",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 2,
+          "stereo": null
+        },
+        {
+          "begin": "124",
+          "end": "125",
+          "id": "137",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 2,
+          "stereo": null
+        },
+        {
+          "begin": "125",
+          "end": "126",
+          "id": "138",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "126",
+          "end": "127",
+          "id": "139",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "126",
+          "end": "128",
+          "id": "140",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "123",
+          "end": "129",
+          "id": "141",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "123",
+          "end": "130",
+          "id": "142",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        }
+      ],
+      "nodeCount": 8,
+      "nodes": [
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "123",
+          "label": null,
+          "position": [
+            17.29,
+            16.91
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "124",
+          "label": {
+            "bbox": [
+              29.96,
+              11.08,
+              35.96,
+              19.98
+            ],
+            "sourceText": "•",
+            "text": "•"
+          },
+          "position": [
+            31.69,
+            16.91
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "125",
+          "label": null,
+          "position": [
+            46.09,
+            16.91
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "126",
+          "label": null,
+          "position": [
+            60.49,
+            16.91
+          ]
+        },
+        {
+          "atomicNumber": 1,
+          "charge": 0,
+          "element": "H",
+          "id": "127",
+          "label": {
+            "bbox": [
+              64.12,
+              -0.08,
+              71.32,
+              8.82
+            ],
+            "sourceText": "H",
+            "text": "H"
+          },
+          "position": [
+            67.69,
+            4.44
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "128",
+          "label": {
+            "bbox": [
+              64.12,
+              24.86,
+              71.32,
+              33.76
+            ],
+            "sourceText": "R",
+            "text": "R"
+          },
+          "position": [
+            67.69,
+            29.38
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "129",
+          "label": {
+            "bbox": [
+              6.52,
+              -0.08,
+              16.47,
+              8.82
+            ],
+            "sourceText": "R'",
+            "text": "R'"
+          },
+          "position": [
+            10.09,
+            4.44
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "130",
+          "label": {
+            "bbox": [
+              6.52,
+              24.86,
+              19.22,
+              33.76
+            ],
+            "sourceText": "R''",
+            "text": "R''"
+          },
+          "position": [
+            10.09,
+            29.38
+          ]
+        }
+      ],
+      "objectId": "obj_mol_006",
+      "resourceRef": "mol_006"
+    },
+    {
+      "bbox": [
+        0.0,
+        0.0,
+        69.54,
+        33.28
+      ],
+      "bondCount": 7,
+      "bonds": [
+        {
+          "begin": "150",
+          "end": "151",
+          "id": "163",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 2,
+          "stereo": null
+        },
+        {
+          "begin": "151",
+          "end": "152",
+          "id": "164",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 2,
+          "stereo": null
+        },
+        {
+          "begin": "152",
+          "end": "153",
+          "id": "165",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "153",
+          "end": "154",
+          "id": "166",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "153",
+          "end": "155",
+          "id": "167",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "150",
+          "end": "156",
+          "id": "168",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "150",
+          "end": "157",
+          "id": "169",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        }
+      ],
+      "nodeCount": 8,
+      "nodes": [
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "150",
+          "label": null,
+          "position": [
+            15.53,
+            16.91
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "151",
+          "label": {
+            "bbox": [
+              28.2,
+              11.08,
+              34.2,
+              19.98
+            ],
+            "sourceText": "•",
+            "text": "•"
+          },
+          "position": [
+            29.93,
+            16.91
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "152",
+          "label": null,
+          "position": [
+            44.33,
+            16.91
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "153",
+          "label": null,
+          "position": [
+            58.73,
+            16.91
+          ]
+        },
+        {
+          "atomicNumber": 1,
+          "charge": 0,
+          "element": "H",
+          "id": "154",
+          "label": {
+            "bbox": [
+              62.36,
+              -0.08,
+              69.56,
+              8.82
+            ],
+            "sourceText": "H",
+            "text": "H"
+          },
+          "position": [
+            65.93,
+            4.44
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "155",
+          "label": {
+            "bbox": [
+              62.36,
+              24.86,
+              69.56,
+              33.76
+            ],
+            "sourceText": "R",
+            "text": "R"
+          },
+          "position": [
+            65.93,
+            29.38
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "156",
+          "label": {
+            "bbox": [
+              4.76,
+              -0.08,
+              14.71,
+              8.82
+            ],
+            "sourceText": "R'",
+            "text": "R'"
+          },
+          "position": [
+            8.33,
+            4.44
+          ]
+        },
+        {
+          "atomicNumber": 18,
+          "charge": 0,
+          "element": "Ar",
+          "id": "157",
+          "label": {
+            "bbox": [
+              -0.01,
+              23.9,
+              9.99,
+              32.8
+            ],
+            "sourceText": "Ar",
+            "text": "Ar"
+          },
+          "position": [
+            8.33,
+            29.38
+          ]
+        }
+      ],
+      "objectId": "obj_mol_007",
+      "resourceRef": "mol_007"
+    }
+  ],
+  "objects": [
+    {
+      "bbox": [
+        10.49,
+        0.0,
+        71.91,
+        37.51
+      ],
+      "childCount": 0,
+      "id": "obj_mol_001",
+      "locked": false,
+      "name": "molecule 1",
+      "resourceRef": "mol_001",
+      "styleRef": "style_molecule_default",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          197.46,
+          226.91
+        ]
+      },
+      "type": "molecule",
+      "visible": true,
+      "zIndex": 557
+    },
+    {
+      "bbox": [
+        0.0,
+        0.0,
+        71.29,
+        33.8
+      ],
+      "childCount": 0,
+      "id": "obj_mol_002",
+      "locked": false,
+      "name": "molecule 2",
+      "resourceRef": "mol_002",
+      "styleRef": "style_molecule_default",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          445.35,
+          118.99
+        ]
+      },
+      "type": "molecule",
+      "visible": true,
+      "zIndex": 609
+    },
+    {
+      "bbox": [
+        0.0,
+        0.0,
+        69.54,
+        45.76
+      ],
+      "childCount": 0,
+      "id": "obj_mol_003",
+      "locked": false,
+      "name": "molecule 3",
+      "resourceRef": "mol_003",
+      "styleRef": "style_molecule_default",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          1.47,
+          392.59
+        ]
+      },
+      "type": "molecule",
+      "visible": true,
+      "zIndex": 627
+    },
+    {
+      "bbox": [
+        0.0,
+        0.0,
+        69.55,
+        33.43
+      ],
+      "childCount": 0,
+      "id": "obj_mol_004",
+      "locked": false,
+      "name": "molecule 4",
+      "resourceRef": "mol_004",
+      "styleRef": "style_molecule_default",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          282.88,
+          387.61
+        ]
+      },
+      "type": "molecule",
+      "visible": true,
+      "zIndex": 639
+    },
+    {
+      "bbox": [
+        0.0,
+        0.0,
+        89.53,
+        56.9
+      ],
+      "childCount": 0,
+      "id": "obj_mol_008",
+      "locked": false,
+      "name": "molecule 8",
+      "resourceRef": "mol_008",
+      "styleRef": "style_molecule_default",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          410.96,
+          228.82
+        ]
+      },
+      "type": "molecule",
+      "visible": true,
+      "zIndex": 709
+    },
+    {
+      "bbox": [
+        0.0,
+        0.0,
+        74.09,
+        34.1
+      ],
+      "childCount": 0,
+      "id": "obj_mol_009",
+      "locked": false,
+      "name": "molecule 9",
+      "resourceRef": "mol_009",
+      "styleRef": "style_molecule_default",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          45.28,
+          228.32
+        ]
+      },
+      "type": "molecule",
+      "visible": true,
+      "zIndex": 779
+    },
+    {
+      "bbox": [
+        0.0,
+        0.0,
+        84.12,
+        49.89
+      ],
+      "childCount": 0,
+      "id": "obj_mol_010",
+      "locked": false,
+      "name": "molecule 10",
+      "resourceRef": "mol_010",
+      "styleRef": "style_molecule_default",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          315.39,
+          231.09
+        ]
+      },
+      "type": "molecule",
+      "visible": true,
+      "zIndex": 811
+    },
+    {
+      "bbox": [
+        0.0,
+        0.0,
+        117.51,
+        64.04
+      ],
+      "childCount": 0,
+      "id": "obj_mol_011",
+      "locked": false,
+      "name": "molecule 11",
+      "resourceRef": "mol_011",
+      "styleRef": "style_molecule_default",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          405.49,
+          378.01
+        ]
+      },
+      "type": "molecule",
+      "visible": true,
+      "zIndex": 904
+    },
+    {
+      "bbox": null,
+      "childCount": 0,
+      "id": "obj_line_001",
+      "locked": false,
+      "name": "line 1",
+      "resourceRef": null,
+      "styleRef": "style_arrow_default",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.0
+        ]
+      },
+      "type": "line",
+      "visible": true,
+      "zIndex": 589
+    },
+    {
+      "bbox": null,
+      "childCount": 0,
+      "id": "obj_line_002",
+      "locked": false,
+      "name": "line 2",
+      "resourceRef": null,
+      "styleRef": "style_arrow_default",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.0
+        ]
+      },
+      "type": "line",
+      "visible": true,
+      "zIndex": 660
+    },
+    {
+      "bbox": null,
+      "childCount": 0,
+      "id": "obj_line_003",
+      "locked": false,
+      "name": "line 3",
+      "resourceRef": null,
+      "styleRef": "style_arrow_regular_ff0000",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.0
+        ]
+      },
+      "type": "line",
+      "visible": true,
+      "zIndex": 688
+    },
+    {
+      "bbox": null,
+      "childCount": 0,
+      "id": "obj_line_004",
+      "locked": false,
+      "name": "line 4",
+      "resourceRef": null,
+      "styleRef": "style_arrow_regular_ff0000",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.0
+        ]
+      },
+      "type": "line",
+      "visible": true,
+      "zIndex": 689
+    },
+    {
+      "bbox": null,
+      "childCount": 0,
+      "id": "obj_line_005",
+      "locked": false,
+      "name": "line 5",
+      "resourceRef": null,
+      "styleRef": "style_arrow_default",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.0
+        ]
+      },
+      "type": "line",
+      "visible": true,
+      "zIndex": 696
+    },
+    {
+      "bbox": null,
+      "childCount": 0,
+      "id": "obj_line_006",
+      "locked": false,
+      "name": "line 6",
+      "resourceRef": null,
+      "styleRef": "style_line_regular_dashed",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.0
+        ]
+      },
+      "type": "line",
+      "visible": true,
+      "zIndex": 699
+    },
+    {
+      "bbox": [
+        0.0,
+        0.0,
+        167.3,
+        88.55
+      ],
+      "childCount": 0,
+      "id": "obj_shape_001",
+      "locked": false,
+      "name": "shape 1",
+      "resourceRef": null,
+      "styleRef": "style_shape_001",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          38.46,
+          467.27
+        ]
+      },
+      "type": "shape",
+      "visible": true,
+      "zIndex": 690
+    },
+    {
+      "bbox": [
+        0.0,
+        0.0,
+        205.5,
+        84.05
+      ],
+      "childCount": 0,
+      "id": "obj_shape_002",
+      "locked": false,
+      "name": "shape 2",
+      "resourceRef": null,
+      "styleRef": "style_shape_002",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          307.51,
+          217.45
+        ]
+      },
+      "type": "shape",
+      "visible": true,
+      "zIndex": 846
+    },
+    {
+      "bbox": [
+        204.29,
+        249.61,
+        17.28,
+        17.28
+      ],
+      "childCount": 0,
+      "id": "obj_shape_orbital_001",
+      "locked": false,
+      "name": "orbital 1",
+      "resourceRef": null,
+      "styleRef": "style_shape_orbital_001",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.0
+        ]
+      },
+      "type": "shape",
+      "visible": true,
+      "zIndex": 555
+    },
+    {
+      "bbox": [
+        274.5,
+        113.86,
+        20.12,
+        33.53
+      ],
+      "childCount": 0,
+      "id": "obj_shape_orbital_002",
+      "locked": false,
+      "name": "orbital 2",
+      "resourceRef": null,
+      "styleRef": "style_shape_orbital_002",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.0
+        ]
+      },
+      "type": "shape",
+      "visible": true,
+      "zIndex": 657
+    },
+    {
+      "bbox": [
+        41.6,
+        249.61,
+        17.28,
+        17.28
+      ],
+      "childCount": 0,
+      "id": "obj_shape_orbital_004",
+      "locked": false,
+      "name": "orbital 4",
+      "resourceRef": null,
+      "styleRef": "style_shape_orbital_004",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.0
+        ]
+      },
+      "type": "shape",
+      "visible": true,
+      "zIndex": 778
+    },
+    {
+      "bbox": [
+        0.0,
+        0.0,
+        2.59,
+        2.59
+      ],
+      "childCount": 0,
+      "id": "obj_symbol_001",
+      "locked": false,
+      "name": "symbol 1",
+      "resourceRef": null,
+      "styleRef": null,
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          283.9,
+          129.0
+        ]
+      },
+      "type": "symbol",
+      "visible": true,
+      "zIndex": 658
+    },
+    {
+      "bbox": [
+        0.0,
+        0.0,
+        2.59,
+        2.59
+      ],
+      "childCount": 0,
+      "id": "obj_symbol_002",
+      "locked": false,
+      "name": "symbol 2",
+      "resourceRef": null,
+      "styleRef": null,
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          101.37,
+          517.55
+        ]
+      },
+      "type": "symbol",
+      "visible": true,
+      "zIndex": 680
+    },
+    {
+      "bbox": null,
+      "childCount": 0,
+      "id": "obj_text_001",
+      "locked": false,
+      "name": "text 1",
+      "resourceRef": null,
+      "styleRef": "style_text_001",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          1.4,
+          79.12
+        ]
+      },
+      "type": "text",
+      "visible": true,
+      "zIndex": 556
+    },
+    {
+      "bbox": null,
+      "childCount": 0,
+      "id": "obj_text_002",
+      "locked": false,
+      "name": "text 2",
+      "resourceRef": null,
+      "styleRef": "style_text_002",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          354.57,
+          125.35
+        ]
+      },
+      "type": "text",
+      "visible": true,
+      "zIndex": 606
+    },
+    {
+      "bbox": null,
+      "childCount": 0,
+      "id": "obj_text_003",
+      "locked": false,
+      "name": "text 3",
+      "resourceRef": null,
+      "styleRef": "style_text_003",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          443.63,
+          158.45
+        ]
+      },
+      "type": "text",
+      "visible": true,
+      "zIndex": 624
+    },
+    {
+      "bbox": null,
+      "childCount": 0,
+      "id": "obj_text_004",
+      "locked": false,
+      "name": "text 4",
+      "resourceRef": null,
+      "styleRef": "style_text_004",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          2.15,
+          356.75
+        ]
+      },
+      "type": "text",
+      "visible": true,
+      "zIndex": 625
+    },
+    {
+      "bbox": null,
+      "childCount": 0,
+      "id": "obj_text_005",
+      "locked": false,
+      "name": "text 5",
+      "resourceRef": null,
+      "styleRef": "style_text_005",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          260.52,
+          435.37
+        ]
+      },
+      "type": "text",
+      "visible": true,
+      "zIndex": 652
+    },
+    {
+      "bbox": null,
+      "childCount": 0,
+      "id": "obj_text_006",
+      "locked": false,
+      "name": "text 6",
+      "resourceRef": null,
+      "styleRef": "style_text_006",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          121.93,
+          125.0
+        ]
+      },
+      "type": "text",
+      "visible": true,
+      "zIndex": 659
+    },
+    {
+      "bbox": null,
+      "childCount": 0,
+      "id": "obj_text_007",
+      "locked": false,
+      "name": "text 7",
+      "resourceRef": null,
+      "styleRef": "style_text_007",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          110.68,
+          480.82
+        ]
+      },
+      "type": "text",
+      "visible": true,
+      "zIndex": 686
+    },
+    {
+      "bbox": null,
+      "childCount": 0,
+      "id": "obj_text_008",
+      "locked": false,
+      "name": "text 8",
+      "resourceRef": null,
+      "styleRef": "style_text_008",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          173.51,
+          510.12
+        ]
+      },
+      "type": "text",
+      "visible": true,
+      "zIndex": 691
+    },
+    {
+      "bbox": null,
+      "childCount": 0,
+      "id": "obj_text_009",
+      "locked": false,
+      "name": "text 9",
+      "resourceRef": null,
+      "styleRef": "style_text_009",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          243.07,
+          276.05
+        ]
+      },
+      "type": "text",
+      "visible": true,
+      "zIndex": 692
+    },
+    {
+      "bbox": null,
+      "childCount": 0,
+      "id": "obj_text_010",
+      "locked": false,
+      "name": "text 10",
+      "resourceRef": null,
+      "styleRef": "style_text_010",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          156.94,
+          324.25
+        ]
+      },
+      "type": "text",
+      "visible": true,
+      "zIndex": 693
+    },
+    {
+      "bbox": null,
+      "childCount": 0,
+      "id": "obj_text_011",
+      "locked": false,
+      "name": "text 11",
+      "resourceRef": null,
+      "styleRef": "style_text_011",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          170.94,
+          386.05
+        ]
+      },
+      "type": "text",
+      "visible": true,
+      "zIndex": 697
+    },
+    {
+      "bbox": null,
+      "childCount": 0,
+      "id": "obj_text_012",
+      "locked": false,
+      "name": "text 12",
+      "resourceRef": null,
+      "styleRef": "style_text_012",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          170.94,
+          417.04
+        ]
+      },
+      "type": "text",
+      "visible": true,
+      "zIndex": 698
+    },
+    {
+      "bbox": null,
+      "childCount": 0,
+      "id": "obj_text_013",
+      "locked": false,
+      "name": "text 13",
+      "resourceRef": null,
+      "styleRef": "style_text_013",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          239.23,
+          492.22
+        ]
+      },
+      "type": "text",
+      "visible": true,
+      "zIndex": 700
+    },
+    {
+      "bbox": null,
+      "childCount": 0,
+      "id": "obj_text_014",
+      "locked": false,
+      "name": "text 14",
+      "resourceRef": null,
+      "styleRef": "style_text_014",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          239.23,
+          519.52
+        ]
+      },
+      "type": "text",
+      "visible": true,
+      "zIndex": 701
+    },
+    {
+      "bbox": null,
+      "childCount": 0,
+      "id": "obj_text_015",
+      "locked": false,
+      "name": "text 15",
+      "resourceRef": null,
+      "styleRef": "style_text_015",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          239.23,
+          543.9
+        ]
+      },
+      "type": "text",
+      "visible": true,
+      "zIndex": 702
+    },
+    {
+      "bbox": null,
+      "childCount": 0,
+      "id": "obj_text_016",
+      "locked": false,
+      "name": "text 16",
+      "resourceRef": null,
+      "styleRef": "style_text_016",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          223.48,
+          492.02
+        ]
+      },
+      "type": "text",
+      "visible": true,
+      "zIndex": 703
+    },
+    {
+      "bbox": null,
+      "childCount": 0,
+      "id": "obj_text_017",
+      "locked": false,
+      "name": "text 17",
+      "resourceRef": null,
+      "styleRef": "style_text_017",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          223.48,
+          517.62
+        ]
+      },
+      "type": "text",
+      "visible": true,
+      "zIndex": 704
+    },
+    {
+      "bbox": null,
+      "childCount": 0,
+      "id": "obj_text_018",
+      "locked": false,
+      "name": "text 18",
+      "resourceRef": null,
+      "styleRef": "style_text_018",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          223.48,
+          542.37
+        ]
+      },
+      "type": "text",
+      "visible": true,
+      "zIndex": 705
+    },
+    {
+      "bbox": null,
+      "childCount": 0,
+      "id": "obj_text_019",
+      "locked": false,
+      "name": "text 19",
+      "resourceRef": null,
+      "styleRef": "style_text_019",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          82.62,
+          276.05
+        ]
+      },
+      "type": "text",
+      "visible": true,
+      "zIndex": 793
+    },
+    {
+      "bbox": null,
+      "childCount": 0,
+      "id": "obj_text_020",
+      "locked": false,
+      "name": "text 20",
+      "resourceRef": null,
+      "styleRef": "style_text_020",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          369.17,
+          283.41
+        ]
+      },
+      "type": "text",
+      "visible": true,
+      "zIndex": 841
+    },
+    {
+      "bbox": null,
+      "childCount": 0,
+      "id": "obj_text_021",
+      "locked": false,
+      "name": "text 21",
+      "resourceRef": null,
+      "styleRef": "style_text_021",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          434.01,
+          287.75
+        ]
+      },
+      "type": "text",
+      "visible": true,
+      "zIndex": 845
+    },
+    {
+      "bbox": null,
+      "childCount": 0,
+      "id": "obj_text_022",
+      "locked": false,
+      "name": "text 22",
+      "resourceRef": null,
+      "styleRef": "style_text_022",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          458.41,
+          443.58
+        ]
+      },
+      "type": "text",
+      "visible": true,
+      "zIndex": 944
+    },
+    {
+      "bbox": null,
+      "childCount": 0,
+      "id": "obj_text_023",
+      "locked": false,
+      "name": "text 23",
+      "resourceRef": null,
+      "styleRef": "style_text_023",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          42.76,
+          193.17
+        ]
+      },
+      "type": "text",
+      "visible": true,
+      "zIndex": 945
+    },
+    {
+      "bbox": null,
+      "childCount": 0,
+      "id": "obj_text_024",
+      "locked": false,
+      "name": "text 24",
+      "resourceRef": null,
+      "styleRef": "style_text_024",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          144.39,
+          245.67
+        ]
+      },
+      "type": "text",
+      "visible": true,
+      "zIndex": 946
+    },
+    {
+      "bbox": null,
+      "childCount": 0,
+      "id": "obj_text_025",
+      "locked": false,
+      "name": "text 25",
+      "resourceRef": null,
+      "styleRef": "style_text_025",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          125.26,
+          145.17
+        ]
+      },
+      "type": "text",
+      "visible": true,
+      "zIndex": 947
+    },
+    {
+      "bbox": [
+        38.54,
+        120.17,
+        68.0,
+        52.23
+      ],
+      "childCount": 1,
+      "id": "obj_group_001",
+      "locked": false,
+      "name": "group 1",
+      "resourceRef": null,
+      "styleRef": null,
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.0
+        ]
+      },
+      "type": "group",
+      "visible": true,
+      "zIndex": 653
+    },
+    {
+      "bbox": [
+        0.0,
+        0.0,
+        71.3,
+        45.75
+      ],
+      "childCount": 0,
+      "id": "obj_mol_005",
+      "locked": false,
+      "name": "molecule 5",
+      "resourceRef": "mol_005",
+      "styleRef": "style_molecule_default",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          33.63,
+          120.97
+        ]
+      },
+      "type": "molecule",
+      "visible": true,
+      "zIndex": 572
+    },
+    {
+      "bbox": [
+        243.68,
+        121.99,
+        68.0,
+        39.76
+      ],
+      "childCount": 1,
+      "id": "obj_group_002",
+      "locked": false,
+      "name": "group 2",
+      "resourceRef": null,
+      "styleRef": null,
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.0
+        ]
+      },
+      "type": "group",
+      "visible": true,
+      "zIndex": 656
+    },
+    {
+      "bbox": [
+        0.0,
+        0.0,
+        71.3,
+        33.28
+      ],
+      "childCount": 0,
+      "id": "obj_mol_006",
+      "locked": false,
+      "name": "molecule 6",
+      "resourceRef": "mol_006",
+      "styleRef": "style_molecule_default",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          238.76,
+          122.79
+        ]
+      },
+      "type": "molecule",
+      "visible": true,
+      "zIndex": 591
+    },
+    {
+      "bbox": [
+        56.21,
+        512.2,
+        72.84,
+        39.76
+      ],
+      "childCount": 2,
+      "id": "obj_group_003",
+      "locked": false,
+      "name": "group 3",
+      "resourceRef": null,
+      "styleRef": null,
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.0
+        ]
+      },
+      "type": "group",
+      "visible": true,
+      "zIndex": 685
+    },
+    {
+      "bbox": [
+        0.0,
+        0.0,
+        69.54,
+        33.28
+      ],
+      "childCount": 0,
+      "id": "obj_mol_007",
+      "locked": false,
+      "name": "molecule 7",
+      "resourceRef": "mol_007",
+      "styleRef": "style_molecule_default",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          57.89,
+          513.0
+        ]
+      },
+      "type": "molecule",
+      "visible": true,
+      "zIndex": 668
+    },
+    {
+      "bbox": [
+        92.54,
+        503.43,
+        20.13,
+        33.55
+      ],
+      "childCount": 0,
+      "id": "obj_shape_orbital_003",
+      "locked": false,
+      "name": "orbital 3",
+      "resourceRef": null,
+      "styleRef": "style_shape_orbital_003",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.0
+        ]
+      },
+      "type": "shape",
+      "visible": true,
+      "zIndex": 679
+    },
+    {
+      "bbox": [
+        229.57,
+        113.5,
+        88.75,
+        52.0
+      ],
+      "childCount": 1,
+      "id": "obj_group_004",
+      "locked": false,
+      "name": "group 4",
+      "resourceRef": null,
+      "styleRef": null,
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.0
+        ]
+      },
+      "type": "group",
+      "visible": true,
+      "zIndex": 694
+    },
+    {
+      "bbox": [
+        230.07,
+        114.0,
+        87.75,
+        51.0
+      ],
+      "childCount": 2,
+      "id": "obj_bracket_001",
+      "locked": false,
+      "name": "bracket-group",
+      "resourceRef": null,
+      "styleRef": null,
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          0.0,
+          0.0
+        ]
+      },
+      "type": "group",
+      "visible": true,
+      "zIndex": 694
+    },
+    {
+      "bbox": [
+        0.0,
+        0.0,
+        3.7,
+        51.0
+      ],
+      "childCount": 0,
+      "id": "obj_bracket_001_left",
+      "locked": false,
+      "name": "bracket-left",
+      "resourceRef": null,
+      "styleRef": null,
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          230.07,
+          114.0
+        ]
+      },
+      "type": "bracket",
+      "visible": true,
+      "zIndex": 695
+    },
+    {
+      "bbox": [
+        0.0,
+        0.0,
+        3.7,
+        51.0
+      ],
+      "childCount": 0,
+      "id": "obj_bracket_001_right",
+      "locked": false,
+      "name": "bracket-right",
+      "resourceRef": null,
+      "styleRef": null,
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          314.12,
+          114.0
+        ]
+      },
+      "type": "bracket",
+      "visible": true,
+      "zIndex": 694
+    }
+  ],
+  "resources": [
+    {
+      "bondCount": 7,
+      "encoding": "chemcore.molecule.fragment2d",
+      "id": "mol_001",
+      "kind": "fragment",
+      "nodeCount": 8,
+      "type": "molecule_fragment2d"
+    },
+    {
+      "bondCount": 7,
+      "encoding": "chemcore.molecule.fragment2d",
+      "id": "mol_002",
+      "kind": "fragment",
+      "nodeCount": 8,
+      "type": "molecule_fragment2d"
+    },
+    {
+      "bondCount": 8,
+      "encoding": "chemcore.molecule.fragment2d",
+      "id": "mol_003",
+      "kind": "fragment",
+      "nodeCount": 9,
+      "type": "molecule_fragment2d"
+    },
+    {
+      "bondCount": 7,
+      "encoding": "chemcore.molecule.fragment2d",
+      "id": "mol_004",
+      "kind": "fragment",
+      "nodeCount": 8,
+      "type": "molecule_fragment2d"
+    },
+    {
+      "bondCount": 8,
+      "encoding": "chemcore.molecule.fragment2d",
+      "id": "mol_005",
+      "kind": "fragment",
+      "nodeCount": 9,
+      "type": "molecule_fragment2d"
+    },
+    {
+      "bondCount": 7,
+      "encoding": "chemcore.molecule.fragment2d",
+      "id": "mol_006",
+      "kind": "fragment",
+      "nodeCount": 8,
+      "type": "molecule_fragment2d"
+    },
+    {
+      "bondCount": 7,
+      "encoding": "chemcore.molecule.fragment2d",
+      "id": "mol_007",
+      "kind": "fragment",
+      "nodeCount": 8,
+      "type": "molecule_fragment2d"
+    },
+    {
+      "bondCount": 34,
+      "encoding": "chemcore.molecule.fragment2d",
+      "id": "mol_008",
+      "kind": "fragment",
+      "nodeCount": 29,
+      "type": "molecule_fragment2d"
+    },
+    {
+      "bondCount": 7,
+      "encoding": "chemcore.molecule.fragment2d",
+      "id": "mol_009",
+      "kind": "fragment",
+      "nodeCount": 8,
+      "type": "molecule_fragment2d"
+    },
+    {
+      "bondCount": 16,
+      "encoding": "chemcore.molecule.fragment2d",
+      "id": "mol_010",
+      "kind": "fragment",
+      "nodeCount": 16,
+      "type": "molecule_fragment2d"
+    },
+    {
+      "bondCount": 21,
+      "encoding": "chemcore.molecule.fragment2d",
+      "id": "mol_011",
+      "kind": "fragment",
+      "nodeCount": 19,
+      "type": "molecule_fragment2d"
+    }
+  ],
+  "styles": [
+    {
+      "fill": null,
+      "fontFamily": null,
+      "fontSize": null,
+      "id": "style_arrow_default",
+      "kind": "stroke",
+      "stroke": "#000000",
+      "strokeWidth": 0.6
+    },
+    {
+      "fill": null,
+      "fontFamily": null,
+      "fontSize": null,
+      "id": "style_arrow_regular_ff0000",
+      "kind": "stroke",
+      "stroke": "#ff0000",
+      "strokeWidth": 0.6
+    },
+    {
+      "fill": null,
+      "fontFamily": null,
+      "fontSize": null,
+      "id": "style_line_default",
+      "kind": "stroke",
+      "stroke": "#000000",
+      "strokeWidth": 0.6
+    },
+    {
+      "fill": null,
+      "fontFamily": null,
+      "fontSize": null,
+      "id": "style_line_regular_dashed",
+      "kind": "stroke",
+      "stroke": "#000000",
+      "strokeWidth": 0.6
+    },
+    {
+      "fill": null,
+      "fontFamily": "Arial",
+      "fontSize": 10.0,
+      "id": "style_molecule_default",
+      "kind": "molecule",
+      "stroke": "#000000",
+      "strokeWidth": 0.6
+    },
+    {
+      "fill": null,
+      "fontFamily": null,
+      "fontSize": null,
+      "id": "style_shape_001",
+      "kind": "shape",
+      "stroke": "#000000",
+      "strokeWidth": 0.6
+    },
+    {
+      "fill": null,
+      "fontFamily": null,
+      "fontSize": null,
+      "id": "style_shape_002",
+      "kind": "shape",
+      "stroke": "#000000",
+      "strokeWidth": 0.6
+    },
+    {
+      "fill": "#c0c0c0",
+      "fontFamily": null,
+      "fontSize": null,
+      "id": "style_shape_orbital_001",
+      "kind": "shape",
+      "stroke": "#c0c0c0",
+      "strokeWidth": 0.6
+    },
+    {
+      "fill": null,
+      "fontFamily": null,
+      "fontSize": null,
+      "id": "style_shape_orbital_002",
+      "kind": "shape",
+      "stroke": "#ff0000",
+      "strokeWidth": 0.6
+    },
+    {
+      "fill": null,
+      "fontFamily": null,
+      "fontSize": null,
+      "id": "style_shape_orbital_003",
+      "kind": "shape",
+      "stroke": "#ff0000",
+      "strokeWidth": 0.6
+    },
+    {
+      "fill": "#c0c0c0",
+      "fontFamily": null,
+      "fontSize": null,
+      "id": "style_shape_orbital_004",
+      "kind": "shape",
+      "stroke": "#c0c0c0",
+      "strokeWidth": 0.6
+    },
+    {
+      "fill": "#000000",
+      "fontFamily": "Arial",
+      "fontSize": 10.0,
+      "id": "style_text_001",
+      "kind": "text",
+      "stroke": null,
+      "strokeWidth": null
+    },
+    {
+      "fill": "#000000",
+      "fontFamily": "Arial",
+      "fontSize": 10.0,
+      "id": "style_text_002",
+      "kind": "text",
+      "stroke": null,
+      "strokeWidth": null
+    },
+    {
+      "fill": "#ff0000",
+      "fontFamily": "Arial",
+      "fontSize": 10.0,
+      "id": "style_text_003",
+      "kind": "text",
+      "stroke": null,
+      "strokeWidth": null
+    },
+    {
+      "fill": "#000000",
+      "fontFamily": "Arial",
+      "fontSize": 10.0,
+      "id": "style_text_004",
+      "kind": "text",
+      "stroke": null,
+      "strokeWidth": null
+    },
+    {
+      "fill": "#000000",
+      "fontFamily": "Arial",
+      "fontSize": 10.0,
+      "id": "style_text_005",
+      "kind": "text",
+      "stroke": null,
+      "strokeWidth": null
+    },
+    {
+      "fill": "#000000",
+      "fontFamily": "Arial",
+      "fontSize": 10.0,
+      "id": "style_text_006",
+      "kind": "text",
+      "stroke": null,
+      "strokeWidth": null
+    },
+    {
+      "fill": "#000000",
+      "fontFamily": "Arial",
+      "fontSize": 10.0,
+      "id": "style_text_007",
+      "kind": "text",
+      "stroke": null,
+      "strokeWidth": null
+    },
+    {
+      "fill": "#000000",
+      "fontFamily": "Arial",
+      "fontSize": 10.0,
+      "id": "style_text_008",
+      "kind": "text",
+      "stroke": null,
+      "strokeWidth": null
+    },
+    {
+      "fill": "#000000",
+      "fontFamily": "Arial",
+      "fontSize": 10.0,
+      "id": "style_text_009",
+      "kind": "text",
+      "stroke": null,
+      "strokeWidth": null
+    },
+    {
+      "fill": "#000000",
+      "fontFamily": "Arial",
+      "fontSize": 10.0,
+      "id": "style_text_010",
+      "kind": "text",
+      "stroke": null,
+      "strokeWidth": null
+    },
+    {
+      "fill": "#000000",
+      "fontFamily": "Arial",
+      "fontSize": 10.0,
+      "id": "style_text_011",
+      "kind": "text",
+      "stroke": null,
+      "strokeWidth": null
+    },
+    {
+      "fill": "#000000",
+      "fontFamily": "Arial",
+      "fontSize": 10.0,
+      "id": "style_text_012",
+      "kind": "text",
+      "stroke": null,
+      "strokeWidth": null
+    },
+    {
+      "fill": "#000000",
+      "fontFamily": "Arial",
+      "fontSize": 10.0,
+      "id": "style_text_013",
+      "kind": "text",
+      "stroke": null,
+      "strokeWidth": null
+    },
+    {
+      "fill": "#000000",
+      "fontFamily": "Arial",
+      "fontSize": 10.0,
+      "id": "style_text_014",
+      "kind": "text",
+      "stroke": null,
+      "strokeWidth": null
+    },
+    {
+      "fill": "#000000",
+      "fontFamily": "Arial",
+      "fontSize": 10.0,
+      "id": "style_text_015",
+      "kind": "text",
+      "stroke": null,
+      "strokeWidth": null
+    },
+    {
+      "fill": "#0000ff",
+      "fontFamily": "Symbol",
+      "fontSize": 10.0,
+      "id": "style_text_016",
+      "kind": "text",
+      "stroke": null,
+      "strokeWidth": null
+    },
+    {
+      "fill": "#0000ff",
+      "fontFamily": "Symbol",
+      "fontSize": 10.0,
+      "id": "style_text_017",
+      "kind": "text",
+      "stroke": null,
+      "strokeWidth": null
+    },
+    {
+      "fill": "#0000ff",
+      "fontFamily": "Symbol",
+      "fontSize": 10.0,
+      "id": "style_text_018",
+      "kind": "text",
+      "stroke": null,
+      "strokeWidth": null
+    },
+    {
+      "fill": "#000000",
+      "fontFamily": "Arial",
+      "fontSize": 10.0,
+      "id": "style_text_019",
+      "kind": "text",
+      "stroke": null,
+      "strokeWidth": null
+    },
+    {
+      "fill": "#000000",
+      "fontFamily": "Arial",
+      "fontSize": 10.0,
+      "id": "style_text_020",
+      "kind": "text",
+      "stroke": null,
+      "strokeWidth": null
+    },
+    {
+      "fill": "#000000",
+      "fontFamily": "Arial",
+      "fontSize": 10.0,
+      "id": "style_text_021",
+      "kind": "text",
+      "stroke": null,
+      "strokeWidth": null
+    },
+    {
+      "fill": "#000000",
+      "fontFamily": "Arial",
+      "fontSize": 10.0,
+      "id": "style_text_022",
+      "kind": "text",
+      "stroke": null,
+      "strokeWidth": null
+    },
+    {
+      "fill": "#000000",
+      "fontFamily": "Arial",
+      "fontSize": 10.0,
+      "id": "style_text_023",
+      "kind": "text",
+      "stroke": null,
+      "strokeWidth": null
+    },
+    {
+      "fill": "#000000",
+      "fontFamily": "Arial",
+      "fontSize": 10.0,
+      "id": "style_text_024",
+      "kind": "text",
+      "stroke": null,
+      "strokeWidth": null
+    },
+    {
+      "fill": "#000000",
+      "fontFamily": "Arial",
+      "fontSize": 10.0,
+      "id": "style_text_025",
+      "kind": "text",
+      "stroke": null,
+      "strokeWidth": null
+    },
+    {
+      "fill": "#000000",
+      "fontFamily": "Arial",
+      "fontSize": 10.0,
+      "id": "style_text_default",
+      "kind": "text",
+      "stroke": null,
+      "strokeWidth": null
+    }
+  ],
+  "summary": {
+    "counts": {
+      "bonds": 129,
+      "molecules": 11,
+      "nodes": 130,
+      "objectTypes": {
+        "bracket": 2,
+        "group": 5,
+        "line": 6,
+        "molecule": 11,
+        "shape": 6,
+        "symbol": 2,
+        "text": 25
+      },
+      "objects": 57,
+      "resources": 11,
+      "styles": 37
+    },
+    "documentId": "doc_cdxml_import",
+    "documentStylePreset": "default",
+    "format": {
+      "name": "chemcore",
+      "unit": "pt",
+      "version": "0.1"
+    },
+    "import": {
+      "cdxml": {
+        "defaults": {
+          "boldWidth": 2.01,
+          "bondLength": 14.4,
+          "bondSpacing": 18.0,
+          "captionFace": 0,
+          "captionFont": 3,
+          "captionJustification": "Left",
+          "captionSize": 10.0,
+          "chainAngle": 120.0,
+          "color": 0,
+          "fractionalWidths": true,
+          "hashSpacing": 2.49,
+          "hideImplicitHydrogens": false,
+          "interpretChemically": true,
+          "labelFace": 96,
+          "labelFont": 3,
+          "labelJustification": "Auto",
+          "labelSize": 10.0,
+          "lineWidth": 0.6,
+          "marginWidth": 1.59,
+          "printMargins": [
+            36.0,
+            36.0,
+            36.0,
+            36.0
+          ],
+          "showAtomEnhancedStereo": true,
+          "showAtomNumber": false,
+          "showAtomQuery": true,
+          "showAtomStereo": false,
+          "showBondQuery": true,
+          "showBondRxn": true,
+          "showBondStereo": false,
+          "showNonTerminalCarbonLabels": false,
+          "showResidueID": false,
+          "showTerminalCarbonLabels": false
+        },
+        "editingScale": 1.0
+      }
+    },
+    "page": {
+      "background": "#ffffff",
+      "height": 579.82,
+      "width": 664.0
+    },
+    "renderBounds": [
+      -0.20000000000000015,
+      79.47000000000001,
+      524.6800000000001,
+      558.75
+    ],
+    "revision": 0,
+    "title": "Imported CDXML"
+  }
+}

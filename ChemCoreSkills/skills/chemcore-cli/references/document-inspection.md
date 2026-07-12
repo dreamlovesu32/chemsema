@@ -83,9 +83,12 @@ chemcore-cli bundle input.cdxml --target molecule:0 --out-dir molecule-0-bundle 
 
 The directory contains `manifest.json`, `target.json`, `context.json`,
 `editable-subset.<format>`, `capture.png` or `capture.svg`, and
-`identity-map.json`. The manifest separates `editableScope` from `visualScope`;
+`identity-map.json`, plus `provenance.json`. The manifest separates `editableScope` from `visualScope`;
 objects visible in the capture are not editable unless they are target
 selectors. Context entries retain `selectionBoxRelation` and `isTarget`.
+The identity map keeps stable selector pairs, while provenance records source
+hashes, source bounds, subset translation, and privacy-preserving source file
+metadata.
 
 ## Diff
 

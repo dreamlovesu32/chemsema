@@ -1,0 +1,108 @@
+{
+  "derivedFrom": {
+    "documentHash": "880febac1eace591111d0c4366ccd77d871faf96c6b41463e5701abba6bee2b7",
+    "selector": "object:obj_mol_004",
+    "selectors": [
+      "object:obj_mol_004"
+    ],
+    "sourceBounds": {
+      "height": 37.51000000000002,
+      "maxX": 279.86,
+      "maxY": 264.42,
+      "minX": 204.04000000000002,
+      "minY": 226.91,
+      "width": 75.82
+    },
+    "sourceFileSha256": "661d3c67e971d258e8991b364b7bed8e74b8500b75e7dc443decbc573b91ba0c",
+    "translation": {
+      "dx": -184.04000000000002,
+      "dy": -206.91,
+      "reason": "editable-subset-compaction"
+    },
+    "visualBounds": {
+      "height": 147.51000000000002,
+      "maxX": 334.86,
+      "maxY": 319.42,
+      "minX": 149.04000000000002,
+      "minY": 171.91,
+      "width": 185.82
+    },
+    "visualViewBox": {
+      "height": 147.51000000000002,
+      "value": [
+        149.04000000000002,
+        171.91,
+        185.82,
+        147.51000000000002
+      ],
+      "width": 185.82,
+      "x": 149.04000000000002,
+      "y": 171.91
+    }
+  },
+  "editableSubset": {
+    "documentId": "doc_export_selection",
+    "documentTitle": "ChemCore Export Selection",
+    "format": "ccjs",
+    "objectCount": 1,
+    "resourceCount": 1,
+    "scope": {
+      "bonds": [
+        "bond:1176604362",
+        "bond:1176604363",
+        "bond:1176604364",
+        "bond:1176604365",
+        "bond:1176604366",
+        "bond:1176604367",
+        "bond:1176604368"
+      ],
+      "nodes": [
+        "node:1176604346",
+        "node:1176604347",
+        "node:1176604350",
+        "node:1176604351",
+        "node:1176604352",
+        "node:1176604359",
+        "node:1176604360",
+        "node:1176604361"
+      ],
+      "note": "The editable subset is the only modification scope. Visual context may contain additional non-target objects.",
+      "objects": [
+        "object:obj_mol_004"
+      ],
+      "resources": [
+        "mol_004"
+      ],
+      "styles": [
+        "style_molecule_default"
+      ]
+    },
+    "styleCount": 1,
+    "topLevelObjectCount": 1
+  },
+  "identityMap": {
+    "artifact": "identity-map.json",
+    "entryCount": 18,
+    "schema": "chemcore.identity-map.v1",
+    "selectorIdentityStable": true
+  },
+  "ok": true,
+  "schema": "chemcore.agent.provenance.v1",
+  "source": {
+    "documentHash": "880febac1eace591111d0c4366ccd77d871faf96c6b41463e5701abba6bee2b7",
+    "documentRevision": 0,
+    "fileName": "figure1.cdxml",
+    "format": "cdxml",
+    "path": "figure1.cdxml",
+    "privacy": {
+      "absolutePathStored": false,
+      "pathPolicy": "file-name-only"
+    },
+    "sha256": "661d3c67e971d258e8991b364b7bed8e74b8500b75e7dc443decbc573b91ba0c"
+  },
+  "sourceDocument": {
+    "objectCount": 56,
+    "resourceCount": 11,
+    "styleCount": 37
+  }
+}

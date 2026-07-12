@@ -1,0 +1,369 @@
+{
+  "molecules": [
+    {
+      "bbox": [
+        -6.65,
+        -1.41,
+        82.39,
+        37.51
+      ],
+      "bondCount": 7,
+      "bonds": [
+        {
+          "begin": "1176604346",
+          "end": "1176604347",
+          "id": "1176604362",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 2,
+          "stereo": null
+        },
+        {
+          "begin": "1176604347",
+          "end": "1176604350",
+          "id": "1176604363",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 2,
+          "stereo": null
+        },
+        {
+          "begin": "1176604346",
+          "end": "1176604351",
+          "id": "1176604364",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": {
+            "kind": "hashed-wedge",
+            "wideEnd": "end"
+          }
+        },
+        {
+          "begin": "1176604350",
+          "end": "1176604352",
+          "id": "1176604365",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": {
+            "kind": "solid-wedge",
+            "wideEnd": "end"
+          }
+        },
+        {
+          "begin": "1176604350",
+          "end": "1176604359",
+          "id": "1176604366",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "1176604359",
+          "end": "1176604360",
+          "id": "1176604367",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        },
+        {
+          "begin": "1176604346",
+          "end": "1176604361",
+          "id": "1176604368",
+          "lineStyles": {
+            "left": "solid",
+            "main": "solid",
+            "right": "solid"
+          },
+          "order": 1,
+          "stereo": null
+        }
+      ],
+      "nodeCount": 8,
+      "nodes": [
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "1176604346",
+          "label": null,
+          "position": [
+            18.67,
+            17.06
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "1176604347",
+          "label": {
+            "bbox": [
+              31.34,
+              11.23,
+              37.34,
+              20.13
+            ],
+            "sourceText": "•",
+            "text": "•"
+          },
+          "position": [
+            33.07,
+            17.06
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "1176604350",
+          "label": null,
+          "position": [
+            47.47,
+            17.06
+          ]
+        },
+        {
+          "atomicNumber": 18,
+          "charge": 0,
+          "element": "Ar",
+          "id": "1176604351",
+          "label": {
+            "bbox": [
+              3.86,
+              24.45,
+              13.86,
+              33.35
+            ],
+            "sourceText": "Ar",
+            "text": "Ar"
+          },
+          "position": [
+            12.2,
+            29.93
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "1176604352",
+          "label": {
+            "bbox": [
+              51.1,
+              0.07,
+              65.5,
+              8.97
+            ],
+            "sourceText": "CN",
+            "text": "CN"
+          },
+          "position": [
+            54.67,
+            4.59
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "1176604359",
+          "label": null,
+          "position": [
+            54.67,
+            29.53
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "1176604360",
+          "label": {
+            "bbox": [
+              64.09,
+              25.58,
+              75.74,
+              34.48
+            ],
+            "sourceText": "iPr",
+            "text": "iPr"
+          },
+          "position": [
+            69.06,
+            30.1
+          ]
+        },
+        {
+          "atomicNumber": 6,
+          "charge": 0,
+          "element": "C",
+          "id": "1176604361",
+          "label": {
+            "bbox": [
+              -6.66,
+              0.28,
+              15.04,
+              9.18
+            ],
+            "sourceText": "OMe",
+            "text": "MeO"
+          },
+          "position": [
+            11.11,
+            4.8
+          ]
+        }
+      ],
+      "objectId": "obj_mol_004",
+      "resourceRef": "mol_004"
+    }
+  ],
+  "objects": [
+    {
+      "bbox": [
+        -6.65,
+        -1.41,
+        82.39,
+        37.51
+      ],
+      "childCount": 0,
+      "id": "obj_mol_004",
+      "locked": false,
+      "name": "molecule 4",
+      "resourceRef": "mol_004",
+      "styleRef": "style_molecule_default",
+      "transform": {
+        "rotate": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "translate": [
+          26.65000000000001,
+          21.409999999999997
+        ]
+      },
+      "type": "molecule",
+      "visible": true,
+      "zIndex": 557
+    }
+  ],
+  "resources": [
+    {
+      "bondCount": 7,
+      "encoding": "chemcore.molecule.fragment2d",
+      "id": "mol_004",
+      "kind": "fragment",
+      "nodeCount": 8,
+      "type": "molecule_fragment2d"
+    }
+  ],
+  "styles": [
+    {
+      "fill": null,
+      "fontFamily": "Arial",
+      "fontSize": 10.0,
+      "id": "style_molecule_default",
+      "kind": "molecule",
+      "stroke": "#000000",
+      "strokeWidth": 0.6
+    }
+  ],
+  "summary": {
+    "counts": {
+      "bonds": 7,
+      "molecules": 1,
+      "nodes": 8,
+      "objectTypes": {
+        "molecule": 1
+      },
+      "objects": 1,
+      "resources": 1,
+      "styles": 1
+    },
+    "documentId": "doc_export_selection",
+    "documentStylePreset": "default",
+    "format": {
+      "name": "chemcore",
+      "unit": "pt",
+      "version": "0.1"
+    },
+    "import": {
+      "cdxml": {
+        "defaults": {
+          "boldWidth": 2.01,
+          "bondLength": 14.4,
+          "bondSpacing": 18.0,
+          "captionFace": 0,
+          "captionFont": 3,
+          "captionJustification": "Left",
+          "captionSize": 10.0,
+          "chainAngle": 120.0,
+          "color": 0,
+          "fractionalWidths": true,
+          "hashSpacing": 2.49,
+          "hideImplicitHydrogens": false,
+          "interpretChemically": true,
+          "labelFace": 96,
+          "labelFont": 3,
+          "labelJustification": "Auto",
+          "labelSize": 10.0,
+          "lineWidth": 0.6,
+          "marginWidth": 1.59,
+          "printMargins": [
+            36.0,
+            36.0,
+            36.0,
+            36.0
+          ],
+          "showAtomEnhancedStereo": true,
+          "showAtomNumber": false,
+          "showAtomQuery": true,
+          "showAtomStereo": false,
+          "showBondQuery": true,
+          "showBondRxn": true,
+          "showBondStereo": false,
+          "showNonTerminalCarbonLabels": false,
+          "showResidueID": false,
+          "showTerminalCarbonLabels": false
+        },
+        "editingScale": 1.0
+      }
+    },
+    "page": {
+      "background": "#ffffff",
+      "height": 77.51000000000002,
+      "width": 122.39
+    },
+    "renderBounds": [
+      18.390000000000008,
+      21.08,
+      103.99,
+      61.09
+    ],
+    "revision": 0,
+    "title": "ChemCore Export Selection"
+  }
+}

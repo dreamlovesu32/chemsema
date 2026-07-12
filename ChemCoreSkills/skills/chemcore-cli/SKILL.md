@@ -33,7 +33,7 @@ Use this order for document work:
 5. `detail` to expand one object, molecule, node, or bond.
 6. `capture` for deterministic SVG/PNG crops.
 7. `bundle` when one selector needs detail, context, capture, editable subset,
-   identity map, and manifest artifacts together.
+   identity map, provenance, and manifest artifacts together.
 8. `new` or `run` with command scripts for edits; use
    `chemcore.command-transaction.v1` envelopes for scoped dry-runs or atomic
    guarded edits.

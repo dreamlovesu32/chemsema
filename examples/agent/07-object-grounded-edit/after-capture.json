@@ -1,0 +1,68 @@
+﻿{
+  "bounds": {
+    "height": 37.51000000000002,
+    "maxX": 279.85,
+    "maxY": 264.42,
+    "minX": 197.46,
+    "minY": 226.91,
+    "width": 82.39000000000001
+  },
+  "cropBounds": null,
+  "expansion": {
+    "absolute": {
+      "bottom": 55.0,
+      "left": 55.0,
+      "right": 55.0,
+      "top": 55.0
+    },
+    "relative": {
+      "bottom": 0.0,
+      "left": 0.0,
+      "right": 0.0,
+      "top": 0.0
+    }
+  },
+  "input": "output.ccjs",
+  "ok": true,
+  "output": {
+    "bytes": 127865,
+    "defaulted": false,
+    "format": "png",
+    "path": "after.png",
+    "pixelSize": {
+      "height": 920,
+      "scaleX": 6.237330422579135,
+      "scaleY": 6.236865297267981,
+      "width": 1200
+    },
+    "verified": true
+  },
+  "render": {
+    "mode": "region-targets",
+    "primitiveCount": 82,
+    "targets": {
+      "bonds": 12,
+      "nodes": 12,
+      "objects": 5
+    }
+  },
+  "selectionOnly": false,
+  "target": {
+    "id": "obj_mol_004",
+    "kind": "object",
+    "selector": "object:obj_mol_004"
+  },
+  "viewBox": {
+    "height": 147.51000000000002,
+    "value": [
+      142.46,
+      171.91,
+      192.39000000000001,
+      147.51000000000002
+    ],
+    "width": 192.39000000000001,
+    "x": 142.46,
+    "y": 171.91
+  },
+  "warnings": []
+}

@@ -147,7 +147,7 @@ source 候选既合法又能渲染回可见文本，反向报告会推荐
 
 对象级 bundle 和 diff：
 
-- `bundle` 会写出 `manifest.json`、`target.json`、`context.json`、`editable-subset.<format>`、`capture.png` 或 `capture.svg`、以及 `identity-map.json`。
+- `bundle` 会写出 `manifest.json`、`target.json`、`context.json`、`editable-subset.<format>`、`capture.png` 或 `capture.svg`、`identity-map.json`、以及 `provenance.json`。
 - `manifest.json` 明确区分 `editableScope` 和 `visualScope`。视觉上下文可以包含附近的非目标对象；只有 editable scope 是允许修改的范围。
 - `context.json` 保留 `selectionBoxRelation` 和 `isTarget`，调用方可以区分明确选中的对象和只是出现在截图里的邻居。
 - `diff` 按 object/resource/style/node/bond 身份比较两个可编辑文档，报告创建、更新、删除和字段级变化。

@@ -3,6 +3,7 @@ use sha2::Digest;
 
 const BUNDLE_SCHEMA: &str = "chemcore.agent.bundle.v1";
 const IDENTITY_MAP_SCHEMA: &str = "chemcore.identity-map.v1";
+const PROVENANCE_SCHEMA: &str = "chemcore.agent.provenance.v1";
 
 #[derive(Debug, Clone)]
 pub(crate) struct BundleOptions {
@@ -180,7 +181,27 @@ pub(crate) fn bundle_document(
             integrity.all_resources_resolved, integrity.all_styles_resolved
         ));
     }
-    let identity_map = identity_map_for_documents(document, &editable_subset, engine)?;
+    let source_hash = source_file_sha256(&options.input)?;
+    let document_hash = crate::document_hash(engine)
+        .ok_or_else(|| "Failed to compute source document hash for bundle.".to_string())?;
+    let identity_map =
+        identity_map_for_documents(document, &editable_subset, &document_hash, &source_hash)?;
+    let provenance = provenance_for_bundle(
+        engine,
+        document,
+        &editable_subset,
+        options,
+        target_bounds,
+        visual_bounds,
+        visual_view_box,
+        &source_hash,
+        &document_hash,
+        identity_map
+            .get("entries")
+            .and_then(Value::as_array)
+            .map(Vec::len)
+            .unwrap_or(0),
+    )?;
 
     let target_path = options.out_dir.join("target.json");
     let context_path = options.out_dir.join("context.json");
@@ -189,6 +210,7 @@ pub(crate) fn bundle_document(
     let capture_name = format!("capture.{}", options.capture_format.as_str());
     let capture_path = options.out_dir.join(&capture_name);
     let identity_path = options.out_dir.join("identity-map.json");
+    let provenance_path = options.out_dir.join("provenance.json");
 
     write_json_file(&target_path, &detail, options.pretty)?;
     write_json_file(&context_path, &context, options.pretty)?;
@@ -202,6 +224,7 @@ pub(crate) fn bundle_document(
         options.raster,
     )?;
     write_json_file(&identity_path, &identity_map, options.pretty)?;
+    write_json_file(&provenance_path, &provenance, options.pretty)?;
 
     let artifacts = vec![
         artifact_status("detail", "target.json", &target_path, "json")?,
@@ -219,9 +242,8 @@ pub(crate) fn bundle_document(
             options.capture_format.as_str(),
         )?,
         artifact_status("identityMap", "identity-map.json", &identity_path, "json")?,
+        artifact_status("provenance", "provenance.json", &provenance_path, "json")?,
     ];
-    let source_hash = source_file_sha256(&options.input)?;
-    let document_hash = crate::document_hash(engine);
     let manifest = json!({
         "schema": BUNDLE_SCHEMA,
         "ok": true,
@@ -252,6 +274,7 @@ pub(crate) fn bundle_document(
             "editableSubset": subset_name,
             "capture": capture_name,
             "identityMap": "identity-map.json",
+            "provenance": "provenance.json",
         },
         "artifactVerification": artifacts,
         "integrity": {
@@ -268,6 +291,19 @@ pub(crate) fn bundle_document(
                 "mode": render.mode,
                 "primitiveCount": render.primitives.len(),
                 "targets": render.targets.to_json(),
+            }
+        },
+        "provenance": {
+            "schema": PROVENANCE_SCHEMA,
+            "artifact": "provenance.json",
+            "derivedFrom": {
+                "documentHash": document_hash,
+                "sourceFileSha256": source_hash,
+                "selector": options.target.selector(),
+                "selectors": targets.iter().map(TargetSelector::selector).collect::<Vec<_>>(),
+                "sourceBounds": bounds_json(target_bounds),
+                "visualBounds": bounds_json(visual_bounds),
+                "translation": subset_translation_from_export_meta(&editable_subset),
             }
         }
     });
@@ -422,40 +458,145 @@ fn referential_integrity(document: &ChemcoreDocument) -> ReferentialIntegrity {
 fn identity_map_for_documents(
     source: &ChemcoreDocument,
     subset: &ChemcoreDocument,
-    engine: &Engine,
+    source_document_hash: &str,
+    source_file_sha256: &str,
 ) -> Result<Value, String> {
-    let source_selectors = document_selectors(source);
-    let subset_selectors = document_selectors(subset);
+    let source_selectors = document_selector_kinds(source);
+    let subset_selectors = document_selector_kinds(subset);
     let entries = source_selectors
-        .intersection(&subset_selectors)
-        .map(|selector| {
+        .iter()
+        .filter(|(selector, _)| subset_selectors.contains_key(*selector))
+        .map(|(selector, kind)| {
             json!({
                 "sourceSelector": selector,
                 "bundleSelector": selector,
+                "kind": kind,
+                "includedBecause": identity_inclusion_reason(kind),
+                "sourceDocumentHash": source_document_hash,
             })
         })
         .collect::<Vec<_>>();
     Ok(json!({
         "schema": IDENTITY_MAP_SCHEMA,
-        "sourceDocumentHash": crate::document_hash(engine),
+        "sourceDocumentHash": source_document_hash,
+        "sourceFileSha256": source_file_sha256,
+        "selectorIdentityStable": true,
         "entries": entries,
     }))
 }
 
-fn document_selectors(document: &ChemcoreDocument) -> BTreeSet<String> {
-    let mut selectors = BTreeSet::new();
+fn document_selector_kinds(document: &ChemcoreDocument) -> BTreeMap<String, String> {
+    let mut selectors = BTreeMap::new();
     for object in document.scene_objects() {
-        selectors.insert(format!("object:{}", object.id));
+        selectors.insert(format!("object:{}", object.id), "object".to_string());
+        if let Some(resource_ref) = object.payload.resource_ref.as_ref() {
+            selectors.insert(format!("resource:{resource_ref}"), "resource".to_string());
+        }
+        if let Some(style_ref) = object.style_ref.as_ref() {
+            selectors.insert(format!("style:{style_ref}"), "style".to_string());
+        }
     }
     for entry in document.editable_fragments() {
         for node in &entry.fragment.nodes {
-            selectors.insert(format!("node:{}", node.id));
+            selectors.insert(format!("node:{}", node.id), "node".to_string());
         }
         for bond in &entry.fragment.bonds {
-            selectors.insert(format!("bond:{}", bond.id));
+            selectors.insert(format!("bond:{}", bond.id), "bond".to_string());
         }
     }
     selectors
+}
+
+fn identity_inclusion_reason(kind: &str) -> &'static str {
+    match kind {
+        "object" => "editable-target-or-required-ancestor",
+        "resource" => "referenced-resource",
+        "style" => "referenced-style",
+        "node" | "bond" => "referenced-molecule-entity",
+        _ => "included-in-editable-subset",
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn provenance_for_bundle(
+    engine: &Engine,
+    source_document: &ChemcoreDocument,
+    subset: &ChemcoreDocument,
+    options: &BundleOptions,
+    target_bounds: [f64; 4],
+    visual_bounds: [f64; 4],
+    visual_view_box: [f64; 4],
+    source_file_sha256: &str,
+    source_document_hash: &str,
+    identity_entry_count: usize,
+) -> Result<Value, String> {
+    let targets = flattened_targets(&options.target);
+    Ok(json!({
+        "schema": PROVENANCE_SCHEMA,
+        "ok": true,
+        "source": {
+            "path": privacy_preserving_source_path(&options.input),
+            "fileName": Path::new(&options.input).file_name().and_then(|value| value.to_str()),
+            "format": infer_format_from_path(&options.input),
+            "sha256": source_file_sha256,
+            "documentHash": source_document_hash,
+            "documentRevision": engine.revision(),
+            "privacy": {
+                "pathPolicy": "file-name-only",
+                "absolutePathStored": false,
+            }
+        },
+        "derivedFrom": {
+            "documentHash": source_document_hash,
+            "sourceFileSha256": source_file_sha256,
+            "selector": options.target.selector(),
+            "selectors": targets.iter().map(TargetSelector::selector).collect::<Vec<_>>(),
+            "sourceBounds": bounds_json(target_bounds),
+            "visualBounds": bounds_json(visual_bounds),
+            "visualViewBox": view_box_json(visual_view_box),
+            "translation": subset_translation_from_export_meta(subset),
+        },
+        "editableSubset": {
+            "documentId": subset.document.id,
+            "documentTitle": subset.document.title,
+            "format": options.subset_format,
+            "objectCount": subset.scene_objects().len(),
+            "topLevelObjectCount": subset.objects.len(),
+            "resourceCount": subset.resources.len(),
+            "styleCount": subset.styles.len(),
+            "scope": editable_scope_json(subset),
+        },
+        "identityMap": {
+            "artifact": "identity-map.json",
+            "schema": IDENTITY_MAP_SCHEMA,
+            "entryCount": identity_entry_count,
+            "selectorIdentityStable": true,
+        },
+        "sourceDocument": {
+            "objectCount": source_document.scene_objects().len(),
+            "resourceCount": source_document.resources.len(),
+            "styleCount": source_document.styles.len(),
+        }
+    }))
+}
+
+fn subset_translation_from_export_meta(subset: &ChemcoreDocument) -> Value {
+    let Some(bounds) = subset.document.meta.pointer("/export/selectionBounds") else {
+        return Value::Null;
+    };
+    let min_x = bounds.get("minX").and_then(Value::as_f64).unwrap_or(0.0);
+    let min_y = bounds.get("minY").and_then(Value::as_f64).unwrap_or(0.0);
+    let margin = subset
+        .document
+        .meta
+        .pointer("/export/selectionMargin")
+        .and_then(Value::as_f64)
+        .unwrap_or(0.0);
+    json!({
+        "dx": margin - min_x,
+        "dy": margin - min_y,
+        "reason": "editable-subset-compaction",
+    })
 }
 
 fn editable_scope_json(document: &ChemcoreDocument) -> Value {

@@ -1,0 +1,68 @@
+﻿{
+  "bounds": {
+    "height": 37.51000000000002,
+    "maxX": 279.86,
+    "maxY": 264.42,
+    "minX": 204.04000000000002,
+    "minY": 226.91,
+    "width": 75.82
+  },
+  "cropBounds": null,
+  "expansion": {
+    "absolute": {
+      "bottom": 55.0,
+      "left": 55.0,
+      "right": 55.0,
+      "top": 55.0
+    },
+    "relative": {
+      "bottom": 0.0,
+      "left": 0.0,
+      "right": 0.0,
+      "top": 0.0
+    }
+  },
+  "input": "..\\..\\..\\figure1.cdxml",
+  "ok": true,
+  "output": {
+    "bytes": 126028,
+    "defaulted": false,
+    "format": "png",
+    "path": "before.png",
+    "pixelSize": {
+      "height": 953,
+      "scaleX": 6.457862447529868,
+      "scaleY": 6.460578943800419,
+      "width": 1200
+    },
+    "verified": true
+  },
+  "render": {
+    "mode": "region-targets",
+    "primitiveCount": 81,
+    "targets": {
+      "bonds": 12,
+      "nodes": 12,
+      "objects": 5
+    }
+  },
+  "selectionOnly": false,
+  "target": {
+    "id": "obj_mol_004",
+    "kind": "object",
+    "selector": "object:obj_mol_004"
+  },
+  "viewBox": {
+    "height": 147.51000000000002,
+    "value": [
+      149.04000000000002,
+      171.91,
+      185.82,
+      147.51000000000002
+    ],
+    "width": 185.82,
+    "x": 149.04000000000002,
+    "y": 171.91
+  },
+  "warnings": []
+}

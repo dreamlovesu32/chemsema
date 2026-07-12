@@ -574,7 +574,7 @@ fn protocol_schemas_json() -> Value {
         "bundle": {
             "schema": AGENT_BUNDLE_SCHEMA_VERSION,
             "description": "Writes an object-grounded bundle directory for one target or multi-target selection.",
-            "artifacts": ["manifest.json", "target.json", "context.json", "editable-subset.<format>", "capture.png|capture.svg", "identity-map.json"],
+            "artifacts": ["manifest.json", "target.json", "context.json", "editable-subset.<format>", "capture.png|capture.svg", "identity-map.json", "provenance.json"],
             "scope": "editableScope lists the target-only editable subset. visualScope describes the capture/context region and may include visible non-target objects. Seeing an object in context does not grant edit scope.",
             "verification": "manifest artifactVerification entries include path, format, verified, bytes, and sha256. integrity reports allResourcesResolved, allStylesResolved, captureVerified, and editableSubsetValid.",
             "sessionOperation": "JSONL session supports op=bundle with target, outDir, contextRadius, captureFormat, scale/width/height, subsetFormat, and pretty.",
