@@ -537,6 +537,13 @@ fn fragment_label_is_invalid(label: &crate::NodeLabel) -> bool {
 }
 
 fn chemical_check_disabled(meta: &serde_json::Value) -> bool {
+    if meta
+        .get("defaultChemical")
+        .and_then(serde_json::Value::as_bool)
+        == Some(false)
+    {
+        return true;
+    }
     meta.get("chemicalCheck")
         .and_then(serde_json::Value::as_bool)
         == Some(false)

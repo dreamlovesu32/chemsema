@@ -48,12 +48,25 @@ Display text rules:
 
 The display direction still follows the existing label-direction rules. For example, when connected on the right, rendered text may appear as `H2N`, but the source text is still `NH2`; reopening the editor uses the source text.
 
+## User Overrides
+
+The primary chemistry switch is `Interpret Chemically`, represented on labels as
+`defaultChemical`. Turning it off makes the label plain text for recognition,
+reversal, and invalid-valence diagnostics. It is not the mechanism for hiding a
+single generated hydrogen while keeping the atom chemically interpreted.
+
+Per-node hydrogen display/count overrides use `node.meta.numHydrogensOverride`.
+When present, it overrides the automatic implicit-hydrogen count before label
+refresh. `0` deliberately hides generated hydrogens and exports to CDXML as
+`NumHydrogens="0"` so the explicit author intent survives round-trip. Removing
+the override returns the node to the normal valence-derived calculation.
+
 ## Supported Elements
 
 | Element | Atomic number | Typical valence rule | Examples |
 | --- | ---: | --- | --- |
 | `B` | 5 | Default 3; 4 when charge is `-1` | Isolated `B` -> `BH3`; `B-` may reach valence 4 |
-| `N` | 7 | 4 when charge is `+1`; 3 when charge is `+2` or the current connection/charge total is at most 3; otherwise 5 | Isolated `N` -> `NH3`; single-bonded `N` -> `NH2` |
+| `N` | 7 | 3 for neutral and negatively charged nitrogen; 4 only when charge is `+1`. Second-period nitrogen never expands to valence 5; four-connected `N` without a positive charge is invalid instead of receiving an added H | Isolated `N` -> `NH3`; single-bonded `N` -> `NH2` |
 | `P` | 15 | Neutral 3/5-valence ladder: one bond adds two H, two bonds add one H, three bonds add none, four bonds add one H, five bonds add none | Isolated `P` -> `PH3`; single-bonded `P` -> `PH2`; four-bonded `P` -> `PH` |
 | `O` | 8 | Default 2; 3 when positively charged | Isolated `O` -> `OH2`; single-bonded `O` -> `OH` |
 | `S` | 16 | Neutral 2/4/6-valence ladder: one bond adds one H, two bonds add none, three bonds add one H, four bonds add none, five bonds add one H, six bonds add none | Isolated `S` -> `SH2`; single-bonded `S` -> `SH`; five-bonded `S` -> `SH` |

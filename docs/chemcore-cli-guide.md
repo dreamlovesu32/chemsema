@@ -913,7 +913,48 @@ When `preserveImplicitHydrogenLabel` is true on an endpoint label such as
 keeps it even if the current valence-derived implicit hydrogen count would
 normally refresh the label to another source, such as `NH`.
 
-### 5.9 Set Atom Charge
+### 5.9 Interpret Atom Label Chemically
+
+```json
+{
+  "type": "select-targets",
+  "targets": { "nodes": ["node_1"] }
+}
+```
+
+```json
+{
+  "type": "set-interpret-chemically-for-selection",
+  "enabled": false
+}
+```
+
+Use this for ChemDraw-style `Interpret Chemically`. When disabled, ChemCore
+preserves the label as plain text by setting `defaultChemical:false`, converting
+label source runs to normal text, and clearing chemical recognition diagnostics.
+It is not an implicit-hydrogen display switch.
+
+### 5.10 Override Implicit Hydrogen Count
+
+```json
+{
+  "type": "select-targets",
+  "targets": { "nodes": ["node_1"] }
+}
+```
+
+```json
+{
+  "type": "set-implicit-hydrogen-count-for-selection",
+  "count": 0
+}
+```
+
+Use `count:0` to hide generated hydrogens while keeping the atom chemically
+interpreted. Use `count:null` to return selected nodes to the automatic
+valence-derived implicit-hydrogen calculation.
+
+### 5.11 Set Atom Charge
 
 ```json
 {
@@ -930,7 +971,7 @@ nitrogen valence 4.
 ChemCore refreshes implicit hydrogens, label recognition, and attached label
 geometry after the charge update.
 
-### 5.10 Edit Atom Label Style
+### 5.12 Edit Atom Label Style
 
 ```json
 {

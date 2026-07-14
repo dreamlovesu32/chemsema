@@ -491,36 +491,112 @@ impl Engine {
     pub fn set_chemical_check_for_selection(&mut self, enabled: bool) -> bool {
         self.with_command(
             EditorCommand::SetChemicalCheckForSelection { enabled },
-            |engine| engine.set_chemical_check_for_selection_untracked(enabled),
+            |engine| engine.set_interpret_chemically_for_selection_untracked(enabled, true),
         )
     }
 
-    fn set_chemical_check_for_selection_untracked(&mut self, enabled: bool) -> bool {
+    pub fn set_interpret_chemically_for_selection(&mut self, enabled: bool) -> bool {
+        self.with_command(
+            EditorCommand::SetInterpretChemicallyForSelection { enabled },
+            |engine| engine.set_interpret_chemically_for_selection_untracked(enabled, false),
+        )
+    }
+
+    fn set_interpret_chemically_for_selection_untracked(
+        &mut self,
+        enabled: bool,
+        write_legacy_chemical_check: bool,
+    ) -> bool {
         let selected_labels: BTreeSet<String> =
             self.state.selection.label_nodes.iter().cloned().collect();
         let selected_nodes: BTreeSet<String> = self.state.selection.nodes.iter().cloned().collect();
         if selected_labels.is_empty() && selected_nodes.is_empty() {
             return false;
         }
+        let stroke_width = self.options.bond_stroke_world_pt().value();
         self.push_undo_snapshot();
-        let Some(entry) = self.state.document.editable_fragment_mut() else {
+        let Some(mut entry) = self.state.document.editable_fragment_mut() else {
             self.undo_stack.pop();
             return false;
         };
+        let object_translate = entry.object.transform.translate;
         let mut changed = false;
+        let mut changed_node_ids = Vec::new();
         for node in &mut entry.fragment.nodes {
             if !selected_labels.contains(&node.id) && !selected_nodes.contains(&node.id) {
                 continue;
             }
-            changed |= set_value_object_bool(&mut node.meta, "chemicalCheck", enabled);
-            if let Some(label) = &mut node.label {
-                changed |= set_value_object_bool(&mut label.meta, "chemicalCheck", enabled);
+            if node.label.is_some() {
+                changed |= set_node_label_interpret_chemically(node, enabled);
+                changed_node_ids.push(node.id.clone());
+            }
+            if write_legacy_chemical_check {
+                changed |= set_value_object_bool(&mut node.meta, "chemicalCheck", enabled);
+                if let Some(label) = &mut node.label {
+                    changed |= set_value_object_bool(&mut label.meta, "chemicalCheck", enabled);
+                }
             }
         }
         if !changed {
             self.undo_stack.pop();
             return false;
         }
+        for node_id in changed_node_ids {
+            refresh_label_recognition_for_node(entry.fragment, &node_id);
+        }
+        refresh_element_valence_recognition_for_all_nodes(entry.fragment);
+        refresh_implicit_hydrogens(entry.fragment);
+        refresh_attached_node_label_geometry_for_all_nodes(
+            entry.fragment,
+            object_translate,
+            stroke_width,
+        );
+        entry.update_bounds();
+        self.state.overlay.hover_endpoint = None;
+        self.state.overlay.hover_text_box = None;
+        true
+    }
+
+    pub fn set_implicit_hydrogen_count_for_selection(&mut self, count: Option<u8>) -> bool {
+        self.with_command(
+            EditorCommand::SetImplicitHydrogenCountForSelection { count },
+            |engine| engine.set_implicit_hydrogen_count_for_selection_untracked(count),
+        )
+    }
+
+    fn set_implicit_hydrogen_count_for_selection_untracked(&mut self, count: Option<u8>) -> bool {
+        let selected_labels: BTreeSet<String> =
+            self.state.selection.label_nodes.iter().cloned().collect();
+        let selected_nodes: BTreeSet<String> = self.state.selection.nodes.iter().cloned().collect();
+        if selected_labels.is_empty() && selected_nodes.is_empty() {
+            return false;
+        }
+        let stroke_width = self.options.bond_stroke_world_pt().value();
+        self.push_undo_snapshot();
+        let Some(mut entry) = self.state.document.editable_fragment_mut() else {
+            self.undo_stack.pop();
+            return false;
+        };
+        let object_translate = entry.object.transform.translate;
+        let mut changed = false;
+        for node in &mut entry.fragment.nodes {
+            if !selected_labels.contains(&node.id) && !selected_nodes.contains(&node.id) {
+                continue;
+            }
+            changed |= crate::set_node_user_num_hydrogens_override(node, count);
+        }
+        if !changed {
+            self.undo_stack.pop();
+            return false;
+        }
+        refresh_implicit_hydrogens(entry.fragment);
+        refresh_element_valence_recognition_for_all_nodes(entry.fragment);
+        refresh_attached_node_label_geometry_for_all_nodes(
+            entry.fragment,
+            object_translate,
+            stroke_width,
+        );
+        entry.update_bounds();
         self.state.overlay.hover_endpoint = None;
         self.state.overlay.hover_text_box = None;
         true
@@ -1739,6 +1815,45 @@ fn set_label_run_u32(target: &mut Option<u32>, value: u32) {
     *target = if value == 400 { None } else { Some(value) };
 }
 
+fn set_node_label_interpret_chemically(node: &mut Node, enabled: bool) -> bool {
+    let Some(label) = node.label.as_mut() else {
+        return false;
+    };
+    let mut changed = false;
+    changed |= set_json_object_field(&mut label.meta, "defaultChemical", Some(json!(enabled)));
+    let mut source_runs = label
+        .meta
+        .get("sourceRuns")
+        .cloned()
+        .and_then(|value| serde_json::from_value::<Vec<crate::LabelRun>>(value).ok())
+        .filter(|runs| !runs.is_empty())
+        .unwrap_or_else(|| {
+            let text = label
+                .source_text
+                .clone()
+                .unwrap_or_else(|| label.text.clone());
+            vec![crate::LabelRun {
+                text,
+                font_family: label.font_family.clone(),
+                font_size: label.font_size,
+                fill: label.fill.clone(),
+                font_weight: Some(400),
+                font_style: Some("normal".to_string()),
+                underline: Some(false),
+                script: Some("normal".to_string()),
+            }]
+        });
+    for run in &mut source_runs {
+        run.script = Some(if enabled { "chemical" } else { "normal" }.to_string());
+    }
+    changed |= set_json_object_field(&mut label.meta, "sourceRuns", Some(json!(source_runs)));
+    if !enabled {
+        changed |= set_json_object_field(&mut label.meta, "labelRecognition", None);
+        changed |= set_json_object_field(&mut node.meta, "labelRecognition", None);
+    }
+    changed
+}
+
 fn set_value_object_bool(value: &mut JsonValue, key: &str, enabled: bool) -> bool {
     if !value.is_object() {
         *value = json!({});
@@ -1751,6 +1866,27 @@ fn set_value_object_bool(value: &mut JsonValue, key: &str, enabled: bool) -> boo
     }
     object.insert(key.to_string(), json!(enabled));
     true
+}
+
+fn set_json_object_field(value: &mut JsonValue, key: &str, next: Option<JsonValue>) -> bool {
+    if next.is_some() && !value.is_object() {
+        *value = json!({});
+    }
+    let Some(object) = value.as_object_mut() else {
+        return false;
+    };
+    let changed = match next {
+        Some(next) if object.get(key) != Some(&next) => {
+            object.insert(key.to_string(), next);
+            true
+        }
+        Some(_) => false,
+        None => object.remove(key).is_some(),
+    };
+    if object.is_empty() {
+        *value = JsonValue::Null;
+    }
+    changed
 }
 
 fn merge_object_meta_string(meta: JsonValue, key: &str, value: &str) -> JsonValue {

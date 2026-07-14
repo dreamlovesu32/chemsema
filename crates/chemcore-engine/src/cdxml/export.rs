@@ -540,8 +540,8 @@ impl<'a> CdxmlDocumentWriter<'a> {
         if node.charge != 0 {
             attrs.push(("Charge", node.charge.to_string()));
         }
-        if node.num_hydrogens > 0 {
-            attrs.push(("NumHydrogens", node.num_hydrogens.to_string()));
+        if let Some(num_hydrogens) = cdxml_node_num_hydrogens_for_export(node) {
+            attrs.push(("NumHydrogens", num_hydrogens.to_string()));
         }
         attrs.push(("AS", "N".to_string()));
         if let Some(label) = node.label.as_ref().filter(|label| label.has_visible_text()) {
@@ -1826,6 +1826,20 @@ fn cdxml_node_label_interpret_chemically(label: &NodeLabel) -> bool {
         .unwrap_or_else(|| label.runs.clone())
         .iter()
         .any(|run| run.script.as_deref() == Some("chemical"))
+}
+
+fn cdxml_node_num_hydrogens_for_export(node: &Node) -> Option<u8> {
+    if let Some(value) = crate::node_user_num_hydrogens_override(node) {
+        return Some(value);
+    }
+    if let Some(value) = node
+        .meta
+        .pointer("/import/cdxml/numHydrogens")
+        .and_then(Value::as_u64)
+    {
+        return Some(value.min(u64::from(u8::MAX)) as u8);
+    }
+    (node.num_hydrogens > 0).then_some(node.num_hydrogens)
 }
 
 fn cdxml_label_line_starts(label: &NodeLabel) -> Option<String> {

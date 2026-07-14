@@ -60,9 +60,18 @@ invalid metadata 使用：
 {
   "kind": "functional-label",
   "status": "invalid",
+  "diagnostic": "uninterpretable-label",
   "label": "NotAGroup"
 }
 ```
+
+`diagnostic` 用于区分失败原因：
+
+- `invalid-valence`：价键 tokenizer 能读出化学 token，但连接数/价态不成立，
+  例如 `NMe4` 或反向写法 `TFAO`。
+- `uninterpretable-label`：不能被当前化学 tokenizer 解释，例如 `OXYZ`。
+
+invalid 只表示化学语义诊断；它不得改变 attached label 的显示分组、反写或锚点。
 
 ## 命名末端模板
 
@@ -89,6 +98,7 @@ invalid metadata 使用：
 | `Bn` | - | benzyl | `-CH2Ph` | `C` |
 | `Bz` | - | benzoyl | `-C(=O)Ph` | `C` |
 | `Ac` | - | acetyl | `-C(=O)CH3` | `C` |
+| `TFA` | - | trifluoroacetyl | `-C(=O)CF3` | `C` |
 | `Piv` | - | pivaloyl | `-C(=O)tBu` | `C` |
 | `CHO` | - | formyl | `-C(=O)H` | `C` |
 | `CN` | - | cyano | `-C#N` | `C` |
@@ -172,17 +182,31 @@ B(OH)2               -> boronic-acid style terminal fragment
 - 碱金属按 1 价，碱土金属按 2 价。
 - 过渡金属和若干金属标签作为 unconstrained valence 处理，主要用于
   chemical text 校验。
-- `B` 在 `BH3` 这类右侧氢补足场景可记录 `formalCharge: -1`。
-- `N` 在 `NH3` 这类右侧氢补足场景可记录 `formalCharge: +1`。
-- `O` 在 `OH2` / `OH3` 这类右侧氢补足场景可记录 `formalCharge: +1` /
-  `+2`。
+- 第二周期 `B`、`C`、`N`、`O`、`F` 不使用隐藏扩价或隐藏电荷兜底。
+  没有显式电荷证据时，`BH3`、`NH3`、`OH2` 这类一键末端标签应判
+  invalid 并显示诊断，不能静默写入 `formalCharge`。
 - `S` 根据局部书写约定优先识别 `SO2` 为两个 `S=O`，再考虑其他可行价态。
+
+带显式括号罗马氧化态的元素 label，例如 `Cu(II)` 或 `Fe(III)`，识别为
+chemical text label，不生成 functional-group expansion。source text 保持不变，
+但仍使用普通 attached-label 反写规则，因此右侧/右对齐的 `Cu(II)` 可见显示为
+`(II)Cu`。
+
+以金属元素 token 开头的 label 和试剂文本要保持 ChemDraw 式宽容。若化学 label
+以金属元素开头，ChemCore 将其保留为 recognized `chemical-text`，不能只因为普通
+有机 functional-group parser 无法展开就标 invalid。这覆盖 `Cu(NO3)2` 这类配合物
+或盐文本，同时仍不生成 expansion。非金属开头的未知串不能因为中间包含 `Y`、`Na`
+等金属符号就被洗成 recognized chemical text。
 
 以下模式当前不放宽：
 
 ```text
+BH3
 BCl3
+NH3
 NMe4
+OH2
+OH3
 OCl3
 OCl4
 ```
@@ -220,7 +244,7 @@ NCl  -> -N(Cl)-
 分组规则：
 
 - 含小写字母的命名缩写作为一组，例如 `Ph`、`Boc`、`iPr`、`tBu`。
-- `R`、`TMS`、`TBDMS`、`TBDPS` 作为一整个字母组。
+- `R`、`TFA`、`TMS`、`TBDMS`、`TBDPS` 作为一整个字母组。
 - 分组后的数字后缀保留在对应组内。
 - `TMS` 的连接点是 `Si`，只允许一个外部连接点。
 
@@ -228,9 +252,19 @@ NCl  -> -N(Cl)-
 
 ```text
 OTMS -> TMSO
+OTFA -> TFAO
+OTAA -> AATO
+OXYZ -> ZYXO
 ```
 
-其中 `TMS` 保持为一个整体字母组。
+其中 `TMS` 和 `TFA` 保持为一个整体字母组；`TAA`、`XYZ` 不是当前已知整体
+缩写，继续按大写 token 拆开。即使语义层把某个标签标为 invalid，显示层仍应
+按 tokenizer 分组反写，不能自动退回 whole-label。
+
+当前缩写表的扩展参考两类开源资料：RDKit 默认 abbreviation 列表作为保守绘图
+基线；Open Babel/OSRA `superatom.txt` 作为 left/right alias 和更多 superatom
+候选来源。新条目必须先有 ChemDraw probe、开源资料或门禁失败证据，再小批加入；
+不要一次性导入大表。
 
 `iPr`、`nBu`、`tBu` 这类以小写字母开头且后面包含大写字母的末端模板，
 使用 whole-label layout：选择和锚点把整个标签视作一个不可拆的结构标签。

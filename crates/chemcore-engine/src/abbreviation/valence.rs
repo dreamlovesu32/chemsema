@@ -64,6 +64,10 @@ pub(super) fn parse_chemical_text_label(label: &str) -> Option<AbbreviationRecog
     })
 }
 
+pub(super) fn label_has_chemical_tokens(label: &str) -> bool {
+    tokenize_valence_label(label).is_some_and(|tokens| !tokens.is_empty())
+}
+
 fn parse_valence_fragment_tokens(
     tokens: &[ValenceToken],
     root_used: u8,
@@ -404,14 +408,22 @@ fn tokenize_valence_label_inner(label: &str) -> Option<Vec<ValenceToken>> {
             return None;
         }
         if let Some((fragment, matched)) = match_valence_terminal_prefix(rest) {
-            tokens.push(ValenceToken {
-                label: canonical_label_for(matched, fragment.label),
-                kind: ValenceTokenKind::Terminal {
-                    fragment,
-                    matched: matched.to_string(),
-                },
-            });
-            index += matched.len();
+            let after_match = index + matched.len();
+            let (count, digit_len) = parse_decimal_prefix(&label[after_match..]);
+            let count = count.unwrap_or(1);
+            if count == 0 || count > 32 {
+                return None;
+            }
+            for _ in 0..count {
+                tokens.push(ValenceToken {
+                    label: canonical_label_for(matched, fragment.label),
+                    kind: ValenceTokenKind::Terminal {
+                        fragment,
+                        matched: matched.to_string(),
+                    },
+                });
+            }
+            index = after_match + digit_len;
             continue;
         }
         let (element, consumed) = parse_element_prefix(rest)?;
@@ -491,7 +503,7 @@ fn is_valence_terminal_fragment(fragment: &FragmentDef) -> bool {
         .label
         .chars()
         .any(|character| character.is_ascii_lowercase())
-        || matches!(fragment.label, "R" | "TMS" | "TBDMS" | "TBDPS")
+        || matches!(fragment.label, "R" | "TFA" | "TMS" | "TBDMS" | "TBDPS")
 }
 
 const SUPPORTED_VALENCE_ELEMENTS: &[&str] = &[
@@ -548,36 +560,10 @@ fn valence_options(
         "H" => vec![(1, None)],
         "Li" | "Na" | "K" | "Rb" | "Cs" | "Fr" => vec![(1, None)],
         "Be" | "Mg" | "Ca" | "Sr" | "Ba" | "Ra" => vec![(2, None)],
-        "B" => {
-            if following_hydrogen_count(tokens, index) >= 3 {
-                vec![(4, Some(-1)), (3, None)]
-            } else {
-                vec![(3, None)]
-            }
-        }
+        "B" => vec![(3, None)],
         "C" | "Si" => vec![(4, None)],
-        "N" => {
-            if following_atoms_are_all_hydrogen(tokens, index)
-                && following_hydrogen_count(tokens, index) >= 3
-            {
-                vec![(4, Some(1)), (3, None)]
-            } else {
-                vec![(3, None)]
-            }
-        }
-        "O" => {
-            if following_atoms_are_all_hydrogen(tokens, index)
-                && following_hydrogen_count(tokens, index) >= 3
-            {
-                vec![(4, Some(2)), (3, Some(1)), (2, None)]
-            } else if following_atoms_are_all_hydrogen(tokens, index)
-                && following_hydrogen_count(tokens, index) >= 2
-            {
-                vec![(3, Some(1)), (2, None)]
-            } else {
-                vec![(2, None)]
-            }
-        }
+        "N" => vec![(3, None)],
+        "O" => vec![(2, None)],
         "S" => {
             if next_two_oxygen_tokens(tokens, index).is_some_and(|numeric| numeric) {
                 vec![(6, None), (4, None), (2, None)]
@@ -593,22 +579,6 @@ fn valence_options(
     };
     options.retain(|(valence, _)| *valence >= already_used);
     options
-}
-
-fn following_hydrogen_count(tokens: &[ValenceToken], index: usize) -> usize {
-    tokens
-        .iter()
-        .skip(index + 1)
-        .take_while(
-            |token| matches!(&token.kind, ValenceTokenKind::Atom { element, .. } if element == "H"),
-        )
-        .count()
-}
-
-fn following_atoms_are_all_hydrogen(tokens: &[ValenceToken], index: usize) -> bool {
-    tokens.iter().skip(index + 1).all(
-        |token| matches!(&token.kind, ValenceTokenKind::Atom { element, .. } if element == "H"),
-    )
 }
 
 fn next_two_oxygen_tokens(tokens: &[ValenceToken], index: usize) -> Option<bool> {

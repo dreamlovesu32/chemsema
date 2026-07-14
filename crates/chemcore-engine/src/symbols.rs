@@ -9,6 +9,7 @@ const SYMBOL_BASE_RADICAL_META: &str = "symbolBaseRadicalCount";
 const RADICAL_COUNT_META: &str = "radicalCount";
 const CHARGE_SYMBOL_INVALID_META: &str = "chargeSymbolInvalid";
 const EFFECTIVE_NUM_HYDROGENS_META: &str = "effectiveNumHydrogens";
+const USER_NUM_HYDROGENS_OVERRIDE_META: &str = "numHydrogensOverride";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CdxmlSymbolStyle {
@@ -121,10 +122,27 @@ pub fn node_effective_num_hydrogens(node: &Node) -> u8 {
 }
 
 pub fn node_effective_num_hydrogens_override(node: &Node) -> Option<u8> {
+    node_user_num_hydrogens_override(node).or_else(|| {
+        node.meta
+            .get(EFFECTIVE_NUM_HYDROGENS_META)
+            .and_then(Value::as_u64)
+            .map(|value| value.min(u64::from(u8::MAX)) as u8)
+    })
+}
+
+pub fn node_user_num_hydrogens_override(node: &Node) -> Option<u8> {
     node.meta
-        .get(EFFECTIVE_NUM_HYDROGENS_META)
+        .get(USER_NUM_HYDROGENS_OVERRIDE_META)
         .and_then(Value::as_u64)
         .map(|value| value.min(u64::from(u8::MAX)) as u8)
+}
+
+pub fn set_node_user_num_hydrogens_override(node: &mut Node, count: Option<u8>) -> bool {
+    set_node_meta_value(
+        node,
+        USER_NUM_HYDROGENS_OVERRIDE_META,
+        count.map(|count| json!(count)),
+    )
 }
 
 pub fn node_has_charge_symbol_invalid(node: &Node) -> bool {
@@ -511,12 +529,8 @@ fn typical_symbol_valence(
         7 => {
             if charge == 1 {
                 Some(4)
-            } else if charge < 0 {
-                Some(3)
-            } else if charge == 2 || radical_count + connection_order + charge.abs() <= 3 {
-                Some(3)
             } else {
-                Some(5)
+                Some(3)
             }
         }
         8 => Some(if charge >= 1 { 3 } else { 2 }),
@@ -796,5 +810,21 @@ pub fn cdxml_symbol_anchor_height(kind: &str) -> f64 {
     match kind {
         "radical-cation" | "radical-anion" | "lone-pair" => 0.0,
         _ => 7.5,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn second_period_symbol_valence_does_not_expand_octet() {
+        assert_eq!(typical_symbol_valence(7, 0, 4, 0), Some(3));
+        assert_eq!(supported_hetero_hydrogens(7, 0, 4, 0), 0);
+        assert_eq!(typical_symbol_valence(7, 1, 4, 0), Some(4));
+        assert_eq!(typical_symbol_valence(5, 0, 4, 0), Some(3));
+        assert_eq!(typical_symbol_valence(5, -1, 4, 0), Some(4));
+        assert_eq!(typical_symbol_valence(8, 0, 3, 0), Some(2));
+        assert_eq!(typical_symbol_valence(8, 1, 3, 0), Some(3));
     }
 }

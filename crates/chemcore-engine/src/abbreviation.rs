@@ -186,6 +186,7 @@ const TERMINAL_FRAGMENTS: &[FragmentDef] = &[
     terminal("Bn", &[], "benzyl", "-CH2Ph", "C"),
     terminal("Bz", &[], "benzoyl", "-C(=O)Ph", "C"),
     terminal("Ac", &[], "acetyl", "-C(=O)CH3", "C"),
+    terminal("TFA", &[], "trifluoroacetyl", "-C(=O)CF3", "C"),
     terminal("Piv", &[], "pivaloyl", "-C(=O)tBu", "C"),
     terminal("CHO", &[], "formyl", "-C(=O)H", "C"),
     terminal("CN", &[], "cyano", "-C#N", "C"),
@@ -361,13 +362,19 @@ fn fragment_is_label_group_abbreviation(fragment: FragmentDef) -> bool {
         .label
         .chars()
         .any(|character| character.is_ascii_lowercase())
-        || matches!(fragment.label, "R" | "TMS" | "TBDMS" | "TBDPS")
+        || matches!(fragment.label, "R" | "TFA" | "TMS" | "TBDMS" | "TBDPS")
 }
 
 pub fn invalid_abbreviation_meta(label: &str) -> Value {
+    let diagnostic = if valence::label_has_chemical_tokens(label.trim()) {
+        "invalid-valence"
+    } else {
+        "uninterpretable-label"
+    };
     json!({
         "kind": "functional-label",
         "status": "invalid",
+        "diagnostic": diagnostic,
         "label": label.trim(),
     })
 }

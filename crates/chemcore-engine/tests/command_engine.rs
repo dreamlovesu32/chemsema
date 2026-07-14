@@ -741,6 +741,129 @@ fn direct_node_label_runs_can_preserve_user_edited_hydrogen_source_text() {
 }
 
 #[test]
+fn interpret_chemically_selection_toggle_updates_label_semantics() {
+    let mut engine = Engine::new();
+    let add = execute(
+        &mut engine,
+        json!({
+            "type": "add-bond",
+            "begin": { "x": 100.0, "y": 100.0 },
+            "end": { "x": 148.0, "y": 100.0 },
+            "order": 1,
+            "variant": "single"
+        }),
+    );
+    let node_id = created_node_id(&add, 1);
+    execute(
+        &mut engine,
+        json!({
+            "type": "set-node-label-runs",
+            "nodeId": node_id,
+            "runs": [
+                { "text": "NMe4", "script": "chemical" }
+            ]
+        }),
+    );
+    execute(
+        &mut engine,
+        json!({
+            "type": "select-targets",
+            "targets": { "nodes": [node_id] }
+        }),
+    );
+
+    let update = execute(
+        &mut engine,
+        json!({
+            "type": "set-interpret-chemically-for-selection",
+            "enabled": false
+        }),
+    );
+
+    assert_eq!(update["changed"], true);
+    let document = document_value(&engine);
+    let node = find_node(&document, &node_id);
+    let label = &node["label"];
+    assert_eq!(label["meta"]["defaultChemical"], json!(false));
+    assert_eq!(label["meta"]["sourceRuns"][0]["script"], "normal");
+    assert_eq!(label["meta"].get("labelRecognition"), None);
+    assert_eq!(node["meta"].get("labelRecognition"), None);
+    assert!(
+        engine
+            .document_cdxml()
+            .contains("InterpretChemically=\"no\""),
+        "nonchemical labels should export as InterpretChemically=no"
+    );
+}
+
+#[test]
+fn implicit_hydrogen_count_selection_override_can_hide_and_restore_auto_label() {
+    let mut engine = Engine::new();
+    let add = execute(
+        &mut engine,
+        json!({
+            "type": "add-bond",
+            "begin": { "x": 100.0, "y": 100.0 },
+            "end": { "x": 148.0, "y": 100.0 },
+            "order": 1,
+            "variant": "single"
+        }),
+    );
+    let node_id = created_node_id(&add, 1);
+    execute(
+        &mut engine,
+        json!({
+            "type": "set-node-label-runs",
+            "nodeId": node_id,
+            "runs": [
+                { "text": "N", "script": "chemical" }
+            ]
+        }),
+    );
+    execute(
+        &mut engine,
+        json!({
+            "type": "select-targets",
+            "targets": { "nodes": [node_id] }
+        }),
+    );
+
+    let hidden = execute(
+        &mut engine,
+        json!({
+            "type": "set-implicit-hydrogen-count-for-selection",
+            "count": 0
+        }),
+    );
+
+    assert_eq!(hidden["changed"], true);
+    let document = document_value(&engine);
+    let node = find_node(&document, &node_id);
+    assert_eq!(node["numHydrogens"], json!(0));
+    assert_eq!(node["meta"]["numHydrogensOverride"], json!(0));
+    assert_eq!(node["label"]["text"], "N");
+    assert!(
+        engine.document_cdxml().contains("NumHydrogens=\"0\""),
+        "explicit hidden hydrogens must survive CDXML export"
+    );
+
+    let auto = execute(
+        &mut engine,
+        json!({
+            "type": "set-implicit-hydrogen-count-for-selection",
+            "count": null
+        }),
+    );
+
+    assert_eq!(auto["changed"], true);
+    let document = document_value(&engine);
+    let node = find_node(&document, &node_id);
+    assert_eq!(node["numHydrogens"], json!(2));
+    assert_eq!(node["meta"].get("numHydrogensOverride"), None);
+    assert_eq!(node["label"]["text"], "NH2");
+}
+
+#[test]
 fn direct_node_label_runs_can_preserve_measured_endpoint_box() {
     let mut engine = Engine::new();
     let add = execute(

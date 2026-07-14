@@ -149,7 +149,8 @@ impl Engine {
             }
             items.extend([
                 separator(),
-                json!({"label": "Chemical Check", "command": "chemical-check", "value": if self.selected_chemical_check_enabled() { "off" } else { "on" }, "checked": self.selected_chemical_check_enabled()}),
+                json!({"label": "Interpret Chemically", "command": "interpret-chemically", "value": if self.selected_interpret_chemically_enabled() { "off" } else { "on" }, "checked": self.selected_interpret_chemically_enabled()}),
+                self.implicit_hydrogen_menu(),
                 separator(),
                 self.color_menu(),
                 self.object_settings_item(),
@@ -354,7 +355,7 @@ impl Engine {
             })
     }
 
-    fn selected_chemical_check_enabled(&self) -> bool {
+    fn selected_interpret_chemically_enabled(&self) -> bool {
         let selected: BTreeSet<&str> = self
             .state
             .selection
@@ -373,15 +374,25 @@ impl Engine {
                     .iter()
                     .filter(|node| selected.contains(node.id.as_str()))
                     .all(|node| {
-                        node.meta.get("chemicalCheck").and_then(JsonValue::as_bool) != Some(false)
-                            && node
-                                .label
-                                .as_ref()
-                                .and_then(|label| label.meta.get("chemicalCheck"))
-                                .and_then(JsonValue::as_bool)
-                                != Some(false)
+                        node.label
+                            .as_ref()
+                            .and_then(|label| label.meta.get("defaultChemical"))
+                            .and_then(JsonValue::as_bool)
+                            .unwrap_or(true)
                     })
             })
+    }
+
+    fn selected_implicit_hydrogen_override(&self) -> Option<Option<u8>> {
+        let nodes = self.selected_label_nodes();
+        if nodes.is_empty() {
+            return None;
+        }
+        let mut values = nodes
+            .iter()
+            .map(|node| crate::node_user_num_hydrogens_override(node));
+        let first = values.next()?;
+        values.all(|value| value == first).then_some(first)
     }
 
     fn color_menu(&self) -> JsonValue {
@@ -437,6 +448,27 @@ impl Engine {
 
     fn text_alignment_menu(&self) -> JsonValue {
         text_alignment_menu(self.selected_uniform_text_align().as_deref())
+    }
+
+    fn implicit_hydrogen_menu(&self) -> JsonValue {
+        let override_count = self.selected_implicit_hydrogen_override().flatten();
+        json!({
+            "label": "Implicit Hydrogens",
+            "items": [
+                {
+                    "label": "Automatic",
+                    "command": "implicit-hydrogen-count",
+                    "value": "auto",
+                    "checked": self.selected_implicit_hydrogen_override() == Some(None)
+                },
+                {
+                    "label": "Hide",
+                    "command": "implicit-hydrogen-count",
+                    "value": "0",
+                    "checked": override_count == Some(0)
+                }
+            ]
+        })
     }
 
     fn object_settings_item(&self) -> JsonValue {

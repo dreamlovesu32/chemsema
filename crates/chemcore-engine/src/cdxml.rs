@@ -1148,6 +1148,7 @@ fn normalize_node(
             .as_ref()
             .is_some_and(imported_cdxml_bullet_carbon_node_label);
     let radical_count = cdxml_radical_count(node.attr("Radical"));
+    let explicit_num_hydrogens = parse_u8(node.attr("NumHydrogens"));
     let mut meta = json!({
         "import": {
             "cdxml": {
@@ -1155,6 +1156,7 @@ fn normalize_node(
                 "nodeType": empty_as_null(node.attr("NodeType")),
                 "labelDisplay": empty_as_null(node.attr("LabelDisplay")),
                 "element": node.attr("Element"),
+                "numHydrogens": explicit_num_hydrogens,
                 "radical": empty_as_null(node.attr("Radical")),
             }
         }
@@ -1171,7 +1173,7 @@ fn normalize_node(
             round2(position[1] - origin[1]),
         ],
         charge: parse_i32(node.attr("Charge")).unwrap_or(0),
-        num_hydrogens: parse_u8(node.attr("NumHydrogens")).unwrap_or(0),
+        num_hydrogens: explicit_num_hydrogens.unwrap_or(0),
         is_external_connection_point: node_type == "ExternalConnectionPoint",
         is_placeholder: matches!(
             node_type,

@@ -390,6 +390,9 @@ mod tests {
         assert_eq!(split_label_groups("CuF3Ph2"), vec!["Cu", "F3", "Ph2"]);
         assert_eq!(split_label_groups("OTMS"), vec!["O", "TMS"]);
         assert_eq!(split_label_groups("OTBDMS"), vec!["O", "TBDMS"]);
+        assert_eq!(split_label_groups("OTFA"), vec!["O", "TFA"]);
+        assert_eq!(split_label_groups("OTAA"), vec!["O", "T", "A", "A"]);
+        assert_eq!(split_label_groups("OXYZ"), vec!["O", "X", "Y", "Z"]);
         assert_eq!(split_label_groups("OFMOC"), vec!["O", "FMOC"]);
         assert_eq!(split_label_groups("OCH3"), vec!["O", "CH3"]);
         assert_eq!(split_label_groups("TMSOPh"), vec!["TMS", "O", "Ph"]);
@@ -403,6 +406,9 @@ mod tests {
         assert_eq!(reverse_label_groups("CuF3Ph2"), "Ph2F3Cu");
         assert_eq!(reverse_label_groups("OTMS"), "TMSO");
         assert_eq!(reverse_label_groups("OTBDMS"), "TBDMSO");
+        assert_eq!(reverse_label_groups("OTFA"), "TFAO");
+        assert_eq!(reverse_label_groups("OTAA"), "AATO");
+        assert_eq!(reverse_label_groups("OXYZ"), "ZYXO");
         assert_eq!(reverse_label_groups("OFMOC"), "FMOCO");
         assert_eq!(reverse_label_groups("OCH3"), "CH3O");
         assert_eq!(reverse_label_groups("TMSOPh"), "PhOTMS");

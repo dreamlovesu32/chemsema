@@ -33,6 +33,7 @@ pub(crate) use self::text_edit::{
     refresh_attached_node_label_geometry_for_all_nodes_with_profile,
     refresh_attached_node_label_geometry_for_node,
     refresh_attached_node_label_geometry_for_node_without_implicit_hydrogen_refresh,
+    refresh_implicit_hydrogens, refresh_label_recognition_for_node,
 };
 pub use self::text_edit::{
     TextEditLayout, TextEditLayoutCaret, TextEditLayoutCaretOffset, TextEditLayoutLine,
@@ -2432,6 +2433,12 @@ impl Engine {
                 }
                 self.apply_text_style_to_selection(&command, &value)
             }
+            EditorCommand::SetInterpretChemicallyForSelection { enabled } => {
+                self.set_interpret_chemically_for_selection(enabled)
+            }
+            EditorCommand::SetImplicitHydrogenCountForSelection { count } => {
+                self.set_implicit_hydrogen_count_for_selection(count)
+            }
             EditorCommand::SetChemicalCheckForSelection { enabled } => {
                 self.set_chemical_check_for_selection(enabled)
             }
@@ -4555,6 +4562,12 @@ fn editor_command_type_name(command: &EditorCommand) -> &'static str {
         EditorCommand::ApplyLineStyle { .. } => "apply-line-style",
         EditorCommand::ApplyBondStyle { .. } => "apply-bond-style",
         EditorCommand::ApplyTextStyle { .. } => "apply-text-style",
+        EditorCommand::SetInterpretChemicallyForSelection { .. } => {
+            "set-interpret-chemically-for-selection"
+        }
+        EditorCommand::SetImplicitHydrogenCountForSelection { .. } => {
+            "set-implicit-hydrogen-count-for-selection"
+        }
         EditorCommand::SetChemicalCheckForSelection { .. } => "set-chemical-check-for-selection",
         EditorCommand::ExpandLabelsInSelection => "expand-labels-in-selection",
         EditorCommand::CenterSelectionOnPage => "center-selection-on-page",

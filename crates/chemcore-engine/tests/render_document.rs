@@ -6517,6 +6517,81 @@ fn parse_cdxml_right_aligned_chemical_node_label_reverses_display_groups() {
 }
 
 #[test]
+fn parse_cdxml_right_aligned_labels_tokenize_display_independent_of_validity() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >
+<CDXML BondLength="14.40" LineWidth="0.99" BoldWidth="2.01" HashSpacing="2.49" BondSpacing="18" LabelSize="10">
+  <page id="p1" BoundingBox="0 0 80 84">
+    <fragment id="f1" BoundingBox="0 0 80 84">
+      <n id="tfa" p="30 12" Element="6">
+        <t p="30.00 15.90" BoundingBox="-2.00 7.56 30.00 15.90" LabelJustification="Right" Justification="Right" LabelAlignment="Right">
+          <s font="3" size="10" color="0" face="96">OTFA</s>
+        </t>
+      </n>
+      <n id="tfa2" p="48 12"/>
+      <b id="btfa" B="tfa" E="tfa2"/>
+      <n id="xyz" p="30 40" Element="6">
+        <t p="30.00 43.90" BoundingBox="-2.00 35.56 30.00 43.90" LabelJustification="Right" Justification="Right" LabelAlignment="Right">
+          <s font="3" size="10" color="0" face="96">OXYZ</s>
+        </t>
+      </n>
+      <n id="xyz2" p="48 40"/>
+      <b id="bxyz" B="xyz" E="xyz2"/>
+      <n id="nme" p="30 68" Element="6">
+        <t p="30.00 71.90" BoundingBox="-2.00 63.56 30.00 71.90" LabelJustification="Right" Justification="Right" LabelAlignment="Right">
+          <s font="3" size="10" color="0" face="96">NMe4</s>
+        </t>
+      </n>
+      <n id="nme2" p="48 68"/>
+      <b id="bnme" B="nme" E="nme2"/>
+    </fragment>
+  </page>
+</CDXML>"#;
+    let document = parse_cdxml_document(cdxml, Some("right aligned display tokens"))
+        .expect("cdxml should parse");
+    let label_for = |node_id: &str| {
+        document
+            .resources
+            .values()
+            .filter_map(|resource| resource.data.as_fragment())
+            .flat_map(|fragment| fragment.nodes.iter())
+            .find(|node| node.id == node_id)
+            .and_then(|node| node.label.as_ref())
+            .unwrap_or_else(|| panic!("{node_id} label should import"))
+    };
+
+    let tfa = label_for("tfa");
+    assert_eq!(tfa.source_text.as_deref(), Some("OTFA"));
+    assert_eq!(tfa.text, "TFAO");
+    assert_eq!(
+        tfa.meta
+            .pointer("/labelRecognition/status")
+            .and_then(serde_json::Value::as_str),
+        Some("recognized")
+    );
+
+    let xyz = label_for("xyz");
+    assert_eq!(xyz.source_text.as_deref(), Some("OXYZ"));
+    assert_eq!(xyz.text, "ZYXO");
+    assert_eq!(
+        xyz.meta
+            .pointer("/labelRecognition/diagnostic")
+            .and_then(serde_json::Value::as_str),
+        Some("uninterpretable-label")
+    );
+
+    let nme = label_for("nme");
+    assert_eq!(nme.source_text.as_deref(), Some("NMe4"));
+    assert_eq!(nme.text, "Me4N");
+    assert_eq!(
+        nme.meta
+            .pointer("/labelRecognition/diagnostic")
+            .and_then(serde_json::Value::as_str),
+        Some("invalid-valence")
+    );
+}
+
+#[test]
 fn parse_cdxml_normal_face_attached_label_uses_group_layout() {
     let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >
@@ -6728,6 +6803,114 @@ fn parse_cdxml_centered_multichar_label_uses_internal_center_anchor() {
         label.meta.pointer("/import/cdxml/labelDisplay"),
         Some(&json!("Center"))
     );
+}
+
+#[test]
+fn parse_cdxml_right_aligned_metal_oxidation_label_reverses_visible_order() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >
+<CDXML BondLength="14.40" LineWidth="0.60" BoldWidth="2.00" HashSpacing="2.50" BondSpacing="18" LabelSize="10">
+  <page id="p1" BoundingBox="0 0 90 60">
+    <fragment id="f1" BoundingBox="0 0 90 60">
+      <n id="cu" p="40 24" Element="29" NumHydrogens="0">
+        <t p="42.00 27.90" BoundingBox="16.00 16.40 42.00 27.90" LabelAlignment="Right" LabelJustification="Unspecified">
+          <s font="3" size="10" color="0" face="96">Cu(II)</s>
+        </t>
+      </n>
+      <n id="n1" p="58 12" Element="7"/>
+      <n id="n2" p="58 24" Element="7"/>
+      <n id="n3" p="58 36" Element="7"/>
+      <b id="b1" B="cu" E="n1"/>
+      <b id="b2" B="cu" E="n2"/>
+      <b id="b3" B="cu" E="n3"/>
+    </fragment>
+  </page>
+</CDXML>"#;
+    let document =
+        parse_cdxml_document(cdxml, Some("metal oxidation label")).expect("cdxml should parse");
+    let fragment = document
+        .resources
+        .values()
+        .find_map(|resource| resource.data.as_fragment())
+        .expect("fragment should import");
+    let copper = fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == "cu")
+        .expect("copper node should import");
+    let label = copper.label.as_ref().expect("Cu(II) label should import");
+
+    assert_eq!(label.source_text.as_deref(), Some("Cu(II)"));
+    assert_eq!(label.text, "(II)Cu");
+    assert_eq!(
+        copper
+            .meta
+            .pointer("/labelRecognition/status")
+            .and_then(serde_json::Value::as_str),
+        Some("recognized")
+    );
+    assert_eq!(
+        copper
+            .meta
+            .pointer("/labelRecognition/source")
+            .and_then(serde_json::Value::as_str),
+        Some("element-oxidation-state-label")
+    );
+    assert_eq!(copper.num_hydrogens, 0);
+}
+
+#[test]
+fn parse_cdxml_metal_containing_chemical_label_does_not_mark_invalid() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >
+<CDXML BondLength="14.40" LineWidth="0.60" BoldWidth="2.00" HashSpacing="2.50" BondSpacing="18" LabelSize="10">
+  <page id="p1" BoundingBox="0 0 80 40">
+    <fragment id="f1" BoundingBox="0 0 80 40">
+      <n id="cu" p="30 20" Element="29" NumHydrogens="0">
+        <t p="30.00 23.90" BoundingBox="30.00 12.40 76.00 23.90" LabelAlignment="Left" LabelJustification="Left">
+          <s font="3" size="10" color="0" face="96">Cu(NO3)2</s>
+        </t>
+      </n>
+      <n id="n1" p="54 20" Element="7"/>
+      <b id="b1" B="cu" E="n1"/>
+    </fragment>
+  </page>
+</CDXML>"#;
+    let document =
+        parse_cdxml_document(cdxml, Some("metal salt label")).expect("cdxml should parse");
+    let fragment = document
+        .resources
+        .values()
+        .find_map(|resource| resource.data.as_fragment())
+        .expect("fragment should import");
+    let copper = fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == "cu")
+        .expect("copper node should import");
+
+    assert_eq!(
+        copper
+            .meta
+            .pointer("/labelRecognition/status")
+            .and_then(serde_json::Value::as_str),
+        Some("recognized")
+    );
+    assert_eq!(
+        copper
+            .meta
+            .pointer("/labelRecognition/source")
+            .and_then(serde_json::Value::as_str),
+        Some("metal-containing-chemical-text")
+    );
+    assert_eq!(
+        copper
+            .meta
+            .pointer("/labelRecognition/groupKind")
+            .and_then(serde_json::Value::as_str),
+        Some("chemical-text")
+    );
+    assert!(copper.meta.pointer("/labelRecognition/expansion").is_none());
 }
 
 #[test]
@@ -6995,6 +7178,241 @@ fn parse_cdxml_node_labels_use_internal_attached_layout() {
     assert_eq!(
         reimported_label.layout.as_deref(),
         Some("attached-group-above")
+    );
+}
+
+#[test]
+fn parse_cdxml_preserves_explicit_zero_hydrogens_on_imported_nitrogen() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML BondLength="14.40" LineWidth="0.60" BoldWidth="2" HashSpacing="2.50" LabelSize="10">
+  <page id="1">
+    <fragment id="2" BoundingBox="0 0 80 40">
+      <n id="1" p="20 20"/>
+      <n id="2" p="40 20" Element="7" NumHydrogens="0">
+        <t id="20" p="36 24" BoundingBox="36 16 44 25" LabelAlignment="Left" LabelJustification="Left">
+          <s font="3" size="10" face="96" color="0">N</s>
+        </t>
+      </n>
+      <n id="3" p="60 20"/>
+      <b id="4" B="1" E="2"/>
+      <b id="5" B="2" E="3"/>
+    </fragment>
+  </page>
+</CDXML>"##;
+    let document = parse_cdxml_document(cdxml, Some("explicit h0")).expect("cdxml should parse");
+    let fragment = document
+        .resources
+        .values()
+        .find_map(|resource| resource.data.as_fragment())
+        .expect("import should create molecule fragment resource");
+    let nitrogen = fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == "2")
+        .expect("nitrogen node should import");
+
+    assert_eq!(nitrogen.num_hydrogens, 0);
+    assert_eq!(
+        nitrogen
+            .meta
+            .pointer("/import/cdxml/numHydrogens")
+            .and_then(|value| value.as_u64()),
+        Some(0)
+    );
+    assert_eq!(
+        nitrogen
+            .meta
+            .get("labelRecognition")
+            .and_then(|meta| meta.get("status"))
+            .and_then(|status| status.as_str()),
+        None
+    );
+    assert_eq!(
+        nitrogen.label.as_ref().map(|label| label.text.as_str()),
+        Some("N")
+    );
+}
+
+#[test]
+fn neutral_second_period_nitrogen_does_not_use_five_valence_to_add_hydrogen() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML BondLength="14.40" LineWidth="0.60" BoldWidth="2" HashSpacing="2.50" LabelSize="10">
+  <page id="1">
+    <fragment id="2" BoundingBox="0 0 90 60">
+      <n id="1" p="20 20"/>
+      <n id="2" p="40 20" Element="7">
+        <t id="20" p="36 24" BoundingBox="36 16 44 25" LabelAlignment="Left" LabelJustification="Left">
+          <s font="3" size="10" face="96" color="0">N</s>
+        </t>
+      </n>
+      <n id="3" p="60 20"/>
+      <n id="4" p="40 40"/>
+      <b id="5" B="1" E="2" Order="2"/>
+      <b id="6" B="2" E="3"/>
+      <b id="7" B="2" E="4"/>
+    </fragment>
+  </page>
+</CDXML>"##;
+    let document =
+        parse_cdxml_document(cdxml, Some("neutral tetravalent n")).expect("cdxml should parse");
+    let fragment = document
+        .resources
+        .values()
+        .find_map(|resource| resource.data.as_fragment())
+        .expect("import should create molecule fragment resource");
+    let nitrogen = fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == "2")
+        .expect("nitrogen node should import");
+
+    assert_eq!(nitrogen.num_hydrogens, 0);
+    assert_eq!(
+        nitrogen
+            .meta
+            .get("labelRecognition")
+            .and_then(|meta| meta.get("status"))
+            .and_then(|status| status.as_str()),
+        Some("invalid")
+    );
+}
+
+#[test]
+fn neutral_second_period_boron_four_connection_label_is_invalid() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML BondLength="14.40" LineWidth="0.60" BoldWidth="2" HashSpacing="2.50" LabelSize="10">
+  <page id="1">
+    <fragment id="2" BoundingBox="0 0 100 80">
+      <n id="1" p="20 40"/>
+      <n id="2" p="40 40" Element="5">
+        <t id="20" p="36 44" BoundingBox="36 34 44 45" LabelAlignment="Left" LabelJustification="Left">
+          <s font="3" size="10" face="96" color="0">B</s>
+        </t>
+      </n>
+      <n id="3" p="60 40"/>
+      <n id="4" p="40 20"/>
+      <n id="5" p="40 60"/>
+      <b id="6" B="1" E="2"/>
+      <b id="7" B="2" E="3"/>
+      <b id="8" B="2" E="4"/>
+      <b id="9" B="2" E="5"/>
+    </fragment>
+  </page>
+</CDXML>"##;
+    let document =
+        parse_cdxml_document(cdxml, Some("neutral tetravalent b")).expect("cdxml should parse");
+    let fragment = document
+        .resources
+        .values()
+        .find_map(|resource| resource.data.as_fragment())
+        .expect("import should create molecule fragment resource");
+    let boron = fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == "2")
+        .expect("boron node should import");
+
+    assert_eq!(
+        boron
+            .meta
+            .get("labelRecognition")
+            .and_then(|meta| meta.get("status"))
+            .and_then(|status| status.as_str()),
+        Some("invalid")
+    );
+}
+
+#[test]
+fn second_period_carbon_label_five_connection_is_invalid() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML BondLength="14.40" LineWidth="0.60" BoldWidth="2" HashSpacing="2.50" LabelSize="10">
+  <page id="1">
+    <fragment id="2" BoundingBox="0 0 120 80">
+      <n id="1" p="20 40"/>
+      <n id="2" p="50 40" Element="6">
+        <t id="20" p="46 44" BoundingBox="46 34 54 45" LabelAlignment="Left" LabelJustification="Left">
+          <s font="3" size="10" face="96" color="0">C</s>
+        </t>
+      </n>
+      <n id="3" p="80 40"/>
+      <n id="4" p="50 15"/>
+      <n id="5" p="50 65"/>
+      <n id="6" p="70 60"/>
+      <b id="7" B="1" E="2"/>
+      <b id="8" B="2" E="3"/>
+      <b id="9" B="2" E="4"/>
+      <b id="10" B="2" E="5"/>
+      <b id="11" B="2" E="6"/>
+    </fragment>
+  </page>
+</CDXML>"##;
+    let document = parse_cdxml_document(cdxml, Some("pentavalent c")).expect("cdxml should parse");
+    let fragment = document
+        .resources
+        .values()
+        .find_map(|resource| resource.data.as_fragment())
+        .expect("import should create molecule fragment resource");
+    let carbon = fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == "2")
+        .expect("carbon node should import");
+
+    assert_eq!(
+        carbon
+            .meta
+            .get("labelRecognition")
+            .and_then(|meta| meta.get("status"))
+            .and_then(|status| status.as_str()),
+        Some("invalid")
+    );
+}
+
+#[test]
+fn metal_coordination_does_not_create_implicit_hydrogen_on_pyridine_nitrogen() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML BondLength="14.40" LineWidth="0.60" BoldWidth="2" HashSpacing="2.50" LabelSize="10">
+  <page id="1">
+    <fragment id="2" BoundingBox="0 0 110 60">
+      <n id="1" p="20 20"/>
+      <n id="2" p="40 20" Element="7">
+        <t id="20" p="36 24" BoundingBox="36 16 44 25" LabelAlignment="Left" LabelJustification="Left">
+          <s font="3" size="10" face="96" color="0">N</s>
+        </t>
+      </n>
+      <n id="3" p="60 20"/>
+      <n id="4" p="40 40" Element="29">
+        <t id="21" p="38 44" BoundingBox="38 34 50 45" LabelAlignment="Center" LabelJustification="Center">
+          <s font="3" size="10" face="96" color="0">Cu</s>
+        </t>
+      </n>
+      <b id="5" B="1" E="2" Order="2"/>
+      <b id="6" B="2" E="3"/>
+      <b id="7" B="2" E="4"/>
+    </fragment>
+  </page>
+</CDXML>"##;
+    let document =
+        parse_cdxml_document(cdxml, Some("coordinated pyridine n")).expect("cdxml should parse");
+    let fragment = document
+        .resources
+        .values()
+        .find_map(|resource| resource.data.as_fragment())
+        .expect("import should create molecule fragment resource");
+    let nitrogen = fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == "2")
+        .expect("nitrogen node should import");
+
+    assert_eq!(nitrogen.num_hydrogens, 0);
+    assert_eq!(
+        nitrogen
+            .meta
+            .get("labelRecognition")
+            .and_then(|meta| meta.get("status"))
+            .and_then(|status| status.as_str()),
+        None
     );
 }
 

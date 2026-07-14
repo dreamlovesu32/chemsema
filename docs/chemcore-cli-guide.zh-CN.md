@@ -813,7 +813,46 @@ triple
 `true` 时，ChemCore 会把源文本视为用户/导入文档明确保留的标签；即使
 当前键级推导出的隐式氢数量通常会把它刷新成 `NH`，也会继续保留源文本。
 
-### 5.8 设置原子电荷
+### 5.8 设置原子标签是否按化学解释
+
+```json
+{
+  "type": "select-targets",
+  "targets": { "nodes": ["node_1"] }
+}
+```
+
+```json
+{
+  "type": "set-interpret-chemically-for-selection",
+  "enabled": false
+}
+```
+
+这对应 ChemDraw 风格的 `Interpret Chemically`。关闭后，ChemCore 会用
+`defaultChemical:false` 保留普通文本，把 label source runs 改成 normal，
+并清除化学识别诊断。它不是隐式氢显示开关。
+
+### 5.9 覆盖隐式氢数量
+
+```json
+{
+  "type": "select-targets",
+  "targets": { "nodes": ["node_1"] }
+}
+```
+
+```json
+{
+  "type": "set-implicit-hydrogen-count-for-selection",
+  "count": 0
+}
+```
+
+使用 `count:0` 可以隐藏自动生成的氢，同时保留原子继续按化学解释。使用
+`count:null` 可以让选中节点回到按价态自动推导隐式氢。
+
+### 5.10 设置原子电荷
 
 ```json
 {
@@ -827,7 +866,7 @@ triple
 可见标签例如 `NH2` 在恢复出的键级下让氮达到 4 价，因此应写入正电荷。
 ChemCore 会在更新电荷后刷新隐式氢、标签识别和附着标签几何。
 
-### 5.9 修改原子标签样式
+### 5.11 修改原子标签样式
 
 ```json
 {

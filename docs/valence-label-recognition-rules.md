@@ -46,7 +46,7 @@ Zero external bonds enter chemical text validation: text understood by the valen
 
 ## Element Valence Table
 
-In the valence parser, "valence" first means the number of connectable bond units, not positive/negative character. Alkali metals have valence 1 and alkaline-earth metals have valence 2 as connection capacities. Only a few exceptional valences need to record formal charge in the expansion.
+In the valence parser, "valence" first means the number of connectable bond units, not positive/negative character. Alkali metals have valence 1 and alkaline-earth metals have valence 2 as connection capacities. The parser must not invent hidden formal charges to make second-period over-valent labels pass.
 
 ### Regular Valence
 
@@ -55,10 +55,10 @@ In the valence parser, "valence" first means the number of connectable bond unit
 | `H` | 1 | Terminal atom only. |
 | `Li/Na/K/Rb/Cs/Fr` | 1 | Alkali metals are uniformly treated as valence 1. |
 | `Be/Mg/Ca/Sr/Ba/Ra` | 2 | Alkaline-earth metals are uniformly treated as valence 2. |
-| `B` | 3 | Regular boron is valence 3. Valence-4 boron is a negatively charged exception; see below. |
+| `B` | 3 | Regular boron is valence 3. Valence-4 boron requires explicit negative-charge evidence; without it the label is invalid. |
 | `C` | 4 | Core skeleton atom for formula-like labels. |
-| `N` | 3, 5 | Ordinary nitrogen prefers valence 3; valence 5 is enabled only in explicit local patterns. Valence-4 nitrogen is a positively charged exception; see below. |
-| `O` | 2 | Can be carbonyl oxygen, ether oxygen, hydroxy oxygen, or continuing oxygen. Valence-3/4 oxygen is a positively charged exception; see below. |
+| `N` | 3 | Ordinary nitrogen is valence 3. Second-period nitrogen does not support expanded octets; valence-4 nitrogen requires explicit positive-charge evidence, and ordinary four-connected nitrogen is invalid. |
+| `O` | 2 | Can be carbonyl oxygen, ether oxygen, hydroxy oxygen, or continuing oxygen. Valence-3 oxygen requires explicit positive-charge evidence; second-period oxygen does not support expanded octets. |
 | `Si` | 4 | Silicon is treated as valence 4. |
 | `P` | 3, 5 | Phosphorus is treated as valence 3/5. |
 | `As` | 3, 5 | Arsenic is treated as valence 3/5. |
@@ -67,18 +67,9 @@ In the valence parser, "valence" first means the number of connectable bond unit
 
 The default principle for selecting valence is "minimum valence that satisfies the structure". For elements such as `S` that have writing conventions, local patterns are examined first. For example, `SO2` directly chooses S(VI).
 
-### Formal Charge Exceptions
+### Formal Charge Evidence
 
-The following exceptions may participate in topological parsing, but must record formal charge in `expansion.atoms[]` or an equivalent future field. They cannot be treated as ordinary neutral valence states.
-
-| Element | Exceptional valence | Formal charge | Restriction |
-| --- | --- | --- | --- |
-| `B` | 4 | `-1` | Accept only when at least three hydrogens on the right participate in satisfying valence. |
-| `N` | 4 | `+1` | Currently accepts only cases where all right-side completion atoms are hydrogen. |
-| `O` | 3 | `+1` | Currently accepts only cases where all right-side completion atoms are hydrogen. |
-| `O` | 4 | `+2` | Currently accepts only cases where all right-side completion atoms are hydrogen. |
-
-"Right-side" means atom occurrences after this atom in the label writing that complete this atom's valence. The left external bond of a terminal label already consumes one connection site, so `BH3` can be recognized as tetracoordinate boron and record `formalCharge: -1`; `BCl3` is not accepted because it does not satisfy the "at least three right-side hydrogens" restriction. Similarly, `NH3` may be a candidate for tetravalent positively charged nitrogen; `NMe4` does not enter this exception.
+Second-period `B`, `N`, and `O` charged valence states may participate in topological parsing only when explicit charge evidence is present in the source label or node metadata. The current valence tokenizer does not parse visible `+` / `-` charge tokens, so one-bond terminal labels such as `BH3`, `NH3`, `OH2`, and `OH3` remain invalid instead of silently recording `formalCharge` in `expansion.atoms[]`. Second-period elements do not use expanded-octet fallback valences such as 5 or 6.
 
 ## Tokenization Rules
 
@@ -295,10 +286,6 @@ MgCl                 -> -MgCl
 SiH3                 -> -SiH3
 PH2                  -> -PH2
 AsH2                 -> -AsH2
-BH3                  -> -BH3, B formalCharge -1
-NH3                  -> -NH3, N formalCharge +1
-OH2                  -> -OH2, O formalCharge +1
-OH3                  -> -OH3, O formalCharge +2
 CH2Boc               -> -CH2Boc, Boc as monovalent terminal token
 ```
 
@@ -319,7 +306,11 @@ The following cases should remain invalid, avoiding overly broad exceptional val
 
 ```text
 BCl3
+BH3
 NMe4
+NH3
 OCl3
 OCl4
+OH2
+OH3
 ```

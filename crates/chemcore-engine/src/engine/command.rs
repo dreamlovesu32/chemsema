@@ -431,6 +431,13 @@ pub enum EditorCommand {
         command: String,
         value: String,
     },
+    SetInterpretChemicallyForSelection {
+        enabled: bool,
+    },
+    SetImplicitHydrogenCountForSelection {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        count: Option<u8>,
+    },
     SetChemicalCheckForSelection {
         enabled: bool,
     },

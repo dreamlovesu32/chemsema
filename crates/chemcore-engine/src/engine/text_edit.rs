@@ -48,7 +48,8 @@ pub(crate) use self::labels::{
     refresh_attached_node_label_geometry_for_node,
     refresh_attached_node_label_geometry_for_node_with_profile,
     refresh_attached_node_label_geometry_for_node_without_implicit_hydrogen_refresh,
-    refresh_element_valence_recognition_for_all_nodes, standalone_element_hydrogen_count,
+    refresh_element_valence_recognition_for_all_nodes, refresh_implicit_hydrogens,
+    refresh_label_recognition_for_node, standalone_element_hydrogen_count,
 };
 use self::layout::*;
 use self::runs::*;

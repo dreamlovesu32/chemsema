@@ -36,7 +36,8 @@ Status key:
 | Delete/Cut | Delete current selection | `select-targets` + `delete-selection`, or `delete-targets` | Protocol docs and skill reference | Done |
 | Delete/Cut | Cut current selection | `select-targets` + `cut-selection` | Protocol docs and skill reference | Done |
 | Labels | Expand labels | `select-targets` + `expand-labels-in-selection` | Protocol docs mention selection path | Partial |
-| Chemistry | Chemical check toggle | `select-targets` + `set-chemical-check-for-selection` | Needs explicit guide example | Partial |
+| Chemistry | Interpret Chemically toggle | `select-targets` + `set-interpret-chemically-for-selection`; legacy `set-chemical-check-for-selection` aliases the same path | Guide example added | Done |
+| Chemistry | Implicit hydrogen count override | `select-targets` + `set-implicit-hydrogen-count-for-selection` with `count` or `null` | Guide example added | Done |
 | Session | Repeated edits on one document | `chemcore-cli session` + `execute` | Session protocol and skill reference | Done |
 | One-shot | Stateless script edits | `chemcore-cli new` / `chemcore-cli run` | Command-script protocol and skill reference | Done |
 

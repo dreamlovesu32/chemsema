@@ -589,11 +589,19 @@ pub(super) fn label_layout_decision_for_text_mode(
 }
 
 pub(super) fn label_should_render_as_whole_group(text: &str, connection_count: usize) -> bool {
-    if crate::recognized_abbreviation_uses_whole_label_layout(text.trim(), connection_count) {
-        return true;
+    crate::recognized_abbreviation_uses_whole_label_layout(text.trim(), connection_count)
+}
+
+#[cfg(test)]
+mod label_layout_tests {
+    use super::*;
+
+    #[test]
+    fn invalid_labels_do_not_force_whole_label_layout() {
+        assert!(!label_should_render_as_whole_group("NMe4", 1));
+        assert!(!label_should_render_as_whole_group("OXYZ", 1));
+        assert!(label_should_render_as_whole_group("tBu", 1));
     }
-    label_recognition_meta_for_text(text, connection_count)
-        .is_some_and(|meta| meta.get("status").and_then(Value::as_str) == Some("invalid"))
 }
 
 #[derive(Clone)]
@@ -991,8 +999,14 @@ pub(super) fn label_recognition_meta_for_text(
     connection_count: usize,
 ) -> Option<Value> {
     let trimmed = text.trim();
-    if trimmed.is_empty() || trimmed == "C" {
+    if trimmed.is_empty() {
         return None;
+    }
+    if let Some(meta) = element_oxidation_state_label_meta(trimmed) {
+        return Some(meta);
+    }
+    if let Some(meta) = metal_containing_chemical_text_label_meta(trimmed) {
+        return Some(meta);
     }
     if label_prefers_abbreviation_over_element(trimmed, connection_count) {
         return crate::recognized_abbreviation_meta_for_connection_count(trimmed, connection_count);
@@ -1014,7 +1028,7 @@ pub(super) fn label_recognition_meta_for_node_text(
     text: &str,
 ) -> Option<Value> {
     let trimmed = text.trim();
-    if trimmed.is_empty() || trimmed == "C" {
+    if trimmed.is_empty() {
         return None;
     }
     let connection_count = fragment
@@ -1027,6 +1041,12 @@ pub(super) fn label_recognition_meta_for_node_text(
     };
     if is_bullet_carbon_atom_label(trimmed, node) {
         return None;
+    }
+    if let Some(meta) = element_oxidation_state_label_meta_for_node(trimmed, node) {
+        return Some(meta);
+    }
+    if let Some(meta) = metal_containing_chemical_text_label_meta(trimmed) {
+        return Some(meta);
     }
     if label_prefers_abbreviation_over_element(trimmed, connection_count) {
         return crate::recognized_abbreviation_meta_for_connection_count(trimmed, connection_count);
@@ -1047,6 +1067,76 @@ pub(super) fn label_recognition_meta_for_node_text(
     }
     crate::recognized_abbreviation_meta_for_connection_count(trimmed, connection_count)
         .or_else(|| Some(crate::invalid_abbreviation_meta(trimmed)))
+}
+
+fn element_oxidation_state_label_meta_for_node(text: &str, node: &crate::Node) -> Option<Value> {
+    let (element, _) = parse_element_oxidation_state_label(text)?;
+    (node.element == element && node.atomic_number != 0)
+        .then(|| element_oxidation_state_meta(text, element))
+}
+
+fn element_oxidation_state_label_meta(text: &str) -> Option<Value> {
+    let (element, _) = parse_element_oxidation_state_label(text)?;
+    Some(element_oxidation_state_meta(text, element))
+}
+
+fn element_oxidation_state_meta(text: &str, element: &str) -> Value {
+    json!({
+        "kind": "functional-group",
+        "status": "recognized",
+        "label": text.trim(),
+        "canonicalLabel": text.trim(),
+        "groupKind": "chemical-text",
+        "formula": text.trim(),
+        "anchorAtom": element,
+        "components": [],
+        "source": "element-oxidation-state-label",
+    })
+}
+
+fn metal_containing_chemical_text_label_meta(text: &str) -> Option<Value> {
+    label_starts_with_metal_element(text).then(|| {
+        json!({
+            "kind": "functional-group",
+            "status": "recognized",
+            "label": text.trim(),
+            "canonicalLabel": text.trim(),
+            "groupKind": "chemical-text",
+            "formula": text.trim(),
+            "anchorAtom": "",
+            "components": [],
+            "source": "metal-containing-chemical-text",
+        })
+    })
+}
+
+fn label_starts_with_metal_element(text: &str) -> bool {
+    let trimmed = text.trim();
+    ELEMENT_REPLACEMENTS
+        .iter()
+        .copied()
+        .filter(|(element, _)| trimmed.starts_with(*element))
+        .max_by_key(|(element, _)| element.len())
+        .is_some_and(|(_, atomic_number)| is_metal_atomic_number(atomic_number))
+}
+
+fn parse_element_oxidation_state_label(text: &str) -> Option<(&'static str, &'_ str)> {
+    let trimmed = text.trim();
+    let (element, _) = ELEMENT_REPLACEMENTS
+        .iter()
+        .copied()
+        .filter(|(element, _)| trimmed.starts_with(*element))
+        .max_by_key(|(element, _)| element.len())?;
+    let state = trimmed
+        .strip_prefix(element)?
+        .strip_prefix('(')?
+        .strip_suffix(')')?;
+    (!state.is_empty()
+        && state.len() <= 8
+        && state
+            .chars()
+            .all(|character| matches!(character, 'I' | 'V' | 'X')))
+    .then_some((element, state))
 }
 
 fn recognized_placeholder_label(node: &crate::Node, text: &str, connection_count: usize) -> bool {
@@ -1081,7 +1171,9 @@ pub(super) fn element_hydrogen_label_is_valid_for_node(
     }
     let trimmed = text.trim();
     if trimmed == "C" {
-        return node.element == "C" && node.atomic_number == 6;
+        return node.element == "C"
+            && node.atomic_number == 6
+            && element_valence_is_valid_for_node(fragment, node);
     }
     if !parse_element_hydrogen_label(trimmed).is_some_and(|parsed| parsed.element == node.element)
         && trimmed != node.element
@@ -1099,15 +1191,16 @@ pub(super) fn element_valence_is_valid_for_node(
     fragment: &crate::MoleculeFragment,
     node: &crate::Node,
 ) -> bool {
-    if node.is_placeholder || node.atomic_number == 1 || node.atomic_number == 6 {
+    if node.is_placeholder || node.atomic_number == 1 {
         return true;
     }
-    let connection_order: i32 = fragment
-        .bonds
-        .iter()
-        .filter(|bond| bond.begin == node.id || bond.end == node.id)
-        .map(|bond| i32::from(bond.order.max(1)))
-        .sum();
+    if node.atomic_number == 6 {
+        let connection_order = implicit_hydrogen_connection_order(fragment, node);
+        let radical_count = crate::node_radical_count(node);
+        let abs_charge = node.charge.abs();
+        return connection_order + radical_count + abs_charge <= 4;
+    }
+    let connection_order = implicit_hydrogen_connection_order(fragment, node);
     let radical_count = crate::node_radical_count(node);
     let charge = node.charge;
     let abs_charge = charge.abs();
@@ -1356,7 +1449,7 @@ pub(super) fn refresh_attached_node_label_geometry_for_node_inner(
     refresh_label_recognition_for_node(fragment, node_id);
 }
 
-pub(super) fn refresh_label_recognition_for_node(
+pub(crate) fn refresh_label_recognition_for_node(
     fragment: &mut crate::MoleculeFragment,
     node_id: &str,
 ) {
@@ -1417,7 +1510,7 @@ fn refresh_element_valence_recognition_for_node(
     }
     let text = label_source_text(label);
     let trimmed = text.trim();
-    if trimmed.is_empty() || trimmed == "C" {
+    if trimmed.is_empty() {
         return;
     }
     let is_element_label = parse_element_hydrogen_label(trimmed)
@@ -1764,7 +1857,7 @@ pub(super) fn refreshed_attached_node_label(
     Some(next_label)
 }
 
-pub(super) fn refresh_implicit_hydrogens(fragment: &mut crate::MoleculeFragment) {
+pub(crate) fn refresh_implicit_hydrogens(fragment: &mut crate::MoleculeFragment) {
     let next_counts: Vec<(String, u8)> = fragment
         .nodes
         .iter()
@@ -1786,15 +1879,16 @@ pub(super) fn implicit_hydrogen_count(fragment: &crate::MoleculeFragment, node_i
     let Some(node) = fragment.nodes.iter().find(|node| node.id == node_id) else {
         return 0;
     };
+    if let Some(num_hydrogens) = crate::node_user_num_hydrogens_override(node) {
+        return num_hydrogens;
+    }
+    if let Some(num_hydrogens) = cdxml_explicit_num_hydrogens(node) {
+        return num_hydrogens;
+    }
     if node.is_placeholder || node.atomic_number == 1 || node.atomic_number == 6 {
         return 0;
     }
-    let connection_count: i32 = fragment
-        .bonds
-        .iter()
-        .filter(|bond| bond.begin == node_id || bond.end == node_id)
-        .map(|bond| i32::from(bond.order.max(1)))
-        .sum();
+    let connection_count = implicit_hydrogen_connection_order(fragment, node);
     let radical_count = crate::node_radical_count(node);
     let charge = node.charge;
     let abs_charge = charge.abs();
@@ -1809,6 +1903,81 @@ pub(super) fn implicit_hydrogen_count(fragment: &crate::MoleculeFragment, node_i
     };
     let charge_hydrogen_penalty = implicit_hydrogen_charge_penalty(node.atomic_number, charge);
     (valence - radical_count - connection_count - charge_hydrogen_penalty).clamp(0, 9) as u8
+}
+
+fn cdxml_explicit_num_hydrogens(node: &crate::Node) -> Option<u8> {
+    node.meta
+        .pointer("/import/cdxml/numHydrogens")
+        .and_then(Value::as_u64)
+        .map(|value| value.min(u64::from(u8::MAX)) as u8)
+}
+
+fn implicit_hydrogen_connection_order(
+    fragment: &crate::MoleculeFragment,
+    node: &crate::Node,
+) -> i32 {
+    fragment
+        .bonds
+        .iter()
+        .filter_map(|bond| {
+            let other_id = if bond.begin == node.id {
+                bond.end.as_str()
+            } else if bond.end == node.id {
+                bond.begin.as_str()
+            } else {
+                return None;
+            };
+            let other = fragment
+                .nodes
+                .iter()
+                .find(|candidate| candidate.id == other_id)?;
+            if should_ignore_metal_coordination_for_implicit_hydrogen(
+                node.atomic_number,
+                other.atomic_number,
+            ) {
+                return Some(0);
+            }
+            Some(i32::from(bond.order.max(1)))
+        })
+        .sum()
+}
+
+fn should_ignore_metal_coordination_for_implicit_hydrogen(
+    atomic_number: u8,
+    other_atomic_number: u8,
+) -> bool {
+    !is_metal_atomic_number(atomic_number) && is_metal_atomic_number(other_atomic_number)
+}
+
+fn is_metal_atomic_number(atomic_number: u8) -> bool {
+    matches!(
+        atomic_number,
+        3 | 4
+            | 11
+            | 12
+            | 13
+            | 19
+            | 20
+            | 21..=30
+            | 31
+            | 37
+            | 38
+            | 39..=48
+            | 49
+            | 50
+            | 55
+            | 56
+            | 57..=80
+            | 81
+            | 82
+            | 87
+            | 88
+            | 89..=112
+            | 113
+            | 114
+            | 115
+            | 116
+    )
 }
 
 pub(crate) fn formula_hydrogen_count_for_node(
@@ -1855,12 +2024,8 @@ pub(super) fn typical_valence_for_implicit_hydrogen(
         7 => {
             if charge == 1 {
                 Some(4)
-            } else if charge < 0 {
-                Some(3)
-            } else if charge == 2 || radical_count + connection_count + abs_charge <= 3 {
-                Some(3)
             } else {
-                Some(5)
+                Some(3)
             }
         }
         8 => Some(if charge >= 1 { 3 } else { 2 }),

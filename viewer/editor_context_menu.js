@@ -354,10 +354,22 @@ export function createCanvasContextMenuHost(options) {
       await options.numericDialogHost.choose("line-height");
       await finishTemporaryContextSelection();
       return;
-    } else if (command === "chemical-check") {
+    } else if (command === "chemical-check" || command === "interpret-chemically") {
       changed = await executeDocumentCommand(
-        { type: "apply-text-style", payload: { changes: { chemicalCheck: value !== "off" } } },
-        () => options.state().editorEngine?.setChemicalCheckForSelection?.(value !== "off"),
+        { type: "apply-text-style", payload: { changes: { interpretChemically: value !== "off" } } },
+        () => options.state().editorEngine?.executeCommandJson?.(JSON.stringify({
+          type: "set-interpret-chemically-for-selection",
+          enabled: value !== "off",
+        })),
+      );
+    } else if (command === "implicit-hydrogen-count") {
+      const count = value === "auto" ? null : Number.parseInt(value, 10);
+      changed = await executeDocumentCommand(
+        { type: "apply-text-style", payload: { changes: { implicitHydrogenCount: count } } },
+        () => options.state().editorEngine?.executeCommandJson?.(JSON.stringify({
+          type: "set-implicit-hydrogen-count-for-selection",
+          count,
+        })),
       );
     } else if (command === "expand-label") {
       changed = await executeDocumentCommand("expand-labels", () => options.state().editorEngine?.expandLabelsInSelection?.());

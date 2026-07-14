@@ -225,6 +225,7 @@ fn expand_component(
         "Bn" => expand_benzyl(builder),
         "Bz" => expand_benzoyl(builder),
         "Ac" => expand_acetyl(builder),
+        "TFA" => expand_trifluoroacetyl(builder),
         "Piv" => expand_pivaloyl(builder),
         "CHO" => expand_formyl(builder),
         "CN" => expand_cyano(builder),
@@ -506,6 +507,23 @@ fn expand_acetyl(builder: &mut ExpansionBuilder) -> FragmentExpansion {
     builder.add_bond(&carbon, &methyl, 1);
     FragmentExpansion {
         left_atom: carbon,
+        right_atom: None,
+        complete: true,
+    }
+}
+
+fn expand_trifluoroacetyl(builder: &mut ExpansionBuilder) -> FragmentExpansion {
+    let carbonyl = builder.add_atom("C", Some(0));
+    let oxo = builder.add_atom("O", Some(0));
+    let trifluoromethyl = builder.add_atom("C", Some(0));
+    builder.add_bond(&carbonyl, &oxo, 2);
+    builder.add_bond(&carbonyl, &trifluoromethyl, 1);
+    for _ in 0..3 {
+        let fluorine = builder.add_atom("F", Some(0));
+        builder.add_bond(&trifluoromethyl, &fluorine, 1);
+    }
+    FragmentExpansion {
+        left_atom: carbonyl,
         right_atom: None,
         complete: true,
     }
@@ -842,6 +860,24 @@ mod tests {
             .iter()
             .any(|bond| bond["begin"] == "c7" && bond["end"] == "o1" && bond["order"] == 2));
 
+        let tfa = recognize_abbreviation_label("TFA").unwrap();
+        assert_eq!(tfa.kind, "terminal-fragment");
+        assert_eq!(tfa.canonical_label, "TFA");
+        let tfa_meta = recognized_abbreviation_meta("TFA").unwrap();
+        let tfa_expansion = tfa_meta["expansion"].as_object().unwrap();
+        assert_eq!(tfa_expansion["complete"], true);
+        assert_eq!(tfa_expansion["attachments"][0]["atomId"], "c1");
+        assert_eq!(tfa_expansion["atoms"].as_array().unwrap().len(), 6);
+        assert_eq!(
+            tfa_expansion["atoms"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|atom| atom["element"] == "F")
+                .count(),
+            3
+        );
+
         let azide = recognize_abbreviation_label("N3").unwrap();
         assert_eq!(azide.canonical_label, "N3");
         assert_eq!(azide.components[0].name, "azido");
@@ -920,6 +956,11 @@ mod tests {
         assert_eq!(otms["anchorAtom"], "O");
         let expansion = otms["expansion"].as_object().unwrap();
         assert_eq!(expansion["complete"], true);
+
+        let otfa = recognize_abbreviation_label("OTFA").unwrap();
+        assert_eq!(otfa.kind, "valence-fragment");
+        assert_eq!(labels(&otfa), vec!["O", "TFA"]);
+        assert_eq!(otfa.formula, "-OTFA");
         assert_eq!(expansion["attachments"].as_array().unwrap().len(), 1);
         assert_eq!(expansion["attachments"][0]["atomId"], "o1");
         assert!(expansion["bonds"]
@@ -1095,29 +1136,29 @@ mod tests {
     }
 
     #[test]
-    fn valence_parser_applies_charged_boron_nitrogen_and_oxygen_exceptions() {
-        let cases = [
-            ("BH3", "b1", -1),
-            ("NH3", "n1", 1),
-            ("OH2", "o1", 1),
-            ("OH3", "o1", 2),
-        ];
-        for (label, atom_id, formal_charge) in cases {
-            let meta = recognized_abbreviation_meta(label).unwrap();
-            let atoms = meta["expansion"]["atoms"].as_array().unwrap();
-            let atom = atoms
-                .iter()
-                .find(|atom| atom["id"] == atom_id)
-                .expect("charged atom should exist");
-            assert_eq!(atom["formalCharge"], formal_charge);
-        }
-
-        for invalid in ["BCl3", "NMe4", "OCl3", "OCl4"] {
+    fn valence_parser_rejects_second_period_charged_states_without_explicit_charge() {
+        for invalid in ["BH3", "BCl3", "NH3", "NMe4", "OH2", "OH3", "OCl3", "OCl4"] {
             assert!(
                 recognize_abbreviation_label(invalid).is_none(),
-                "{invalid} should not use charged-valence exceptions"
+                "{invalid} should not infer a charged second-period valence state"
             );
         }
+    }
+
+    #[test]
+    fn invalid_label_diagnostics_distinguish_valence_from_uninterpretable_text() {
+        assert_eq!(
+            invalid_abbreviation_meta("NMe4")["diagnostic"],
+            "invalid-valence"
+        );
+        assert_eq!(
+            invalid_abbreviation_meta("TFAO")["diagnostic"],
+            "invalid-valence"
+        );
+        assert_eq!(
+            invalid_abbreviation_meta("OXYZ")["diagnostic"],
+            "uninterpretable-label"
+        );
     }
 
     #[test]

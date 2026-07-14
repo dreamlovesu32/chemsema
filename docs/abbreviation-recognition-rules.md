@@ -54,9 +54,21 @@ Invalid metadata uses:
 {
   "kind": "functional-label",
   "status": "invalid",
+  "diagnostic": "uninterpretable-label",
   "label": "NotAGroup"
 }
 ```
+
+`diagnostic` distinguishes invalid-label causes:
+
+- `invalid-valence`: the valence tokenizer can read chemical tokens, but the
+  connection count or valence assignment is impossible, such as `NMe4` or the
+  reversed source form `TFAO`.
+- `uninterpretable-label`: the current chemical tokenizer cannot interpret the
+  text, such as `OXYZ`.
+
+Invalid metadata is a chemical semantic diagnostic only. It must not change
+attached-label display grouping, reversal, or anchor selection.
 
 ## Named Terminal Templates
 
@@ -81,6 +93,7 @@ The following named templates can be recognized as terminal substituents with on
 | `Bn` | - | benzyl | `-CH2Ph` | `C` |
 | `Bz` | - | benzoyl | `-C(=O)Ph` | `C` |
 | `Ac` | - | acetyl | `-C(=O)CH3` | `C` |
+| `TFA` | - | trifluoroacetyl | `-C(=O)CF3` | `C` |
 | `Piv` | - | pivaloyl | `-C(=O)tBu` | `C` |
 | `CHO` | - | formyl | `-C(=O)H` | `C` |
 | `CN` | - | cyano | `-C#N` | `C` |
@@ -160,16 +173,22 @@ Current valence exceptions:
 
 - Alkali metals are treated as valence 1, and alkaline-earth metals as valence 2.
 - Transition metals and several metal labels are handled as unconstrained valence, mainly for chemical text validation.
-- `B` may record `formalCharge: -1` in right-side hydrogen completion cases such as `BH3`.
-- `N` may record `formalCharge: +1` in right-side hydrogen completion cases such as `NH3`.
-- `O` may record `formalCharge: +1` / `+2` in right-side hydrogen completion cases such as `OH2` / `OH3`.
+- Second-period `B`, `C`, `N`, `O`, and `F` do not use hidden expanded-valence or hidden-charge fallbacks. Without explicit charge evidence, labels such as `BH3`, `NH3`, and `OH2` are invalid in one-bond terminal context and should render with diagnostics instead of silently recording `formalCharge`.
 - `S` follows local writing conventions by recognizing `SO2` as two `S=O` bonds first, then considering other feasible valence states.
+
+Element labels with explicit parenthesized Roman oxidation states, such as `Cu(II)` or `Fe(III)`, are recognized as chemical text labels, not functional-group expansions. Their source text stays unchanged, but normal attached-label reversal still applies, so a right-side/right-aligned `Cu(II)` renders visibly as `(II)Cu`.
+
+Metal-leading labels and reagent text are intentionally tolerant. If a chemical label starts with a metal element token, ChemCore preserves it as recognized `chemical-text` rather than marking it invalid just because the ordinary organic functional-group parser cannot expand it. This covers coordination and salt text such as `Cu(NO3)2` while still avoiding a generated expansion. Unknown nonmetal-leading strings must not be promoted to recognized chemical text merely because they contain a metal symbol such as `Y` or `Na` later in the string.
 
 The following patterns are currently not relaxed:
 
 ```text
+BH3
 BCl3
+NH3
 NMe4
+OH2
+OH3
 OCl3
 OCl4
 ```
@@ -207,7 +226,7 @@ Structural label display first splits text into chemically meaningful groups, th
 Grouping rules:
 
 - Named abbreviations that contain lowercase letters are treated as one group, such as `Ph`, `Boc`, `iPr`, and `tBu`.
-- `R`, `TMS`, `TBDMS`, and `TBDPS` are treated as whole letter groups.
+- `R`, `TFA`, `TMS`, `TBDMS`, and `TBDPS` are treated as whole letter groups.
 - Numeric suffixes stay inside their grouped unit.
 - The connection point of `TMS` is `Si`, and only one external connection point is allowed.
 
@@ -215,9 +234,22 @@ Therefore, when connected on the right:
 
 ```text
 OTMS -> TMSO
+OTFA -> TFAO
+OTAA -> AATO
+OXYZ -> ZYXO
 ```
 
-`TMS` remains a single letter group.
+`TMS` and `TFA` remain whole letter groups. `TAA` and `XYZ` are not currently
+known whole abbreviations, so they continue to split into uppercase tokens. Even
+when the semantic layer marks a label invalid, the display layer still uses
+tokenizer grouping and reversal instead of falling back to whole-label layout.
+
+The abbreviation table is extended from two open-source reference families:
+RDKit's default abbreviation list as a conservative depiction baseline, and
+Open Babel/OSRA `superatom.txt` as a source of left/right aliases and additional
+superatom candidates. New entries should be added in small batches only after a
+ChemDraw probe, an open-source reference, or a gate failure justifies them; do
+not bulk-import the entire table.
 
 Terminal templates such as `iPr`, `nBu`, and `tBu`, which begin with a lowercase letter and contain later uppercase letters, use whole-label layout: selection and anchors treat the whole label as one indivisible structural label.
 
