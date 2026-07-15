@@ -575,15 +575,7 @@ pub(super) fn label_layout_decision_for_text_mode(
     if label_should_render_as_whole_group(text, connection_angles.len()) {
         decision.anchor = crate::LabelAnchorPolicy::WholeLabel;
     } else if matches!(decision.flow, LabelFlow::Reverse) {
-        if parse_element_hydrogen_label(text).is_some()
-            || crate::recognize_abbreviation_label_for_connection_count(
-                text.trim(),
-                connection_angles.len(),
-            )
-            .is_some()
-        {
-            decision.anchor = crate::LabelAnchorPolicy::OriginalFirstGroup;
-        }
+        decision.anchor = crate::LabelAnchorPolicy::OriginalFirstGroup;
     }
     decision
 }
@@ -601,6 +593,14 @@ mod label_layout_tests {
         assert!(!label_should_render_as_whole_group("NMe4", 1));
         assert!(!label_should_render_as_whole_group("OXYZ", 1));
         assert!(label_should_render_as_whole_group("tBu", 1));
+    }
+
+    #[test]
+    fn metal_leading_chemical_text_requires_an_element_token_boundary() {
+        assert!(label_starts_with_metal_element("Cu(NO3)2"));
+        assert!(label_starts_with_metal_element("NoCl2"));
+        assert!(!label_starts_with_metal_element("NotAGroup"));
+        assert!(!label_starts_with_metal_element("Acetic"));
     }
 }
 
@@ -1115,7 +1115,14 @@ fn label_starts_with_metal_element(text: &str) -> bool {
     ELEMENT_REPLACEMENTS
         .iter()
         .copied()
-        .filter(|(element, _)| trimmed.starts_with(*element))
+        .filter(|(element, _)| {
+            trimmed.strip_prefix(*element).is_some_and(|suffix| {
+                suffix
+                    .chars()
+                    .next()
+                    .is_none_or(|character| !character.is_ascii_lowercase())
+            })
+        })
         .max_by_key(|(element, _)| element.len())
         .is_some_and(|(_, atomic_number)| is_metal_atomic_number(atomic_number))
 }

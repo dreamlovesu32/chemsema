@@ -1661,8 +1661,8 @@ fn right_side_otms_label_keeps_tms_as_single_reversed_group() {
 }
 
 #[test]
-fn right_side_whole_labels_do_not_reverse_and_anchor_on_last_glyph() {
-    for text in ["t-Bu", "XYZ"] {
+fn right_side_labels_follow_whole_group_or_token_reversal_rules() {
+    for (source_text, display_text) in [("t-Bu", "t-Bu"), ("XYZ", "ZYX")] {
         let mut engine = Engine::new();
         assert!(engine.add_bond_between(
             free_anchor(px_point(300.0, 260.0)),
@@ -1684,7 +1684,7 @@ fn right_side_whole_labels_do_not_reverse_and_anchor_on_last_glyph() {
             .begin_text_edit(Point::new(left_node.position[0], left_node.position[1]))
             .expect("endpoint session should be created");
         assert!(engine.apply_text_edit(chemcore_engine::TextEditSession {
-            text: text.to_string(),
+            text: source_text.to_string(),
             source_runs: Vec::new(),
             ..session
         }));
@@ -1700,8 +1700,8 @@ fn right_side_whole_labels_do_not_reverse_and_anchor_on_last_glyph() {
             .find(|node| node.id == left_node.id)
             .expect("left node should still exist");
         let label = node.label.as_ref().expect("label should exist");
-        assert_eq!(label.source_text.as_deref(), Some(text));
-        assert_eq!(label.text, text);
+        assert_eq!(label.source_text.as_deref(), Some(source_text));
+        assert_eq!(label.text, display_text);
         let expected_anchor = glyph_anchor(label, label.glyph_polygons.len() - 1);
         let reopened = engine
             .begin_text_edit(Point::new(node.position[0], node.position[1]))
