@@ -1663,4 +1663,96 @@ mod tests {
             "alignment fields must not be promoted to a fixed LabelDisplay: {decoded}"
         );
     }
+
+    #[test]
+    fn cdx_inferred_centered_metal_label_keeps_vertical_anchor_and_stable_fields() {
+        let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<CDXML BoundingBox="0 0 80 40" BondLength="14.4" LabelFont="3" LabelSize="10" MarginWidth="1.6">
+  <fonttable><font id="3" charset="iso-8859-1" name="Arial"/></fonttable>
+  <page id="1" BoundingBox="0 0 80 40">
+    <fragment id="2" BoundingBox="0 0 80 40">
+      <n id="3" p="30 20" Element="46" NumHydrogens="0">
+        <t id="4" p="30 23.9" BoundingBox="23.9 14.9 36.1 26.4" LabelJustification="Center" Justification="Center" LabelAlignment="Center" UTF8Text="Pd">
+          <s font="3" size="10" face="96" color="0">Pd</s>
+        </t>
+      </n>
+      <n id="5" p="44.4 20" Element="7" NumHydrogens="0">
+        <t id="6" p="40.8 23.9" BoundingBox="40.8 15.7 48 24.6" LabelJustification="Left" UTF8Text="N">
+          <s font="3" size="10" face="96" color="0">N</s>
+        </t>
+      </n>
+      <b id="7" B="3" E="5"/>
+    </fragment>
+  </page>
+</CDXML>"#;
+        let source = cdxml_to_cdx(cdxml).expect("source CDX should encode");
+        let imported =
+            parse_cdx_document(&source, Some("inferred centered Pd")).expect("source CDX import");
+        let imported_fragment = imported
+            .resources
+            .values()
+            .find_map(|resource| resource.data.as_fragment())
+            .expect("imported fragment");
+        let imported_metal = imported_fragment
+            .nodes
+            .iter()
+            .find(|node| node.element == "Pd")
+            .expect("imported Pd node");
+        let imported_label = imported_metal.label.as_ref().expect("imported Pd label");
+        assert_eq!(imported_label.align.as_deref(), Some("center"));
+        assert_eq!(imported_label.anchor.as_deref(), Some("middle"));
+        assert_eq!(
+            imported_label.layout.as_deref(),
+            Some("attached-group-center")
+        );
+        assert_eq!(
+            imported_label.meta.pointer("/import/cdxml/labelDisplay"),
+            Some(&serde_json::Value::Null)
+        );
+        assert!(
+            (imported_label.position.expect("Pd baseline")[1]
+                - imported_metal.position[1]
+                - 3.9)
+                .abs()
+                < 0.01,
+            "inferred centered Pd baseline must use the ChemDraw 0.39 font-size anchor: node={imported_metal:?}"
+        );
+
+        let first = document_to_cdx(&imported).expect("first CDX export");
+        let decoded = cdx_to_cdxml(&first).expect("saved CDX should decode");
+        for expected in [
+            "LabelJustification=\"Center\"",
+            "Justification=\"Center\"",
+            "LabelAlignment=\"Center\"",
+        ] {
+            assert!(decoded.contains(expected), "missing {expected}: {decoded}");
+        }
+        assert!(
+            !decoded.contains("LabelDisplay=\"Center\""),
+            "inferred center fields must not be promoted to LabelDisplay: {decoded}"
+        );
+
+        let reopened =
+            parse_cdx_document(&first, Some("inferred centered Pd")).expect("reopen CDX");
+        let reopened_fragment = reopened
+            .resources
+            .values()
+            .find_map(|resource| resource.data.as_fragment())
+            .expect("reopened fragment");
+        let reopened_metal = reopened_fragment
+            .nodes
+            .iter()
+            .find(|node| node.element == "Pd")
+            .expect("reopened Pd node");
+        let reopened_label = reopened_metal.label.as_ref().expect("reopened Pd label");
+        assert!(
+            (reopened_label.position.expect("reopened Pd baseline")[1]
+                - reopened_metal.position[1]
+                - 3.9)
+                .abs()
+                < 0.01
+        );
+        let second = document_to_cdx(&reopened).expect("second CDX export");
+        assert_eq!(second, first, "inferred centered Pd CDX must stabilize");
+    }
 }

@@ -537,7 +537,9 @@ impl<'a> CdxmlDocumentWriter<'a> {
         if let Some(label) = node.label.as_ref() {
             if let Some(display) = imported_cdxml_label_attr(label, "labelDisplay") {
                 attrs.push(("LabelDisplay", display.to_string()));
-            } else if label.layout.as_deref() == Some("attached-group-center") {
+            } else if label.layout.as_deref() == Some("attached-group-center")
+                && label.meta.pointer("/import/cdxml").is_none()
+            {
                 attrs.push(("LabelDisplay", "Center".to_string()));
             }
         }

@@ -6918,6 +6918,69 @@ fn parse_cdxml_centered_multichar_label_uses_internal_center_anchor() {
 }
 
 #[test]
+fn parse_cdxml_inferred_centered_metal_label_uses_the_same_baseline_as_neighboring_atoms() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE CDXML SYSTEM="http://www.cambridgesoft.com/xml/cdxml.dtd" >
+<CDXML BondLength="14.40" LineWidth="0.60" LabelSize="10" MarginWidth="1.6" color="0" bgcolor="1">
+  <fonttable><font id="3" charset="iso-8859-1" name="Arial"/></fonttable>
+  <page id="p1" BoundingBox="0 0 80 40">
+    <fragment id="f1" BoundingBox="0 0 80 40">
+      <n id="left" p="16 20" Element="7" NumHydrogens="0">
+        <t p="12.4 23.9" BoundingBox="12.4 15.7 19.6 24.6" LabelJustification="Left" UTF8Text="N">
+          <s font="3" size="10" color="0" face="96">N</s>
+        </t>
+      </n>
+      <n id="metal" p="30.4 20" Element="46" NumHydrogens="0">
+        <t p="30.4 23.9" BoundingBox="24.3 14.9 36.5 26.4" LabelJustification="Center" Justification="Center" LabelAlignment="Center" UTF8Text="Pd">
+          <s font="3" size="10" color="0" face="96">Pd</s>
+        </t>
+      </n>
+      <n id="right" p="44.8 20" Element="7" NumHydrogens="0">
+        <t p="41.2 23.9" BoundingBox="41.2 15.7 48.4 24.6" LabelJustification="Left" UTF8Text="N">
+          <s font="3" size="10" color="0" face="96">N</s>
+        </t>
+      </n>
+      <b id="b1" B="left" E="metal"/>
+      <b id="b2" B="metal" E="right"/>
+    </fragment>
+  </page>
+</CDXML>"#;
+    let document = parse_cdxml_document(cdxml, Some("inferred centered Pd label"))
+        .expect("inferred centered Pd CDXML should parse");
+    let fragment = document
+        .resources
+        .values()
+        .find_map(|resource| resource.data.as_fragment())
+        .expect("fragment should import");
+    let label_for = |id: &str| {
+        fragment
+            .nodes
+            .iter()
+            .find(|node| node.id == id)
+            .and_then(|node| node.label.as_ref())
+            .expect("node label should import")
+    };
+    let left = label_for("left");
+    let metal = label_for("metal");
+    let right = label_for("right");
+    let left_baseline = left.position.expect("left baseline")[1];
+    let metal_baseline = metal.position.expect("metal baseline")[1];
+    let right_baseline = right.position.expect("right baseline")[1];
+
+    assert_eq!(metal.align.as_deref(), Some("center"));
+    assert_eq!(metal.anchor.as_deref(), Some("middle"));
+    assert_eq!(metal.layout.as_deref(), Some("attached-group-center"));
+    assert_eq!(
+        metal.meta.pointer("/import/cdxml/labelDisplay"),
+        Some(&serde_json::Value::Null),
+        "center alignment inferred from justification must not invent LabelDisplay"
+    );
+    assert_close(left_baseline, 23.9);
+    assert_close(metal_baseline, 23.9);
+    assert_close(right_baseline, 23.9);
+}
+
+#[test]
 fn parse_cdxml_right_aligned_metal_oxidation_label_reverses_visible_order() {
     let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >

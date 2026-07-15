@@ -1603,11 +1603,9 @@ fn is_cdxml_imported_right_aligned_attached_label(label: &crate::NodeLabel) -> b
 
 fn is_cdxml_imported_centered_attached_label(label: &crate::NodeLabel) -> bool {
     label.attachment.as_deref() == Some("node")
-        && label
-            .meta
-            .pointer("/import/cdxml/labelDisplay")
-            .and_then(serde_json::Value::as_str)
-            .is_some_and(|value| value.eq_ignore_ascii_case("Center"))
+        && label.align.as_deref() == Some("center")
+        && label.anchor.as_deref() == Some("middle")
+        && label.layout.as_deref() == Some("attached-group-center")
         && label.meta.pointer("/import/cdxml/boundingBox").is_some()
 }
 
