@@ -189,11 +189,56 @@ pub(super) fn render_svg_png_pixmap(
 }
 
 pub(super) fn usvg_options_with_system_fonts() -> usvg::Options<'static> {
+    let fontdb = capture_font_database();
+    let font_family = fontdb.family_name(&fontdb::Family::SansSerif).to_string();
     usvg::Options {
-        fontdb: capture_font_database(),
-        font_family: "Arial".to_string(),
+        fontdb,
+        font_family,
         ..Default::default()
     }
+}
+
+fn available_capture_font_family(database: &fontdb::Database) -> Option<String> {
+    const PREFERRED_FAMILIES: &[&str] = &[
+        "Arial",
+        "Liberation Sans",
+        "DejaVu Sans",
+        "Noto Sans",
+        "Ubuntu",
+        "Lato",
+    ];
+
+    for preferred in PREFERRED_FAMILIES {
+        if let Some(family) = database.faces().find_map(|face| {
+            face.families
+                .iter()
+                .find(|(family, _)| family.eq_ignore_ascii_case(preferred))
+                .map(|(family, _)| family.clone())
+        }) {
+            return Some(family);
+        }
+    }
+
+    database.faces().find_map(|face| {
+        if face.monospaced {
+            return None;
+        }
+        face.families
+            .iter()
+            .find(|(_, language)| *language == fontdb::Language::English_UnitedStates)
+            .or_else(|| face.families.first())
+            .map(|(family, _)| family.clone())
+    })
+}
+
+fn configure_capture_generic_families(database: &mut fontdb::Database) {
+    let Some(family) = available_capture_font_family(database) else {
+        return;
+    };
+    database.set_sans_serif_family(family.clone());
+    database.set_serif_family(family.clone());
+    database.set_cursive_family(family.clone());
+    database.set_fantasy_family(family);
 }
 
 pub(super) fn capture_font_database() -> Arc<fontdb::Database> {
@@ -202,6 +247,13 @@ pub(super) fn capture_font_database() -> Arc<fontdb::Database> {
         .get_or_init(|| {
             let mut database = fontdb::Database::new();
             database.load_system_fonts();
+            // fontdb's built-in generic defaults name Microsoft fonts. A
+            // minimal Linux environment can have usable fonts but no
+            // fontconfig aliases, leaving both `sans-serif` and usvg's serif
+            // fallback unresolved. Bind the generic families to a face that
+            // is actually present so headless CLI PNG capture still renders
+            // text without requiring a desktop font package.
+            configure_capture_generic_families(&mut database);
             Arc::new(database)
         })
         .clone()

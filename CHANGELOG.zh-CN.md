@@ -43,7 +43,9 @@ ChemCore 的公开变更记录会保存在这里。
 - 新增一等的 Ubuntu/WSL CLI 验证和 Linux skill 打包。ChemCore CLI skill 现在同时
   携带带 manifest hash 的 `win-x64` 与 `linux-x64` 运行时；新增 WSL build/smoke/test
   命令验证 Linux binary，并在 CI 中加入独立 Ubuntu job，执行 engine/CLI 测试和
-  skill contract 检查。
+  skill contract 检查。无头 PNG 截图在 fontconfig 没有提供 alias 时，也会把通用
+  字体族绑定到 Linux 环境中实际存在的字体，因此最小化 Ubuntu 环境即使没有
+  Microsoft 字体也能正常渲染文本。
 - 扩展化学标签翻转、CDX/CDXML 稳定导出、显式与推断锚点、逐 glyph 裁切、中心/
   侧双键和短虚键的回归覆盖。更新后的内核还对 ChemCore OCR registry 前 1000 个
   分子完成了新旧像素对比审阅，未替换数据库记录。

@@ -62,6 +62,9 @@ Windows/Ubuntu CLI delivery across every ChemCore shell.
   ChemCore CLI skill now bundles both `win-x64` and `linux-x64` runtimes with
   manifest hashes, WSL build/smoke/test commands verify the Linux binary, and a
   dedicated Ubuntu CI job runs the engine/CLI tests and skill contract checks.
+  Headless PNG capture also binds generic font families to an installed Linux
+  face when fontconfig does not provide aliases, so text remains visible in
+  minimal Ubuntu environments without Microsoft fonts.
 - Expanded regression coverage for chemical-label reversal, CDX/CDXML stable
   export, explicit and inferred attachments, per-glyph clipping, centered and
   side double bonds, and short dashed bonds. The updated engine was also
