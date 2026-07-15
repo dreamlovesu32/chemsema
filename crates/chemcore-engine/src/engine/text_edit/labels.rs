@@ -1675,7 +1675,7 @@ fn cdxml_imported_label_layout_override(
     if let Some(decision) = display.and_then(decision_for_fixed_value) {
         return Some(decision);
     }
-    if let Some(decision) = justification.and_then(decision_for_fixed_value) {
+    if let Some(decision) = justification.and_then(decision_for_realized_alignment) {
         return Some(decision);
     }
     alignment.and_then(decision_for_realized_alignment)

@@ -6524,7 +6524,7 @@ fn render_cdxml_imported_atom_label_uses_text_primitive() {
 }
 
 #[test]
-fn parse_cdxml_fixed_right_chemical_node_label_preserves_source_order() {
+fn parse_cdxml_right_aligned_chemical_node_label_reverses_visible_groups() {
     let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >
 <CDXML BondLength="14.40" LineWidth="0.99" BoldWidth="2.01" HashSpacing="2.49" BondSpacing="18" LabelSize="10">
@@ -6532,7 +6532,7 @@ fn parse_cdxml_fixed_right_chemical_node_label_preserves_source_order() {
     <fragment id="f1" BoundingBox="0 0 44 24">
       <n id="n1" p="22 12" Element="6">
         <t p="22.00 15.90" BoundingBox="10.00 7.56 22.00 15.90" LabelJustification="Right">
-          <s font="3" size="10" color="0" face="96">CN</s>
+          <s font="3" size="10" color="0" face="96">OCF3</s>
         </t>
       </n>
       <n id="n2" p="34 12"/>
@@ -6548,24 +6548,24 @@ fn parse_cdxml_fixed_right_chemical_node_label_preserves_source_order() {
         .find_map(|resource| resource.data.as_fragment())
         .and_then(|fragment| fragment.nodes.iter().find(|node| node.id == "n1"))
         .and_then(|node| node.label.as_ref())
-        .expect("CN label should import");
+        .expect("OCF3 label should import");
 
     assert_eq!(label.align.as_deref(), Some("right"));
-    assert_eq!(label.source_text.as_deref(), Some("CN"));
-    assert_eq!(label.text, "CN");
+    assert_eq!(label.source_text.as_deref(), Some("OCF3"));
+    assert_eq!(label.text, "F3CO");
     let display_text: String = label.runs.iter().map(|run| run.text.as_str()).collect();
-    assert_eq!(display_text, "CN");
+    assert_eq!(display_text, "F3CO");
     assert_eq!(
         label
             .meta
             .pointer("/sourceRuns/0/text")
             .and_then(serde_json::Value::as_str),
-        Some("CN")
+        Some("OCF3")
     );
 }
 
 #[test]
-fn parse_cdxml_fixed_right_labels_preserve_source_order_independent_of_validity() {
+fn parse_cdxml_right_aligned_labels_reverse_groups_independent_of_validity() {
     let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >
 <CDXML BondLength="14.40" LineWidth="0.99" BoldWidth="2.01" HashSpacing="2.49" BondSpacing="18" LabelSize="10">
@@ -6610,7 +6610,7 @@ fn parse_cdxml_fixed_right_labels_preserve_source_order_independent_of_validity(
 
     let tfa = label_for("tfa");
     assert_eq!(tfa.source_text.as_deref(), Some("OTFA"));
-    assert_eq!(tfa.text, "OTFA");
+    assert_eq!(tfa.text, "TFAO");
     assert_eq!(
         tfa.meta
             .pointer("/labelRecognition/status")
@@ -6620,7 +6620,7 @@ fn parse_cdxml_fixed_right_labels_preserve_source_order_independent_of_validity(
 
     let xyz = label_for("xyz");
     assert_eq!(xyz.source_text.as_deref(), Some("OXYZ"));
-    assert_eq!(xyz.text, "OXYZ");
+    assert_eq!(xyz.text, "ZYXO");
     assert_eq!(
         xyz.meta
             .pointer("/labelRecognition/diagnostic")
@@ -6630,7 +6630,7 @@ fn parse_cdxml_fixed_right_labels_preserve_source_order_independent_of_validity(
 
     let nme = label_for("nme");
     assert_eq!(nme.source_text.as_deref(), Some("NMe4"));
-    assert_eq!(nme.text, "NMe4");
+    assert_eq!(nme.text, "Me4N");
     assert_eq!(
         nme.meta
             .pointer("/labelRecognition/diagnostic")
@@ -6698,22 +6698,22 @@ fn parse_cdxml_normal_face_attached_label_uses_group_layout() {
         Some("NTs")
     );
 
-    let fixed_right = fragments
+    let reversed = fragments
         .iter()
         .flat_map(|fragment| fragment.nodes.iter())
         .find(|node| node.id == "n4")
         .and_then(|node| node.label.as_ref())
         .expect("right aligned NTs label should import");
-    assert_eq!(fixed_right.text, "NTs");
+    assert_eq!(reversed.text, "TsN");
     assert_eq!(
-        fixed_right
+        reversed
             .meta
             .pointer("/sourceRuns/0/script")
             .and_then(serde_json::Value::as_str),
         Some("normal")
     );
     assert_eq!(
-        fixed_right
+        reversed
             .meta
             .pointer("/labelRecognition/components/1/label")
             .and_then(serde_json::Value::as_str),
@@ -6722,7 +6722,7 @@ fn parse_cdxml_normal_face_attached_label_uses_group_layout() {
 }
 
 #[test]
-fn parse_cdxml_fixed_right_parenthesized_label_preserves_source_order() {
+fn parse_cdxml_parenthesized_attached_label_reverses_inner_groups() {
     let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >
 <CDXML BondLength="14.40" LineWidth="0.99" BoldWidth="2.01" HashSpacing="2.49" BondSpacing="18" LabelSize="10">
@@ -6753,9 +6753,9 @@ fn parse_cdxml_fixed_right_parenthesized_label_preserves_source_order() {
     let label = node.label.as_ref().expect("N(PhSO2)2 label should import");
 
     assert_eq!(label.source_text.as_deref(), Some("N(PhSO2)2"));
-    assert_eq!(label.text, "N(PhSO2)2");
+    assert_eq!(label.text, "(O2SPh)2N");
     let display_text: String = label.runs.iter().map(|run| run.text.as_str()).collect();
-    assert_eq!(display_text, "N(PhSO2)2");
+    assert_eq!(display_text, "(O2SPh)2N");
     assert_eq!(
         label
             .meta
@@ -7057,8 +7057,8 @@ fn parse_cdxml_label_display_overrides_auto_reversal_without_losing_chemistry() 
     let auto_label = labels["Auto"]
         .iter()
         .map(|(_, label)| *label)
-        .find(|label| label.text == "CF3")
-        .expect("a fixed-justification CF3 without LabelDisplay should preserve source order");
+        .find(|label| label.text == "F3C")
+        .expect("a right-aligned CF3 without LabelDisplay should use chemical group reversal");
     assert_eq!(auto_label.source_text.as_deref(), Some("CF3"));
 
     for (_, right_label) in &labels["Right"] {
