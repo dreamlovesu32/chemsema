@@ -5122,7 +5122,7 @@ fn parse_cdxml_renders_acs_dashed_bond_patterns_like_chemdraw() {
 
     assert_eq!(
         document_bond_polygon_count_for_object(&primitives, "obj_mol_001"),
-        7
+        8
     );
     assert_eq!(
         document_knockout_count_for_object(&primitives, "obj_mol_001"),
@@ -5130,7 +5130,7 @@ fn parse_cdxml_renders_acs_dashed_bond_patterns_like_chemdraw() {
     );
     assert_eq!(
         document_bond_polygon_count_for_object(&primitives, "obj_mol_002"),
-        8
+        9
     );
     assert_eq!(
         document_knockout_count_for_object(&primitives, "obj_mol_002"),
@@ -5138,7 +5138,7 @@ fn parse_cdxml_renders_acs_dashed_bond_patterns_like_chemdraw() {
     );
     assert_eq!(
         document_bond_polygon_count_for_object(&primitives, "obj_mol_003"),
-        14
+        16
     );
     assert_eq!(
         document_knockout_count_for_object(&primitives, "obj_mol_003"),
@@ -5146,27 +5146,26 @@ fn parse_cdxml_renders_acs_dashed_bond_patterns_like_chemdraw() {
     );
 
     let single_segments = document_bond_axis_intervals_for_object(&primitives, "obj_mol_001");
-    assert_eq!(single_segments.len(), 7, "{single_segments:?}");
+    assert_eq!(single_segments.len(), 8, "{single_segments:?}");
     assert!(
-        (single_segments[0].0 - 0.0).abs() < 0.01 && (single_segments[0].1 - 2.5).abs() < 0.01,
+        (single_segments[0].0 - 0.0).abs() < 0.01 && (single_segments[0].1 - 2.4).abs() < 0.01,
         "{single_segments:?}"
     );
     assert!(
-        (single_segments[1].0 - 5.5833).abs() < 0.01
-            && (single_segments[1].1 - 8.0833).abs() < 0.01,
+        (single_segments[1].0 - 4.8).abs() < 0.01 && (single_segments[1].1 - 7.2).abs() < 0.01,
         "{single_segments:?}"
     );
     assert!(
-        (single_segments[6].0 - 33.5).abs() < 0.01 && (single_segments[6].1 - 36.0).abs() < 0.01,
+        (single_segments[7].0 - 33.6).abs() < 0.01 && (single_segments[7].1 - 36.0).abs() < 0.01,
         "{single_segments:?}"
     );
     let solid_dash_lengths = document_bond_axis_lengths_for_object(&primitives, "obj_mol_002");
     assert!(
         solid_dash_lengths
             .iter()
-            .filter(|length| (**length - 2.5).abs() < 0.01)
+            .filter(|length| (**length - 2.4).abs() < 0.01)
             .count()
-            == 7
+            == 8
             && solid_dash_lengths.iter().any(|length| *length > 35.0),
         "{solid_dash_lengths:?}"
     );
@@ -5174,7 +5173,7 @@ fn parse_cdxml_renders_acs_dashed_bond_patterns_like_chemdraw() {
     assert!(
         double_dash_lengths
             .iter()
-            .all(|length| (*length - 2.5).abs() < 0.01),
+            .all(|length| (*length - 2.4).abs() < 0.01),
         "{double_dash_lengths:?}"
     );
 }
@@ -7741,7 +7740,7 @@ fn parse_cdxml_recognizes_fractional_dashed_double_bond() {
     assert!(
         lengths.iter().any(|length| *length > 18.0)
             && lengths.iter().any(|length| *length > 2.0 && *length < 3.0),
-        "Display2=\"Dash\" should use the same fixed black segment lengths as dashed bonds: {lengths:?}"
+        "Display2=\"Dash\" should use the same evenly distributed black segments as dashed bonds: {lengths:?}"
     );
     assert!(
         !primitives.iter().any(|primitive| matches!(
@@ -10051,7 +10050,9 @@ fn render_document_preserves_dashed_double_line_styles() {
         .filter_map(|points| bond_axis_length(points))
         .collect();
     assert!(
-        lengths.iter().all(|length| (*length - 2.7).abs() < 0.01),
+        lengths
+            .iter()
+            .all(|length| (*length - 36.0 / 13.0).abs() < 0.01),
         "{lengths:?}"
     );
     assert!(!primitives.iter().any(|primitive| matches!(

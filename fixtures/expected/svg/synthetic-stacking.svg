@@ -35,10 +35,10 @@
   <path d="M 14,45 C 14,51.62741699796952 19.372583002030478,57 26,57 C 32.62741699796952,57 38,51.62741699796952 38,45 C 38,38.37258300203048 32.62741699796952,33 26,33 C 19.372583002030478,33 14,38.37258300203048 14,45" fill="none" stroke="#000000" stroke-width="0.6" stroke-linecap="round" stroke-linejoin="round" />
   <polygon points="33.179375,45.3 58,46.5 58,43.5 33.179375,44.7" fill="#000000" stroke="none" stroke-width="0" />
   <text x="82.42" y="48.9" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">N</tspan></text>
-  <polygon points="58,45.3 60.5,45.3 60.5,44.7 58,44.7" fill="#000000" stroke="none" stroke-width="0" />
-  <polygon points="63.1525,45.3 65.6525,45.3 65.6525,44.7 63.1525,44.7" fill="#000000" stroke="none" stroke-width="0" />
-  <polygon points="68.305,45.3 70.805,45.3 70.805,44.7 68.305,44.7" fill="#000000" stroke="none" stroke-width="0" />
-  <polygon points="73.4575,45.3 75.9575,45.3 75.9575,44.7 73.4575,44.7" fill="#000000" stroke="none" stroke-width="0" />
-  <polygon points="78.61,45.3 81.11,45.3 81.11,44.7 78.61,44.7" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="58,45.3 60.567778,45.3 60.567778,44.7 58,44.7" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="63.135556,45.3 65.703333,45.3 65.703333,44.7 63.135556,44.7" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="68.271111,45.3 70.838889,45.3 70.838889,44.7 68.271111,44.7" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="73.406667,45.3 75.974444,45.3 75.974444,44.7 73.406667,44.7" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="78.542222,45.3 81.11,45.3 81.11,44.7 78.542222,44.7" fill="#000000" stroke="none" stroke-width="0" />
   <path d="M 108.67,38.005 A 1.335,1.335 0 1 0 111.33999999999999,38.005 A 1.335,1.335 0 1 0 108.67,38.005 Z" fill="#ffffff" stroke="none" />
 </svg>

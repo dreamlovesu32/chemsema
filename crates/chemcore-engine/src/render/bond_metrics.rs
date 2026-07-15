@@ -248,20 +248,9 @@ fn chemdraw_dashed_bond_stripe_count(
     let stripe_length = stripe_length.max(EPSILON);
     let target_gap_length = target_gap_length.max(EPSILON);
     let period = stripe_length + target_gap_length;
-    if length <= stripe_length + EPSILON || length < period * 1.5 {
-        return 1;
-    }
-
-    let mut stripe_count = if length < period * 6.0 {
-        (length / period).floor() as usize + 1
-    } else {
-        ((length / period).floor() as usize).max(7)
-    };
-    stripe_count = stripe_count.max(1);
-    while stripe_count > 1 && stripe_length * stripe_count as f64 > length + EPSILON {
-        stripe_count -= 1;
-    }
-    stripe_count.max(1)
+    // ChemDraw derives the count from the clipped visible length, then divides
+    // that length into equal black/gap intervals which start and end in black.
+    (((length + EPSILON) / period).floor() as usize + 1).max(1)
 }
 
 pub(super) fn chemdraw_dashed_bond_gap_intervals(
@@ -272,33 +261,18 @@ pub(super) fn chemdraw_dashed_bond_gap_intervals(
     if length <= EPSILON {
         return Vec::new();
     }
-    let stripe_length = stripe_length.max(EPSILON);
-    let target_gap_length = target_gap_length.max(EPSILON);
-    if length <= stripe_length + EPSILON {
+    let stripe_count = chemdraw_dashed_bond_stripe_count(length, stripe_length, target_gap_length);
+    if stripe_count <= 1 {
         return Vec::new();
     }
 
-    let stripe_count = chemdraw_dashed_bond_stripe_count(length, stripe_length, target_gap_length);
-    if stripe_count <= 1 {
-        return vec![(stripe_length, length)];
-    }
-
     let gap_count = stripe_count - 1;
-    let total_gap_length = (length - stripe_length * stripe_count as f64).max(0.0);
-    let gap_length = total_gap_length / gap_count as f64;
+    let interval_length = length / (stripe_count * 2 - 1) as f64;
     let mut intervals = Vec::with_capacity(gap_count);
-    let mut cursor = stripe_length;
     for index in 0..gap_count {
-        let gap_start = cursor;
-        let gap_end = if index + 1 == gap_count {
-            length - stripe_length
-        } else {
-            gap_start + gap_length
-        };
-        if gap_end > gap_start + EPSILON {
-            intervals.push((gap_start, gap_end));
-        }
-        cursor = gap_end + stripe_length;
+        let gap_start = (index * 2 + 1) as f64 * interval_length;
+        let gap_end = (index * 2 + 2) as f64 * interval_length;
+        intervals.push((gap_start, gap_end));
     }
     intervals
 }

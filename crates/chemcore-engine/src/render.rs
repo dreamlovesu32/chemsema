@@ -850,30 +850,49 @@ mod tests {
     fn chemdraw_dashed_bond_gap_intervals_anchor_black_segments() {
         assert_gap_intervals(
             &chemdraw_dashed_bond_gap_intervals(14.4, 2.5, 2.5),
-            &[(2.5, 5.95), (8.45, 11.9)],
+            &[(2.88, 5.76), (8.64, 11.52)],
         );
         assert_gap_intervals(
             &chemdraw_dashed_bond_gap_intervals(36.0, 2.5, 2.5),
             &[
-                (2.5, 5.5833333333),
-                (8.0833333333, 11.1666666667),
-                (13.6666666667, 16.75),
-                (19.25, 22.3333333333),
-                (24.8333333333, 27.9166666667),
-                (30.4166666667, 33.5),
+                (2.4, 4.8),
+                (7.2, 9.6),
+                (12.0, 14.4),
+                (16.8, 19.2),
+                (21.6, 24.0),
+                (26.4, 28.8),
+                (31.2, 33.6),
             ],
         );
     }
 
     #[test]
-    fn chemdraw_dashed_bond_gap_intervals_keep_short_bonds_single_segment() {
+    fn chemdraw_dashed_bond_gap_intervals_switch_at_twice_hash_spacing() {
+        assert_gap_intervals(&chemdraw_dashed_bond_gap_intervals(4.99, 2.5, 2.5), &[]);
+        assert_gap_intervals(
+            &chemdraw_dashed_bond_gap_intervals(5.0, 2.5, 2.5),
+            &[(5.0 / 3.0, 10.0 / 3.0)],
+        );
         assert_gap_intervals(
             &chemdraw_dashed_bond_gap_intervals(7.0, 2.5, 2.5),
-            &[(2.5, 7.0)],
+            &[(7.0 / 3.0, 14.0 / 3.0)],
         );
         assert_gap_intervals(
             &chemdraw_dashed_bond_gap_intervals(8.0, 2.5, 2.5),
-            &[(2.5, 5.5)],
+            &[(8.0 / 3.0, 16.0 / 3.0)],
+        );
+        assert_gap_intervals(
+            &chemdraw_dashed_bond_gap_intervals(9.99, 2.5, 2.5),
+            &[(9.99 / 3.0, 19.98 / 3.0)],
+        );
+        assert_gap_intervals(
+            &chemdraw_dashed_bond_gap_intervals(10.0, 2.5, 2.5),
+            &[(2.0, 4.0), (6.0, 8.0)],
+        );
+        assert_gap_intervals(&chemdraw_dashed_bond_gap_intervals(5.39, 2.7, 2.7), &[]);
+        assert_gap_intervals(
+            &chemdraw_dashed_bond_gap_intervals(5.4, 2.7, 2.7),
+            &[(1.8, 3.6)],
         );
     }
 
