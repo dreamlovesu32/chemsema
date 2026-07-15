@@ -107,16 +107,16 @@ impl CdxmlColorTable {
     pub(super) fn id_for(&self, color: &str) -> String {
         let normalized =
             normalize_hex_color(color).unwrap_or_else(|| DEFAULT_FOREGROUND.to_string());
+        if let Some(id) = self.ids.get(&normalized) {
+            return id.clone();
+        }
         if normalized == self.foreground {
             return "0".to_string();
         }
         if normalized == self.background {
             return "1".to_string();
         }
-        self.ids
-            .get(&normalized)
-            .cloned()
-            .unwrap_or_else(|| "0".to_string())
+        "0".to_string()
     }
 
     pub(super) fn colors(&self) -> &[String] {
@@ -125,6 +125,10 @@ impl CdxmlColorTable {
 
     pub(super) fn background(&self) -> &str {
         &self.background
+    }
+
+    pub(super) fn foreground(&self) -> &str {
+        &self.foreground
     }
 
     pub(super) fn background_id(&self) -> String {

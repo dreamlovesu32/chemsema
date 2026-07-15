@@ -331,6 +331,9 @@ Example:
 - `align`: `left | center | right`
 - `valign`: `top | middle | bottom`
 - `runs`: optional rich text runs for inline formatting
+- `anchorOffsetX`: optional horizontal offset from the rendered text-box anchor to the
+  source text anchor; this is a geometric length, not a source-format enum
+- `baselineOffset`: optional vertical offset from the text-box top to the text baseline
 
 ### Rich Text Support
 
@@ -540,13 +543,16 @@ Imported bounding boxes are cached source evidence and may be stale; they must
 not override current ChemCore label geometry.
 
 CDXML/CDX root drawing defaults are preserved under
-`document.meta.import.cdxml.defaults` and mirrored into numeric
-`document.style.defaults` when the native style schema can represent them.
-Known defaults include bond length, chain angle, line width, bold width, hash
-spacing, bond spacing, margin width, label/caption font ids, label/caption
-faces, label/caption sizes, justification defaults, display flags, and print
-margins. These are style parameters; unlike cached label boxes, they may guide
-ChemCore's own rendering and export.
+`document.meta.import.cdxml.defaults`. Numeric physical values such as bond
+length, chain angle in degrees, line widths, spacing, margins, font sizes, and
+print margins remain numbers. Source-format codes do not enter native JSON:
+font ids become `fontFamily`, face bitmasks become explicit `fontWeight`,
+`fontStyle`, `underline`, and `script` fields, and color-table ids become hex
+colors. Active text defaults live in `style.labelStyle` and
+`style.captionStyle`; numeric drawing defaults remain in `style.defaults`.
+CDX/CDXML export rebuilds font, face, and color-table ids from these semantic
+values. Known colors reuse their color-table entries instead of persisting the
+source id in CCJS.
 
 Bond fields:
 
@@ -572,6 +578,11 @@ Bond fields:
   branched endpoints
 - `double.frozen`: optional boolean that prevents automatic double-bond side
   inference from replacing an imported or user-chosen placement
+- `meta.endpointAttachments.begin | end`: optional semantic internal-label
+  attachment object with `target: "label-character"`, numeric
+  `characterIndex`, and the corresponding `character`. CDX/CDXML import
+  decodes `BeginAttach` / `EndAttach` into this object; export encodes only the
+  character index back to the source format.
 
 Current built-in template values:
 

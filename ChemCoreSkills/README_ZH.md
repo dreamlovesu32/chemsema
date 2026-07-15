@@ -56,10 +56,11 @@ Linux/macOS 或 Git Bash:
 
 安装后重启 Codex，让新 skill 被重新发现。
 
-当前 Windows x64 的 `chemcore-cli` skill 已内置
-`assets/bin/win-x64/chemcore-cli.exe`。做 skill-only 用户分发时，必须保留
-`assets/` 目录；如果目标平台暂时没有内置 runtime，再让用户安装 ChemCore CLI
-并放入 `PATH`，或设置 `CHEMCORE_CLI`。
+当前 `chemcore-cli` skill 已内置 Windows x64 和 Linux x64 runtime，分别位于
+`assets/bin/win-x64` 与 `assets/bin/linux-x64`。Linux runtime 通过 Ubuntu/WSL
+执行 `npm run cli:ubuntu:test` 构建和冒烟测试。做 skill-only 用户分发时，必须
+保留 `assets/` 目录；如果目标平台暂时没有内置 runtime，再让用户安装
+ChemCore CLI 并放入 `PATH`，或设置 `CHEMCORE_CLI`。
 
 当前内置的 Windows runtime 尚未代码签名。发布 skill-only 压缩包时，同时发布
 `SHA256SUMS.txt`，保留 `assets/runtime-manifest.json`，并提醒用户安装前校验

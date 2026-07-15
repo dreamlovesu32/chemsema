@@ -2,6 +2,72 @@
 
 All notable public changes to ChemCore are tracked here.
 
+## 1.0.0-beta.8
+
+ChemDraw-aligned chemical-label interpretation and attachment geometry, stable
+semantic CDX/CDXML round trips, short-bond rendering fidelity, and shared
+Windows/Ubuntu CLI delivery across every ChemCore shell.
+
+- Refined structural chemical-label tokenization and display direction. Formula
+  groups such as `C10H21` keep their internal element/count structure and move
+  as a unit when an attached label reverses; multi-group formulas reverse by
+  chemical group, so a right-connected `C10H21O3` can display as `O3C10H21`
+  while preserving source text and numeric subscripts. Known abbreviations such
+  as `TFA`, oxidation-state labels such as `Cu(II)`, and metal-leading chemical
+  text now have explicit interpretation rules instead of relying on plain-text
+  fallback.
+- Tightened label chemistry diagnostics and implicit-hydrogen behavior. The
+  valence parser no longer invents hidden formal charges or expanded octets for
+  second-period elements, distinguishes invalid valence from uninterpretable
+  text, and preserves explicit per-node hydrogen-count overrides, including an
+  authored `NumHydrogens="0"`, through CDXML round trips.
+- Reworked CDX/CDXML rich-text import and export so justification, reversal,
+  normal/subscript/superscript runs, font sizes, faces, and the standard color
+  table survive open-save-open cycles predictably. Native CCJS/JSON now keeps
+  readable semantic values such as font families, explicit text styles, hex
+  colors, and named attachment targets; source-format font, face, color, and
+  attachment indices are reconstructed only at the CDX/CDXML boundary.
+- Added semantic support for ChemDraw `BeginAttach` and `EndAttach`. Explicit
+  internal label attachments resolve against the current glyph geometry and
+  are written back on export. When source attachment metadata is absent or
+  invalid, the engine retains its structural-node/main-bond anchor instead of
+  guessing the nearest glyph, keeping fallback behavior deterministic.
+- Corrected attached-label geometry for coordination and formula labels.
+  Same-row multi-glyph clipping now uses each glyph's own outline and vertical
+  overlap, so low parentheses, descenders, and script text cannot pull an
+  unrelated character's clipping region or bond anchor downward. This also
+  restores ChemDraw-like vertical alignment for labels such as `N`, `Pd`, and
+  `P(OPh)2` without per-molecule special cases.
+- Corrected double-bond retreat near labels. Centered-double sub-lines compute
+  clipping on their actual offset axes and share the larger endpoint retreat,
+  preserving equal visible lengths; side doubles keep the main bond on the
+  structural/attachment axis and no longer shift a terminal label by half the
+  parallel-line spacing.
+- Corrected automatic side placement for unfrozen double bonds when a newly
+  added substituent produces an exact signed-side tie. Editing follows the side
+  of the newest bond while context-free import remains deterministic, and the
+  GUI reflects the new placement immediately without an ACS/default style
+  refresh.
+- Matched ChemDraw's adaptive distribution for very short dashed bonds,
+  including the transition from three dashes to two and then one visible
+  segment. OCR comparison rules now treat a one-segment dashed bond as visually
+  indistinguishable from its corresponding single bond without changing the
+  underlying bond semantics.
+- Rebuilt and cross-checked the shared engine for the browser, Windows desktop,
+  HarmonyOS ArkWeb shell, native CLI, and Codex skills. Web and Harmony packages
+  now carry the same WASM artifact, while desktop and CLI release builds consume
+  the same Rust engine behavior and the Harmony build can produce an unsigned
+  HAP in clean environments without overwriting local signing configuration.
+- Added first-class Ubuntu/WSL CLI validation and Linux skill packaging. The
+  ChemCore CLI skill now bundles both `win-x64` and `linux-x64` runtimes with
+  manifest hashes, WSL build/smoke/test commands verify the Linux binary, and a
+  dedicated Ubuntu CI job runs the engine/CLI tests and skill contract checks.
+- Expanded regression coverage for chemical-label reversal, CDX/CDXML stable
+  export, explicit and inferred attachments, per-glyph clipping, centered and
+  side double bonds, and short dashed bonds. The updated engine was also
+  reviewed against the first 1,000 ChemCore OCR registry molecules with
+  before/after pixel comparisons, without replacing database records.
+
 ## 1.0.0-beta.7
 
 Object-grounded agent workflows, transactional CLI editing, structured

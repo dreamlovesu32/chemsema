@@ -207,103 +207,13 @@ pub(super) fn attached_node_label_anchor_world(
     fragment: &crate::MoleculeFragment,
     node_id: &str,
     object_translate: [f64; 2],
-    stroke_width: f64,
+    _stroke_width: f64,
 ) -> Point {
     let Some(node) = fragment.nodes.iter().find(|node| node.id == node_id) else {
         return Point::new(object_translate[0], object_translate[1]);
     };
-    let node_world = Point::new(
+    Point::new(
         object_translate[0] + node.position[0],
         object_translate[1] + node.position[1],
-    );
-    let connected: Vec<_> = fragment
-        .bonds
-        .iter()
-        .filter(|bond| bond.begin == node_id || bond.end == node_id)
-        .collect();
-    if connected.len() != 1 || connected[0].order != 2 {
-        return node_world;
-    }
-    let bond = connected[0];
-    let Some(begin_node) = fragment.nodes.iter().find(|other| other.id == bond.begin) else {
-        return node_world;
-    };
-    let Some(end_node) = fragment.nodes.iter().find(|other| other.id == bond.end) else {
-        return node_world;
-    };
-    let placement = bond
-        .double
-        .as_ref()
-        .map(|double| double.placement)
-        .unwrap_or(DoubleBondPlacement::Center);
-    if placement == DoubleBondPlacement::Center {
-        return node_world;
-    }
-    let begin_world = Point::new(
-        object_translate[0] + begin_node.position[0],
-        object_translate[1] + begin_node.position[1],
-    );
-    let end_world = Point::new(
-        object_translate[0] + end_node.position[0],
-        object_translate[1] + end_node.position[1],
-    );
-    let dx = end_world.x - begin_world.x;
-    let dy = end_world.y - begin_world.y;
-    let length = dx.hypot(dy);
-    if length <= crate::EPSILON {
-        return node_world;
-    }
-    let side = if placement == DoubleBondPlacement::Left {
-        1.0
-    } else {
-        -1.0
-    };
-    let normal_x = -dy / length;
-    let normal_y = dx / length;
-    let offset =
-        0.5 * side_double_center_distance_for_bond_points(
-            bond,
-            begin_world,
-            end_world,
-            stroke_width,
-            placement,
-        ) * side;
-    Point::new(
-        node_world.x + normal_x * offset,
-        node_world.y + normal_y * offset,
     )
-}
-
-pub(super) fn bond_line_weight_stroke_width_for_engine(
-    bond: &Bond,
-    stroke_width: f64,
-    weight: BondLineWeight,
-) -> f64 {
-    if weight == BondLineWeight::Bold {
-        bond.bold_width
-            .unwrap_or_else(|| {
-                crate::BOLD_BOND_WIDTH_PT.value() * (stroke_width / crate::DEFAULT_BOND_STROKE_PT)
-            })
-            .max(stroke_width)
-    } else {
-        stroke_width
-    }
-}
-
-pub(super) fn side_double_center_distance_for_bond_points(
-    bond: &Bond,
-    start: Point,
-    end: Point,
-    stroke_width: f64,
-    placement: DoubleBondPlacement,
-) -> f64 {
-    let outer_weight = match placement {
-        DoubleBondPlacement::Left => bond.line_weights.left,
-        DoubleBondPlacement::Right => bond.line_weights.right,
-        DoubleBondPlacement::Center => BondLineWeight::Normal,
-    };
-    let main_width =
-        bond_line_weight_stroke_width_for_engine(bond, stroke_width, bond.line_weights.main);
-    let outer_width = bond_line_weight_stroke_width_for_engine(bond, stroke_width, outer_weight);
-    start.distance(end) * 0.12 + 0.5 * (main_width + outer_width)
 }

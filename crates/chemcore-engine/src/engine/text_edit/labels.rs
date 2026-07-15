@@ -1913,7 +1913,7 @@ pub(super) fn implicit_hydrogen_count(fragment: &crate::MoleculeFragment, node_i
 
 fn cdxml_explicit_num_hydrogens(node: &crate::Node) -> Option<u8> {
     node.meta
-        .pointer("/import/cdxml/numHydrogens")
+        .pointer("/import/cdxml/explicitNumHydrogens")
         .and_then(Value::as_u64)
         .map(|value| value.min(u64::from(u8::MAX)) as u8)
 }

@@ -8,6 +8,25 @@ pub(super) fn world_point(object: &SceneObject, node: &Node) -> Point {
     )
 }
 
+pub(super) fn attached_label_glyph_anchor_world(
+    object: &SceneObject,
+    node: &Node,
+    glyph_index: usize,
+) -> Option<Point> {
+    let label = node.label.as_ref()?;
+    let polygons = label.glyph_polygons();
+    let bounds = polygon_bounds(polygons.get(glyph_index)?)?;
+    let baseline_y = label.position?[1];
+    let font_size = label
+        .font_size
+        .unwrap_or(crate::DEFAULT_MOLECULE_LABEL_FONT_SIZE_PT);
+    Some(Point::new(
+        (bounds.x1 + bounds.x2) * 0.5 + object.transform.translate[0],
+        baseline_y - font_size * crate::MOLECULE_LABEL_ANCHOR_BASELINE_RATIO
+            + object.transform.translate[1],
+    ))
+}
+
 pub(super) fn label_box_world(node: &Node, object: &SceneObject) -> Option<RectBox> {
     let label = node.label.as_ref()?;
     let bbox = label.bbox()?;
@@ -113,9 +132,7 @@ fn label_clip_polygons(label: &NodeLabel) -> Vec<Vec<Point>> {
             continue;
         }
         row.sort_by(|left, right| left.center_x.total_cmp(&right.center_x));
-        if let Some(rect) = horizontal_label_internal_clip_rect(&row) {
-            polygons.push(rect);
-        }
+        polygons.extend(horizontal_label_internal_clip_polygons(&row));
     }
 
     polygons
@@ -160,25 +177,55 @@ fn horizontal_clip_glyphs_share_row(left: GlyphClipInfo, right: GlyphClipInfo) -
     gap <= max_height * 0.65
 }
 
-fn horizontal_label_internal_clip_rect(row: &[GlyphClipInfo]) -> Option<Vec<Point>> {
-    let first = row.first()?;
-    let last = row.last()?;
-    if last.center_x <= first.center_x + EPSILON {
+fn horizontal_label_internal_clip_polygons(row: &[GlyphClipInfo]) -> Vec<Vec<Point>> {
+    let mut rectangles = Vec::new();
+    let last_index = row.len().saturating_sub(1);
+
+    // Keep the outer half of the first and last glyph as real outline. Their
+    // inward halves, and every middle glyph, are rectangularized using that
+    // glyph's own bounds. A low parenthesis therefore cannot drag the P-side
+    // clipping edge down to the parenthesis baseline.
+    for (index, glyph) in row.iter().enumerate() {
+        let x1 = if index == 0 {
+            glyph.center_x
+        } else {
+            glyph.bounds.x1
+        };
+        let x2 = if index == last_index {
+            glyph.center_x
+        } else {
+            glyph.bounds.x2
+        };
+        if let Some(rectangle) = clip_rectangle(x1, glyph.bounds.y1, x2, glyph.bounds.y2) {
+            rectangles.push(rectangle);
+        }
+    }
+
+    // Bridge only the vertical overlap of adjacent glyphs. This fills an
+    // internal character gap without flattening the whole row to a shared
+    // top or bottom.
+    for pair in row.windows(2) {
+        let left = pair[0];
+        let right = pair[1];
+        let y1 = left.bounds.y1.max(right.bounds.y1);
+        let y2 = left.bounds.y2.min(right.bounds.y2);
+        if let Some(rectangle) = clip_rectangle(left.bounds.x2, y1, right.bounds.x1, y2) {
+            rectangles.push(rectangle);
+        }
+    }
+
+    rectangles
+}
+
+fn clip_rectangle(x1: f64, y1: f64, x2: f64, y2: f64) -> Option<Vec<Point>> {
+    if x2 <= x1 + EPSILON || y2 <= y1 + EPSILON {
         return None;
     }
-    let y1 = row
-        .iter()
-        .map(|glyph| glyph.bounds.y1)
-        .fold(f64::INFINITY, f64::min);
-    let y2 = row
-        .iter()
-        .map(|glyph| glyph.bounds.y2)
-        .fold(f64::NEG_INFINITY, f64::max);
     Some(vec![
-        Point::new(first.center_x, y1),
-        Point::new(last.center_x, y1),
-        Point::new(last.center_x, y2),
-        Point::new(first.center_x, y2),
+        Point::new(x1, y1),
+        Point::new(x2, y1),
+        Point::new(x2, y2),
+        Point::new(x1, y2),
     ])
 }
 
@@ -254,7 +301,7 @@ fn point_is_inside_or_on_polygon(point: Point, polygon: &[Point]) -> bool {
     inside
 }
 
-fn polygon_bounds(polygon: &[Point]) -> Option<RectBox> {
+pub(super) fn polygon_bounds(polygon: &[Point]) -> Option<RectBox> {
     let mut bounds = RectBox {
         x1: f64::INFINITY,
         y1: f64::INFINITY,
@@ -383,6 +430,32 @@ pub(super) fn clip_body_segment_out_of_label_geometry(
     end_polygons: &[Vec<Point>],
     end_half_width: f64,
 ) -> Option<(Point, Point)> {
+    let (start_retreat, end_retreat) = body_segment_label_retreats(
+        start,
+        end,
+        start_rect,
+        start_polygons,
+        start_half_width,
+        end_rect,
+        end_polygons,
+        end_half_width,
+    )?;
+    let (clipped_start, clipped_end) =
+        apply_segment_endpoint_retreats(start, end, start_retreat, end_retreat);
+    (clipped_start.distance(clipped_end) > EPSILON).then_some((clipped_start, clipped_end))
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn body_segment_label_retreats(
+    start: Point,
+    end: Point,
+    start_rect: Option<RectBox>,
+    start_polygons: &[Vec<Point>],
+    start_half_width: f64,
+    end_rect: Option<RectBox>,
+    end_polygons: &[Vec<Point>],
+    end_half_width: f64,
+) -> Option<(f64, f64)> {
     let direction = Vector::new(end.x - start.x, end.y - start.y);
     let length = direction.length();
     if length <= EPSILON {
@@ -410,9 +483,7 @@ pub(super) fn clip_body_segment_out_of_label_geometry(
         end_half_width,
         length,
     );
-    let (clipped_start, clipped_end) =
-        apply_segment_endpoint_retreats(start, end, start_retreat, end_retreat);
-    (clipped_start.distance(clipped_end) > EPSILON).then_some((clipped_start, clipped_end))
+    Some((start_retreat, end_retreat))
 }
 
 #[allow(clippy::too_many_arguments)]

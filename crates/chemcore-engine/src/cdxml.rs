@@ -1,7 +1,7 @@
 use crate::{
     Bond, BondLineStyles, BondLineWeights, BondStereo, ChemcoreDocument, DocumentInfo,
-    DocumentStyleInfo, DoubleBond, FormatInfo, LabelRun, MoleculeFragment, Node, NodeLabel,
-    ObjectPayload, Page, Resource, ResourceData, SceneObject, Transform, EPSILON,
+    DocumentStyleInfo, DocumentTextStyle, DoubleBond, FormatInfo, LabelRun, MoleculeFragment, Node,
+    NodeLabel, ObjectPayload, Page, Resource, ResourceData, SceneObject, Transform, EPSILON,
 };
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -121,6 +121,28 @@ impl CdxmlJustification {
     }
 }
 
+fn imported_document_text_style(
+    font: u32,
+    face: u32,
+    size: f64,
+    color: u32,
+    colors: &CdxmlColorTable,
+    fonts: &BTreeMap<String, String>,
+) -> DocumentTextStyle {
+    let font = font.to_string();
+    let color = color.to_string();
+    let run = label_source_run("", face, &font, &color, size, colors, fonts);
+    DocumentTextStyle {
+        font_family: run.font_family.unwrap_or_else(|| "Arial".to_string()),
+        font_size: run.font_size.unwrap_or(size),
+        fill: run.fill.unwrap_or_else(|| "#000000".to_string()),
+        font_weight: run.font_weight.unwrap_or(400),
+        font_style: run.font_style.unwrap_or_else(|| "normal".to_string()),
+        underline: run.underline.unwrap_or(false),
+        script: run.script.unwrap_or_else(|| "normal".to_string()),
+    }
+}
+
 pub fn parse_cdxml_document(cdxml: &str, title: Option<&str>) -> Result<ChemcoreDocument, String> {
     let root = parse_xml_tree(cdxml)?;
     let defaults = cdxml_defaults(&root);
@@ -206,6 +228,22 @@ pub fn parse_cdxml_document(cdxml: &str, title: Option<&str>) -> Result<Chemcore
         &bonded_node_ids,
     );
     apply_cdxml_groups(&root, &mut objects);
+    let label_style = imported_document_text_style(
+        defaults.label_font,
+        defaults.label_face,
+        defaults.label_size,
+        defaults.color,
+        &colors,
+        &fonts,
+    );
+    let caption_style = imported_document_text_style(
+        defaults.caption_font,
+        defaults.caption_face,
+        defaults.caption_size,
+        defaults.color,
+        &colors,
+        &fonts,
+    );
     let mut document = ChemcoreDocument {
         format: FormatInfo {
             name: "chemcore".to_string(),
@@ -229,13 +267,9 @@ pub fn parse_cdxml_document(cdxml: &str, title: Option<&str>) -> Result<Chemcore
                             "hashSpacing": defaults.hash_spacing,
                             "bondSpacing": defaults.bond_spacing,
                             "marginWidth": defaults.margin_width,
-                            "labelSize": defaults.label_size,
-                            "captionSize": defaults.caption_size,
                             "chainAngle": defaults.chain_angle,
-                            "labelFont": defaults.label_font,
-                            "labelFace": defaults.label_face,
-                            "captionFont": defaults.caption_font,
-                            "captionFace": defaults.caption_face,
+                            "labelStyle": label_style,
+                            "captionStyle": caption_style,
                             "labelJustification": defaults.label_justification.as_cdxml(),
                             "captionJustification": defaults.caption_justification.as_cdxml(),
                             "fractionalWidths": defaults.fractional_widths,
@@ -252,7 +286,7 @@ pub fn parse_cdxml_document(cdxml: &str, title: Option<&str>) -> Result<Chemcore
                             "showNonTerminalCarbonLabels": defaults.show_non_terminal_carbon_labels,
                             "hideImplicitHydrogens": defaults.hide_implicit_hydrogens,
                             "printMargins": defaults.print_margins,
-                            "color": defaults.color,
+                            "foregroundColor": colors.foreground(),
                         }
                     }
                 },
@@ -273,13 +307,9 @@ pub fn parse_cdxml_document(cdxml: &str, title: Option<&str>) -> Result<Chemcore
                 ("bondSpacing".to_string(), defaults.bond_spacing),
                 ("marginWidth".to_string(), defaults.margin_width),
                 ("graphicLineWidth".to_string(), defaults.line_width),
-                ("labelFontSize".to_string(), defaults.label_size),
-                ("textFontSize".to_string(), defaults.caption_size),
-                ("labelFont".to_string(), defaults.label_font as f64),
-                ("captionFont".to_string(), defaults.caption_font as f64),
-                ("labelFace".to_string(), defaults.label_face as f64),
-                ("captionFace".to_string(), defaults.caption_face as f64),
             ]),
+            label_style,
+            caption_style,
         },
         styles,
         objects,
@@ -590,6 +620,7 @@ fn scale_json_key_as_length_scalar(key: &str) -> bool {
             | "strokeWidth"
             | "fontSize"
             | "lineHeight"
+            | "anchorOffsetX"
             | "baselineOffset"
             | "wrapWidth"
             | "pad"
@@ -838,7 +869,7 @@ fn normalize_fragment(
         .collect();
     let bonds: Vec<Bond> = fragment
         .direct_children("b")
-        .filter_map(|bond| normalize_bond(bond, &node_ids, defaults, colors))
+        .filter_map(|bond| normalize_bond(bond, &node_ids, &nodes, defaults, colors))
         .collect();
     if nodes.len() < 2 || bonds.is_empty() {
         return None;
@@ -1167,9 +1198,7 @@ fn normalize_node(
                 "z": parse_i32(node.attr("Z")),
                 "nodeType": empty_as_null(node.attr("NodeType")),
                 "labelDisplay": empty_as_null(node.attr("LabelDisplay")),
-                "element": node.attr("Element"),
-                "numHydrogens": explicit_num_hydrogens,
-                "radical": empty_as_null(node.attr("Radical")),
+                "explicitNumHydrogens": explicit_num_hydrogens,
             }
         }
     });
@@ -1347,9 +1376,6 @@ fn node_label(
         meta: json!({
             "import": {
                 "cdxml": {
-                    "font": parent_font,
-                    "face": parent_face,
-                    "color": parent_color,
                     "textPosition": text_position,
                     "boundingBox": bbox,
                     "labelDisplay": empty_as_null(label_display),
@@ -1422,6 +1448,7 @@ fn cdxml_label_flow(
 fn normalize_bond(
     bond: &XmlNode,
     node_ids: &BTreeSet<String>,
+    nodes: &[Node],
     defaults: CdxmlDefaults,
     colors: &CdxmlColorTable,
 ) -> Option<Bond> {
@@ -1489,6 +1516,30 @@ fn normalize_bond(
             );
         }
     }
+    let begin_attach = parse_u32(bond.attr("BeginAttach"));
+    let end_attach = parse_u32(bond.attr("EndAttach"));
+    let mut meta = json!({"import": {"cdxml": {"z": parse_i32(bond.attr("Z")), "display": empty_as_null(bond.attr("Display")), "display2": empty_as_null(bond.attr("Display2")), "doublePosition": empty_as_null(bond.attr("DoublePosition"))}}});
+    if begin_attach.is_some() || end_attach.is_some() {
+        let mut attachments = serde_json::Map::new();
+        if let Some(value) = begin_attach {
+            attachments.insert(
+                "begin".to_string(),
+                semantic_endpoint_attachment(nodes, &begin, value),
+            );
+        }
+        if let Some(value) = end_attach {
+            attachments.insert(
+                "end".to_string(),
+                semantic_endpoint_attachment(nodes, &end, value),
+            );
+        }
+        meta.as_object_mut()
+            .expect("bond metadata must be an object")
+            .insert(
+                "endpointAttachments".to_string(),
+                Value::Object(attachments),
+            );
+    }
     Some(Bond {
         id: bond.attr("id").unwrap_or("").to_string(),
         begin,
@@ -1510,7 +1561,28 @@ fn normalize_bond(
         margin_width: None,
         line_styles,
         line_weights,
-        meta: json!({"import": {"cdxml": {"z": parse_i32(bond.attr("Z")), "display": empty_as_null(bond.attr("Display")), "display2": empty_as_null(bond.attr("Display2")), "doublePosition": empty_as_null(bond.attr("DoublePosition"))}}}),
+        meta,
+    })
+}
+
+fn semantic_endpoint_attachment(nodes: &[Node], node_id: &str, character_index: u32) -> Value {
+    let character = nodes
+        .iter()
+        .find(|node| node.id == node_id)
+        .and_then(|node| node.label.as_ref())
+        .and_then(|label| {
+            label
+                .source_text
+                .as_deref()
+                .unwrap_or(&label.text)
+                .chars()
+                .nth(character_index as usize)
+        })
+        .map(|character| character.to_string());
+    json!({
+        "target": "label-character",
+        "characterIndex": character_index,
+        "character": character,
     })
 }
 

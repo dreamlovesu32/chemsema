@@ -6,6 +6,37 @@ on:
   workflow_dispatch:
 
 jobs:
+  ubuntu-cli:
+    name: Ubuntu CLI
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+
+      - name: Cache Rust build outputs
+        uses: Swatinem/rust-cache@v2
+
+      - name: Test engine and CLI
+        run: cargo test --locked -p chemcore-engine -p chemcore-cli
+
+      - name: Build and smoke-test CLI
+        run: |
+          cargo build --locked --release -p chemcore-cli
+          target/release/chemcore-cli version --pretty
+          target/release/chemcore-cli capabilities >/dev/null
+          target/release/chemcore-cli label-query --text CF3 --connection-angle 0 >/dev/null
+
+      - name: Check CLI skill against Ubuntu runtime
+        env:
+          CHEMCORE_CLI: ${{ github.workspace }}/target/release/chemcore-cli
+        run: python3 ChemCoreSkills/skills/chemcore-cli/scripts/check_cli_skill_sync.py --suite-root ChemCoreSkills --json
+
   verify:
     name: Windows verify
     runs-on: windows-latest

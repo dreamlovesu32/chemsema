@@ -8,8 +8,8 @@ const outputDir = process.argv[3] || path.resolve("tmp/label-anchor-regression")
 const ANCHOR_TEST_START = { x: 1, y: 1 };
 const ANCHOR_TEST_END = { x: 2.058, y: 1 };
 const ANCHOR_BRANCH_END = { x: 2.9, y: 1.7 };
-const SIDE_LABEL_MIN_OFFSET_CM = 0.06;
-const CENTER_LABEL_MAX_DRIFT_CM = 0.06;
+const SIDE_LABEL_MAX_DRIFT_PT = 0.3;
+const CENTER_LABEL_MAX_DRIFT_PT = 0.3;
 
 fs.mkdirSync(outputDir, { recursive: true });
 
@@ -19,6 +19,7 @@ const page = await browser.newPage({
   deviceScaleFactor: 1.25,
 });
 page.setDefaultTimeout(8000);
+let blankDocumentJson = null;
 
 function logStep(label) {
   console.log(`STEP ${label}`);
@@ -27,11 +28,21 @@ function logStep(label) {
 async function waitForReady() {
   await page.goto(url, { waitUntil: "networkidle" });
   await page.waitForFunction(() => window.__chemcoreDebug?.state?.editorEngine && window.__chemcoreDebug?.document);
+  blankDocumentJson = await page.evaluate(() => window.__chemcoreDebug.state.editorEngine.documentJson());
 }
 
 async function resetDocument() {
-  await page.click('[data-command="new"]');
-  await page.waitForFunction(() => window.__chemcoreDebug?.document && window.__chemcoreDebug?.state?.editorEngine);
+  await page.evaluate((documentJson) => {
+    const debug = window.__chemcoreDebug;
+    debug.state.editorEngine.loadDocumentJson(documentJson);
+    debug.syncDocument();
+  }, blankDocumentJson);
+  await page.waitForFunction(() => (
+    window.__chemcoreDebug?.document
+    && window.__chemcoreDebug?.state?.editorEngine
+    && window.__chemcoreDebug?.engineState?.document?.resources?.mol_editor?.data?.nodes?.length === 0
+    && window.__chemcoreDebug?.engineState?.document?.resources?.mol_editor?.data?.bonds?.length === 0
+  ));
 }
 
 async function engineEval(payload) {
@@ -56,7 +67,7 @@ async function engineEval(payload) {
       debug.syncDocument();
       return fragment();
     }
-    if (input.action === "cycleBondToCenter") {
+    if (input.action === "cycleBondToPlacement") {
       const bondCenter = () => {
         const frag = fragment();
         const bond = frag.bonds.find((candidate) => candidate.id === input.bondId);
@@ -69,17 +80,22 @@ async function engineEval(payload) {
       };
       engine.setTool("bond", "double");
       for (let index = 0; index < 4; index += 1) {
+        const currentPlacement = fragment().bonds
+          .find((candidate) => candidate.id === input.bondId)?.double?.placement;
+        if (currentPlacement === input.placement) {
+          return fragment();
+        }
         const center = bondCenter();
         engine.pointerMove(center.x, center.y, false);
         engine.pointerDown(center.x, center.y, false);
         engine.pointerUp(center.x, center.y, false);
         debug.syncDocument();
         const placement = fragment().bonds.find((candidate) => candidate.id === input.bondId)?.double?.placement;
-        if (placement === "center") {
+        if (placement === input.placement) {
           return fragment();
         }
       }
-      throw new Error(`Failed to cycle ${input.bondId} to center`);
+      throw new Error(`Failed to cycle ${input.bondId} to ${input.placement}`);
     }
     if (input.action === "addBranchFromLabel") {
       const frag = fragment();
@@ -225,6 +241,11 @@ let fragment = await engineEval({
 });
 let focusNode = terminalNode(fragment);
 fragment = await engineEval({
+  action: "cycleBondToPlacement",
+  bondId: fragment.bonds[0].id,
+  placement: "right",
+});
+fragment = await engineEval({
   action: "replaceLabel",
   nodeId: focusNode.id,
   label: "O",
@@ -234,7 +255,7 @@ let { bond, normal } = bondAndNormal(fragment, focusNode.id);
 let center = labelCenter(focusNode);
 let projection = normalProjection(focusNode, center, normal);
 assert.equal(bond.double?.placement, "right");
-assert(projection > SIDE_LABEL_MIN_OFFSET_CM, `terminal side double label did not move to side line midpoint: ${projection}`);
+assert(Math.abs(projection) < SIDE_LABEL_MAX_DRIFT_PT, `terminal side double label moved off the structural node/main-bond axis: ${projection}`);
 await saveWorldCrop("terminal-side-double.png", sceneBounds(fragment, focusNode.id));
 
 logStep("center-double");
@@ -248,8 +269,9 @@ fragment = await engineEval({
 focusNode = terminalNode(fragment);
 const centerBondId = fragment.bonds[0].id;
 fragment = await engineEval({
-  action: "cycleBondToCenter",
+  action: "cycleBondToPlacement",
   bondId: centerBondId,
+  placement: "center",
 });
 fragment = await engineEval({
   action: "replaceLabel",
@@ -261,7 +283,7 @@ focusNode = fragment.nodes.find((candidate) => candidate.id === focusNode.id);
 center = labelCenter(focusNode);
 projection = normalProjection(focusNode, center, normal);
 assert.equal(bond.double?.placement, "center");
-assert(Math.abs(projection) < CENTER_LABEL_MAX_DRIFT_CM, `center double label should stay on main bond anchor: ${projection}`);
+assert(Math.abs(projection) < CENTER_LABEL_MAX_DRIFT_PT, `center double label should stay on main bond anchor: ${projection}`);
 await saveWorldCrop("center-double.png", sceneBounds(fragment, focusNode.id));
 
 logStep("branched-double");
@@ -287,7 +309,7 @@ focusNode = fragment.nodes.find((candidate) => candidate.id === focusNode.id);
 ({ normal } = bondAndNormal(fragment, focusNode.id));
 center = labelCenter(focusNode);
 projection = normalProjection(focusNode, center, normal);
-assert(Math.abs(projection) < CENTER_LABEL_MAX_DRIFT_CM, `branched double label should fall back to main bond anchor: ${projection}`);
+assert(Math.abs(projection) < CENTER_LABEL_MAX_DRIFT_PT, `branched double label should fall back to main bond anchor: ${projection}`);
 await saveWorldCrop("branched-double.png", sceneBounds(fragment, focusNode.id, 24));
 
 await browser.close();

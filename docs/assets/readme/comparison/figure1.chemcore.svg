@@ -34,15 +34,15 @@
   <path d="M 204.29000000000002,258.25 C 204.29000000000002,263.02174023853803 208.15825976146195,266.89 212.93,266.89 C 217.70174023853806,266.89 221.57,263.02174023853803 221.57,258.25 C 221.57,253.47825976146194 217.70174023853806,249.61 212.93,249.61 C 208.15825976146195,249.61 204.29000000000002,253.47825976146194 204.29000000000002,258.25" fill="none" stroke="#c0c0c0" stroke-width="0.6" stroke-linecap="round" stroke-linejoin="round" />
   <text x="1.4" y="88.07" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">a) Site-selective C-H functionalization of allenes (Previous study)</tspan></text>
   <text x="235.45" y="249.28" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">•</tspan></text>
-  <polygon points="221.813376,244.384 233.177652,244.384 233.177652,243.784 222.148295,243.784" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="221.813376,244.384 232.841312,244.384 232.841312,243.784 222.148295,243.784" fill="#000000" stroke="none" stroke-width="0" />
   <polygon points="222.78,246.976 232.841312,246.976 232.841312,246.376 222.78,246.376" fill="#000000" stroke="none" stroke-width="0" />
-  <polygon points="241.181,244.384 252.635858,244.384 252.001181,243.784 241.181,243.784" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="241.529497,244.384 252.635858,244.384 252.001181,243.784 241.529497,243.784" fill="#000000" stroke="none" stroke-width="0" />
   <polygon points="241.529497,246.976 252.155092,246.976 252.501492,246.376 241.529497,246.376" fill="#000000" stroke="none" stroke-width="0" />
   <text x="217.95" y="262.15" font-size="10" dominant-baseline="alphabetic" text-anchor="end" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">Ar</tspan></text>
-  <path d="M 221.3936 247.4700 L 220.9131 248.1552 L 221.6663 248.5338 L 221.9296 247.7394 Z" fill="#000000" stroke="none" />
-  <path d="M 219.8328 249.6960 L 219.4847 250.1925 L 220.8832 250.8956 L 221.0740 250.3200 Z" fill="#000000" stroke="none" />
-  <path d="M 218.4043 251.7333 L 218.0562 252.2299 L 220.1001 253.2574 L 220.2910 252.6818 Z" fill="#000000" stroke="none" />
-  <path d="M 216.9759 253.7707 L 216.6277 254.2672 L 219.3170 255.6192 L 219.5079 255.0436 Z" fill="#000000" stroke="none" />
+  <path d="M 221.3936 247.4700 L 220.9100 248.1536 L 221.6694 248.5353 L 221.9296 247.7394 Z" fill="#000000" stroke="none" />
+  <path d="M 219.8671 249.6283 L 219.5167 250.1237 L 220.9193 250.8288 L 221.1079 250.2521 Z" fill="#000000" stroke="none" />
+  <path d="M 218.4737 251.5983 L 218.1233 252.0938 L 220.1693 253.1223 L 220.3579 252.5456 Z" fill="#000000" stroke="none" />
+  <path d="M 217.0804 253.5684 L 216.7300 254.0638 L 219.4193 255.4158 L 219.6079 254.8390 Z" fill="#000000" stroke="none" />
   <text x="255.01" y="236.81" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#ff0000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#ff0000" font-weight="700" font-style="normal">CN</tspan></text>
   <polygon points="251.934399,245.393827 257.038531,238.93599 254.431834,237.43092 251.242378,245.395231" fill="#000000" stroke="none" stroke-width="0" />
   <polygon points="251.242378,245.395231 258.602885,258.14322 258.78,257.85 258.957115,257.55678 251.934399,245.393827" fill="#000000" stroke="none" stroke-width="0" />
@@ -51,9 +51,9 @@
   <text x="44.19" y="129.31" font-size="10" dominant-baseline="alphabetic" text-anchor="end" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">R'</tspan></text>
   <polygon points="43.845594,126.244813 50.563585,137.88 50.91,137.88 51.256415,137.88 44.365201,125.944799" fill="#000000" stroke="none" stroke-width="0" />
   <text x="63.58" y="141.78" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">•</tspan></text>
-  <polygon points="49.988508,136.884 61.735505,136.884 61.735505,136.284 50.334908,136.284" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="49.988508,136.884 61.381158,136.884 61.381158,136.284 50.334908,136.284" fill="#000000" stroke="none" stroke-width="0" />
   <polygon points="50.334908,139.476 61.381158,139.476 61.381158,138.876 49.988508,138.876" fill="#000000" stroke="none" stroke-width="0" />
-  <polygon points="68.834857,136.884 80.631492,136.884 80.285092,136.284 68.834857,136.284" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="69.249438,136.884 80.631492,136.884 80.285092,136.284 69.249438,136.284" fill="#000000" stroke="none" stroke-width="0" />
   <polygon points="69.249438,139.476 80.285092,139.476 80.631492,138.876 69.249438,138.876" fill="#000000" stroke="none" stroke-width="0" />
   <text x="44.19" y="154.25" font-size="10" dominant-baseline="alphabetic" text-anchor="end" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">R''</tspan></text>
   <polygon points="50.563585,137.88 45.3,146.996236 45.819607,147.29625 51.256415,137.88 50.91,137.88" fill="#000000" stroke="none" stroke-width="0" />
@@ -67,9 +67,9 @@
   <polyline points="118.45,139.95 200.74,139.95" fill="none" stroke="#000000" stroke-width="0.6" stroke-linecap="butt" stroke-linejoin="miter" />
   <path d="M 205.99,139.95 C 205.99,139.95 199.99,141.5 199.99,141.5 C 199.99,141.5 200.74,140.62812499999998 200.74,139.95 C 200.74,139.271875 199.99,138.39999999999998 199.99,138.39999999999998 C 199.99,138.39999999999998 205.99,139.95 205.99,139.95" fill="#000000" stroke="none" />
   <text x="268.72" y="143.6" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">•</tspan></text>
-  <polygon points="255.128508,138.704 266.875505,138.704 266.875505,138.104 255.474908,138.104" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="255.128508,138.704 266.521158,138.704 266.521158,138.104 255.474908,138.104" fill="#000000" stroke="none" stroke-width="0" />
   <polygon points="255.474908,141.296 266.521158,141.296 266.521158,140.696 255.128508,140.696" fill="#000000" stroke="none" stroke-width="0" />
-  <polygon points="273.974857,138.704 284.85,138.704 284.85,138.104 273.974857,138.104" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="274.389438,138.704 284.85,138.704 284.85,138.104 274.389438,138.104" fill="#000000" stroke="none" stroke-width="0" />
   <polygon points="274.389438,141.296 284.85,141.296 284.85,140.696 274.389438,140.696" fill="#000000" stroke="none" stroke-width="0" />
   <polygon points="284.85,140 299.0768,140 299.25,139.7 299.0768,139.4 284.85,139.4" fill="#000000" stroke="none" stroke-width="0" />
   <text x="302.87" y="131.13" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="700" font-style="normal">H</tspan></text>
@@ -84,9 +84,9 @@
   <text x="455.92" y="127.48" font-size="10" dominant-baseline="alphabetic" text-anchor="end" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">R'</tspan></text>
   <polygon points="455.575594,124.414813 462.293585,136.05 462.64,136.05 462.986415,136.05 456.095201,124.114799" fill="#000000" stroke="none" stroke-width="0" />
   <text x="475.31" y="139.95" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">•</tspan></text>
-  <polygon points="461.718508,135.054 473.465505,135.054 473.465505,134.454 462.064908,134.454" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="461.718508,135.054 473.111158,135.054 473.111158,134.454 462.064908,134.454" fill="#000000" stroke="none" stroke-width="0" />
   <polygon points="462.064908,137.646 473.111158,137.646 473.111158,137.046 461.718508,137.046" fill="#000000" stroke="none" stroke-width="0" />
-  <polygon points="480.564857,135.054 492.361492,135.054 492.015092,134.454 480.564857,134.454" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="480.979438,135.054 492.361492,135.054 492.015092,134.454 480.979438,134.454" fill="#000000" stroke="none" stroke-width="0" />
   <polygon points="480.979438,137.646 492.015092,137.646 492.361492,137.046 480.979438,137.046" fill="#000000" stroke="none" stroke-width="0" />
   <text x="455.92" y="152.42" font-size="10" dominant-baseline="alphabetic" text-anchor="end" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">R''</tspan></text>
   <polygon points="462.293585,136.05 457.03,145.166236 457.549607,145.46625 462.986415,136.05 462.64,136.05" fill="#000000" stroke="none" stroke-width="0" />
@@ -100,9 +100,9 @@
   <text x="10.28" y="400.94" font-size="10" dominant-baseline="alphabetic" text-anchor="end" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">R'</tspan></text>
   <polygon points="9.935594,397.874813 16.653585,409.51 17,409.51 17.346415,409.51 10.455201,397.574799" fill="#000000" stroke="none" stroke-width="0" />
   <text x="29.67" y="413.41" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">•</tspan></text>
-  <polygon points="16.078508,408.514 27.825505,408.514 27.825505,407.914 16.424908,407.914" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="16.078508,408.514 27.471158,408.514 27.471158,407.914 16.424908,407.914" fill="#000000" stroke="none" stroke-width="0" />
   <polygon points="16.424908,411.106 27.471158,411.106 27.471158,410.506 16.078508,410.506" fill="#000000" stroke="none" stroke-width="0" />
-  <polygon points="34.924857,408.514 46.721492,408.514 46.375092,407.914 34.924857,407.914" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="35.339437,408.514 46.721492,408.514 46.375092,407.914 35.339437,407.914" fill="#000000" stroke="none" stroke-width="0" />
   <polygon points="35.339437,411.106 46.375092,411.106 46.721492,410.506 35.339437,410.506" fill="#000000" stroke="none" stroke-width="0" />
   <text x="11.46" y="425.88" font-size="10" dominant-baseline="alphabetic" text-anchor="end" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">Ar</tspan></text>
   <polygon points="16.653585,409.51 11.21258,418.933517 11.732188,419.233531 17.346415,409.51 17,409.51" fill="#000000" stroke="none" stroke-width="0" />
@@ -111,9 +111,9 @@
   <text x="291.7" y="396.1" font-size="10" dominant-baseline="alphabetic" text-anchor="end" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">R'</tspan></text>
   <polygon points="291.355594,393.034813 298.073585,404.67 298.42,404.67 298.766415,404.67 291.875201,392.734799" fill="#000000" stroke="none" stroke-width="0" />
   <text x="311.09" y="408.57" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">•</tspan></text>
-  <polygon points="297.498508,403.674 309.245505,403.674 309.245505,403.074 297.844908,403.074" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="297.498508,403.674 308.891158,403.674 308.891158,403.074 297.844908,403.074" fill="#000000" stroke="none" stroke-width="0" />
   <polygon points="297.844908,406.266 308.891158,406.266 308.891158,405.666 297.498508,405.666" fill="#000000" stroke="none" stroke-width="0" />
-  <polygon points="316.344857,403.674 327.22,403.674 327.22,403.074 316.344857,403.074" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="316.759438,403.674 327.22,403.674 327.22,403.074 316.759438,403.074" fill="#000000" stroke="none" stroke-width="0" />
   <polygon points="316.759438,406.266 327.641181,406.266 328.275858,405.666 316.759438,405.666" fill="#000000" stroke="none" stroke-width="0" />
   <text x="292.88" y="421.04" font-size="10" dominant-baseline="alphabetic" text-anchor="end" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">Ar</tspan></text>
   <polygon points="298.073585,404.67 292.63258,414.093517 293.152188,414.393531 298.766415,404.67 298.42,404.67" fill="#000000" stroke="none" stroke-width="0" />
@@ -137,9 +137,9 @@
   <text x="345.12" y="420.99" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">R</tspan></text>
   <polygon points="332.906009,417.445259 343.9,417.407085 343.897917,416.807089 336.0338,416.834395" fill="#000000" stroke="none" stroke-width="0" />
   <text x="86.09" y="533.81" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">•</tspan></text>
-  <polygon points="72.498508,528.914 84.245505,528.914 84.245505,528.314 72.844908,528.314" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="72.498508,528.914 83.891158,528.914 83.891158,528.314 72.844908,528.314" fill="#000000" stroke="none" stroke-width="0" />
   <polygon points="72.844908,531.506 83.891158,531.506 83.891158,530.906 72.498508,530.906" fill="#000000" stroke="none" stroke-width="0" />
-  <polygon points="91.344857,528.914 102.22,528.914 102.22,528.314 91.344857,528.314" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="91.759438,528.914 102.22,528.914 102.22,528.314 91.759438,528.314" fill="#000000" stroke="none" stroke-width="0" />
   <polygon points="91.759438,531.506 102.22,531.506 102.22,530.906 91.759438,530.906" fill="#000000" stroke="none" stroke-width="0" />
   <polygon points="102.22,530.21 116.4468,530.21 116.62,529.91 116.4468,529.61 102.22,529.61" fill="#000000" stroke="none" stroke-width="0" />
   <text x="120.24" y="521.34" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="700" font-style="normal">H</tspan></text>
@@ -190,11 +190,11 @@
   <polygon points="434.225717,248.280253 430.513488,252.40435 430.66,252.69 431.028628,252.728891 434.671664,248.681664" fill="#000000" stroke="none" stroke-width="0" />
   <polygon points="430.521938,253.051327 435.388416,261.498619 435.77,261.56 435.921035,261.22119 431.028628,252.728891 430.66,252.69" fill="#000000" stroke="none" stroke-width="0" />
   <polygon points="435.944176,261.829678 441.89,260.565745 441.765243,259.978859 435.921035,261.22119 435.77,261.56" fill="#000000" stroke="none" stroke-width="0" />
-  <polygon points="446.46881,255.841718 447.142386,249.433305 446.86,249.25 446.538875,249.435265 445.872097,255.778999" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="446.520791,255.347166 447.142386,249.433305 446.86,249.25 446.538875,249.435265 445.924078,255.284446" fill="#000000" stroke="none" stroke-width="0" />
   <polygon points="444.688391,255.154566 445.214759,250.146696 444.618046,250.083977 444.091678,255.091846" fill="#000000" stroke="none" stroke-width="0" />
   <text x="462.8" y="262.55" font-size="8" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="8" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">N</tspan></text>
   <text x="470.84" y="248.2" font-size="8" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="8" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">O</tspan></text>
-  <polygon points="464.307624,249.433397 464.954316,255.586036 465.551029,255.523316 464.911125,249.435265 464.59,249.25" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="464.307624,249.433397 464.929139,255.346502 465.525852,255.283783 464.911125,249.435265 464.59,249.25" fill="#000000" stroke="none" stroke-width="0" />
   <polygon points="466.235241,250.146696 466.761539,255.153902 467.358252,255.091183 466.831954,250.083977" fill="#000000" stroke="none" stroke-width="0" />
   <polygon points="469.56,260.565745 475.831035,261.89881 475.68,261.56 475.528965,261.22119 469.684757,259.978859" fill="#000000" stroke="none" stroke-width="0" />
   <polygon points="475.831035,261.89881 481.158628,252.651109 480.79,252.69 480.421372,252.728891 475.528965,261.22119 475.68,261.56" fill="#000000" stroke="none" stroke-width="0" />
@@ -268,9 +268,9 @@
   <path d="M 44.73763682346076,254.06498147335466 C 44.73763682346076,254.79253083376224 45.32743211294707,255.38232612324856 46.054981473354665,255.38232612324856 C 46.78253083376226,255.38232612324856 47.37232612324857,254.79253083376224 47.37232612324857,254.06498147335466 C 47.37232612324857,253.33743211294708 46.78253083376226,252.74763682346077 46.054981473354665,252.74763682346077 C 45.32743211294707,252.74763682346077 44.73763682346076,253.33743211294708 44.73763682346076,254.06498147335466" fill="#ffffff" stroke="none" />
   <path d="M 41.6,258.25 C 41.6,263.02174023853803 45.468259761461944,266.89 50.24,266.89 C 55.01174023853806,266.89 58.88,263.02174023853803 58.88,258.25 C 58.88,253.47825976146194 55.01174023853806,249.61 50.24,249.61 C 45.468259761461944,249.61 41.6,253.47825976146194 41.6,258.25" fill="none" stroke="#c0c0c0" stroke-width="0.6" stroke-linecap="round" stroke-linejoin="round" />
   <text x="72.75" y="249.28" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">•</tspan></text>
-  <polygon points="59.114316,244.384 70.905505,244.384 70.905505,243.784 59.449468,243.784" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="59.114316,244.384 70.551158,244.384 70.551158,243.784 59.449468,243.784" fill="#000000" stroke="none" stroke-width="0" />
   <polygon points="60.08,246.976 70.551158,246.976 70.551158,246.376 60.08,246.376" fill="#000000" stroke="none" stroke-width="0" />
-  <polygon points="78.004857,244.384 89.935858,244.384 89.301181,243.784 78.004857,243.784" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="78.419438,244.384 89.935858,244.384 89.301181,243.784 78.419438,243.784" fill="#000000" stroke="none" stroke-width="0" />
   <polygon points="78.419438,246.976 89.455092,246.976 89.801492,246.376 78.419438,246.376" fill="#000000" stroke="none" stroke-width="0" />
   <text x="55.27" y="262.15" font-size="10" dominant-baseline="alphabetic" text-anchor="end" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">Ar</tspan></text>
   <path d="M 58.6936 247.4700 L 58.2182 248.1577 L 58.9612 248.5312 L 59.2296 247.7394 Z" fill="#000000" stroke="none" />
@@ -291,11 +291,11 @@
   <polygon points="357.491137,251.056021 360.799986,252.966504 361.1,252.446896 357.791151,250.536414" fill="#000000" stroke="none" stroke-width="0" />
   <polygon points="348.448727,250.524937 340.64,255.033585 340.64,255.38 340.94,255.5532 348.748741,251.044544" fill="#000000" stroke="none" stroke-width="0" />
   <text x="342.03" y="239.61" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">O</tspan></text>
-  <polygon points="349.707795,244.279359 347.824934,241.018348 347.305327,241.318362 349.188188,244.579373" fill="#000000" stroke="none" stroke-width="0" />
-  <polygon points="351.91196,242.913328 350.024771,239.644822 349.505164,239.944836 351.392353,243.213342" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="349.66736,244.209328 347.824934,241.018348 347.305327,241.318362 349.147753,244.509342" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="351.91196,242.913328 350.069534,239.722348 349.549927,240.022362 351.392353,243.213342" fill="#000000" stroke="none" stroke-width="0" />
   <text x="356.43" y="239.61" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">O</tspan></text>
-  <polygon points="354.810187,243.243582 356.714836,239.944836 356.195229,239.644822 354.290579,242.943568" fill="#000000" stroke="none" stroke-width="0" />
-  <polygon points="356.98908,244.653382 358.904277,241.336368 358.38467,241.036354 356.469473,244.353369" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="354.810187,243.243582 356.659677,240.040368 356.14007,239.740354 354.290579,242.943568" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="357.054787,244.539582 358.904277,241.336368 358.38467,241.036354 356.535179,244.239568" fill="#000000" stroke="none" stroke-width="0" />
   <polygon points="340.64,255.033585 328.17,247.833585 328.17,248.526415 340.34,255.5532 340.64,255.38" fill="#000000" stroke="none" stroke-width="0" />
   <polygon points="338.198086,256.61655 328.319927,250.913042 328.019914,251.43265 337.898073,257.136158" fill="#000000" stroke="none" stroke-width="0" />
   <polygon points="328.17,247.833585 315.4,255.2068 316,255.5532 328.17,248.526415" fill="#000000" stroke="none" stroke-width="0" />
@@ -325,11 +325,11 @@
   <polygon points="434.955677,405.749837 429.149322,412.194651 429.26,412.52 429.628827,412.558815 435.401446,406.151446" fill="#000000" stroke="none" stroke-width="0" />
   <polygon points="429.084114,412.815348 436.116307,424.994714 436.46,424.99 436.610859,424.651306 429.628827,412.558815 429.26,412.52" fill="#000000" stroke="none" stroke-width="0" />
   <polygon points="436.686433,425.24863 446.07,423.257369 445.945449,422.670439 436.610859,424.651306 436.46,424.99" fill="#000000" stroke="none" stroke-width="0" />
-  <polygon points="451.301671,417.703716 452.332437,407.863341 452.05,407.68 451.728942,407.865367 450.704936,417.641209" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="451.34576,417.282813 452.332437,407.863341 452.05,407.68 451.728942,407.865367 450.749025,417.220305" fill="#000000" stroke="none" stroke-width="0" />
   <polygon points="448.76816,417.012813 449.614883,408.929432 449.018148,408.866924 448.171425,416.950305" fill="#000000" stroke="none" stroke-width="0" />
   <text x="474.92" y="425.9" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">N</tspan></text>
   <text x="486.27" y="405.72" font-size="10" dominant-baseline="alphabetic" text-anchor="start" fill="#000000" font-family="Arial"><tspan font-size="10" font-family="Arial" fill="#000000" font-weight="400" font-style="normal">O</tspan></text>
-  <polygon points="476.707676,407.863406 477.732291,417.580281 478.328983,417.517362 477.31121,407.865367 476.99,407.68" fill="#000000" stroke="none" stroke-width="0" />
+  <polygon points="476.707676,407.863406 477.701071,417.284207 478.297763,417.221287 477.31121,407.865367 476.99,407.68" fill="#000000" stroke="none" stroke-width="0" />
   <polygon points="479.426178,408.927838 480.278671,417.012407 480.875363,416.949487 480.02287,408.864918" fill="#000000" stroke="none" stroke-width="0" />
   <polygon points="482.98,423.258053 492.730842,425.328722 492.58,424.99 492.429158,424.651278 483.104635,422.671141" fill="#000000" stroke="none" stroke-width="0" />
   <polygon points="492.730842,425.328722 500.148768,412.481288 499.78,412.52 499.411232,412.558712 492.429158,424.651278 492.58,424.99" fill="#000000" stroke="none" stroke-width="0" />

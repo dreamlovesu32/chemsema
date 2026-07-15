@@ -4,9 +4,9 @@
 
 [![CI](https://github.com/dreamlovesu32/chemcore/actions/workflows/ci.yml/badge.svg)](https://github.com/dreamlovesu32/chemcore/actions/workflows/ci.yml)
 [![Demo](https://img.shields.io/badge/demo-GitHub%20Pages-2ea44f)](https://dreamlovesu32.github.io/chemcore/)
-[![Windows installer](https://img.shields.io/badge/Windows-installer-0078d4)](https://github.com/dreamlovesu32/chemcore/releases/download/v1.0.0-beta.7/Chemcore_1.0.0-beta.7_x64-setup.exe)
+[![Windows installer](https://img.shields.io/badge/Windows-installer-0078d4)](https://github.com/dreamlovesu32/chemcore/releases/download/v1.0.0-beta.8/Chemcore_1.0.0-beta.8_x64-setup.exe)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](./LICENSE)
-[![Version](https://img.shields.io/badge/version-1.0.0--beta.7-orange)](https://github.com/dreamlovesu32/chemcore/releases/tag/v1.0.0-beta.7)
+[![Version](https://img.shields.io/badge/version-1.0.0--beta.8-orange)](https://github.com/dreamlovesu32/chemcore/releases/tag/v1.0.0-beta.8)
 
 ChemCore is an open-source platform for editable chemical documents. It is
 built around the daily work of drawing structures, arranging reaction schemes,
@@ -46,7 +46,7 @@ agents can target a single object, read only the necessary data, inspect the
 matching local pixels, perform a range-limited edit, and prove that unrelated
 parts of the document were not changed.
 
-Windows users can try the current beta with the [ChemCore 1.0.0-beta.7 x64 installer](https://github.com/dreamlovesu32/chemcore/releases/download/v1.0.0-beta.7/Chemcore_1.0.0-beta.7_x64-setup.exe). The installer includes the desktop app and the Windows Office/OLE integration service; it is not code-signed yet, so Windows may show a SmartScreen warning during this beta stage. Maintainer: Jiajun ZHANG, [dreamlovesu@hotmail.com](mailto:dreamlovesu@hotmail.com). Feedback, issues, real CDXML files, and contributions are very welcome. The long-term goal is to make ChemCore a free research infrastructure platform that can grow into automation, batch processing, AI-assisted research interfaces, and more carefully designed scientific software.
+Windows users can try the current beta with the [ChemCore 1.0.0-beta.8 x64 installer](https://github.com/dreamlovesu32/chemcore/releases/download/v1.0.0-beta.8/Chemcore_1.0.0-beta.8_x64-setup.exe). The installer includes the desktop app and the Windows Office/OLE integration service; it is not code-signed yet, so Windows may show a SmartScreen warning during this beta stage. Maintainer: Jiajun ZHANG, [dreamlovesu@hotmail.com](mailto:dreamlovesu@hotmail.com). Feedback, issues, real CDXML files, and contributions are very welcome. The long-term goal is to make ChemCore a free research infrastructure platform that can grow into automation, batch processing, AI-assisted research interfaces, and more carefully designed scientific software.
 
 ![ChemCore editor interface](./docs/assets/readme/product-screenshot.png)
 
@@ -161,10 +161,10 @@ discovering them.
 
 ## Current Status
 
-Current version: `1.0.0-beta.7`.
+Current version: `1.0.0-beta.8`.
 
 The Windows x64 installer is available from the
-[v1.0.0-beta.7 release](https://github.com/dreamlovesu32/chemcore/releases/tag/v1.0.0-beta.7).
+[v1.0.0-beta.8 release](https://github.com/dreamlovesu32/chemcore/releases/tag/v1.0.0-beta.8).
 It bundles the Tauri/WebView2 desktop app, file associations, and the
 Office/OLE integration service. The first-stage HarmonyOS PC shell is available
 from source for DevEco Studio experiments, but it is not part of the Windows

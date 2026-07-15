@@ -12,6 +12,7 @@ const port = Number(process.env.CHEMCORE_DESKTOP_DEV_PORT || 8767);
 const baseUrl = `http://${host}:${port}/viewer/`;
 const edgePath = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
 const tmpDir = join(rootDir, "tmp", "gui-regression");
+const exactTieOnly = process.env.CHEMCORE_GUI_CASE === "exact-tie-double";
 
 function waitForPort(timeoutMs = 5000) {
   const deadline = Date.now() + timeoutMs;
@@ -334,7 +335,10 @@ async function verifySelectionOverlayConsistency(page) {
   await page.waitForFunction(() => document.querySelector('[data-role="selection-box"]'));
   const boxRoles = await selectionOverlayRoles(page);
   assert(boxRoles.some((entry) => entry.role === "selection-box"), `Box-select did not render the component selection box: ${JSON.stringify(boxRoles)}`);
-  assertBondSelectionDot(boxRoles, "Box-select");
+  assert(
+    !boxRoles.some((entry) => entry.role === "selection-bond-dot"),
+    `Box-selecting a complete molecule should suppress internal bond center dots: ${JSON.stringify(boxRoles)}`,
+  );
 }
 
 function makeShortDoubleBondDocument() {
@@ -379,6 +383,101 @@ function makeShortDoubleBondDocument() {
       },
     },
   };
+}
+
+function makeExactTieDoubleBondDocument() {
+  return {
+    format: { name: "chemcore", version: "0.1" },
+    document: {
+      id: "doc_exact_tie_double",
+      title: "exact tie double bond",
+      page: { width: 260, height: 220, background: "#ffffff" },
+    },
+    styles: {
+      style_molecule_default: {
+        kind: "molecule",
+        stroke: "#000000",
+        strokeWidth: 1,
+        fontFamily: "Arial",
+        fontSize: 10,
+      },
+    },
+    objects: [{
+      id: "obj_molecule_001",
+      type: "molecule",
+      visible: true,
+      zIndex: 10,
+      transform: { translate: [0, 0], rotate: 0, scale: [1, 1] },
+      styleRef: "style_molecule_default",
+      payload: { resourceRef: "mol_001" },
+    }],
+    resources: {
+      mol_001: {
+        type: "molecule_fragment2d",
+        encoding: "chemcore.molecule.fragment2d",
+        data: {
+          schema: "chemcore.molecule.fragment2d",
+          bbox: [100, 70, 30, 60],
+          nodes: [
+            { id: "n1", element: "C", atomicNumber: 6, position: [100, 100], charge: 0, numHydrogens: 0 },
+            { id: "n2", element: "C", atomicNumber: 6, position: [130, 100], charge: 0, numHydrogens: 0 },
+            { id: "n3", element: "C", atomicNumber: 6, position: [100, 70], charge: 0, numHydrogens: 0 },
+            { id: "n4", element: "C", atomicNumber: 6, position: [100, 130], charge: 0, numHydrogens: 0 },
+            { id: "n5", element: "C", atomicNumber: 6, position: [130, 70], charge: 0, numHydrogens: 0 },
+          ],
+          bonds: [
+            { id: "b1", begin: "n1", end: "n2", order: 2, double: { placement: "right", frozen: false } },
+            { id: "b2", begin: "n1", end: "n3", order: 1 },
+            { id: "b3", begin: "n1", end: "n4", order: 1 },
+            { id: "b4", begin: "n2", end: "n5", order: 1 },
+          ],
+        },
+      },
+    },
+  };
+}
+
+async function verifyExactTieDoubleBondIncrementalReplacement(page) {
+  await page.evaluate((doc) => window.__chemcoreDebug.loadDocumentForTest(doc), makeExactTieDoubleBondDocument());
+  await page.waitForFunction(() => document.querySelectorAll('[data-layer="document-content"] [data-bond-id="b1"]').length === 2);
+  await page.locator('button[data-tool="bond"]').click();
+  await page.locator('button[data-secondary-value="bond-single"]').click();
+  const points = await page.evaluate(() => ({
+    start: window.__chemcoreDebug.worldToClient(130, 100),
+    end: window.__chemcoreDebug.worldToClient(130, 130),
+  }));
+
+  await page.mouse.move(points.start.x, points.start.y);
+  await page.mouse.down();
+  await page.mouse.move(points.end.x, points.end.y, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForTimeout(300);
+
+  const result = await page.evaluate(() => {
+    const command = JSON.parse(window.__chemcoreDebug.state.editorEngine.lastCommandResultJson?.() || "null");
+    const doc = JSON.parse(window.__chemcoreDebug.state.editorEngine.documentJson());
+    const fragment = doc.resources?.mol_001?.data;
+    return {
+      command,
+      bondCount: fragment?.bonds?.length || 0,
+      placement: fragment?.bonds?.find((bond) => bond.id === "b1")?.double?.placement || null,
+      centralPrimitiveCount: document.querySelectorAll(
+        '[data-layer="document-content"] [data-bond-id="b1"]',
+      ).length,
+    };
+  });
+  const changedBonds = new Set([
+    ...(result.command?.targets?.bonds || []),
+    ...(result.command?.updated?.bonds || []),
+  ]);
+  assert.equal(result.bondCount, 5, `Fourth attachment was not committed: ${JSON.stringify(result)}`);
+  assert.equal(result.placement, "left", `Exact tie did not follow the last attachment side: ${JSON.stringify(result)}`);
+  assert(changedBonds.has("b1"), `Fourth attachment did not target the center double bond: ${JSON.stringify(result)}`);
+  assert.equal(
+    result.centralPrimitiveCount,
+    2,
+    `Incremental render left stale center-double primitives: ${JSON.stringify(result)}`,
+  );
 }
 
 async function verifyDeleteToolFocusedBondCenter(page) {
@@ -529,23 +628,31 @@ try {
   const fixturePath = await createOpenFixture(context, errors);
   await verifyOpenButton(context, errors, fixturePath);
 
-  const page = await openViewer(context, errors);
-  await verifyToolbarAndCursor(page);
-  await verifySelectionOverlayConsistency(page);
-  await verifyDeleteToolFocusedBondCenter(page);
-  await page.close();
+  const exactTiePage = await openViewer(context, errors);
+  await verifyExactTieDoubleBondIncrementalReplacement(exactTiePage);
+  await exactTiePage.close();
 
-  const editPage = await openViewer(context, errors);
-  await verifyCopyPasteCut(editPage);
-  await editPage.close();
+  if (!exactTieOnly) {
+    const page = await openViewer(context, errors);
+    await verifyToolbarAndCursor(page);
+    await verifySelectionOverlayConsistency(page);
+    await verifyDeleteToolFocusedBondCenter(page);
+    await page.close();
 
-  const savePage = await openViewer(context, errors);
-  await verifySaveAsFormats(savePage);
-  await verifyZoomAndStyleMenu(savePage);
-  await savePage.close();
+    const editPage = await openViewer(context, errors);
+    await verifyCopyPasteCut(editPage);
+    await editPage.close();
+
+    const savePage = await openViewer(context, errors);
+    await verifySaveAsFormats(savePage);
+    await verifyZoomAndStyleMenu(savePage);
+    await savePage.close();
+  }
 
   assert.equal(errors.length, 0, `GUI regression saw console/page errors:\n${errors.join("\n")}`);
-  console.log("[gui-regression] ok (open, save-as ccjs/cdxml/svg, ctrl+s ccjz, copy/paste/cut, toolbar icons, cursors, selection overlay, delete tool, zoom, style)");
+  console.log(exactTieOnly
+    ? "[gui-regression] ok (exact-tie double bond)"
+    : "[gui-regression] ok (open, save-as ccjs/cdxml/svg, ctrl+s ccjz, copy/paste/cut, toolbar icons, cursors, selection overlay, delete tool, exact-tie double bond, zoom, style)");
 } finally {
   await browser?.close();
   if (server) {

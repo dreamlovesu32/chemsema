@@ -527,11 +527,13 @@ text 对象表示带定位信息的富文本内容。
 label runs、baseline、alignment 和共享 glyph metrics 重新生成。导入框只是
 可能失效的源缓存证据，不得覆盖 ChemCore 当前标签几何。
 
-CDXML/CDX 根绘图默认值保存在 `document.meta.import.cdxml.defaults`，并在
-native 样式 schema 能表达时同步到数值型 `document.style.defaults`。已知默认值
-包括键长、链角、线宽、粗线宽、hash 间距、双键间距、margin width、label/caption
-字体 id、label/caption face、label/caption 字号、默认对齐、显示开关和打印边距。
-这些是样式参数；它们不同于缓存 label box，可以参与 ChemCore 自己的渲染和导出。
+CDXML/CDX 根绘图默认值保存在 `document.meta.import.cdxml.defaults`。键长、以度为
+单位的链角、线宽、间距、margin、字号和打印边距等物理数值继续使用数字。源格式
+编码不得进入 native JSON：字体 id 解码为 `fontFamily`，face 位掩码解码为明确的
+`fontWeight`、`fontStyle`、`underline` 和 `script`，颜色表 id 解码为十六进制颜色码。
+活动文本默认值放在 `style.labelStyle` 和 `style.captionStyle`，数值绘图默认值仍放在
+`style.defaults`。导出 CDX/CDXML 时再从这些语义值重建字体、face 和颜色表编号；
+已知颜色优先复用颜色表已有编号，不在 CCJS 中保存源编号。
 
 键字段：
 
@@ -556,6 +558,10 @@ native 样式 schema 能表达时同步到数值型 `document.style.defaults`。
 - `double.centerExitSide`：可选，用于保存中心双键在分叉端的出口侧偏好
 - `double.frozen`：可选布尔值，表示双键位置已经由用户或导入数据锁定，后续
   渲染沿用该位置
+- `meta.endpointAttachments.begin | end`：可选的结构标签内部语义锚点对象，包含
+  `target: "label-character"`、数字型 `characterIndex` 和对应的 `character`。
+  CDX/CDXML 导入把 `BeginAttach` / `EndAttach` 解码成该对象，导出时只把字符索引
+  重新编码到源格式。
 
 当前内置绘图模板的关键值：
 

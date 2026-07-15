@@ -83,8 +83,10 @@ This command runs Rust tests, rebuilds engine WASM, checks viewer syntax, and co
   `LineWidth`, `BoldWidth`, `HashSpacing`, `BondSpacing`, `MarginWidth`,
   `ChainAngle`, `LabelFont`, `LabelSize`, `LabelFace`, `CaptionFont`,
   `CaptionSize`, `CaptionFace`, justification defaults, display flags, and
-  print margins; export should write the current defaults back. These
-  parameters may guide ChemCore's own layout and rendering.
+  print margins, but source font ids, color ids, and face bitmasks must be
+  decoded into native semantic text-style fields. Export should re-encode the
+  current semantic defaults at the CDX/CDXML boundary. These parameters may
+  guide ChemCore's own layout and rendering.
 - Attached molecule-label `BoundingBox`, `p`, and similar CDXML cached geometry
   are provenance/round-trip evidence only. They must not become active label
   anchors, active label boxes, or bond-retreat geometry. Label retreat is

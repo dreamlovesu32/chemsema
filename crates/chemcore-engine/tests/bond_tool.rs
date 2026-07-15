@@ -10552,6 +10552,122 @@ fn adding_fourth_bond_to_unfrozen_center_double_moves_to_last_drawn_side_on_tie(
 }
 
 #[test]
+fn exact_four_substituent_tie_uses_last_downward_attachment_side() {
+    let mut engine = Engine::new();
+    let anchor = |node_id: Option<&str>, x: f64, y: f64| chemcore_engine::BondAnchor {
+        node_id: node_id.map(str::to_string),
+        object_id: None,
+        point: chemcore_engine::Point::new(x, y),
+        label_anchor: None,
+    };
+
+    assert!(engine.add_single_bond_between(anchor(None, 100.0, 100.0), anchor(None, 148.0, 100.0),));
+    engine.set_tool_state(double_bond_tool());
+    engine.pointer_down(PointerEvent {
+        x: 124.0,
+        y: 100.0,
+        button: Some(0),
+        alt_key: false,
+    });
+    assert!(engine
+        .add_single_bond_between(anchor(Some("n_1"), 100.0, 100.0), anchor(None, 100.0, 52.0),));
+    assert!(engine.add_single_bond_between(
+        anchor(Some("n_1"), 100.0, 100.0),
+        anchor(None, 100.0, 148.0),
+    ));
+    assert!(engine
+        .add_single_bond_between(anchor(Some("n_2"), 148.0, 100.0), anchor(None, 148.0, 52.0),));
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    assert_eq!(
+        entry.fragment.bonds[0]
+            .double
+            .as_ref()
+            .map(|double| double.placement),
+        Some(DoubleBondPlacement::Right)
+    );
+
+    assert!(engine.add_single_bond_between(
+        anchor(Some("n_2"), 148.0, 100.0),
+        anchor(None, 148.0, 148.0),
+    ));
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    assert_eq!(
+        entry.fragment.bonds[0]
+            .double
+            .as_ref()
+            .map(|double| double.placement),
+        Some(DoubleBondPlacement::Left)
+    );
+    assert_eq!(
+        entry.fragment.bonds[0]
+            .double
+            .as_ref()
+            .map(|double| double.frozen),
+        Some(false)
+    );
+}
+
+#[test]
+fn exact_four_substituent_tie_uses_last_upward_attachment_side() {
+    let mut engine = Engine::new();
+    let anchor = |node_id: Option<&str>, x: f64, y: f64| chemcore_engine::BondAnchor {
+        node_id: node_id.map(str::to_string),
+        object_id: None,
+        point: chemcore_engine::Point::new(x, y),
+        label_anchor: None,
+    };
+
+    assert!(engine.add_single_bond_between(anchor(None, 100.0, 100.0), anchor(None, 148.0, 100.0),));
+    engine.set_tool_state(double_bond_tool());
+    engine.pointer_down(PointerEvent {
+        x: 124.0,
+        y: 100.0,
+        button: Some(0),
+        alt_key: false,
+    });
+    assert!(engine
+        .add_single_bond_between(anchor(Some("n_1"), 100.0, 100.0), anchor(None, 100.0, 52.0),));
+    assert!(engine.add_single_bond_between(
+        anchor(Some("n_1"), 100.0, 100.0),
+        anchor(None, 100.0, 148.0),
+    ));
+    assert!(engine.add_single_bond_between(
+        anchor(Some("n_2"), 148.0, 100.0),
+        anchor(None, 148.0, 148.0),
+    ));
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    assert_eq!(
+        entry.fragment.bonds[0]
+            .double
+            .as_ref()
+            .map(|double| double.placement),
+        Some(DoubleBondPlacement::Left)
+    );
+
+    assert!(engine
+        .add_single_bond_between(anchor(Some("n_2"), 148.0, 100.0), anchor(None, 148.0, 52.0),));
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    assert_eq!(
+        entry.fragment.bonds[0]
+            .double
+            .as_ref()
+            .map(|double| double.placement),
+        Some(DoubleBondPlacement::Right)
+    );
+    assert_eq!(
+        entry.fragment.bonds[0]
+            .double
+            .as_ref()
+            .map(|double| double.frozen),
+        Some(false)
+    );
+}
+
+#[test]
 fn adding_cis_substituent_to_unfrozen_monosubstituted_double_moves_to_inner_side() {
     let mut engine = Engine::new();
     engine.add_single_bond(

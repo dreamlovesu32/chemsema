@@ -32,6 +32,20 @@ When adding or changing CLI behavior:
 - update schema/capabilities output
 - add tests for JSON shape and behavior
 
+## Ubuntu CLI Through WSL
+
+On a Windows maintainer machine with Ubuntu/WSL2, run:
+
+```powershell
+npm run cli:ubuntu:test
+npm run skill:sync-cli-runtimes
+npm run verify:kernel-surfaces
+```
+
+The WSL helper uses `target/wsl-ubuntu` so Linux build outputs do not collide
+with Windows Cargo artifacts. Ubuntu is a headless CLI surface; no GUI package
+is produced there.
+
 ## Generated Artifacts
 
 Only commit generated artifacts that belong in the repo. For local desktop

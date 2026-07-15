@@ -1376,16 +1376,53 @@ fn default_document_style_defaults() -> BTreeMap<String, f64> {
             crate::DEFAULT_BOND_MARGIN_WIDTH_PT.value(),
         ),
         ("graphicLineWidth".to_string(), DEFAULT_BOND_STROKE_PT),
-        (
-            "labelFontSize".to_string(),
-            DEFAULT_MOLECULE_LABEL_FONT_SIZE_PT,
-        ),
-        ("textFontSize".to_string(), DEFAULT_TEXT_FONT_SIZE_PT),
-        ("labelFont".to_string(), 3.0),
-        ("captionFont".to_string(), 3.0),
-        ("labelFace".to_string(), 96.0),
-        ("captionFace".to_string(), 0.0),
     ])
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentTextStyle {
+    pub font_family: String,
+    pub font_size: f64,
+    pub fill: String,
+    pub font_weight: u32,
+    pub font_style: String,
+    pub underline: bool,
+    pub script: String,
+}
+
+impl DocumentTextStyle {
+    fn molecule_label_default() -> Self {
+        Self {
+            font_family: "Arial".to_string(),
+            font_size: DEFAULT_MOLECULE_LABEL_FONT_SIZE_PT,
+            fill: "#000000".to_string(),
+            font_weight: 400,
+            font_style: "normal".to_string(),
+            underline: false,
+            script: "chemical".to_string(),
+        }
+    }
+
+    fn caption_default() -> Self {
+        Self {
+            font_family: "Arial".to_string(),
+            font_size: DEFAULT_TEXT_FONT_SIZE_PT,
+            fill: "#000000".to_string(),
+            font_weight: 400,
+            font_style: "normal".to_string(),
+            underline: false,
+            script: "normal".to_string(),
+        }
+    }
+}
+
+fn default_document_label_style() -> DocumentTextStyle {
+    DocumentTextStyle::molecule_label_default()
+}
+
+fn default_document_caption_style() -> DocumentTextStyle {
+    DocumentTextStyle::caption_default()
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1395,6 +1432,10 @@ pub struct DocumentStyleInfo {
     pub preset: String,
     #[serde(default)]
     pub defaults: BTreeMap<String, f64>,
+    #[serde(default = "default_document_label_style")]
+    pub label_style: DocumentTextStyle,
+    #[serde(default = "default_document_caption_style")]
+    pub caption_style: DocumentTextStyle,
 }
 
 impl Default for DocumentStyleInfo {
@@ -1402,6 +1443,8 @@ impl Default for DocumentStyleInfo {
         Self {
             preset: default_document_style_preset(),
             defaults: default_document_style_defaults(),
+            label_style: default_document_label_style(),
+            caption_style: default_document_caption_style(),
         }
     }
 }

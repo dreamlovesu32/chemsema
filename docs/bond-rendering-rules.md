@@ -233,7 +233,8 @@ When CDXML or an editing operation gives only `Order="2"` and no explicit `Doubl
 5. For non-ring structures, compute the signed projection sum of all connected substituent bonds along the left normal of the begin-to-end axis:
    - positive sum: place on the left side
    - negative sum: place on the right side
-   - exact tie: default to the right side
+   - exact tie while adding a substituent: use the side of the newly added bond
+   - exact tie without editing context: default to the right side
 
 ### Main Bond
 
@@ -244,6 +245,9 @@ When CDXML or an editing operation gives only `Order="2"` and no explicit `Doubl
 
 - The outer secondary line keeps its original shape by default and does not participate in ordinary contact.
 - Only the inner secondary line participates in contact intersections.
+- At a label-clipped endpoint, the main and secondary lines compute retreat on
+  their own actual parallel axes with their own half-widths, then share the
+  larger retreat. Do not derive both from an unshifted center axis.
 - At terminal ends, it is the same length as the main bond.
 - At non-terminal ends, it is shortened by "main-bond spacing * `sqrt(3) / 3`".
 - When the angle between the main bond and the connected main bond is less than `90°`, the secondary line may retreat; however, if the other bond has a same-side secondary line, same-side secondary-line intersection still has priority.
@@ -262,6 +266,12 @@ A centered double bond consists of two independent sub-lines.
 Rules:
 
 - Each sub-line evaluates its own endpoints independently.
+- For label clipping, each sub-line computes endpoint retreat on its own
+  offset axis using its own rendered half-width. At each endpoint, take the
+  larger retreat required by the two sub-lines and apply that same retreat to
+  both, so the final strokes remain equal in length.
+- Do not compute centered-double label retreat on the unshifted center axis and
+  then copy or translate that center-axis result to the two sub-lines.
 - Each end and each side independently decides whether to extend to another bond's contour.
 - Near-straight-through cases greater than `162°` do not extend.
 - `180°` straight-through keeps the original shape.
@@ -303,6 +313,23 @@ Later rules must not overturn geometry topology already determined by earlier ru
 
 ## Labels And Clipping
 
+- CDX/CDXML `BeginAttach` and `EndAttach` are authoritative when they identify
+  an internal attachment atom/glyph in a structural node label. Import must
+  decode them into `meta.endpointAttachments.<endpoint>` with semantic
+  `target`, `characterIndex`, and `character` fields. Bond rendering resolves
+  the endpoint from the active label glyph geometry instead of using the
+  structural label's outer node position.
+- If an endpoint attachment field is absent, out of range, or cannot be
+  resolved against active glyph geometry, an existing bond endpoint stays on
+  its structural node coordinate. That coordinate defines the main-bond axis;
+  label clipping may retreat the visible line from it but must not move the
+  axis to a nearby glyph.
+- For a terminal label on a side double bond, the default attachment glyph is
+  laid out on that structural-node/main-bond axis. The parallel secondary-line
+  spacing must never shift the label by half the double-bond separation.
+- Export must write preserved endpoint attachments back to CDX/CDXML so an
+  open-save-open cycle stabilizes. Applying an internal attachment must not
+  move the opposite atom merely to make the bond axis look aligned.
 - If a node has a visible label, perform label clipping first.
 - Label clipping occurs before bond contact.
 - Final bond geometry should satisfy both label clipping and node-contact rules.
@@ -313,6 +340,14 @@ Later rules must not overturn geometry topology already determined by earlier ru
   including internal stroke bays and stroke ends that remain inside the
   glyph's overall bounding box. Runtime mapping must not scale only the
   outside of the whole glyph bbox.
+- For a same-row multi-glyph label, keep the outward half of the first and
+  last glyph as real outline geometry. Rectangularize only their inward halves,
+  and rectangularize each middle glyph using that glyph's own bounds.
+- Bridge an internal gap only over the vertical overlap of the two adjacent
+  glyphs. Never use a row-wide minimum or maximum Y: a low parenthesis or
+  descender must not pull another glyph's clipping rectangle downward.
+- Subscript and superscript glyphs do not join this same-row rectangular
+  interior model.
 - For rendered bonds with thickness, the whole bond body must be clipped out of
   the glyph clip polygon. Ordinary, dashed, bold, and multi-line bonds should
   evaluate the center line plus both body boundary lines for the current visual

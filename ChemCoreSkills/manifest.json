@@ -9,7 +9,7 @@
       "path": "skills/chemcore-cli",
       "category": "cli",
       "type": ["cli", "protocol", "document-workflow", "self-contained-runtime"],
-      "runtimeAssets": ["win-x64"]
+      "runtimeAssets": ["win-x64", "linux-x64"]
     },
     {
       "name": "chemcore-office",

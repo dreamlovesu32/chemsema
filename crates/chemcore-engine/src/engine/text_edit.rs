@@ -5,8 +5,7 @@ use super::{
 };
 use crate::{
     build_label_glyph_polygons_with_profile, decide_label_layout, layout_label_text, round2,
-    round6, Bond, BondLineWeight, DoubleBondPlacement, EndpointHit, GlyphClipProfile, LabelFlow,
-    LabelRun, Point, WorldPoint, WorldPt,
+    round6, EndpointHit, GlyphClipProfile, LabelFlow, LabelRun, Point, WorldPoint, WorldPt,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};

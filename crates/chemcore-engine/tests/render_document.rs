@@ -2233,7 +2233,10 @@ fn export_cdxml_emits_chemdraw_document_with_native_fragment() {
     assert!(cdxml.contains("CreationProgram=\"ChemCore\""));
     assert!(cdxml.contains("LabelFace=\"96\""));
     assert!(cdxml.contains("CaptionFace=\"0\""));
-    assert!(cdxml.contains("color=\"0\" bgcolor=\"1\""));
+    assert!(
+        cdxml.contains("color=\"3\" bgcolor=\"1\""),
+        "known black should reuse its color-table id: {cdxml}"
+    );
     assert!(cdxml.contains("<page"));
     assert!(cdxml.contains("HeaderPosition=\"36\""));
     assert!(cdxml.contains("<fragment"));
@@ -2246,7 +2249,7 @@ fn export_cdxml_emits_chemdraw_document_with_native_fragment() {
     assert!(!cdxml.contains("<t font="));
     assert!(!cdxml.contains("<t size="));
     assert!(!cdxml.contains("<t color="));
-    assert!(cdxml.contains("<s font=\"3\" size=\"10\" color=\"0\""));
+    assert!(cdxml.contains("<s font=\"3\" size=\"10\" color=\"3\""));
 
     let roundtripped =
         parse_cdxml_document(&cdxml, Some("roundtrip")).expect("export should parse");
@@ -6372,10 +6375,52 @@ fn parse_cdxml_preserves_document_drawing_defaults_without_using_cached_label_ge
         .expect("CDXML defaults should be preserved");
 
     assert_eq!(defaults.get("chainAngle"), Some(&json!(109.5)));
-    assert_eq!(defaults.get("labelFont"), Some(&json!(4)));
-    assert_eq!(defaults.get("labelFace"), Some(&json!(98)));
-    assert_eq!(defaults.get("captionFont"), Some(&json!(5)));
-    assert_eq!(defaults.get("captionFace"), Some(&json!(2)));
+    assert_eq!(
+        defaults.pointer("/labelStyle/fontFamily"),
+        Some(&json!("Times New Roman"))
+    );
+    assert_eq!(defaults.pointer("/labelStyle/fontSize"), Some(&json!(11.0)));
+    assert_eq!(
+        defaults.pointer("/labelStyle/fontStyle"),
+        Some(&json!("italic"))
+    );
+    assert_eq!(
+        defaults.pointer("/labelStyle/script"),
+        Some(&json!("chemical"))
+    );
+    assert_eq!(
+        defaults.pointer("/labelStyle/fill"),
+        Some(&json!("#ffffff"))
+    );
+    assert_eq!(
+        defaults.pointer("/captionStyle/fontFamily"),
+        Some(&json!("Courier New"))
+    );
+    assert_eq!(
+        defaults.pointer("/captionStyle/fontSize"),
+        Some(&json!(9.0))
+    );
+    assert_eq!(
+        defaults.pointer("/captionStyle/fontStyle"),
+        Some(&json!("italic"))
+    );
+    assert_eq!(
+        defaults.pointer("/captionStyle/script"),
+        Some(&json!("normal"))
+    );
+    assert_eq!(defaults.get("foregroundColor"), Some(&json!("#ffffff")));
+    for opaque_key in [
+        "labelFont",
+        "labelFace",
+        "captionFont",
+        "captionFace",
+        "color",
+    ] {
+        assert!(
+            defaults.get(opaque_key).is_none(),
+            "opaque {opaque_key} leaked into CCJS"
+        );
+    }
     assert_eq!(defaults.get("labelJustification"), Some(&json!("Right")));
     assert_eq!(defaults.get("captionJustification"), Some(&json!("Center")));
     assert_eq!(defaults.get("fractionalWidths"), Some(&json!(false)));
@@ -6394,11 +6439,12 @@ fn parse_cdxml_preserves_document_drawing_defaults_without_using_cached_label_ge
         document.style.defaults.get("chainAngle").copied(),
         Some(109.5)
     );
-    assert_eq!(document.style.defaults.get("labelFont").copied(), Some(4.0));
-    assert_eq!(
-        document.style.defaults.get("captionFace").copied(),
-        Some(2.0)
-    );
+    assert_eq!(document.style.label_style.font_family, "Times New Roman");
+    assert_eq!(document.style.label_style.font_size, 11.0);
+    assert_eq!(document.style.label_style.font_style, "italic");
+    assert_eq!(document.style.label_style.script, "chemical");
+    assert_eq!(document.style.caption_style.font_family, "Courier New");
+    assert_eq!(document.style.caption_style.font_size, 9.0);
 
     let label = document
         .resources
@@ -6411,6 +6457,15 @@ fn parse_cdxml_preserves_document_drawing_defaults_without_using_cached_label_ge
     assert_eq!(label.font_size, Some(11.0));
     assert_eq!(label.align.as_deref(), Some("right"));
     assert_eq!(label.meta.pointer("/defaultChemical"), Some(&json!(false)));
+    for opaque_key in ["font", "face", "color"] {
+        assert!(
+            label
+                .meta
+                .pointer(&format!("/import/cdxml/{opaque_key}"))
+                .is_none(),
+            "opaque label {opaque_key} leaked into CCJS"
+        );
+    }
     assert_eq!(
         label.meta.pointer("/sourceRuns/0/fontStyle"),
         Some(&json!("italic"))
@@ -6472,6 +6527,27 @@ fn parse_cdxml_preserves_document_drawing_defaults_without_using_cached_label_ge
             "missing {expected} in {exported}"
         );
     }
+}
+
+#[test]
+fn cdxml_centered_text_anchor_is_stable_after_first_save() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<CDXML LabelFont="3" LabelSize="10" LabelFace="96" CaptionFont="3" CaptionSize="10" CaptionFace="0">
+  <fonttable><font id="3" charset="iso-8859-1" name="Arial"/></fonttable>
+  <colortable><color r="1" g="1" b="1"/><color r="0" g="0" b="0"/></colortable>
+  <page id="1" BoundingBox="0 0 300 200" Width="300" Height="200">
+    <t id="2" p="135.75 535.25" BoundingBox="113.59 526 157.92 655.25" Justification="Center" Z="1" UTF8Text="Acid"><s font="3" size="10" color="3" face="0">Acid</s></t>
+  </page>
+</CDXML>"#;
+    let imported = parse_cdxml_document(cdxml, Some("centered-text")).expect("CDXML imports");
+    let first = document_to_cdxml(&imported);
+    let reimported = parse_cdxml_document(&first, Some("centered-text")).expect("export imports");
+    let second = document_to_cdxml(&reimported);
+
+    assert_eq!(
+        second, first,
+        "centered text must not drift after first save"
+    );
 }
 
 #[test]
@@ -7389,7 +7465,7 @@ fn parse_cdxml_preserves_explicit_zero_hydrogens_on_imported_nitrogen() {
     assert_eq!(
         nitrogen
             .meta
-            .pointer("/import/cdxml/numHydrogens")
+            .pointer("/import/cdxml/explicitNumHydrogens")
             .and_then(|value| value.as_u64()),
         Some(0)
     );
@@ -9874,7 +9950,7 @@ fn render_document_uses_label_glyph_polygons_for_knockout_and_endpoint_clipping(
                 "numHydrogens": 0,
                 "label": {
                     "text": "NH",
-                    "position": [18.0, 20.0],
+                    "position": [18.0, 23.9],
                     "box": [18.0, 16.0, 25.0, 24.0],
                     "glyphPolygons": [
                         [[18.0, 17.0], [20.0, 17.0], [20.0, 23.0], [18.0, 23.0]],
@@ -11594,7 +11670,7 @@ fn render_document_keeps_center_double_original_for_angles_over_162_degrees() {
 }
 
 #[test]
-fn render_document_clips_center_double_lines_individually_at_labeled_endpoint() {
+fn render_document_uses_larger_individual_label_retreat_for_both_center_double_lines() {
     let document = fragment_document(
         json!([
             {
@@ -11658,27 +11734,273 @@ fn render_document_clips_center_double_lines_individually_at_labeled_endpoint() 
         .collect();
 
     assert!(
-        (endpoint_retreats[0] - endpoint_retreats[1]).abs() > 1.0,
-        "parallel center-double lines should clip against the label independently: {polygons:?} {endpoint_retreats:?}"
+        (endpoint_retreats[0] - endpoint_retreats[1]).abs() <= 1.0e-4,
+        "parallel center-double lines should apply the larger of their independently computed label retreats: {polygons:?} {endpoint_retreats:?}"
     );
     assert!(
         endpoint_retreats.iter().all(|retreat| *retreat > 0.0),
         "{polygons:?} {endpoint_retreats:?}"
     );
-    for polygon in &polygons {
-        let (from, to) = bond_axis_from_points(polygon).expect("bond axis");
-        let endpoint = if from.distance(chemcore_engine::Point::new(56.0, 40.0))
-            <= to.distance(chemcore_engine::Point::new(56.0, 40.0))
-        {
-            from
-        } else {
-            to
-        };
+    let axis_lengths: Vec<_> = polygons
+        .iter()
+        .map(|polygon| {
+            let (from, to) = bond_axis_from_points(polygon).expect("bond axis");
+            from.distance(to)
+        })
+        .collect();
+    assert!(
+        (axis_lengths[0] - axis_lengths[1]).abs() <= 1.0e-4,
+        "center-double strokes must remain equal length after label retreat: {polygons:?} {axis_lengths:?}"
+    );
+}
+
+#[test]
+fn render_document_side_double_uses_anchor_glyph_retreat_once_and_keeps_lines_equal() {
+    let document = fragment_document(
+        json!([
+            {
+                "id": "n1",
+                "element": "P",
+                "atomicNumber": 15,
+                "position": [62.0, 12.0],
+                "charge": 0,
+                "numHydrogens": 0,
+                "label": {
+                    "text": "P(OPh)",
+                    "position": [58.0, 15.9],
+                    "box": [58.0, 6.0, 94.0, 22.0],
+                    "runs": [{ "text": "P(OPh)", "fontFamily": "Arial", "fontSize": 10.0, "script": "normal" }],
+                    "glyphPolygons": [
+                        [[58.0, 8.0], [66.0, 8.0], [66.0, 18.0], [58.0, 18.0]],
+                        [[67.0, 6.0], [69.0, 6.0], [69.0, 22.0], [67.0, 22.0]],
+                        [[71.0, 8.0], [77.0, 8.0], [77.0, 18.0], [71.0, 18.0]],
+                        [[79.0, 8.0], [85.0, 8.0], [85.0, 18.0], [79.0, 18.0]],
+                        [[90.0, 6.0], [92.0, 6.0], [92.0, 22.0], [90.0, 22.0]]
+                    ]
+                }
+            },
+            {
+                "id": "n2",
+                "element": "O",
+                "atomicNumber": 8,
+                "position": [62.0, 36.0],
+                "charge": 0,
+                "numHydrogens": 0,
+                "label": {
+                    "text": "O",
+                    "position": [56.0, 39.9],
+                    "box": [56.0, 32.0, 64.0, 42.0],
+                    "glyphPolygons": [[[56.0, 32.0], [64.0, 32.0], [64.0, 42.0], [56.0, 42.0]]]
+                }
+            }
+        ]),
+        json!([{
+            "id": "b1",
+            "begin": "n1",
+            "end": "n2",
+            "order": 2,
+            "strokeWidth": 0.6,
+            "double": { "placement": "left" }
+        }]),
+    );
+
+    let axes: Vec<_> = object_bond_polygons_with_ids(&render_document(&document))
+        .into_iter()
+        .filter(|(bond_id, _)| bond_id == "b1")
+        .map(|(_, points)| bond_axis_from_points(&points).expect("bond axis"))
+        .collect();
+    assert_eq!(axes.len(), 2);
+    let main_axis = axes
+        .iter()
+        .min_by(|left, right| {
+            let left_x = (left.0.x + left.1.x) * 0.5;
+            let right_x = (right.0.x + right.1.x) * 0.5;
+            (left_x - 62.0).abs().total_cmp(&(right_x - 62.0).abs())
+        })
+        .expect("main axis");
+    assert!(
+        ((main_axis.0.x + main_axis.1.x) * 0.5 - 62.0).abs() <= 0.02,
+        "without EndAttach the side-double main line must use the structural node even when cached glyph geometry is shifted: {axes:?}"
+    );
+    let lengths: Vec<_> = axes.iter().map(|(from, to)| from.distance(*to)).collect();
+    assert!(
+        (lengths[0] - lengths[1]).abs() <= 1.0e-4,
+        "side-double lines must share the larger single-pass glyph retreat: {axes:?}"
+    );
+    for (from, to) in axes {
+        let label_exit_y = from.y.min(to.y);
         assert!(
-            (50.5..=51.5).contains(&endpoint.x),
-            "each parallel line should clip at the source-margin glyph polygon without adding endpoint-circle retreat: {polygon:?}"
+            (label_exit_y - 18.0).abs() <= 0.02,
+            "the synthetic internal-row rectangle must not over-clip a bond anchored on P: {from:?} {to:?}"
         );
     }
+}
+
+#[test]
+fn parse_cdxml_side_double_terminal_label_stays_on_main_bond_node() {
+    let source = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<CDXML BoundingBox="70 80 140 130" BondLength="14.4" LabelFont="3" LabelSize="10" MarginWidth="1.6">
+  <fonttable><font id="3" charset="iso-8859-1" name="Arial"/></fonttable>
+  <page id="1" BoundingBox="70 80 140 130">
+    <fragment id="2" BoundingBox="80 90 135 125">
+      <n id="3" p="85 100"/>
+      <n id="4" p="100 100" NodeType="Nickname">
+        <t id="5" BoundingBox="96.7 94 134.3 105" p="96.7 103.9" LabelAlignment="Left" LabelJustification="Left" InterpretChemically="yes">
+          <s font="3" size="10" face="0" color="0">P(OPh)</s>
+          <s font="3" size="10" face="96" color="0">2</s>
+        </t>
+      </n>
+      <n id="6" p="100 114.4" Element="8" NumHydrogens="0">
+        <t id="7" BoundingBox="94.8 109.9 102.6 118.8" p="94.8 118.1" LabelJustification="Left" InterpretChemically="yes">
+          <s font="3" size="10" face="0" color="0">O</s>
+        </t>
+      </n>
+      <b id="8" B="3" E="4" Order="1"/>
+      <b id="9" B="4" E="6" Order="2" DoublePosition="Left"/>
+    </fragment>
+  </page>
+</CDXML>"#;
+
+    let document = parse_cdxml_document(source, Some("side-double terminal label"))
+        .expect("CDXML should import");
+    let fragment = document
+        .editable_fragments()
+        .into_iter()
+        .next()
+        .expect("fragment");
+    let oxygen = fragment
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == "6")
+        .expect("oxygen node");
+    let oxygen_polygon = oxygen
+        .label
+        .as_ref()
+        .and_then(|label| label.glyph_polygons.first())
+        .expect("oxygen glyph polygon");
+    let min_x = oxygen_polygon
+        .iter()
+        .map(|point| point[0])
+        .fold(f64::INFINITY, f64::min);
+    let max_x = oxygen_polygon
+        .iter()
+        .map(|point| point[0])
+        .fold(f64::NEG_INFINITY, f64::max);
+    assert!(
+        (((min_x + max_x) * 0.5) - oxygen.position[0]).abs() <= 0.05,
+        "terminal O glyph must stay on the structural node/main bond axis: {oxygen:?}"
+    );
+
+    let axes: Vec<_> = render_document(&document)
+        .into_iter()
+        .filter_map(|primitive| match primitive {
+            RenderPrimitive::Polygon {
+                role,
+                bond_id: Some(bond_id),
+                points,
+                ..
+            } if role == RenderRole::DocumentBond && bond_id == "9" => {
+                bond_axis_from_points(&points)
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(axes.len(), 2, "{axes:?}");
+    for (from, to) in &axes {
+        assert!(
+            (from.x - to.x).abs() <= 0.05,
+            "side-double lines must remain vertical on the source node axis: {axes:?}"
+        );
+    }
+    assert!(
+        (axes[0].0.distance(axes[0].1) - axes[1].0.distance(axes[1].1)).abs() <= 1.0e-4,
+        "terminal side-double lines must remain equal after label retreat: {axes:?}"
+    );
+}
+
+#[test]
+fn parse_cdxml_begin_attach_uses_internal_label_glyph_and_round_trips_stably() {
+    let source = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<CDXML BoundingBox="300 590 370 630" BondLength="14.4" LabelFont="3" LabelSize="10" MarginWidth="1.6">
+  <fonttable><font id="3" charset="iso-8859-1" name="Arial"/></fonttable>
+  <page id="1" BoundingBox="300 590 370 630">
+    <fragment id="2" BoundingBox="309.75 598.802 362.063 624.05">
+      <n id="3" p="311.625 617.025" NodeType="Fragment">
+        <t id="4" BoundingBox="309.75 612.55 362.063 624.05" p="309.75 621.5" LabelAlignment="Left" LabelJustification="Left" InterpretChemically="yes">
+          <s font="3" size="10" face="0" color="0">(PhO)</s>
+          <s font="3" size="10" face="96" color="0">2</s>
+          <s font="3" size="10" face="0" color="0">POH</s>
+        </t>
+      </n>
+      <n id="5" p="343.569 603.527" Element="8" NumHydrogens="0">
+        <t id="6" BoundingBox="339.663 598.802 347.413 607.302" p="339.663 607.202" LabelJustification="Left">
+          <s font="3" size="10" face="96" color="0">O</s>
+        </t>
+      </n>
+      <b id="7" B="3" BeginAttach="6" E="5" Order="2"/>
+    </fragment>
+  </page>
+</CDXML>"#;
+
+    let document = parse_cdxml_document(source, Some("internal label attachment"))
+        .expect("CDXML should import");
+    let fragment = document
+        .editable_fragments()
+        .into_iter()
+        .next()
+        .expect("fragment");
+    assert_eq!(
+        fragment.fragment.bonds[0]
+            .meta
+            .pointer("/endpointAttachments/begin/characterIndex")
+            .and_then(serde_json::Value::as_u64),
+        Some(6)
+    );
+    assert_eq!(
+        fragment.fragment.bonds[0]
+            .meta
+            .pointer("/endpointAttachments/begin/character"),
+        Some(&json!("P"))
+    );
+
+    let polygons: Vec<_> = render_document(&document)
+        .into_iter()
+        .filter_map(|primitive| match primitive {
+            RenderPrimitive::Polygon {
+                role,
+                bond_id: Some(bond_id),
+                points,
+                ..
+            } if role == RenderRole::DocumentBond && bond_id == "7" => Some(points),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(polygons.len(), 2);
+    let axes: Vec<_> = polygons
+        .iter()
+        .map(|polygon| bond_axis_from_points(polygon).expect("bond axis"))
+        .collect();
+    for (from, to) in &axes {
+        assert!(
+            (from.x - to.x).abs() <= 0.15,
+            "BeginAttach=6 must make the P=O center double vertical: {axes:?}"
+        );
+    }
+    assert!(
+        (axes[0].0.distance(axes[0].1) - axes[1].0.distance(axes[1].1)).abs() <= 1.0e-4,
+        "the two P=O strokes must remain equal length: {axes:?}"
+    );
+
+    let first_export = document_to_cdxml(&document);
+    assert!(first_export.contains("BeginAttach=\"6\""), "{first_export}");
+    let reopened = parse_cdxml_document(&first_export, Some("internal label attachment"))
+        .expect("exported CDXML should reopen");
+    let second_export = document_to_cdxml(&reopened);
+    assert_eq!(
+        second_export, first_export,
+        "attachment export must stabilize"
+    );
 }
 
 #[test]
@@ -11917,12 +12239,14 @@ fn render_document_treats_horizontal_label_interior_as_rectangular_clip() {
         .into_iter()
         .find_map(|(bond_id, points)| (bond_id == "b1").then_some(points))
         .expect("bond polygon should render");
-    let (from, to) = bond_axis_from_points(&polygon).expect("bond axis");
-    let label_endpoint = if from.y < to.y { from } else { to };
+    let label_edge_y = polygon
+        .iter()
+        .map(|point| point.y)
+        .fold(f64::INFINITY, f64::min);
 
     assert!(
-        (label_endpoint.y - 22.0).abs() < 0.02,
-        "horizontal multi-character labels should keep internal clipping without rectangularizing or adding a second margin retreat: {polygon:?}"
+        (label_edge_y - 22.0).abs() < 0.02,
+        "horizontal multi-character labels should bridge only the overlapping internal glyph gap without adding a second margin retreat: {polygon:?}"
     );
 }
 

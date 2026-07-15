@@ -19,8 +19,8 @@ pub(super) fn render_fragment_bond(
     };
     let stroke = bond.stroke.as_deref().unwrap_or(stroke);
     let stroke_width = bond_stroke_width(document, object, bond);
-    let actual_start = world_point(object, begin);
-    let actual_finish = world_point(object, end);
+    let actual_start = bond_endpoint_world(object, begin, bond, "begin");
+    let actual_finish = bond_endpoint_world(object, end, bond, "end");
     let mut start = actual_start;
     let mut finish = actual_finish;
     let begin_box = label_box_world(begin, object);
@@ -167,6 +167,16 @@ pub(super) fn render_fragment_bond(
     );
 }
 
+fn bond_endpoint_world(object: &SceneObject, node: &Node, bond: &Bond, endpoint: &str) -> Point {
+    bond.meta
+        .pointer(&format!("/endpointAttachments/{endpoint}"))
+        .and_then(|attachment| attachment.get("characterIndex"))
+        .and_then(JsonValue::as_u64)
+        .and_then(|index| usize::try_from(index).ok())
+        .and_then(|index| attached_label_glyph_anchor_world(object, node, index))
+        .unwrap_or_else(|| world_point(object, node))
+}
+
 #[allow(clippy::too_many_arguments)]
 fn render_double_bond(
     out: &mut Vec<RenderPrimitive>,
@@ -205,7 +215,25 @@ fn render_double_bond(
                 bond.line_weights.main,
                 outer_line_weight(bond, side),
             );
-            render_fragment_line(
+            let shared_label_retreats = shared_parallel_label_retreats(
+                object,
+                node_map,
+                bond,
+                actual_start,
+                actual_end,
+                stroke_width,
+                &[
+                    (0.0, bond.line_weights.main),
+                    (side * double_offset, outer_line_weight(bond, side)),
+                ],
+            );
+            let (main_start, main_end) = apply_segment_endpoint_retreats(
+                actual_start,
+                actual_end,
+                shared_label_retreats.0,
+                shared_label_retreats.1,
+            );
+            render_fragment_line_with_profiles(
                 out,
                 document,
                 object,
@@ -213,8 +241,8 @@ fn render_double_bond(
                 bonds,
                 node_map,
                 bond,
-                start,
-                end,
+                main_start,
+                main_end,
                 begin_box,
                 end_box,
                 true,
@@ -223,6 +251,12 @@ fn render_double_bond(
                 line_pattern_dash_array_for_bond(bond, stroke_width, bond.line_styles.main),
                 bond.line_weights.main,
                 object_id.clone(),
+                false,
+                true,
+                true,
+                true,
+                None,
+                None,
             );
             render_outer_bond_lines(
                 out,
@@ -245,6 +279,7 @@ fn render_double_bond(
                 object_id,
                 &[side],
                 double_offset,
+                Some(shared_label_retreats),
             );
         }
         _ => {
@@ -280,6 +315,60 @@ fn render_double_bond(
 }
 
 #[allow(clippy::too_many_arguments)]
+fn shared_parallel_label_retreats(
+    object: &SceneObject,
+    node_map: &BTreeMap<&str, &Node>,
+    bond: &Bond,
+    actual_start: Point,
+    actual_end: Point,
+    stroke_width: f64,
+    lines: &[(f64, BondLineWeight)],
+) -> (f64, f64) {
+    let (normal_x, normal_y) = unit_normal(actual_start, actual_end);
+    let begin_polygons = node_map
+        .get(bond.begin.as_str())
+        .map(|node| label_clip_polygons_world(node, object))
+        .unwrap_or_default();
+    let end_polygons = node_map
+        .get(bond.end.as_str())
+        .map(|node| label_clip_polygons_world(node, object))
+        .unwrap_or_default();
+    let begin_box = node_map
+        .get(bond.begin.as_str())
+        .and_then(|node| label_box_world(node, object));
+    let end_box = node_map
+        .get(bond.end.as_str())
+        .and_then(|node| label_box_world(node, object));
+    let mut shared_start_retreat: f64 = 0.0;
+    let mut shared_end_retreat: f64 = 0.0;
+    for (offset, weight) in lines {
+        let line_start = Point::new(
+            actual_start.x + normal_x * offset,
+            actual_start.y + normal_y * offset,
+        );
+        let line_end = Point::new(
+            actual_end.x + normal_x * offset,
+            actual_end.y + normal_y * offset,
+        );
+        let half_width = line_weight_stroke_width_for_bond(bond, stroke_width, *weight) * 0.5;
+        if let Some((start_retreat, end_retreat)) = body_segment_label_retreats(
+            line_start,
+            line_end,
+            begin_box,
+            &begin_polygons,
+            half_width,
+            end_box,
+            &end_polygons,
+            half_width,
+        ) {
+            shared_start_retreat = shared_start_retreat.max(start_retreat);
+            shared_end_retreat = shared_end_retreat.max(end_retreat);
+        }
+    }
+    (shared_start_retreat, shared_end_retreat)
+}
+
+#[allow(clippy::too_many_arguments)]
 fn render_center_double_bond_lines(
     out: &mut Vec<RenderPrimitive>,
     document: &ChemcoreDocument,
@@ -300,6 +389,49 @@ fn render_center_double_bond_lines(
     double_offset: f64,
 ) {
     let (normal_x, normal_y) = unit_normal(actual_start, actual_end);
+    let begin_polygons = label_clip_polygons_world(
+        node_map
+            .get(bond.begin.as_str())
+            .copied()
+            .expect("center double begin node must exist"),
+        object,
+    );
+    let end_polygons = label_clip_polygons_world(
+        node_map
+            .get(bond.end.as_str())
+            .copied()
+            .expect("center double end node must exist"),
+        object,
+    );
+    let mut shared_start_retreat: f64 = 0.0;
+    let mut shared_end_retreat: f64 = 0.0;
+    for (offset, weight) in [
+        (-double_offset / 2.0, bond.line_weights.left),
+        (double_offset / 2.0, bond.line_weights.right),
+    ] {
+        let line_start = Point::new(
+            actual_start.x + normal_x * offset,
+            actual_start.y + normal_y * offset,
+        );
+        let line_end = Point::new(
+            actual_end.x + normal_x * offset,
+            actual_end.y + normal_y * offset,
+        );
+        let half_width = line_weight_stroke_width_for_bond(bond, stroke_width, weight) * 0.5;
+        if let Some((start_retreat, end_retreat)) = body_segment_label_retreats(
+            line_start,
+            line_end,
+            begin_box,
+            &begin_polygons,
+            half_width,
+            end_box,
+            &end_polygons,
+            half_width,
+        ) {
+            shared_start_retreat = shared_start_retreat.max(start_retreat);
+            shared_end_retreat = shared_end_retreat.max(end_retreat);
+        }
+    }
     for (line_side, offset, pattern, weight) in [
         (
             -1.0,
@@ -314,13 +446,19 @@ fn render_center_double_bond_lines(
             bond.line_weights.right,
         ),
     ] {
-        let line_start = Point::new(
+        let raw_line_start = Point::new(
             actual_start.x + normal_x * offset,
             actual_start.y + normal_y * offset,
         );
-        let line_end = Point::new(
+        let raw_line_end = Point::new(
             actual_end.x + normal_x * offset,
             actual_end.y + normal_y * offset,
+        );
+        let (line_start, line_end) = apply_segment_endpoint_retreats(
+            raw_line_start,
+            raw_line_end,
+            shared_start_retreat,
+            shared_end_retreat,
         );
         let start_endpoint_profile = center_double_endpoint_profile_for_line_side(
             object,
@@ -364,7 +502,7 @@ fn render_center_double_bond_lines(
             line_pattern_dash_array_for_bond(bond, stroke_width, pattern),
             weight,
             object_id.clone(),
-            true,
+            false,
             !begin_has_label,
             !end_has_label,
             false,
@@ -438,6 +576,7 @@ fn render_triple_bond(
         object_id,
         &[1.0, -1.0],
         triple_offset,
+        None,
     );
 }
 
@@ -463,6 +602,7 @@ fn render_outer_bond_lines(
     object_id: Option<String>,
     sides: &[f64],
     offset_distance: f64,
+    shared_label_retreats: Option<(f64, f64)>,
 ) {
     let length = _actual_start.distance(_actual_end);
     let is_side_double = side_double_placement(bond).is_some();
@@ -547,6 +687,12 @@ fn render_outer_bond_lines(
                 side_inset
             },
         );
+        let (short_start, short_end) = shared_label_retreats.map_or(
+            (short_start, short_end),
+            |(start_retreat, end_retreat)| {
+                apply_segment_endpoint_retreats(short_start, short_end, start_retreat, end_retreat)
+            },
+        );
         render_fragment_line_with_profiles(
             out,
             document,
@@ -565,7 +711,7 @@ fn render_outer_bond_lines(
             line_pattern_dash_array_for_bond(bond, stroke_width, line_pattern),
             line_weight,
             object_id.clone(),
-            true,
+            shared_label_retreats.is_none(),
             true,
             true,
             false,

@@ -542,6 +542,7 @@ fn decode_property(
         PropertyKind::Int16 => read_i16(data)?.to_string(),
         PropertyKind::UInt16 => read_u16(data)?.to_string(),
         PropertyKind::Int32 => read_i32(data)?.to_string(),
+        PropertyKind::Fixed16_16 => fmt_num(read_i32(data)? as f64 / 65536.0),
         PropertyKind::UInt32 => read_u32(data)?.to_string(),
         PropertyKind::Float64 => read_f64(data)?.to_string(),
         PropertyKind::Boolean => bool_from_bytes(data),
@@ -575,6 +576,7 @@ enum PropertyKind {
     Int16,
     UInt16,
     Int32,
+    Fixed16_16,
     UInt32,
     Float64,
     Boolean,
@@ -638,7 +640,7 @@ fn property_schema(tag: u16) -> Option<PropertySchema> {
         0x0708 => ("InterpretChemically", PropertyKind::Boolean),
         0x0709 => ("UTF8Text", PropertyKind::String),
         0x0802 => ("PrintMargins", PropertyKind::Rectangle),
-        0x0803 => ("ChainAngle", PropertyKind::Int32),
+        0x0803 => ("ChainAngle", PropertyKind::Fixed16_16),
         0x0804 => ("BondSpacing", PropertyKind::BondSpacing),
         0x0805 => ("BondLength", PropertyKind::Coordinate),
         0x0806 => ("BoldWidth", PropertyKind::Coordinate),
@@ -748,6 +750,8 @@ fn property_tag(name: &str) -> Option<u16> {
         "DoublePosition" => 0x0603,
         "B" => 0x0604,
         "E" => 0x0605,
+        "BeginAttach" => 0x0608,
+        "EndAttach" => 0x0609,
         "BS" => 0x060A,
         "Justification" => 0x0701,
         "LineStarts" => 0x0704,
@@ -830,6 +834,9 @@ fn encode_property(name: &str, value: &str) -> Option<(u16, Vec<u8>)> {
         PropertyKind::Int16 => value.parse::<i16>().ok()?.to_le_bytes().to_vec(),
         PropertyKind::UInt16 => value.parse::<u16>().ok()?.to_le_bytes().to_vec(),
         PropertyKind::Int32 => value.parse::<i32>().ok()?.to_le_bytes().to_vec(),
+        PropertyKind::Fixed16_16 => ((value.parse::<f64>().ok()? * 65536.0).round() as i32)
+            .to_le_bytes()
+            .to_vec(),
         PropertyKind::UInt32 => value.parse::<u32>().ok()?.to_le_bytes().to_vec(),
         PropertyKind::Float64 => value.parse::<f64>().ok()?.to_le_bytes().to_vec(),
         PropertyKind::Boolean => vec![if yes(value) { 1 } else { 0 }],
@@ -1754,5 +1761,71 @@ mod tests {
         );
         let second = document_to_cdx(&reopened).expect("second CDX export");
         assert_eq!(second, first, "inferred centered Pd CDX must stabilize");
+    }
+
+    #[test]
+    fn cdx_internal_fragment_attachment_round_trips_stably() {
+        let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<CDXML BoundingBox="0 0 80 40" BondLength="14.4" LabelFont="3" LabelSize="10" MarginWidth="1.6">
+  <fonttable><font id="3" charset="iso-8859-1" name="Arial"/></fonttable>
+  <page id="1" BoundingBox="0 0 80 40">
+    <fragment id="2" BoundingBox="0 0 80 40">
+      <n id="3" p="10 30" NodeType="Fragment">
+        <t id="4" p="8 34" BoundingBox="8 22 62 36" LabelAlignment="Left" LabelJustification="Left" InterpretChemically="yes">
+          <s font="3" size="10" face="0" color="0">(PhO)</s>
+          <s font="3" size="10" face="96" color="0">2</s>
+          <s font="3" size="10" face="0" color="0">POH</s>
+        </t>
+      </n>
+      <n id="5" p="42 16" Element="8" NumHydrogens="0">
+        <t id="6" p="38 20" BoundingBox="38 10 46 21"><s font="3" size="10" face="96" color="0">O</s></t>
+      </n>
+      <b id="7" B="3" BeginAttach="6" E="5" Order="2"/>
+    </fragment>
+  </page>
+</CDXML>"#;
+        let source = cdxml_to_cdx(cdxml).expect("source CDX should encode");
+        let source_decoded = cdx_to_cdxml(&source).expect("source CDX should decode");
+        assert!(
+            source_decoded.contains("BeginAttach=\"6\""),
+            "{source_decoded}"
+        );
+        let imported = parse_cdx_document(&source, Some("internal attachment"))
+            .expect("source CDX should import");
+        let imported_bond = imported
+            .resources
+            .values()
+            .find_map(|resource| resource.data.as_fragment())
+            .and_then(|fragment| fragment.bonds.first())
+            .expect("imported bond");
+        assert_eq!(
+            imported_bond
+                .meta
+                .pointer("/endpointAttachments/begin/characterIndex")
+                .and_then(serde_json::Value::as_u64),
+            Some(6)
+        );
+        assert_eq!(
+            imported_bond
+                .meta
+                .pointer("/endpointAttachments/begin/character"),
+            Some(&serde_json::json!("P"))
+        );
+
+        let first = document_to_cdx(&imported).expect("first CDX export");
+        let decoded = cdx_to_cdxml(&first).expect("saved CDX should decode");
+        assert!(decoded.contains("BeginAttach=\"6\""), "{decoded}");
+        let reopened = parse_cdx_document(&first, Some("internal attachment")).expect("reopen CDX");
+        let second = document_to_cdx(&reopened).expect("second CDX export");
+        assert_eq!(second, first, "internal attachment CDX must stabilize");
+    }
+
+    #[test]
+    fn cdx_chain_angle_uses_readable_degrees_and_fixed_point_binary() {
+        let encoded = encode_property("ChainAngle", "120").expect("chain angle should encode");
+        assert_eq!(encoded.1, (120_i32 * 65536).to_le_bytes());
+        let (_, decoded) =
+            decode_property(encoded.0, &encoded.1, None).expect("chain angle should decode");
+        assert_eq!(decoded, "120");
     }
 }

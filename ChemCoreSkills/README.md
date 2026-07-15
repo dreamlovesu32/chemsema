@@ -33,8 +33,10 @@ maintainer and contributor workflows inside the repository.
 
 Codex expects installed skills to be direct children of `$CODEX_HOME/skills`.
 Use the flatten script to copy the nested skill folders into an installable
-directory. The current Windows x64 `chemcore-cli` skill includes a bundled CLI
-runtime at `assets/bin/win-x64/chemcore-cli.exe`.
+directory. The current `chemcore-cli` skill includes bundled Windows x64 and
+Linux x64 runtimes under `assets/bin/win-x64` and `assets/bin/linux-x64`.
+The Linux runtime is built and smoke-tested through Ubuntu on WSL with
+`npm run cli:ubuntu:test`.
 
 PowerShell:
 

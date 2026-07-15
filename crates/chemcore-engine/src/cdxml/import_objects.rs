@@ -1459,11 +1459,14 @@ fn text_object(
     };
     let mut extra = BTreeMap::new();
     extra.insert("text".to_string(), json!(text));
-    let box_x = match align.as_str() {
-        "center" => -width * 0.5,
-        "right" => -width,
-        _ => 0.0,
-    };
+    let box_x = bbox.map_or_else(
+        || match align.as_str() {
+            "center" => -width * 0.5,
+            "right" => -width,
+            _ => 0.0,
+        },
+        |bbox| bbox[0] - translate[0],
+    );
     extra.insert(
         "box".to_string(),
         json!([round2(box_x), 0.0, round2(width), round2(height)]),
@@ -1476,6 +1479,10 @@ fn text_object(
     );
     extra.insert("fontSize".to_string(), json!(round2(font_size)));
     if let Some(point) = parse_xy(node.attr("p")) {
+        extra.insert(
+            "anchorOffsetX".to_string(),
+            json!(round2(point[0] - translate[0])),
+        );
         extra.insert(
             "baselineOffset".to_string(),
             json!(round2(point[1] - translate[1])),

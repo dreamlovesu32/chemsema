@@ -81,8 +81,9 @@ npm run verify
   根参数，例如 `BondLength`、`LineWidth`、`BoldWidth`、`HashSpacing`、
   `BondSpacing`、`MarginWidth`、`ChainAngle`、`LabelFont`、`LabelSize`、
   `LabelFace`、`CaptionFont`、`CaptionSize`、`CaptionFace`、默认对齐、
-  显示开关和打印边距；导出应写回当前默认值。这些参数可以参与 ChemCore
-  自己的 layout 和渲染。
+  显示开关和打印边距；但源字体 id、颜色 id 和 face 位掩码必须解码为原生
+  语义文本样式字段。导出时只在 CDX/CDXML 边界重新编码当前语义默认值。
+  这些参数可以参与 ChemCore 自己的 layout 和渲染。
 - attached molecule label 的 `BoundingBox`、`p` 等 CDXML 缓存几何只属于
   provenance、round-trip 或调试证据。它们不能变成活动 label 锚点、活动
   label box 或 bond-retreat 几何。标签退让必须由 ChemCore glyph polygons

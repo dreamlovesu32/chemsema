@@ -147,6 +147,16 @@ fn preferred_substituent_side_for_segment(
     end_id: &str,
     ignored_bond_id: Option<&str>,
 ) -> Option<DoubleBondPlacement> {
+    substituent_signed_side_score_for_segment(fragment, begin_id, end_id, ignored_bond_id)
+        .map(placement_from_signed_side_score)
+}
+
+fn substituent_signed_side_score_for_segment(
+    fragment: &crate::MoleculeFragment,
+    begin_id: &str,
+    end_id: &str,
+    ignored_bond_id: Option<&str>,
+) -> Option<f64> {
     let begin = fragment.nodes.iter().find(|node| node.id == begin_id)?;
     let end = fragment.nodes.iter().find(|node| node.id == end_id)?;
     let begin_point = begin.point();
@@ -155,7 +165,7 @@ fn preferred_substituent_side_for_segment(
     let dy = end_point.y - begin_point.y;
     let length = dx.hypot(dy);
     if length <= crate::EPSILON {
-        return Some(DoubleBondPlacement::Left);
+        return Some(crate::EPSILON * 2.0);
     }
     let normal_x = -dy / length;
     let normal_y = dx / length;
@@ -193,7 +203,7 @@ fn preferred_substituent_side_for_segment(
     if attachment_count == 0 {
         return None;
     }
-    Some(placement_from_signed_side_score(score))
+    Some(score)
 }
 
 fn placement_from_signed_side_score(score: f64) -> DoubleBondPlacement {
@@ -211,6 +221,22 @@ pub fn automatic_double_bond_placement_for_segment(
     begin_id: &str,
     end_id: &str,
     ignored_bond_id: Option<&str>,
+) -> DoubleBondPlacement {
+    automatic_double_bond_placement_for_segment_with_tie_breaker(
+        fragment,
+        begin_id,
+        end_id,
+        ignored_bond_id,
+        None,
+    )
+}
+
+fn automatic_double_bond_placement_for_segment_with_tie_breaker(
+    fragment: &crate::MoleculeFragment,
+    begin_id: &str,
+    end_id: &str,
+    ignored_bond_id: Option<&str>,
+    tie_break_bond_id: Option<&str>,
 ) -> DoubleBondPlacement {
     if let Some(placement) =
         ring_double_bond_placement_for_segment(fragment, begin_id, end_id, ignored_bond_id)
@@ -235,8 +261,59 @@ pub fn automatic_double_bond_placement_for_segment(
     {
         return DoubleBondPlacement::Center;
     }
-    preferred_substituent_side_for_segment(fragment, begin_id, end_id, ignored_bond_id)
+    let Some(score) =
+        substituent_signed_side_score_for_segment(fragment, begin_id, end_id, ignored_bond_id)
+    else {
+        return DoubleBondPlacement::Right;
+    };
+    if score.abs() > crate::EPSILON {
+        return placement_from_signed_side_score(score);
+    }
+    tie_break_bond_id
+        .and_then(|bond_id| {
+            signed_side_score_for_connected_bond(fragment, begin_id, end_id, bond_id)
+        })
+        .filter(|tie_break_score| tie_break_score.abs() > crate::EPSILON)
+        .map(placement_from_signed_side_score)
         .unwrap_or(DoubleBondPlacement::Right)
+}
+
+fn signed_side_score_for_connected_bond(
+    fragment: &crate::MoleculeFragment,
+    begin_id: &str,
+    end_id: &str,
+    bond_id: &str,
+) -> Option<f64> {
+    let begin = fragment.nodes.iter().find(|node| node.id == begin_id)?;
+    let end = fragment.nodes.iter().find(|node| node.id == end_id)?;
+    let begin_point = begin.point();
+    let end_point = end.point();
+    let dx = end_point.x - begin_point.x;
+    let dy = end_point.y - begin_point.y;
+    let length = dx.hypot(dy);
+    if length <= crate::EPSILON {
+        return None;
+    }
+    let normal_x = -dy / length;
+    let normal_y = dx / length;
+    let bond = fragment.bonds.iter().find(|bond| bond.id == bond_id)?;
+    let (shared_point, other_id) = if bond.begin == begin_id {
+        (begin_point, bond.end.as_str())
+    } else if bond.end == begin_id {
+        (begin_point, bond.begin.as_str())
+    } else if bond.begin == end_id {
+        (end_point, bond.end.as_str())
+    } else if bond.end == end_id {
+        (end_point, bond.begin.as_str())
+    } else {
+        return None;
+    };
+    let other_point = fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == other_id)?
+        .point();
+    Some((other_point.x - shared_point.x) * normal_x + (other_point.y - shared_point.y) * normal_y)
 }
 
 fn segment_has_neighbor_double_bond(
@@ -403,7 +480,7 @@ fn cycle_path_bond_orders(
 fn update_unfrozen_double_bond_auto_placement(
     fragment: &mut crate::MoleculeFragment,
     double_bond_id: &str,
-    _new_bond_id: &str,
+    new_bond_id: &str,
 ) {
     let Some(double_index) = fragment
         .bonds
@@ -420,11 +497,12 @@ fn update_unfrozen_double_bond_auto_placement(
     }
 
     let bond = fragment.bonds[double_index].clone();
-    let placement = automatic_double_bond_placement_for_segment(
+    let placement = automatic_double_bond_placement_for_segment_with_tie_breaker(
         fragment,
         &bond.begin,
         &bond.end,
         Some(&bond.id),
+        Some(new_bond_id),
     );
     fragment.bonds[double_index].double = Some(crate::DoubleBond {
         placement,

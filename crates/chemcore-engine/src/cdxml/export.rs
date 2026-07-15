@@ -1,6 +1,6 @@
 use crate::{
-    Bond, ChemcoreDocument, LabelRun, MoleculeFragment, Node, NodeLabel, ObjectPayload, Point,
-    ResourceData, SceneObject,
+    Bond, ChemcoreDocument, DocumentTextStyle, LabelRun, MoleculeFragment, Node, NodeLabel,
+    ObjectPayload, Point, ResourceData, SceneObject,
 };
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -52,26 +52,8 @@ fn export_cdxml_defaults(document: &ChemcoreDocument) -> CdxmlDefaults {
         if let Some(value) = import_defaults.get("marginWidth").and_then(Value::as_f64) {
             defaults.margin_width = value;
         }
-        if let Some(value) = import_defaults.get("labelSize").and_then(Value::as_f64) {
-            defaults.label_size = value;
-        }
-        if let Some(value) = import_defaults.get("captionSize").and_then(Value::as_f64) {
-            defaults.caption_size = value;
-        }
         if let Some(value) = import_defaults.get("chainAngle").and_then(Value::as_f64) {
             defaults.chain_angle = value;
-        }
-        if let Some(value) = import_defaults.get("labelFont").and_then(value_u32) {
-            defaults.label_font = value;
-        }
-        if let Some(value) = import_defaults.get("labelFace").and_then(value_u32) {
-            defaults.label_face = value;
-        }
-        if let Some(value) = import_defaults.get("captionFont").and_then(value_u32) {
-            defaults.caption_font = value;
-        }
-        if let Some(value) = import_defaults.get("captionFace").and_then(value_u32) {
-            defaults.caption_face = value;
         }
         if let Some(value) = import_defaults
             .get("labelJustification")
@@ -163,9 +145,6 @@ fn export_cdxml_defaults(document: &ChemcoreDocument) -> CdxmlDefaults {
         if let Some(value) = import_defaults.get("printMargins").and_then(value_margins) {
             defaults.print_margins = value;
         }
-        if let Some(value) = import_defaults.get("color").and_then(value_u32) {
-            defaults.color = value;
-        }
     }
     if let Some(value) = document.style.defaults.get("bondLength") {
         defaults.bond_length = *value;
@@ -188,24 +167,10 @@ fn export_cdxml_defaults(document: &ChemcoreDocument) -> CdxmlDefaults {
     if let Some(value) = document.style.defaults.get("marginWidth") {
         defaults.margin_width = *value;
     }
-    if let Some(value) = document.style.defaults.get("labelFontSize") {
-        defaults.label_size = *value;
-    }
-    if let Some(value) = document.style.defaults.get("textFontSize") {
-        defaults.caption_size = *value;
-    }
-    if let Some(value) = document.style.defaults.get("labelFont") {
-        defaults.label_font = value.round().max(0.0) as u32;
-    }
-    if let Some(value) = document.style.defaults.get("labelFace") {
-        defaults.label_face = value.round().max(0.0) as u32;
-    }
-    if let Some(value) = document.style.defaults.get("captionFont") {
-        defaults.caption_font = value.round().max(0.0) as u32;
-    }
-    if let Some(value) = document.style.defaults.get("captionFace") {
-        defaults.caption_face = value.round().max(0.0) as u32;
-    }
+    defaults.label_size = document.style.label_style.font_size;
+    defaults.caption_size = document.style.caption_style.font_size;
+    defaults.label_face = cdxml_face_for_document_text_style(&document.style.label_style);
+    defaults.caption_face = cdxml_face_for_document_text_style(&document.style.caption_style);
     if let Some(style) = document.styles.get("style_molecule_default") {
         if let Some(value) = style_number_value(style, "strokeWidth") {
             defaults.line_width = value;
@@ -245,16 +210,24 @@ fn export_cdxml_defaults(document: &ChemcoreDocument) -> CdxmlDefaults {
     defaults
 }
 
-fn value_u32(value: &Value) -> Option<u32> {
-    value
-        .as_u64()
-        .and_then(|value| u32::try_from(value).ok())
-        .or_else(|| {
-            value
-                .as_f64()
-                .filter(|value| value.is_finite() && *value >= 0.0)
-                .map(|value| value.round() as u32)
-        })
+fn cdxml_face_for_document_text_style(style: &DocumentTextStyle) -> u32 {
+    let mut face = 0;
+    if style.font_weight >= 600 {
+        face |= 1;
+    }
+    if style.font_style.eq_ignore_ascii_case("italic") {
+        face |= 2;
+    }
+    if style.underline {
+        face |= 4;
+    }
+    face |= match style.script.trim().to_ascii_lowercase().as_str() {
+        "subscript" => 32,
+        "superscript" => 64,
+        "chemical" => 96,
+        _ => 0,
+    };
+    face
 }
 
 fn value_cdxml_justification(value: &Value) -> Option<CdxmlJustification> {
@@ -296,12 +269,28 @@ impl<'a> CdxmlDocumentWriter<'a> {
         collect_document_colors(document, &mut colors);
         let mut fonts = CdxmlFontTable::default();
         collect_document_fonts(document, &mut fonts);
+        let mut defaults = export_cdxml_defaults(document);
+        defaults.label_font = fonts
+            .id_for(&document.style.label_style.font_family)
+            .parse()
+            .unwrap_or(3);
+        defaults.caption_font = fonts
+            .id_for(&document.style.caption_style.font_family)
+            .parse()
+            .unwrap_or(3);
+        let foreground = document
+            .document
+            .meta
+            .pointer("/import/cdxml/defaults/foregroundColor")
+            .and_then(Value::as_str)
+            .unwrap_or(&document.style.label_style.fill);
+        defaults.color = colors.id_for(foreground).parse().unwrap_or(0);
         Self {
             document,
             next_id: 1,
             colors,
             fonts,
-            defaults: export_cdxml_defaults(document),
+            defaults,
             editing_scale: cdxml_editing_scale(document),
         }
     }
@@ -623,6 +612,12 @@ impl<'a> CdxmlDocumentWriter<'a> {
             ("Order", bond.order.max(1).to_string()),
             ("BS", "N".to_string()),
         ];
+        if let Some(value) = bond_endpoint_attachment(bond, "begin") {
+            attrs.push(("BeginAttach", value.to_string()));
+        }
+        if let Some(value) = bond_endpoint_attachment(bond, "end") {
+            attrs.push(("EndAttach", value.to_string()));
+        }
         if let Some(display) = cdxml_bond_display(bond, false) {
             attrs.push(("Display", display.to_string()));
         }
@@ -1328,8 +1323,14 @@ impl<'a> CdxmlDocumentWriter<'a> {
             .get("baselineOffset")
             .and_then(Value::as_f64)
             .unwrap_or(font_size * 0.82);
+        let anchor_offset_x = object
+            .payload
+            .extra
+            .get("anchorOffsetX")
+            .and_then(Value::as_f64)
+            .unwrap_or(0.0);
         let anchor = Point::new(
-            object.transform.translate[0],
+            object.transform.translate[0] + anchor_offset_x,
             object.transform.translate[1] + baseline_offset,
         );
         let bbox = [
@@ -1519,6 +1520,16 @@ impl CdxmlFontTable {
 
 fn collect_document_colors(document: &ChemcoreDocument, colors: &mut CdxmlColorTable) {
     colors.ensure(&document.document.page.background);
+    colors.ensure(&document.style.label_style.fill);
+    colors.ensure(&document.style.caption_style.fill);
+    if let Some(foreground) = document
+        .document
+        .meta
+        .pointer("/import/cdxml/defaults/foregroundColor")
+        .and_then(Value::as_str)
+    {
+        colors.ensure(foreground);
+    }
     for style in document.styles.values() {
         for key in ["stroke", "fill", "color", "background", "backgroundColor"] {
             if let Some(color) = style_nullable_string_value(style, key) {
@@ -1576,6 +1587,8 @@ fn collect_document_colors(document: &ChemcoreDocument, colors: &mut CdxmlColorT
 }
 
 fn collect_document_fonts(document: &ChemcoreDocument, fonts: &mut CdxmlFontTable) {
+    fonts.ensure(&document.style.label_style.font_family);
+    fonts.ensure(&document.style.caption_style.font_family);
     for style in document.styles.values() {
         if let Some(font_family) = style_string_value(style, "fontFamily") {
             fonts.ensure(&font_family);
@@ -1824,6 +1837,13 @@ fn imported_cdxml_label_attr<'a>(label: &'a NodeLabel, name: &str) -> Option<&'a
         .filter(|value| !value.is_empty())
 }
 
+fn bond_endpoint_attachment(bond: &Bond, endpoint: &str) -> Option<u64> {
+    bond.meta
+        .pointer(&format!("/endpointAttachments/{endpoint}"))
+        .and_then(|attachment| attachment.get("characterIndex"))
+        .and_then(Value::as_u64)
+}
+
 fn cdxml_node_label_alignment(label: &NodeLabel) -> &'static str {
     if label.layout.as_deref() == Some("attached-group-above") {
         "Above"
@@ -1852,7 +1872,7 @@ fn cdxml_node_num_hydrogens_for_export(node: &Node) -> Option<u8> {
     }
     if let Some(value) = node
         .meta
-        .pointer("/import/cdxml/numHydrogens")
+        .pointer("/import/cdxml/explicitNumHydrogens")
         .and_then(Value::as_u64)
     {
         return Some(value.min(u64::from(u8::MAX)) as u8);
