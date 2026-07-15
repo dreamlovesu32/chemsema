@@ -6295,6 +6295,54 @@ fn parse_cdxml_node_label_preserves_explicit_nonchemical_semantics() {
 }
 
 #[test]
+fn parse_cdxml_node_label_subscripts_digits_across_style_run_boundaries() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<CDXML BondLength="14.40" LineWidth="0.60" MarginWidth="1.60" InterpretChemically="yes">
+  <page id="p1" BoundingBox="0 0 80 32">
+    <fragment id="f1" BoundingBox="0 0 80 32">
+      <n id="pd" p="20 16">
+        <t p="20 20" BoundingBox="20 8 72 22" InterpretChemically="yes">
+          <s font="3" size="10" color="0" face="97">Pd</s>
+          <s font="3" size="10" color="0" face="65">IV</s>
+          <s font="3" size="10" color="0" face="97">(OCF</s>
+          <s font="3" size="10" color="0" face="97">3</s>
+          <s font="3" size="10" color="0" face="97">)n</s>
+        </t>
+      </n>
+      <n id="c1" p="40 16"/>
+      <b id="b1" B="pd" E="c1"/>
+    </fragment>
+  </page>
+</CDXML>"#;
+    let document = parse_cdxml_document(cdxml, Some("split formula run"))
+        .expect("split formula CDXML should parse");
+    let label = document
+        .resources
+        .values()
+        .find_map(|resource| resource.data.as_fragment())
+        .and_then(|fragment| fragment.nodes.iter().find_map(|node| node.label.as_ref()))
+        .expect("Pd formula label should import");
+
+    assert!(
+        label
+            .runs
+            .iter()
+            .any(|run| matches!(run.text.as_str(), "IV" | "VI")
+                && run.script.as_deref() == Some("superscript")),
+        "{:?}",
+        label.runs
+    );
+    assert!(
+        label
+            .runs
+            .iter()
+            .any(|run| run.text == "3" && run.script.as_deref() == Some("subscript")),
+        "{:?}",
+        label.runs
+    );
+}
+
+#[test]
 fn parse_cdxml_preserves_document_drawing_defaults_without_using_cached_label_geometry() {
     let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
 <CDXML FractionalWidths="no" InterpretChemically="no" ShowTerminalCarbonLabels="yes" ShowNonTerminalCarbonLabels="yes" HideImplicitHydrogens="yes" LabelFont="4" LabelSize="11" LabelFace="98" CaptionFont="5" CaptionSize="9" CaptionFace="2" LineWidth="0.72" BoldWidth="3.20" BondLength="17.50" BondSpacing="21" HashSpacing="2.20" MarginWidth="1.60" ChainAngle="109.5" LabelJustification="Right" CaptionJustification="Center" PrintMargins="12 13 14 15" color="2">
@@ -6476,7 +6524,7 @@ fn render_cdxml_imported_atom_label_uses_text_primitive() {
 }
 
 #[test]
-fn parse_cdxml_right_aligned_chemical_node_label_reverses_display_groups() {
+fn parse_cdxml_fixed_right_chemical_node_label_preserves_source_order() {
     let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >
 <CDXML BondLength="14.40" LineWidth="0.99" BoldWidth="2.01" HashSpacing="2.49" BondSpacing="18" LabelSize="10">
@@ -6504,9 +6552,9 @@ fn parse_cdxml_right_aligned_chemical_node_label_reverses_display_groups() {
 
     assert_eq!(label.align.as_deref(), Some("right"));
     assert_eq!(label.source_text.as_deref(), Some("CN"));
-    assert_eq!(label.text, "NC");
+    assert_eq!(label.text, "CN");
     let display_text: String = label.runs.iter().map(|run| run.text.as_str()).collect();
-    assert_eq!(display_text, "NC");
+    assert_eq!(display_text, "CN");
     assert_eq!(
         label
             .meta
@@ -6517,7 +6565,7 @@ fn parse_cdxml_right_aligned_chemical_node_label_reverses_display_groups() {
 }
 
 #[test]
-fn parse_cdxml_right_aligned_labels_tokenize_display_independent_of_validity() {
+fn parse_cdxml_fixed_right_labels_preserve_source_order_independent_of_validity() {
     let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >
 <CDXML BondLength="14.40" LineWidth="0.99" BoldWidth="2.01" HashSpacing="2.49" BondSpacing="18" LabelSize="10">
@@ -6562,7 +6610,7 @@ fn parse_cdxml_right_aligned_labels_tokenize_display_independent_of_validity() {
 
     let tfa = label_for("tfa");
     assert_eq!(tfa.source_text.as_deref(), Some("OTFA"));
-    assert_eq!(tfa.text, "TFAO");
+    assert_eq!(tfa.text, "OTFA");
     assert_eq!(
         tfa.meta
             .pointer("/labelRecognition/status")
@@ -6572,7 +6620,7 @@ fn parse_cdxml_right_aligned_labels_tokenize_display_independent_of_validity() {
 
     let xyz = label_for("xyz");
     assert_eq!(xyz.source_text.as_deref(), Some("OXYZ"));
-    assert_eq!(xyz.text, "ZYXO");
+    assert_eq!(xyz.text, "OXYZ");
     assert_eq!(
         xyz.meta
             .pointer("/labelRecognition/diagnostic")
@@ -6582,7 +6630,7 @@ fn parse_cdxml_right_aligned_labels_tokenize_display_independent_of_validity() {
 
     let nme = label_for("nme");
     assert_eq!(nme.source_text.as_deref(), Some("NMe4"));
-    assert_eq!(nme.text, "Me4N");
+    assert_eq!(nme.text, "NMe4");
     assert_eq!(
         nme.meta
             .pointer("/labelRecognition/diagnostic")
@@ -6650,22 +6698,22 @@ fn parse_cdxml_normal_face_attached_label_uses_group_layout() {
         Some("NTs")
     );
 
-    let reversed = fragments
+    let fixed_right = fragments
         .iter()
         .flat_map(|fragment| fragment.nodes.iter())
         .find(|node| node.id == "n4")
         .and_then(|node| node.label.as_ref())
         .expect("right aligned NTs label should import");
-    assert_eq!(reversed.text, "TsN");
+    assert_eq!(fixed_right.text, "NTs");
     assert_eq!(
-        reversed
+        fixed_right
             .meta
             .pointer("/sourceRuns/0/script")
             .and_then(serde_json::Value::as_str),
         Some("normal")
     );
     assert_eq!(
-        reversed
+        fixed_right
             .meta
             .pointer("/labelRecognition/components/1/label")
             .and_then(serde_json::Value::as_str),
@@ -6674,7 +6722,7 @@ fn parse_cdxml_normal_face_attached_label_uses_group_layout() {
 }
 
 #[test]
-fn parse_cdxml_parenthesized_attached_label_reverses_inner_groups() {
+fn parse_cdxml_fixed_right_parenthesized_label_preserves_source_order() {
     let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >
 <CDXML BondLength="14.40" LineWidth="0.99" BoldWidth="2.01" HashSpacing="2.49" BondSpacing="18" LabelSize="10">
@@ -6705,9 +6753,9 @@ fn parse_cdxml_parenthesized_attached_label_reverses_inner_groups() {
     let label = node.label.as_ref().expect("N(PhSO2)2 label should import");
 
     assert_eq!(label.source_text.as_deref(), Some("N(PhSO2)2"));
-    assert_eq!(label.text, "(O2SPh)2N");
+    assert_eq!(label.text, "N(PhSO2)2");
     let display_text: String = label.runs.iter().map(|run| run.text.as_str()).collect();
-    assert_eq!(display_text, "(O2SPh)2N");
+    assert_eq!(display_text, "N(PhSO2)2");
     assert_eq!(
         label
             .meta
@@ -6722,30 +6770,94 @@ fn parse_cdxml_parenthesized_attached_label_reverses_inner_groups() {
             .and_then(serde_json::Value::as_str),
         Some("N")
     );
-    let nitrogen_polygon = label.glyph_polygons.get(8).expect("N glyph should exist");
-    let bounds = nitrogen_polygon.iter().fold(
-        [
-            f64::INFINITY,
-            f64::INFINITY,
-            f64::NEG_INFINITY,
-            f64::NEG_INFINITY,
-        ],
-        |mut bounds, point| {
-            bounds[0] = bounds[0].min(point[0]);
-            bounds[1] = bounds[1].min(point[1]);
-            bounds[2] = bounds[2].max(point[0]);
-            bounds[3] = bounds[3].max(point[1]);
-            bounds
-        },
+    assert_eq!(label.align.as_deref(), Some("right"));
+    assert_eq!(label.anchor.as_deref(), Some("end"));
+}
+
+#[test]
+fn parse_cdxml_fixed_right_hydrocarbon_formula_preserves_order_and_subscripts() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<CDXML BondLength="14.40" LineWidth="0.60" MarginWidth="1.60" LabelSize="10">
+  <page id="p1" BoundingBox="0 0 80 36">
+    <fragment id="f1" BoundingBox="0 0 80 36">
+      <n id="alkyl" p="32 18" NodeType="Nickname">
+        <t p="32 22" BoundingBox="-8 8 32 24" LabelJustification="Right" Justification="Right" LabelAlignment="Right" UTF8Text="C10H21">
+          <s font="3" size="10" color="0" face="96">C10H21</s>
+        </t>
+      </n>
+      <n id="c1" p="50 18"/>
+      <b id="b1" B="alkyl" E="c1"/>
+    </fragment>
+  </page>
+</CDXML>"#;
+    let document = parse_cdxml_document(cdxml, Some("fixed right C10H21")).expect("cdxml");
+    let label = document
+        .resources
+        .values()
+        .find_map(|resource| resource.data.as_fragment())
+        .and_then(|fragment| fragment.nodes.iter().find(|node| node.id == "alkyl"))
+        .and_then(|node| node.label.as_ref())
+        .expect("C10H21 label should import");
+
+    assert_eq!(label.text, "C10H21");
+    assert_eq!(label.source_text.as_deref(), Some("C10H21"));
+    let subscript_text: String = label
+        .runs
+        .iter()
+        .filter(|run| run.script.as_deref() == Some("subscript"))
+        .map(|run| run.text.as_str())
+        .collect();
+    assert_eq!(subscript_text, "1021");
+
+    let first_export = document_to_cdxml(&document);
+    for expected in [
+        "LabelJustification=\"Right\"",
+        "Justification=\"Right\"",
+        "LabelAlignment=\"Right\"",
+        ">C10H21</s>",
+    ] {
+        assert!(
+            first_export.contains(expected),
+            "missing {expected}: {first_export}"
+        );
+    }
+    let reimported =
+        parse_cdxml_document(&first_export, Some("fixed right C10H21")).expect("reimport");
+    let second_export = document_to_cdxml(&reimported);
+    assert_eq!(
+        second_export, first_export,
+        "CDXML open/save must stabilize after export"
     );
-    let nitrogen_center = Point::new((bounds[0] + bounds[2]) * 0.5, (bounds[1] + bounds[3]) * 0.5);
-    let line_anchor_y =
-        label.position.expect("right label baseline")[1] - label.font_size.unwrap_or(10.0) * 0.39;
-    assert!(
-        (nitrogen_center.x - node.position[0]).abs() < 0.01
-            && (line_anchor_y - node.position[1]).abs() < 0.01,
-        "right-side N(PhSO2)2 labels should keep the original N glyph x and label-line y anchored to the node: label={label:?}, node={node:?}"
-    );
+}
+
+#[test]
+fn parse_cdxml_auto_right_alignment_reverses_hydrocarbon_as_one_group() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<CDXML BondLength="14.40" LineWidth="0.60" MarginWidth="1.60" LabelSize="10">
+  <page id="p1" BoundingBox="0 0 90 36">
+    <fragment id="f1" BoundingBox="0 0 90 36">
+      <n id="alkoxy" p="40 18" NodeType="Nickname">
+        <t p="40 22" BoundingBox="-12 8 40 24" LabelJustification="Auto" Justification="Right" LabelAlignment="Right" UTF8Text="C10H21O3">
+          <s font="3" size="10" color="0" face="96">C10H21O3</s>
+        </t>
+      </n>
+      <n id="c1" p="58 18"/>
+      <b id="b1" B="alkoxy" E="c1"/>
+    </fragment>
+  </page>
+</CDXML>"#;
+    let document = parse_cdxml_document(cdxml, Some("auto C10H21O3")).expect("cdxml");
+    let label = document
+        .resources
+        .values()
+        .find_map(|resource| resource.data.as_fragment())
+        .and_then(|fragment| fragment.nodes.iter().find(|node| node.id == "alkoxy"))
+        .and_then(|node| node.label.as_ref())
+        .expect("C10H21O3 label should import");
+
+    assert_eq!(label.source_text.as_deref(), Some("C10H21O3"));
+    assert_eq!(label.text, "O3C10H21");
+    assert_ne!(label.text, "O3H21C10");
 }
 
 #[test]
@@ -6945,8 +7057,8 @@ fn parse_cdxml_label_display_overrides_auto_reversal_without_losing_chemistry() 
     let auto_label = labels["Auto"]
         .iter()
         .map(|(_, label)| *label)
-        .find(|label| label.text == "F3C")
-        .expect("Auto CF3 should still reverse to visible F3C on a left-side connection");
+        .find(|label| label.text == "CF3")
+        .expect("a fixed-justification CF3 without LabelDisplay should preserve source order");
     assert_eq!(auto_label.source_text.as_deref(), Some("CF3"));
 
     for (_, right_label) in &labels["Right"] {

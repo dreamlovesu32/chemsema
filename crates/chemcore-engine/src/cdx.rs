@@ -551,6 +551,7 @@ fn decode_property(
         PropertyKind::FontStyle => return None,
         PropertyKind::ObjectIdArray => decode_u32_array(data)?,
         PropertyKind::Int16ListWithCounts => decode_i16_counted_list(data)?,
+        PropertyKind::Enum8(values) => enum_name(read_i8(data)? as i16, values).to_string(),
         PropertyKind::Enum(values) => enum_name(read_i16_lossy(data)?, values).to_string(),
     };
     Some((schema.name, value))
@@ -583,6 +584,7 @@ enum PropertyKind {
     FontStyle,
     ObjectIdArray,
     Int16ListWithCounts,
+    Enum8(&'static [(i16, &'static str)]),
     Enum(&'static [(i16, &'static str)]),
 }
 
@@ -613,7 +615,7 @@ fn property_schema(tag: u16) -> Option<PropertySchema> {
         0x0301 => ("color", PropertyKind::UInt16),
         0x0302 => ("bgcolor", PropertyKind::Int16),
         0x0400 => ("NodeType", PropertyKind::Enum(NODE_TYPE)),
-        0x0401 => ("LabelDisplay", PropertyKind::Enum(LABEL_DISPLAY)),
+        0x0401 => ("LabelDisplay", PropertyKind::Enum8(LABEL_DISPLAY)),
         0x0402 => ("Element", PropertyKind::Int16),
         0x0421 => ("Charge", PropertyKind::Int8),
         0x042B => ("NumHydrogens", PropertyKind::UInt16),
@@ -630,9 +632,9 @@ fn property_schema(tag: u16) -> Option<PropertySchema> {
         0x0608 => ("BeginAttach", PropertyKind::UInt8),
         0x0609 => ("EndAttach", PropertyKind::UInt8),
         0x060A => ("BS", PropertyKind::Enum(BOND_STEREO)),
-        0x0701 => ("Justification", PropertyKind::Enum(JUSTIFICATION)),
+        0x0701 => ("Justification", PropertyKind::Enum8(JUSTIFICATION)),
         0x0704 => ("LineStarts", PropertyKind::Int16ListWithCounts),
-        0x0705 => ("LabelAlignment", PropertyKind::Enum(LABEL_ALIGNMENT)),
+        0x0705 => ("LabelAlignment", PropertyKind::Enum8(LABEL_ALIGNMENT)),
         0x0708 => ("InterpretChemically", PropertyKind::Boolean),
         0x0709 => ("UTF8Text", PropertyKind::String),
         0x0802 => ("PrintMargins", PropertyKind::Rectangle),
@@ -645,7 +647,7 @@ fn property_schema(tag: u16) -> Option<PropertySchema> {
         0x0809 => ("HashSpacing", PropertyKind::Coordinate),
         0x080A => ("LabelStyle", PropertyKind::FontStyle),
         0x080B => ("CaptionStyle", PropertyKind::FontStyle),
-        0x080C => ("CaptionJustification", PropertyKind::Enum(JUSTIFICATION)),
+        0x080C => ("CaptionJustification", PropertyKind::Enum8(JUSTIFICATION)),
         0x080D => ("FractionalWidths", PropertyKind::Boolean),
         0x080F => ("WidthPages", PropertyKind::UInt16),
         0x0810 => ("HeightPages", PropertyKind::UInt16),
@@ -662,7 +664,7 @@ fn property_schema(tag: u16) -> Option<PropertySchema> {
         0x081D => ("CaptionSize", PropertyKind::Int16),
         0x081E => ("LabelFace", PropertyKind::Int16),
         0x081F => ("CaptionFace", PropertyKind::Int16),
-        0x0823 => ("LabelJustification", PropertyKind::Enum(JUSTIFICATION)),
+        0x0823 => ("LabelJustification", PropertyKind::Enum8(JUSTIFICATION)),
         0x0900 => ("WindowIsZoomed", PropertyKind::BooleanImplied),
         0x0901 => ("WindowPosition", PropertyKind::Point2D),
         0x0902 => ("WindowSize", PropertyKind::Point2D),
@@ -845,6 +847,7 @@ fn encode_property(name: &str, value: &str) -> Option<(u16, Vec<u8>)> {
         PropertyKind::FontStyle => return None,
         PropertyKind::ObjectIdArray => encode_u32_array(value)?,
         PropertyKind::Int16ListWithCounts => encode_i16_counted_list(value)?,
+        PropertyKind::Enum8(values) => vec![enum_value(value, values)? as i8 as u8],
         PropertyKind::Enum(values) => enum_value(value, values)?.to_le_bytes().to_vec(),
     };
     Some((tag, bytes))
@@ -970,7 +973,16 @@ const LABEL_DISPLAY: &[(i16, &str)] = &[
     (4, "Above"),
     (5, "Below"),
 ];
-const JUSTIFICATION: &[(i16, &str)] = &[(0, "Left"), (1, "Center"), (2, "Right")];
+const JUSTIFICATION: &[(i16, &str)] = &[
+    (-1, "Right"),
+    (0, "Left"),
+    (1, "Center"),
+    (2, "Full"),
+    (3, "Above"),
+    (4, "Below"),
+    (5, "Auto"),
+    (6, "Best"),
+];
 const LABEL_ALIGNMENT: &[(i16, &str)] = &[
     (0, "Auto"),
     (1, "Left"),
@@ -1528,5 +1540,75 @@ mod tests {
         let decoded = cdx_to_cdxml(&cdx).expect("CDX should decode to CDXML");
         assert!(decoded.contains("<s font=\"3\" size=\"12\" face=\"1\" color=\"0\">Hello</s>"));
         assert!(decoded.contains("<s font=\"3\" size=\"8\" face=\"0\" color=\"0\">2</s>"));
+    }
+
+    #[test]
+    fn cdx_justification_enums_use_signed_single_byte_values() {
+        for (name, encoded) in [
+            ("Right", 0xff),
+            ("Left", 0x00),
+            ("Center", 0x01),
+            ("Full", 0x02),
+            ("Above", 0x03),
+            ("Below", 0x04),
+            ("Auto", 0x05),
+            ("Best", 0x06),
+        ] {
+            let (tag, bytes) =
+                encode_property("LabelJustification", name).expect("justification should encode");
+            assert_eq!(tag, 0x0823);
+            assert_eq!(bytes, vec![encoded], "{name}");
+            let (_, decoded) =
+                decode_property(tag, &bytes, None).expect("justification should decode");
+            assert_eq!(decoded, name);
+        }
+    }
+
+    #[test]
+    fn cdx_label_display_and_alignment_use_single_byte_values() {
+        for (property, expected_tag) in [("LabelDisplay", 0x0401), ("LabelAlignment", 0x0705)] {
+            let (tag, bytes) = encode_property(property, "Right").expect("enum should encode");
+            assert_eq!(tag, expected_tag);
+            assert_eq!(bytes, vec![3]);
+            let (_, decoded) = decode_property(tag, &bytes, None).expect("enum should decode");
+            assert_eq!(decoded, "Right");
+        }
+    }
+
+    #[test]
+    fn cdx_open_save_stabilizes_label_layout_fields() {
+        let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<CDXML BoundingBox="0 0 80 40" BondLength="14.4" LabelFont="3" LabelSize="10">
+  <fonttable><font id="3" charset="iso-8859-1" name="Arial"/></fonttable>
+  <page id="1" BoundingBox="0 0 80 40">
+    <fragment id="2" BoundingBox="0 0 80 40">
+      <n id="3" p="30 20" NodeType="Nickname">
+        <t id="4" p="30 24" BoundingBox="0 10 30 26" LabelJustification="Right" Justification="Right" LabelAlignment="Right" UTF8Text="C10H21">
+          <s font="3" size="10" face="96" color="0">C10H21</s>
+        </t>
+      </n>
+      <n id="5" p="48 20"/>
+      <b id="6" B="3" E="5"/>
+    </fragment>
+  </page>
+</CDXML>"#;
+        let source = cdxml_to_cdx(cdxml).expect("source CDX should encode");
+        let imported = parse_cdx_document(&source, Some("stable CDX")).expect("source CDX import");
+        let first = document_to_cdx(&imported).expect("first CDX export");
+        let reopened = parse_cdx_document(&first, Some("stable CDX")).expect("reopen CDX");
+        let second = document_to_cdx(&reopened).expect("second CDX export");
+
+        assert_eq!(
+            second, first,
+            "CDX must stabilize after the first ChemCore save"
+        );
+        let decoded = cdx_to_cdxml(&first).expect("saved CDX should decode");
+        for expected in [
+            "LabelJustification=\"Right\"",
+            "Justification=\"Right\"",
+            "LabelAlignment=\"Right\"",
+        ] {
+            assert!(decoded.contains(expected), "missing {expected}: {decoded}");
+        }
     }
 }

@@ -72,7 +72,7 @@ fn split_compact_label_groups(compact: &str) -> Vec<String> {
                 continue;
             }
         }
-        if let Some(prefix_len) = crate::label_group_abbreviation_prefix_len(rest) {
+        if let Some(prefix_len) = crate::label_group_prefix_len(rest) {
             if !current.is_empty() {
                 groups.push(std::mem::take(&mut current));
             }
@@ -398,6 +398,8 @@ mod tests {
         assert_eq!(split_label_groups("TMSOPh"), vec!["TMS", "O", "Ph"]);
         assert_eq!(split_label_groups("CF3"), vec!["C", "F3"]);
         assert_eq!(split_label_groups("N(PhSO2)2"), vec!["N", "(PhSO2)2"]);
+        assert_eq!(split_label_groups("C10H21"), vec!["C10H21"]);
+        assert_eq!(split_label_groups("C10H21O3"), vec!["C10H21", "O3"]);
     }
 
     #[test]
@@ -414,6 +416,8 @@ mod tests {
         assert_eq!(reverse_label_groups("TMSOPh"), "PhOTMS");
         assert_eq!(reverse_label_groups("CF3"), "F3C");
         assert_eq!(reverse_label_groups("N(PhSO2)2"), "(O2SPh)2N");
+        assert_eq!(reverse_label_groups("C10H21"), "C10H21");
+        assert_eq!(reverse_label_groups("C10H21O3"), "O3C10H21");
     }
 
     #[test]

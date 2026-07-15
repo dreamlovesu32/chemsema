@@ -356,6 +356,34 @@ pub fn label_group_abbreviation_prefix_len(text: &str) -> Option<usize> {
     Some(prefix_len + digit_suffix_len)
 }
 
+pub fn label_group_prefix_len(text: &str) -> Option<usize> {
+    label_group_abbreviation_prefix_len(text)
+        .into_iter()
+        .chain(hydrocarbon_formula_prefix_len(text))
+        .max()
+}
+
+fn hydrocarbon_formula_prefix_len(text: &str) -> Option<usize> {
+    let bytes = text.as_bytes();
+    if bytes.first().copied() != Some(b'C') {
+        return None;
+    }
+    let mut index = 1usize;
+    let carbon_digits_start = index;
+    while bytes.get(index).is_some_and(u8::is_ascii_digit) {
+        index += 1;
+    }
+    if index == carbon_digits_start || bytes.get(index).copied() != Some(b'H') {
+        return None;
+    }
+    index += 1;
+    let hydrogen_digits_start = index;
+    while bytes.get(index).is_some_and(u8::is_ascii_digit) {
+        index += 1;
+    }
+    (index > hydrogen_digits_start).then_some(index)
+}
+
 fn fragment_is_label_group_abbreviation(fragment: FragmentDef) -> bool {
     // Formula-like fragments such as CF3 still split by element; named groups stay atomic.
     fragment

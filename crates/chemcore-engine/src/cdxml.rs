@@ -19,7 +19,7 @@ use self::import_objects::{
     append_shape_objects, append_table_shape_objects, append_text_objects,
     append_tlc_plate_shape_objects,
 };
-use self::text_runs::{label_display_runs, label_source_run};
+use self::text_runs::{label_display_runs, label_display_runs_from_source_runs, label_source_run};
 pub(crate) use self::xml::parse_xml_tree;
 use self::xml::{descendants, XmlNode};
 
@@ -100,6 +100,10 @@ enum CdxmlJustification {
     Left,
     Center,
     Right,
+    Full,
+    Above,
+    Below,
+    Best,
 }
 
 impl CdxmlJustification {
@@ -109,6 +113,10 @@ impl CdxmlJustification {
             Self::Left => "Left",
             Self::Center => "Center",
             Self::Right => "Right",
+            Self::Full => "Full",
+            Self::Above => "Above",
+            Self::Below => "Below",
+            Self::Best => "Best",
         }
     }
 }
@@ -684,6 +692,10 @@ fn parse_cdxml_justification(value: Option<&str>) -> Option<CdxmlJustification> 
         "left" | "start" => Some(CdxmlJustification::Left),
         "center" | "middle" => Some(CdxmlJustification::Center),
         "right" | "end" => Some(CdxmlJustification::Right),
+        "full" => Some(CdxmlJustification::Full),
+        "above" => Some(CdxmlJustification::Above),
+        "below" => Some(CdxmlJustification::Below),
+        "best" => Some(CdxmlJustification::Best),
         _ => None,
     }
 }
@@ -1274,32 +1286,14 @@ fn node_label(
             _ => {}
         }
     }
-    let runs: Vec<LabelRun> = text_el
-        .direct_children("s")
-        .flat_map(|run| {
-            let run_text = run.full_text();
-            if run_text.is_empty() {
-                Vec::new()
-            } else {
-                label_display_runs(
-                    &run_text,
-                    parse_u32(run.attr("face")).unwrap_or(parent_face),
-                    run.attr("font").unwrap_or(parent_font),
-                    run.attr("color").unwrap_or(parent_color),
-                    parse_f64(run.attr("size")).unwrap_or(parent_size),
-                    colors,
-                    fonts,
-                )
-            }
-        })
-        .collect();
+    let runs = label_display_runs_from_source_runs(&source_runs);
     let text_position = parse_xy(text_el.attr("p")).or_else(|| parse_xy(node.attr("p")));
     let local_node_position = parse_xy(node.attr("p"))
         .map(|point| [round2(point[0] - origin[0]), round2(point[1] - origin[1])]);
     let label_display = node.attr("LabelDisplay");
     let label_justification = text_el
-        .attr("Justification")
-        .or_else(|| text_el.attr("LabelJustification"))
+        .attr("LabelJustification")
+        .or_else(|| text_el.attr("Justification"))
         .or(Some(defaults.label_justification.as_cdxml()));
     let inferred_align = infer_cdxml_label_align(
         label_display,
@@ -1307,7 +1301,11 @@ fn node_label(
         text_el.attr("LabelAlignment"),
     );
     let is_centered = inferred_align == "center";
-    let layout = match cdxml_label_flow(label_display, text_el.attr("LabelAlignment")) {
+    let layout = match cdxml_label_flow(
+        label_display,
+        label_justification,
+        text_el.attr("LabelAlignment"),
+    ) {
         Some(crate::LabelFlow::StackAbove) => Some("attached-group-above".to_string()),
         Some(crate::LabelFlow::StackBelow) => Some("attached-group-below".to_string()),
         _ if is_centered => Some("attached-group-center".to_string()),
@@ -1407,11 +1405,13 @@ fn infer_cdxml_label_align(
 
 fn cdxml_label_flow(
     label_display: Option<&str>,
+    label_justification: Option<&str>,
     label_alignment: Option<&str>,
 ) -> Option<crate::LabelFlow> {
     let value = label_display
         .filter(|value| matches!(*value, "Above" | "Below"))
-        .or(label_alignment);
+        .or_else(|| label_justification.filter(|value| matches!(*value, "Above" | "Below")))
+        .or_else(|| label_alignment.filter(|value| matches!(*value, "Above" | "Below")));
     match value {
         Some("Above") => Some(crate::LabelFlow::StackAbove),
         Some("Below") => Some(crate::LabelFlow::StackBelow),

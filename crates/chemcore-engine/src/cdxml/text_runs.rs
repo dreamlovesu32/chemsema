@@ -55,6 +55,28 @@ pub(super) fn label_display_runs(
     }
 }
 
+pub(super) fn label_display_runs_from_source_runs(source_runs: &[LabelRun]) -> Vec<LabelRun> {
+    let mut out = Vec::new();
+    let mut index = 0;
+
+    while index < source_runs.len() {
+        if source_runs[index].script.as_deref() != Some("chemical") {
+            out.push(source_runs[index].clone());
+            index += 1;
+            continue;
+        }
+
+        let start = index;
+        while index < source_runs.len() && source_runs[index].script.as_deref() == Some("chemical")
+        {
+            index += 1;
+        }
+        out.extend(expand_cdxml_chemical_runs(&source_runs[start..index]));
+    }
+
+    out
+}
+
 struct CdxmlFace {
     bold: bool,
     italic: bool,
@@ -80,44 +102,57 @@ fn decode_cdxml_face(face: u32) -> CdxmlFace {
 }
 
 fn expand_cdxml_chemical_run(base: &LabelRun) -> Vec<LabelRun> {
-    let chars: Vec<char> = base.text.chars().collect();
+    expand_cdxml_chemical_runs(std::slice::from_ref(base))
+}
+
+fn expand_cdxml_chemical_runs(base_runs: &[LabelRun]) -> Vec<LabelRun> {
+    let chars: Vec<char> = base_runs.iter().flat_map(|run| run.text.chars()).collect();
     let mut scripts = vec!["normal"; chars.len()];
 
-    for index in 0..chars.len() {
-        let character = chars[index];
-        if character.is_ascii_digit()
-            && index > 0
-            && (chars[index - 1].is_ascii_alphabetic() || chars[index - 1] == ')')
-        {
-            scripts[index] = "subscript";
-        }
-        if is_cdxml_charge_marker(&chars, index) {
-            scripts[index] = "superscript";
-            if index > 0 && chars[index - 1].is_ascii_digit() {
-                scripts[index - 1] = "superscript";
+    let mut index = 0usize;
+    while index < chars.len() {
+        if !chars[index].is_ascii_digit() {
+            if is_cdxml_charge_marker(&chars, index) {
+                scripts[index] = "superscript";
             }
+            index += 1;
+            continue;
+        }
+        let start = index;
+        while index < chars.len() && chars[index].is_ascii_digit() {
+            index += 1;
+        }
+        if index < chars.len() && is_cdxml_charge_marker(&chars, index) {
+            scripts[start..=index].fill("superscript");
+            index += 1;
+        } else if start > 0 && (chars[start - 1].is_ascii_alphabetic() || chars[start - 1] == ')') {
+            scripts[start..index].fill("subscript");
         }
     }
 
     let mut out = Vec::new();
-    let mut buffer = String::new();
-    let mut active_script = "normal";
-    for (index, character) in chars.into_iter().enumerate() {
-        let script = scripts[index];
-        if !buffer.is_empty() && script != active_script {
+    let mut char_index = 0;
+    for base in base_runs {
+        let mut buffer = String::new();
+        let mut active_script = "normal";
+        for character in base.text.chars() {
+            let script = scripts[char_index];
+            char_index += 1;
+            if !buffer.is_empty() && script != active_script {
+                let mut run = base.clone();
+                run.text = std::mem::take(&mut buffer);
+                run.script = Some(active_script.to_string());
+                out.push(run);
+            }
+            active_script = script;
+            buffer.push(character);
+        }
+        if !buffer.is_empty() {
             let mut run = base.clone();
-            run.text = std::mem::take(&mut buffer);
+            run.text = buffer;
             run.script = Some(active_script.to_string());
             out.push(run);
         }
-        active_script = script;
-        buffer.push(character);
-    }
-    if !buffer.is_empty() {
-        let mut run = base.clone();
-        run.text = buffer;
-        run.script = Some(active_script.to_string());
-        out.push(run);
     }
     out
 }
@@ -184,6 +219,86 @@ mod tests {
                 ("-CH", Some("normal")),
                 ("2", Some("subscript"))
             ]
+        );
+    }
+
+    #[test]
+    fn chemical_runs_classify_subscripts_across_style_boundaries() {
+        let mut formula = chemical_run("OCF");
+        formula.fill = Some("#ff0000".to_string());
+        let mut digit = chemical_run("3");
+        digit.fill = Some("#ff0000".to_string());
+
+        let runs = label_display_runs_from_source_runs(&[formula, digit]);
+
+        assert_eq!(
+            runs.iter()
+                .map(|run| (
+                    run.text.as_str(),
+                    run.script.as_deref(),
+                    run.fill.as_deref()
+                ))
+                .collect::<Vec<_>>(),
+            vec![
+                ("OCF", Some("normal"), Some("#ff0000")),
+                ("3", Some("subscript"), Some("#ff0000"))
+            ]
+        );
+    }
+
+    #[test]
+    fn label_runs_preserve_explicit_superscript_between_chemical_groups() {
+        let runs = label_display_runs_from_source_runs(&[
+            chemical_run("Pd"),
+            LabelRun {
+                text: "IV".to_string(),
+                script: Some("superscript".to_string()),
+                ..LabelRun::default()
+            },
+            chemical_run("(OCF"),
+            chemical_run("3"),
+            chemical_run(")n"),
+        ]);
+
+        assert_eq!(
+            runs.iter()
+                .map(|run| (run.text.as_str(), run.script.as_deref()))
+                .collect::<Vec<_>>(),
+            vec![
+                ("Pd", Some("normal")),
+                ("IV", Some("superscript")),
+                ("(OCF", Some("normal")),
+                ("3", Some("subscript")),
+                (")n", Some("normal"))
+            ]
+        );
+    }
+
+    #[test]
+    fn chemical_runs_style_complete_multi_digit_counts_and_charges() {
+        let counts = expand_cdxml_chemical_run(&chemical_run("C10H21O3"));
+        assert_eq!(
+            counts
+                .iter()
+                .map(|run| (run.text.as_str(), run.script.as_deref()))
+                .collect::<Vec<_>>(),
+            vec![
+                ("C", Some("normal")),
+                ("10", Some("subscript")),
+                ("H", Some("normal")),
+                ("21", Some("subscript")),
+                ("O", Some("normal")),
+                ("3", Some("subscript")),
+            ]
+        );
+
+        let charge = expand_cdxml_chemical_run(&chemical_run("Fe10+"));
+        assert_eq!(
+            charge
+                .iter()
+                .map(|run| (run.text.as_str(), run.script.as_deref()))
+                .collect::<Vec<_>>(),
+            vec![("Fe", Some("normal")), ("10+", Some("superscript"))]
         );
     }
 }

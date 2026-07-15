@@ -708,7 +708,7 @@ fn split_styled_glyph_groups(glyphs: &[StyledGlyph], whole_label: bool) -> Vec<V
                 continue;
             }
         }
-        if let Some(prefix_len) = crate::label_group_abbreviation_prefix_len(rest) {
+        if let Some(prefix_len) = crate::label_group_prefix_len(rest) {
             if !current.is_empty() {
                 groups.push(std::mem::take(&mut current));
             }
@@ -1617,57 +1617,68 @@ fn cdxml_imported_label_layout_override(
         .and_then(serde_json::Value::as_str);
     let justification = label
         .meta
-        .pointer("/import/cdxml/justification")
+        .pointer("/import/cdxml/labelJustification")
         .and_then(serde_json::Value::as_str)
         .or_else(|| {
             label
                 .meta
-                .pointer("/import/cdxml/labelJustification")
+                .pointer("/import/cdxml/justification")
                 .and_then(serde_json::Value::as_str)
         });
-    let vertical_display = display
-        .filter(|value| matches!(*value, "Above" | "Below"))
-        .or_else(|| alignment.filter(|value| matches!(*value, "Above" | "Below")));
-    match vertical_display {
-        Some("Above") => {
-            return Some(crate::LabelLayoutDecision {
-                flow: LabelFlow::StackAbove,
-                anchor: crate::LabelAnchorPolicy::FirstGroupLeadGlyph,
-            });
-        }
-        Some("Below") => {
-            return Some(crate::LabelLayoutDecision {
-                flow: LabelFlow::StackBelow,
-                anchor: crate::LabelAnchorPolicy::FirstGroupLeadGlyph,
-            });
-        }
-        _ => {}
-    }
-    match display {
-        Some("Left") => Some(crate::LabelLayoutDecision {
+    let normalized = |value: &str| value.trim().to_ascii_lowercase();
+    let decision_for_fixed_value = |value: &str| match normalized(value).as_str() {
+        "above" => Some(crate::LabelLayoutDecision {
+            flow: LabelFlow::StackAbove,
+            anchor: crate::LabelAnchorPolicy::FirstGroupLeadGlyph,
+        }),
+        "below" => Some(crate::LabelLayoutDecision {
+            flow: LabelFlow::StackBelow,
+            anchor: crate::LabelAnchorPolicy::FirstGroupLeadGlyph,
+        }),
+        "left" | "full" => Some(crate::LabelLayoutDecision {
             flow: LabelFlow::Forward,
             anchor: crate::LabelAnchorPolicy::FirstGlyph,
         }),
-        Some("Right") => Some(crate::LabelLayoutDecision {
+        "right" => Some(crate::LabelLayoutDecision {
             flow: LabelFlow::Forward,
             anchor: crate::LabelAnchorPolicy::LastGlyph,
         }),
-        Some("Center") => Some(crate::LabelLayoutDecision {
+        "center" => Some(crate::LabelLayoutDecision {
             flow: LabelFlow::Forward,
             anchor: crate::LabelAnchorPolicy::WholeLabel,
         }),
-        _ => match justification {
-            Some("Right") => Some(crate::LabelLayoutDecision {
-                flow: LabelFlow::Reverse,
-                anchor: crate::LabelAnchorPolicy::OriginalFirstGroup,
-            }),
-            Some("Left") | Some("Center") => Some(crate::LabelLayoutDecision {
-                flow: LabelFlow::Forward,
-                anchor: crate::LabelAnchorPolicy::FirstGlyph,
-            }),
-            _ => None,
-        },
+        _ => None,
+    };
+    let decision_for_realized_alignment = |value: &str| match normalized(value).as_str() {
+        "above" => Some(crate::LabelLayoutDecision {
+            flow: LabelFlow::StackAbove,
+            anchor: crate::LabelAnchorPolicy::FirstGroupLeadGlyph,
+        }),
+        "below" => Some(crate::LabelLayoutDecision {
+            flow: LabelFlow::StackBelow,
+            anchor: crate::LabelAnchorPolicy::FirstGroupLeadGlyph,
+        }),
+        "right" => Some(crate::LabelLayoutDecision {
+            flow: LabelFlow::Reverse,
+            anchor: crate::LabelAnchorPolicy::OriginalFirstGroup,
+        }),
+        value => decision_for_fixed_value(value),
+    };
+
+    // Above/Below is an orthogonal placement axis in ChemDraw and must not be
+    // masked by a horizontal LabelJustification value such as Left.
+    for value in [display, justification, alignment].into_iter().flatten() {
+        if matches!(normalized(value).as_str(), "above" | "below") {
+            return decision_for_fixed_value(value);
+        }
     }
+    if let Some(decision) = display.and_then(decision_for_fixed_value) {
+        return Some(decision);
+    }
+    if let Some(decision) = justification.and_then(decision_for_fixed_value) {
+        return Some(decision);
+    }
+    alignment.and_then(decision_for_realized_alignment)
 }
 
 fn glyph_clip_profile_for_label(label: &crate::NodeLabel) -> GlyphClipProfile {
@@ -1687,7 +1698,6 @@ pub(super) fn refreshed_attached_node_label(
     let source_runs = source_runs_from_node_label(label);
     let source_text = label_source_text(label);
     let connection_angles = adjacent_angles_for_fragment_node(fragment, node_id);
-    let connection_count = connection_angles.len();
     let world_anchor =
         attached_node_label_anchor_world(fragment, node_id, object_translate, stroke_width);
     let local_anchor = [
@@ -1705,8 +1715,6 @@ pub(super) fn refreshed_attached_node_label(
     } else {
         implicit_hydrogen_label_text(node, &source_text)
     };
-    let should_use_internal_whole_label_layout =
-        label_should_render_as_whole_group(&text, connection_count);
     if !is_attached_node_label(label)
         && !is_source_measured_attached_label(label)
         && !is_cdxml_imported_right_aligned_attached_label(label)
@@ -1737,13 +1745,6 @@ pub(super) fn refreshed_attached_node_label(
         &connection_angles,
         layout_as_grouped_attached_label,
     );
-    if is_cdxml_imported_right_aligned_attached_label(label)
-        && layout_as_grouped_attached_label
-        && !should_use_internal_whole_label_layout
-    {
-        decision.flow = LabelFlow::Reverse;
-        decision.anchor = crate::LabelAnchorPolicy::OriginalFirstGroup;
-    }
     if let Some(override_decision) = cdxml_imported_label_layout_override(label) {
         decision = override_decision;
     }

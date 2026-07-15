@@ -263,6 +263,10 @@ fn value_cdxml_justification(value: &Value) -> Option<CdxmlJustification> {
         "left" | "start" => Some(CdxmlJustification::Left),
         "center" | "middle" => Some(CdxmlJustification::Center),
         "right" | "end" => Some(CdxmlJustification::Right),
+        "full" => Some(CdxmlJustification::Full),
+        "above" => Some(CdxmlJustification::Above),
+        "below" => Some(CdxmlJustification::Below),
+        "best" => Some(CdxmlJustification::Best),
         _ => None,
     }
 }
@@ -530,12 +534,12 @@ impl<'a> CdxmlDocumentWriter<'a> {
         } else if is_nickname {
             attrs.push(("NodeType", "Nickname".to_string()));
         }
-        if node
-            .label
-            .as_ref()
-            .is_some_and(|label| label.layout.as_deref() == Some("attached-group-center"))
-        {
-            attrs.push(("LabelDisplay", "Center".to_string()));
+        if let Some(label) = node.label.as_ref() {
+            if let Some(display) = imported_cdxml_label_attr(label, "labelDisplay") {
+                attrs.push(("LabelDisplay", display.to_string()));
+            } else if label.layout.as_deref() == Some("attached-group-center") {
+                attrs.push(("LabelDisplay", "Center".to_string()));
+            }
         }
         if node.charge != 0 {
             attrs.push(("Charge", node.charge.to_string()));
@@ -574,18 +578,16 @@ impl<'a> CdxmlDocumentWriter<'a> {
         else {
             return;
         };
+        let label_alignment = imported_cdxml_label_attr(label, "labelAlignment")
+            .unwrap_or_else(|| cdxml_node_label_alignment(label));
+        let label_justification = imported_cdxml_label_attr(label, "labelJustification")
+            .unwrap_or_else(|| cdxml_justification(label.align.as_deref()));
         let mut attrs = vec![
             ("id", self.alloc_id()),
             ("p", fmt_point(position)),
             ("BoundingBox", fmt_bbox(bbox)),
-            (
-                "LabelAlignment",
-                cdxml_node_label_alignment(label).to_string(),
-            ),
-            (
-                "LabelJustification",
-                cdxml_justification(label.align.as_deref()).to_string(),
-            ),
+            ("LabelAlignment", label_alignment.to_string()),
+            ("LabelJustification", label_justification.to_string()),
             (
                 "InterpretChemically",
                 if cdxml_node_label_interpret_chemically(label) {
@@ -596,6 +598,9 @@ impl<'a> CdxmlDocumentWriter<'a> {
             ),
             ("UTF8Text", text.to_string()),
         ];
+        if let Some(justification) = imported_cdxml_label_attr(label, "justification") {
+            attrs.push(("Justification", justification.to_string()));
+        }
         if let Some(line_starts) = cdxml_label_line_starts(label) {
             attrs.push(("LineStarts", line_starts));
         }
@@ -1804,6 +1809,17 @@ fn charge_suffix(charge: i32) -> String {
         value if value > 1 => format!("{value}+"),
         value => format!("{}-", value.abs()),
     }
+}
+
+fn imported_cdxml_label_attr<'a>(label: &'a NodeLabel, name: &str) -> Option<&'a str> {
+    label
+        .meta
+        .get("import")?
+        .get("cdxml")?
+        .get(name)?
+        .as_str()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
 }
 
 fn cdxml_node_label_alignment(label: &NodeLabel) -> &'static str {
