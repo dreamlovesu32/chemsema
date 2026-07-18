@@ -1306,13 +1306,13 @@ export function createEditorDocumentRenderer(options) {
       return [];
     }
     const escapedId = CSS.escape(objectId);
-    const groups = [
-      ...documentLayer.querySelectorAll(`[data-object-id="${escapedId}"][data-object-type]`),
-    ];
-    if (groups.length) {
-      return groups;
-    }
-    const directElements = [...documentLayer.querySelectorAll(`[data-object-id="${escapedId}"]`)];
+    const directElements = [...documentLayer.querySelectorAll(`[data-object-id="${escapedId}"]`)]
+      .filter((element) => {
+        const matchingAncestor = element.parentElement?.closest?.(
+          `[data-object-id="${escapedId}"]`,
+        );
+        return !matchingAncestor || !documentLayer.contains(matchingAncestor);
+      });
     if (directElements.length) {
       return directElements;
     }

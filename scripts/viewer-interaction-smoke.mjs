@@ -777,6 +777,7 @@ async function interactionFeedbackState(page) {
     const scale = matrix ? Math.hypot(matrix.a, matrix.b) : 1;
     return {
       hoverEndpointCount: document.querySelectorAll('[data-role="hover-endpoint"]').length,
+      hoverLabelGlyphCount: document.querySelectorAll('[data-role="hover-label-glyph"]').length,
       previewEndCount: document.querySelectorAll('[data-role="preview-end"]').length,
       hoverCount: document.querySelectorAll('[data-role^="hover-"]').length,
       previewCount: document.querySelectorAll('[data-role^="preview-"]').length,
@@ -812,7 +813,31 @@ async function verifyEndpointFeedbackRules(browser) {
     `Endpoint hover radius did not track bold bond width: ${JSON.stringify(bondHover)}`,
   );
 
-  for (const tool of ["arrow", "bracket", "symbol", "shape", "orbital", "templates"]) {
+  const symbolKinds = [
+    "circle-plus",
+    "plus",
+    "radical-cation",
+    "lone-pair",
+    "circle-minus",
+    "minus",
+    "radical-anion",
+    "electron",
+  ];
+  await page.locator('button[data-tool="symbol"]').click();
+  for (const kind of symbolKinds) {
+    await page.locator(`[data-secondary-value="symbol-kind-${kind}"]`).click();
+    await page.mouse.move(endpoint.x + 70, endpoint.y + 70);
+    await page.waitForTimeout(40);
+    await page.mouse.move(endpoint.x, endpoint.y);
+    await page.waitForTimeout(120);
+    const state = await interactionFeedbackState(page);
+    assert(
+      state.hoverEndpointCount > 0 && state.previewEndCount === 0,
+      `${kind} symbol tool did not focus a bare endpoint: ${JSON.stringify(state)}`,
+    );
+  }
+
+  for (const tool of ["arrow", "bracket", "shape", "orbital", "templates"]) {
     await page.locator(`button[data-tool="${tool}"]`).click();
     await page.mouse.move(endpoint.x + 70, endpoint.y + 70);
     await page.waitForTimeout(40);
@@ -825,8 +850,139 @@ async function verifyEndpointFeedbackRules(browser) {
     );
   }
 
+  await page.locator(".quick-palette-toggle-element").click();
+  await page.mouse.click(endpoint.x, endpoint.y);
+  await page.waitForTimeout(160);
+  await page.locator('button[data-tool="symbol"]').click();
+  for (const kind of symbolKinds) {
+    await page.locator(`[data-secondary-value="symbol-kind-${kind}"]`).click();
+    await page.mouse.move(endpoint.x + 70, endpoint.y + 70);
+    await page.waitForTimeout(40);
+    await page.mouse.move(endpoint.x, endpoint.y);
+    await page.waitForTimeout(120);
+    const state = await interactionFeedbackState(page);
+    assert(
+      state.hoverLabelGlyphCount > 0 && state.previewEndCount === 0,
+      `${kind} symbol tool did not focus an attached label glyph: ${JSON.stringify(state)}`,
+    );
+  }
+
   await page.close();
   assert(!errors.length, `Viewer console errors during endpoint feedback rules: ${errors.join("\n")}`);
+}
+
+async function verifyGraphicObjectDragTracksPointerAndSelection(browser) {
+  const cases = ["arrow", "symbol"];
+  for (const tool of cases) {
+    const { page, errors } = await openViewer(browser);
+    const box = await page.locator("#viewer-container").boundingBox();
+    const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+
+    await page.locator(`button[data-tool="${tool}"]`).click();
+    if (tool === "arrow") {
+      await page.mouse.move(center.x - 80, center.y);
+      await page.mouse.down();
+      await page.mouse.move(center.x + 80, center.y, { steps: 8 });
+      await page.mouse.up();
+    } else {
+      await page.mouse.click(center.x, center.y);
+    }
+    await page.waitForTimeout(160);
+
+    const objectId = await page.evaluate(() => {
+      const command = JSON.parse(window.__chemcoreDebug.state.editorEngine.lastCommandResultJson?.() || "null");
+      return command?.targets?.objects?.[0] || command?.created?.objects?.[0] || "";
+    });
+    assert(objectId, `${tool} creation did not return an object id.`);
+
+    await page.locator('button[data-tool="select"]').click();
+    await page.waitForTimeout(160);
+    const readGeometry = (id) => {
+      const documentLayer = document.querySelector('[data-layer="document-content"]');
+      const allObjectElements = [
+        ...documentLayer.querySelectorAll(`[data-object-id="${CSS.escape(id)}"]`),
+      ];
+      const outermostObjectElements = allObjectElements.filter((element) => (
+        !element.parentElement?.closest?.(`[data-object-id="${CSS.escape(id)}"]`)
+      ));
+      const unionRect = (elements) => elements.reduce((bounds, element) => {
+        const rect = element.getBoundingClientRect();
+        if (!bounds) {
+          return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom };
+        }
+        return {
+          left: Math.min(bounds.left, rect.left),
+          top: Math.min(bounds.top, rect.top),
+          right: Math.max(bounds.right, rect.right),
+          bottom: Math.max(bounds.bottom, rect.bottom),
+        };
+      }, null);
+      const objectRect = unionRect(outermostObjectElements);
+      const selectionRect = document
+        .querySelector('[data-layer="editor-overlay"] [data-role="selection-box"]')
+        ?.getBoundingClientRect();
+      return {
+        objectRect,
+        selectionRect: selectionRect ? {
+          left: selectionRect.left,
+          top: selectionRect.top,
+          right: selectionRect.right,
+          bottom: selectionRect.bottom,
+        } : null,
+        transformingCount: allObjectElements.filter((element) => (
+          element.classList.contains("is-preview-transforming")
+        )).length,
+      };
+    };
+    const before = await page.evaluate(readGeometry, objectId);
+    assert(before.objectRect && before.selectionRect, `${tool} selection geometry was not rendered: ${JSON.stringify(before)}`);
+    const start = {
+      x: (before.objectRect.left + before.objectRect.right) * 0.5,
+      y: (before.objectRect.top + before.objectRect.bottom) * 0.5,
+    };
+    const delta = { x: 100, y: 60 };
+    const end = { x: start.x + delta.x, y: start.y + delta.y };
+
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(end.x, end.y, { steps: 6 });
+    await page.waitForTimeout(120);
+    const during = await page.evaluate(readGeometry, objectId);
+    const duringDelta = {
+      x: during.objectRect.left - before.objectRect.left,
+      y: during.objectRect.top - before.objectRect.top,
+    };
+    assert(
+      Math.abs(duringDelta.x - delta.x) < 2 && Math.abs(duringDelta.y - delta.y) < 2,
+      `${tool} preview did not track the pointer once: ${JSON.stringify({ before, during, delta, duringDelta })}`,
+    );
+    assert(
+      during.transformingCount > 0,
+      `${tool} drag did not enter the local preview path: ${JSON.stringify(during)}`,
+    );
+
+    await page.mouse.up();
+    await page.waitForTimeout(240);
+    const after = await page.evaluate(readGeometry, objectId);
+    const afterDelta = {
+      x: after.objectRect.left - before.objectRect.left,
+      y: after.objectRect.top - before.objectRect.top,
+    };
+    assert(
+      Math.abs(afterDelta.x - delta.x) < 2 && Math.abs(afterDelta.y - delta.y) < 2,
+      `${tool} committed DOM did not match the pointer delta: ${JSON.stringify({ before, after, delta, afterDelta })}`,
+    );
+    assert(
+      after.selectionRect.left <= after.objectRect.left + 1
+        && after.selectionRect.top <= after.objectRect.top + 1
+        && after.selectionRect.right >= after.objectRect.right - 1
+        && after.selectionRect.bottom >= after.objectRect.bottom - 1,
+      `${tool} selection box did not wrap the committed object: ${JSON.stringify({ after })}`,
+    );
+
+    await page.close();
+    assert(!errors.length, `Viewer console errors during ${tool} object drag: ${errors.join("\n")}`);
+  }
 }
 
 async function verifyCreationDragKeepsCanvasVisibleAfterToolSwitch(browser) {
@@ -3188,6 +3344,7 @@ try {
   await verifyCursorAnchoredWheelZoom(browser);
   await verifyQuickPaletteAndSelectDragRegression(browser);
   await verifyEndpointFeedbackRules(browser);
+  await verifyGraphicObjectDragTracksPointerAndSelection(browser);
   await verifyCreationDragKeepsCanvasVisibleAfterToolSwitch(browser);
   await verifyDeleteToolTemporaryToolbarAndEmptyDocument(browser);
   await verifySelectedObjectSuppressesHover(browser);

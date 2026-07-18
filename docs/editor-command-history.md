@@ -119,6 +119,8 @@ Typical sources:
 
 - click or drag with the template tool
 
+For `benzene`, the six ring edges always resolve to one alternating set of three double bonds. A bond-anchored insertion reuses the shared edge instead of creating a duplicate. If the shared edge is already double, it counts as one of the three and its side placement moves into the inserted ring. If the shared edge is the single edge of an existing alternating six-membered ring, that ring is relaid out so the shared edge becomes the one double bond reused by both fused rings.
+
 ### `apply-selection-arrange`
 
 Applies a selection layout command.

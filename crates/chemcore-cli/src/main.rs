@@ -2278,6 +2278,30 @@ mod tests {
     }
 
     #[test]
+    fn label_query_keeps_hyphenated_label_tokens_whole() {
+        let locant = label_query_report("2-Np", &[0.0], true).unwrap();
+        let unknown_locant = label_query_report("3-Xyz", &[0.0], true).unwrap();
+        let tert_butyl = label_query_report("t-Bu", &[0.0], true).unwrap();
+
+        assert_eq!(locant["accepted"], json!(true));
+        assert_eq!(locant["sourceText"], json!("2-Np"));
+        assert_eq!(locant["displayText"], json!("2-Np"));
+        assert_eq!(locant["displayDiffersFromSource"], json!(false));
+        assert_eq!(locant["recognition"]["canonicalLabel"], json!("2-Np"));
+        assert_eq!(
+            locant["recognition"]["components"][0]["name"],
+            json!("2-naphthyl")
+        );
+        assert_eq!(unknown_locant["accepted"], json!(false));
+        assert_eq!(unknown_locant["sourceText"], json!("3-Xyz"));
+        assert_eq!(unknown_locant["displayText"], json!("3-Xyz"));
+        assert_eq!(unknown_locant["displayDiffersFromSource"], json!(false));
+        assert_eq!(tert_butyl["sourceText"], json!("t-Bu"));
+        assert_eq!(tert_butyl["displayText"], json!("t-Bu"));
+        assert_eq!(tert_butyl["displayDiffersFromSource"], json!(false));
+    }
+
+    #[test]
     fn label_query_can_disable_default_chemical_layout() {
         let report = label_query_report("CF3", &[0.0], false).unwrap();
 

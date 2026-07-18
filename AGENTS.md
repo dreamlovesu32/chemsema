@@ -108,8 +108,10 @@ contracts live in `docs/`.
 
 - Endpoint hover visuals use the small visual handle radius; endpoint hit
   testing remains independent and larger.
-- Non-bond object creation tools must not show chemical endpoint hover circles,
-  even if they internally use endpoints as placement anchors.
+- Non-bond object creation tools must not show chemical endpoint hover circles
+  unless the command directly targets atom endpoints or attached labels. Symbol,
+  text, and delete interactions are explicit exceptions because they edit those
+  chemical targets directly.
 - Completed, canceled, or abandoned pointer interactions must clear every
   transient layer they touched: engine interaction render list, editor overlay,
   canvas drag preview, document preview transforms, and masks.

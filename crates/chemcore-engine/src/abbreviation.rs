@@ -182,6 +182,8 @@ const TERMINAL_FRAGMENTS: &[FragmentDef] = &[
     terminal("sBu", &["s-Bu"], "sec-butyl", "-CH(CH3)CH2CH3", "C"),
     terminal("tBu", &["t-Bu"], "tert-butyl", "-C(CH3)3", "C"),
     terminal("Ph", &[], "phenyl", "-C6H5", "C"),
+    terminal("1-Np", &[], "1-naphthyl", "-1-naphthyl", "C"),
+    terminal("2-Np", &[], "2-naphthyl", "-2-naphthyl", "C"),
     terminal("PhCOOH", &[], "benzoic acid substituent", "PhCOOH", "C"),
     terminal("Bn", &[], "benzyl", "-CH2Ph", "C"),
     terminal("Bz", &[], "benzoyl", "-C(=O)Ph", "C"),

@@ -440,6 +440,11 @@ impl Engine {
     }
 
     pub(super) fn hover_symbol_target(&mut self, point: Point) {
+        if let Some(endpoint) = hit_test_endpoint(&self.state.document, point, ENDPOINT_HIT_RADIUS)
+        {
+            self.state.overlay.hover_endpoint = Some(endpoint);
+            return;
+        }
         if let Some((node_id, bounds)) = self.hit_test_endpoint_label_box(point) {
             self.state.overlay.hover_text_box = Some(HoverTextBox {
                 bounds,

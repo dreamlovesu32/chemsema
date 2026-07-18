@@ -1672,6 +1672,50 @@ mod tests {
     }
 
     #[test]
+    fn cdx_right_aligned_hyphenated_label_token_stays_whole() {
+        let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<CDXML BoundingBox="0 0 80 40" BondLength="14.4" LabelFont="3" LabelSize="10">
+  <fonttable><font id="3" charset="iso-8859-1" name="Arial"/></fonttable>
+  <page id="1" BoundingBox="0 0 80 40">
+    <fragment id="2" BoundingBox="0 0 80 40">
+      <n id="3" p="30 20" NodeType="Nickname">
+        <t id="4" p="30 24" BoundingBox="0 10 30 26" LabelJustification="Right" Justification="Right" LabelAlignment="Right" UTF8Text="2-Np">
+          <s font="3" size="10" face="0" color="0">2-Np</s>
+        </t>
+      </n>
+      <n id="5" p="48 20"/>
+      <b id="6" B="3" E="5"/>
+    </fragment>
+  </page>
+</CDXML>"#;
+        let source = cdxml_to_cdx(cdxml).expect("source CDX should encode");
+        let imported =
+            parse_cdx_document(&source, Some("right-aligned 2-Np")).expect("source CDX import");
+        let imported_label = imported
+            .resources
+            .values()
+            .find_map(|resource| resource.data.as_fragment())
+            .and_then(|fragment| fragment.nodes.iter().find_map(|node| node.label.as_ref()))
+            .expect("imported 2-Np label");
+        assert_eq!(imported_label.source_text.as_deref(), Some("2-Np"));
+        assert_eq!(imported_label.text, "2-Np");
+
+        let first = document_to_cdx(&imported).expect("first CDX export");
+        let reopened = parse_cdx_document(&first, Some("right-aligned 2-Np")).expect("reopen CDX");
+        let reopened_label = reopened
+            .resources
+            .values()
+            .find_map(|resource| resource.data.as_fragment())
+            .and_then(|fragment| fragment.nodes.iter().find_map(|node| node.label.as_ref()))
+            .expect("reopened 2-Np label");
+        assert_eq!(reopened_label.source_text.as_deref(), Some("2-Np"));
+        assert_eq!(reopened_label.text, "2-Np");
+
+        let second = document_to_cdx(&reopened).expect("second CDX export");
+        assert_eq!(second, first, "right-aligned 2-Np CDX must stabilize");
+    }
+
+    #[test]
     fn cdx_inferred_centered_metal_label_keeps_vertical_anchor_and_stable_fields() {
         let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
 <CDXML BoundingBox="0 0 80 40" BondLength="14.4" LabelFont="3" LabelSize="10" MarginWidth="1.6">

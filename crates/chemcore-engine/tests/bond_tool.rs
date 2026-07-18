@@ -4137,6 +4137,216 @@ fn template_benzene_click_on_bond_keeps_fused_side_and_adds_three_double_bonds()
 }
 
 #[test]
+fn template_benzene_on_double_bond_reuses_shared_double_and_rekekulizes_ring() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(double_bond_tool());
+    click(&mut engine, px(300.0), px(260.0));
+
+    let original_bond_id = engine
+        .state()
+        .document
+        .editable_fragment()
+        .unwrap()
+        .fragment
+        .bonds[0]
+        .id
+        .clone();
+    engine.set_tool_state(templates_tool("benzene"));
+    click(&mut engine, FIRST_CENTER_X, FIRST_CENTER_Y);
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    assert_eq!(entry.fragment.nodes.len(), 6);
+    assert_eq!(entry.fragment.bonds.len(), 6);
+    assert_eq!(
+        entry
+            .fragment
+            .bonds
+            .iter()
+            .filter(|bond| bond.order == 2)
+            .count(),
+        3,
+        "the shared double must replace, not supplement, one aromatic double"
+    );
+    let original_bond = entry
+        .fragment
+        .bonds
+        .iter()
+        .find(|bond| bond.id == original_bond_id)
+        .expect("the clicked double bond should be reused");
+    assert_eq!(original_bond.order, 2);
+    assert_ne!(
+        original_bond.double.as_ref().map(|double| double.placement),
+        Some(DoubleBondPlacement::Center),
+        "the reused double should move to the inside of the new ring"
+    );
+    for node in &entry.fragment.nodes {
+        assert_eq!(
+            entry
+                .fragment
+                .bonds
+                .iter()
+                .filter(|bond| {
+                    bond.order == 2 && (bond.begin == node.id || bond.end == node.id)
+                })
+                .count(),
+            1,
+            "each benzene vertex should touch exactly one double bond"
+        );
+    }
+    assert_no_duplicate_node_positions(&engine);
+}
+
+#[test]
+fn template_benzene_fused_to_aromatic_double_reuses_one_double_bond() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(templates_tool("benzene"));
+    click(&mut engine, px(300.0), px(260.0));
+
+    let (shared_bond_id, shared_center) = {
+        let entry = engine.state().document.editable_fragment().unwrap();
+        let shared = entry
+            .fragment
+            .bonds
+            .iter()
+            .find(|bond| bond.order == 2)
+            .expect("benzene should contain a double bond");
+        let begin = entry
+            .fragment
+            .nodes
+            .iter()
+            .find(|node| node.id == shared.begin)
+            .map(|node| entry.world_point_for_node(node))
+            .unwrap();
+        let end = entry
+            .fragment
+            .nodes
+            .iter()
+            .find(|node| node.id == shared.end)
+            .map(|node| entry.world_point_for_node(node))
+            .unwrap();
+        (
+            shared.id.clone(),
+            Point::new((begin.x + end.x) * 0.5, (begin.y + end.y) * 0.5),
+        )
+    };
+
+    click(&mut engine, shared_center.x, shared_center.y);
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    assert_eq!(entry.fragment.nodes.len(), 10);
+    assert_eq!(entry.fragment.bonds.len(), 11);
+    assert_eq!(
+        entry
+            .fragment
+            .bonds
+            .iter()
+            .filter(|bond| bond.order == 2)
+            .count(),
+        5,
+        "two fused benzene rings should share one of their double bonds"
+    );
+    assert_eq!(
+        entry
+            .fragment
+            .bonds
+            .iter()
+            .filter(|bond| bond.id == shared_bond_id)
+            .count(),
+        1,
+        "the shared edge must not be duplicated"
+    );
+    for node in &entry.fragment.nodes {
+        assert_eq!(
+            entry
+                .fragment
+                .bonds
+                .iter()
+                .filter(|bond| {
+                    bond.order == 2 && (bond.begin == node.id || bond.end == node.id)
+                })
+                .count(),
+            1,
+            "the fused Kekule layout should not place adjacent doubles at one vertex"
+        );
+    }
+    assert_no_duplicate_node_positions(&engine);
+}
+
+#[test]
+fn template_benzene_fused_to_aromatic_single_relayouts_both_rings() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(templates_tool("benzene"));
+    click(&mut engine, px(300.0), px(260.0));
+
+    let (shared_bond_id, shared_center) = {
+        let entry = engine.state().document.editable_fragment().unwrap();
+        let shared = entry
+            .fragment
+            .bonds
+            .iter()
+            .find(|bond| bond.order == 1)
+            .expect("benzene should contain a single bond");
+        let begin = entry
+            .fragment
+            .nodes
+            .iter()
+            .find(|node| node.id == shared.begin)
+            .map(|node| entry.world_point_for_node(node))
+            .unwrap();
+        let end = entry
+            .fragment
+            .nodes
+            .iter()
+            .find(|node| node.id == shared.end)
+            .map(|node| entry.world_point_for_node(node))
+            .unwrap();
+        (
+            shared.id.clone(),
+            Point::new((begin.x + end.x) * 0.5, (begin.y + end.y) * 0.5),
+        )
+    };
+
+    click(&mut engine, shared_center.x, shared_center.y);
+
+    let entry = engine.state().document.editable_fragment().unwrap();
+    assert_eq!(entry.fragment.nodes.len(), 10);
+    assert_eq!(entry.fragment.bonds.len(), 11);
+    assert_eq!(
+        entry
+            .fragment
+            .bonds
+            .iter()
+            .filter(|bond| bond.order == 2)
+            .count(),
+        5
+    );
+    assert_eq!(
+        entry
+            .fragment
+            .bonds
+            .iter()
+            .find(|bond| bond.id == shared_bond_id)
+            .map(|bond| bond.order),
+        Some(2),
+        "a fused aromatic ring should make the shared edge one of the reused doubles"
+    );
+    for node in &entry.fragment.nodes {
+        assert_eq!(
+            entry
+                .fragment
+                .bonds
+                .iter()
+                .filter(|bond| {
+                    bond.order == 2 && (bond.begin == node.id || bond.end == node.id)
+                })
+                .count(),
+            1
+        );
+    }
+    assert_no_duplicate_node_positions(&engine);
+}
+
+#[test]
 fn template_chair_click_on_blank_canvas_centers_shape() {
     let mut engine = Engine::new();
     let center = px_point(300.0, 260.0);
@@ -11007,22 +11217,81 @@ fn bracket_symbol_click_creates_selectable_symbol_object() {
 }
 
 #[test]
-fn symbol_tool_does_not_show_endpoint_or_bond_hover() {
+fn symbol_tools_focus_endpoints_and_label_glyphs_but_not_bonds() {
+    let symbol_kinds = [
+        BracketKind::CirclePlus,
+        BracketKind::Plus,
+        BracketKind::RadicalCation,
+        BracketKind::LonePair,
+        BracketKind::CircleMinus,
+        BracketKind::Minus,
+        BracketKind::RadicalAnion,
+        BracketKind::Electron,
+    ];
+
     let mut engine = Engine::new();
     click(&mut engine, FIRST_START_X, FIRST_START_Y);
-    engine.set_tool_state(ToolState {
-        active_tool: Tool::Symbol,
-        symbol_kind: BracketKind::Plus,
-        ..ToolState::default()
-    });
+    for symbol_kind in symbol_kinds {
+        engine.set_tool_state(ToolState {
+            active_tool: Tool::Symbol,
+            symbol_kind,
+            ..ToolState::default()
+        });
 
-    hover(&mut engine, FIRST_CENTER_X, FIRST_CENTER_Y);
-    assert!(engine.state().overlay.hover_bond_center.is_none());
-    assert!(engine.state().overlay.hover_endpoint.is_none());
+        hover(&mut engine, FIRST_CENTER_X, FIRST_CENTER_Y);
+        assert!(engine.state().overlay.hover_bond_center.is_none());
+        assert!(engine.state().overlay.hover_endpoint.is_none());
 
-    hover(&mut engine, FIRST_END_X, FIRST_END_Y);
-    assert!(engine.state().overlay.hover_endpoint.is_none());
-    assert!(engine.state().overlay.hover_bond_center.is_none());
+        hover(&mut engine, FIRST_END_X, FIRST_END_Y);
+        let endpoint = engine
+            .state()
+            .overlay
+            .hover_endpoint
+            .as_ref()
+            .unwrap_or_else(|| panic!("{symbol_kind:?} should focus a bare endpoint"));
+        assert!(endpoint.label_anchor.is_none());
+        assert!(engine.state().overlay.hover_bond_center.is_none());
+        assert!(engine.render_list().iter().any(|primitive| matches!(
+            primitive,
+            RenderPrimitive::Circle {
+                role: RenderRole::HoverEndpoint,
+                ..
+            }
+        )));
+    }
+
+    let mut labeled_engine = Engine::new();
+    load_label_document(
+        &mut labeled_engine,
+        "N",
+        vec![rect_polygon(294.0, 256.0, 300.0, 264.0)],
+        json!([]),
+    );
+    for symbol_kind in symbol_kinds {
+        labeled_engine.set_tool_state(ToolState {
+            active_tool: Tool::Symbol,
+            symbol_kind,
+            ..ToolState::default()
+        });
+        hover(&mut labeled_engine, px(297.0), px(260.0));
+        let endpoint = labeled_engine
+            .state()
+            .overlay
+            .hover_endpoint
+            .as_ref()
+            .unwrap_or_else(|| panic!("{symbol_kind:?} should focus a labeled endpoint"));
+        assert!(endpoint.label_anchor.is_some());
+        assert!(labeled_engine
+            .render_list()
+            .iter()
+            .any(|primitive| matches!(
+                primitive,
+                RenderPrimitive::Rect {
+                    role: RenderRole::HoverLabelGlyph,
+                    ..
+                }
+            )));
+    }
 }
 
 #[test]

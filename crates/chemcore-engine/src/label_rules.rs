@@ -104,6 +104,45 @@ pub fn reverse_label_groups(text: &str) -> String {
     groups.concat()
 }
 
+pub fn label_text_uses_whole_label_layout(text: &str, connection_count: usize) -> bool {
+    let compact = compact_label_text(text);
+    crate::recognized_abbreviation_uses_whole_label_layout(&compact, connection_count)
+        || hyphenated_label_token_uses_whole_label_layout(&compact)
+}
+
+fn hyphenated_label_token_uses_whole_label_layout(text: &str) -> bool {
+    if text.is_empty() || text.starts_with('-') || text.ends_with('-') {
+        return false;
+    }
+    let mut hyphen_count = 0usize;
+    let mut has_left_letter = false;
+    let mut has_right_letter = false;
+    let mut seen_hyphen = false;
+    let starts_with_digit = text
+        .chars()
+        .next()
+        .is_some_and(|character| character.is_ascii_digit());
+    for character in text.chars() {
+        match character {
+            '-' => {
+                hyphen_count += 1;
+                seen_hyphen = true;
+            }
+            _ if character.is_ascii_alphanumeric() => {
+                if character.is_ascii_alphabetic() {
+                    if seen_hyphen {
+                        has_right_letter = true;
+                    } else {
+                        has_left_letter = true;
+                    }
+                }
+            }
+            _ => return false,
+        }
+    }
+    hyphen_count == 1 && has_right_letter && (has_left_letter || starts_with_digit)
+}
+
 fn reverse_label_group_for_display(group: &str) -> String {
     let Some((inner, suffix)) = parenthesized_label_group_parts(group) else {
         return group.to_string();
@@ -418,6 +457,17 @@ mod tests {
         assert_eq!(reverse_label_groups("N(PhSO2)2"), "(O2SPh)2N");
         assert_eq!(reverse_label_groups("C10H21"), "C10H21");
         assert_eq!(reverse_label_groups("C10H21O3"), "O3C10H21");
+    }
+
+    #[test]
+    fn hyphenated_label_tokens_use_whole_label_layout() {
+        assert!(label_text_uses_whole_label_layout("2-Np", 1));
+        assert!(label_text_uses_whole_label_layout("t-Bu", 1));
+        assert!(label_text_uses_whole_label_layout("n-Bu", 1));
+        assert!(label_text_uses_whole_label_layout("p-Tol", 1));
+        assert!(!label_text_uses_whole_label_layout("CF3", 1));
+        assert!(!label_text_uses_whole_label_layout("Cl-", 1));
+        assert!(!label_text_uses_whole_label_layout("SO3-", 1));
     }
 
     #[test]

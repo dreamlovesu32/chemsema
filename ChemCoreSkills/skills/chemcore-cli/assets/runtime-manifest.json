@@ -6,15 +6,15 @@
   "platforms": {
     "win-x64": {
       "path": "bin/win-x64/chemcore-cli.exe",
-      "size": 11786752,
-      "sha256": "21D78BE44B5CB3F7129231DC521B0437D88BE39939519210C608FB7FDE698901",
+      "size": 11849216,
+      "sha256": "835E035A0C042C1D21C0366D149EE321B7AE47B8EE6331337E72280A8D47F9B7",
       "signed": false,
       "signature": "unsigned"
     },
     "linux-x64": {
       "path": "bin/linux-x64/chemcore-cli",
-      "size": 11747576,
-      "sha256": "30A59A83B2E915F82FD78284EC95D2CAC97882AD83A8417DC18FFE52BE11648A",
+      "size": 11808240,
+      "sha256": "49C2F40FE2C3781E81AD95136DBE0220EB834BAC827AAA2D023A0848811AC68A",
       "signed": false,
       "signature": "unsigned"
     }

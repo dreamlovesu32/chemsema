@@ -581,7 +581,7 @@ pub(super) fn label_layout_decision_for_text_mode(
 }
 
 pub(super) fn label_should_render_as_whole_group(text: &str, connection_count: usize) -> bool {
-    crate::recognized_abbreviation_uses_whole_label_layout(text.trim(), connection_count)
+    crate::label_text_uses_whole_label_layout(text.trim(), connection_count)
 }
 
 #[cfg(test)]
@@ -593,6 +593,9 @@ mod label_layout_tests {
         assert!(!label_should_render_as_whole_group("NMe4", 1));
         assert!(!label_should_render_as_whole_group("OXYZ", 1));
         assert!(label_should_render_as_whole_group("tBu", 1));
+        assert!(label_should_render_as_whole_group("t-Bu", 1));
+        assert!(label_should_render_as_whole_group("2-Np", 1));
+        assert!(!label_should_render_as_whole_group("CF3", 1));
     }
 
     #[test]
@@ -1750,7 +1753,12 @@ pub(super) fn refreshed_attached_node_label(
         &connection_angles,
         layout_as_grouped_attached_label,
     );
-    if let Some(override_decision) = cdxml_imported_label_layout_override(label) {
+    if let Some(mut override_decision) = cdxml_imported_label_layout_override(label) {
+        if matches!(override_decision.flow, LabelFlow::Reverse)
+            && crate::label_text_uses_whole_label_layout(&text, connection_angles.len())
+        {
+            override_decision.anchor = crate::LabelAnchorPolicy::WholeLabel;
+        }
         decision = override_decision;
     }
     let display_runs = display_runs_from_source_runs(&source_runs, &font_family, font_size, &fill);

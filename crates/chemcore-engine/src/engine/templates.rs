@@ -36,6 +36,7 @@ struct RingPlan {
     vertices: Vec<RingVertex>,
     edges: Vec<RingEdge>,
     attach_edges: Vec<(String, usize)>,
+    aromatic_cycle_relayout: Option<Vec<String>>,
 }
 
 #[derive(Clone)]
@@ -383,6 +384,17 @@ impl Engine {
                 } else {
                     self.preferred_ring_side_for_bond(bond_id, *begin, *end)
                 };
+                let anchor_bond_order = self.template_bond_order_from_id(bond_id);
+                let aromatic_cycle_relayout = (aromatic && anchor_bond_order == Some(1))
+                    .then(|| self.template_alternating_six_cycle_for_single_bond(bond_id))
+                    .flatten();
+                let first_double_edge_index = if aromatic
+                    && (anchor_bond_order == Some(2) || aromatic_cycle_relayout.is_some())
+                {
+                    0
+                } else {
+                    1
+                };
                 Some(fused_bond_ring_plan(
                     ring_size,
                     aromatic,
@@ -392,6 +404,8 @@ impl Engine {
                     *end,
                     side,
                     side_length,
+                    first_double_edge_index,
+                    aromatic_cycle_relayout,
                 ))
             }
         }
@@ -659,6 +673,24 @@ impl Engine {
         ))
     }
 
+    fn template_bond_order_from_id(&self, bond_id: &str) -> Option<u8> {
+        self.state
+            .document
+            .editable_fragment()?
+            .fragment
+            .bonds
+            .iter()
+            .find(|bond| bond.id == bond_id)
+            .map(|bond| bond.order)
+    }
+
+    fn template_alternating_six_cycle_for_single_bond(&self, bond_id: &str) -> Option<Vec<String>> {
+        alternating_six_cycle_for_single_bond(
+            &self.state.document.editable_fragment()?.fragment,
+            bond_id,
+        )
+    }
+
     fn insert_ring_plan(&mut self, plan: RingPlan, preview: bool) -> bool {
         let mut ignored = 0;
         let mut document = self.state.document.clone();
@@ -743,6 +775,8 @@ impl Engine {
             end,
             1.0,
             side_length,
+            1,
+            None,
         ));
         let right_score = self.ring_reuse_score(&fused_bond_ring_plan(
             ring_size,
@@ -753,6 +787,8 @@ impl Engine {
             end,
             -1.0,
             side_length,
+            1,
+            None,
         ));
         if right_score > left_score {
             -1.0
@@ -899,6 +935,7 @@ fn chain_plan_from_anchor(
         vertices,
         edges,
         attach_edges: Vec::new(),
+        aromatic_cycle_relayout: None,
     }
 }
 
@@ -1067,6 +1104,7 @@ fn chair_ring_plan(vertices: Vec<RingVertex>) -> RingPlan {
         vertices,
         edges,
         attach_edges: Vec::new(),
+        aromatic_cycle_relayout: None,
     }
 }
 
@@ -1158,6 +1196,7 @@ fn endpoint_ring_plan(
         vertices,
         edges,
         attach_edges: Vec::new(),
+        aromatic_cycle_relayout: None,
     }
 }
 
@@ -1184,6 +1223,7 @@ fn centered_ring_plan(
         vertices,
         edges,
         attach_edges: Vec::new(),
+        aromatic_cycle_relayout: None,
     }
 }
 
@@ -1196,6 +1236,8 @@ fn fused_bond_ring_plan(
     end: Point,
     side_sign: f64,
     fallback_side_length: f64,
+    first_double_edge_index: usize,
+    aromatic_cycle_relayout: Option<Vec<String>>,
 ) -> RingPlan {
     let side = begin.distance(end).max(fallback_side_length);
     let apothem = side / (2.0 * (std::f64::consts::PI / ring_size as f64).tan());
@@ -1228,11 +1270,12 @@ fn fused_bond_ring_plan(
             },
         })
         .collect::<Vec<_>>();
-    let edges = ring_edges_for_vertices(&vertices, aromatic, 1);
+    let edges = ring_edges_for_vertices(&vertices, aromatic, first_double_edge_index);
     RingPlan {
         vertices,
         edges,
         attach_edges: Vec::new(),
+        aromatic_cycle_relayout,
     }
 }
 
@@ -1314,6 +1357,171 @@ fn side_for_point(begin: Point, end: Point, point: Point) -> Option<f64> {
     }
 }
 
+fn alternating_six_cycle_for_single_bond(
+    fragment: &crate::MoleculeFragment,
+    anchor_bond_id: &str,
+) -> Option<Vec<String>> {
+    let anchor = fragment
+        .bonds
+        .iter()
+        .find(|bond| bond.id == anchor_bond_id && bond.order == 1)?;
+    let mut candidates = Vec::new();
+    let mut stack = vec![(
+        anchor.end.clone(),
+        vec![anchor.end.clone()],
+        Vec::<String>::new(),
+    )];
+
+    while let Some((current, visited_nodes, path_bonds)) = stack.pop() {
+        if current == anchor.begin {
+            if path_bonds.len() == 5 {
+                let mut cycle_bonds = Vec::with_capacity(6);
+                cycle_bonds.push(anchor.id.clone());
+                cycle_bonds.extend(path_bonds);
+                let is_alternating = cycle_bonds.iter().enumerate().all(|(index, bond_id)| {
+                    fragment
+                        .bonds
+                        .iter()
+                        .find(|bond| bond.id == *bond_id)
+                        .is_some_and(|bond| bond.order == if index % 2 == 0 { 1 } else { 2 })
+                });
+                if is_alternating {
+                    candidates.push(cycle_bonds);
+                }
+            }
+            continue;
+        }
+        if path_bonds.len() >= 5 {
+            continue;
+        }
+
+        let mut neighbors = fragment
+            .bonds
+            .iter()
+            .filter(|bond| bond.id != anchor.id)
+            .filter_map(|bond| {
+                if bond.begin == current {
+                    Some((bond.id.clone(), bond.end.clone()))
+                } else if bond.end == current {
+                    Some((bond.id.clone(), bond.begin.clone()))
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+        neighbors.sort();
+        for (bond_id, neighbor) in neighbors.into_iter().rev() {
+            if visited_nodes.iter().any(|node_id| node_id == &neighbor) && neighbor != anchor.begin
+            {
+                continue;
+            }
+            let mut next_nodes = visited_nodes.clone();
+            next_nodes.push(neighbor.clone());
+            let mut next_bonds = path_bonds.clone();
+            next_bonds.push(bond_id);
+            stack.push((neighbor, next_nodes, next_bonds));
+        }
+    }
+
+    candidates.sort();
+    candidates.into_iter().next()
+}
+
+fn relayout_alternating_cycle_with_shared_double(
+    entry: &mut crate::EditableFragmentMut<'_>,
+    cycle_bond_ids: &[String],
+) -> bool {
+    let node_ids = cycle_bond_ids
+        .iter()
+        .filter_map(|bond_id| entry.fragment.bonds.iter().find(|bond| bond.id == *bond_id))
+        .flat_map(|bond| [bond.begin.clone(), bond.end.clone()])
+        .collect::<std::collections::BTreeSet<_>>();
+    if cycle_bond_ids.len() != 6 || node_ids.len() != 6 {
+        return false;
+    }
+    let points = node_ids
+        .iter()
+        .filter_map(|node_id| {
+            entry
+                .fragment
+                .nodes
+                .iter()
+                .find(|node| node.id == *node_id)
+                .map(|node| (node_id.clone(), node.point()))
+        })
+        .collect::<std::collections::BTreeMap<_, _>>();
+    if points.len() != 6 {
+        return false;
+    }
+    let center = Point::new(
+        points.values().map(|point| point.x).sum::<f64>() / points.len() as f64,
+        points.values().map(|point| point.y).sum::<f64>() / points.len() as f64,
+    );
+    let updates = cycle_bond_ids
+        .iter()
+        .enumerate()
+        .filter_map(|(index, bond_id)| {
+            let bond = entry
+                .fragment
+                .bonds
+                .iter()
+                .find(|bond| bond.id == *bond_id)?;
+            let placement = if index % 2 == 0 {
+                Some(inward_double_placement(
+                    *points.get(&bond.begin)?,
+                    *points.get(&bond.end)?,
+                    center,
+                ))
+            } else {
+                None
+            };
+            Some((bond_id.clone(), placement))
+        })
+        .collect::<Vec<_>>();
+    if updates.len() != 6 {
+        return false;
+    }
+
+    let mut changed = false;
+    for (bond_id, placement) in updates {
+        let Some(bond) = entry
+            .fragment
+            .bonds
+            .iter_mut()
+            .find(|bond| bond.id == bond_id)
+        else {
+            continue;
+        };
+        match placement {
+            Some(placement) => {
+                let matches = bond.order == 2
+                    && bond.double.as_ref().is_some_and(|double| {
+                        double.placement == placement
+                            && double.center_exit_side.is_none()
+                            && !double.frozen
+                    });
+                if !matches {
+                    bond.order = 2;
+                    bond.double = Some(DoubleBond {
+                        placement,
+                        center_exit_side: None,
+                        frozen: false,
+                    });
+                    changed = true;
+                }
+            }
+            None => {
+                if bond.order != 1 || bond.double.is_some() {
+                    bond.order = 1;
+                    bond.double = None;
+                    changed = true;
+                }
+            }
+        }
+    }
+    changed
+}
+
 fn insert_ring_plan_into_document(
     document: &mut ChemcoreDocument,
     plan: RingPlan,
@@ -1359,6 +1567,10 @@ fn insert_ring_plan_into_document(
     let mut entry = document.editable_fragment_mut()?;
     let object_translate = entry.object.transform.translate;
     entry.fragment.nodes.extend(nodes_to_insert);
+
+    if let Some(cycle_bond_ids) = plan.aromatic_cycle_relayout.as_deref() {
+        changed |= relayout_alternating_cycle_with_shared_double(&mut entry, cycle_bond_ids);
+    }
 
     for edge in plan.edges {
         changed |= insert_ring_bond(
@@ -1460,13 +1672,29 @@ fn insert_ring_bond(
     line_styles: crate::BondLineStyles,
     line_weights: crate::BondLineWeights,
 ) -> bool {
-    if begin_id == end_id
-        || entry.fragment.bonds.iter().any(|bond| {
-            (bond.begin == begin_id && bond.end == end_id)
-                || (bond.begin == end_id && bond.end == begin_id)
-        })
-    {
+    if begin_id == end_id {
         return false;
+    }
+    if let Some(existing_bond) = entry.fragment.bonds.iter_mut().find(|bond| {
+        (bond.begin == begin_id && bond.end == end_id)
+            || (bond.begin == end_id && bond.end == begin_id)
+    }) {
+        let Some(placement) = double_placement.filter(|_| order == 2 && existing_bond.order == 2)
+        else {
+            return false;
+        };
+        let already_matches = existing_bond.double.as_ref().is_some_and(|double| {
+            double.placement == placement && double.center_exit_side.is_none() && !double.frozen
+        });
+        if already_matches {
+            return false;
+        }
+        existing_bond.double = Some(DoubleBond {
+            placement,
+            center_exit_side: None,
+            frozen: false,
+        });
+        return true;
     }
     let bond_id = if preview {
         let id = format!("__preview_ring_bond_{}", *preview_counter);

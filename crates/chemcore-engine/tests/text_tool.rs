@@ -1662,7 +1662,7 @@ fn right_side_otms_label_keeps_tms_as_single_reversed_group() {
 
 #[test]
 fn right_side_labels_follow_whole_group_or_token_reversal_rules() {
-    for (source_text, display_text) in [("t-Bu", "t-Bu"), ("XYZ", "ZYX")] {
+    for (source_text, display_text) in [("t-Bu", "t-Bu"), ("2-Np", "2-Np"), ("XYZ", "ZYX")] {
         let mut engine = Engine::new();
         assert!(engine.add_bond_between(
             free_anchor(px_point(300.0, 260.0)),

@@ -892,6 +892,15 @@ mod tests {
         assert!(recognized_abbreviation_uses_whole_label_layout("nBu", 1));
         assert!(recognized_abbreviation_uses_whole_label_layout("iPr", 1));
         assert!(!recognized_abbreviation_uses_whole_label_layout("CF3", 1));
+
+        let naphthyl_1 = recognize_abbreviation_label("1-Np").unwrap();
+        assert_eq!(naphthyl_1.kind, "terminal-fragment");
+        assert_eq!(naphthyl_1.canonical_label, "1-Np");
+        assert_eq!(naphthyl_1.components[0].name, "1-naphthyl");
+        let naphthyl_2 = recognize_abbreviation_label("2-Np").unwrap();
+        assert_eq!(naphthyl_2.kind, "terminal-fragment");
+        assert_eq!(naphthyl_2.canonical_label, "2-Np");
+        assert_eq!(naphthyl_2.components[0].name, "2-naphthyl");
     }
 
     #[test]
@@ -985,11 +994,12 @@ mod tests {
     fn recognizes_documented_first_stage_functional_groups() {
         let terminal_labels = [
             "Ac", "Bn", "Boc", "Bu", "Bz", "Cbz", "C2H5", "CCl3", "CF3", "CN", "CO2Et", "CO2H",
-            "CO2Me", "CONH2", "CO2Pr", "CO2tBu", "Cp", "CPh3", "Cy", "Et", "FMOC", "iBu", "Indole",
-            "iPr", "Me", "Mes", "Ms", "NCO", "NCS", "NHPh", "NO2", "OAc", "OCF3", "OCN", "OEt",
-            "OMe", "Ph", "PhCOOH", "Piv", "PO2", "PO3", "PO3H2", "PO4", "PO4H2", "Pr", "sBu",
-            "SCN", "SO2Cl", "SO2H", "SO3", "SO3H", "SO4", "SO4H", "ster", "TBDMS", "TBDPS", "tBu",
-            "Tf", "TMS", "Tos", "Ts",
+            "1-Np", "2-Np", "Ac", "Bn", "Boc", "Bu", "Bz", "Cbz", "C2H5", "CCl3", "CF3", "CN",
+            "CO2Et", "CO2H", "CO2Me", "CONH2", "CO2Pr", "CO2tBu", "Cp", "CPh3", "Cy", "Et", "FMOC",
+            "iBu", "Indole", "iPr", "Me", "Mes", "Ms", "NCO", "NCS", "NHPh", "NO2", "OAc", "OCF3",
+            "OCN", "OEt", "OMe", "Ph", "PhCOOH", "Piv", "PO2", "PO3", "PO3H2", "PO4", "PO4H2",
+            "Pr", "sBu", "SCN", "SO2Cl", "SO2H", "SO3", "SO3H", "SO4", "SO4H", "ster", "TBDMS",
+            "TBDPS", "tBu", "Tf", "TMS", "Tos", "Ts",
         ];
         for label in terminal_labels {
             assert!(
