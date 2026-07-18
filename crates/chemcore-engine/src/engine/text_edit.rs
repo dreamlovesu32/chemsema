@@ -1,7 +1,7 @@
 use super::links::scene_object_is_bracket_like;
 use super::{
-    EditorCommand, Engine, PendingSelectTarget, TextCommandContent, TextEditCommandTarget,
-    TextEditLayoutRequest,
+    EditorCommand, Engine, PendingSelectTarget, TextCommandContent, TextCommandDisplayMode,
+    TextEditCommandTarget, TextEditLayoutRequest,
 };
 use crate::{
     build_label_glyph_polygons_with_profile, decide_label_layout, layout_label_text, round2,
@@ -99,6 +99,8 @@ pub struct TextEditSession {
     pub preserve_lines: bool,
     #[serde(default)]
     pub default_chemical: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_mode: Option<TextCommandDisplayMode>,
 }
 
 impl TextEditTarget {
@@ -159,6 +161,7 @@ pub(crate) fn make_periodic_element_node_label(text: &str, position: [f64; 2]) -
         glyph_polygons: Vec::new(),
         preserve_lines: false,
         default_chemical: true,
+        display_mode: None,
     };
     let source_runs = normalize_source_runs(&session, text);
     let display_runs = display_runs_from_source_runs(
@@ -571,6 +574,7 @@ impl Engine {
             glyph_polygons: Vec::new(),
             preserve_lines: true,
             default_chemical: false,
+            display_mode: None,
         })
     }
 
@@ -615,6 +619,7 @@ impl Engine {
             glyph_polygons: Vec::new(),
             preserve_lines: true,
             default_chemical: content.default_chemical,
+            display_mode: content.display_mode,
         };
         self.apply_text_object_edit(None, &session)
     }
@@ -673,6 +678,15 @@ impl Engine {
             return false;
         };
         label.source_text = Some(source_text.to_string());
+        let source_run_script = if label
+            .runs
+            .iter()
+            .all(|run| run.script.as_deref() != Some("chemical"))
+        {
+            "normal"
+        } else {
+            "chemical"
+        };
         let source_run = LabelRun {
             text: source_text.to_string(),
             font_family: label.font_family.clone(),
@@ -681,7 +695,7 @@ impl Engine {
             font_weight: label.runs.first().and_then(|run| run.font_weight),
             font_style: label.runs.first().and_then(|run| run.font_style.clone()),
             underline: None,
-            script: Some("chemical".to_string()),
+            script: Some(source_run_script.to_string()),
         };
         set_meta_object_field(
             &mut label.meta,
@@ -1064,6 +1078,7 @@ impl Engine {
             glyph_polygons: Vec::new(),
             preserve_lines: true,
             default_chemical,
+            display_mode: label_display_mode_from_meta_value(label.map(|label| &label.meta)),
         })
     }
 
@@ -1131,6 +1146,7 @@ impl Engine {
                 .and_then(Value::as_bool)
                 .unwrap_or(true),
             default_chemical: false,
+            display_mode: None,
         })
     }
 
@@ -1521,8 +1537,9 @@ fn apply_text_command_content(
     if !content.glyph_polygons.is_empty() {
         session.glyph_polygons = content.glyph_polygons;
     }
-    if content.default_chemical {
-        session.default_chemical = true;
+    session.default_chemical = content.default_chemical;
+    if content.display_mode.is_some() {
+        session.display_mode = content.display_mode;
     }
     session
 }
@@ -1603,6 +1620,7 @@ pub(super) fn apply_node_label_replacement(
         glyph_polygons: Vec::new(),
         preserve_lines: true,
         default_chemical: true,
+        display_mode: None,
     };
     apply_node_label_text_edit(node, label, &session, connection_angles, node.position)
 }
@@ -1742,9 +1760,10 @@ fn apply_node_label_text_edit_with_options(
         preserve_measured_box,
         false,
         false,
-        None,
+        label_layout_decision_for_command_display_mode(session.display_mode, text),
         glyph_clip_profile,
     );
+    set_label_command_display_mode_meta(&mut next_label, session.display_mode);
     if preserve_measured_box {
         mark_node_label_measured_geometry_authoritative(&mut next_label);
     }

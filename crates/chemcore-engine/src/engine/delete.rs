@@ -213,6 +213,7 @@ impl Engine {
             glyph_polygons: Vec::new(),
             preserve_lines: true,
             default_chemical: true,
+            display_mode: None,
         };
         let changed = {
             let node = &mut entry.fragment.nodes[node_index];

@@ -689,6 +689,7 @@ fn centered_text_object_edit_layout_anchors_editor_to_box_center() {
         glyph_polygons: Vec::new(),
         preserve_lines: true,
         default_chemical: false,
+        display_mode: None,
     };
 
     let layout = engine.preview_text_edit_layout(&TextEditLayoutRequest {
@@ -725,6 +726,7 @@ fn centered_text_object_selection_rects_use_visual_line_bounds() {
         glyph_polygons: Vec::new(),
         preserve_lines: true,
         default_chemical: false,
+        display_mode: None,
     };
 
     let layout = engine.preview_text_edit_layout(&TextEditLayoutRequest {
@@ -818,6 +820,7 @@ fn text_object_caret_treats_percent_as_wide_single_glyph() {
         glyph_polygons: Vec::new(),
         preserve_lines: true,
         default_chemical: false,
+        display_mode: None,
     };
 
     let layout = engine.preview_text_edit_layout(&TextEditLayoutRequest {
@@ -858,6 +861,7 @@ fn applying_centered_text_object_edit_stores_box_relative_to_anchor() {
         glyph_polygons: Vec::new(),
         preserve_lines: true,
         default_chemical: false,
+        display_mode: None,
     };
 
     assert!(engine.apply_text_edit(session));
@@ -1937,6 +1941,7 @@ fn preview_text_runs_expands_chemical_source_runs_in_kernel() {
         glyph_polygons: Vec::new(),
         preserve_lines: true,
         default_chemical: true,
+        display_mode: None,
     };
 
     let (source_runs, display_runs) = engine.preview_text_runs(&session);

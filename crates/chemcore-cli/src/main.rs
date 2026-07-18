@@ -2,7 +2,10 @@ mod agent;
 mod protocol;
 
 use chemcore_desktop_service::DesktopDocumentService;
-use chemcore_engine::{compact_label_text, reverse_label_groups, Engine};
+use chemcore_engine::{
+    compact_label_text, decide_label_layout, layout_label_text, reverse_label_groups, Engine,
+    LabelAnchorPolicy, LabelFlow, LabelLayoutDecision,
+};
 use protocol::{
     about_command, capabilities_command, doctor_command, examples_command, guide_command,
     schema_command, schema_or_capabilities_for_help, version_command, version_text, CliError,
@@ -123,6 +126,7 @@ fn label_query_command(args: &[String]) -> Result<(), String> {
     let mut connection_angles = Vec::<f64>::new();
     let mut connection_count = None;
     let mut default_chemical = true;
+    let mut display_mode = LabelQueryDisplayMode::ConnectionAuto;
     let mut output = None;
     let mut pretty = false;
     let mut index = 0;
@@ -179,6 +183,13 @@ fn label_query_command(args: &[String]) -> Result<(), String> {
             }
             "--default-chemical" => default_chemical = true,
             "--no-default-chemical" => default_chemical = false,
+            "--display-mode" | "--label-display" | "--label-alignment" | "--anchor-mode" => {
+                index += 1;
+                display_mode = parse_label_query_display_mode(
+                    args.get(index)
+                        .ok_or_else(|| format!("{} requires a value.", args[index - 1]))?,
+                )?;
+            }
             "--out" | "-o" => {
                 index += 1;
                 output = Some(
@@ -216,17 +227,92 @@ fn label_query_command(args: &[String]) -> Result<(), String> {
     }
 
     let report = if reverse_mode {
-        label_query_reverse_report(&text, &connection_angles)?
+        label_query_reverse_report(&text, &connection_angles, display_mode)?
     } else {
-        label_query_report(&text, &connection_angles, default_chemical)?
+        label_query_report(&text, &connection_angles, default_chemical, display_mode)?
     };
     write_json_value(report, output.as_deref(), pretty)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LabelQueryDisplayMode {
+    ConnectionAuto,
+    RightAuto,
+    LeftAuto,
+    PreserveRight,
+    PreserveLeft,
+    PreserveCenter,
+}
+
+impl LabelQueryDisplayMode {
+    fn as_str(self) -> &'static str {
+        match self {
+            LabelQueryDisplayMode::ConnectionAuto => "connection-auto",
+            LabelQueryDisplayMode::RightAuto => "right-auto",
+            LabelQueryDisplayMode::LeftAuto => "left-auto",
+            LabelQueryDisplayMode::PreserveRight => "preserve-right",
+            LabelQueryDisplayMode::PreserveLeft => "preserve-left",
+            LabelQueryDisplayMode::PreserveCenter => "preserve-center",
+        }
+    }
+
+    fn default_chemical(self) -> bool {
+        !matches!(
+            self,
+            LabelQueryDisplayMode::PreserveRight
+                | LabelQueryDisplayMode::PreserveLeft
+                | LabelQueryDisplayMode::PreserveCenter
+        )
+    }
+
+    fn alignment(self) -> &'static str {
+        match self {
+            LabelQueryDisplayMode::RightAuto | LabelQueryDisplayMode::PreserveRight => "right",
+            LabelQueryDisplayMode::PreserveCenter => "center",
+            _ => "left",
+        }
+    }
+
+    fn anchor(self) -> &'static str {
+        match self {
+            LabelQueryDisplayMode::RightAuto | LabelQueryDisplayMode::PreserveRight => "end",
+            LabelQueryDisplayMode::PreserveCenter => "middle",
+            _ => "start",
+        }
+    }
+}
+
+fn parse_label_query_display_mode(value: &str) -> Result<LabelQueryDisplayMode, String> {
+    match value.to_ascii_lowercase().replace('_', "-").as_str() {
+        "auto" | "connection-auto" | "connection" | "engine" | "default" => {
+            Ok(LabelQueryDisplayMode::ConnectionAuto)
+        }
+        "right-auto" | "right-alignment" | "alignment-right" | "right" => {
+            Ok(LabelQueryDisplayMode::RightAuto)
+        }
+        "left-auto" | "left-alignment" | "alignment-left" | "left" => {
+            Ok(LabelQueryDisplayMode::LeftAuto)
+        }
+        "preserve-right" | "display-right" | "labeldisplay-right" => {
+            Ok(LabelQueryDisplayMode::PreserveRight)
+        }
+        "preserve-left" | "display-left" | "labeldisplay-left" => {
+            Ok(LabelQueryDisplayMode::PreserveLeft)
+        }
+        "preserve-center" | "display-center" | "labeldisplay-center" | "center" => {
+            Ok(LabelQueryDisplayMode::PreserveCenter)
+        }
+        other => Err(format!(
+            "Unsupported label-query display mode '{other}'. Use connection-auto, right-auto, left-auto, preserve-right, preserve-left, or preserve-center."
+        )),
+    }
 }
 
 fn label_query_report(
     text: &str,
     connection_angles: &[f64],
     default_chemical: bool,
+    display_mode: LabelQueryDisplayMode,
 ) -> Result<Value, String> {
     let mut engine = Engine::new();
     let node_id = if connection_angles.is_empty() {
@@ -237,12 +323,13 @@ fn label_query_report(
     if let Some(node_id) = node_id.as_deref() {
         execute_json_command(
             &mut engine,
-            json!({
-                "type": "set-node-label-runs",
-                "nodeId": node_id,
-                "runs": label_query_source_runs(text, default_chemical),
-                "defaultChemical": default_chemical
-            }),
+            label_query_set_node_label_command(
+                node_id,
+                text,
+                label_query_source_runs(text, default_chemical),
+                default_chemical,
+                display_mode,
+            ),
         )?;
     }
     let document_text = document_json(&engine)?;
@@ -285,6 +372,13 @@ fn label_query_report(
         .as_ref()
         .and_then(|node| node.get("atomicNumber"))
         .and_then(Value::as_u64);
+    let source_anchor_element = label_query_oxidation_state_anchor_element(source_text.as_str());
+    let semantic_anchor_element = source_anchor_element
+        .map(|(element, _)| element)
+        .or(node_element);
+    let semantic_anchor_atomic_number = source_anchor_element
+        .map(|(_, atomic_number)| u64::from(atomic_number))
+        .or(node_atomic_number);
     let implicit_hydrogen_count = node
         .as_ref()
         .and_then(|node| node.get("numHydrogens"))
@@ -299,6 +393,8 @@ fn label_query_report(
     let hydrogen_is_anchor =
         accepted && node_element == Some("H") && source_text == "H" && implicit_hydrogen_count == 0;
 
+    let query_source_runs = label_query_source_runs(text, default_chemical);
+
     Ok(json!({
         "schema": "chemcore.labelQuery.v1",
         "input": {
@@ -310,8 +406,8 @@ fn label_query_report(
         "accepted": accepted,
         "status": status,
         "semantics": {
-            "anchorAtom": if accepted { node_element } else { None },
-            "anchorAtomicNumber": if accepted { node_atomic_number } else { None },
+            "anchorAtom": if accepted { semantic_anchor_element } else { None },
+            "anchorAtomicNumber": if accepted { semantic_anchor_atomic_number } else { None },
             "implicitHydrogenCount": if accepted { Some(implicit_hydrogen_count) } else { None },
             "generatedHydrogensMayBeBondAnchors": hydrogen_is_anchor,
             "hydrogenAnchorRule": "Generated implicit-hydrogen glyphs are display/edit text only; bond drawing anchors stay on the heavy atom. Standalone H is the only hydrogen label that may anchor a bond."
@@ -321,14 +417,92 @@ fn label_query_report(
         "sourceText": source_text,
         "displayText": display_text,
         "displayDiffersFromSource": display_text.as_deref().is_some_and(|display| display != source_text),
+        "layoutPrediction": label_query_layout_predictions(text, connection_angles),
+        "requestedDisplay": label_query_display_mode_prediction(text, connection_angles, display_mode),
         "recognition": recognition,
-        "sourceRuns": label_meta.get("sourceRuns").cloned().unwrap_or_else(|| label_query_source_runs(text, default_chemical)),
+        "sourceRuns": query_source_runs.clone(),
+        "commandFields": label_query_command_fields(
+            text,
+            default_chemical,
+            display_mode,
+            query_source_runs,
+        ),
     }))
+}
+
+fn label_query_set_node_label_command(
+    node_id: &str,
+    text: &str,
+    source_runs: Value,
+    default_chemical: bool,
+    display_mode: LabelQueryDisplayMode,
+) -> Value {
+    let mut command = label_query_command_fields(text, default_chemical, display_mode, source_runs);
+    command["type"] = json!("set-node-label-runs");
+    command["nodeId"] = json!(node_id);
+    command
+}
+
+fn label_query_command_fields(
+    text: &str,
+    default_chemical: bool,
+    display_mode: LabelQueryDisplayMode,
+    source_runs: Value,
+) -> Value {
+    let mut fields = json!({
+        "text": text,
+        "runs": source_runs,
+        "sourceText": text,
+        "defaultChemical": default_chemical,
+        "displayMode": display_mode.as_str()
+    });
+    if matches!(display_mode, LabelQueryDisplayMode::ConnectionAuto) {
+        fields
+            .as_object_mut()
+            .expect("command fields are an object")
+            .remove("displayMode");
+    }
+    fields
+}
+
+fn label_query_oxidation_state_anchor_element(text: &str) -> Option<(&'static str, u8)> {
+    let compact = compact_label_text(text);
+    let open = compact.find('(')?;
+    if !compact.ends_with(')') || open == 0 {
+        return None;
+    }
+    let symbol = &compact[..open];
+    if !symbol
+        .chars()
+        .all(|character| character.is_ascii_alphabetic())
+    {
+        return None;
+    }
+    element_symbol_info_for_label_query(symbol)
+}
+
+fn element_symbol_info_for_label_query(symbol: &str) -> Option<(&'static str, u8)> {
+    const SYMBOLS: &[&str] = &[
+        "", "H", "He", "Li", "Be", "B", "C", "N", "O", "F", "Ne", "Na", "Mg", "Al", "Si", "P", "S",
+        "Cl", "Ar", "K", "Ca", "Sc", "Ti", "V", "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn", "Ga",
+        "Ge", "As", "Se", "Br", "Kr", "Rb", "Sr", "Y", "Zr", "Nb", "Mo", "Tc", "Ru", "Rh", "Pd",
+        "Ag", "Cd", "In", "Sn", "Sb", "Te", "I", "Xe", "Cs", "Ba", "La", "Ce", "Pr", "Nd", "Pm",
+        "Sm", "Eu", "Gd", "Tb", "Dy", "Ho", "Er", "Tm", "Yb", "Lu", "Hf", "Ta", "W", "Re", "Os",
+        "Ir", "Pt", "Au", "Hg", "Tl", "Pb", "Bi", "Po", "At", "Rn", "Fr", "Ra", "Ac", "Th", "Pa",
+        "U", "Np", "Pu", "Am", "Cm", "Bk", "Cf", "Es", "Fm", "Md", "No", "Lr", "Rf", "Db", "Sg",
+        "Bh", "Hs", "Mt", "Ds", "Rg", "Cn", "Nh", "Fl", "Mc", "Lv", "Ts", "Og",
+    ];
+    SYMBOLS
+        .iter()
+        .enumerate()
+        .find(|(_, candidate)| **candidate == symbol)
+        .map(|(atomic_number, candidate)| (*candidate, atomic_number as u8))
 }
 
 fn label_query_reverse_report(
     visible_text: &str,
     connection_angles: &[f64],
+    display_mode: LabelQueryDisplayMode,
 ) -> Result<Value, String> {
     let visible_compact = compact_label_text(visible_text);
     let mut source_candidates = Vec::<LabelQuerySourceCandidate>::new();
@@ -337,44 +511,98 @@ fn label_query_reverse_report(
         visible_compact.clone(),
         true,
         "visible-text-as-chemical-source",
+        None,
     );
     let reversed_source = reverse_label_groups(&visible_compact);
     if reversed_source != visible_compact {
         push_label_query_source_candidate(
             &mut source_candidates,
-            reversed_source,
+            reversed_source.clone(),
             true,
             "kernel-reverse-label-groups",
+            None,
         );
+        if matches!(display_mode, LabelQueryDisplayMode::ConnectionAuto) {
+            push_label_query_source_candidate(
+                &mut source_candidates,
+                reversed_source,
+                true,
+                "right-auto-reverse-label-groups",
+                Some(LabelQueryDisplayMode::RightAuto),
+            );
+        }
     }
     push_label_query_source_candidate(
         &mut source_candidates,
         visible_compact.clone(),
         false,
         "plain-visible-text-preserve-layout",
+        None,
     );
 
     let mut candidates = Vec::<Value>::new();
     for source in source_candidates {
-        let report = label_query_report(&source.text, connection_angles, source.default_chemical)?;
-        let display_text = report
+        let effective_display_mode = if let Some(display_mode_override) = source.display_mode {
+            display_mode_override
+        } else if source.default_chemical {
+            display_mode
+        } else if matches!(
+            display_mode,
+            LabelQueryDisplayMode::RightAuto | LabelQueryDisplayMode::PreserveRight
+        ) {
+            LabelQueryDisplayMode::PreserveRight
+        } else if matches!(display_mode, LabelQueryDisplayMode::PreserveCenter) {
+            LabelQueryDisplayMode::PreserveCenter
+        } else {
+            LabelQueryDisplayMode::PreserveLeft
+        };
+        let report = label_query_report(
+            &source.text,
+            connection_angles,
+            source.default_chemical,
+            effective_display_mode,
+        )?;
+        let requested_display = report.get("requestedDisplay").cloned().unwrap_or_else(|| {
+            label_query_display_mode_prediction(
+                &source.text,
+                connection_angles,
+                effective_display_mode,
+            )
+        });
+        let display_text = requested_display
             .get("displayText")
             .and_then(Value::as_str)
             .map(ToString::to_string)
-            .unwrap_or_else(|| source.text.clone());
+            .unwrap_or_else(|| {
+                report
+                    .get("displayText")
+                    .and_then(Value::as_str)
+                    .map(ToString::to_string)
+                    .unwrap_or_else(|| source.text.clone())
+            });
         let display_matches_visible = compact_label_text(&display_text) == visible_compact;
+        let source_text = source.text.clone();
+        let source_runs = label_query_source_runs(&source_text, source.default_chemical);
         candidates.push(json!({
-            "sourceText": source.text,
+            "sourceText": source_text,
             "defaultChemical": source.default_chemical,
             "reason": source.reason,
+            "displayMode": effective_display_mode.as_str(),
             "accepted": report.get("accepted").cloned().unwrap_or(Value::Bool(false)),
             "status": report.get("status").cloned().unwrap_or(Value::Null),
             "displayText": display_text,
             "displayMatchesVisible": display_matches_visible,
-            "displayDiffersFromSource": report.get("displayDiffersFromSource").cloned().unwrap_or(Value::Null),
+            "displayDiffersFromSource": requested_display.get("displayDiffersFromSource").cloned().unwrap_or(Value::Null),
+            "layout": requested_display,
             "semantics": report.get("semantics").cloned().unwrap_or(Value::Null),
             "recognition": report.get("recognition").cloned().unwrap_or(Value::Null),
-            "sourceRuns": report.get("sourceRuns").cloned().unwrap_or(Value::Null)
+            "sourceRuns": source_runs.clone(),
+            "commandFields": label_query_command_fields(
+                &source_text,
+                source.default_chemical,
+                effective_display_mode,
+                source_runs,
+            )
         }));
     }
 
@@ -386,16 +614,94 @@ fn label_query_reverse_report(
             "visibleText": visible_text,
             "normalizedVisibleText": visible_compact,
             "connectionCount": connection_angles.len(),
-            "connectionAngles": connection_angles
+            "connectionAngles": connection_angles,
+            "displayMode": display_mode.as_str()
         },
         "recommendedIndex": recommended_index,
         "recommendation": recommendation,
         "candidates": candidates,
         "contract": {
-            "reverseRole": "The caller supplies visible text and connection geometry; ChemCore validates source text, display reversal, generated-hydrogen semantics, and defaultChemical behavior.",
+            "reverseRole": "The caller supplies visible text, connection geometry, and optional display mode; ChemCore validates source text, display reversal, generated-hydrogen semantics, and defaultChemical behavior.",
+            "displayMode": "connection-auto uses the normal endpoint label flow; right-auto models imported CDXML/CDX LabelAlignment=Right without LabelDisplay and may reverse chemical groups while anchoring the original first group at the right end; preserve-right/left/center models forced visible display where source cannot be distinguished from pixels alone when the same visible text and anchor policy result.",
             "plainFallback": "When no chemical candidate both validates and renders back to the visible text, use the plain defaultChemical=false candidate to preserve the source drawing."
         }
     }))
+}
+
+fn label_query_layout_predictions(text: &str, connection_angles: &[f64]) -> Value {
+    json!({
+        "connectionAuto": label_query_display_mode_prediction(text, connection_angles, LabelQueryDisplayMode::ConnectionAuto),
+        "rightAuto": label_query_display_mode_prediction(text, connection_angles, LabelQueryDisplayMode::RightAuto),
+        "leftAuto": label_query_display_mode_prediction(text, connection_angles, LabelQueryDisplayMode::LeftAuto),
+        "preserveRight": label_query_display_mode_prediction(text, connection_angles, LabelQueryDisplayMode::PreserveRight),
+        "preserveLeft": label_query_display_mode_prediction(text, connection_angles, LabelQueryDisplayMode::PreserveLeft),
+        "preserveCenter": label_query_display_mode_prediction(text, connection_angles, LabelQueryDisplayMode::PreserveCenter)
+    })
+}
+
+fn label_query_display_mode_prediction(
+    text: &str,
+    connection_angles: &[f64],
+    mode: LabelQueryDisplayMode,
+) -> Value {
+    let decision = match mode {
+        LabelQueryDisplayMode::ConnectionAuto => {
+            decide_label_layout(connection_angles, false, false)
+        }
+        LabelQueryDisplayMode::RightAuto => LabelLayoutDecision {
+            flow: LabelFlow::Reverse,
+            anchor: LabelAnchorPolicy::OriginalFirstGroup,
+        },
+        LabelQueryDisplayMode::LeftAuto => LabelLayoutDecision {
+            flow: LabelFlow::Forward,
+            anchor: LabelAnchorPolicy::FirstGlyph,
+        },
+        LabelQueryDisplayMode::PreserveRight => LabelLayoutDecision {
+            flow: LabelFlow::Forward,
+            anchor: LabelAnchorPolicy::LastGlyph,
+        },
+        LabelQueryDisplayMode::PreserveLeft => LabelLayoutDecision {
+            flow: LabelFlow::Forward,
+            anchor: LabelAnchorPolicy::FirstGlyph,
+        },
+        LabelQueryDisplayMode::PreserveCenter => LabelLayoutDecision {
+            flow: LabelFlow::Forward,
+            anchor: LabelAnchorPolicy::WholeLabel,
+        },
+    };
+    let mut layout = layout_label_text(text, &decision);
+    if !mode.default_chemical() {
+        layout.rendered_text = compact_label_text(text);
+        layout.lines = if layout.rendered_text.is_empty() {
+            Vec::new()
+        } else {
+            vec![layout.rendered_text.clone()]
+        };
+        layout.anchor_line = 0;
+        layout.anchor_char = match mode {
+            LabelQueryDisplayMode::PreserveRight => {
+                layout.rendered_text.chars().count().saturating_sub(1)
+            }
+            LabelQueryDisplayMode::PreserveCenter => {
+                layout.rendered_text.chars().count().saturating_sub(1) / 2
+            }
+            _ => 0,
+        };
+    }
+
+    json!({
+        "mode": mode.as_str(),
+        "defaultChemical": mode.default_chemical(),
+        "displayText": layout.rendered_text,
+        "displayDiffersFromSource": layout.rendered_text != compact_label_text(text),
+        "flow": layout.flow,
+        "anchorPolicy": layout.anchor,
+        "anchorLine": layout.anchor_line,
+        "anchorChar": layout.anchor_char,
+        "align": mode.alignment(),
+        "anchor": mode.anchor(),
+        "sourceText": text
+    })
 }
 
 #[derive(Debug)]
@@ -403,6 +709,7 @@ struct LabelQuerySourceCandidate {
     text: String,
     default_chemical: bool,
     reason: &'static str,
+    display_mode: Option<LabelQueryDisplayMode>,
 }
 
 fn push_label_query_source_candidate(
@@ -410,10 +717,13 @@ fn push_label_query_source_candidate(
     text: String,
     default_chemical: bool,
     reason: &'static str,
+    display_mode: Option<LabelQueryDisplayMode>,
 ) {
     if text.is_empty()
         || candidates.iter().any(|candidate| {
-            candidate.text == text && candidate.default_chemical == default_chemical
+            candidate.text == text
+                && candidate.default_chemical == default_chemical
+                && candidate.display_mode == display_mode
         })
     {
         return;
@@ -422,6 +732,7 @@ fn push_label_query_source_candidate(
         text,
         default_chemical,
         reason,
+        display_mode,
     });
 }
 
@@ -2263,7 +2574,8 @@ mod tests {
 
     #[test]
     fn label_query_reports_default_cf3_reversal() {
-        let report = label_query_report("CF3", &[0.0], true).unwrap();
+        let report =
+            label_query_report("CF3", &[0.0], true, LabelQueryDisplayMode::ConnectionAuto).unwrap();
 
         assert_eq!(report["accepted"], json!(true));
         assert_eq!(report["sourceText"], json!("CF3"));
@@ -2279,9 +2591,15 @@ mod tests {
 
     #[test]
     fn label_query_keeps_hyphenated_label_tokens_whole() {
-        let locant = label_query_report("2-Np", &[0.0], true).unwrap();
-        let unknown_locant = label_query_report("3-Xyz", &[0.0], true).unwrap();
-        let tert_butyl = label_query_report("t-Bu", &[0.0], true).unwrap();
+        let locant =
+            label_query_report("2-Np", &[0.0], true, LabelQueryDisplayMode::ConnectionAuto)
+                .unwrap();
+        let unknown_locant =
+            label_query_report("3-Xyz", &[0.0], true, LabelQueryDisplayMode::ConnectionAuto)
+                .unwrap();
+        let tert_butyl =
+            label_query_report("t-Bu", &[0.0], true, LabelQueryDisplayMode::ConnectionAuto)
+                .unwrap();
 
         assert_eq!(locant["accepted"], json!(true));
         assert_eq!(locant["sourceText"], json!("2-Np"));
@@ -2303,7 +2621,9 @@ mod tests {
 
     #[test]
     fn label_query_can_disable_default_chemical_layout() {
-        let report = label_query_report("CF3", &[0.0], false).unwrap();
+        let report =
+            label_query_report("CF3", &[0.0], false, LabelQueryDisplayMode::ConnectionAuto)
+                .unwrap();
 
         assert_eq!(report["accepted"], json!(true));
         assert_eq!(report["sourceText"], json!("CF3"));
@@ -2315,8 +2635,10 @@ mod tests {
 
     #[test]
     fn label_query_uses_kernel_abbreviation_recognition() {
-        let bn = label_query_report("Bn", &[180.0], true).unwrap();
-        let et = label_query_report("Et", &[180.0], true).unwrap();
+        let bn = label_query_report("Bn", &[180.0], true, LabelQueryDisplayMode::ConnectionAuto)
+            .unwrap();
+        let et = label_query_report("Et", &[180.0], true, LabelQueryDisplayMode::ConnectionAuto)
+            .unwrap();
 
         assert_eq!(bn["accepted"], json!(true));
         assert_eq!(bn["recognition"]["canonicalLabel"], json!("Bn"));
@@ -2328,9 +2650,22 @@ mod tests {
 
     #[test]
     fn label_query_reports_implicit_hydrogen_anchor_semantics() {
-        let nh = label_query_report("NH", &[0.0, 180.0], true).unwrap();
-        let hn = label_query_report("HN", &[0.0, 180.0], true).unwrap();
-        let standalone_h = label_query_report("H", &[0.0], true).unwrap();
+        let nh = label_query_report(
+            "NH",
+            &[0.0, 180.0],
+            true,
+            LabelQueryDisplayMode::ConnectionAuto,
+        )
+        .unwrap();
+        let hn = label_query_report(
+            "HN",
+            &[0.0, 180.0],
+            true,
+            LabelQueryDisplayMode::ConnectionAuto,
+        )
+        .unwrap();
+        let standalone_h =
+            label_query_report("H", &[0.0], true, LabelQueryDisplayMode::ConnectionAuto).unwrap();
 
         assert_eq!(nh["accepted"], json!(true));
         assert_eq!(nh["semantics"]["anchorAtom"], json!("N"));
@@ -2353,7 +2688,9 @@ mod tests {
 
     #[test]
     fn label_query_reverse_maps_visible_h2n_to_nh2_source() {
-        let report = label_query_reverse_report("H2N", &[0.0]).unwrap();
+        let report =
+            label_query_reverse_report("H2N", &[0.0], LabelQueryDisplayMode::ConnectionAuto)
+                .unwrap();
 
         assert_eq!(report["schema"], json!("chemcore.labelQueryReverse.v1"));
         assert_eq!(report["recommendation"]["sourceText"], json!("NH2"));
@@ -2374,8 +2711,30 @@ mod tests {
     }
 
     #[test]
+    fn label_query_reverse_recommends_right_auto_for_visible_ho() {
+        let report =
+            label_query_reverse_report("HO", &[180.0], LabelQueryDisplayMode::ConnectionAuto)
+                .unwrap();
+
+        assert_eq!(report["recommendation"]["sourceText"], json!("OH"));
+        assert_eq!(report["recommendation"]["defaultChemical"], json!(true));
+        assert_eq!(report["recommendation"]["displayText"], json!("HO"));
+        assert_eq!(report["recommendation"]["displayMode"], json!("right-auto"));
+        assert_eq!(
+            report["recommendation"]["commandFields"]["displayMode"],
+            json!("right-auto")
+        );
+        assert_eq!(
+            report["recommendation"]["semantics"]["anchorAtom"],
+            json!("O")
+        );
+    }
+
+    #[test]
     fn label_query_reverse_maps_visible_f3c_to_cf3_source() {
-        let report = label_query_reverse_report("F3C", &[0.0]).unwrap();
+        let report =
+            label_query_reverse_report("F3C", &[0.0], LabelQueryDisplayMode::ConnectionAuto)
+                .unwrap();
 
         assert_eq!(report["recommendation"]["sourceText"], json!("CF3"));
         assert_eq!(report["recommendation"]["defaultChemical"], json!(true));
@@ -2392,7 +2751,9 @@ mod tests {
 
     #[test]
     fn label_query_reverse_prefers_plain_when_default_chemical_display_conflicts() {
-        let report = label_query_reverse_report("CF3", &[0.0]).unwrap();
+        let report =
+            label_query_reverse_report("CF3", &[0.0], LabelQueryDisplayMode::ConnectionAuto)
+                .unwrap();
 
         assert_eq!(report["recommendation"]["sourceText"], json!("CF3"));
         assert_eq!(report["recommendation"]["defaultChemical"], json!(false));
@@ -2411,6 +2772,69 @@ mod tests {
                     && candidate["displayText"] == json!("F3C")
                     && candidate["displayMatchesVisible"] == json!(false)
             }));
+    }
+
+    #[test]
+    fn label_query_reverse_preserve_left_reports_copy_ready_command_fields() {
+        let report =
+            label_query_reverse_report("CN", &[-90.0], LabelQueryDisplayMode::PreserveLeft)
+                .unwrap();
+
+        let command_fields = &report["recommendation"]["commandFields"];
+        assert_eq!(report["recommendation"]["sourceText"], json!("CN"));
+        assert_eq!(report["recommendation"]["defaultChemical"], json!(true));
+        assert_eq!(report["recommendation"]["displayText"], json!("CN"));
+        assert_eq!(
+            report["recommendation"]["displayMode"],
+            json!("preserve-left")
+        );
+        assert_eq!(command_fields["text"], json!("CN"));
+        assert_eq!(command_fields["sourceText"], json!("CN"));
+        assert_eq!(command_fields["defaultChemical"], json!(true));
+        assert_eq!(command_fields["displayMode"], json!("preserve-left"));
+        assert_eq!(command_fields["runs"][0]["script"], json!("chemical"));
+    }
+
+    #[test]
+    fn label_query_right_auto_models_cdxml_alignment_reversal() {
+        let report = label_query_report(
+            "Cu(II)",
+            &[93.0, 17.0, -30.0],
+            true,
+            LabelQueryDisplayMode::RightAuto,
+        )
+        .unwrap();
+
+        assert_eq!(report["requestedDisplay"]["displayText"], json!("(II)Cu"));
+        assert_eq!(report["requestedDisplay"]["mode"], json!("right-auto"));
+        assert_eq!(report["requestedDisplay"]["align"], json!("right"));
+        assert_eq!(report["requestedDisplay"]["anchor"], json!("end"));
+        assert_eq!(report["semantics"]["anchorAtom"], json!("Cu"));
+        assert_eq!(report["semantics"]["anchorAtomicNumber"], json!(29));
+    }
+
+    #[test]
+    fn label_query_reverse_right_auto_recovers_cuii_source_from_visible_iicu() {
+        let report = label_query_reverse_report(
+            "(II)Cu",
+            &[93.0, 17.0, -30.0],
+            LabelQueryDisplayMode::RightAuto,
+        )
+        .unwrap();
+
+        assert_eq!(report["recommendation"]["sourceText"], json!("Cu(II)"));
+        assert_eq!(report["recommendation"]["defaultChemical"], json!(true));
+        assert_eq!(report["recommendation"]["displayText"], json!("(II)Cu"));
+        assert_eq!(report["recommendation"]["displayMode"], json!("right-auto"));
+        assert_eq!(report["recommendation"]["layout"]["anchor"], json!("end"));
+        assert_eq!(
+            report["recommendation"]["semantics"]["anchorAtom"],
+            json!("Cu")
+        );
+        assert_eq!(
+            report["recommendation"]["semantics"]["anchorAtomicNumber"],
+            json!(29)
+        );
     }
 
     #[test]

@@ -23,7 +23,8 @@ pub(crate) use self::context_styles::expand_complete_labels_in_fragment;
 pub use self::command::{
     CommandAnchor, CommandDelta, CommandDoubleBond, CommandResult, CommandTargetDelta,
     CommandTargetSet, CommandTargets, DocumentCommandFormat, EditorCommand, FocusedDeleteSource,
-    HistoryEntry, HistorySnapshot, ObjectSettingsPatch, TextCommandContent, TextEditCommandTarget,
+    HistoryEntry, HistorySnapshot, ObjectSettingsPatch, TextCommandContent, TextCommandDisplayMode,
+    TextEditCommandTarget,
 };
 use self::text_edit::{
     element_symbol_info, endpoint_label_world_bounds, implicit_hydrogen_label_text_for_count,

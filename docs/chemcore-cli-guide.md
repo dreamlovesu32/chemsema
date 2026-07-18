@@ -117,8 +117,8 @@ chemcore-cli run <input> <commands.json|-> [--out <path>] [--save-format <format
 chemcore-cli convert <input> <output> [--format <format>] [--scale <n>|--width <px>|--height <px>]
 chemcore-cli export <input> <output> [--format <format>] [--scale <n>|--width <px>|--height <px>]
 chemcore-cli diff <before> <after> --out <diff.json> [--pretty]
-chemcore-cli label-query --text <source-label> [--connection-angle <deg> ...] [--connection-count <n>] [--no-default-chemical] [--pretty]
-chemcore-cli label-query --visible-text <visible-label> [--connection-angle <deg> ...] [--connection-count <n>] [--pretty]
+chemcore-cli label-query --text <source-label> [--connection-angle <deg> ...] [--connection-count <n>] [--display-mode connection-auto|right-auto|left-auto|preserve-right|preserve-left|preserve-center] [--no-default-chemical] [--pretty]
+chemcore-cli label-query --visible-text <visible-label> [--connection-angle <deg> ...] [--connection-count <n>] [--display-mode connection-auto|right-auto|left-auto|preserve-right|preserve-left|preserve-center] [--pretty]
 ```
 
 Common calls:
@@ -143,6 +143,7 @@ Label query calls:
 npm run cli -- label-query --text CF3 --connection-angle 0 --pretty
 npm run cli -- label-query --visible-text H2N --connection-angle 0 --pretty
 npm run cli -- label-query --visible-text CF3 --connection-angle 0 --pretty
+npm run cli -- label-query --visible-text "(II)Cu" --display-mode right-auto --connection-angle 93 --connection-angle 17 --connection-angle -30 --pretty
 ```
 
 `label-query --text` is the forward contract: ChemCore receives source text,
@@ -156,6 +157,23 @@ matches the visible text. If no chemical source candidate both validates and
 renders back to the visible text, the reverse report recommends the
 `defaultChemical:false` plain-text candidate so the caller can preserve the
 source drawing instead of forcing chemical rewriting.
+
+Both forward and reverse reports include `commandFields`, a copy-ready subset
+for `set-node-label-runs`. It contains the source/edit `text`, `sourceText`,
+source `runs`, `defaultChemical`, and, when needed, `displayMode`. OCR callers
+should prefer this object over reconstructing command fields from display and
+recognition fields by hand.
+
+`--display-mode` separates endpoint-command layout from imported ChemDraw
+alignment semantics. The default `connection-auto` follows the normal endpoint
+label flow for the supplied connection angles. `right-auto` models CDXML/CDX
+`LabelAlignment=Right` without `LabelDisplay`: ChemCore may reverse chemical
+groups while keeping the original first group as the right/end anchor. The
+`preserve-right`, `preserve-left`, and `preserve-center` modes model forced
+visible display. If an auto-reversed source and a forced visible source have the
+same visible text and the same anchor policy, pixels cannot recover the hidden
+source choice; callers should keep that ambiguity explicit rather than invent a
+distinction.
 
 File output policy:
 
@@ -891,7 +909,8 @@ triple
   ],
   "preserveMeasuredBox": true,
   "preserveImplicitHydrogenLabel": false,
-  "defaultChemical": true
+  "defaultChemical": true,
+  "displayMode": "preserve-left"
 }
 ```
 
@@ -911,6 +930,16 @@ position, and still applies node-label recognition and editable label semantics.
 When `preserveImplicitHydrogenLabel` is true on an endpoint label such as
 `NH2`, ChemCore treats the element-hydrogen source text as user-authored and
 keeps it even if the current valence-derived implicit hydrogen count would
+change the visible hydrogen count.
+
+`displayMode` is optional and uses readable values:
+`connection-auto`, `left-auto`, `right-auto`, `preserve-left`,
+`preserve-right`, or `preserve-center`. Use it only to express ChemCore label
+layout semantics. For example, OCR may emit `displayMode:"preserve-left"` for a
+visible `CN` attached at the C/left glyph when the source drawing must not be
+auto-reversed to `NC`. Do not use measured boxes to force this layout; let the
+kernel recompute glyph outlines, anchor, clipping, and bond retreat from the
+source runs plus `displayMode`.
 normally refresh the label to another source, such as `NH`.
 
 ### 5.9 Interpret Atom Label Chemically

@@ -1689,6 +1689,72 @@ fn cdxml_imported_label_layout_override(
     alignment.and_then(decision_for_realized_alignment)
 }
 
+pub(super) fn label_display_mode_from_meta_value(
+    meta: Option<&Value>,
+) -> Option<TextCommandDisplayMode> {
+    let value = meta?
+        .get("displayMode")
+        .or_else(|| meta?.get("labelDisplayMode"))?
+        .as_str()?;
+    match value.trim().to_ascii_lowercase().as_str() {
+        "connection-auto" | "auto" => Some(TextCommandDisplayMode::ConnectionAuto),
+        "left-auto" => Some(TextCommandDisplayMode::LeftAuto),
+        "right-auto" => Some(TextCommandDisplayMode::RightAuto),
+        "preserve-left" | "display-left" => Some(TextCommandDisplayMode::PreserveLeft),
+        "preserve-right" | "display-right" => Some(TextCommandDisplayMode::PreserveRight),
+        "preserve-center" | "display-center" | "center" => {
+            Some(TextCommandDisplayMode::PreserveCenter)
+        }
+        _ => None,
+    }
+}
+
+pub(super) fn label_layout_decision_for_command_display_mode(
+    mode: Option<TextCommandDisplayMode>,
+    text: &str,
+) -> Option<crate::LabelLayoutDecision> {
+    let mode = mode?;
+    match mode {
+        TextCommandDisplayMode::ConnectionAuto => None,
+        TextCommandDisplayMode::LeftAuto | TextCommandDisplayMode::PreserveLeft => {
+            Some(crate::LabelLayoutDecision {
+                flow: LabelFlow::Forward,
+                anchor: crate::LabelAnchorPolicy::FirstGlyph,
+            })
+        }
+        TextCommandDisplayMode::RightAuto => {
+            let anchor = if crate::label_text_uses_whole_label_layout(text.trim(), 1) {
+                crate::LabelAnchorPolicy::WholeLabel
+            } else {
+                crate::LabelAnchorPolicy::OriginalFirstGroup
+            };
+            Some(crate::LabelLayoutDecision {
+                flow: LabelFlow::Reverse,
+                anchor,
+            })
+        }
+        TextCommandDisplayMode::PreserveRight => Some(crate::LabelLayoutDecision {
+            flow: LabelFlow::Forward,
+            anchor: crate::LabelAnchorPolicy::LastGlyph,
+        }),
+        TextCommandDisplayMode::PreserveCenter => Some(crate::LabelLayoutDecision {
+            flow: LabelFlow::Forward,
+            anchor: crate::LabelAnchorPolicy::WholeLabel,
+        }),
+    }
+}
+
+pub(super) fn set_label_command_display_mode_meta(
+    label: &mut crate::NodeLabel,
+    mode: Option<TextCommandDisplayMode>,
+) {
+    set_meta_object_field(
+        &mut label.meta,
+        "displayMode",
+        mode.map(|mode| Value::String(mode.as_str().to_string())),
+    );
+}
+
 fn glyph_clip_profile_for_label(label: &crate::NodeLabel) -> GlyphClipProfile {
     let _ = label;
     GlyphClipProfile::from_margin_width(crate::DEFAULT_BOND_MARGIN_WIDTH_PT.value())
@@ -1744,6 +1810,7 @@ pub(super) fn refreshed_attached_node_label(
     } else {
         source_runs_for_attached_label(node, source_runs, &text, label)
     };
+    let display_mode = label_display_mode_from_meta_value(Some(&label.meta));
     let layout_as_grouped_attached_label = source_runs_are_chemical(&source_runs)
         || (is_cdxml_imported_attached_label(label)
             && !is_explicitly_nonchemical_cdxml_label(label))
@@ -1753,7 +1820,11 @@ pub(super) fn refreshed_attached_node_label(
         &connection_angles,
         layout_as_grouped_attached_label,
     );
-    if let Some(mut override_decision) = cdxml_imported_label_layout_override(label) {
+    if let Some(override_decision) =
+        label_layout_decision_for_command_display_mode(display_mode, &text)
+    {
+        decision = override_decision;
+    } else if let Some(mut override_decision) = cdxml_imported_label_layout_override(label) {
         if matches!(override_decision.flow, LabelFlow::Reverse)
             && crate::label_text_uses_whole_label_layout(&text, connection_angles.len())
         {
@@ -1790,6 +1861,7 @@ pub(super) fn refreshed_attached_node_label(
         default_chemical: source_runs
             .iter()
             .any(|run| run.script.as_deref() == Some("chemical")),
+        display_mode,
     };
     let mut next_label = make_centered_node_label_from_runs(
         &text,
@@ -1844,6 +1916,7 @@ pub(super) fn refreshed_attached_node_label(
             Some(default_chemical),
         );
     }
+    set_label_command_display_mode_meta(&mut next_label, session.display_mode);
     if let Some(measured_geometry) = label.meta.get("measuredGeometry").cloned() {
         set_meta_object_field(
             &mut next_label.meta,

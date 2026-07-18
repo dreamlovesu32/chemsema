@@ -12420,6 +12420,7 @@ fn bracket_label_session(text: &str) -> TextEditSession {
         glyph_polygons: Vec::new(),
         preserve_lines: true,
         default_chemical: false,
+        display_mode: None,
     }
 }
 

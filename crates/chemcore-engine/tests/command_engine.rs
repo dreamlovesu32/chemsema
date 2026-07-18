@@ -643,6 +643,7 @@ fn direct_node_label_runs_can_override_source_text_for_visible_order() {
     assert_eq!(node["label"]["position"], json!([120.0, 100.2]));
     assert_eq!(node["label"]["box"], json!([120.0, 92.0, 144.0, 104.0]));
     assert_eq!(node["label"]["meta"]["sourceRuns"][0]["text"], "NH");
+    assert_eq!(node["label"]["meta"]["sourceRuns"][0]["script"], "normal");
     assert_eq!(
         node["label"]["meta"]["measuredGeometry"]["box"],
         json!([120.0, 92.0, 144.0, 104.0])

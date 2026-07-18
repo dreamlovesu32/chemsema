@@ -48,6 +48,30 @@ pub struct CommandDelta {
     pub dy: f64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TextCommandDisplayMode {
+    ConnectionAuto,
+    LeftAuto,
+    RightAuto,
+    PreserveLeft,
+    PreserveRight,
+    PreserveCenter,
+}
+
+impl TextCommandDisplayMode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ConnectionAuto => "connection-auto",
+            Self::LeftAuto => "left-auto",
+            Self::RightAuto => "right-auto",
+            Self::PreserveLeft => "preserve-left",
+            Self::PreserveRight => "preserve-right",
+            Self::PreserveCenter => "preserve-center",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct TextCommandContent {
@@ -81,6 +105,8 @@ pub struct TextCommandContent {
     pub preserve_implicit_hydrogen_label: bool,
     #[serde(default)]
     pub default_chemical: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_mode: Option<TextCommandDisplayMode>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

@@ -106,7 +106,7 @@ const COMMAND_SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "label-query",
         summary: "Ask the ChemCore text engine how a node label is recognized and displayed for a connection geometry.",
-        usage: "chemcore-cli label-query --text <label> [--connection-angle <deg> ...] [--connection-count <n>] [--no-default-chemical] [--pretty] [--out <path>]",
+        usage: "chemcore-cli label-query --text <label> [--connection-angle <deg> ...] [--connection-count <n>] [--display-mode connection-auto|right-auto|left-auto|preserve-right|preserve-left|preserve-center] [--no-default-chemical] [--pretty] [--out <path>]",
         example: "chemcore-cli label-query --text CF3 --connection-angle 0 --pretty",
     },
     CommandSpec {
@@ -616,8 +616,9 @@ fn protocol_schemas_json() -> Value {
             "usage": command_spec("copy").map(|spec| spec.usage).unwrap_or("")
         },
         "labelQuery": {
-            "description": "Readonly label-engine query. It simulates attaching text to a node with the requested connection angles, then reports sourceText, displayText, sourceRuns, labelRecognition, semantics.anchorAtom, semantics.implicitHydrogenCount, and whether the default display differs from the source text.",
-            "reverseUse": "Use visible text queries to decide whether a visible string can be emitted as a default chemical label or must preserve visible ordering with defaultChemical=false. Generated implicit-hydrogen glyphs are not bond anchors; semantics.generatedHydrogensMayBeBondAnchors is only true for standalone H.",
+            "description": "Readonly label-engine query. It simulates attaching text to a node with the requested connection angles, then reports sourceText, displayText, sourceRuns, labelRecognition, semantics.anchorAtom, semantics.implicitHydrogenCount, whether the default display differs from the source text, and commandFields that can be copied into set-node-label-runs.",
+            "displayMode": "Use --display-mode right-auto for imported CDXML/CDX LabelAlignment=Right without LabelDisplay: ChemCore applies chemical group reversal and right/end anchoring. Use preserve-right/left/center for forced visible display; if forced display and auto reversal produce the same visible text and anchor, pixels cannot recover the hidden source choice.",
+            "reverseUse": "Use visible text queries to decide whether a visible string can be emitted as a default chemical label, should use displayMode preserve-left/right/center to keep visible ordering, or must preserve visible ordering with defaultChemical=false. Pass --display-mode right-auto when OCR evidence says the label is right/end anchored. Generated implicit-hydrogen glyphs are not bond anchors; semantics.generatedHydrogensMayBeBondAnchors is only true for standalone H.",
             "usage": command_spec("label-query").map(|spec| spec.usage).unwrap_or("")
         },
         "commandScript": {
