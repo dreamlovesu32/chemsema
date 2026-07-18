@@ -460,12 +460,12 @@ fn molfile_to_fragment(molfile: &Molfile, record: &SdfRecord) -> (MoleculeFragme
 fn sdf_bond_stereo(bond: &MolBond) -> Option<BondStereo> {
     match bond.stereo {
         1 => Some(BondStereo {
-            kind: "wedge".to_string(),
-            wide_end: format!("n{}", bond.end + 1),
+            kind: "solid-wedge".to_string(),
+            wide_end: "end".to_string(),
         }),
         6 => Some(BondStereo {
-            kind: "hashed".to_string(),
-            wide_end: format!("n{}", bond.end + 1),
+            kind: "hashed-wedge".to_string(),
+            wide_end: "end".to_string(),
         }),
         _ => None,
     }
@@ -496,6 +496,10 @@ fn fragment_to_sdf_record(
     fragment: &MoleculeFragment,
 ) -> Result<String, String> {
     let title = export_record_title(document, object, resource, fragment);
+    let mut export_fragment = fragment.clone();
+    let options = crate::engine::editor_options_from_document(document);
+    crate::engine::expand_complete_labels_in_fragment(&mut export_fragment, &options);
+    let fragment = &export_fragment;
     if fragment.nodes.len() > 999 || fragment.bonds.len() > 999 {
         return Err(
             "V2000 SDF export supports at most 999 atoms and 999 bonds per molecule.".to_string(),
@@ -543,13 +547,14 @@ fn fragment_to_sdf_record(
         let end = *node_index
             .get(bond.end.as_str())
             .ok_or_else(|| format!("Bond {} references missing end node.", bond.id))?;
+        let (begin, end, stereo) = export_bond_direction(bond, begin, end);
         writeln!(
             out,
             "{:>3}{:>3}{:>3}{:>3}  0  0  0",
             begin,
             end,
             bond.order.clamp(1, 3),
-            export_bond_stereo(bond)
+            stereo
         )
         .unwrap();
     }
@@ -655,11 +660,19 @@ fn export_node_symbol(node: &Node) -> String {
     }
 }
 
-fn export_bond_stereo(bond: &Bond) -> u8 {
-    match bond.stereo.as_ref().map(|stereo| stereo.kind.as_str()) {
-        Some("wedge") => 1,
-        Some("hashed") | Some("hashed-wedge") => 6,
-        _ => 0,
+fn export_bond_direction(bond: &Bond, begin: usize, end: usize) -> (usize, usize, u8) {
+    let Some(stereo) = bond.stereo.as_ref() else {
+        return (begin, end, 0);
+    };
+    let code = match stereo.kind.as_str() {
+        "wedge" | "solid-wedge" => 1,
+        "hashed" | "hashed-wedge" => 6,
+        _ => return (begin, end, 0),
+    };
+    if stereo.wide_end == "begin" || stereo.wide_end == bond.begin {
+        (end, begin, code)
+    } else {
+        (begin, end, code)
     }
 }
 
@@ -846,5 +859,119 @@ mod tests {
         assert!(sdf.contains(">  <ID>\n"));
         assert!(sdf.contains("w1\n"));
         assert!(sdf.ends_with("$$$$\n"));
+    }
+
+    #[test]
+    fn sdf_stereo_uses_canonical_wedge_kinds_and_preserves_wide_end() {
+        let mut document = parse_sdf_document(
+            concat!(
+                "Stereo\n",
+                "  ChemCore\n",
+                "\n",
+                "  2  1  0  0  0  0            999 V2000\n",
+                "    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n",
+                "    1.5000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n",
+                "  1  2  1  1  0  0  0\n",
+                "M  END\n",
+                "$$$$\n",
+            ),
+            Some("stereo.sdf"),
+        )
+        .unwrap();
+        let resource_ref = document.objects[0]
+            .payload
+            .resource_ref
+            .as_ref()
+            .unwrap()
+            .clone();
+        let fragment = document.resources[&resource_ref]
+            .data
+            .as_fragment()
+            .unwrap();
+        assert_eq!(
+            fragment.bonds[0].stereo.as_ref().unwrap().kind,
+            "solid-wedge"
+        );
+        assert_eq!(fragment.bonds[0].stereo.as_ref().unwrap().wide_end, "end");
+
+        let round_trip = document_to_sdf(&document).unwrap();
+        assert!(round_trip
+            .lines()
+            .any(|line| line.starts_with("  1  2  1  1")));
+
+        let fragment = document
+            .resources
+            .get_mut(&resource_ref)
+            .unwrap()
+            .data
+            .as_fragment_mut()
+            .unwrap();
+        let stereo = fragment.bonds[0].stereo.as_mut().unwrap();
+        stereo.kind = "hashed-wedge".to_string();
+        stereo.wide_end = "begin".to_string();
+        let reversed = document_to_sdf(&document).unwrap();
+        assert!(reversed
+            .lines()
+            .any(|line| line.starts_with("  2  1  1  6")));
+    }
+
+    #[test]
+    fn sdf_export_expands_complete_recognized_labels() {
+        let mut document = parse_sdf_document(
+            concat!(
+                "Abbreviation\n",
+                "  ChemCore\n",
+                "\n",
+                "  2  1  0  0  0  0            999 V2000\n",
+                "    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n",
+                "    1.5000    0.0000    0.0000 *   0  0  0  0  0  0  0  0  0  0  0  0\n",
+                "  1  2  1  0  0  0  0\n",
+                "M  END\n",
+                "$$$$\n",
+            ),
+            Some("abbreviation.sdf"),
+        )
+        .unwrap();
+        let resource_ref = document.objects[0]
+            .payload
+            .resource_ref
+            .as_ref()
+            .unwrap()
+            .clone();
+        let fragment = document
+            .resources
+            .get_mut(&resource_ref)
+            .unwrap()
+            .data
+            .as_fragment_mut()
+            .unwrap();
+        let node = &mut fragment.nodes[1];
+        node.element = "*".to_string();
+        node.atomic_number = 0;
+        node.is_placeholder = true;
+        node.meta = json!({
+            "labelRecognition": {
+                "status": "recognized",
+                "expansion": {
+                    "complete": true,
+                    "atoms": [
+                        {"id": "c1", "element": "C"},
+                        {"id": "f1", "element": "F"},
+                        {"id": "f2", "element": "F"},
+                        {"id": "f3", "element": "F"}
+                    ],
+                    "bonds": [
+                        {"begin": "c1", "end": "f1", "order": 1},
+                        {"begin": "c1", "end": "f2", "order": 1},
+                        {"begin": "c1", "end": "f3", "order": 1}
+                    ],
+                    "attachments": [{"role": "external", "atomId": "c1"}]
+                }
+            }
+        });
+
+        let sdf = document_to_sdf(&document).unwrap();
+        assert!(sdf.lines().nth(3).unwrap().starts_with("  5  4"));
+        assert!(!sdf.lines().any(|line| line.get(31..34) == Some("*  ")));
     }
 }

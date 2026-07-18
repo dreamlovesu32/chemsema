@@ -18,6 +18,8 @@ mod shapes;
 mod templates;
 mod text_edit;
 
+pub(crate) use self::context_styles::expand_complete_labels_in_fragment;
+
 pub use self::command::{
     CommandAnchor, CommandDelta, CommandDoubleBond, CommandResult, CommandTargetDelta,
     CommandTargetSet, CommandTargets, DocumentCommandFormat, EditorCommand, FocusedDeleteSource,
@@ -52,10 +54,10 @@ use self::bond_styles::{
     update_terminal_double_bond_placement_after_new_attachment,
 };
 use self::delete::FocusedDeleteMode;
+pub(crate) use self::presets::editor_options_from_document;
 use self::presets::{
-    document_style_preset_from_document, editor_options_from_document,
-    editor_options_from_imported_cdxml_document, sync_document_style_info_from_options,
-    SelectedObjectSettings,
+    document_style_preset_from_document, editor_options_from_imported_cdxml_document,
+    sync_document_style_info_from_options, SelectedObjectSettings,
 };
 use crate::{
     adjacent_directions, anchor_from_point, angle_between, bond_center_focus_length, can_draw_bond,

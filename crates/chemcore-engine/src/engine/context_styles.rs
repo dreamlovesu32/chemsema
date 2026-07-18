@@ -825,6 +825,35 @@ fn expand_label_node_in_fragment(
     true
 }
 
+pub(crate) fn expand_complete_labels_in_fragment(
+    fragment: &mut MoleculeFragment,
+    options: &EditorOptions,
+) -> bool {
+    let target_ids = fragment
+        .nodes
+        .iter()
+        .filter_map(|node| label_expansion_from_node(node).map(|_| node.id.clone()))
+        .collect::<Vec<_>>();
+    let mut expanded_node_ids = Vec::new();
+    let mut changed = false;
+    for node_id in target_ids {
+        changed |= expand_label_node_in_fragment(
+            fragment,
+            &node_id,
+            options.bond_length_world_pt().value(),
+            options.bond_stroke_world_pt().value(),
+            options.bold_bond_width_world_pt().value(),
+            options.wedge_width_world_pt().value(),
+            0.0,
+            options.hash_spacing,
+            options.bond_spacing,
+            options.margin_width,
+            &mut expanded_node_ids,
+        );
+    }
+    changed
+}
+
 fn label_expansion_from_node(node: &Node) -> Option<JsonValue> {
     let recognition = node
         .meta

@@ -796,7 +796,7 @@ pub(super) fn sync_document_style_info_from_options(
     update_document_style_info_defaults(document, preset, options);
 }
 
-pub(super) fn editor_options_from_document(document: &ChemcoreDocument) -> EditorOptions {
+pub(crate) fn editor_options_from_document(document: &ChemcoreDocument) -> EditorOptions {
     let mut options = document_style_preset_options(document_style_preset_from_document(document));
     apply_document_style_defaults(&mut options, &document.style.defaults);
     let mut has_cdxml_defaults = false;
