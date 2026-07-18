@@ -1724,6 +1724,7 @@ impl Engine {
             explicit_double,
             line_weights_override,
             None,
+            None,
         )
     }
 
@@ -1736,6 +1737,7 @@ impl Engine {
         explicit_double: Option<DoubleBond>,
         line_weights_override: Option<crate::BondLineWeights>,
         stroke_override: Option<String>,
+        endpoint_attachments: Option<serde_json::Value>,
     ) -> bool {
         let command = EditorCommand::AddBond {
             begin: CommandAnchor::from(&anchor),
@@ -1747,6 +1749,7 @@ impl Engine {
             double: None,
             line_weights: line_weights_override.clone(),
             stroke: stroke_override.clone(),
+            endpoint_attachments: endpoint_attachments.clone(),
         };
         self.with_command(command, |engine| {
             engine.add_bond_between_untracked(
@@ -1757,6 +1760,7 @@ impl Engine {
                 explicit_double,
                 line_weights_override,
                 stroke_override,
+                endpoint_attachments,
             )
         })
     }
@@ -1770,6 +1774,7 @@ impl Engine {
         explicit_double: Option<DoubleBond>,
         line_weights_override: Option<crate::BondLineWeights>,
         stroke_override: Option<String>,
+        endpoint_attachments: Option<serde_json::Value>,
     ) -> bool {
         if anchor
             .object_id
@@ -1843,7 +1848,9 @@ impl Engine {
             margin_width: Some(margin_width),
             line_styles: pending_line_styles,
             line_weights: pending_line_weights,
-            meta: serde_json::Value::Null,
+            meta: endpoint_attachments
+                .map(|attachments| serde_json::json!({ "endpointAttachments": attachments }))
+                .unwrap_or(serde_json::Value::Null),
         });
         update_terminal_double_bond_placement_after_new_attachment(
             entry.fragment,
@@ -2111,6 +2118,7 @@ impl Engine {
                 double,
                 line_weights,
                 stroke,
+                endpoint_attachments,
             } => {
                 let previous_tool = self.state.tool.clone();
                 self.state.tool.bond_variant = variant;
@@ -2122,6 +2130,7 @@ impl Engine {
                     command_double_bond_override(double_placement, double),
                     line_weights,
                     stroke,
+                    endpoint_attachments,
                 );
                 self.state.tool = previous_tool;
                 changed

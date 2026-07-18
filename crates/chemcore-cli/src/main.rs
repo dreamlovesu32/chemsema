@@ -14,6 +14,7 @@ use protocol::{
 use serde_json::Map;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
@@ -358,6 +359,12 @@ fn label_query_report(
         .and_then(|label| label.get("text"))
         .and_then(Value::as_str)
         .map(ToString::to_string);
+    let display_runs = label
+        .as_ref()
+        .and_then(|label| label.get("runs"))
+        .cloned()
+        .unwrap_or(Value::Null);
+    let stored_source_runs = label_meta.get("sourceRuns").cloned().unwrap_or(Value::Null);
     let source_text = label
         .as_ref()
         .and_then(|label| label.get("sourceText"))
@@ -421,6 +428,8 @@ fn label_query_report(
         "requestedDisplay": label_query_display_mode_prediction(text, connection_angles, display_mode),
         "recognition": recognition,
         "sourceRuns": query_source_runs.clone(),
+        "storedSourceRuns": stored_source_runs,
+        "displayRuns": display_runs,
         "commandFields": label_query_command_fields(
             text,
             default_chemical,
@@ -597,6 +606,8 @@ fn label_query_reverse_report(
             "semantics": report.get("semantics").cloned().unwrap_or(Value::Null),
             "recognition": report.get("recognition").cloned().unwrap_or(Value::Null),
             "sourceRuns": source_runs.clone(),
+            "storedSourceRuns": report.get("storedSourceRuns").cloned().unwrap_or(Value::Null),
+            "displayRuns": report.get("displayRuns").cloned().unwrap_or(Value::Null),
             "commandFields": label_query_command_fields(
                 &source_text,
                 source.default_chemical,
@@ -608,6 +619,7 @@ fn label_query_reverse_report(
 
     let recommended_index = recommended_label_query_reverse_candidate_index(&candidates);
     let recommendation = recommended_index.and_then(|index| candidates.get(index).cloned());
+    let observable_equivalence = label_query_observable_equivalence(&candidates);
     Ok(json!({
         "schema": "chemcore.labelQueryReverse.v1",
         "input": {
@@ -620,6 +632,7 @@ fn label_query_reverse_report(
         "recommendedIndex": recommended_index,
         "recommendation": recommendation,
         "candidates": candidates,
+        "observableEquivalence": observable_equivalence,
         "contract": {
             "reverseRole": "The caller supplies visible text, connection geometry, and optional display mode; ChemCore validates source text, display reversal, generated-hydrogen semantics, and defaultChemical behavior.",
             "displayMode": "connection-auto uses the normal endpoint label flow; right-auto models imported CDXML/CDX LabelAlignment=Right without LabelDisplay and may reverse chemical groups while anchoring the original first group at the right end; preserve-right/left/center models forced visible display where source cannot be distinguished from pixels alone when the same visible text and anchor policy result.",
@@ -761,6 +774,69 @@ fn recommended_label_query_reverse_candidate_index(candidates: &[Value]) -> Opti
                 candidate.get("defaultChemical").and_then(Value::as_bool) == Some(false)
             })
         })
+}
+
+fn label_query_observable_equivalence(candidates: &[Value]) -> Value {
+    let mut groups_by_key = BTreeMap::<String, (Value, Vec<usize>)>::new();
+    for (index, candidate) in candidates.iter().enumerate() {
+        if candidate.get("accepted").and_then(Value::as_bool) != Some(true)
+            || candidate
+                .get("displayMatchesVisible")
+                .and_then(Value::as_bool)
+                != Some(true)
+        {
+            continue;
+        }
+        let layout = candidate.get("layout").unwrap_or(&Value::Null);
+        let key = json!({
+            "displayText": candidate.get("displayText").cloned().unwrap_or(Value::Null),
+            "align": layout.get("align").cloned().unwrap_or(Value::Null),
+            "anchor": layout.get("anchor").cloned().unwrap_or(Value::Null),
+            "anchorChar": layout.get("anchorChar").cloned().unwrap_or(Value::Null),
+            "anchorLine": layout.get("anchorLine").cloned().unwrap_or(Value::Null)
+        });
+        groups_by_key
+            .entry(key.to_string())
+            .or_insert_with(|| (key, Vec::new()))
+            .1
+            .push(index);
+    }
+
+    let groups = groups_by_key
+        .into_iter()
+        .filter_map(|(_, (observable, indices))| {
+            if indices.len() < 2 {
+                return None;
+            }
+            let source_choices = indices
+                .iter()
+                .filter_map(|index| {
+                    let candidate = candidates.get(*index)?;
+                    Some(json!({
+                        "candidateIndex": index,
+                        "sourceText": candidate.get("sourceText").cloned().unwrap_or(Value::Null),
+                        "defaultChemical": candidate.get("defaultChemical").cloned().unwrap_or(Value::Null),
+                        "displayMode": candidate.get("displayMode").cloned().unwrap_or(Value::Null),
+                        "layoutFlow": candidate.pointer("/layout/flow").cloned().unwrap_or(Value::Null),
+                        "layoutAnchorPolicy": candidate.pointer("/layout/anchorPolicy").cloned().unwrap_or(Value::Null),
+                        "reason": candidate.get("reason").cloned().unwrap_or(Value::Null),
+                    }))
+                })
+                .collect::<Vec<_>>();
+            Some(json!({
+                "observable": observable,
+                "candidateIndices": indices,
+                "sourceChoices": source_choices,
+                "gatePolicy": "Treat these source/display-mode choices as equivalent only when the rendered glyphs, style runs, anchor/retreat, and topology are otherwise indistinguishable in the input pixels."
+            }))
+        })
+        .collect::<Vec<_>>();
+
+    json!({
+        "indistinguishable": !groups.is_empty(),
+        "groups": groups,
+        "policy": "Reverse label queries expose hidden source-state ambiguity so OCR and gates do not guess author input when multiple accepted candidates produce the same visible text and anchor."
+    })
 }
 
 fn build_label_query_node(
@@ -2620,6 +2696,36 @@ mod tests {
     }
 
     #[test]
+    fn label_query_exposes_display_runs_for_copper_i_digit_ambiguity() {
+        let cu_digit =
+            label_query_report("Cu1", &[180.0], true, LabelQueryDisplayMode::ConnectionAuto)
+                .unwrap();
+        let cu_iodide =
+            label_query_report("CuI", &[180.0], true, LabelQueryDisplayMode::ConnectionAuto)
+                .unwrap();
+        let cu_iodide_right =
+            label_query_report("CuI", &[0.0], true, LabelQueryDisplayMode::ConnectionAuto).unwrap();
+
+        assert_eq!(cu_digit["sourceText"], json!("Cu1"));
+        assert_eq!(cu_digit["displayText"], json!("Cu1"));
+        assert_eq!(cu_digit["displayRuns"][0]["text"], json!("Cu"));
+        assert_eq!(cu_digit["displayRuns"][0]["script"], json!("normal"));
+        assert_eq!(cu_digit["displayRuns"][1]["text"], json!("1"));
+        assert_eq!(cu_digit["displayRuns"][1]["script"], json!("subscript"));
+
+        assert_eq!(cu_iodide["sourceText"], json!("CuI"));
+        assert_eq!(cu_iodide["displayText"], json!("CuI"));
+        assert_eq!(cu_iodide["displayRuns"][0]["text"], json!("CuI"));
+        assert_eq!(cu_iodide["displayRuns"][0]["script"], json!("normal"));
+
+        assert_eq!(cu_iodide_right["sourceText"], json!("CuI"));
+        assert_eq!(cu_iodide_right["displayText"], json!("ICu"));
+        assert_eq!(cu_iodide_right["displayDiffersFromSource"], json!(true));
+        assert_eq!(cu_iodide_right["displayRuns"][0]["text"], json!("ICu"));
+        assert_eq!(cu_iodide_right["displayRuns"][0]["script"], json!("normal"));
+    }
+
+    #[test]
     fn label_query_can_disable_default_chemical_layout() {
         let report =
             label_query_report("CF3", &[0.0], false, LabelQueryDisplayMode::ConnectionAuto)
@@ -2835,6 +2941,19 @@ mod tests {
             report["recommendation"]["semantics"]["anchorAtomicNumber"],
             json!(29)
         );
+        assert_eq!(
+            report["observableEquivalence"]["indistinguishable"],
+            json!(true)
+        );
+        assert!(report["observableEquivalence"]["groups"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|group| {
+                group["candidateIndices"].as_array().is_some_and(|indices| {
+                    indices.contains(&json!(1)) && indices.contains(&json!(2))
+                })
+            }));
     }
 
     #[test]

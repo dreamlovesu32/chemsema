@@ -6715,6 +6715,62 @@ fn parse_cdxml_right_aligned_labels_reverse_groups_independent_of_validity() {
 }
 
 #[test]
+fn parse_cdxml_attached_chemical_label_preserves_visible_spaces() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >
+<CDXML BondLength="14.40" LineWidth="0.60" MarginWidth="1.60" LabelSize="10">
+  <page id="p1" BoundingBox="0 0 100 36">
+    <fragment id="f1" BoundingBox="0 0 100 36">
+      <n id="n1" p="20 18"/>
+      <n id="n2" p="34 18" NodeType="Nickname">
+        <t p="34 22" BoundingBox="34 8 93 24" LabelJustification="Left" LabelAlignment="Left" InterpretChemically="yes" UTF8Text="MgBr CuI Bipy">
+          <s font="3" size="10" color="0" face="96">MgBr CuI Bipy</s>
+        </t>
+      </n>
+      <b id="b1" B="n1" E="n2"/>
+    </fragment>
+  </page>
+</CDXML>"#;
+    let document = parse_cdxml_document(cdxml, Some("spaced chemical label")).expect("cdxml");
+    let label = document
+        .resources
+        .values()
+        .find_map(|resource| resource.data.as_fragment())
+        .and_then(|fragment| fragment.nodes.iter().find(|node| node.id == "n2"))
+        .and_then(|node| node.label.as_ref())
+        .expect("spaced label should import");
+
+    assert_eq!(label.source_text.as_deref(), Some("MgBr CuI Bipy"));
+    assert_eq!(label.text, "MgBr CuI Bipy");
+    let display_text: String = label.runs.iter().map(|run| run.text.as_str()).collect();
+    assert_eq!(display_text, "MgBr CuI Bipy");
+    assert_eq!(
+        label
+            .meta
+            .pointer("/sourceRuns/0/text")
+            .and_then(serde_json::Value::as_str),
+        Some("MgBr CuI Bipy")
+    );
+
+    let first_export = document_to_cdxml(&document);
+    assert!(
+        first_export.contains("UTF8Text=\"MgBr CuI Bipy\""),
+        "export should keep visible/source spaces: {first_export}"
+    );
+    assert!(
+        first_export.contains(">MgBr CuI Bipy</s>"),
+        "exported text run should keep spaces: {first_export}"
+    );
+    let reimported = parse_cdxml_document(&first_export, Some("spaced chemical label"))
+        .expect("reimport should parse");
+    let second_export = document_to_cdxml(&reimported);
+    assert_eq!(
+        second_export, first_export,
+        "CDXML spaced chemical label roundtrip should stabilize"
+    );
+}
+
+#[test]
 fn parse_cdxml_normal_face_attached_label_uses_group_layout() {
     let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >

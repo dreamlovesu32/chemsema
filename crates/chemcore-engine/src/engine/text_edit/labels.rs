@@ -312,6 +312,11 @@ pub(super) fn make_centered_node_label_from_runs(
     }
     let layout = layout_label_text(text, &decision);
     let (lines, line_runs) = layout_display_runs(&display_runs, &decision);
+    let rendered_text = if lines.is_empty() {
+        layout.rendered_text.clone()
+    } else {
+        lines.join("\n")
+    };
     let anchor_char = label_anchor_char_for_layout(&line_runs, &layout);
     let line_height = crate::molecule_label_line_advance(font_size);
     let estimated_width = lines
@@ -460,7 +465,7 @@ pub(super) fn make_centered_node_label_from_runs(
         .map(|position| [round2(position[0]), round2(position[1])])
         .unwrap_or([x1, baseline_y]);
     crate::NodeLabel {
-        text: layout.rendered_text,
+        text: rendered_text,
         source_text: Some(text.to_string()),
         position: Some(label_position),
         box_field: Some([x1, y1, x2, y2]),
@@ -503,11 +508,26 @@ fn label_anchor_polygon_index(
 ) -> Option<usize> {
     let mut index = 0usize;
     for (line_index, runs) in line_runs.iter().enumerate() {
-        let line_len: usize = runs.iter().map(|run| run.text.chars().count()).sum();
         if line_index == anchor_line {
-            return (anchor_char < line_len).then_some(index + anchor_char);
+            let mut visible_index = 0usize;
+            for run in runs {
+                for ch in run.text.chars() {
+                    if visible_index == anchor_char {
+                        return (!ch.is_whitespace()).then_some(index);
+                    }
+                    if !ch.is_whitespace() {
+                        index += 1;
+                    }
+                    visible_index += 1;
+                }
+            }
+            return None;
         }
-        index += line_len;
+        index += runs
+            .iter()
+            .flat_map(|run| run.text.chars())
+            .filter(|ch| !ch.is_whitespace())
+            .count();
     }
     None
 }
@@ -664,9 +684,6 @@ pub(super) fn split_styled_groups(
     let mut glyphs = Vec::new();
     for run in display_runs {
         for ch in run.text.chars() {
-            if ch.is_whitespace() {
-                continue;
-            }
             glyphs.push(StyledGlyph {
                 ch,
                 run: LabelRun {
@@ -682,7 +699,39 @@ pub(super) fn split_styled_groups(
             });
         }
     }
-    split_styled_glyph_groups(&glyphs, whole_label)
+    if glyphs.is_empty() {
+        return Vec::new();
+    }
+    if whole_label {
+        return vec![glyphs];
+    }
+    if !glyphs.iter().any(|glyph| glyph.ch.is_whitespace()) {
+        return split_styled_glyph_groups(&glyphs, false);
+    }
+
+    let mut groups = Vec::new();
+    let mut span = Vec::<StyledGlyph>::new();
+    for glyph in glyphs {
+        if glyph.ch.is_whitespace() {
+            if !span.is_empty() {
+                groups.push(std::mem::take(&mut span));
+            }
+            if let Some(previous) = groups
+                .last_mut()
+                .filter(|group| group.iter().all(|item| item.ch.is_whitespace()))
+            {
+                previous.push(glyph);
+            } else {
+                groups.push(vec![glyph]);
+            }
+        } else {
+            span.push(glyph);
+        }
+    }
+    if !span.is_empty() {
+        groups.push(span);
+    }
+    groups
 }
 
 fn split_styled_glyph_groups(glyphs: &[StyledGlyph], whole_label: bool) -> Vec<Vec<StyledGlyph>> {
@@ -858,22 +907,38 @@ fn label_anchor_char_for_layout(line_runs: &[Vec<LabelRun>], layout: &crate::Lab
 
 fn label_anchor_char_for_runs(runs: &[LabelRun], fallback_index: usize) -> usize {
     let mut shifted = Vec::new();
+    let mut chars = Vec::new();
     for run in runs {
         let is_shifted = matches!(run.script.as_deref(), Some("subscript" | "superscript"));
-        shifted.extend(run.text.chars().map(|_| is_shifted));
+        for ch in run.text.chars() {
+            chars.push(ch);
+            shifted.push(is_shifted);
+        }
     }
-    if shifted.is_empty() {
+    if chars.is_empty() {
         return fallback_index;
     }
 
-    let fallback_index = fallback_index.min(shifted.len() - 1);
+    let nonspace_indices = chars
+        .iter()
+        .enumerate()
+        .filter_map(|(index, ch)| (!ch.is_whitespace()).then_some(index))
+        .collect::<Vec<_>>();
+    if nonspace_indices.is_empty() {
+        return fallback_index.min(chars.len() - 1);
+    }
+
+    let fallback_index = nonspace_indices[fallback_index.min(nonspace_indices.len() - 1)];
     if !shifted[fallback_index] {
         return fallback_index;
     }
     (0..=fallback_index)
         .rev()
-        .find(|index| !shifted[*index])
-        .or_else(|| (fallback_index + 1..shifted.len()).find(|index| !shifted[*index]))
+        .find(|index| !shifted[*index] && !chars[*index].is_whitespace())
+        .or_else(|| {
+            (fallback_index + 1..shifted.len())
+                .find(|index| !shifted[*index] && !chars[*index].is_whitespace())
+        })
         .unwrap_or(fallback_index)
 }
 

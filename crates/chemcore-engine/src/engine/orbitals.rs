@@ -571,6 +571,7 @@ mod tests {
                 double: None,
                 line_weights: None,
                 stroke: None,
+                endpoint_attachments: None,
             })
             .expect("add bond");
         let mut tool = engine.state.tool.clone();

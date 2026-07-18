@@ -265,6 +265,13 @@ pub enum EditorCommand {
         line_weights: Option<BondLineWeights>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         stroke: Option<String>,
+        #[serde(
+            default,
+            rename = "endpointAttachments",
+            alias = "endpoint_attachments",
+            skip_serializing_if = "Option::is_none"
+        )]
+        endpoint_attachments: Option<Value>,
     },
     AddArrow {
         begin: CommandAnchor,

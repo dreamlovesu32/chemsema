@@ -106,8 +106,8 @@ const COMMAND_SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "label-query",
         summary: "Ask the ChemCore text engine how a node label is recognized and displayed for a connection geometry.",
-        usage: "chemcore-cli label-query --text <label> [--connection-angle <deg> ...] [--connection-count <n>] [--display-mode connection-auto|right-auto|left-auto|preserve-right|preserve-left|preserve-center] [--no-default-chemical] [--pretty] [--out <path>]",
-        example: "chemcore-cli label-query --text CF3 --connection-angle 0 --pretty",
+        usage: "chemcore-cli label-query (--text <source-label>|--visible-text <visible-label>) [--connection-angle <deg> ...] [--connection-count <n>] [--display-mode connection-auto|right-auto|left-auto|preserve-right|preserve-left|preserve-center] [--no-default-chemical] [--pretty] [--out <path>]",
+        example: "chemcore-cli label-query --visible-text F3C --connection-angle 0 --pretty",
     },
     CommandSpec {
         name: "inspect",
@@ -618,7 +618,7 @@ fn protocol_schemas_json() -> Value {
         "labelQuery": {
             "description": "Readonly label-engine query. It simulates attaching text to a node with the requested connection angles, then reports sourceText, displayText, sourceRuns, labelRecognition, semantics.anchorAtom, semantics.implicitHydrogenCount, whether the default display differs from the source text, and commandFields that can be copied into set-node-label-runs.",
             "displayMode": "Use --display-mode right-auto for imported CDXML/CDX LabelAlignment=Right without LabelDisplay: ChemCore applies chemical group reversal and right/end anchoring. Use preserve-right/left/center for forced visible display; if forced display and auto reversal produce the same visible text and anchor, pixels cannot recover the hidden source choice.",
-            "reverseUse": "Use visible text queries to decide whether a visible string can be emitted as a default chemical label, should use displayMode preserve-left/right/center to keep visible ordering, or must preserve visible ordering with defaultChemical=false. Pass --display-mode right-auto when OCR evidence says the label is right/end anchored. Generated implicit-hydrogen glyphs are not bond anchors; semantics.generatedHydrogensMayBeBondAnchors is only true for standalone H.",
+            "reverseUse": "Use visible text queries to decide whether a visible string can be emitted as a default chemical label, should use displayMode preserve-left/right/center to keep visible ordering, or must preserve visible ordering with defaultChemical=false. Pass --display-mode right-auto when OCR evidence says the label is right/end anchored. Reverse reports include observableEquivalence groups so OCR can treat hidden source/display-mode choices as equivalent only when rendered glyphs, style runs, anchor/retreat, and topology are otherwise indistinguishable. Generated implicit-hydrogen glyphs are not bond anchors; semantics.generatedHydrogensMayBeBondAnchors is only true for standalone H.",
             "usage": command_spec("label-query").map(|spec| spec.usage).unwrap_or("")
         },
         "commandScript": {
@@ -651,7 +651,7 @@ fn protocol_schemas_json() -> Value {
                     "description": "Clears the current in-memory selection."
                 },
                 "add-bond": {
-                    "description": "Creates a ChemCore bond from begin to end with order and variant. Optional wideEnd begin/end sets the wide endpoint for wedge, hashed-wedge, and hollow-wedge variants without reversing the bond connection direction. Optional stroke preserves explicit bond color; optional doublePlacement left/right/center, or double.placement, freezes an explicit double-bond placement while preserving the default automatic behavior when omitted."
+                    "description": "Creates a ChemCore bond from begin to end with order and variant. Optional wideEnd begin/end sets the wide endpoint for wedge, hashed-wedge, and hollow-wedge variants without reversing the bond connection direction. Optional stroke preserves explicit bond color; optional doublePlacement left/right/center, or double.placement, freezes an explicit double-bond placement while preserving the default automatic behavior when omitted. Optional endpointAttachments stores begin/end internal label character attachments, matching imported CDX/CDXML BeginAttach/EndAttach semantics."
                 },
                 "move-targets": {
                     "description": "Moves explicit nodes, bonds, objects, or labelNodes by delta dx/dy without relying on current selection."
