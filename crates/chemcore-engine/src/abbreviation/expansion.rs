@@ -257,6 +257,7 @@ fn expand_component(
         "CF3" => expand_trihalomethyl(builder, "F"),
         "CPh3" => expand_triphenylmethyl(builder),
         "Cy" => expand_cyclohexyl(builder),
+        "Ad" => expand_adamantyl(builder),
         "Mes" => expand_mesityl(builder),
         "NHPh" => expand_anilino(builder),
         _ => expand_opaque_component(builder, component),
@@ -414,6 +415,27 @@ fn expand_cyclohexyl(builder: &mut ExpansionBuilder) -> FragmentExpansion {
     }
     FragmentExpansion {
         left_atom: ring[0].clone(),
+        right_atom: None,
+        complete: true,
+    }
+}
+
+fn expand_adamantyl(builder: &mut ExpansionBuilder) -> FragmentExpansion {
+    // Adamantane is the diamondoid K4 graph with every edge subdivided once.
+    // The first bridgehead is the external attachment point (1-adamantyl).
+    let bridgeheads = [
+        builder.add_atom("C", Some(0)),
+        builder.add_atom("C", Some(1)),
+        builder.add_atom("C", Some(1)),
+        builder.add_atom("C", Some(1)),
+    ];
+    for (left, right) in [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)] {
+        let methylene = builder.add_atom("C", Some(2));
+        builder.add_bond(&bridgeheads[left], &methylene, 1);
+        builder.add_bond(&methylene, &bridgeheads[right], 1);
+    }
+    FragmentExpansion {
+        left_atom: bridgeheads[0].clone(),
         right_atom: None,
         complete: true,
     }

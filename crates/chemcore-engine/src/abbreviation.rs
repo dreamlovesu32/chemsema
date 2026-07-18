@@ -241,6 +241,7 @@ const TERMINAL_FRAGMENTS: &[FragmentDef] = &[
     terminal("CPh3", &[], "trityl", "-CPh3", "C"),
     terminal("Cp", &[], "cyclopentadienyl", "Cp", "C"),
     terminal("Cy", &[], "cyclohexyl", "-C6H11", "C"),
+    terminal("Ad", &[], "1-adamantyl", "-C10H15", "C"),
     terminal("Mes", &[], "mesityl", "2,4,6-trimethylphenyl", "C"),
     terminal("NHPh", &[], "anilino", "-NHPh", "N"),
     terminal("Indole", &[], "indolyl / indole template", "Indole", "C"),
@@ -479,5 +480,22 @@ fn canonical_label_for(input_label: &str, canonical: &str) -> String {
         "s-Bu" => "sBu".to_string(),
         "t-Bu" => "tBu".to_string(),
         _ => canonical.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn recognizes_adamantyl_with_a_complete_structural_expansion() {
+        let meta = recognized_abbreviation_meta("Ad").expect("Ad should be recognized");
+        let expansion = &meta["expansion"];
+        assert_eq!(meta["canonicalLabel"], "Ad");
+        assert_eq!(meta["formula"], "-C10H15");
+        assert_eq!(expansion["complete"], true);
+        assert_eq!(expansion["atoms"].as_array().unwrap().len(), 10);
+        assert_eq!(expansion["bonds"].as_array().unwrap().len(), 12);
+        assert_eq!(expansion["attachments"][0]["atomId"], "c1");
     }
 }
