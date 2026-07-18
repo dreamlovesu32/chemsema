@@ -37,6 +37,11 @@ jobs:
           CHEMCORE_CLI: ${{ github.workspace }}/target/release/chemcore-cli
         run: python3 ChemCoreSkills/skills/chemcore-cli/scripts/check_cli_skill_sync.py --suite-root ChemCoreSkills --json
 
+      - name: Package and test Linux CLI distribution
+        run: |
+          archive=$(bash scripts/package-linux-cli.sh --cli target/release/chemcore-cli --out-dir target/linux-cli-dist)
+          bash scripts/test-linux-cli-package.sh "$archive"
+
   verify:
     name: Windows verify
     runs-on: windows-latest

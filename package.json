@@ -18,6 +18,7 @@
     "cli:ubuntu:build": "node scripts/wsl-cli.mjs build",
     "cli:ubuntu:smoke": "node scripts/wsl-cli.mjs smoke",
     "cli:ubuntu:test": "node scripts/wsl-cli.mjs test",
+    "cli:linux:package": "node scripts/package-linux-cli.mjs",
     "cli": "cargo run -p chemcore-cli --",
     "compare:cdxml-symbol-pixels": "node scripts/compare-cdxml-symbol-pixels.mjs",
     "compare:svg-pixels": "node scripts/compare-svg-pixels.mjs",
