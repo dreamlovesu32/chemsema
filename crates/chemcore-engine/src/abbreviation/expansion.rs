@@ -221,6 +221,8 @@ fn expand_component(
         "sBu" => expand_sec_butyl(builder),
         "tBu" => expand_tert_butyl(builder),
         "Ph" => expand_phenyl(builder),
+        "1-Np" => expand_naphthyl(builder, 0),
+        "2-Np" => expand_naphthyl(builder, 1),
         "PhCOOH" => expand_benzoic_acid_substituent(builder),
         "Bn" => expand_benzyl(builder),
         "Bz" => expand_benzoyl(builder),
@@ -403,6 +405,38 @@ fn expand_phenyl_ring(builder: &mut ExpansionBuilder) -> (FragmentExpansion, Vec
         },
         ring,
     )
+}
+
+fn expand_naphthyl(builder: &mut ExpansionBuilder, attachment_index: usize) -> FragmentExpansion {
+    let mut atoms = Vec::new();
+    for index in 0..10 {
+        let hydrogens = if index == attachment_index || matches!(index, 4 | 5) {
+            0
+        } else {
+            1
+        };
+        atoms.push(builder.add_atom("C", Some(hydrogens)));
+    }
+    for (begin, end, order) in [
+        (0, 1, 2),
+        (1, 2, 1),
+        (2, 3, 2),
+        (3, 4, 1),
+        (4, 5, 2),
+        (5, 0, 1),
+        (5, 6, 1),
+        (6, 7, 2),
+        (7, 8, 1),
+        (8, 9, 2),
+        (9, 4, 1),
+    ] {
+        builder.add_bond(&atoms[begin], &atoms[end], order);
+    }
+    FragmentExpansion {
+        left_atom: atoms[attachment_index].clone(),
+        right_atom: None,
+        complete: true,
+    }
 }
 
 fn expand_cyclohexyl(builder: &mut ExpansionBuilder) -> FragmentExpansion {

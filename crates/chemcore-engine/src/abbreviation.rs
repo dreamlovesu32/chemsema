@@ -182,8 +182,8 @@ const TERMINAL_FRAGMENTS: &[FragmentDef] = &[
     terminal("sBu", &["s-Bu"], "sec-butyl", "-CH(CH3)CH2CH3", "C"),
     terminal("tBu", &["t-Bu"], "tert-butyl", "-C(CH3)3", "C"),
     terminal("Ph", &[], "phenyl", "-C6H5", "C"),
-    terminal("1-Np", &[], "1-naphthyl", "-1-naphthyl", "C"),
-    terminal("2-Np", &[], "2-naphthyl", "-2-naphthyl", "C"),
+    terminal("1-Np", &["1-NP"], "1-naphthyl", "-1-naphthyl", "C"),
+    terminal("2-Np", &["2-NP"], "2-naphthyl", "-2-naphthyl", "C"),
     terminal("PhCOOH", &[], "benzoic acid substituent", "PhCOOH", "C"),
     terminal("Bn", &[], "benzyl", "-CH2Ph", "C"),
     terminal("Bz", &[], "benzoyl", "-C(=O)Ph", "C"),
@@ -479,6 +479,8 @@ fn canonical_label_for(input_label: &str, canonical: &str) -> String {
         "i-Bu" => "iBu".to_string(),
         "s-Bu" => "sBu".to_string(),
         "t-Bu" => "tBu".to_string(),
+        "1-NP" => "1-Np".to_string(),
+        "2-NP" => "2-Np".to_string(),
         _ => canonical.to_string(),
     }
 }
@@ -486,6 +488,18 @@ fn canonical_label_for(input_label: &str, canonical: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn recognizes_uppercase_naphthyl_aliases_with_complete_expansions() {
+        for (label, canonical, attachment) in [("1-NP", "1-Np", "c1"), ("2-NP", "2-Np", "c2")] {
+            let meta = recognized_abbreviation_meta(label).expect("naphthyl should be recognized");
+            assert_eq!(meta["canonicalLabel"], canonical);
+            assert_eq!(meta["expansion"]["complete"], true);
+            assert_eq!(meta["expansion"]["atoms"].as_array().unwrap().len(), 10);
+            assert_eq!(meta["expansion"]["bonds"].as_array().unwrap().len(), 11);
+            assert_eq!(meta["expansion"]["attachments"][0]["atomId"], attachment);
+        }
+    }
 
     #[test]
     fn recognizes_adamantyl_with_a_complete_structural_expansion() {
