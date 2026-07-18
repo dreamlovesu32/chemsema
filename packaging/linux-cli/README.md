@@ -34,6 +34,10 @@ The installer detects zsh or bash from `$SHELL`, adds one marked PATH block to
 the corresponding startup file, and replaces that block on reinstall. Override
 the file with `--shell-config <path>`, or use `--no-modify-path`.
 
+Every installation creates `<prefix>/plugins`. Extensions install into their
+own directory below it and do not add another PATH entry. Uninstall plugins
+before uninstalling the core CLI.
+
 For a shared system installation:
 
 ```bash

@@ -29,6 +29,11 @@ The installer selects `.zshrc` or `.bashrc` from `$SHELL`, unless
 replaces it during reinstall. Use `--no-modify-path` for `/usr/local`, module
 files, containers, or manually managed shell configuration.
 
+The installer also creates `<prefix>/plugins` as the stable extension root.
+Plugin installers verify the ChemCore CLI and install into a dedicated
+subdirectory such as `<prefix>/plugins/chemcore-reaction` without changing
+`PATH` again.
+
 Uninstall a dedicated home installation with:
 
 ```bash

@@ -39,7 +39,7 @@ package_name="chemcore-cli-${version}-linux-x86_64"
 temporary="$(mktemp -d)"
 trap 'rm -rf "$temporary"' EXIT
 stage="$temporary/$package_name"
-mkdir -p "$stage/bin" "$stage/share/chemcore" "$out_dir"
+mkdir -p "$stage/bin" "$stage/share/chemcore" "$stage/plugins" "$out_dir"
 
 install -m755 "$cli_path" "$stage/bin/chemcore-cli"
 install -m755 "$root_dir/packaging/linux-cli/install.sh" "$stage/install.sh"

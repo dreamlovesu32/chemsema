@@ -23,6 +23,7 @@ mkdir -p "$test_home"
 HOME="$test_home" SHELL=/usr/bin/zsh "$package_dir/install.sh" \
   --prefix "$test_home/chemcore-cli"
 test -x "$test_home/chemcore-cli/bin/chemcore-cli"
+test -d "$test_home/chemcore-cli/plugins"
 grep -F '# >>> chemcore-cli >>>' "$test_home/.zshrc" >/dev/null
 PATH="$test_home/chemcore-cli/bin:$PATH" chemcore-cli capabilities >/dev/null
 HOME="$test_home" SHELL=/usr/bin/zsh \
@@ -35,6 +36,7 @@ test ! -e "$test_home/chemcore-cli/bin/chemcore-cli"
 HOME="$test_home" SHELL=/bin/bash "$package_dir/install.sh" \
   --prefix "$test_home/.local" --no-modify-path
 test -x "$test_home/.local/bin/chemcore-cli"
+test -d "$test_home/.local/plugins"
 test ! -e "$test_home/.bashrc"
 HOME="$test_home" SHELL=/bin/bash \
   "$test_home/.local/share/chemcore/uninstall.sh" \

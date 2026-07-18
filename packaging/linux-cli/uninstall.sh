@@ -61,6 +61,12 @@ fi
 
 marker_begin="# >>> chemcore-cli >>>"
 marker_end="# <<< chemcore-cli <<<"
+
+if [[ -d "$prefix/plugins" ]] && find "$prefix/plugins" -mindepth 1 -maxdepth 1 -print -quit | grep -q .; then
+  echo "ChemCore plugins are still installed under $prefix/plugins." >&2
+  echo "Uninstall them before removing ChemCore CLI." >&2
+  exit 1
+fi
 if [[ -n "$config_path" && -f "$config_path" ]]; then
   temporary="$(mktemp "${config_path}.chemcore.XXXXXX")"
   awk -v begin="$marker_begin" -v end="$marker_end" '
@@ -80,7 +86,7 @@ rm -f \
   "$prefix/share/chemcore/VERSION" \
   "$prefix/share/chemcore/SHA256SUMS" \
   "$prefix/share/chemcore/uninstall.sh"
-rmdir "$prefix/share/chemcore" "$prefix/share" "$prefix/bin" "$prefix" 2>/dev/null || true
+rmdir "$prefix/plugins" "$prefix/share/chemcore" "$prefix/share" "$prefix/bin" "$prefix" 2>/dev/null || true
 
 echo "ChemCore CLI removed from $prefix"
 if [[ -n "$config_path" ]]; then

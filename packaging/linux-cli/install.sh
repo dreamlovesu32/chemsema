@@ -97,6 +97,7 @@ install -Dm644 "$package_dir/share/chemcore/LICENSE" "$prefix/share/chemcore/LIC
 install -Dm644 "$package_dir/share/chemcore/VERSION" "$prefix/share/chemcore/VERSION"
 install -Dm644 "$package_dir/share/chemcore/SHA256SUMS" "$prefix/share/chemcore/SHA256SUMS"
 install -Dm755 "$package_dir/uninstall.sh" "$prefix/share/chemcore/uninstall.sh"
+mkdir -p "$prefix/plugins"
 
 if [[ -n "$config_path" ]]; then
   mkdir -p "$(dirname "$config_path")"
@@ -116,6 +117,7 @@ fi
 "$prefix/bin/chemcore-cli" version --pretty >/dev/null
 
 echo "ChemCore CLI installed to $prefix/bin/chemcore-cli"
+echo "Plugin directory: $prefix/plugins"
 if [[ -n "$config_path" ]]; then
   echo "PATH updated in $config_path"
   echo "Open a new shell or run: source \"$config_path\""
