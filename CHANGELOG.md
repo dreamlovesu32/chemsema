@@ -2,6 +2,15 @@
 
 All notable public changes to ChemSema are tracked here.
 
+## Unreleased
+
+- Added a reproducible public CDXML/CDX round-trip corpus pinned to 413
+  license-clear files from RDKit, Indigo, cdxml-toolkit, SAMPL6, and SAMPL9,
+  together with machine-readable baseline reporting.
+- Made CDXML file loading tolerate isolated Windows-1252 punctuation bytes in
+  legacy files that incorrectly declare UTF-8, while keeping other document
+  formats on the strict UTF-8 path.
+
 ## ChemSema 1.0.0-beta.1 — 2026-07-19
 
 The first public beta under the ChemSema name.

@@ -4,6 +4,7 @@ use chemsema_engine::{
     Point, PointerEvent, RenderBoundsScope, RenderPrimitive, RenderRole, ShapeKind, ShapeStyle,
     TextEditLayoutRequest, TextEditSession, Tool, ToolState, WorldPoint, WorldPt,
 };
+use encoding_rs::WINDOWS_1252;
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use flate2::Compression;
@@ -1640,6 +1641,42 @@ mod tests {
         assert_eq!(opened.format, "cdx");
         assert!(opened.text.contains("<CDXML"));
         assert!(opened.text.contains("<fragment"));
+    }
+
+    #[test]
+    fn cdxml_file_reader_recovers_windows_1252_bytes_mislabeled_as_utf8() {
+        let mut service = DesktopDocumentService::new();
+        let path = std::env::temp_dir().join(format!(
+            "chemsema-cdxml-windows-1252-{}-{}.cdxml",
+            std::process::id(),
+            1
+        ));
+        let mut cdxml = br#"<?xml version="1.0" encoding="UTF-8" ?>
+<CDXML><page><t><s>radical "#
+            .to_vec();
+        cdxml.push(0x95);
+        cdxml.extend_from_slice(b"</s></t></page></CDXML>\n");
+        fs::write(&path, cdxml).unwrap();
+        let opened = service.read_document_file(&path).unwrap();
+        let _ = fs::remove_file(&path);
+
+        assert_eq!(opened.format, "cdxml");
+        assert!(opened.text.contains("radical •"));
+    }
+
+    #[test]
+    fn non_cdxml_text_reader_still_rejects_invalid_utf8() {
+        let mut service = DesktopDocumentService::new();
+        let path = std::env::temp_dir().join(format!(
+            "chemsema-invalid-utf8-{}-{}.ccjs",
+            std::process::id(),
+            1
+        ));
+        fs::write(&path, [b'{', 0x95, b'}']).unwrap();
+        let result = service.read_document_file(&path);
+        let _ = fs::remove_file(&path);
+
+        assert!(result.is_err());
     }
 
     #[test]

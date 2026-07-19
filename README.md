@@ -400,6 +400,17 @@ with matching golden SVG snapshots in
 [fixtures/expected/svg](./fixtures/expected/svg/). The comparison and snapshot
 workflow is documented in [Rendering Comparison And Regression Assets](./docs/rendering-comparison.md).
 
+The license-clear public round-trip corpus is documented in
+[benchmarks/public-cdxml](./benchmarks/public-cdxml/README.md). It pins 413
+CDXML/CDX files from five upstream projects without committing their source
+files into this repository:
+
+```bash
+npm run benchmark:cdxml-public:fetch
+cargo build -p chemsema-cli
+npm run benchmark:cdxml-public
+```
+
 Some scripts compare output against locally installed desktop applications or
 Office. Those flows are optional and may require Windows-specific software,
 local documents, or `CHEMSEMA_PYTHON` to point at a Python environment with the

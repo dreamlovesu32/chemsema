@@ -14,9 +14,7 @@ impl DesktopDocumentService {
         } else if format == "cdx" {
             cdx_to_cdxml(&bytes)?
         } else {
-            String::from_utf8(bytes).map_err(|error| {
-                format!("Failed to read {} as UTF-8 text: {error}", path.display())
-            })?
+            decode_document_text(&bytes, &format, &path)?
         };
         let text = if is_ole_edit_path(&path) {
             ole_edit_document_text(&text).unwrap_or(text)
@@ -140,6 +138,30 @@ impl DesktopDocumentService {
         let json = serde_json::to_string_pretty(&store).map_err(|error| error.to_string())?;
         fs::write(path, format!("{json}\n"))
             .map_err(|error| format!("Failed to write {}: {error}", path.display()))
+    }
+}
+
+fn decode_document_text(bytes: &[u8], format: &str, path: &Path) -> Result<String, String> {
+    match std::str::from_utf8(bytes) {
+        Ok(text) => Ok(text.to_string()),
+        Err(utf8_error) if format == "cdxml" => {
+            // Real-world ChemDraw XML sometimes declares UTF-8 while carrying
+            // one or two legacy Windows-1252 punctuation bytes. Preserve a
+            // strict UTF-8 path first, then use the narrow legacy fallback.
+            let (text, _, had_errors) = WINDOWS_1252.decode(bytes);
+            if had_errors {
+                Err(format!(
+                    "Failed to read {} as UTF-8 or Windows-1252 CDXML text: {utf8_error}",
+                    path.display()
+                ))
+            } else {
+                Ok(text.into_owned())
+            }
+        }
+        Err(error) => Err(format!(
+            "Failed to read {} as UTF-8 text: {error}",
+            path.display()
+        )),
     }
 }
 

@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 1,
+  "description": "Pinned, license-clear public ChemDraw CDXML/CDX corpus sources for ChemSema round-trip benchmarks.",
+  "sources": [
+    {
+      "id": "rdkit",
+      "repository": "https://github.com/rdkit/rdkit.git",
+      "revision": "0062b670640352ab63d6256be608615e87e1af53",
+      "license": {
+        "spdx": "BSD-3-Clause",
+        "url": "https://github.com/rdkit/rdkit/blob/0062b670640352ab63d6256be608615e87e1af53/license.txt"
+      },
+      "sparsePaths": [
+        "Code/GraphMol/FileParsers",
+        "Code/GraphMol/Substruct",
+        "Code/GraphMol/Wrap/test_data",
+        "Code/GraphMol/test_data/CDX",
+        "Code/GraphMol/test_data/CDXML",
+        "External/ChemDraw/test_data",
+        "rdkit/Chem/test_data"
+      ],
+      "expectedFiles": { "cdxml": 94, "cdx": 126 },
+      "specialCases": [
+        {
+          "path": "Code/GraphMol/test_data/CDXML/malformed.cdxml",
+          "class": "invalid",
+          "reason": "Deliberately truncated XML parser regression fixture."
+        }
+      ]
+    },
+    {
+      "id": "indigo",
+      "repository": "https://github.com/epam/Indigo.git",
+      "revision": "d3f2f30fb3bf95ec1bf5b65a8dd28929ecf419b6",
+      "license": {
+        "spdx": "Apache-2.0",
+        "url": "https://github.com/epam/Indigo/blob/d3f2f30fb3bf95ec1bf5b65a8dd28929ecf419b6/LICENSE"
+      },
+      "sparsePaths": [
+        "api/tests/integration/tests/formats",
+        "api/tests/integration/tests/rendering",
+        "api/wasm/indigo-ketcher/test",
+        "data/reactions/basic"
+      ],
+      "expectedFiles": { "cdxml": 123, "cdx": 28 },
+      "specialCases": [
+        {
+          "path": "api/tests/integration/tests/formats/molecules/bad-header.cdx",
+          "class": "invalid",
+          "reason": "Deliberately invalid CDX header fixture."
+        },
+        {
+          "path": "api/tests/integration/tests/formats/molecules/cdx/arom64.cdx",
+          "class": "transport-encoded",
+          "reason": "Base64 text containing CDX bytes rather than a raw CDX file."
+        },
+        {
+          "path": "api/tests/integration/tests/formats/molecules/cdx/arrow64.cdx",
+          "class": "transport-encoded",
+          "reason": "Base64 text containing CDX bytes rather than a raw CDX file."
+        },
+        {
+          "path": "api/tests/integration/tests/formats/molecules/cdx/simple_rgrp64.cdx",
+          "class": "transport-encoded",
+          "reason": "Base64 text containing CDX bytes rather than a raw CDX file."
+        },
+        {
+          "path": "api/wasm/indigo-ketcher/test/test64.cdx",
+          "class": "transport-encoded",
+          "reason": "Base64 text containing CDX bytes rather than a raw CDX file."
+        }
+      ]
+    },
+    {
+      "id": "cdxml-toolkit",
+      "repository": "https://github.com/leehiufung911/cdxml-toolkit.git",
+      "revision": "13428114eb174e6d94c7075db71c5469c031d1c5",
+      "license": {
+        "spdx": "MIT",
+        "url": "https://github.com/leehiufung911/cdxml-toolkit/blob/13428114eb174e6d94c7075db71c5469c031d1c5/LICENSE"
+      },
+      "sparsePaths": [
+        "experiments/scheme_dsl/showcase",
+        "samples/KL-CC-001",
+        "samples/KL-CC-002",
+        "samples/consolidated"
+      ],
+      "expectedFiles": { "cdxml": 34, "cdx": 2 },
+      "specialCases": []
+    },
+    {
+      "id": "sampl6",
+      "repository": "https://github.com/samplchallenges/SAMPL6.git",
+      "revision": "c661d3985af7fa0ba8c64a1774cfb2363cd31bda",
+      "license": {
+        "spdx": "MIT",
+        "url": "https://github.com/samplchallenges/SAMPL6/blob/c661d3985af7fa0ba8c64a1774cfb2363cd31bda/LICENSE"
+      },
+      "sparsePaths": ["host_guest"],
+      "expectedFiles": { "cdxml": 1, "cdx": 2 },
+      "specialCases": []
+    },
+    {
+      "id": "sampl9",
+      "repository": "https://github.com/samplchallenges/SAMPL9.git",
+      "revision": "22aa2df3a086f5f0ca49dab8f8d75e5e0305445b",
+      "license": {
+        "spdx": "MIT",
+        "url": "https://github.com/samplchallenges/SAMPL9/blob/22aa2df3a086f5f0ca49dab8f8d75e5e0305445b/LICENSE"
+      },
+      "sparsePaths": ["experimental_data/WP6", "host_guest/bCD/source_files"],
+      "expectedFiles": { "cdxml": 2, "cdx": 1 },
+      "specialCases": []
+    }
+  ]
+}

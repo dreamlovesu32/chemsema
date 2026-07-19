@@ -322,6 +322,16 @@ node --check viewer/app.js
 
 公开 synthetic CDXML fixture 位于 [fixtures/cdxml](./fixtures/cdxml/)，对应 golden SVG 快照位于 [fixtures/expected/svg](./fixtures/expected/svg/)。对比与快照流程见 [渲染对比与回归资产](./docs/rendering-comparison.zh-CN.md)。
 
+许可证清楚的公共往返语料见
+[benchmarks/public-cdxml](./benchmarks/public-cdxml/README.zh-CN.md)。它固定五个上游项目中的
+413 个 CDXML/CDX 文件，但不会把上游源文件直接提交进本仓库：
+
+```bash
+npm run benchmark:cdxml-public:fetch
+cargo build -p chemsema-cli
+npm run benchmark:cdxml-public
+```
+
 部分脚本会和本机桌面应用或 Office 做输出对照。这些流程是可选的，可能需要 Windows 专有软件、本地文档，或用 `CHEMSEMA_PYTHON` 指向装有分析依赖的 Python 环境。
 
 ## 引用

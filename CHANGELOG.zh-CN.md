@@ -2,6 +2,13 @@
 
 ChemSema 的公开变更记录会保存在这里。
 
+## 未发布
+
+- 新增可复现的公共 CDXML/CDX 往返基准集，固定 RDKit、Indigo、cdxml-toolkit、
+  SAMPL6 和 SAMPL9 中 413 个许可证清楚的文件，并生成机器可读的基线报告。
+- CDXML 文件加载现在可以兼容少量错误声明为 UTF-8 的 Windows-1252 标点字节；其他
+  文档格式仍保持严格 UTF-8 路径。
+
 ## ChemSema 1.0.0-beta.1 — 2026-07-19
 
 这是 ChemSema 名称下的第一个公开 beta。

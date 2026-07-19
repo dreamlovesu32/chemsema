@@ -47,6 +47,8 @@
     "office:unregister-dev": "cargo run -p chemsema-office -- --unregister-user",
     "office:validate-roundtrip": "powershell -ExecutionPolicy Bypass -File scripts/validate-word-ole-roundtrip.ps1",
     "performance:cli-large": "node scripts/cli-large-performance-report.mjs",
+    "benchmark:cdxml-public:fetch": "node scripts/fetch-public-cdxml-corpus.mjs",
+    "benchmark:cdxml-public": "node scripts/public-cdxml-roundtrip.mjs",
     "regression:label-anchor": "node scripts/label-anchor-regression.mjs",
     "regression:large-object-operations": "node scripts/large-object-operation-regression.mjs",
     "regression:large-cdxml-speed": "node scripts/large-cdxml-speed-regression.mjs",

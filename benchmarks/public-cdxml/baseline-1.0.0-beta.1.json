@@ -1,0 +1,101 @@
+{
+  "schema": "chemsema.public-cdxml-roundtrip-summary.v1",
+  "generatedAt": "2026-07-19T15:41:03.399Z",
+  "cliVersion": "1.0.0-beta.1",
+  "sources": [
+    {
+      "id": "rdkit",
+      "revision": "0062b670640352ab63d6256be608615e87e1af53",
+      "license": "BSD-3-Clause",
+      "expectedFiles": {
+        "cdxml": 94,
+        "cdx": 126
+      }
+    },
+    {
+      "id": "indigo",
+      "revision": "d3f2f30fb3bf95ec1bf5b65a8dd28929ecf419b6",
+      "license": "Apache-2.0",
+      "expectedFiles": {
+        "cdxml": 123,
+        "cdx": 28
+      }
+    },
+    {
+      "id": "cdxml-toolkit",
+      "revision": "13428114eb174e6d94c7075db71c5469c031d1c5",
+      "license": "MIT",
+      "expectedFiles": {
+        "cdxml": 34,
+        "cdx": 2
+      }
+    },
+    {
+      "id": "sampl6",
+      "revision": "c661d3985af7fa0ba8c64a1774cfb2363cd31bda",
+      "license": "MIT",
+      "expectedFiles": {
+        "cdxml": 1,
+        "cdx": 2
+      }
+    },
+    {
+      "id": "sampl9",
+      "revision": "22aa2df3a086f5f0ca49dab8f8d75e5e0305445b",
+      "license": "MIT",
+      "expectedFiles": {
+        "cdxml": 2,
+        "cdx": 1
+      }
+    }
+  ],
+  "summary": {
+    "total": 413,
+    "statuses": {
+      "exact-counts": 364,
+      "count-drift": 43,
+      "expected-reject": 2,
+      "skipped": 4
+    },
+    "bySource": {
+      "rdkit": {
+        "total": 220,
+        "statuses": {
+          "exact-counts": 181,
+          "count-drift": 38,
+          "expected-reject": 1
+        }
+      },
+      "indigo": {
+        "total": 151,
+        "statuses": {
+          "exact-counts": 142,
+          "count-drift": 4,
+          "expected-reject": 1,
+          "skipped": 4
+        }
+      },
+      "cdxml-toolkit": {
+        "total": 36,
+        "statuses": {
+          "exact-counts": 35,
+          "count-drift": 1
+        }
+      },
+      "sampl6": {
+        "total": 3,
+        "statuses": {
+          "exact-counts": 3
+        }
+      },
+      "sampl9": {
+        "total": 3,
+        "statuses": {
+          "exact-counts": 3
+        }
+      }
+    },
+    "unexpectedFailures": 0,
+    "countDrift": 43
+  }
+}
