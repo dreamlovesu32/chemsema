@@ -217,6 +217,79 @@ function moleculeSignatures(document, objects) {
   return signatures.map((signature) => JSON.stringify(canonicalize(signature))).sort();
 }
 
+function labelSignature(label) {
+  const imported = label?.meta?.import?.cdxml || {};
+  return {
+    sourceText: label?.sourceText ?? null,
+    text: label?.text ?? null,
+    lines: label?.lines ?? [],
+    lineRuns: (label?.lineRuns || []).map((line) =>
+      line.map((run) => ({ text: run.text ?? "", script: run.script ?? null })),
+    ),
+    runs: (label?.runs || []).map((run) => ({
+      text: run.text ?? "",
+      script: run.script ?? null,
+    })),
+    align: label?.align ?? null,
+    anchor: label?.anchor ?? null,
+    layout: label?.layout ?? null,
+    position: roundGeometry(label?.position ?? null),
+    box: roundGeometry(label?.boxField ?? label?.boxValue ?? null),
+    cdxml: {
+      labelDisplay: imported.labelDisplay ?? null,
+      labelAlignment: imported.labelAlignment ?? null,
+      labelJustification: imported.labelJustification ?? null,
+      justification: imported.justification ?? null,
+      lineHeight: imported.lineHeight ?? null,
+      labelLineHeight: imported.labelLineHeight ?? null,
+      wordWrapWidth: imported.wordWrapWidth ?? null,
+      lineStarts: imported.lineStarts ?? null,
+    },
+  };
+}
+
+function moleculeLabelSignatures(document, objects) {
+  return objects
+    .filter((object) => object.type === "molecule")
+    .flatMap((object, moleculeIndex) => {
+      const fragment = fragmentForObject(document, object);
+      return (fragment?.nodes || [])
+        .map((node, nodeIndex) =>
+          node.label
+            ? {
+                moleculeIndex,
+                nodeIndex,
+                atomicNumber: node.atomicNumber ?? null,
+                label: labelSignature(node.label),
+              }
+            : null,
+        )
+        .filter(Boolean);
+    })
+    .map((signature) => JSON.stringify(canonicalize(signature)))
+    .sort();
+}
+
+function textSignatures(objects) {
+  return objects
+    .filter((object) => object.type === "text")
+    .map((object) => ({
+      text: payloadValue(object, "text") ?? "",
+      runs: (payloadValue(object, "runs") || []).map((run) => ({
+        text: run.text ?? "",
+        script: run.script ?? null,
+      })),
+      align: payloadValue(object, "align") ?? null,
+      lineHeight: roundNumber(payloadValue(object, "lineHeight") ?? null),
+      preserveLines: payloadValue(object, "preserveLines") ?? null,
+      box: roundGeometry(payloadValue(object, "box") ?? null),
+      translate: roundGeometry(object.transform?.translate ?? null),
+      cdxml: object.meta?.import?.cdxml ?? null,
+    }))
+    .map((signature) => JSON.stringify(canonicalize(signature)))
+    .sort();
+}
+
 function arrowSignatures(objects) {
   return objects
     .filter((object) => object.type === "line" && payloadValue(object, "arrowHead"))
@@ -253,10 +326,14 @@ function bracketSignatures(objects) {
 function semanticSnapshot(document) {
   const objects = flattenObjects(document.objects);
   const molecules = moleculeSignatures(document, objects);
+  const labels = moleculeLabelSignatures(document, objects);
+  const texts = textSignatures(objects);
   const arrows = arrowSignatures(objects);
   const brackets = bracketSignatures(objects);
   const metrics = {
     moleculeObjects: objects.filter((object) => object.type === "molecule").length,
+    labels: labels.length,
+    textObjects: texts.length,
     arrows: arrows.length,
     headlessArrows: objects.filter(
       (object) =>
@@ -270,6 +347,8 @@ function semanticSnapshot(document) {
   };
   const components = {
     molecules: digest(molecules),
+    labels: digest(labels),
+    texts: digest(texts),
     arrows: digest(arrows),
     brackets: digest(brackets),
   };
