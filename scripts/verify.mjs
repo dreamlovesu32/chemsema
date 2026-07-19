@@ -1,8 +1,34 @@
-import { dirname } from "node:path";
+import { createHash } from "node:crypto";
+import { readdirSync, readFileSync } from "node:fs";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
+const generatedEngineDir = join(rootDir, "viewer", "engine");
+
+function generatedEngineSnapshot(directory = generatedEngineDir) {
+  const snapshot = new Map();
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) {
+      for (const [nestedPath, hash] of generatedEngineSnapshot(path)) {
+        snapshot.set(nestedPath, hash);
+      }
+      continue;
+    }
+    const key = relative(generatedEngineDir, path).replace(/\\/g, "/");
+    const hash = createHash("sha256").update(readFileSync(path)).digest("hex");
+    snapshot.set(key, hash);
+  }
+  return snapshot;
+}
+
+function changedGeneratedFiles(before, after) {
+  return [...new Set([...before.keys(), ...after.keys()])]
+    .filter((path) => before.get(path) !== after.get(path))
+    .sort();
+}
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -22,29 +48,22 @@ function run(command, args, options = {}) {
 
 run("cargo", ["build", "-p", "chemsema-office", "-p", "chemsema-cli", "--release"]);
 run("cargo", ["test"]);
+const generatedBefore = generatedEngineSnapshot();
 run(process.execPath, ["scripts/build-engine-wasm.mjs"]);
 run(process.execPath, ["--check", "viewer/app.js"]);
 
-const status = run("git", ["status", "--porcelain", "--", "viewer/engine"], {
-  capture: true,
-  allowFailure: true,
-});
-if (status.status !== 0) {
-  process.stdout.write(status.stdout || "");
-  process.stderr.write(status.stderr || "");
-  process.exit(status.status ?? 1);
-}
-const generatedChanges = status.stdout
-  .split(/\r?\n/)
-  .filter(Boolean);
-const blockingChanges = generatedChanges.filter((line) => {
-  const path = line.slice(3).replace(/\\/g, "/");
-  return !(process.env.CI === "true" && path === "viewer/engine/chemsema_engine_bg.wasm");
-});
+const generatedAfter = generatedEngineSnapshot();
+const generatedChanges = changedGeneratedFiles(generatedBefore, generatedAfter);
+const blockingChanges = generatedChanges.filter(
+  (path) => !(process.env.CI === "true" && path === "chemsema_engine_bg.wasm"),
+);
 
 if (blockingChanges.length) {
-  run("git", ["status", "--short", "--", "viewer/engine"]);
-  run("git", ["diff", "--", "viewer/engine"]);
+  console.error("Generated viewer engine artifacts changed during verification:");
+  for (const path of blockingChanges) {
+    console.error(`  viewer/engine/${path}`);
+  }
+  console.error("Run `npm run build:engine-wasm` and include the refreshed artifacts.");
   process.exit(1);
 }
 if (generatedChanges.length) {

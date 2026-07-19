@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+message: "If you use ChemSema in research, please cite the software using the metadata below."
+title: "ChemSema"
+type: software
+authors:
+  - family-names: "Zhang"
+    given-names: "Jiajun"
+    orcid: "https://orcid.org/0000-0003-1765-5612"
+repository-code: "https://github.com/dreamlovesu32/chemsema"
+url: "https://dreamlovesu32.github.io/chemsema/"
+license: "Apache-2.0"
+version: "1.0.0-beta.1"
+date-released: "2026-07-19"
+keywords:
+  - chemistry
+  - cheminformatics
+  - chemical drawing
+  - CDXML
+  - scientific software
+  - document fidelity

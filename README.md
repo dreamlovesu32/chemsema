@@ -404,6 +404,13 @@ Office. Those flows are optional and may require Windows-specific software,
 local documents, or `CHEMSEMA_PYTHON` to point at a Python environment with the
 needed analysis packages.
 
+## Citation
+
+If ChemSema contributes to published research, cite the archived software
+release used for the work. Citation metadata, the author ORCID, and the current
+pre-DOI citation are available in [CITING.md](./CITING.md). GitHub also reads
+[CITATION.cff](./CITATION.cff) for its **Cite this repository** entry.
+
 ## Design Documents
 
 - Abbreviation recognition rules: [English](./docs/abbreviation-recognition-rules.md) / [中文](./docs/abbreviation-recognition-rules.zh-CN.md)

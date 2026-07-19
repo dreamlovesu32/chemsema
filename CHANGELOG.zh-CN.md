@@ -13,6 +13,13 @@ ChemSema 的公开变更记录会保存在这里。
 - 为此前的 GitHub 仓库和 Pages 入口保留永久兼容处理，并加入自动监测。
 - 包含此前 beta 线最新的编辑器、Office/OLE、agent CLI、CDXML/CDX、渲染和化学
   标签改进。
+- 新增共享 Rust 化学语义层，在原生端和浏览器端统一提供 SMILES 导入、canonical
+  isomeric SMILES 分析、常见价态与芳香性校验、隐式氢、四面体与 E/Z 立体化学、
+  分子属性以及官方 IUPAC InChI/InChIKey。
+- 新增仓库引用与归档元数据，包括作者 ORCID、GitHub 引用入口和 Zenodo release
+  元数据。
+- 本地验证改为比较 WASM 构建前后的生成物，不再把开发中有意保留的未提交 WASM
+  变更误判为生成物未同步。
 
 ## 1.0.0-beta.8
 

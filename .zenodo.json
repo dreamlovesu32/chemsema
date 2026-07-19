@@ -1,0 +1,21 @@
+{
+  "title": "ChemSema",
+  "description": "An open-source chemistry structure editor focused on document-level semantics, CDXML fidelity, and Office workflows.",
+  "creators": [
+    {
+      "name": "Zhang, Jiajun",
+      "orcid": "0000-0003-1765-5612"
+    }
+  ],
+  "license": "Apache-2.0",
+  "upload_type": "software",
+  "access_right": "open",
+  "keywords": [
+    "chemistry",
+    "cheminformatics",
+    "chemical drawing",
+    "CDXML",
+    "scientific software",
+    "document fidelity"
+  ]
+}

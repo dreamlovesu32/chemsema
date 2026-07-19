@@ -14,6 +14,15 @@ The first public beta under the ChemSema name.
   GitHub repository and Pages links.
 - Included the latest editor, Office/OLE, agent CLI, CDXML/CDX, rendering, and
   chemical-label improvements from the previous beta line.
+- Added a shared Rust chemical-semantics layer for SMILES import and canonical
+  isomeric SMILES analysis, common valence/aromaticity checks, implicit
+  hydrogens, tetrahedral and E/Z stereochemistry, molecular properties, and
+  official IUPAC InChI/InChIKey generation across native and browser paths.
+- Added repository citation and archival metadata, including the author ORCID,
+  a GitHub citation entry, and Zenodo release metadata.
+- Made local verification compare generated WASM artifacts before and after the
+  build, so an intentionally dirty development worktree is not mistaken for a
+  stale generated runtime.
 
 ## 1.0.0-beta.8
 

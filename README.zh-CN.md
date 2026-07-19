@@ -323,6 +323,12 @@ node --check viewer/app.js
 
 部分脚本会和本机桌面应用或 Office 做输出对照。这些流程是可选的，可能需要 Windows 专有软件、本地文档，或用 `CHEMSEMA_PYTHON` 指向装有分析依赖的 Python 环境。
 
+## 引用
+
+如果 ChemSema 对已发表研究有实质贡献，请引用研究实际使用的软件归档版本。引用元数据、
+作者 ORCID 和当前尚未生成 DOI 时的引用格式见 [CITING.md](./CITING.md)。GitHub 也会读取
+[CITATION.cff](./CITATION.cff)，并显示 **Cite this repository** 入口。
+
 ## 设计文档
 
 - 缩写识别规则：[English](./docs/abbreviation-recognition-rules.md) / [中文](./docs/abbreviation-recognition-rules.zh-CN.md)
