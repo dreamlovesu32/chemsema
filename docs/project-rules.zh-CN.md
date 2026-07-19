@@ -1,4 +1,4 @@
-# ChemCore 项目规则
+# ChemSema 项目规则
 
 这份文档记录当前开发阶段也必须保持的项目级规则。更细的行为规则仍放在各专题文档里，例如格式、键绘制和命令历史。
 
@@ -6,7 +6,7 @@ Windows 桌面端和 Office 集成的长期方案见 `docs/windows-desktop-offic
 
 ## 内核边界
 
-- Rust `crates/chemcore-engine` 是当前编辑行为、文档 mutation、命中测试、吸附、选择、删除、命令历史和 render primitive 的权威。
+- Rust `crates/chemsema-engine` 是当前编辑行为、文档 mutation、命中测试、吸附、选择、删除、命令历史和 render primitive 的权威。
 - Viewer 只负责 toolbar、菜单、文件打开保存、浏览器事件采集、坐标换算和 SVG/DOM 绘制。
 - 新的化学编辑行为不应重新散回 `viewer/app.js`。如果 viewer 需要知道几何，应优先消费 engine 输出的 primitive 或显式状态。
 - WASM 是同一个 Rust engine 在浏览器端和桌面端热编辑路径中的运行形态，业务规则仍在 Rust engine 中。
@@ -17,8 +17,8 @@ Windows 桌面端和 Office 集成的长期方案见 `docs/windows-desktop-offic
 
 ## Office/OLE 边界
 
-- Office 集成必须以 `apps/chemcore-office` 的独立 COM/OLE local server 为边界，不把 OLE 生命周期直接塞进桌面主窗口进程。
-- ChemCore 自己的 OLE class 固定为 `Chemcore.Document` / `Chemcore.Document.1` / `{CB69F54F-F21E-44DE-84FB-89D98FECE056}`。
+- Office 集成必须以 `apps/chemsema-office` 的独立 COM/OLE local server 为边界，不把 OLE 生命周期直接塞进桌面主窗口进程。
+- ChemSema 自己的 OLE class 固定为 `ChemSema.Document` / `ChemSema.Document.1` / `{CB69F54F-F21E-44DE-84FB-89D98FECE056}`。
 - 开发期注册写 `HKCU\Software\Classes`，正式安装器写 `HKLM\Software\Classes`。不要要求用户手动编辑注册表。
 - OLE server 只能负责 COM/OLE 接口、storage、preview、剪贴板对象和唤醒桌面端；化学解析、文档 mutation、导入导出和渲染语义仍由 Rust engine / desktop service 提供。
 - Office Add-in 只能作为后续 Ribbon/入口增强，不能替代 OLE embedded object。
@@ -56,8 +56,8 @@ npm run verify
 
 ## 生成物
 
-- `viewer/engine/chemcore_engine.js`、`viewer/engine/chemcore_engine.d.ts` 和 `viewer/engine/chemcore_engine_bg.wasm` 是 Web viewer 的运行时生成物。
-- 修改 `crates/chemcore-engine/src/wasm.rs`、engine API 或 render primitive 结构后，必须同步更新这些生成物。
+- `viewer/engine/chemsema_engine.js`、`viewer/engine/chemsema_engine.d.ts` 和 `viewer/engine/chemsema_engine_bg.wasm` 是 Web viewer 的运行时生成物。
+- 修改 `crates/chemsema-engine/src/wasm.rs`、engine API 或 render primitive 结构后，必须同步更新这些生成物。
 - `wasm-pack` 生成的 `viewer/engine/.gitignore` 不应保留；构建脚本会删除它。
 
 ## 渲染几何
@@ -75,7 +75,7 @@ npm run verify
 - 标签识别、隐式氢数量、生成标签文本和画键锚点都属于 Rust engine 行为，不应在 viewer 里另写一套。
 - CDXML import 是输入适配器，不是另一套 label layout 引擎。它可以读取
   CDXML 的 `t` 位置、bounding box、runs、对齐和上下标信息，但必须把这些
-  信息转成 ChemCore 原生 node-label 模型。label 锚点、显示顺序、glyph
+  信息转成 ChemSema 原生 node-label 模型。label 锚点、显示顺序、glyph
   polygons 和 bond retreat 仍由 Rust engine 统一负责。
 - CDXML 绘图默认值是真实文档样式参数，不是缓存布局几何。导入必须保留已知
   根参数，例如 `BondLength`、`LineWidth`、`BoldWidth`、`HashSpacing`、
@@ -83,10 +83,10 @@ npm run verify
   `LabelFace`、`CaptionFont`、`CaptionSize`、`CaptionFace`、默认对齐、
   显示开关和打印边距；但源字体 id、颜色 id 和 face 位掩码必须解码为原生
   语义文本样式字段。导出时只在 CDX/CDXML 边界重新编码当前语义默认值。
-  这些参数可以参与 ChemCore 自己的 layout 和渲染。
+  这些参数可以参与 ChemSema 自己的 layout 和渲染。
 - attached molecule label 的 `BoundingBox`、`p` 等 CDXML 缓存几何只属于
   provenance、round-trip 或调试证据。它们不能变成活动 label 锚点、活动
-  label box 或 bond-retreat 几何。标签退让必须由 ChemCore glyph polygons
+  label box 或 bond-retreat 几何。标签退让必须由 ChemSema glyph polygons
   和当前文档 `MarginWidth` profile 计算。
 - `meta.import.cdxml` 只表示数据确实来自 CDXML 时的 provenance、round-trip
   或调试元数据。截图、粘贴图片或其他非 CDXML 输入得到的 measured label

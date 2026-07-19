@@ -47,7 +47,7 @@ if (existsSync(daemonSecurityCache)) {
   console.log("Skipping hvigor --stop-daemon because no daemon cache exists.");
 }
 
-const harmonyProject = path.join(repoRoot, "apps", "chemcore-harmony");
+const harmonyProject = path.join(repoRoot, "apps", "chemsema-harmony");
 const buildProfile = path.join(harmonyProject, "build-profile.json5");
 const exampleBuildProfile = path.join(harmonyProject, "build-profile.example.json5");
 let originalBuildProfile = null;

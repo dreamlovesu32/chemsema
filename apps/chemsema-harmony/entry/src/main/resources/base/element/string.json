@@ -1,0 +1,16 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "ChemSema HarmonyOS PC module"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "ChemSema"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "ChemSema"
+    }
+  ]
+}

@@ -6,7 +6,7 @@ import { dirname } from "node:path";
 
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const host = "127.0.0.1";
-const port = Number(process.env.CHEMCORE_DESKTOP_DEV_PORT || 8767);
+const port = Number(process.env.CHEMSEMA_DESKTOP_DEV_PORT || 8767);
 
 const contentTypes = {
   ".css": "text/css; charset=utf-8",

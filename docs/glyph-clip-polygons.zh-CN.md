@@ -2,7 +2,7 @@
 
 ## 目标
 
-本文固定 ChemCore 字形裁剪规则，使内核、SVG、EMF、Word/OLE 使用同一套几何定义。
+本文固定 ChemSema 字形裁剪规则，使内核、SVG、EMF、Word/OLE 使用同一套几何定义。
 
 运行时唯一有效的裁剪几何来源是：
 
@@ -14,10 +14,10 @@
 
 运行时消费方是：
 
-- [crates/chemcore-engine/src/glyph_kernel.rs](../crates/chemcore-engine/src/glyph_kernel.rs)
-- [crates/chemcore-engine/src/render/labels.rs](../crates/chemcore-engine/src/render/labels.rs)
-- [crates/chemcore-engine/src/render_objects.rs](../crates/chemcore-engine/src/render_objects.rs)
-- [apps/chemcore-office/src/windows_office/emf_preview/renderer.rs](../apps/chemcore-office/src/windows_office/emf_preview/renderer.rs)
+- [crates/chemsema-engine/src/glyph_kernel.rs](../crates/chemsema-engine/src/glyph_kernel.rs)
+- [crates/chemsema-engine/src/render/labels.rs](../crates/chemsema-engine/src/render/labels.rs)
+- [crates/chemsema-engine/src/render_objects.rs](../crates/chemsema-engine/src/render_objects.rs)
+- [apps/chemsema-office/src/windows_office/emf_preview/renderer.rs](../apps/chemsema-office/src/windows_office/emf_preview/renderer.rs)
 
 ## 几何来源边界
 

@@ -1,6 +1,6 @@
-# ChemCore CLI for Linux x86_64
+# ChemSema CLI for Linux x86_64
 
-This archive is a self-contained, headless ChemCore CLI distribution. It does
+This archive is a self-contained, headless ChemSema CLI distribution. It does
 not require Rust, Cargo, or Node.js.
 
 ## Portable use
@@ -8,9 +8,9 @@ not require Rust, Cargo, or Node.js.
 Extract the archive and invoke the binary directly:
 
 ```bash
-tar -xzf chemcore-cli-*-linux-x86_64.tar.gz
-cd chemcore-cli-*-linux-x86_64
-./bin/chemcore-cli doctor --pretty
+tar -xzf chemsema-cli-*-linux-x86_64.tar.gz
+cd chemsema-cli-*-linux-x86_64
+./bin/chemsema-cli doctor --pretty
 ```
 
 You can keep the extracted directory anywhere and add its `bin` directory to
@@ -27,7 +27,7 @@ The default user installation prefix is `$HOME/.local`:
 For a dedicated directory under your home folder:
 
 ```bash
-./install.sh --prefix "$HOME/chemcore-cli"
+./install.sh --prefix "$HOME/chemsema-cli"
 ```
 
 The installer detects zsh or bash from `$SHELL`, adds one marked PATH block to
@@ -49,7 +49,7 @@ sudo ./install.sh --prefix /usr/local --no-modify-path
 Use the uninstall script copied into the installation:
 
 ```bash
-"$HOME/chemcore-cli/share/chemcore/uninstall.sh" --prefix "$HOME/chemcore-cli"
+"$HOME/chemsema-cli/share/chemsema/uninstall.sh" --prefix "$HOME/chemsema-cli"
 ```
 
 Pass the same `--shell-config` or `--no-modify-path` option used for install.

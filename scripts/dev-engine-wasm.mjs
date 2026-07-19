@@ -8,8 +8,8 @@ const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const watchRoots = [
   join(rootDir, "Cargo.toml"),
   join(rootDir, "Cargo.lock"),
-  join(rootDir, "crates", "chemcore-engine", "Cargo.toml"),
-  join(rootDir, "crates", "chemcore-engine", "src"),
+  join(rootDir, "crates", "chemsema-engine", "Cargo.toml"),
+  join(rootDir, "crates", "chemsema-engine", "src"),
 ];
 
 function run(command, args) {

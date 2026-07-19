@@ -52,9 +52,9 @@ async function defaultInputs() {
 function countDelta(leftCounts, rightCounts) {
   const keys = new Set([...Object.keys(leftCounts), ...Object.keys(rightCounts)]);
   return [...keys]
-    .map((key) => ({ name: key, chemdraw: leftCounts[key] ?? 0, chemcore: rightCounts[key] ?? 0 }))
-    .filter((row) => row.chemdraw !== row.chemcore)
-    .sort((a, b) => Math.abs(b.chemdraw - b.chemcore) - Math.abs(a.chemdraw - a.chemcore));
+    .map((key) => ({ name: key, chemdraw: leftCounts[key] ?? 0, chemsema: rightCounts[key] ?? 0 }))
+    .filter((row) => row.chemdraw !== row.chemsema)
+    .sort((a, b) => Math.abs(b.chemdraw - b.chemsema) - Math.abs(a.chemdraw - a.chemsema));
 }
 
 function compactCounts(counts) {
@@ -115,26 +115,26 @@ export async function compareEmfOracle(options = {}) {
   const reports = [];
   for (const job of oracleJobs) {
     const stem = safeStem(job.input);
-    const payload = path.join(outDir, `${stem}.chemcore.payload.json`);
-    const chemcoreEmf = path.join(outDir, `${stem}.chemcore.emf`);
-    const chemcoreSvg = path.join(outDir, `${stem}.chemcore.svg`);
+    const payload = path.join(outDir, `${stem}.chemsema.payload.json`);
+    const chemsemaEmf = path.join(outDir, `${stem}.chemsema.emf`);
+    const chemsemaSvg = path.join(outDir, `${stem}.chemsema.svg`);
     const chemdrawPng = path.join(outDir, `${stem}.chemdraw.emf.png`);
-    const chemcorePng = path.join(outDir, `${stem}.chemcore.emf.png`);
+    const chemsemaPng = path.join(outDir, `${stem}.chemsema.emf.png`);
 
     run("cargo", [
       "run",
       "-p",
-      "chemcore-engine",
+      "chemsema-engine",
       "--example",
       "cdxml_to_svg",
       "--",
       job.input,
-      chemcoreSvg,
+      chemsemaSvg,
     ]);
     run("cargo", [
       "run",
       "-p",
-      "chemcore-engine",
+      "chemsema-engine",
       "--example",
       "cdxml_to_clipboard_payload",
       "--",
@@ -144,49 +144,49 @@ export async function compareEmfOracle(options = {}) {
     run("cargo", [
       "run",
       "-p",
-      "chemcore-office",
+      "chemsema-office",
       "--",
       "--write-emf-payload",
       payload,
-      chemcoreEmf,
+      chemsemaEmf,
     ]);
 
     const chemdrawInspection = await inspectEmf(job.outputs.emf, { includeRecords: false });
-    const chemcoreInspection = await inspectEmf(chemcoreEmf, { includeRecords: false });
+    const chemsemaInspection = await inspectEmf(chemsemaEmf, { includeRecords: false });
     const chemdrawJson = path.join(outDir, `${stem}.chemdraw.emf.inspect.json`);
-    const chemcoreJson = path.join(outDir, `${stem}.chemcore.emf.inspect.json`);
+    const chemsemaJson = path.join(outDir, `${stem}.chemsema.emf.inspect.json`);
     const chemdrawMd = path.join(outDir, `${stem}.chemdraw.emf.inspect.md`);
-    const chemcoreMd = path.join(outDir, `${stem}.chemcore.emf.inspect.md`);
+    const chemsemaMd = path.join(outDir, `${stem}.chemsema.emf.inspect.md`);
     await fs.writeFile(chemdrawJson, JSON.stringify(chemdrawInspection, null, 2), "utf8");
-    await fs.writeFile(chemcoreJson, JSON.stringify(chemcoreInspection, null, 2), "utf8");
+    await fs.writeFile(chemsemaJson, JSON.stringify(chemsemaInspection, null, 2), "utf8");
     await fs.writeFile(chemdrawMd, inspectionMarkdown(chemdrawInspection), "utf8");
-    await fs.writeFile(chemcoreMd, inspectionMarkdown(chemcoreInspection), "utf8");
+    await fs.writeFile(chemsemaMd, inspectionMarkdown(chemsemaInspection), "utf8");
     await renderEmfPreviews([
       { input: job.outputs.emf, output: chemdrawPng },
-      { input: chemcoreEmf, output: chemcorePng },
+      { input: chemsemaEmf, output: chemsemaPng },
     ]);
 
     reports.push({
       stem,
       input: job.input,
       chemdraw: chemdrawInspection,
-      chemcore: chemcoreInspection,
-      delta: countDelta(chemdrawInspection.typeCounts, chemcoreInspection.typeCounts).slice(0, 24),
+      chemsema: chemsemaInspection,
+      delta: countDelta(chemdrawInspection.typeCounts, chemsemaInspection.typeCounts).slice(0, 24),
       outputs: {
         chemdrawSvg: job.outputs.svg,
         chemdrawEmf: job.outputs.emf,
-        chemcoreSvg,
-        chemcoreEmf,
+        chemsemaSvg,
+        chemsemaEmf,
         chemdrawPng,
-        chemcorePng,
+        chemsemaPng,
         chemdrawJson,
-        chemcoreJson,
+        chemsemaJson,
       },
     });
   }
 
   const summary = [];
-  summary.push("# ChemDraw / Chemcore EMF Oracle Comparison");
+  summary.push("# ChemDraw / ChemSema EMF Oracle Comparison");
   summary.push("");
   summary.push(`Generated: ${new Date().toISOString()}`);
   summary.push("");
@@ -195,19 +195,19 @@ export async function compareEmfOracle(options = {}) {
     summary.push("");
     summary.push(`- Input: \`${report.input}\``);
     summary.push(`- ChemDraw EMF: \`${report.outputs.chemdrawEmf}\``);
-    summary.push(`- Chemcore EMF: \`${report.outputs.chemcoreEmf}\``);
+    summary.push(`- ChemSema EMF: \`${report.outputs.chemsemaEmf}\``);
     summary.push(`- ChemDraw PNG preview: \`${report.outputs.chemdrawPng}\``);
-    summary.push(`- Chemcore PNG preview: \`${report.outputs.chemcorePng}\``);
+    summary.push(`- ChemSema PNG preview: \`${report.outputs.chemsemaPng}\``);
     summary.push(`- ChemDraw bytes/records: ${report.chemdraw.bytes} / ${report.chemdraw.recordCount}`);
-    summary.push(`- Chemcore bytes/records: ${report.chemcore.bytes} / ${report.chemcore.recordCount}`);
+    summary.push(`- ChemSema bytes/records: ${report.chemsema.bytes} / ${report.chemsema.recordCount}`);
     summary.push(`- ChemDraw key counts: ${compactCounts(report.chemdraw.typeCounts) || "(none)"}`);
-    summary.push(`- Chemcore key counts: ${compactCounts(report.chemcore.typeCounts) || "(none)"}`);
+    summary.push(`- ChemSema key counts: ${compactCounts(report.chemsema.typeCounts) || "(none)"}`);
     summary.push("");
     if (report.delta.length) {
-      summary.push("| Record | ChemDraw | Chemcore |");
+      summary.push("| Record | ChemDraw | ChemSema |");
       summary.push("| --- | ---: | ---: |");
       for (const row of report.delta) {
-        summary.push(`| ${row.name} | ${row.chemdraw} | ${row.chemcore} |`);
+        summary.push(`| ${row.name} | ${row.chemdraw} | ${row.chemsema} |`);
       }
       summary.push("");
     }

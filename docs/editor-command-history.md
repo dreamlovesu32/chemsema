@@ -7,8 +7,8 @@ snapshots:
 ```text
 HistoryEntry {
   command: EditorCommand,
-  before: ChemcoreDocument,
-  after: ChemcoreDocument
+  before: ChemSemaDocument,
+  after: ChemSemaDocument
 }
 ```
 

@@ -1,6 +1,6 @@
 # Document Commit Contract
 
-This document defines "effective operations" and the kernel command system in the ChemCore editor. Save button state, undo/redo, Office/OLE write-back, autosave, tests, and secondary development must all use the same Document Commit result.
+This document defines "effective operations" and the kernel command system in the ChemSema editor. Save button state, undo/redo, Office/OLE write-back, autosave, tests, and secondary development must all use the same Document Commit result.
 
 ## Core Definition
 
@@ -92,8 +92,8 @@ Runtime history entry shape:
 ```json
 {
   "command": { "type": "add-bond", "...": "..." },
-  "before": "<ChemcoreDocument>",
-  "after": "<ChemcoreDocument>"
+  "before": "<ChemSemaDocument>",
+  "after": "<ChemSemaDocument>"
 }
 ```
 
@@ -297,7 +297,7 @@ All fields are optional patches. Fields without settings should not be written.
 
 This is a document-level command, even though internally it may batch-modify bond length, bond width, fonts, and shape strokes.
 
-ChemCore JSON documents persist the active defaults near the top of the file as
+ChemSema JSON documents persist the active defaults near the top of the file as
 `style.preset` and `style.defaults`. CLI `new` and `run` commands load those
 defaults from the document; later edit commands use them whenever a command does
 not explicitly provide style parameters. `apply-document-style` and object

@@ -127,7 +127,7 @@
       "sourceSelector": "style:style_molecule_default"
     }
   ],
-  "schema": "chemcore.identity-map.v1",
+  "schema": "chemsema.identity-map.v1",
   "selectorIdentityStable": true,
   "sourceDocumentHash": "880febac1eace591111d0c4366ccd77d871faf96c6b41463e5701abba6bee2b7",
   "sourceFileSha256": "661d3c67e971d258e8991b364b7bed8e74b8500b75e7dc443decbc573b91ba0c"

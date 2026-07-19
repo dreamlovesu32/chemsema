@@ -1,10 +1,10 @@
 [workspace]
 members = [
-  "crates/chemcore-engine",
-  "crates/chemcore-cli",
-  "crates/chemcore-desktop-service",
-  "apps/chemcore-desktop/src-tauri",
-  "apps/chemcore-office",
+  "crates/chemsema-engine",
+  "crates/chemsema-cli",
+  "crates/chemsema-desktop-service",
+  "apps/chemsema-desktop/src-tauri",
+  "apps/chemsema-office",
 ]
 resolver = "2"
 
@@ -12,5 +12,5 @@ resolver = "2"
 edition = "2021"
 license = "Apache-2.0"
 authors = ["Jiajun Zhang"]
-repository = "https://github.com/dreamlovesu32/chemcore"
-homepage = "https://dreamlovesu32.github.io/chemcore/"
+repository = "https://github.com/dreamlovesu32/chemsema"
+homepage = "https://dreamlovesu32.github.io/chemsema/"

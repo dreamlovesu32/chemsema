@@ -1,22 +1,22 @@
 # Long-Term Architecture For Windows Desktop And Office Integration
 
-This document records the long-term plan for ChemCore Windows desktop and Office integration. The plan builds toward the final product shape from the first stage: one Rust chemical kernel, one professional Windows desktop application, one real Office/OLE integration layer, and a still-shareable Web adaptation layer.
+This document records the long-term plan for ChemSema Windows desktop and Office integration. The plan builds toward the final product shape from the first stage: one Rust chemical kernel, one professional Windows desktop application, one real Office/OLE integration layer, and a still-shareable Web adaptation layer.
 
 ## Target Experience
 
-The final Windows version of ChemCore should reach system integration similar to ChemDraw:
+The final Windows version of ChemSema should reach system integration similar to ChemDraw:
 
-- Double-clicking `.ccjz`, `.ccjs`, or `.cdxml` opens ChemCore directly.
-- Word, PowerPoint, and Excel can insert ChemCore objects.
+- Double-clicking `.ccjz`, `.ccjs`, or `.cdxml` opens ChemSema directly.
+- Word, PowerPoint, and Excel can insert ChemSema objects.
 - Office documents show high-quality previews.
-- Double-clicking a ChemCore object inside Office opens ChemCore for editing.
+- Double-clicking a ChemSema object inside Office opens ChemSema for editing.
 - After editing, object data and preview inside Office update together.
-- Copying from ChemCore to Office provides an editable ChemCore native object as well as CDXML, SVG, PNG, and other fallbacks.
+- Copying from ChemSema to Office provides an editable ChemSema native object as well as CDXML, SVG, PNG, and other fallbacks.
 - Web, desktop, and Office objects use the same Rust engine and do not fork business logic.
 
 ## Overall Architecture
 
-Long-term ChemCore should be:
+Long-term ChemSema should be:
 
 ```text
 one Rust chemical kernel
@@ -28,22 +28,22 @@ one Rust chemical kernel
 The repository should gradually form these modules:
 
 ```text
-crates/chemcore-engine
+crates/chemsema-engine
   The only chemical kernel: document model, editing commands, CDXML, SVG, render primitives, hit testing.
 
-crates/chemcore-document
+crates/chemsema-document
   Native document container: .ccjz/.ccjs, version migration, manifest, previews, resources, validation.
 
-crates/chemcore-render
+crates/chemsema-render
   Reusable render outputs: SVG, PNG, EMF/WMF/PDF export or preview targets.
 
-crates/chemcore-desktop-service
+crates/chemsema-desktop-service
   Desktop document service: open, save, recent files, file locks, auto-recovery, batch export.
 
-apps/chemcore-desktop
+apps/chemsema-desktop
   Tauri Windows desktop app: windows, menus, shortcuts, file dialogs, UI, WebView.
 
-apps/chemcore-office
+apps/chemsema-office
   Windows Office/OLE integration: COM/OLE server, object embedding, preview, activation, paste.
 
 viewer/
@@ -52,9 +52,9 @@ viewer/
 
 Important principles:
 
-- Rust `chemcore-engine` remains authoritative for editing, import/export, hit testing, render primitives, and document mutation.
+- Rust `chemsema-engine` remains authoritative for editing, import/export, hit testing, render primitives, and document mutation.
 - The desktop app does not duplicate chemical logic.
-- The Office integration layer does not directly parse or modify ChemCore JSON.
+- The Office integration layer does not directly parse or modify ChemSema JSON.
 - The Web viewer and desktop viewer should not fork into two behavior sets.
 - System capabilities are exposed through services/adapters; the UI layer must not bypass the engine arbitrarily.
 
@@ -86,7 +86,7 @@ In this project, Tauri is the long-term system adapter:
 - File associations.
 - Single instance and external-file wake-up.
 - Calling the Rust desktop service.
-- Hosting the professional ChemCore editing UI.
+- Hosting the professional ChemSema editing UI.
 
 WebView is only the display and interaction container; it does not mean the product should look like a browser. The window should not show an address bar, browser menu, or temporary web-page layout. The desktop UI should follow professional drawing software conventions: top menu and toolbar, left toolbox, center canvas, right properties panel, and bottom status bar.
 
@@ -97,17 +97,17 @@ To let Web and Desktop evolve together, the UI layer and kernel need a host abst
 ```text
 EngineHost
   WasmEngineHost
-    Browser Web version: calls chemcore-engine through wasm-bindgen.
+    Browser Web version: calls chemsema-engine through wasm-bindgen.
 
   DesktopHybridEngineHost
-    Windows desktop default path: synchronously calls the same chemcore-engine WASM core inside WebView,
+    Windows desktop default path: synchronously calls the same chemsema-engine WASM core inside WebView,
     while using Rust native desktop-service system capabilities through Tauri commands.
 
   TauriEngineHost
     Explicit native diagnostic/future path: calls the Rust native desktop service through Tauri commands.
 ```
 
-"Hybrid" means the same Rust `chemcore-engine` is compiled both as the WASM editor runtime and as the native desktop-service runtime. Browser and desktop hot editing paths share the same engine behavior, while desktop system capabilities are handled by the native service.
+"Hybrid" means the same Rust `chemsema-engine` is compiled both as the WASM editor runtime and as the native desktop-service runtime. Browser and desktop hot editing paths share the same engine behavior, while desktop system capabilities are handled by the native service.
 
 The desktop app should default long-term to `DesktopHybridEngineHost`:
 
@@ -142,10 +142,10 @@ viewer/engine_host.js
   Frontend EngineHost entry. Web uses WasmEngineHost; Tauri defaults to DesktopHybridEngineHost.
   tauri-native is enabled only through explicit ?engine=tauri-native for diagnostics and future native path validation.
 
-crates/chemcore-desktop-service
-  Native desktop document/engine service. It directly holds chemcore-engine::Engine sessions.
+crates/chemsema-desktop-service
+  Native desktop document/engine service. It directly holds chemsema-engine::Engine sessions.
 
-apps/chemcore-desktop/src-tauri
+apps/chemsema-desktop/src-tauri
   Tauri command boundary. desktop_engine_* commands are already exposed for future TauriEngineHost use.
 ```
 
@@ -156,17 +156,17 @@ Long-term rule starting 2026-05-07: `DesktopHybridEngineHost` is the official de
 Later work on the same day continued thickening non-Office native desktop capabilities:
 
 ```text
-crates/chemcore-desktop-service
+crates/chemsema-desktop-service
   Has started native file read/write: .ccjz gzip, .ccjs, .cdxml, .svg.
   Has persisted recent files for the desktop menu.
 
-apps/chemcore-desktop/src-tauri
+apps/chemsema-desktop/src-tauri
   Has added native File/Edit/View menus, shortcuts, file open/save/save-as dialogs, drag open,
   startup-argument open, recent-file menu, and .ccjz/.ccjs/.cdxml file association config.
   Has integrated the Tauri single-instance plugin: a second launch forwards openable file arguments
   to the existing window and wakes the main window.
-  Has integrated Windows native clipboard commands: copy/cut writes ChemCore selection fragment,
-  whole-document JSON, CDXML, SVG, and Unicode text fallback; paste prefers ChemCore selection fragment
+  Has integrated Windows native clipboard commands: copy/cut writes ChemSema selection fragment,
+  whole-document JSON, CDXML, SVG, and Unicode text fallback; paste prefers ChemSema selection fragment
   and inserts it into the current canvas.
   Supports PDF preview export: currently the WebView rasterizes the SVG preview and wraps it in a single-page PDF.
   Supports basic EMF preview export: the Tauri backend maps document render primitives to Win32 GDI
@@ -183,7 +183,7 @@ Current desktop chemical editing interactions still mainly run synchronously thr
 Recommended sequence:
 
 1. Keep `DesktopHybridEngineHost` as the desktop default editing runtime, ensuring browser and desktop hot interactions remain consistent and smooth.
-2. Continue thickening `chemcore-desktop-service`: file container, system clipboard, export, recent files, Office/OLE, background preview generation.
+2. Continue thickening `chemsema-desktop-service`: file container, system clipboard, export, recent files, Office/OLE, background preview generation.
 3. Keep all object settings, context menus, rotation/scaling, and other editing semantics inside engine APIs; UI only displays dynamic forms and collects input.
 4. Keep `TauriEngineHost` as a native diagnostic path, validating incremental protocols, IPC coalescing, and snapshot diffs with real large files.
 5. If the native path later proves hot-interaction performance no worse than the hybrid path, discuss it as an optional implementation; otherwise it serves only low-frequency/native system capabilities.
@@ -198,7 +198,7 @@ Office integration has three layers:
 
 ### 1. File Associations
 
-`.ccjz`, `.ccjs`, and `.cdxml` are registered to ChemCore. When users double-click these files in the filesystem, Outlook attachments, Office recent files, or downloads, Windows opens them with ChemCore.
+`.ccjz`, `.ccjs`, and `.cdxml` are registered to ChemSema. When users double-click these files in the filesystem, Outlook attachments, Office recent files, or downloads, Windows opens them with ChemSema.
 
 The Tauri bundle can configure file associations; the Windows layer should use a clear extension + ProgID scheme.
 
@@ -207,19 +207,19 @@ The Tauri bundle can configure file associations; the Windows layer should use a
 Register:
 
 ```text
-chemcore://open?file=...
-chemcore://open?id=...
-chemcore://edit-object?id=...
+chemsema://open?file=...
+chemsema://open?id=...
+chemsema://edit-object?id=...
 ```
 
-This wakes ChemCore from external systems, web pages, Office Add-ins, or document links, and serves as a launch and navigation mechanism.
+This wakes ChemSema from external systems, web pages, Office Add-ins, or document links, and serves as a launch and navigation mechanism.
 
 ### 3. OLE/COM Embedded Object
 
-The long-term target is a ChemCore OLE Object:
+The long-term target is a ChemSema OLE Object:
 
 ```text
-ChemCore OLE Object
+ChemSema OLE Object
   - stores .ccjz or equivalent native object payload internally
   - exposes high-quality preview to Office
   - supports double-click activation for editing
@@ -236,18 +236,18 @@ Implementation recommendations:
 
 An Office Add-in may later enhance Ribbon buttons, template library, batch insertion, selected-object editing, import/export entry points, and similar workflows. However, the Add-in should not replace OLE objects because an Add-in alone cannot provide ChemDraw-style double-click object editing.
 
-## ChemCore OLE Registration
+## ChemSema OLE Registration
 
-ChemCore's Office object is designed from the start as a long-term OLE class, not as a temporary image paste path.
+ChemSema's Office object is designed from the start as a long-term OLE class, not as a temporary image paste path.
 
 Fixed object identity:
 
 ```text
-Display name:       Chemcore Document
-ProgID:             Chemcore.Document
-Versioned ProgID:   Chemcore.Document.1
+Display name:       ChemSema Document
+ProgID:             ChemSema.Document
+Versioned ProgID:   ChemSema.Document.1
 CLSID:              {CB69F54F-F21E-44DE-84FB-89D98FECE056}
-Local server:       chemcore-office.exe
+Local server:       chemsema-office.exe
 ```
 
 During development, prefer current-user registration:
@@ -262,44 +262,44 @@ npm run office:self-test
 `office:register-dev` writes to `HKCU\Software\Classes`, usually needs no administrator rights, and only affects the current Windows user. After the production installer stabilizes, it should write to `HKLM\Software\Classes` through:
 
 ```powershell
-target\debug\chemcore-office.exe --register-machine
-target\debug\chemcore-office.exe --unregister-machine
+target\debug\chemsema-office.exe --register-machine
+target\debug\chemsema-office.exe --unregister-machine
 ```
 
 `--register-machine` needs administrator privileges and should be run elevated by the production installer. During development, if machine-scope testing is needed, run the corresponding command in an administrator PowerShell.
 
-`apps/chemcore-office` has established the long-term boundary:
+`apps/chemsema-office` has established the long-term boundary:
 
-- `chemcore-office.exe` is an independent COM local server and is not tied to the lifecycle of `chemcore-desktop.exe`.
+- `chemsema-office.exe` is an independent COM local server and is not tied to the lifecycle of `chemsema-desktop.exe`.
 - User/machine scope registration and unregistration are supported.
 - Basic OLE keys such as `Insertable`, `LocalServer32`, `ProgID`, `VersionIndependentProgID`, `Verb`, and `DefaultIcon` are registered.
 - An `IClassFactory` local-server skeleton exists and can be launched by COM and register the class object.
-- `IClassFactory::CreateInstance` can return a ChemCore object and supports querying `IOleObject`, `IDataObject`, `IPersistStorage`, `IViewObject2`, and `IRunnableObject`.
-- `IPersistStorage::InitNew/Save` has started writing ChemCore OLE compound storage. Current fixed stream names are:
+- `IClassFactory::CreateInstance` can return a ChemSema object and supports querying `IOleObject`, `IDataObject`, `IPersistStorage`, `IViewObject2`, and `IRunnableObject`.
+- `IPersistStorage::InitNew/Save` has started writing ChemSema OLE compound storage. Current fixed stream names are:
 
 ```text
-ChemcoreManifest    OLE object manifest, records class/progId and payload stream name.
-ChemcoreDocument    ChemCore document JSON, generated by chemcore-engine.
-ChemcorePreviewSvg  Current-stage SVG preview placeholder, to be replaced by real render output later.
+ChemSemaManifest    OLE object manifest, records class/progId and payload stream name.
+ChemSemaDocument    ChemSema document JSON, generated by chemsema-engine.
+ChemSemaPreviewSvg  Current-stage SVG preview placeholder, to be replaced by real render output later.
 \x02OlePres001       EMF presentation stream, used for internal preview in OLE storage.
 \x03EPRINT           Enhanced print stream, contents are EMF bits.
 ```
 
 - `npm run office:self-test` validates COM object creation, interface querying, CLSID return, and OLE storage stream write/read without an Office environment.
-- Desktop copy continues to write ordinary Windows clipboard formats, while also calling `chemcore-office.exe --copy-clipboard-payload` to put the same ChemCore document/svg/cdxml payload into the OLE clipboard. That OLE clipboard object supports `Embed Source`, `Object Descriptor`, ChemCore custom JSON, CDXML, SVG, Unicode text, and `CF_ENHMETAFILE`, enabling Office paste as an editable object. The default OLE clipboard enumeration excludes `CF_METAFILEPICT`, avoiding Word's preference for WMF preview generation.
-- `chemcore-office.exe --write-word-docx-payload <payload.json> <output.docx>` has been added. This is the first "direct-write Word structure" path: it directly generates an OOXML package containing `word/embeddings/oleObject1.bin` and `word/media/image1.emf`, used to verify and settle the ChemDraw-style external EMF preview structure. Later clipboard/active Word insertion should reuse this package writer for stable previews.
+- Desktop copy continues to write ordinary Windows clipboard formats, while also calling `chemsema-office.exe --copy-clipboard-payload` to put the same ChemSema document/svg/cdxml payload into the OLE clipboard. That OLE clipboard object supports `Embed Source`, `Object Descriptor`, ChemSema custom JSON, CDXML, SVG, Unicode text, and `CF_ENHMETAFILE`, enabling Office paste as an editable object. The default OLE clipboard enumeration excludes `CF_METAFILEPICT`, avoiding Word's preference for WMF preview generation.
+- `chemsema-office.exe --write-word-docx-payload <payload.json> <output.docx>` has been added. This is the first "direct-write Word structure" path: it directly generates an OOXML package containing `word/embeddings/oleObject1.bin` and `word/media/image1.emf`, used to verify and settle the ChemDraw-style external EMF preview structure. Later clipboard/active Word insertion should reuse this package writer for stable previews.
 
 Remaining embedded object interfaces to complete:
 
 ```text
 IOleObject      Basic extent and DoVerb desktop wake-up are implemented; next is write-back to Office storage after editing.
 IDataObject     OLE clipboard already supports Embed Source/Object Descriptor/custom text formats/CF_ENHMETAFILE.
-IPersistStorage Writes ChemCore payload stream, SVG preview stream, EMF presentation, and EPRINT; next is Load read-back and edit write-back.
+IPersistStorage Writes ChemSema payload stream, SVG preview stream, EMF presentation, and EPRINT; next is Load read-back and edit write-back.
 IViewObject2    Has basic native vector preview renderer path; next is more path, font, and advanced fill fidelity.
 IRunnableObject Skeleton exists; next is running state and desktop wake-up.
 ```
 
-Stage 1 only requires Windows/Office to recognize the ChemCore OLE class. Stage 2 lets inserted Office objects show previews. Stage 3 implements double-click activation and edit write-back.
+Stage 1 only requires Windows/Office to recognize the ChemSema OLE class. Stage 2 lets inserted Office objects show previews. Stage 3 implements double-click activation and edit write-back.
 
 ## Native Document Container
 
@@ -335,10 +335,10 @@ This allows upgrading from gzip JSON to a multi-file container later without ove
 
 ## Clipboard Formats
 
-ChemDraw-level experience requires serious clipboard support. Copying ChemCore objects should write multiple formats at once:
+ChemDraw-level experience requires serious clipboard support. Copying ChemSema objects should write multiple formats at once:
 
 ```text
-ChemCore native object
+ChemSema native object
 CDXML
 SVG
 PNG
@@ -348,10 +348,10 @@ Plain text / SMILES / InChI (optional later)
 Paste should read formats by priority:
 
 ```text
-ChemCore native > CDXML > SVG/PNG > text chemistry
+ChemSema native > CDXML > SVG/PNG > text chemistry
 ```
 
-This gives reasonable fallbacks between ChemCore, Office, ChemDraw, browsers, and chat tools.
+This gives reasonable fallbacks between ChemSema, Office, ChemDraw, browsers, and chat tools.
 
 ## Preview And Export Formats
 
@@ -375,21 +375,21 @@ These outputs should be generated uniformly by engine/render service. The Office
 
 ### Stage 1: Final Directory Structure
 
-- Create `apps/chemcore-desktop`.
-- Create `apps/chemcore-office`.
-- Create `crates/chemcore-document`.
-- Create `crates/chemcore-desktop-service`.
+- Create `apps/chemsema-desktop`.
+- Create `apps/chemsema-office`.
+- Create `crates/chemsema-document`.
+- Create `crates/chemsema-desktop-service`.
 - Establish boundaries and empty implementations first; do not rush to migrate large amounts of logic.
 
 ### Stage 2: Document Service
 
-- Wrap existing `chemcore-engine`. Started: `crates/chemcore-desktop-service` now holds native engine sessions.
+- Wrap existing `chemsema-engine`. Started: `crates/chemsema-desktop-service` now holds native engine sessions.
 - Define open, save, export, preview, migration, and command-execution APIs. Started: currently exposes document JSON, state JSON, render list, bounds, SVG, and CDXML.
 - Model Web and Desktop through the same API semantics.
 
 ### Stage 3: Tauri Desktop Shell
 
-- Establish the Tauri app. Done: `apps/chemcore-desktop/src-tauri`.
+- Establish the Tauri app. Done: `apps/chemsema-desktop/src-tauri`.
 - Load the existing viewer UI. Done: `npm run desktop:dev` starts a Windows desktop window.
 - Add menus, shortcuts, file dialogs, recent files, drag open, and single instance. Completed up to single-window native menus, shortcuts, file dialogs, recent files, drag open, startup-argument open, and single-instance wake-up.
 - Configure `.ccjz/.ccjs/.cdxml` file associations. Written into Tauri bundle config; needs verification at the Windows system layer after installer installation.
@@ -417,14 +417,14 @@ These outputs should be generated uniformly by engine/render service. The Office
 
 ### Stage 7: Office OLE Prototype
 
-- Register ChemCore OLE object.
+- Register ChemSema OLE object.
 - Insert objects into Office.
 - Display preview.
-- Double-click opens ChemCore desktop.
+- Double-click opens ChemSema desktop.
 
 ### Stage 8: Complete Office Lifecycle
 
-- Save and restore ChemCore object payload in Office documents.
+- Save and restore ChemSema object payload in Office documents.
 - Update Office preview after editing.
 - Support copy/paste editable objects.
 - Support embedded `.ccjz` data inside objects.
@@ -432,8 +432,8 @@ These outputs should be generated uniformly by engine/render service. The Office
 ### Stage 9: Office Add-in Enhancements
 
 - Ribbon buttons.
-- Insert ChemCore Object.
-- Edit Selected ChemCore Object.
+- Insert ChemSema Object.
+- Edit Selected ChemSema Object.
 - Export/Convert.
 - Template library.
 
@@ -450,7 +450,7 @@ These outputs should be generated uniformly by engine/render service. The Office
 
 - No temporary Electron version.
 - No desktop-only chemical editing logic.
-- No Office plugin directly parsing or modifying ChemCore JSON.
+- No Office plugin directly parsing or modifying ChemSema JSON.
 - No SVG-only paste with editable object postponed indefinitely.
 - Do not freeze `.ccjz` API as forever single gzip JSON.
 - Do not turn the Tauri backend into a second business layer.

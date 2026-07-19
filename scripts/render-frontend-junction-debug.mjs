@@ -69,10 +69,10 @@ const page = await browser.newPage({
 });
 
 await page.goto(url, { waitUntil: "networkidle" });
-await page.waitForFunction(() => window.__chemcoreDebug?.state?.editorEngine);
+await page.waitForFunction(() => window.__chemsemaDebug?.state?.editorEngine);
 
 const result = await page.evaluate((forceWideAtCenter) => {
-  const debug = window.__chemcoreDebug;
+  const debug = window.__chemsemaDebug;
   const engine = debug.state.editorEngine;
   const draw = (variant, x1, y1, x2, y2) => {
     engine.setTool("bond", variant);

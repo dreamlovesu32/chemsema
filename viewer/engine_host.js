@@ -1,4 +1,4 @@
-import initializeChemcoreEngine, { WasmEngine } from "./engine/chemcore_engine.js";
+import initializeChemSemaEngine, { WasmEngine } from "./engine/chemsema_engine.js";
 
 class WasmEngineHost {
   constructor() {
@@ -7,7 +7,7 @@ class WasmEngineHost {
   }
 
   async initialize() {
-    await initializeChemcoreEngine(new URL("./engine/chemcore_engine_bg.wasm?v=20260627-bracket-hit-cursor", import.meta.url));
+    await initializeChemSemaEngine(new URL("./engine/chemsema_engine_bg.wasm?v=20260627-bracket-hit-cursor", import.meta.url));
     return this;
   }
 
@@ -17,7 +17,7 @@ class WasmEngineHost {
 }
 
 function createManagedEngineSession(session) {
-  if (!session || typeof session !== "object" || session.__chemcoreManagedFree) {
+  if (!session || typeof session !== "object" || session.__chemsemaManagedFree) {
     return session;
   }
   const originalFree = typeof session.free === "function" ? session.free.bind(session) : null;
@@ -25,7 +25,7 @@ function createManagedEngineSession(session) {
     return session;
   }
   let freed = false;
-  Object.defineProperty(session, "__chemcoreManagedFree", {
+  Object.defineProperty(session, "__chemsemaManagedFree", {
     configurable: false,
     enumerable: false,
     value: true,
@@ -53,13 +53,13 @@ class DesktopHybridEngineHost extends WasmEngineHost {
     try {
       await this.desktopNative.initialize();
       this.desktopNativeProbe = await this.desktopNative.runSmokeTest();
-      console.info("[chemcore] desktop native engine probe", this.desktopNativeProbe);
+      console.info("[chemsema] desktop native engine probe", this.desktopNativeProbe);
     } catch (error) {
       this.desktopNativeProbe = {
         ok: false,
         error: String(error?.message || error),
       };
-      console.warn("[chemcore] desktop native engine probe failed", error);
+      console.warn("[chemsema] desktop native engine probe failed", error);
     }
     return this;
   }
@@ -233,7 +233,7 @@ class TauriEngineSession {
     const run = () => this.executeNativeMutation(command, args, options);
     this.nativeBackgroundOperation = this.nativeBackgroundOperation.catch(() => {}).then(run);
     void this.nativeBackgroundOperation.catch((error) => {
-      console.warn("[chemcore] background native mutation failed", command, error);
+      console.warn("[chemsema] background native mutation failed", command, error);
     });
     return this.nativeBackgroundOperation;
   }
@@ -261,7 +261,7 @@ class TauriEngineSession {
     this.coalescedNativeMutations.set(key, entry);
     this.nativeBackgroundOperation = entry.promise;
     void entry.promise.catch((error) => {
-      console.warn("[chemcore] coalesced background native mutation failed", command, error);
+      console.warn("[chemsema] coalesced background native mutation failed", command, error);
     });
     return entry.promise;
   }
@@ -1432,7 +1432,7 @@ class TauriEngineHost {
     if (typeof invoke !== "function") {
       throw new Error("Tauri invoke API is unavailable.");
     }
-    await initializeChemcoreEngine();
+    await initializeChemSemaEngine();
     this.invoke = invoke;
     return this;
   }

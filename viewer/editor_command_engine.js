@@ -69,8 +69,8 @@ export function createEditorCommandEngine(options = {}) {
     if (typeof apply === "function") {
       rawResult = await apply(normalized);
       if (executeOptions.sync !== false && rawResult !== false) {
-        if (typeof window !== "undefined" && window.__chemcoreDebug?.renderStats) {
-          window.__chemcoreDebug.renderStats.lastCommandSync = {
+        if (typeof window !== "undefined" && window.__chemsemaDebug?.renderStats) {
+          window.__chemsemaDebug.renderStats.lastCommandSync = {
             commandType: normalized.type || null,
             sync: executeOptions.sync,
             syncRenderList: executeOptions.syncRenderList,
@@ -90,8 +90,8 @@ export function createEditorCommandEngine(options = {}) {
       const resultJson = await activeEngine.executeCommandJson(commandJson);
       result = parseCommandResultJson(resultJson);
       if (executeOptions.sync !== false && result?.changed) {
-        if (typeof window !== "undefined" && window.__chemcoreDebug?.renderStats) {
-          window.__chemcoreDebug.renderStats.lastCommandSync = {
+        if (typeof window !== "undefined" && window.__chemsemaDebug?.renderStats) {
+          window.__chemsemaDebug.renderStats.lastCommandSync = {
             commandType: normalized.type || null,
             sync: executeOptions.sync,
             syncRenderList: executeOptions.syncRenderList,

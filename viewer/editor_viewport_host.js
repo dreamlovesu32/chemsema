@@ -394,9 +394,9 @@ export function createEditorViewportHost(options) {
     viewerSvg.setAttribute("viewBox", `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`);
     viewerSvg.style.width = pixelWidth;
     viewerSvg.style.height = pixelHeight;
-    viewerSvg.style.setProperty("--chemcore-css-px-per-pt", String(state.displayMetrics.cssPxPerPt));
-    viewerSvg.style.setProperty("--chemcore-device-pixel-ratio", String(state.displayMetrics.devicePixelRatio));
-    viewerSvg.style.setProperty("--chemcore-device-dpi", String(state.displayMetrics.devicePxPerInch));
+    viewerSvg.style.setProperty("--chemsema-css-px-per-pt", String(state.displayMetrics.cssPxPerPt));
+    viewerSvg.style.setProperty("--chemsema-device-pixel-ratio", String(state.displayMetrics.devicePixelRatio));
+    viewerSvg.style.setProperty("--chemsema-device-dpi", String(state.displayMetrics.devicePxPerInch));
     if (textEditorLayer) {
       textEditorLayer.style.width = pixelWidth;
       textEditorLayer.style.height = pixelHeight;

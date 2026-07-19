@@ -1,0 +1,33 @@
+{
+  "name": "ChemSemaSkills",
+  "version": "0.1.0",
+  "description": "Codex skills for ChemSema chemical document, Office, drawing-agent, and development workflows.",
+  "layout": "chemsema-skills",
+  "skills": [
+    {
+      "name": "chemsema-cli",
+      "path": "skills/chemsema-cli",
+      "category": "cli",
+      "type": ["cli", "protocol", "document-workflow", "self-contained-runtime"],
+      "runtimeAssets": ["win-x64", "linux-x64"]
+    },
+    {
+      "name": "chemsema-office",
+      "path": "skills/chemsema-office",
+      "category": "office",
+      "type": ["office-integration", "clipboard", "ole-debugging"]
+    },
+    {
+      "name": "chemsema-drawing-agent",
+      "path": "skills/chemsema-drawing-agent",
+      "category": "drawing-agent",
+      "type": ["drawing-agent", "command-planning"]
+    },
+    {
+      "name": "chemsema-development",
+      "path": "skills/chemsema-development",
+      "category": "development",
+      "type": ["build-test-package", "ci", "repo-hygiene"]
+    }
+  ]
+}

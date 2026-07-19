@@ -1,0 +1,1693 @@
+{
+  "format": {
+    "name": "chemsema",
+    "version": "0.1",
+    "unit": "pt"
+  },
+  "document": {
+    "id": "doc_editor_untitled",
+    "title": "Untitled",
+    "page": {
+      "width": 900,
+      "height": 600,
+      "background": "#ffffff"
+    },
+    "meta": null
+  },
+  "styles": {
+    "style_arrow_default": {
+      "kind": "stroke",
+      "lineCap": "butt",
+      "lineJoin": "miter",
+      "stroke": "#000000",
+      "strokeWidth": 1
+    },
+    "style_molecule_default": {
+      "fontFamily": "Arial",
+      "fontSize": 10,
+      "kind": "molecule",
+      "stroke": "#000000",
+      "strokeWidth": 1
+    }
+  },
+  "objects": [
+    {
+      "id": "obj_editor_molecule",
+      "type": "molecule",
+      "name": "molecule",
+      "visible": true,
+      "locked": false,
+      "zIndex": 10,
+      "transform": {
+        "translate": [
+          0,
+          0
+        ],
+        "rotate": 0,
+        "scale": [
+          1,
+          1
+        ]
+      },
+      "styleRef": "style_molecule_default",
+      "meta": null,
+      "payload": {
+        "resourceRef": "mol_editor",
+        "bbox": [
+          0,
+          0,
+          900,
+          600
+        ]
+      }
+    }
+  ],
+  "resources": {
+    "mol_editor": {
+      "type": "molecule_fragment2d",
+      "encoding": "chemsema.molecule.fragment2d",
+      "data": {
+        "schema": "chemsema.molecule.fragment2d",
+        "bbox": [
+          0,
+          0,
+          900,
+          600
+        ],
+        "nodes": [
+          {
+            "id": "n_4",
+            "element": "C",
+            "atomicNumber": 6,
+            "position": [
+              -71.97,
+              -29.88
+            ],
+            "charge": 0,
+            "numHydrogens": 0,
+            "isExternalConnectionPoint": false,
+            "isPlaceholder": false,
+            "meta": null
+          },
+          {
+            "id": "n_5",
+            "element": "C",
+            "atomicNumber": 6,
+            "position": [
+              -45.99,
+              -44.88
+            ],
+            "charge": 0,
+            "numHydrogens": 0,
+            "isExternalConnectionPoint": false,
+            "isPlaceholder": false,
+            "meta": null
+          },
+          {
+            "id": "n_7",
+            "element": "C",
+            "atomicNumber": 6,
+            "position": [
+              -20.01,
+              -29.88
+            ],
+            "charge": 0,
+            "numHydrogens": 0,
+            "isExternalConnectionPoint": false,
+            "isPlaceholder": false,
+            "meta": null
+          },
+          {
+            "id": "n_9",
+            "element": "N",
+            "atomicNumber": 7,
+            "position": [
+              -75.11,
+              -0.04
+            ],
+            "charge": 0,
+            "numHydrogens": 0,
+            "isExternalConnectionPoint": false,
+            "isPlaceholder": false,
+            "label": {
+              "text": "N",
+              "sourceText": "N",
+              "position": [
+                -78.71,
+                3.61
+              ],
+              "boxField": [
+                -78.71,
+                -4.59,
+                -71.51,
+                5.91
+              ],
+              "runs": [
+                {
+                  "text": "N",
+                  "fontFamily": "Arial",
+                  "fontSize": 10,
+                  "fill": "#000000",
+                  "fontWeight": 400,
+                  "fontStyle": "normal",
+                  "underline": false,
+                  "script": "normal"
+                }
+              ],
+              "align": "left",
+              "layout": "attached-group",
+              "attachment": "node",
+              "anchor": "start",
+              "fontFamily": "Arial",
+              "fill": "#000000",
+              "fontSize": 10,
+              "glyphPolygons": [
+                [
+                  [
+                    -77.99,
+                    -4.59
+                  ],
+                  [
+                    -72.22999999999999,
+                    -4.59
+                  ],
+                  [
+                    -70.60999999999999,
+                    -2.969999999999997
+                  ],
+                  [
+                    -70.60999999999999,
+                    2.889999999999997
+                  ],
+                  [
+                    -72.22999999999999,
+                    4.51
+                  ],
+                  [
+                    -77.99,
+                    4.51
+                  ],
+                  [
+                    -79.61,
+                    2.889999999999997
+                  ],
+                  [
+                    -79.61,
+                    -2.969999999999997
+                  ]
+                ]
+              ],
+              "box": [
+                -78.71,
+                -4.59,
+                -71.51,
+                5.91
+              ],
+              "meta": {
+                "implicitHydrogenLabel": {
+                  "source": "shortcut",
+                  "userEdited": false
+                },
+                "sourceRuns": [
+                  {
+                    "fill": "#000000",
+                    "fontFamily": "Arial",
+                    "fontSize": 10,
+                    "fontStyle": "normal",
+                    "fontWeight": 400,
+                    "script": "chemical",
+                    "text": "N",
+                    "underline": false
+                  }
+                ]
+              }
+            },
+            "meta": {
+              "implicitHydrogenLabel": {
+                "source": "shortcut",
+                "userEdited": false
+              }
+            }
+          },
+          {
+            "id": "n_10",
+            "element": "C",
+            "atomicNumber": 6,
+            "position": [
+              -104.45,
+              6.19
+            ],
+            "charge": 0,
+            "numHydrogens": 0,
+            "isExternalConnectionPoint": false,
+            "isPlaceholder": false,
+            "meta": null
+          },
+          {
+            "id": "n_11",
+            "element": "C",
+            "atomicNumber": 6,
+            "position": [
+              -119.45,
+              -19.79
+            ],
+            "charge": 0,
+            "numHydrogens": 0,
+            "isExternalConnectionPoint": false,
+            "isPlaceholder": false,
+            "meta": null
+          },
+          {
+            "id": "n_12",
+            "element": "O",
+            "atomicNumber": 8,
+            "position": [
+              -99.38,
+              -42.08
+            ],
+            "charge": 0,
+            "numHydrogens": 0,
+            "isExternalConnectionPoint": false,
+            "isPlaceholder": false,
+            "label": {
+              "text": "O",
+              "sourceText": "O",
+              "position": [
+                -103.28,
+                -38.43
+              ],
+              "boxField": [
+                -103.28,
+                -46.63,
+                -95.48,
+                -36.13
+              ],
+              "runs": [
+                {
+                  "text": "O",
+                  "fontFamily": "Arial",
+                  "fontSize": 10,
+                  "fill": "#000000",
+                  "fontWeight": 400,
+                  "fontStyle": "normal",
+                  "underline": false,
+                  "script": "normal"
+                }
+              ],
+              "align": "left",
+              "layout": "attached-group-above",
+              "attachment": "node",
+              "anchor": "start",
+              "fontFamily": "Arial",
+              "fill": "#000000",
+              "fontSize": 10,
+              "glyphPolygons": [
+                [
+                  [
+                    -94.58,
+                    -42.08
+                  ],
+                  [
+                    -94.81,
+                    -40.61
+                  ],
+                  [
+                    -95.5,
+                    -39.29
+                  ],
+                  [
+                    -96.56,
+                    -38.24
+                  ],
+                  [
+                    -97.9,
+                    -37.56
+                  ],
+                  [
+                    -99.38,
+                    -37.33
+                  ],
+                  [
+                    -100.86,
+                    -37.56
+                  ],
+                  [
+                    -102.2,
+                    -38.24
+                  ],
+                  [
+                    -103.26,
+                    -39.29
+                  ],
+                  [
+                    -103.95,
+                    -40.61
+                  ],
+                  [
+                    -104.18,
+                    -42.08
+                  ],
+                  [
+                    -103.95,
+                    -43.55
+                  ],
+                  [
+                    -103.26,
+                    -44.87
+                  ],
+                  [
+                    -102.2,
+                    -45.92
+                  ],
+                  [
+                    -100.86,
+                    -46.6
+                  ],
+                  [
+                    -99.38,
+                    -46.83
+                  ],
+                  [
+                    -97.9,
+                    -46.6
+                  ],
+                  [
+                    -96.56,
+                    -45.92
+                  ],
+                  [
+                    -95.5,
+                    -44.87
+                  ],
+                  [
+                    -94.81,
+                    -43.55
+                  ]
+                ]
+              ],
+              "box": [
+                -103.28,
+                -46.63,
+                -95.48,
+                -36.13
+              ],
+              "meta": {
+                "implicitHydrogenLabel": {
+                  "source": "shortcut",
+                  "userEdited": false
+                },
+                "sourceRuns": [
+                  {
+                    "fill": "#000000",
+                    "fontFamily": "Arial",
+                    "fontSize": 10,
+                    "fontStyle": "normal",
+                    "fontWeight": 400,
+                    "script": "chemical",
+                    "text": "O",
+                    "underline": false
+                  }
+                ]
+              }
+            },
+            "meta": {
+              "implicitHydrogenLabel": {
+                "source": "shortcut",
+                "userEdited": false
+              }
+            }
+          },
+          {
+            "id": "n_18",
+            "element": "O",
+            "atomicNumber": 8,
+            "position": [
+              7.4,
+              -42.08
+            ],
+            "charge": 0,
+            "numHydrogens": 0,
+            "isExternalConnectionPoint": false,
+            "isPlaceholder": false,
+            "label": {
+              "text": "O",
+              "sourceText": "O",
+              "position": [
+                3.5,
+                -38.43
+              ],
+              "boxField": [
+                3.5,
+                -46.63,
+                11.3,
+                -36.13
+              ],
+              "runs": [
+                {
+                  "text": "O",
+                  "fontFamily": "Arial",
+                  "fontSize": 10,
+                  "fill": "#000000",
+                  "fontWeight": 400,
+                  "fontStyle": "normal",
+                  "underline": false,
+                  "script": "normal"
+                }
+              ],
+              "align": "left",
+              "layout": "attached-group-above",
+              "attachment": "node",
+              "anchor": "start",
+              "fontFamily": "Arial",
+              "fill": "#000000",
+              "fontSize": 10,
+              "glyphPolygons": [
+                [
+                  [
+                    12.2,
+                    -42.08
+                  ],
+                  [
+                    11.97,
+                    -40.61
+                  ],
+                  [
+                    11.28,
+                    -39.29
+                  ],
+                  [
+                    10.22,
+                    -38.24
+                  ],
+                  [
+                    8.88,
+                    -37.56
+                  ],
+                  [
+                    7.4,
+                    -37.33
+                  ],
+                  [
+                    5.92,
+                    -37.56
+                  ],
+                  [
+                    4.58,
+                    -38.24
+                  ],
+                  [
+                    3.52,
+                    -39.29
+                  ],
+                  [
+                    2.83,
+                    -40.61
+                  ],
+                  [
+                    2.6,
+                    -42.08
+                  ],
+                  [
+                    2.83,
+                    -43.55
+                  ],
+                  [
+                    3.52,
+                    -44.87
+                  ],
+                  [
+                    4.58,
+                    -45.92
+                  ],
+                  [
+                    5.92,
+                    -46.6
+                  ],
+                  [
+                    7.4,
+                    -46.83
+                  ],
+                  [
+                    8.88,
+                    -46.6
+                  ],
+                  [
+                    10.22,
+                    -45.92
+                  ],
+                  [
+                    11.28,
+                    -44.87
+                  ],
+                  [
+                    11.97,
+                    -43.55
+                  ]
+                ]
+              ],
+              "box": [
+                3.5,
+                -46.63,
+                11.3,
+                -36.13
+              ],
+              "meta": {
+                "implicitHydrogenLabel": {
+                  "source": "shortcut",
+                  "userEdited": false
+                },
+                "sourceRuns": [
+                  {
+                    "fill": "#000000",
+                    "fontFamily": "Arial",
+                    "fontSize": 10,
+                    "fontStyle": "normal",
+                    "fontWeight": 400,
+                    "script": "chemical",
+                    "text": "O",
+                    "underline": false
+                  }
+                ]
+              }
+            },
+            "meta": {
+              "implicitHydrogenLabel": {
+                "source": "shortcut",
+                "userEdited": false
+              }
+            }
+          },
+          {
+            "id": "n_19",
+            "element": "C",
+            "atomicNumber": 6,
+            "position": [
+              27.47,
+              -19.79
+            ],
+            "charge": 0,
+            "numHydrogens": 0,
+            "isExternalConnectionPoint": false,
+            "isPlaceholder": false,
+            "meta": null
+          },
+          {
+            "id": "n_20",
+            "element": "C",
+            "atomicNumber": 6,
+            "position": [
+              12.47,
+              6.19
+            ],
+            "charge": 0,
+            "numHydrogens": 0,
+            "isExternalConnectionPoint": false,
+            "isPlaceholder": false,
+            "meta": null
+          },
+          {
+            "id": "n_21",
+            "element": "N",
+            "atomicNumber": 7,
+            "position": [
+              -16.87,
+              -0.04
+            ],
+            "charge": 0,
+            "numHydrogens": 0,
+            "isExternalConnectionPoint": false,
+            "isPlaceholder": false,
+            "label": {
+              "text": "N",
+              "sourceText": "N",
+              "position": [
+                -20.47,
+                3.61
+              ],
+              "boxField": [
+                -20.47,
+                -4.59,
+                -13.27,
+                5.91
+              ],
+              "runs": [
+                {
+                  "text": "N",
+                  "fontFamily": "Arial",
+                  "fontSize": 10,
+                  "fill": "#000000",
+                  "fontWeight": 400,
+                  "fontStyle": "normal",
+                  "underline": false,
+                  "script": "normal"
+                }
+              ],
+              "align": "left",
+              "layout": "attached-group",
+              "attachment": "node",
+              "anchor": "start",
+              "fontFamily": "Arial",
+              "fill": "#000000",
+              "fontSize": 10,
+              "glyphPolygons": [
+                [
+                  [
+                    -19.749999999999996,
+                    -4.59
+                  ],
+                  [
+                    -13.989999999999998,
+                    -4.59
+                  ],
+                  [
+                    -12.37,
+                    -2.97
+                  ],
+                  [
+                    -12.37,
+                    2.89
+                  ],
+                  [
+                    -13.989999999999998,
+                    4.51
+                  ],
+                  [
+                    -19.749999999999996,
+                    4.51
+                  ],
+                  [
+                    -21.369999999999997,
+                    2.89
+                  ],
+                  [
+                    -21.369999999999997,
+                    -2.97
+                  ]
+                ]
+              ],
+              "box": [
+                -20.47,
+                -4.59,
+                -13.27,
+                5.91
+              ],
+              "meta": {
+                "implicitHydrogenLabel": {
+                  "source": "shortcut",
+                  "userEdited": false
+                },
+                "sourceRuns": [
+                  {
+                    "fill": "#000000",
+                    "fontFamily": "Arial",
+                    "fontSize": 10,
+                    "fontStyle": "normal",
+                    "fontWeight": 400,
+                    "script": "chemical",
+                    "text": "N",
+                    "underline": false
+                  }
+                ]
+              }
+            },
+            "meta": {
+              "implicitHydrogenLabel": {
+                "source": "shortcut",
+                "userEdited": false
+              }
+            }
+          },
+          {
+            "id": "n_27",
+            "element": "C",
+            "atomicNumber": 6,
+            "position": [
+              -148.79,
+              -13.55
+            ],
+            "charge": 0,
+            "numHydrogens": 0,
+            "isExternalConnectionPoint": false,
+            "isPlaceholder": false,
+            "meta": null
+          },
+          {
+            "id": "n_28",
+            "element": "C",
+            "atomicNumber": 6,
+            "position": [
+              -151.93,
+              16.28
+            ],
+            "charge": 0,
+            "numHydrogens": 0,
+            "isExternalConnectionPoint": false,
+            "isPlaceholder": false,
+            "meta": null
+          },
+          {
+            "id": "n_29",
+            "element": "C",
+            "atomicNumber": 6,
+            "position": [
+              -124.52,
+              28.48
+            ],
+            "charge": 0,
+            "numHydrogens": 0,
+            "isExternalConnectionPoint": false,
+            "isPlaceholder": false,
+            "meta": null
+          },
+          {
+            "id": "n_34",
+            "element": "C",
+            "atomicNumber": 6,
+            "position": [
+              32.54,
+              28.48
+            ],
+            "charge": 0,
+            "numHydrogens": 0,
+            "isExternalConnectionPoint": false,
+            "isPlaceholder": false,
+            "meta": null
+          },
+          {
+            "id": "n_35",
+            "element": "C",
+            "atomicNumber": 6,
+            "position": [
+              59.95,
+              16.28
+            ],
+            "charge": 0,
+            "numHydrogens": 0,
+            "isExternalConnectionPoint": false,
+            "isPlaceholder": false,
+            "meta": null
+          },
+          {
+            "id": "n_36",
+            "element": "C",
+            "atomicNumber": 6,
+            "position": [
+              56.81,
+              -13.55
+            ],
+            "charge": 0,
+            "numHydrogens": 0,
+            "isExternalConnectionPoint": false,
+            "isPlaceholder": false,
+            "meta": null
+          },
+          {
+            "id": "n_41",
+            "element": "C",
+            "atomicNumber": 6,
+            "position": [
+              -121.38,
+              58.32
+            ],
+            "charge": 0,
+            "numHydrogens": 0,
+            "isExternalConnectionPoint": false,
+            "isPlaceholder": false,
+            "meta": null
+          },
+          {
+            "id": "n_42",
+            "element": "C",
+            "atomicNumber": 6,
+            "position": [
+              -145.65,
+              75.96
+            ],
+            "charge": 0,
+            "numHydrogens": 0,
+            "isExternalConnectionPoint": false,
+            "isPlaceholder": false,
+            "meta": null
+          },
+          {
+            "id": "n_43",
+            "element": "C",
+            "atomicNumber": 6,
+            "position": [
+              -173.06,
+              63.76
+            ],
+            "charge": 0,
+            "numHydrogens": 0,
+            "isExternalConnectionPoint": false,
+            "isPlaceholder": false,
+            "meta": null
+          },
+          {
+            "id": "n_44",
+            "element": "C",
+            "atomicNumber": 6,
+            "position": [
+              -176.2,
+              33.92
+            ],
+            "charge": 0,
+            "numHydrogens": 0,
+            "isExternalConnectionPoint": false,
+            "isPlaceholder": false,
+            "meta": null
+          },
+          {
+            "id": "n_50",
+            "element": "C",
+            "atomicNumber": 6,
+            "position": [
+              84.22,
+              33.92
+            ],
+            "charge": 0,
+            "numHydrogens": 0,
+            "isExternalConnectionPoint": false,
+            "isPlaceholder": false,
+            "meta": null
+          },
+          {
+            "id": "n_51",
+            "element": "C",
+            "atomicNumber": 6,
+            "position": [
+              81.08,
+              63.76
+            ],
+            "charge": 0,
+            "numHydrogens": 0,
+            "isExternalConnectionPoint": false,
+            "isPlaceholder": false,
+            "meta": null
+          },
+          {
+            "id": "n_52",
+            "element": "C",
+            "atomicNumber": 6,
+            "position": [
+              53.67,
+              75.96
+            ],
+            "charge": 0,
+            "numHydrogens": 0,
+            "isExternalConnectionPoint": false,
+            "isPlaceholder": false,
+            "meta": null
+          },
+          {
+            "id": "n_53",
+            "element": "C",
+            "atomicNumber": 6,
+            "position": [
+              29.4,
+              58.32
+            ],
+            "charge": 0,
+            "numHydrogens": 0,
+            "isExternalConnectionPoint": false,
+            "isPlaceholder": false,
+            "meta": null
+          },
+          {
+            "id": "n_59",
+            "element": "C",
+            "atomicNumber": 6,
+            "position": [
+              -60.99,
+              -70.86
+            ],
+            "charge": 0,
+            "numHydrogens": 0,
+            "isExternalConnectionPoint": false,
+            "isPlaceholder": false,
+            "meta": null
+          },
+          {
+            "id": "n_60",
+            "element": "C",
+            "atomicNumber": 6,
+            "position": [
+              -30.99,
+              -70.86
+            ],
+            "charge": 0,
+            "numHydrogens": 0,
+            "isExternalConnectionPoint": false,
+            "isPlaceholder": false,
+            "meta": null
+          }
+        ],
+        "bonds": [
+          {
+            "id": "b_6",
+            "begin": "n_4",
+            "end": "n_5",
+            "order": 1,
+            "strokeWidth": 1,
+            "boldWidth": 4,
+            "hashSpacing": 2.9,
+            "bondSpacing": 12,
+            "lineStyles": {
+              "main": "solid",
+              "left": "solid",
+              "right": "solid"
+            },
+            "lineWeights": {
+              "main": "normal",
+              "left": "normal",
+              "right": "normal"
+            },
+            "meta": null
+          },
+          {
+            "id": "b_8",
+            "begin": "n_5",
+            "end": "n_7",
+            "order": 1,
+            "strokeWidth": 1,
+            "boldWidth": 4,
+            "hashSpacing": 2.9,
+            "bondSpacing": 12,
+            "lineStyles": {
+              "main": "solid",
+              "left": "solid",
+              "right": "solid"
+            },
+            "lineWeights": {
+              "main": "normal",
+              "left": "normal",
+              "right": "normal"
+            },
+            "meta": null
+          },
+          {
+            "id": "b_13",
+            "begin": "n_4",
+            "end": "n_9",
+            "order": 2,
+            "double": {
+              "placement": "right",
+              "frozen": false
+            },
+            "strokeWidth": 1,
+            "boldWidth": 4,
+            "hashSpacing": 2.9,
+            "bondSpacing": 12,
+            "lineStyles": {
+              "main": "solid",
+              "left": "solid",
+              "right": "solid"
+            },
+            "lineWeights": {
+              "main": "normal",
+              "left": "normal",
+              "right": "normal"
+            },
+            "meta": null
+          },
+          {
+            "id": "b_14",
+            "begin": "n_9",
+            "end": "n_10",
+            "order": 1,
+            "strokeWidth": 1,
+            "boldWidth": 4,
+            "hashSpacing": 2.9,
+            "bondSpacing": 12,
+            "lineStyles": {
+              "main": "solid",
+              "left": "solid",
+              "right": "solid"
+            },
+            "lineWeights": {
+              "main": "normal",
+              "left": "normal",
+              "right": "normal"
+            },
+            "meta": null
+          },
+          {
+            "id": "b_15",
+            "begin": "n_10",
+            "end": "n_11",
+            "order": 1,
+            "strokeWidth": 1,
+            "boldWidth": 4,
+            "hashSpacing": 2.9,
+            "bondSpacing": 12,
+            "lineStyles": {
+              "main": "solid",
+              "left": "solid",
+              "right": "solid"
+            },
+            "lineWeights": {
+              "main": "normal",
+              "left": "normal",
+              "right": "normal"
+            },
+            "meta": null
+          },
+          {
+            "id": "b_16",
+            "begin": "n_11",
+            "end": "n_12",
+            "order": 1,
+            "strokeWidth": 1,
+            "boldWidth": 4,
+            "hashSpacing": 2.9,
+            "bondSpacing": 12,
+            "lineStyles": {
+              "main": "solid",
+              "left": "solid",
+              "right": "solid"
+            },
+            "lineWeights": {
+              "main": "normal",
+              "left": "normal",
+              "right": "normal"
+            },
+            "meta": null
+          },
+          {
+            "id": "b_17",
+            "begin": "n_12",
+            "end": "n_4",
+            "order": 1,
+            "strokeWidth": 1,
+            "boldWidth": 4,
+            "hashSpacing": 2.9,
+            "bondSpacing": 12,
+            "lineStyles": {
+              "main": "solid",
+              "left": "solid",
+              "right": "solid"
+            },
+            "lineWeights": {
+              "main": "normal",
+              "left": "normal",
+              "right": "normal"
+            },
+            "meta": null
+          },
+          {
+            "id": "b_22",
+            "begin": "n_7",
+            "end": "n_18",
+            "order": 1,
+            "strokeWidth": 1,
+            "boldWidth": 4,
+            "hashSpacing": 2.9,
+            "bondSpacing": 12,
+            "lineStyles": {
+              "main": "solid",
+              "left": "solid",
+              "right": "solid"
+            },
+            "lineWeights": {
+              "main": "normal",
+              "left": "normal",
+              "right": "normal"
+            },
+            "meta": null
+          },
+          {
+            "id": "b_23",
+            "begin": "n_18",
+            "end": "n_19",
+            "order": 1,
+            "strokeWidth": 1,
+            "boldWidth": 4,
+            "hashSpacing": 2.9,
+            "bondSpacing": 12,
+            "lineStyles": {
+              "main": "solid",
+              "left": "solid",
+              "right": "solid"
+            },
+            "lineWeights": {
+              "main": "normal",
+              "left": "normal",
+              "right": "normal"
+            },
+            "meta": null
+          },
+          {
+            "id": "b_24",
+            "begin": "n_19",
+            "end": "n_20",
+            "order": 1,
+            "strokeWidth": 1,
+            "boldWidth": 4,
+            "hashSpacing": 2.9,
+            "bondSpacing": 12,
+            "lineStyles": {
+              "main": "solid",
+              "left": "solid",
+              "right": "solid"
+            },
+            "lineWeights": {
+              "main": "normal",
+              "left": "normal",
+              "right": "normal"
+            },
+            "meta": null
+          },
+          {
+            "id": "b_25",
+            "begin": "n_20",
+            "end": "n_21",
+            "order": 1,
+            "strokeWidth": 1,
+            "boldWidth": 4,
+            "hashSpacing": 2.9,
+            "bondSpacing": 12,
+            "lineStyles": {
+              "main": "solid",
+              "left": "solid",
+              "right": "solid"
+            },
+            "lineWeights": {
+              "main": "normal",
+              "left": "normal",
+              "right": "normal"
+            },
+            "meta": null
+          },
+          {
+            "id": "b_26",
+            "begin": "n_21",
+            "end": "n_7",
+            "order": 2,
+            "double": {
+              "placement": "right",
+              "frozen": false
+            },
+            "strokeWidth": 1,
+            "boldWidth": 4,
+            "hashSpacing": 2.9,
+            "bondSpacing": 12,
+            "lineStyles": {
+              "main": "solid",
+              "left": "solid",
+              "right": "solid"
+            },
+            "lineWeights": {
+              "main": "normal",
+              "left": "normal",
+              "right": "normal"
+            },
+            "meta": null
+          },
+          {
+            "id": "b_30",
+            "begin": "n_11",
+            "end": "n_27",
+            "order": 1,
+            "stereo": {
+              "kind": "solid-wedge",
+              "wideEnd": "end"
+            },
+            "strokeWidth": 1,
+            "boldWidth": 4,
+            "hashSpacing": 2.9,
+            "bondSpacing": 12,
+            "lineStyles": {
+              "main": "solid",
+              "left": "solid",
+              "right": "solid"
+            },
+            "lineWeights": {
+              "main": "normal",
+              "left": "normal",
+              "right": "normal"
+            },
+            "meta": null
+          },
+          {
+            "id": "b_31",
+            "begin": "n_27",
+            "end": "n_28",
+            "order": 1,
+            "strokeWidth": 1,
+            "boldWidth": 4,
+            "hashSpacing": 2.9,
+            "bondSpacing": 12,
+            "lineStyles": {
+              "main": "solid",
+              "left": "solid",
+              "right": "solid"
+            },
+            "lineWeights": {
+              "main": "normal",
+              "left": "normal",
+              "right": "normal"
+            },
+            "meta": null
+          },
+          {
+            "id": "b_32",
+            "begin": "n_28",
+            "end": "n_29",
+            "order": 1,
+            "strokeWidth": 1,
+            "boldWidth": 4,
+            "hashSpacing": 2.9,
+            "bondSpacing": 12,
+            "lineStyles": {
+              "main": "solid",
+              "left": "solid",
+              "right": "solid"
+            },
+            "lineWeights": {
+              "main": "normal",
+              "left": "normal",
+              "right": "normal"
+            },
+            "meta": null
+          },
+          {
+            "id": "b_33",
+            "begin": "n_29",
+            "end": "n_10",
+            "order": 1,
+            "stereo": {
+              "kind": "solid-wedge",
+              "wideEnd": "begin"
+            },
+            "strokeWidth": 1,
+            "boldWidth": 4,
+            "hashSpacing": 2.9,
+            "bondSpacing": 12,
+            "lineStyles": {
+              "main": "solid",
+              "left": "solid",
+              "right": "solid"
+            },
+            "lineWeights": {
+              "main": "normal",
+              "left": "normal",
+              "right": "normal"
+            },
+            "meta": null
+          },
+          {
+            "id": "b_37",
+            "begin": "n_20",
+            "end": "n_34",
+            "order": 1,
+            "stereo": {
+              "kind": "hashed-wedge",
+              "wideEnd": "end"
+            },
+            "strokeWidth": 1,
+            "boldWidth": 4,
+            "hashSpacing": 2.9,
+            "bondSpacing": 12,
+            "lineStyles": {
+              "main": "solid",
+              "left": "solid",
+              "right": "solid"
+            },
+            "lineWeights": {
+              "main": "normal",
+              "left": "normal",
+              "right": "normal"
+            },
+            "meta": null
+          },
+          {
+            "id": "b_38",
+            "begin": "n_34",
+            "end": "n_35",
+            "order": 1,
+            "strokeWidth": 1,
+            "boldWidth": 4,
+            "hashSpacing": 2.9,
+            "bondSpacing": 12,
+            "lineStyles": {
+              "main": "solid",
+              "left": "solid",
+              "right": "solid"
+            },
+            "lineWeights": {
+              "main": "normal",
+              "left": "normal",
+              "right": "normal"
+            },
+            "meta": null
+          },
+          {
+            "id": "b_39",
+            "begin": "n_35",
+            "end": "n_36",
+            "order": 1,
+            "strokeWidth": 1,
+            "boldWidth": 4,
+            "hashSpacing": 2.9,
+            "bondSpacing": 12,
+            "lineStyles": {
+              "main": "solid",
+              "left": "solid",
+              "right": "solid"
+            },
+            "lineWeights": {
+              "main": "normal",
+              "left": "normal",
+              "right": "normal"
+            },
+            "meta": null
+          },
+          {
+            "id": "b_40",
+            "begin": "n_36",
+            "end": "n_19",
+            "order": 1,
+            "stereo": {
+              "kind": "hashed-wedge",
+              "wideEnd": "begin"
+            },
+            "strokeWidth": 1,
+            "boldWidth": 4,
+            "hashSpacing": 2.9,
+            "bondSpacing": 12,
+            "lineStyles": {
+              "main": "solid",
+              "left": "solid",
+              "right": "solid"
+            },
+            "lineWeights": {
+              "main": "normal",
+              "left": "normal",
+              "right": "normal"
+            },
+            "meta": null
+          },
+          {
+            "id": "b_45",
+            "begin": "n_29",
+            "end": "n_41",
+            "order": 2,
+            "double": {
+              "placement": "right",
+              "frozen": false
+            },
+            "strokeWidth": 1,
+            "boldWidth": 4,
+            "hashSpacing": 2.9,
+            "bondSpacing": 12,
+            "lineStyles": {
+              "main": "solid",
+              "left": "solid",
+              "right": "solid"
+            },
+            "lineWeights": {
+              "main": "normal",
+              "left": "normal",
+              "right": "normal"
+            },
+            "meta": null
+          },
+          {
+            "id": "b_46",
+            "begin": "n_41",
+            "end": "n_42",
+            "order": 1,
+            "strokeWidth": 1,
+            "boldWidth": 4,
+            "hashSpacing": 2.9,
+            "bondSpacing": 12,
+            "lineStyles": {
+              "main": "solid",
+              "left": "solid",
+              "right": "solid"
+            },
+            "lineWeights": {
+              "main": "normal",
+              "left": "normal",
+              "right": "normal"
+            },
+            "meta": null
+          },
+          {
+            "id": "b_47",
+            "begin": "n_42",
+            "end": "n_43",
+            "order": 2,
+            "double": {
+              "placement": "right",
+              "frozen": false
+            },
+            "strokeWidth": 1,
+            "boldWidth": 4,
+            "hashSpacing": 2.9,
+            "bondSpacing": 12,
+            "lineStyles": {
+              "main": "solid",
+              "left": "solid",
+              "right": "solid"
+            },
+            "lineWeights": {
+              "main": "normal",
+              "left": "normal",
+              "right": "normal"
+            },
+            "meta": null
+          },
+          {
+            "id": "b_48",
+            "begin": "n_43",
+            "end": "n_44",
+            "order": 1,
+            "strokeWidth": 1,
+            "boldWidth": 4,
+            "hashSpacing": 2.9,
+            "bondSpacing": 12,
+            "lineStyles": {
+              "main": "solid",
+              "left": "solid",
+              "right": "solid"
+            },
+            "lineWeights": {
+              "main": "normal",
+              "left": "normal",
+              "right": "normal"
+            },
+            "meta": null
+          },
+          {
+            "id": "b_49",
+            "begin": "n_44",
+            "end": "n_28",
+            "order": 2,
+            "double": {
+              "placement": "right",
+              "frozen": false
+            },
+            "strokeWidth": 1,
+            "boldWidth": 4,
+            "hashSpacing": 2.9,
+            "bondSpacing": 12,
+            "lineStyles": {
+              "main": "solid",
+              "left": "solid",
+              "right": "solid"
+            },
+            "lineWeights": {
+              "main": "normal",
+              "left": "normal",
+              "right": "normal"
+            },
+            "meta": null
+          },
+          {
+            "id": "b_54",
+            "begin": "n_35",
+            "end": "n_50",
+            "order": 2,
+            "double": {
+              "placement": "right",
+              "frozen": false
+            },
+            "strokeWidth": 1,
+            "boldWidth": 4,
+            "hashSpacing": 2.9,
+            "bondSpacing": 12,
+            "lineStyles": {
+              "main": "solid",
+              "left": "solid",
+              "right": "solid"
+            },
+            "lineWeights": {
+              "main": "normal",
+              "left": "normal",
+              "right": "normal"
+            },
+            "meta": null
+          },
+          {
+            "id": "b_55",
+            "begin": "n_50",
+            "end": "n_51",
+            "order": 1,
+            "strokeWidth": 1,
+            "boldWidth": 4,
+            "hashSpacing": 2.9,
+            "bondSpacing": 12,
+            "lineStyles": {
+              "main": "solid",
+              "left": "solid",
+              "right": "solid"
+            },
+            "lineWeights": {
+              "main": "normal",
+              "left": "normal",
+              "right": "normal"
+            },
+            "meta": null
+          },
+          {
+            "id": "b_56",
+            "begin": "n_51",
+            "end": "n_52",
+            "order": 2,
+            "double": {
+              "placement": "right",
+              "frozen": false
+            },
+            "strokeWidth": 1,
+            "boldWidth": 4,
+            "hashSpacing": 2.9,
+            "bondSpacing": 12,
+            "lineStyles": {
+              "main": "solid",
+              "left": "solid",
+              "right": "solid"
+            },
+            "lineWeights": {
+              "main": "normal",
+              "left": "normal",
+              "right": "normal"
+            },
+            "meta": null
+          },
+          {
+            "id": "b_57",
+            "begin": "n_52",
+            "end": "n_53",
+            "order": 1,
+            "strokeWidth": 1,
+            "boldWidth": 4,
+            "hashSpacing": 2.9,
+            "bondSpacing": 12,
+            "lineStyles": {
+              "main": "solid",
+              "left": "solid",
+              "right": "solid"
+            },
+            "lineWeights": {
+              "main": "normal",
+              "left": "normal",
+              "right": "normal"
+            },
+            "meta": null
+          },
+          {
+            "id": "b_58",
+            "begin": "n_53",
+            "end": "n_34",
+            "order": 2,
+            "double": {
+              "placement": "right",
+              "frozen": false
+            },
+            "strokeWidth": 1,
+            "boldWidth": 4,
+            "hashSpacing": 2.9,
+            "bondSpacing": 12,
+            "lineStyles": {
+              "main": "solid",
+              "left": "solid",
+              "right": "solid"
+            },
+            "lineWeights": {
+              "main": "normal",
+              "left": "normal",
+              "right": "normal"
+            },
+            "meta": null
+          },
+          {
+            "id": "b_61",
+            "begin": "n_5",
+            "end": "n_59",
+            "order": 1,
+            "strokeWidth": 1,
+            "boldWidth": 4,
+            "hashSpacing": 2.9,
+            "bondSpacing": 12,
+            "lineStyles": {
+              "main": "solid",
+              "left": "solid",
+              "right": "solid"
+            },
+            "lineWeights": {
+              "main": "normal",
+              "left": "normal",
+              "right": "normal"
+            },
+            "meta": null
+          },
+          {
+            "id": "b_62",
+            "begin": "n_59",
+            "end": "n_60",
+            "order": 1,
+            "strokeWidth": 1,
+            "boldWidth": 4,
+            "hashSpacing": 2.9,
+            "bondSpacing": 12,
+            "lineStyles": {
+              "main": "solid",
+              "left": "solid",
+              "right": "solid"
+            },
+            "lineWeights": {
+              "main": "normal",
+              "left": "normal",
+              "right": "normal"
+            },
+            "meta": null
+          },
+          {
+            "id": "b_63",
+            "begin": "n_60",
+            "end": "n_5",
+            "order": 1,
+            "strokeWidth": 1,
+            "boldWidth": 4,
+            "hashSpacing": 2.9,
+            "bondSpacing": 12,
+            "lineStyles": {
+              "main": "solid",
+              "left": "solid",
+              "right": "solid"
+            },
+            "lineWeights": {
+              "main": "normal",
+              "left": "normal",
+              "right": "normal"
+            },
+            "meta": null
+          }
+        ],
+        "meta": null
+      },
+      "meta": null
+    }
+  }
+}

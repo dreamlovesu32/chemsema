@@ -3,13 +3,13 @@ $ErrorActionPreference = "Stop"
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $root = Resolve-Path (Join-Path $here "..\..\..")
 $input = Join-Path $root "figure1.cdxml"
-$cli = $env:CHEMCORE_CLI
+$cli = $env:CHEMSEMA_CLI
 
 if (-not $cli) {
   if (Get-Command cargo -ErrorAction SilentlyContinue) {
     Push-Location $root
     try {
-      & cargo build -p chemcore-cli
+      & cargo build -p chemsema-cli
       if ($LASTEXITCODE -ne 0) {
         exit $LASTEXITCODE
       }
@@ -19,8 +19,8 @@ if (-not $cli) {
   }
 
   $candidates = @(
-    (Join-Path $root "target\debug\chemcore-cli.exe"),
-    (Join-Path $root "target\release\chemcore-cli.exe")
+    (Join-Path $root "target\debug\chemsema-cli.exe"),
+    (Join-Path $root "target\release\chemsema-cli.exe")
   )
   foreach ($candidate in $candidates) {
     if (Test-Path $candidate) {
@@ -31,22 +31,22 @@ if (-not $cli) {
 }
 
 if (-not $cli) {
-  $cli = "chemcore-cli"
+  $cli = "chemsema-cli"
 }
 
-function Invoke-ChemCore {
+function Invoke-ChemSema {
   param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
   & $cli @Arguments
   if ($LASTEXITCODE -ne 0) {
-    throw "chemcore-cli failed: $($Arguments -join ' ')"
+    throw "chemsema-cli failed: $($Arguments -join ' ')"
   }
 }
 
-function Invoke-ChemCoreJson {
+function Invoke-ChemSemaJson {
   param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
   $json = & $cli @Arguments
   if ($LASTEXITCODE -ne 0) {
-    throw "chemcore-cli failed: $($Arguments -join ' ')"
+    throw "chemsema-cli failed: $($Arguments -join ' ')"
   }
   $json
 }
@@ -63,43 +63,43 @@ function Assert-File {
 
 Push-Location $here
 try {
-  Invoke-ChemCore version --out version.json --pretty
-  Invoke-ChemCore capabilities --out capabilities.json --pretty
-  Invoke-ChemCore targets $input --out targets.json --pretty
-  Invoke-ChemCore context $input `
+  Invoke-ChemSema version --out version.json --pretty
+  Invoke-ChemSema capabilities --out capabilities.json --pretty
+  Invoke-ChemSema targets $input --out targets.json --pretty
+  Invoke-ChemSema context $input `
     --target object:obj_line_001 `
     --radius 70 `
     --capture-out context.png `
     --out context.json `
     --width 1400 `
     --pretty
-  Invoke-ChemCore detail $input `
+  Invoke-ChemSema detail $input `
     --target object:obj_text_008 `
     --include-resource `
     --out condition-detail.json `
     --pretty
 
-  $before = Invoke-ChemCoreJson capture $input `
+  $before = Invoke-ChemSemaJson capture $input `
     --bounds "38.15,93.4,330,205" `
     --out before.png `
     --width 1400 `
     --pretty
   $before | Set-Content -Path capture-before.json -Encoding UTF8
 
-  Invoke-ChemCore run $input commands.json `
+  Invoke-ChemSema run $input commands.json `
     --out output.cdxml `
     --results results.json `
     --pretty
-  Invoke-ChemCore convert output.cdxml output.svg
+  Invoke-ChemSema convert output.cdxml output.svg
 
-  $after = Invoke-ChemCoreJson capture output.cdxml `
+  $after = Invoke-ChemSemaJson capture output.cdxml `
     --bounds "38.15,93.4,330,205" `
     --out after.png `
     --width 1400 `
     --pretty
   $after | Set-Content -Path capture-after.json -Encoding UTF8
 
-  $copy = Invoke-ChemCoreJson copy output.cdxml `
+  $copy = Invoke-ChemSemaJson copy output.cdxml `
     --target all `
     --payload office-payload.json `
     --no-copy `
@@ -128,7 +128,7 @@ try {
   }
 
   $version = Get-Content -Raw version.json | ConvertFrom-Json
-  if ($version.protocols.session -ne "chemcore-cli-session-jsonl.v1") {
+  if ($version.protocols.session -ne "chemsema-cli-session-jsonl.v1") {
     throw "Unexpected session protocol id in version.json"
   }
 

@@ -20,7 +20,7 @@ function run(command, args, options = {}) {
   return result;
 }
 
-run("cargo", ["build", "-p", "chemcore-office", "-p", "chemcore-cli", "--release"]);
+run("cargo", ["build", "-p", "chemsema-office", "-p", "chemsema-cli", "--release"]);
 run("cargo", ["test"]);
 run(process.execPath, ["scripts/build-engine-wasm.mjs"]);
 run(process.execPath, ["--check", "viewer/app.js"]);
@@ -39,7 +39,7 @@ const generatedChanges = status.stdout
   .filter(Boolean);
 const blockingChanges = generatedChanges.filter((line) => {
   const path = line.slice(3).replace(/\\/g, "/");
-  return !(process.env.CI === "true" && path === "viewer/engine/chemcore_engine_bg.wasm");
+  return !(process.env.CI === "true" && path === "viewer/engine/chemsema_engine_bg.wasm");
 });
 
 if (blockingChanges.length) {
@@ -49,6 +49,6 @@ if (blockingChanges.length) {
 }
 if (generatedChanges.length) {
   console.warn(
-    "CI rebuilt viewer/engine/chemcore_engine_bg.wasm with platform-local binary metadata; non-binary generated files are clean.",
+    "CI rebuilt viewer/engine/chemsema_engine_bg.wasm with platform-local binary metadata; non-binary generated files are clean.",
   );
 }

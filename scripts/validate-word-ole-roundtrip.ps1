@@ -6,7 +6,7 @@ param(
 
   [string]$CargoCommand = "cargo",
 
-  [string]$OfficePackage = "chemcore-office",
+  [string]$OfficePackage = "chemsema-office",
 
   [string]$OfficeCommand = "",
 
@@ -30,7 +30,7 @@ $docxPath = Join-Path $sampleDir "$stem.generated.docx"
 $roundtripDocxPath = Join-Path $sampleDir "$stem.roundtrip.docx"
 $generatedPngPath = Join-Path $sampleDir "$stem.generated.wordcopy.png"
 $roundtripPngPath = Join-Path $sampleDir "$stem.roundtrip.wordcopy.png"
-$defaultOfficeExe = Join-Path $repoRoot "target\debug\chemcore-office.exe"
+$defaultOfficeExe = Join-Path $repoRoot "target\debug\chemsema-office.exe"
 
 function Invoke-Checked {
   param(
@@ -69,7 +69,7 @@ function Get-DocxOleSummary {
 
 Invoke-Checked $CargoCommand @(
   "run", "-q",
-  "-p", "chemcore-engine",
+  "-p", "chemsema-engine",
   "--example", "cdxml_to_clipboard_payload",
   "--",
   $inputPath,

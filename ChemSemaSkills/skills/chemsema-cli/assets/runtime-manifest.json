@@ -1,0 +1,22 @@
+{
+  "schema": "chemsema-skill-runtime.v1",
+  "product": "ChemSema",
+  "version": "1.0.0-beta.1",
+  "protocol": "chemsema-cli-protocol.v1",
+  "platforms": {
+    "win-x64": {
+      "path": "bin/win-x64/chemsema-cli.exe",
+      "size": 11955712,
+      "sha256": "3FB14BE9AC85D8466B62A2FFD43D56A6C30945DD46DF716933B0A577B0BE823D",
+      "signed": false,
+      "signature": "unsigned"
+    },
+    "linux-x64": {
+      "path": "bin/linux-x64/chemsema-cli",
+      "size": 11910520,
+      "sha256": "312F826B2294FFC0749265D1EA56BB880F7C8BE6B27F789760D508872E05B9D7",
+      "signed": false,
+      "signature": "unsigned"
+    }
+  }
+}

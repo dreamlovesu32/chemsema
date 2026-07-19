@@ -5,10 +5,10 @@ import { fileURLToPath } from "node:url";
 import { mkdirSync, writeFileSync } from "node:fs";
 
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
-const appDir = join(rootDir, "apps", "chemcore-desktop");
+const appDir = join(rootDir, "apps", "chemsema-desktop");
 const tauriCli = join(rootDir, "node_modules", "@tauri-apps", "cli", "tauri.js");
 const targetDir = join(rootDir, "target");
-const targetExe = join(targetDir, "release", "chemcore-desktop.exe");
+const targetExe = join(targetDir, "release", "chemsema-desktop.exe");
 const fastConfigPath = join(targetDir, "tauri-fast.conf.json");
 const forwardedArgs = process.argv.slice(2);
 
@@ -23,7 +23,7 @@ function findRunningTargetExe() {
   const script = [
     "$ErrorActionPreference = 'SilentlyContinue'",
     "$target = '" + escapePowerShellString(targetExe) + "'",
-    "Get-CimInstance Win32_Process -Filter \"name = 'chemcore-desktop.exe'\" |",
+    "Get-CimInstance Win32_Process -Filter \"name = 'chemsema-desktop.exe'\" |",
     "  Where-Object { $_.ExecutablePath -eq $target } |",
     "  Select-Object -ExpandProperty ProcessId",
   ].join("\n");
@@ -45,7 +45,7 @@ const runningPids = findRunningTargetExe();
 if (runningPids.length > 0) {
   console.error(
     [
-      `chemcore-desktop.exe is still running from ${targetExe}.`,
+      `chemsema-desktop.exe is still running from ${targetExe}.`,
       `Close it before rebuilding, or Windows will keep the executable locked.`,
       `Running PID(s): ${runningPids.join(", ")}`,
     ].join("\n"),
@@ -58,7 +58,7 @@ writeFileSync(
   fastConfigPath,
   JSON.stringify({
     build: {
-      beforeBuildCommand: process.env.CHEMCORE_FAST_BUILD_WASM === "1"
+      beforeBuildCommand: process.env.CHEMSEMA_FAST_BUILD_WASM === "1"
         ? "node ../../scripts/build-engine-wasm.mjs"
         : "",
     },

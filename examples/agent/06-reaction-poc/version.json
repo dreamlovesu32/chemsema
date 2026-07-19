@@ -1,15 +1,15 @@
 {
-  "cli": "chemcore-cli",
+  "cli": "chemsema-cli",
   "ok": true,
-  "product": "Chemcore",
-  "protocol": "chemcore-cli-protocol.v1",
+  "product": "ChemSema",
+  "protocol": "chemsema-cli-protocol.v1",
   "protocols": {
-    "captureManifest": "chemcore-cli-capture-manifest.v1",
-    "cli": "chemcore-cli-protocol.v1",
-    "entrypoints": "chemcore.entrypoints.v1",
-    "errorModel": "chemcore-cli-error.v1",
-    "selector": "chemcore-selector.v1",
-    "session": "chemcore-cli-session-jsonl.v1"
+    "captureManifest": "chemsema-cli-capture-manifest.v1",
+    "cli": "chemsema-cli-protocol.v1",
+    "entrypoints": "chemsema.entrypoints.v1",
+    "errorModel": "chemsema-cli-error.v1",
+    "selector": "chemsema-selector.v1",
+    "session": "chemsema-cli-session-jsonl.v1"
   },
   "version": "1.0.0-beta.5"
 }

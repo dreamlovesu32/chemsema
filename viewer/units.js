@@ -3,7 +3,7 @@
 export const CSS_PX_PER_INCH = 96.0;
 export const PT_PER_INCH = 72.0;
 export const CM_PER_INCH = 2.54;
-const DISPLAY_SCALE_STORAGE_KEY = "chemcore:display-scale";
+const DISPLAY_SCALE_STORAGE_KEY = "chemsema:display-scale";
 const MIN_DISPLAY_SCALE = 0.25;
 const MAX_DISPLAY_SCALE = 4.0;
 

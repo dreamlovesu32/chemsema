@@ -9,10 +9,10 @@ import { engineToolForUiTool } from "../viewer/editor_tool_model.js";
 
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const host = "127.0.0.1";
-const port = Number(process.env.CHEMCORE_DESKTOP_DEV_PORT || 8767);
+const port = Number(process.env.CHEMSEMA_DESKTOP_DEV_PORT || 8767);
 const baseUrl = `http://${host}:${port}/viewer/`;
 const edgePath = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
-const syntheticNodeCount = Number(process.env.CHEMCORE_STABILITY_SYNTHETIC_BROWSER_NODES || 6500);
+const syntheticNodeCount = Number(process.env.CHEMSEMA_STABILITY_SYNTHETIC_BROWSER_NODES || 6500);
 
 function assert(condition, message) {
   if (!condition) {
@@ -81,14 +81,14 @@ async function openViewer(browser) {
   const errors = [];
   capturePageErrors(page, errors);
   await page.goto(`${baseUrl}?stability=${Date.now()}`, { waitUntil: "domcontentloaded" });
-  await page.waitForFunction(() => !!window.__chemcoreDebug?.state?.editorEngine, null, { timeout: 20000 });
+  await page.waitForFunction(() => !!window.__chemsemaDebug?.state?.editorEngine, null, { timeout: 20000 });
   return { page, errors };
 }
 
 async function activateTool(page, tool) {
   await page.locator(`button[data-tool="${tool}"]`).click();
   await page.waitForFunction((expectedTool) => {
-    const state = window.__chemcoreDebug?.editorState || {};
+    const state = window.__chemsemaDebug?.editorState || {};
     return state?.activeTool === expectedTool
       && document.querySelector(`button[data-tool="${CSS.escape(expectedTool)}"]`)?.classList.contains("is-active");
   }, tool, { timeout: 2000 });
@@ -124,7 +124,7 @@ async function documentSnapshot(page) {
         return null;
       }
     };
-    const debug = window.__chemcoreDebug;
+    const debug = window.__chemsemaDebug;
     const doc = parse(debug?.state?.editorEngine?.documentJson?.()) || debug?.document || null;
     const objects = [];
     const visit = (object, parentId = null) => {
@@ -179,7 +179,7 @@ async function documentGeometrySnapshot(page) {
         return null;
       }
     };
-    const debug = window.__chemcoreDebug;
+    const debug = window.__chemsemaDebug;
     const engine = debug?.state?.editorEngine;
     const doc = parse(engine?.documentJson?.()) || debug?.document || null;
     const engineState = parse(engine?.stateJson?.()) || null;
@@ -312,7 +312,7 @@ async function selectionBoundsClientCenter(page) {
         return null;
       }
     };
-    const debug = window.__chemcoreDebug;
+    const debug = window.__chemsemaDebug;
     const bounds = parse(debug?.state?.editorEngine?.renderBoundsJson?.("selection") || "null");
     if (!bounds || typeof debug?.worldToClient !== "function") {
       return null;
@@ -354,7 +354,7 @@ async function firstVisibleNodeTarget(page) {
         return null;
       }
     };
-    const debug = window.__chemcoreDebug;
+    const debug = window.__chemsemaDebug;
     const doc = parse(debug?.state?.editorEngine?.documentJson?.()) || debug?.document || null;
     if (!doc || typeof debug?.worldToClient !== "function") {
       return null;
@@ -387,9 +387,9 @@ async function verifyPaletteAccessibleUnderTools(page) {
     await page.evaluate(() => document.querySelector(".canvas-pointer-shield")?.classList.add("is-active"));
     await page.locator(".quick-palette-toggle-element").click();
     await page.waitForFunction(() => {
-      const state = window.__chemcoreDebug?.editorState || {};
-      const engineTool = window.__chemcoreDebug?.engineState?.tool?.activeTool
-        || window.__chemcoreDebug?.engineState?.tool?.active_tool
+      const state = window.__chemsemaDebug?.editorState || {};
+      const engineTool = window.__chemsemaDebug?.engineState?.tool?.activeTool
+        || window.__chemsemaDebug?.engineState?.tool?.active_tool
         || "";
       return document.querySelector(".quick-palette")?.classList.contains("is-open")
         && document.querySelector(".quick-palette")?.dataset.mode === "element"
@@ -397,15 +397,15 @@ async function verifyPaletteAccessibleUnderTools(page) {
         && engineTool === "element";
     });
     const elementState = await page.evaluate((expectedTool) => {
-      const editorState = window.__chemcoreDebug?.editorState || {};
+      const editorState = window.__chemsemaDebug?.editorState || {};
       return {
         open: document.querySelector(".quick-palette")?.classList.contains("is-open") || false,
         mode: document.querySelector(".quick-palette")?.dataset.mode || "",
         activeButtons: [...document.querySelectorAll(".tool-button.is-active")].map((button) => button.dataset.tool),
         activeTool: editorState.activeTool,
         elementPlacementActive: !!editorState.elementPlacementActive,
-        engineTool: window.__chemcoreDebug?.engineState?.tool?.activeTool
-          || window.__chemcoreDebug?.engineState?.tool?.active_tool
+        engineTool: window.__chemsemaDebug?.engineState?.tool?.activeTool
+          || window.__chemsemaDebug?.engineState?.tool?.active_tool
           || "",
         shieldActive: document.querySelector(".canvas-pointer-shield")?.classList.contains("is-active") || false,
         expectedTool,
@@ -427,9 +427,9 @@ async function verifyPaletteAccessibleUnderTools(page) {
     const expectedEngineTool = engineToolForUiTool(tool);
     try {
       await page.waitForFunction(({ expectedTool, expectedEngineTool }) => {
-        const state = window.__chemcoreDebug?.editorState || {};
-        const engineTool = window.__chemcoreDebug?.engineState?.tool?.activeTool
-          || window.__chemcoreDebug?.engineState?.tool?.active_tool
+        const state = window.__chemsemaDebug?.editorState || {};
+        const engineTool = window.__chemsemaDebug?.engineState?.tool?.activeTool
+          || window.__chemsemaDebug?.engineState?.tool?.active_tool
           || "";
         return document.querySelector(".quick-palette")?.dataset.mode === "symbol"
           && state.activeTool === expectedTool
@@ -438,15 +438,15 @@ async function verifyPaletteAccessibleUnderTools(page) {
       }, { expectedTool: tool, expectedEngineTool }, { timeout: 2000 });
     } catch (error) {
       const diagnostic = await page.evaluate(({ expectedTool, expectedEngineTool }) => {
-        const editorState = window.__chemcoreDebug?.editorState || {};
+        const editorState = window.__chemsemaDebug?.editorState || {};
         return {
           open: document.querySelector(".quick-palette")?.classList.contains("is-open") || false,
           mode: document.querySelector(".quick-palette")?.dataset.mode || "",
           activeButtons: [...document.querySelectorAll(".tool-button.is-active")].map((button) => button.dataset.tool),
           activeTool: editorState.activeTool,
           elementPlacementActive: !!editorState.elementPlacementActive,
-          engineTool: window.__chemcoreDebug?.engineState?.tool?.activeTool
-            || window.__chemcoreDebug?.engineState?.tool?.active_tool
+          engineTool: window.__chemsemaDebug?.engineState?.tool?.activeTool
+            || window.__chemsemaDebug?.engineState?.tool?.active_tool
             || "",
           shieldActive: document.querySelector(".canvas-pointer-shield")?.classList.contains("is-active") || false,
           expectedTool,
@@ -456,15 +456,15 @@ async function verifyPaletteAccessibleUnderTools(page) {
       throw new Error(`Symbol quick palette did not stabilize under ${tool}: ${JSON.stringify(diagnostic)}\n${error.message}`);
     }
     const symbolState = await page.evaluate(({ expectedTool, expectedEngineTool }) => {
-      const editorState = window.__chemcoreDebug?.editorState || {};
+      const editorState = window.__chemsemaDebug?.editorState || {};
       return {
         open: document.querySelector(".quick-palette")?.classList.contains("is-open") || false,
         mode: document.querySelector(".quick-palette")?.dataset.mode || "",
         activeButtons: [...document.querySelectorAll(".tool-button.is-active")].map((button) => button.dataset.tool),
         activeTool: editorState.activeTool,
         elementPlacementActive: !!editorState.elementPlacementActive,
-        engineTool: window.__chemcoreDebug?.engineState?.tool?.activeTool
-          || window.__chemcoreDebug?.engineState?.tool?.active_tool
+        engineTool: window.__chemsemaDebug?.engineState?.tool?.activeTool
+          || window.__chemsemaDebug?.engineState?.tool?.active_tool
           || "",
         shieldActive: document.querySelector(".canvas-pointer-shield")?.classList.contains("is-active") || false,
         expectedTool,
@@ -629,13 +629,13 @@ async function verifyBracketLabelCommitPreservesNewObjects(page) {
   await clickCanvas(page, "symbol", { x: cx + 305, y: cy - 130 });
   await dragOnCanvas(page, "orbital", { x: cx - 240, y: cy + 45 }, { x: cx - 140, y: cy + 132 });
   await dragOnCanvas(page, "bracket", { x: cx + 20, y: cy + 20 }, { x: cx + 150, y: cy + 140 });
-  await page.waitForFunction(() => !!window.__chemcoreDebug?.activeTextEditor, null, { timeout: 1500 });
+  await page.waitForFunction(() => !!window.__chemsemaDebug?.activeTextEditor, null, { timeout: 1500 });
   await page.locator(".text-editor-input").focus();
   await page.keyboard.type("3");
-  await page.waitForFunction(() => window.__chemcoreDebug?.activeTextEditor?.plainText === "3", null, { timeout: 1000 });
+  await page.waitForFunction(() => window.__chemsemaDebug?.activeTextEditor?.plainText === "3", null, { timeout: 1000 });
   const beforeCommit = await documentSnapshot(page);
   await page.mouse.click(box.x + 28, box.y + 28);
-  await page.waitForFunction(() => !window.__chemcoreDebug?.activeTextEditor, null, { timeout: 2000 });
+  await page.waitForFunction(() => !window.__chemsemaDebug?.activeTextEditor, null, { timeout: 2000 });
   await page.waitForTimeout(220);
   const afterCommit = await documentSnapshot(page);
   assertSnapshotContains(beforeCommit, afterCommit, "Bracket label blank-click commit");
@@ -651,9 +651,9 @@ async function verifyBracketLabelCommitPreservesNewObjects(page) {
 
 async function verifySyntheticLargeMixedOperations(page) {
   const synthetic = makeSyntheticLargeDocument({ nodeCount: syntheticNodeCount, objectRepeats: 36 });
-  await page.evaluate((doc) => window.__chemcoreDebug.loadDocumentForTest(doc), synthetic);
+  await page.evaluate((doc) => window.__chemsemaDebug.loadDocumentForTest(doc), synthetic);
   await page.waitForFunction((expected) => {
-    const doc = window.__chemcoreDebug?.document;
+    const doc = window.__chemsemaDebug?.document;
     return (doc?.resources?.mol_large?.data?.nodes?.length || 0) >= expected;
   }, syntheticNodeCount, { timeout: 20000 });
   const loaded = await documentSnapshot(page);
@@ -662,12 +662,12 @@ async function verifySyntheticLargeMixedOperations(page) {
   await activateTool(page, "shape");
   await page.locator(".quick-palette-toggle-element").click();
   await page.waitForFunction(() => {
-    const state = window.__chemcoreDebug?.editorState || {};
+    const state = window.__chemsemaDebug?.editorState || {};
     return state.activeTool === "shape" && state.elementPlacementActive;
   });
   await page.locator(".quick-palette-toggle-symbol").click();
   await page.waitForFunction(() => {
-    const state = window.__chemcoreDebug?.editorState || {};
+    const state = window.__chemsemaDebug?.editorState || {};
     return state.activeTool === "shape" && !state.elementPlacementActive
       && document.querySelector(".quick-palette")?.dataset.mode === "symbol";
   });
@@ -689,12 +689,12 @@ async function verifySyntheticLargeMixedOperations(page) {
     { x: box.x + box.width - 320, y: box.y + box.height - 240 },
     { x: box.x + box.width - 180, y: box.y + box.height - 120 },
   );
-  await page.waitForFunction(() => !!window.__chemcoreDebug?.activeTextEditor, null, { timeout: 1500 });
+  await page.waitForFunction(() => !!window.__chemsemaDebug?.activeTextEditor, null, { timeout: 1500 });
   await page.locator(".text-editor-input").focus();
   await page.keyboard.type("2");
   const beforeCommit = await documentSnapshot(page);
   await page.mouse.click(box.x + 24, box.y + 24);
-  await page.waitForFunction(() => !window.__chemcoreDebug?.activeTextEditor, null, { timeout: 2000 });
+  await page.waitForFunction(() => !window.__chemsemaDebug?.activeTextEditor, null, { timeout: 2000 });
   await page.waitForTimeout(220);
   const afterCommit = await documentSnapshot(page);
   assertSnapshotContains(beforeCommit, afterCommit, "Synthetic large bracket label commit");

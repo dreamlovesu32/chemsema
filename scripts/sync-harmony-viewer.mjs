@@ -7,13 +7,13 @@ const sourceDir = path.join(repoRoot, "viewer");
 const targetDir = path.join(
   repoRoot,
   "apps",
-  "chemcore-harmony",
+  "chemsema-harmony",
   "entry",
   "src",
   "main",
   "resources",
   "rawfile",
-  "chemcore",
+  "chemsema",
 );
 
 async function countFiles(dir) {

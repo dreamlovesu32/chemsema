@@ -6,11 +6,11 @@ import { chromium } from "playwright";
 
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const host = "127.0.0.1";
-const port = Number(process.env.CHEMCORE_DESKTOP_DEV_PORT || 8767);
+const port = Number(process.env.CHEMSEMA_DESKTOP_DEV_PORT || 8767);
 const baseUrl = `http://${host}:${port}/viewer/`;
-const nodeCount = Number(process.env.CHEMCORE_LARGE_DRAG_NODE_COUNT || 1400);
-const maxDragMs = Number(process.env.CHEMCORE_LARGE_DRAG_MAX_MS || 1800);
-const maxPreviewSettleMs = Number(process.env.CHEMCORE_LARGE_DRAG_SETTLE_MAX_MS || 900);
+const nodeCount = Number(process.env.CHEMSEMA_LARGE_DRAG_NODE_COUNT || 1400);
+const maxDragMs = Number(process.env.CHEMSEMA_LARGE_DRAG_MAX_MS || 1800);
+const maxPreviewSettleMs = Number(process.env.CHEMSEMA_LARGE_DRAG_SETTLE_MAX_MS || 900);
 
 function assert(condition, message) {
   if (!condition) {
@@ -96,7 +96,7 @@ function makeLargeChainDocument(count) {
   }
   const height = 120 + Math.ceil(count / columns) * spacing;
   return {
-    format: { name: "chemcore", version: "0.1", unit: "pt" },
+    format: { name: "chemsema", version: "0.1", unit: "pt" },
     document: {
       id: "doc_large_drag_regression",
       title: "Large drag regression",
@@ -133,9 +133,9 @@ function makeLargeChainDocument(count) {
     resources: {
       mol_large: {
         type: "molecule_fragment2d",
-        encoding: "chemcore.molecule.fragment2d",
+        encoding: "chemsema.molecule.fragment2d",
         data: {
-          schema: "chemcore.molecule.fragment2d",
+          schema: "chemsema.molecule.fragment2d",
           bbox: [0, 0, 820, Math.max(620, height)],
           nodes,
           bonds,
@@ -152,12 +152,12 @@ async function openViewer(browser) {
   const errors = [];
   const phase = { name: "open" };
   await page.addInitScript(() => {
-    window.__chemcoreRegressionPhase = "open";
-    window.__chemcoreRegressionConsoleErrors = [];
+    window.__chemsemaRegressionPhase = "open";
+    window.__chemsemaRegressionConsoleErrors = [];
     const originalError = console.error.bind(console);
     console.error = (...args) => {
-      window.__chemcoreRegressionConsoleErrors.push({
-        phase: window.__chemcoreRegressionPhase || "unknown",
+      window.__chemsemaRegressionConsoleErrors.push({
+        phase: window.__chemsemaRegressionPhase || "unknown",
         text: args.map((arg) => String(arg)).join(" "),
         stack: new Error().stack || "",
       });
@@ -172,7 +172,7 @@ async function openViewer(browser) {
   });
   page.on("pageerror", (error) => errors.push(`${phase.name}: ${error.message}`));
   await page.goto(`${baseUrl}?largeDragRegression=${Date.now()}`, { waitUntil: "domcontentloaded" });
-  await page.waitForFunction(() => !!window.__chemcoreDebug?.loadDocumentForTest, null, { timeout: 20000 });
+  await page.waitForFunction(() => !!window.__chemsemaDebug?.loadDocumentForTest, null, { timeout: 20000 });
   return { page, errors, phase };
 }
 
@@ -184,32 +184,32 @@ async function main() {
     const { page, errors, phase } = await openViewer(browser);
     const documentData = makeLargeChainDocument(nodeCount);
     phase.name = "load";
-    await page.evaluate(() => { window.__chemcoreRegressionPhase = "load"; });
+    await page.evaluate(() => { window.__chemsemaRegressionPhase = "load"; });
     await page.evaluate(async (doc) => {
-      await window.__chemcoreDebug.loadDocumentForTest(doc);
-      window.__chemcoreDebug.renderStats.documentRenderCount = 0;
+      await window.__chemsemaDebug.loadDocumentForTest(doc);
+      window.__chemsemaDebug.renderStats.documentRenderCount = 0;
     }, documentData);
     errors.length = 0;
     const loaded = await page.evaluate(() => ({
-      objects: window.__chemcoreDebug.document.objects,
-      resourceKeys: Object.keys(window.__chemcoreDebug.document.resources || {}),
-      resource: window.__chemcoreDebug.document.resources?.mol_large || null,
-      nodeCount: window.__chemcoreDebug.document.resources?.mol_large?.data?.nodes?.length || 0,
-      bondCount: window.__chemcoreDebug.document.resources?.mol_large?.data?.bonds?.length || 0,
-      firstNode: window.__chemcoreDebug.document.resources?.mol_large?.data?.nodes?.[0] || null,
-      firstBond: window.__chemcoreDebug.document.resources?.mol_large?.data?.bonds?.[0] || null,
-      renderCount: JSON.parse(window.__chemcoreDebug.getRenderListJson()).length,
+      objects: window.__chemsemaDebug.document.objects,
+      resourceKeys: Object.keys(window.__chemsemaDebug.document.resources || {}),
+      resource: window.__chemsemaDebug.document.resources?.mol_large || null,
+      nodeCount: window.__chemsemaDebug.document.resources?.mol_large?.data?.nodes?.length || 0,
+      bondCount: window.__chemsemaDebug.document.resources?.mol_large?.data?.bonds?.length || 0,
+      firstNode: window.__chemsemaDebug.document.resources?.mol_large?.data?.nodes?.[0] || null,
+      firstBond: window.__chemsemaDebug.document.resources?.mol_large?.data?.bonds?.[0] || null,
+      renderCount: JSON.parse(window.__chemsemaDebug.getRenderListJson()).length,
       documentHtmlLength: document.querySelector('[data-layer="document-content"]')?.outerHTML.length || 0,
     }));
     assert(loaded.renderCount > 0, `Synthetic large document rendered no primitives: ${JSON.stringify(loaded).slice(0, 1200)}`);
     await page.locator('button[data-tool="select"]').click();
 
     phase.name = "select";
-    await page.evaluate(() => { window.__chemcoreRegressionPhase = "select"; });
+    await page.evaluate(() => { window.__chemsemaRegressionPhase = "select"; });
     const selectionRect = await page.evaluate(() => {
-      const start = window.__chemcoreDebug.worldToClient(560, 500);
-      const end = window.__chemcoreDebug.worldToClient(690, 550);
-      const center = window.__chemcoreDebug.worldToClient(625, 528);
+      const start = window.__chemsemaDebug.worldToClient(560, 500);
+      const end = window.__chemsemaDebug.worldToClient(690, 550);
+      const center = window.__chemsemaDebug.worldToClient(625, 528);
       return { start, end, center };
     });
 
@@ -219,17 +219,17 @@ async function main() {
     await page.mouse.up();
     await page.waitForTimeout(80);
     const before = await page.evaluate(() => ({
-      renderCount: window.__chemcoreDebug.renderStats.documentRenderCount,
+      renderCount: window.__chemsemaDebug.renderStats.documentRenderCount,
       htmlLength: document.querySelector('[data-layer="document-content"]')?.outerHTML.length || 0,
-      selection: window.__chemcoreDebug.engineState?.selection || null,
+      selection: window.__chemsemaDebug.engineState?.selection || null,
       activeTool: document.querySelector("[data-tool].is-active")?.getAttribute("data-tool") || null,
     }));
 
     phase.name = "drag";
     await page.evaluate(() => {
-      window.__chemcoreRegressionPhase = "drag";
-      window.__chemcoreDebug.backendMovePreviewStats = { samples: [] };
-      window.__chemcoreDebug.backendPreviewSchedulerStats = { runs: 0, backendRuns: 0, errors: [] };
+      window.__chemsemaRegressionPhase = "drag";
+      window.__chemsemaDebug.backendMovePreviewStats = { samples: [] };
+      window.__chemsemaDebug.backendPreviewSchedulerStats = { runs: 0, backendRuns: 0, errors: [] };
     });
     const target = { id: "selection-center", x: selectionRect.center.x, y: selectionRect.center.y };
     await page.mouse.move(target.x, target.y);
@@ -246,23 +246,23 @@ async function main() {
     const during = await page.evaluate(() => ({
       partialChildren: document.querySelector('[data-layer="document-partial-bond-preview"]')?.childElementCount || 0,
       previewMask: !!document.querySelector('[data-role="preview-document-mask"]'),
-      renderCount: window.__chemcoreDebug.renderStats.documentRenderCount,
-      gesture: window.__chemcoreDebug.activeSelectionGesture || null,
-      previewStats: window.__chemcoreDebug.backendMovePreviewStats || { samples: [] },
-      schedulerStats: window.__chemcoreDebug.backendPreviewSchedulerStats || { runs: 0, backendRuns: 0, errors: [] },
+      renderCount: window.__chemsemaDebug.renderStats.documentRenderCount,
+      gesture: window.__chemsemaDebug.activeSelectionGesture || null,
+      previewStats: window.__chemsemaDebug.backendMovePreviewStats || { samples: [] },
+      schedulerStats: window.__chemsemaDebug.backendPreviewSchedulerStats || { runs: 0, backendRuns: 0, errors: [] },
     }));
 
     phase.name = "commit";
-    await page.evaluate(() => { window.__chemcoreRegressionPhase = "commit"; });
+    await page.evaluate(() => { window.__chemsemaRegressionPhase = "commit"; });
     await page.mouse.up();
     await page.waitForTimeout(1000);
     const after = await page.evaluate(() => ({
-      renderCount: window.__chemcoreDebug.renderStats.documentRenderCount,
+      renderCount: window.__chemsemaDebug.renderStats.documentRenderCount,
       partialExists: !!document.querySelector('[data-layer="document-partial-bond-preview"]'),
       partialChildren: document.querySelector('[data-layer="document-partial-bond-preview"]')?.childElementCount || 0,
       previewExists: !!document.querySelector('[data-layer="document-batch-preview"]'),
       transformed: document.querySelectorAll(".is-preview-transforming").length,
-      gesture: window.__chemcoreDebug.activeSelectionGesture || null,
+      gesture: window.__chemsemaDebug.activeSelectionGesture || null,
       htmlLength: document.querySelector('[data-layer="document-content"]')?.outerHTML.length || 0,
       movedBondCount: document.querySelectorAll('[data-bond-id="b699"], [data-bond-id="b700"]').length,
     }));
@@ -292,7 +292,7 @@ async function main() {
     assert(dragMs < maxDragMs, `Large drag took ${dragMs.toFixed(1)}ms, expected < ${maxDragMs}ms.`);
     assert(previewSettleMs < maxPreviewSettleMs, `Backend preview settled in ${previewSettleMs.toFixed(1)}ms, expected < ${maxPreviewSettleMs}ms.`);
     const actionableErrors = errors.filter((entry) => !entry.includes("null pointer passed to rust"));
-    const consoleStacks = await page.evaluate(() => window.__chemcoreRegressionConsoleErrors || []);
+    const consoleStacks = await page.evaluate(() => window.__chemsemaRegressionConsoleErrors || []);
     const postLoadConsoleStacks = consoleStacks.filter((entry) => entry.phase !== "open" && entry.phase !== "load");
     assert(
       !actionableErrors.length,

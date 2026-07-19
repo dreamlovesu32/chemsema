@@ -6,7 +6,7 @@ param(
 
   [string]$CargoCommand = "cargo",
 
-  [string]$OfficePackage = "chemcore-office",
+  [string]$OfficePackage = "chemsema-office",
 
   [string]$OfficeCommand = ""
 )
@@ -26,7 +26,7 @@ New-Item -ItemType Directory -Force -Path $sampleDir | Out-Null
 $payloadPath = Join-Path $sampleDir "$stem.payload.json"
 $docxPath = Join-Path $sampleDir "$stem.pasted.docx"
 $summaryPath = Join-Path $sampleDir "$stem.summary.json"
-$defaultOfficeExe = Join-Path $repoRoot "target\debug\chemcore-office.exe"
+$defaultOfficeExe = Join-Path $repoRoot "target\debug\chemsema-office.exe"
 
 function Invoke-Checked {
   param(
@@ -62,7 +62,7 @@ function Get-DocxOleSummary {
 
 Invoke-Checked $CargoCommand @(
   "run", "-q",
-  "-p", "chemcore-engine",
+  "-p", "chemsema-engine",
   "--example", "cdxml_to_clipboard_payload",
   "--",
   $inputPath,
@@ -111,7 +111,7 @@ try {
     throw "Word paste created an inline shape without OLEFormat; it was pasted as a plain image."
   }
   $progId = $oleFormat.ProgID
-  if ($progId -ne "Chemcore.Document.1") {
+  if ($progId -ne "ChemSema.Document.1") {
     throw "Word paste created unexpected OLE ProgID '$progId'."
   }
 

@@ -1,4 +1,4 @@
-import { chemcoreOpenAcceptString } from "./file_io.js";
+import { chemsemaOpenAcceptString } from "./file_io.js";
 
 export function createAppDomRefs(rootDocument = document) {
   const sampleSelect = rootDocument.getElementById("sample-select");
@@ -22,7 +22,7 @@ export function createAppDomRefs(rootDocument = document) {
 
   const openFileInput = rootDocument.createElement("input");
   openFileInput.type = "file";
-  openFileInput.accept = chemcoreOpenAcceptString();
+  openFileInput.accept = chemsemaOpenAcceptString();
   openFileInput.className = "visually-hidden";
   rootDocument.body.appendChild(openFileInput);
 

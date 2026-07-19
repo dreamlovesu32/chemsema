@@ -1,7 +1,7 @@
-ChemCore
+ChemSema
 Copyright 2026 Jiajun Zhang
 
 This product includes source code, documentation, generated WebAssembly
-bindings, fixtures, and visual assets developed for the ChemCore project.
+bindings, fixtures, and visual assets developed for the ChemSema project.
 Third-party dependency and reference notices are tracked in
 THIRD_PARTY_NOTICES.md.

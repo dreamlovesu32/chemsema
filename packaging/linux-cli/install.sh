@@ -8,7 +8,7 @@ modify_path=true
 
 usage() {
   cat <<'EOF'
-Install ChemCore CLI.
+Install ChemSema CLI.
 
 Usage: ./install.sh [options]
 
@@ -20,7 +20,7 @@ Options:
 
 Examples:
   ./install.sh
-  ./install.sh --prefix "$HOME/chemcore-cli"
+  ./install.sh --prefix "$HOME/chemsema-cli"
   sudo ./install.sh --prefix /usr/local --no-modify-path
 EOF
 }
@@ -71,14 +71,14 @@ resolve_shell_config() {
 }
 
 config_path="$(resolve_shell_config)"
-marker_begin="# >>> chemcore-cli >>>"
-marker_end="# <<< chemcore-cli <<<"
+marker_begin="# >>> chemsema-cli >>>"
+marker_end="# <<< chemsema-cli <<<"
 
 remove_path_block() {
   local path="$1"
   local temporary
   [[ -f "$path" ]] || return 0
-  temporary="$(mktemp "${path}.chemcore.XXXXXX")"
+  temporary="$(mktemp "${path}.chemsema.XXXXXX")"
   awk -v begin="$marker_begin" -v end="$marker_end" '
     $0 == begin { skipping = 1; next }
     $0 == end { skipping = 0; next }
@@ -88,15 +88,15 @@ remove_path_block() {
   mv "$temporary" "$path"
 }
 
-install -Dm755 "$package_dir/bin/chemcore-cli" "$prefix/bin/chemcore-cli"
-install -Dm644 "$package_dir/share/chemcore/chemcore-cli-guide.md" \
-  "$prefix/share/chemcore/chemcore-cli-guide.md"
-install -Dm644 "$package_dir/share/chemcore/chemcore-cli-guide.zh-CN.md" \
-  "$prefix/share/chemcore/chemcore-cli-guide.zh-CN.md"
-install -Dm644 "$package_dir/share/chemcore/LICENSE" "$prefix/share/chemcore/LICENSE"
-install -Dm644 "$package_dir/share/chemcore/VERSION" "$prefix/share/chemcore/VERSION"
-install -Dm644 "$package_dir/share/chemcore/SHA256SUMS" "$prefix/share/chemcore/SHA256SUMS"
-install -Dm755 "$package_dir/uninstall.sh" "$prefix/share/chemcore/uninstall.sh"
+install -Dm755 "$package_dir/bin/chemsema-cli" "$prefix/bin/chemsema-cli"
+install -Dm644 "$package_dir/share/chemsema/chemsema-cli-guide.md" \
+  "$prefix/share/chemsema/chemsema-cli-guide.md"
+install -Dm644 "$package_dir/share/chemsema/chemsema-cli-guide.zh-CN.md" \
+  "$prefix/share/chemsema/chemsema-cli-guide.zh-CN.md"
+install -Dm644 "$package_dir/share/chemsema/LICENSE" "$prefix/share/chemsema/LICENSE"
+install -Dm644 "$package_dir/share/chemsema/VERSION" "$prefix/share/chemsema/VERSION"
+install -Dm644 "$package_dir/share/chemsema/SHA256SUMS" "$prefix/share/chemsema/SHA256SUMS"
+install -Dm755 "$package_dir/uninstall.sh" "$prefix/share/chemsema/uninstall.sh"
 mkdir -p "$prefix/plugins"
 
 if [[ -n "$config_path" ]]; then
@@ -114,14 +114,14 @@ if [[ -n "$config_path" ]]; then
   } >> "$config_path"
 fi
 
-"$prefix/bin/chemcore-cli" version --pretty >/dev/null
+"$prefix/bin/chemsema-cli" version --pretty >/dev/null
 
-echo "ChemCore CLI installed to $prefix/bin/chemcore-cli"
+echo "ChemSema CLI installed to $prefix/bin/chemsema-cli"
 echo "Plugin directory: $prefix/plugins"
 if [[ -n "$config_path" ]]; then
   echo "PATH updated in $config_path"
   echo "Open a new shell or run: source \"$config_path\""
 elif [[ ":${PATH}:" != *":$prefix/bin:"* ]]; then
-  echo "Add $prefix/bin to PATH before invoking chemcore-cli."
+  echo "Add $prefix/bin to PATH before invoking chemsema-cli."
 fi
-echo "Uninstall with: $prefix/share/chemcore/uninstall.sh --prefix \"$prefix\""
+echo "Uninstall with: $prefix/share/chemsema/uninstall.sh --prefix \"$prefix\""

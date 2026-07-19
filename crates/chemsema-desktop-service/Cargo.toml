@@ -1,0 +1,16 @@
+[package]
+name = "chemsema-desktop-service"
+version = "1.0.0-beta.1"
+description = "Native desktop document service for ChemSema file, preview, and engine sessions."
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+chemsema-engine = { path = "../chemsema-engine" }
+dirs = "6.0"
+flate2 = "1.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

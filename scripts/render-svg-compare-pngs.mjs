@@ -69,12 +69,12 @@ function fitSize(size, maxWidth, maxHeight) {
 }
 
 async function renderOne(page, item) {
-  const [chemdrawSvg, chemcoreSvg] = await Promise.all([
+  const [chemdrawSvg, chemsemaSvg] = await Promise.all([
     fs.readFile(item.chemdrawSvg, "utf8"),
-    fs.readFile(item.chemcoreSvg, "utf8"),
+    fs.readFile(item.chemsemaSvg, "utf8"),
   ]);
   const leftRaw = svgSize(chemdrawSvg);
-  const rightRaw = svgSize(chemcoreSvg);
+  const rightRaw = svgSize(chemsemaSvg);
   const maxPanelWidth = 1800;
   const maxPanelHeight = 1400;
   const left = fitSize(leftRaw, maxPanelWidth, maxPanelHeight);
@@ -117,8 +117,8 @@ async function renderOne(page, item) {
       <div class="panel-body"><img src="${svgDataUrl(chemdrawSvg)}" width="${left.width}" height="${left.height}"></div>
     </section>
     <section>
-      <div class="panel-title">ChemCore</div>
-      <div class="panel-body"><img src="${svgDataUrl(chemcoreSvg)}" width="${right.width}" height="${right.height}"></div>
+      <div class="panel-title">ChemSema</div>
+      <div class="panel-body"><img src="${svgDataUrl(chemsemaSvg)}" width="${right.width}" height="${right.height}"></div>
     </section>
   </div>
 </body>

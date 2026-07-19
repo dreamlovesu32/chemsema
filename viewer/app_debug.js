@@ -1,4 +1,4 @@
-export function registerChemcoreDebug({
+export function registerChemSemaDebug({
   state,
   getEditorState,
   getEngineState,
@@ -23,7 +23,7 @@ export function registerChemcoreDebug({
     return;
   }
 
-  window.__chemcoreDebug = {
+  window.__chemsemaDebug = {
     state,
     get editorState() {
       return getEditorState?.() || null;

@@ -1,8 +1,8 @@
-# ChemCore CLI JSONL Session v1
+# ChemSema CLI JSONL Session v1
 
-Protocol id: `chemcore-cli-session-jsonl.v1`.
+Protocol id: `chemsema-cli-session-jsonl.v1`.
 
-`chemcore-cli session [input]` starts a long-lived process over stdin/stdout.
+`chemsema-cli session [input]` starts a long-lived process over stdin/stdout.
 The first stdout line is a ready event. After that, callers send one compact
 JSON request per line and read one compact JSON response per line.
 
@@ -55,7 +55,7 @@ git, temporary files, or their own logs.
 ## Selection State
 
 `execute` accepts the same command JSON as one-shot `new` and `run`, including
-`chemcore.command-transaction.v1` envelopes directly in the request body or
+`chemsema.command-transaction.v1` envelopes directly in the request body or
 under a `transaction` field.
 Selection state persists in the session until another command changes it, the
 document is closed, or the process exits. Use `select-targets`, `select-all`,

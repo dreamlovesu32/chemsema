@@ -2,17 +2,17 @@
 
 Status: beta contract.
 
-Schema id: `chemcore.command-transaction.v1`.
+Schema id: `chemsema.command-transaction.v1`.
 
 Command transactions are optional envelopes accepted anywhere command scripts are
-accepted: `chemcore-cli new`, `chemcore-cli run`, and JSONL session `execute`.
+accepted: `chemsema-cli new`, `chemsema-cli run`, and JSONL session `execute`.
 Plain single-command objects and command arrays remain valid.
 
 ## Shape
 
 ```json
 {
-  "schema": "chemcore.command-transaction.v1",
+  "schema": "chemsema.command-transaction.v1",
   "preconditions": {
     "expectedDocumentHash": "64-char-sha256",
     "expectedRevision": 12,
@@ -63,7 +63,7 @@ Reports include:
 - `transaction`: schema, `atomic`, `dryRun`, and `applied`
 - `preconditions`: check list and failures
 - `execution`: command results
-- `diff`: `chemcore.document.diff.v1`
+- `diff`: `chemsema.document.diff.v1`
 - `scope`: allowed selectors and `unexpectedChanges`
 - `postconditions`: check list and failures
 - `document`: before/after hash and revision

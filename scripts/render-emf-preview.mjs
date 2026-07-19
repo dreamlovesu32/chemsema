@@ -27,7 +27,7 @@ export async function renderEmfPreviews(jobs, options = {}) {
     await fs.mkdir(path.dirname(job.output), { recursive: true });
   }
 
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "chemcore-render-emf-"));
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "chemsema-render-emf-"));
   const jobsPath = path.join(tempDir, "jobs.json");
   const scriptPath = path.join(tempDir, "render.ps1");
   await fs.writeFile(jobsPath, JSON.stringify({ scale, jobs: normalized }, null, 2), "utf8");

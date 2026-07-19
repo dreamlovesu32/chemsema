@@ -244,12 +244,12 @@ export function makeSyntheticLargeDocument(options = {}) {
   const objectRows = Math.ceil(objectRepeats / 12);
   const pageHeight = moleculeHeight + 160 + objectRows * 118;
   return {
-    format: { name: "chemcore", version: "0.1", unit: "pt" },
+    format: { name: "chemsema", version: "0.1", unit: "pt" },
     document: {
       id: "doc_synthetic_stability_large",
-      title: "Synthetic ChemCore stability fixture",
+      title: "Synthetic ChemSema stability fixture",
       page: { width: pageWidth, height: pageHeight, background: "#ffffff" },
-      meta: { synthetic: true, generatedFor: "chemcore-stability" },
+      meta: { synthetic: true, generatedFor: "chemsema-stability" },
     },
     styles: {
       style_molecule_default: {
@@ -283,9 +283,9 @@ export function makeSyntheticLargeDocument(options = {}) {
       mol_large: {
         id: "mol_large",
         type: "molecule_fragment2d",
-        encoding: "chemcore.molecule.fragment2d",
+        encoding: "chemsema.molecule.fragment2d",
         data: {
-          schema: "chemcore.molecule.fragment2d",
+          schema: "chemsema.molecule.fragment2d",
           bbox: fragment.bbox,
           nodes: fragment.nodes,
           bonds: fragment.bonds,
@@ -378,9 +378,9 @@ export function makeAgentCommandScript() {
 }
 
 export function writeStabilityFixtures(options = {}) {
-  const fixtureDir = options.fixtureDir || process.env.CHEMCORE_STABILITY_FIXTURE_DIR || defaultFixtureDir;
-  const nodeCount = Number(options.nodeCount || process.env.CHEMCORE_STABILITY_SYNTHETIC_NODES || 6400);
-  const objectRepeats = Number(options.objectRepeats || process.env.CHEMCORE_STABILITY_SYNTHETIC_OBJECT_REPEATS || 48);
+  const fixtureDir = options.fixtureDir || process.env.CHEMSEMA_STABILITY_FIXTURE_DIR || defaultFixtureDir;
+  const nodeCount = Number(options.nodeCount || process.env.CHEMSEMA_STABILITY_SYNTHETIC_NODES || 6400);
+  const objectRepeats = Number(options.objectRepeats || process.env.CHEMSEMA_STABILITY_SYNTHETIC_OBJECT_REPEATS || 48);
   mkdirSync(fixtureDir, { recursive: true });
   const largeDocument = makeSyntheticLargeDocument({ nodeCount, objectRepeats });
   const commandScript = makeAgentCommandScript();

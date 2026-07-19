@@ -62,14 +62,14 @@ const figures = [
     top: 132,
     height: 454,
     chemdraw: readSvg("figure1.chemdraw.svg"),
-    chemcore: readSvg("figure1.chemcore.svg"),
+    chemsema: readSvg("figure1.chemsema.svg"),
   },
   {
     label: "Figure 2",
     top: 650,
     height: 238,
     chemdraw: readSvg("figure2.chemdraw.svg"),
-    chemcore: readSvg("figure2.chemcore.svg"),
+    chemsema: readSvg("figure2.chemsema.svg"),
   },
 ];
 
@@ -79,10 +79,10 @@ const cardWidth = 540;
 const output = [
   '<svg xmlns="http://www.w3.org/2000/svg" width="1278" height="924" viewBox="0 0 1278 924">',
   '  <rect width="100%" height="100%" fill="#ffffff"/>',
-  '  <text x="28" y="38" font-family="Arial, sans-serif" font-size="24" font-weight="700" fill="#111827">ChemDraw vs ChemCore: CDXML rendering from published figures</text>',
+  '  <text x="28" y="38" font-family="Arial, sans-serif" font-size="24" font-weight="700" fill="#111827">ChemDraw vs ChemSema: CDXML rendering from published figures</text>',
   '  <text x="28" y="62" font-family="Arial, sans-serif" font-size="13" fill="#4b5563">Source CDXML: Copper-catalyzed site- and enantioselective C-H cyanation of trisubstituted allenes</text>',
   '  <text x="416" y="112" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" font-weight="700" fill="#111827">ChemDraw export</text>',
-  '  <text x="980" y="112" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" font-weight="700" fill="#111827">ChemCore export</text>',
+  '  <text x="980" y="112" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" font-weight="700" fill="#111827">ChemSema export</text>',
 ];
 
 for (const figure of figures) {
@@ -91,7 +91,7 @@ for (const figure of figures) {
   output.push(`  <rect x="${leftX}" y="${figure.top}" width="${cardWidth}" height="${figure.height}" rx="8" fill="#ffffff" stroke="#d1d5db"/>`);
   output.push(embeddedSvg(figure.chemdraw, leftX, figure.top, cardWidth, figure.height));
   output.push(`  <rect x="${rightX}" y="${figure.top}" width="${cardWidth}" height="${figure.height}" rx="8" fill="#ffffff" stroke="#d1d5db"/>`);
-  output.push(embeddedSvg(figure.chemcore, rightX, figure.top, cardWidth, figure.height));
+  output.push(embeddedSvg(figure.chemsema, rightX, figure.top, cardWidth, figure.height));
 }
 
 output.push("</svg>");

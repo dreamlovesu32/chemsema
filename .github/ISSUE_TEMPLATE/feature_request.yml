@@ -15,7 +15,7 @@ body:
     id: proposal
     attributes:
       label: Proposed behavior
-      description: Describe the behavior you would expect from ChemCore.
+      description: Describe the behavior you would expect from ChemSema.
     validations:
       required: true
   - type: textarea

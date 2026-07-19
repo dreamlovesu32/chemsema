@@ -6,13 +6,13 @@ $input = "..\..\..\figure1.cdxml"
 $objectSelector = "object:obj_mol_004"
 $nodeSelector = "node:1176604361"
 $nodeId = "1176604361"
-$cli = $env:CHEMCORE_CLI
+$cli = $env:CHEMSEMA_CLI
 
 if (-not $cli) {
   if (Get-Command cargo -ErrorAction SilentlyContinue) {
     Push-Location $root
     try {
-      & cargo build -p chemcore-cli
+      & cargo build -p chemsema-cli
       if ($LASTEXITCODE -ne 0) {
         exit $LASTEXITCODE
       }
@@ -22,8 +22,8 @@ if (-not $cli) {
   }
 
   $candidates = @(
-    (Join-Path $root "target\debug\chemcore-cli.exe"),
-    (Join-Path $root "target\release\chemcore-cli.exe")
+    (Join-Path $root "target\debug\chemsema-cli.exe"),
+    (Join-Path $root "target\release\chemsema-cli.exe")
   )
   foreach ($candidate in $candidates) {
     if (Test-Path $candidate) {
@@ -34,14 +34,14 @@ if (-not $cli) {
 }
 
 if (-not $cli) {
-  $cli = "chemcore-cli"
+  $cli = "chemsema-cli"
 }
 
-function Invoke-ChemCore {
+function Invoke-ChemSema {
   param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
   & $cli @Arguments
   if ($LASTEXITCODE -ne 0) {
-    throw "chemcore-cli failed: $($Arguments -join ' ')"
+    throw "chemsema-cli failed: $($Arguments -join ' ')"
   }
 }
 
@@ -68,7 +68,7 @@ function Read-Json {
 function New-Transaction {
   param([string]$ExpectedHash, [bool]$DryRun)
   [ordered]@{
-    schema = "chemcore.command-transaction.v1"
+    schema = "chemsema.command-transaction.v1"
     preconditions = [ordered]@{
       expectedDocumentHash = $ExpectedHash
       requiredSelectors = @($objectSelector, $nodeSelector)
@@ -131,8 +131,8 @@ try {
     }
   }
 
-  Invoke-ChemCore targets $input --out targets.json --pretty
-  Invoke-ChemCore convert $input before.ccjs --format ccjs
+  Invoke-ChemSema targets $input --out targets.json --pretty
+  Invoke-ChemSema convert $input before.ccjs --format ccjs
   & $cli bundle $input `
     --target $objectSelector `
     --out-dir bundle `
@@ -143,9 +143,9 @@ try {
     --pretty `
     | Set-Content -Path bundle-command.json -Encoding UTF8
   if ($LASTEXITCODE -ne 0) {
-    throw "chemcore-cli failed: bundle $input --target $objectSelector"
+    throw "chemsema-cli failed: bundle $input --target $objectSelector"
   }
-  Invoke-ChemCore capture $input `
+  Invoke-ChemSema capture $input `
     --target $objectSelector `
     --expand 55 `
     --out before.png `
@@ -158,28 +158,28 @@ try {
   Write-Json transaction-dry-run.json (New-Transaction -ExpectedHash $expectedHash -DryRun $true)
   Write-Json transaction-execute.json (New-Transaction -ExpectedHash $expectedHash -DryRun $false)
 
-  Invoke-ChemCore run $input transaction-dry-run.json `
+  Invoke-ChemSema run $input transaction-dry-run.json `
     --results dry-run-report.json `
     --pretty
-  Invoke-ChemCore run $input transaction-execute.json `
+  Invoke-ChemSema run $input transaction-execute.json `
     --out output.ccjs `
     --results execute-report.json `
     --pretty
 
-  Invoke-ChemCore diff before.ccjs output.ccjs --out diff.json --pretty
-  Invoke-ChemCore capture output.ccjs `
+  Invoke-ChemSema diff before.ccjs output.ccjs --out diff.json --pretty
+  Invoke-ChemSema capture output.ccjs `
     --target $objectSelector `
     --expand 55 `
     --out after.png `
     --width 1200 `
     --pretty `
     | Set-Content -Path after-capture.json -Encoding UTF8
-  Invoke-ChemCore convert output.ccjs target-subset.ccjs --target $objectSelector --format ccjs
-  Invoke-ChemCore convert output.ccjs target-subset.cdxml --target $objectSelector --format cdxml
-  Invoke-ChemCore convert output.ccjs output.cdxml --format cdxml
-  Invoke-ChemCore inspect output.ccjs --out full-inspect.json --pretty
-  Invoke-ChemCore inspect target-subset.ccjs --out subset-inspect.json --pretty
-  Invoke-ChemCore inspect output.cdxml --out output-cdxml-inspect.json --pretty
+  Invoke-ChemSema convert output.ccjs target-subset.ccjs --target $objectSelector --format ccjs
+  Invoke-ChemSema convert output.ccjs target-subset.cdxml --target $objectSelector --format cdxml
+  Invoke-ChemSema convert output.ccjs output.cdxml --format cdxml
+  Invoke-ChemSema inspect output.ccjs --out full-inspect.json --pretty
+  Invoke-ChemSema inspect target-subset.ccjs --out subset-inspect.json --pretty
+  Invoke-ChemSema inspect output.cdxml --out output-cdxml-inspect.json --pretty
 
   foreach ($path in @(
       "targets.json",

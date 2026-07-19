@@ -13,11 +13,11 @@ function convertToDocumentJson(inputPath) {
   if (extension === ".json" || extension === ".ccjs") {
     return JSON.parse(readFileSync(inputPath, "utf8"));
   }
-  const tempDir = mkdtempSync(path.join(tmpdir(), "chemcore-viewer-screenshot-"));
+  const tempDir = mkdtempSync(path.join(tmpdir(), "chemsema-viewer-screenshot-"));
   const outputPath = path.join(tempDir, `${path.basename(inputPath, extension) || "document"}.ccjs`);
   const result = spawnSync(
     "cargo",
-    ["run", "-p", "chemcore-cli", "--", "convert", inputPath, outputPath, "--format", "ccjs"],
+    ["run", "-p", "chemsema-cli", "--", "convert", inputPath, outputPath, "--format", "ccjs"],
     { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
   );
   if (result.status !== 0) {
@@ -38,9 +38,9 @@ if (sample) {
   if (existsSync(samplePath)) {
     const documentData = convertToDocumentJson(samplePath);
     await page.evaluate(async (data) => {
-      await window.__chemcoreDebug?.loadDocumentForTest?.(data);
+      await window.__chemsemaDebug?.loadDocumentForTest?.(data);
     }, documentData);
-    await page.waitForFunction(() => window.__chemcoreDebug?.document?.objects?.length > 0);
+    await page.waitForFunction(() => window.__chemsemaDebug?.document?.objects?.length > 0);
   } else {
     await page.selectOption("#sample-select", sample);
   }

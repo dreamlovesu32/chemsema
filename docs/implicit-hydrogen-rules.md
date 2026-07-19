@@ -1,4 +1,4 @@
-# ChemCore Implicit Hydrogen Rules
+# ChemSema Implicit Hydrogen Rules
 
 This document defines the baseline behavior used by the Rust engine when it automatically adds hydrogens to node labels. "Implicit hydrogen" here means writing `numHydrogens` on the node and displaying simple element labels as hydrogen-bearing forms such as `NH3`, `NH2`, or `OH`.
 

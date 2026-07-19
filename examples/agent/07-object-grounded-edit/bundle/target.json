@@ -1,7 +1,7 @@
 {
   "input": "..\\..\\..\\figure1.cdxml",
   "ok": true,
-  "schema": "chemcore.agent.bundle.v1",
+  "schema": "chemsema.agent.bundle.v1",
   "targetCount": 1,
   "targets": [
     {
@@ -1889,7 +1889,7 @@
                           ],
                           "complete": true,
                           "connectionKind": "terminal",
-                          "schema": "chemcore.functionalGroupExpansion.v1"
+                          "schema": "chemsema.functionalGroupExpansion.v1"
                         },
                         "formula": "-C#N",
                         "groupKind": "valence-fragment",
@@ -1989,7 +1989,7 @@
                         ],
                         "complete": true,
                         "connectionKind": "terminal",
-                        "schema": "chemcore.functionalGroupExpansion.v1"
+                        "schema": "chemsema.functionalGroupExpansion.v1"
                       },
                       "formula": "-C#N",
                       "groupKind": "valence-fragment",
@@ -2714,7 +2714,7 @@
                           ],
                           "complete": true,
                           "connectionKind": "terminal",
-                          "schema": "chemcore.functionalGroupExpansion.v1"
+                          "schema": "chemsema.functionalGroupExpansion.v1"
                         },
                         "formula": "-CH(CH3)2",
                         "groupKind": "terminal-fragment",
@@ -2834,7 +2834,7 @@
                         ],
                         "complete": true,
                         "connectionKind": "terminal",
-                        "schema": "chemcore.functionalGroupExpansion.v1"
+                        "schema": "chemsema.functionalGroupExpansion.v1"
                       },
                       "formula": "-CH(CH3)2",
                       "groupKind": "terminal-fragment",
@@ -3443,7 +3443,7 @@
                           "bonds": [],
                           "complete": true,
                           "connectionKind": "terminal",
-                          "schema": "chemcore.functionalGroupExpansion.v1"
+                          "schema": "chemsema.functionalGroupExpansion.v1"
                         },
                         "formula": "-CH3",
                         "groupKind": "terminal-fragment",
@@ -3522,7 +3522,7 @@
                         "bonds": [],
                         "complete": true,
                         "connectionKind": "terminal",
-                        "schema": "chemcore.functionalGroupExpansion.v1"
+                        "schema": "chemsema.functionalGroupExpansion.v1"
                       },
                       "formula": "-CH3",
                       "groupKind": "terminal-fragment",
@@ -3538,9 +3538,9 @@
                   ]
                 }
               ],
-              "schema": "chemcore.molecule.fragment2d"
+              "schema": "chemsema.molecule.fragment2d"
             },
-            "encoding": "chemcore.molecule.fragment2d",
+            "encoding": "chemsema.molecule.fragment2d",
             "meta": {
               "fragmentId": "1176604345",
               "import": {
@@ -3563,7 +3563,7 @@
             37.51
           ],
           "bondCount": 7,
-          "encoding": "chemcore.molecule.fragment2d",
+          "encoding": "chemsema.molecule.fragment2d",
           "id": "mol_004",
           "kind": "fragment",
           "nodeCount": 8,

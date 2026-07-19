@@ -1,7 +1,7 @@
 # Third-Party Notices
 
 This project is intended to keep its core document model, viewer, and depiction
-engine under direct control of the `chemcore` codebase.
+engine under direct control of the `chemsema` codebase.
 
 The current policy is:
 
@@ -11,7 +11,7 @@ The current policy is:
   attributed and legally compatible
 
 At the time of writing, the viewer and converter code in this repository are
-implemented directly in `chemcore`. No third-party source files have been
+implemented directly in `chemsema`. No third-party source files have been
 vendored into the repository yet.
 
 ## Reference Projects
@@ -38,7 +38,7 @@ If code is copied or adapted from a third-party project in the future:
 
 1. Keep the original license header where required.
 2. Add the source project, file path, commit, and license to this document.
-3. Mark modified files clearly as changed by `chemcore`.
+3. Mark modified files clearly as changed by `chemsema`.
 4. Preserve any required NOTICE or attribution text.
 5. Do not imply endorsement by the upstream project or maintainers.
 

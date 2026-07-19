@@ -3,7 +3,7 @@ const UNSAVED_CLOSE_DECISION = {
   DISCARD: "discard",
   CANCEL: "cancel",
 };
-const REPEAT_UNIT_UNGROUP_WARNING_KEY = "chemcore:hide-repeat-unit-ungroup-warning";
+const REPEAT_UNIT_UNGROUP_WARNING_KEY = "chemsema:hide-repeat-unit-ungroup-warning";
 
 export function createAppWindowLifecycleHost(options) {
   const {

@@ -280,14 +280,14 @@ function bindBrowserFileDrop(options) {
     }
     const files = droppedFiles(event.dataTransfer);
     preventFileNavigation(event);
-    window.__chemcoreDebug = window.__chemcoreDebug || {};
-    window.__chemcoreDebug.lastFileDrop = {
+    window.__chemsemaDebug = window.__chemsemaDebug || {};
+    window.__chemsemaDebug.lastFileDrop = {
       count: files.length,
       names: files.map((file) => file.name || ""),
       timestamp: Date.now(),
       types: Array.from(event.dataTransfer?.types || []),
     };
-    console.info("[chemcore] file drop", window.__chemcoreDebug.lastFileDrop);
+    console.info("[chemsema] file drop", window.__chemsemaDebug.lastFileDrop);
     if (!files.length) {
       return;
     }
@@ -567,7 +567,7 @@ async function setActiveTool(toolButton, options) {
   const elementPaletteWasOpen = Boolean(document.querySelector('.quick-palette.is-open[data-mode="element"]'));
   if (nextTool === "element") {
     document.dispatchEvent(new CustomEvent(
-      elementPaletteWasOpen ? "chemcore:quick-palette-toggle" : "chemcore:quick-palette-open-mode",
+      elementPaletteWasOpen ? "chemsema:quick-palette-toggle" : "chemsema:quick-palette-open-mode",
       { detail: { mode: "element" } },
     ));
     return;
@@ -1113,7 +1113,7 @@ export function openColorDialog(currentColor, onPick, options) {
       }
     })
     .catch((error) => {
-      console.warn("[chemcore] color host failed to choose a color", error);
+      console.warn("[chemsema] color host failed to choose a color", error);
     });
 }
 

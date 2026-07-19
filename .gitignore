@@ -46,7 +46,7 @@ private-docs/
 private-scripts/
 
 # Local-only comparison drafts. Public README assets should stay limited to
-# ChemDraw/ChemCore comparison files already tracked in the repository.
+# ChemDraw/ChemSema comparison files already tracked in the repository.
 docs/assets/readme/comparison/*indraw*
 docs/assets/readme/comparison/*three-way-comparison*
 docs/assets/readme/comparison/comparison.zip

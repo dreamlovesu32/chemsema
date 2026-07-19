@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a reproducible ChemCore problem.
+description: Report a reproducible ChemSema problem.
 title: "[Bug]: "
 labels:
   - bug
@@ -7,7 +7,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for helping make ChemCore sturdier. If the issue involves CDXML fidelity, please attach the smallest CDXML file you can share plus a screenshot from ChemDraw and ChemCore.
+        Thanks for helping make ChemSema sturdier. If the issue involves CDXML fidelity, please attach the smallest CDXML file you can share plus a screenshot from ChemDraw and ChemSema.
   - type: textarea
     id: summary
     attributes:

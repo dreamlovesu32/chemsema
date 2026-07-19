@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for taking an interest in ChemCore. The project is still young, and the
+Thanks for taking an interest in ChemSema. The project is still young, and the
 most valuable contributions are precise bug reports, small reproducible fixtures,
 and focused patches that keep behavior in the shared Rust engine.
 
@@ -24,12 +24,12 @@ Open `http://127.0.0.1:8765/viewer/`.
 
 - Chemistry semantics, hit testing, selection behavior, implicit hydrogens,
   label recognition, document mutation, and render primitives belong in
-  `crates/chemcore-engine`.
+  `crates/chemsema-engine`.
 - The browser viewer should handle UI, file flow, coordinate conversion, and
   SVG/DOM presentation without reimplementing chemistry behavior.
 - The Windows desktop app should route system capabilities through the Tauri
   boundary and shared desktop service.
-- Office/OLE integration belongs in `apps/chemcore-office`; it should not fork
+- Office/OLE integration belongs in `apps/chemsema-office`; it should not fork
   chemistry or rendering rules away from the engine.
 
 ## Before Opening a Pull Request
@@ -39,8 +39,8 @@ before submitting:
 
 ```bash
 npm test
-cargo test -p chemcore-engine
-cargo test -p chemcore-office
+cargo test -p chemsema-engine
+cargo test -p chemsema-office
 npm run build:engine-wasm
 ```
 
@@ -58,5 +58,5 @@ redistribution rights.
 
 Some comparison scripts need Windows, Office, ChemDraw-compatible local
 installations, or Python packages such as Pillow, NumPy, and SciPy. Use the
-`CHEMCORE_PYTHON` environment variable to point scripts at a Python environment
+`CHEMSEMA_PYTHON` environment variable to point scripts at a Python environment
 with those optional packages installed.

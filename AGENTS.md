@@ -1,4 +1,4 @@
-# ChemCore Agent Notes
+# ChemSema Agent Notes
 
 These repository-level instructions are for coding agents working in this tree.
 They summarize rules that are easy to miss when moving quickly. More detailed
@@ -24,13 +24,13 @@ contracts live in `docs/`.
 - Before cutting or replacing a public version, regenerate and review the README
   editor screenshot and published CDXML comparison assets with the current
   engine. Commit the refreshed `docs/assets/readme/product-screenshot.png`,
-  `docs/assets/readme/comparison/figure*.chemcore.svg`,
-  `docs/assets/readme/comparison/figure*.chemcore.emf`, and
+  `docs/assets/readme/comparison/figure*.chemsema.svg`,
+  `docs/assets/readme/comparison/figure*.chemsema.emf`, and
   `docs/assets/readme/comparison/published-cdxml-comparison.svg`.
 
 ## Engine And Viewer Boundary
 
-- Rust `crates/chemcore-engine` is the authority for editing behavior,
+- Rust `crates/chemsema-engine` is the authority for editing behavior,
   document mutation, hit testing, snapping, selection, deletion, command
   history, and render primitives.
 - The viewer should collect browser events, handle toolbar/menu/file UI,
@@ -40,7 +40,7 @@ contracts live in `docs/`.
   behavior, add or use an engine API instead of duplicating logic in frontend
   code.
 - WASM is the browser/desktop runtime form of the same Rust engine. After
-  changing engine APIs, render primitives, or `crates/chemcore-engine/src/wasm.rs`,
+  changing engine APIs, render primitives, or `crates/chemsema-engine/src/wasm.rs`,
   rebuild and commit synchronized `viewer/engine` artifacts when the change is
   meant to ship.
 
@@ -83,7 +83,7 @@ contracts live in `docs/`.
   parsing, charges, radicals, lone-pair semantics, glyph metrics, glyph
   polygons, and bond-drawing anchors are engine behavior, not viewer behavior.
 - CDXML import is an input adapter. It may translate CDXML positions, boxes,
-  runs, alignment, and script information into ChemCore's native model, but it
+  runs, alignment, and script information into ChemSema's native model, but it
   must not become a second label-layout engine.
 - CDXML root drawing defaults such as bond widths, bond spacing, `MarginWidth`,
   `ChainAngle`, label/caption font defaults, justification defaults, display

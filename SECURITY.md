@@ -1,6 +1,6 @@
 # Security Policy
 
-ChemCore is not yet a mature security-hardened application. Please treat file
+ChemSema is not yet a mature security-hardened application. Please treat file
 import, Office/OLE integration, and clipboard handling as security-sensitive
 areas.
 
@@ -8,7 +8,7 @@ areas.
 
 Do not post exploit details publicly. Send security reports to
 dreamlovesu@hotmail.com with a concise subject such as
-`ChemCore security report`.
+`ChemSema security report`.
 
 Useful private reports should include:
 

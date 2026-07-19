@@ -1,0 +1,108 @@
+{
+  "schema": "chemsema.entrypoints.v1",
+  "product": {
+    "name": "ChemSema",
+    "version": "1.0.0-beta.1",
+    "identifier": "com.chemsema.desktop",
+    "description": "ChemSema is a desktop, browser, and CLI chemical drawing toolkit with editable ChemSema JSON, CDXML/CDX, SDF, SVG, and Office/OLE clipboard workflows."
+  },
+  "entrypoints": {
+    "gui": {
+      "name": "ChemSema desktop",
+      "executable": "chemsema-desktop.exe",
+      "installedPathHint": "<install-dir>\\chemsema-desktop.exe",
+      "fileAssociations": ["ccjz", "ccjs", "cdxml", "cdx", "sdf", "sd"]
+    },
+    "cli": {
+      "name": "chemsema-cli",
+      "executable": "chemsema-cli.exe",
+      "installedPathHints": [
+        "<install-dir>\\chemsema-cli.exe",
+        "<install-dir>\\resources\\chemsema-cli.exe"
+      ],
+      "discovery": [
+        "chemsema-cli guide --pretty",
+        "chemsema-cli guide --kind detailed --pretty",
+        "chemsema-cli version --pretty",
+        "chemsema-cli about --pretty",
+        "chemsema-cli doctor --pretty",
+        "chemsema-cli capabilities --pretty",
+        "chemsema-cli schema protocol --pretty",
+        "chemsema-cli examples basic --pretty",
+        "chemsema-cli schema context --pretty",
+        "chemsema-cli schema detail --pretty"
+      ]
+    },
+    "officeOleHelper": {
+      "executable": "chemsema-office.exe",
+      "installedPathHints": [
+        "<install-dir>\\chemsema-office.exe",
+        "<install-dir>\\resources\\chemsema-office.exe"
+      ],
+      "purpose": "Registers the editable ChemSema OLE server and accepts CLI clipboard payloads for Office paste."
+    }
+  },
+  "packaging": {
+    "installer": "NSIS x64",
+    "selfDescriptionFile": "chemsema-entrypoints.json",
+    "selfDescriptionInstalledPathHint": "<install-dir>\\resources\\chemsema-entrypoints.json",
+    "agentGuideFile": "chemsema-agent-guide.md",
+    "agentGuideInstalledPathHint": "<install-dir>\\resources\\chemsema-agent-guide.md",
+    "detailedGuideFile": "chemsema-cli-guide.md",
+    "detailedGuideInstalledPathHint": "<install-dir>\\resources\\chemsema-cli-guide.md",
+    "windowsAppPaths": ["chemsema-cli.exe"],
+    "pathRegistration": "The installer adds the ChemSema CLI directory to PATH. Open a new terminal after installing, then run `chemsema-cli guide --pretty`.",
+    "pathRegistrationFallback": "If machine PATH registration fails, the installer writes the current-user PATH. App Paths are also registered for ShellExecute-style launchers.",
+    "consoleNote": "Console agents can call `chemsema-cli` from a new terminal after install, or read installedPathHints from this file and `chemsema-cli doctor`."
+  },
+  "documentation": {
+    "agentGuide": {
+      "key": "agent",
+      "file": "chemsema-agent-guide.md",
+      "language": "en",
+      "title": "ChemSema Agent Guide",
+      "installedPathHints": [
+        "<install-dir>\\resources\\chemsema-agent-guide.md",
+        "<install-dir>\\chemsema-agent-guide.md"
+      ],
+      "discoveryCommand": "chemsema-cli guide --kind agent --pretty",
+      "contentCommand": "chemsema-cli guide --kind agent --include-content --out chemsema-agent-guide.json --pretty"
+    },
+    "detailedGuide": {
+      "key": "detailed",
+      "file": "chemsema-cli-guide.md",
+      "language": "en",
+      "title": "ChemSema CLI Command Guide",
+      "installedPathHints": [
+        "<install-dir>\\resources\\chemsema-cli-guide.md",
+        "<install-dir>\\chemsema-cli-guide.md"
+      ],
+      "discoveryCommand": "chemsema-cli guide --kind detailed --pretty",
+      "contentCommand": "chemsema-cli guide --kind detailed --include-content --out chemsema-cli-guide.json --pretty"
+    }
+  },
+  "jsonOutput": {
+    "default": "Commands that print JSON emit compact single-line JSON unless --pretty is present.",
+    "pretty": "--pretty only changes JSON whitespace: compact JSON becomes line-broken and indented. It does not change fields, values, output files, exit code, schema, ordering, or command behavior.",
+    "out": "When complete output matters, pass --out <path> and read that file instead of relying on a console buffer."
+  },
+  "formats": {
+    "editableInput": ["ccjs", "ccjz", "cdxml", "cdx", "sdf"],
+    "documentOutput": ["json", "ccjs", "ccjz", "cdxml", "cdx", "sdf", "svg"],
+    "captureOutput": ["svg", "png"],
+    "clipboardOutput": ["windows-office-ole", "chemsema-payload-json"]
+  },
+  "agentWorkflow": [
+    "Run `chemsema-cli version --pretty` to read product and protocol versions.",
+    "Run `chemsema-cli guide --pretty` first when using ChemSema without source-code context.",
+    "Run `chemsema-cli guide --kind detailed --pretty` to locate the detailed English CLI guide.",
+    "Run `chemsema-cli doctor --pretty` to identify the executable directory and install state.",
+    "Run `chemsema-cli examples basic --pretty` for a minimal command script that creates an editable document.",
+    "Run `chemsema-cli targets <document> --out targets.json --pretty` before precise capture or copy.",
+    "Run `chemsema-cli context <document> --target <selector> --out context.json --capture-out context.png --scale 5` to inspect nearby objects and relationships.",
+    "Run `chemsema-cli detail <document> --target <selector> --out detail.json --pretty` to expand one id into exact object/molecule/node/bond JSON.",
+    "Run `chemsema-cli capture <document> --target <selector> --out crop.png --scale 6` for deterministic high-resolution cropped inspection.",
+    "Use command JSON with `select-targets`, `select-all`, and `clear-selection` before GUI-style selection edits; the same commands work in `chemsema-cli run` and JSONL session `execute`.",
+    "Run `chemsema-cli copy <document> --target <selector>` to place an editable Office/OLE payload on the Windows clipboard."
+  ]
+}

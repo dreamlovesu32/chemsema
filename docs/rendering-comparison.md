@@ -1,6 +1,6 @@
 # Rendering Comparison And Regression Assets
 
-ChemCore treats rendering fidelity as an engineering target. The public test
+ChemSema treats rendering fidelity as an engineering target. The public test
 assets are split into two groups:
 
 - synthetic fixtures in `fixtures/cdxml/`, used for reproducible CI-friendly
@@ -22,14 +22,14 @@ compares the result with the matching expected SVG file.
 Run the snapshot test with:
 
 ```bash
-cargo test -p chemcore-engine public_cdxml_fixture_svg_golden_snapshots_match --test render_document
+cargo test -p chemsema-engine public_cdxml_fixture_svg_golden_snapshots_match --test render_document
 ```
 
 When an intentional rendering change updates a fixture, regenerate the affected
 SVG with:
 
 ```bash
-cargo run -p chemcore-engine --example cdxml_to_svg -- fixtures/cdxml/synthetic-reaction.cdxml fixtures/expected/svg/synthetic-reaction.svg
+cargo run -p chemsema-engine --example cdxml_to_svg -- fixtures/cdxml/synthetic-reaction.cdxml fixtures/expected/svg/synthetic-reaction.svg
 ```
 
 Review the diff before committing. SVG snapshots are text fixtures, so changes
@@ -47,7 +47,7 @@ Generate ChemDraw SVG/EMF for one or more CDXML files:
 npm run emf:chemdraw-oracle -- --out tmp/chemdraw-oracle figure1.cdxml figure2.cdxml
 ```
 
-Generate ChemDraw and ChemCore SVG/EMF, EMF inspection reports, and raster EMF
+Generate ChemDraw and ChemSema SVG/EMF, EMF inspection reports, and raster EMF
 previews:
 
 ```bash
@@ -55,7 +55,7 @@ npm run emf:compare-oracle -- --out tmp/emf-oracle figure1.cdxml figure2.cdxml
 ```
 
 The README comparison assets in `docs/assets/readme/comparison/` are regenerated
-from those outputs and from ChemCore's `cdxml_to_svg` and Office EMF writers.
+from those outputs and from ChemSema's `cdxml_to_svg` and Office EMF writers.
 The default GitHub Actions CI uses open-source, dependency-free regression
 checks; ChemDraw and Office oracle checks remain local Windows workflows.
 
@@ -65,12 +65,12 @@ Every public version release or release replacement must refresh the README
 visual assets with the engine being shipped:
 
 ```bash
-cargo run -p chemcore-cli -- convert figure1.cdxml docs/assets/readme/comparison/figure1.chemcore.svg --format svg
-cargo run -p chemcore-cli -- convert figure2.cdxml docs/assets/readme/comparison/figure2.chemcore.svg --format svg
-cargo run -p chemcore-engine --example cdxml_to_clipboard_payload -- figure1.cdxml tmp/readme-assets/figure1.chemcore.payload.json
-cargo run -p chemcore-engine --example cdxml_to_clipboard_payload -- figure2.cdxml tmp/readme-assets/figure2.chemcore.payload.json
-cargo run -p chemcore-office -- --write-emf-payload tmp/readme-assets/figure1.chemcore.payload.json docs/assets/readme/comparison/figure1.chemcore.emf
-cargo run -p chemcore-office -- --write-emf-payload tmp/readme-assets/figure2.chemcore.payload.json docs/assets/readme/comparison/figure2.chemcore.emf
+cargo run -p chemsema-cli -- convert figure1.cdxml docs/assets/readme/comparison/figure1.chemsema.svg --format svg
+cargo run -p chemsema-cli -- convert figure2.cdxml docs/assets/readme/comparison/figure2.chemsema.svg --format svg
+cargo run -p chemsema-engine --example cdxml_to_clipboard_payload -- figure1.cdxml tmp/readme-assets/figure1.chemsema.payload.json
+cargo run -p chemsema-engine --example cdxml_to_clipboard_payload -- figure2.cdxml tmp/readme-assets/figure2.chemsema.payload.json
+cargo run -p chemsema-office -- --write-emf-payload tmp/readme-assets/figure1.chemsema.payload.json docs/assets/readme/comparison/figure1.chemsema.emf
+cargo run -p chemsema-office -- --write-emf-payload tmp/readme-assets/figure2.chemsema.payload.json docs/assets/readme/comparison/figure2.chemsema.emf
 npm run readme:comparison
 npm run screenshot -- http://127.0.0.1:8767/viewer/ docs/assets/readme/product-screenshot.png figure1.cdxml
 ```

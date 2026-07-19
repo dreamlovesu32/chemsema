@@ -1,6 +1,6 @@
-# ChemCore Selector v1
+# ChemSema Selector v1
 
-Protocol id: `chemcore-selector.v1`.
+Protocol id: `chemsema-selector.v1`.
 
 Selectors identify document regions and editable entities for CLI commands.
 They are stable strings intended for agent storage, logging, and follow-up
@@ -38,9 +38,9 @@ box.
 Use:
 
 ```powershell
-chemcore-cli targets input.cdxml --out targets.json --pretty
-chemcore-cli context input.cdxml --target object:obj_001 --out context.json --pretty
-chemcore-cli detail input.cdxml --target object:obj_001 --out detail.json --pretty
+chemsema-cli targets input.cdxml --out targets.json --pretty
+chemsema-cli context input.cdxml --target object:obj_001 --out context.json --pretty
+chemsema-cli detail input.cdxml --target object:obj_001 --out detail.json --pretty
 ```
 
 Automation should discover selectors from `targets` or `context` instead of

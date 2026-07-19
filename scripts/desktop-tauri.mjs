@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
-const appDir = join(rootDir, "apps", "chemcore-desktop");
+const appDir = join(rootDir, "apps", "chemsema-desktop");
 const tauriCli = join(rootDir, "node_modules", "@tauri-apps", "cli", "tauri.js");
 const args = process.argv.slice(2);
 
@@ -13,7 +13,7 @@ if (!args.length) {
 }
 
 if (args[0] === "dev" || args[0] === "build") {
-  for (const packageName of ["chemcore-office", "chemcore-cli"]) {
+  for (const packageName of ["chemsema-office", "chemsema-cli"]) {
     const cargoArgs = ["build", "-p", packageName];
     if (args[0] === "build") {
       cargoArgs.push("--release");

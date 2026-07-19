@@ -1,5 +1,5 @@
 ﻿{
-    "schema":  "chemcore.command-transaction.v1",
+    "schema":  "chemsema.command-transaction.v1",
     "preconditions":  {
                           "expectedDocumentHash":  "880febac1eace591111d0c4366ccd77d871faf96c6b41463e5701abba6bee2b7",
                           "requiredSelectors":  [

@@ -1,6 +1,6 @@
 # 03 Edit Reaction Scheme
 
-This example creates a tiny editable ChemCore document from JSON commands,
+This example creates a tiny editable ChemSema document from JSON commands,
 writes an audit report, then captures the full result.
 
 ```powershell
@@ -9,7 +9,7 @@ writes an audit report, then captures the full result.
 
 Outputs:
 
-- `output.ccjs`: generated editable ChemCore JSON document.
+- `output.ccjs`: generated editable ChemSema JSON document.
 - `expected-results.json`: command audit report.
 - `crop.png`: full-document capture.
 - `capture.json`: capture manifest.

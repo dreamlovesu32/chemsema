@@ -1,6 +1,6 @@
 # 06 Reaction POC
 
-This is the smallest checked-in POC for an external team evaluating ChemCore as
+This is the smallest checked-in POC for an external team evaluating ChemSema as
 an agent-operable scientific document engine.
 
 It uses the public repository fixture `figure1.cdxml`, discovers the first

@@ -6,12 +6,12 @@ import { chromium } from "playwright";
 
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const host = "127.0.0.1";
-const port = Number(process.env.CHEMCORE_DESKTOP_DEV_PORT || 8767);
+const port = Number(process.env.CHEMSEMA_DESKTOP_DEV_PORT || 8767);
 const baseUrl = `http://${host}:${port}/viewer/`;
-const nodeCount = Number(process.env.CHEMCORE_HYBRID_LATENCY_NODE_COUNT || 5000);
-const nativeDelayMs = Number(process.env.CHEMCORE_HYBRID_FAKE_NATIVE_DELAY_MS || 250);
-const documentJsonDelayMs = Number(process.env.CHEMCORE_HYBRID_DOCUMENT_JSON_DELAY_MS || 140);
-const maxLocalMs = Number(process.env.CHEMCORE_HYBRID_LOCAL_MAX_MS || 80);
+const nodeCount = Number(process.env.CHEMSEMA_HYBRID_LATENCY_NODE_COUNT || 5000);
+const nativeDelayMs = Number(process.env.CHEMSEMA_HYBRID_FAKE_NATIVE_DELAY_MS || 250);
+const documentJsonDelayMs = Number(process.env.CHEMSEMA_HYBRID_DOCUMENT_JSON_DELAY_MS || 140);
+const maxLocalMs = Number(process.env.CHEMSEMA_HYBRID_LOCAL_MAX_MS || 80);
 
 function assert(condition, message) {
   if (!condition) {
@@ -96,7 +96,7 @@ function makeLargeChainDocument(count) {
   }
   const height = 120 + Math.ceil(count / columns) * spacing;
   return {
-    format: { name: "chemcore", version: "0.1", unit: "pt" },
+    format: { name: "chemsema", version: "0.1", unit: "pt" },
     document: {
       id: "doc_desktop_hybrid_latency",
       title: "Desktop hybrid latency regression",
@@ -134,7 +134,7 @@ function makeLargeChainDocument(count) {
       mol_large: {
         id: "mol_large",
         type: "molecule_fragment2d",
-        encoding: "chemcore.molecule.fragment2d",
+        encoding: "chemsema.molecule.fragment2d",
         data: { nodes, bonds },
       },
     },
@@ -149,7 +149,7 @@ function installFakeTauriScript(delayMs) {
     const invocations = [];
     const counts = {};
     const minimalDocument = JSON.stringify({
-      format: { name: "chemcore", version: "0.1", unit: "pt" },
+      format: { name: "chemsema", version: "0.1", unit: "pt" },
       document: {
         id: "fake_native_doc",
         title: "Fake native document",
@@ -196,7 +196,7 @@ function installFakeTauriScript(delayMs) {
         canRedo: false,
       });
     };
-    window.__chemcoreHybridLatencyFakeNative = { invocations, counts };
+    window.__chemsemaHybridLatencyFakeNative = { invocations, counts };
     window.__TAURI__ = {
       core: {
         invoke: async (command, args = {}) => {
@@ -409,7 +409,7 @@ async function main() {
 
       samples.push(await measure("clearInteraction", () => session.clearInteraction()));
       await new Promise((resolve) => setTimeout(resolve, nativeDelay * 12));
-      const counts = window.__chemcoreHybridLatencyFakeNative.counts;
+      const counts = window.__chemsemaHybridLatencyFakeNative.counts;
       const nonMoleculeObjects = nonMoleculeObjectSummaries();
       await session.free();
       return {

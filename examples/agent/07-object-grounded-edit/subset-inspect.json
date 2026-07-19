@@ -273,7 +273,7 @@
   "resources": [
     {
       "bondCount": 7,
-      "encoding": "chemcore.molecule.fragment2d",
+      "encoding": "chemsema.molecule.fragment2d",
       "id": "mol_004",
       "kind": "fragment",
       "nodeCount": 8,
@@ -306,7 +306,7 @@
     "documentId": "doc_export_selection",
     "documentStylePreset": "default",
     "format": {
-      "name": "chemcore",
+      "name": "chemsema",
       "unit": "pt",
       "version": "0.1"
     },
@@ -364,6 +364,6 @@
       61.09
     ],
     "revision": 0,
-    "title": "ChemCore Export Selection"
+    "title": "ChemSema Export Selection"
   }
 }

@@ -42,7 +42,7 @@
   },
   "editableSubset": {
     "documentId": "doc_export_selection",
-    "documentTitle": "ChemCore Export Selection",
+    "documentTitle": "ChemSema Export Selection",
     "format": "ccjs",
     "objectCount": 1,
     "resourceCount": 1,
@@ -83,11 +83,11 @@
   "identityMap": {
     "artifact": "identity-map.json",
     "entryCount": 18,
-    "schema": "chemcore.identity-map.v1",
+    "schema": "chemsema.identity-map.v1",
     "selectorIdentityStable": true
   },
   "ok": true,
-  "schema": "chemcore.agent.provenance.v1",
+  "schema": "chemsema.agent.provenance.v1",
   "source": {
     "documentHash": "880febac1eace591111d0c4366ccd77d871faf96c6b41463e5701abba6bee2b7",
     "documentRevision": 0,

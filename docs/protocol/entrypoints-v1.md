@@ -1,9 +1,9 @@
-# ChemCore Entrypoints v1
+# ChemSema Entrypoints v1
 
-Schema id: `chemcore.entrypoints.v1`.
+Schema id: `chemsema.entrypoints.v1`.
 
 Installed desktop builds ship a self-description file named
-`chemcore-entrypoints.json`. It is intended for tools that discover ChemCore
+`chemsema-entrypoints.json`. It is intended for tools that discover ChemSema
 without repository context.
 
 ## Stable Sections
@@ -16,7 +16,7 @@ without repository context.
 - `formats`
 - `agentWorkflow`
 
-`entrypoints.cli` describes `chemcore-cli.exe`, installed path hints, and first
+`entrypoints.cli` describes `chemsema-cli.exe`, installed path hints, and first
 commands to run. `entrypoints.gui` describes the desktop executable and file
 associations. `entrypoints.officeOleHelper` describes the Office/OLE helper.
 
@@ -25,11 +25,11 @@ associations. `entrypoints.officeOleHelper` describes the Office/OLE helper.
 Installed agents should run:
 
 ```powershell
-chemcore-cli version --pretty
-chemcore-cli guide --pretty
-chemcore-cli doctor --pretty
-chemcore-cli capabilities --pretty
+chemsema-cli version --pretty
+chemsema-cli guide --pretty
+chemsema-cli doctor --pretty
+chemsema-cli capabilities --pretty
 ```
 
 When PATH is unavailable, callers can inspect installed path hints from
-`chemcore-entrypoints.json` or Windows App Paths registration.
+`chemsema-entrypoints.json` or Windows App Paths registration.

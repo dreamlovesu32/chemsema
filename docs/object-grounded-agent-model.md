@@ -1,6 +1,6 @@
 # Object-Grounded Agent Model
 
-ChemCore separates semantic understanding from document operation.
+ChemSema separates semantic understanding from document operation.
 
 Semantic understanding is about chemical meaning: molecule identity, reaction
 roles, properties, provenance, dictionaries, ontology, and future CML
@@ -43,7 +43,7 @@ callers can distinguish target content from visible context.
 
 ## Transaction Boundary
 
-`chemcore.command-transaction.v1` is the mutation boundary for object-grounded
+`chemsema.command-transaction.v1` is the mutation boundary for object-grounded
 agents. A transaction declares the document hash/revision it believes it is
 editing, the selectors it is allowed to modify, whether creation/deletion is
 allowed, and postconditions such as `document-valid` and
@@ -59,7 +59,7 @@ CML can become a future semantic layer for chemical meaning, properties,
 provenance, dictionaries, ontology, and reaction semantics. This phase does not
 implement a CML parser or exporter.
 
-CCJS remains ChemCore's editable document/runtime model. CDXML remains the
+CCJS remains ChemSema's editable document/runtime model. CDXML remains the
 compatibility bridge for ChemDraw documents. CML should not replace document
 layout fields such as object transforms, style references, z-order, grouping,
 visual bounds, or capture geometry.

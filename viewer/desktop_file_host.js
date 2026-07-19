@@ -234,7 +234,7 @@ export class DesktopFileHost {
     if (typeof this.listen !== "function") {
       return;
     }
-    const unlisten = await this.listen("chemcore-desktop-menu", (event) => {
+    const unlisten = await this.listen("chemsema-desktop-menu", (event) => {
       handler(event?.payload?.command || "");
     });
     this.unlisteners.push(unlisten);
@@ -244,7 +244,7 @@ export class DesktopFileHost {
     if (typeof this.listen !== "function") {
       return;
     }
-    const unlisten = await this.listen("chemcore-desktop-open-paths", (event) => {
+    const unlisten = await this.listen("chemsema-desktop-open-paths", (event) => {
       const paths = openPathsFromDesktopPayload(event?.payload);
       void this.traceEvent("desktopFileHost.openPaths.event", { payload: event?.payload, paths });
       handler(paths);
@@ -306,12 +306,12 @@ export class HarmonyFileHost {
   }
 
   initialize() {
-    this.bridge = globalThis.chemcoreHarmony || null;
+    this.bridge = globalThis.chemsemaHarmony || null;
     if (!this.available) {
       return this;
     }
-    this.previousResolver = globalThis.__chemcoreHarmonyResolve;
-    globalThis.__chemcoreHarmonyResolve = (id, responseJson) => {
+    this.previousResolver = globalThis.__chemsemaHarmonyResolve;
+    globalThis.__chemsemaHarmonyResolve = (id, responseJson) => {
       if (this.pending.has(id)) {
         this.resolveRequest(id, responseJson);
         return true;
@@ -481,8 +481,8 @@ export class HarmonyFileHost {
       entry.reject(new Error("Harmony file host was disposed."));
     }
     this.pending.clear();
-    if (globalThis.__chemcoreHarmonyResolve && this.previousResolver) {
-      globalThis.__chemcoreHarmonyResolve = this.previousResolver;
+    if (globalThis.__chemsemaHarmonyResolve && this.previousResolver) {
+      globalThis.__chemsemaHarmonyResolve = this.previousResolver;
     }
   }
 }

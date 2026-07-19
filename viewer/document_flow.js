@@ -1,19 +1,19 @@
 import {
-  CHEMCORE_COMPRESSED_EXTENSION,
-  CHEMCORE_COMPRESSED_MIME,
-  CHEMCORE_TEXT_EXTENSION,
-  CHEMCORE_TEXT_MIME,
+  CHEMSEMA_COMPRESSED_EXTENSION,
+  CHEMSEMA_COMPRESSED_MIME,
+  CHEMSEMA_TEXT_EXTENSION,
+  CHEMSEMA_TEXT_MIME,
   CHEMDRAW_CDX_MIME,
   MDL_SDF_MIME,
   baseNameWithoutDocumentExtension,
-  chemcoreOpenAcceptTypes,
-  compressChemcoreText,
-  decompressChemcoreText,
+  chemsemaOpenAcceptTypes,
+  compressChemSemaText,
+  decompressChemSemaText,
   documentTitleForFileName,
   downloadBinaryFile,
   downloadBlobFile,
   downloadTextFile,
-  looksLikeCompressedChemcoreFile,
+  looksLikeCompressedChemSemaFile,
   looksLikeCdxFile,
   looksLikeCdxmlFile,
   looksLikeSdfFile,
@@ -35,14 +35,14 @@ export function createDocumentFlow(options) {
     if (!response.ok) {
       throw new Error(`Failed to load ${path}: ${response.status}`);
     }
-    const compressed = path.toLowerCase().endsWith(CHEMCORE_COMPRESSED_EXTENSION);
+    const compressed = path.toLowerCase().endsWith(CHEMSEMA_COMPRESSED_EXTENSION);
     const text = compressed
-      ? await decompressChemcoreText(await response.arrayBuffer())
+      ? await decompressChemSemaText(await response.arrayBuffer())
       : await response.text();
     return JSON.parse(text);
   }
 
-  function validateChemcoreJsonDocument(documentData) {
+  function validateChemSemaJsonDocument(documentData) {
     if (!documentData || typeof documentData !== "object") {
       throw new Error("JSON root must be an object.");
     }
@@ -106,7 +106,7 @@ export function createDocumentFlow(options) {
 
   async function loadJsonDocumentIntoEditor(documentData, fileName = null, filePath = null) {
     await waitForRuntimeReady();
-    validateChemcoreJsonDocument(documentData);
+    validateChemSemaJsonDocument(documentData);
     await options.finishActiveTextEditor(false);
     const json = JSON.stringify(documentData);
     const engine = await createLoadedEditorEngine(
@@ -153,7 +153,7 @@ export function createDocumentFlow(options) {
 
   function saveAsBaseName() {
     const baseName = options.state.currentFileName || documentTitleForFileName(options.state.currentDocument);
-    return baseNameWithoutDocumentExtension(baseName) || "chemcore-document";
+    return baseNameWithoutDocumentExtension(baseName) || "chemsema-document";
   }
 
   function preferredSaveFormat() {
@@ -163,12 +163,12 @@ export function createDocumentFlow(options) {
 
   function extensionForSaveFormat(format) {
     switch (format) {
-      case "ccjs": return CHEMCORE_TEXT_EXTENSION;
+      case "ccjs": return CHEMSEMA_TEXT_EXTENSION;
       case "cdxml": return ".cdxml";
       case "cdx": return ".cdx";
       case "sdf": return ".sdf";
       case "svg": return ".svg";
-      default: return CHEMCORE_COMPRESSED_EXTENSION;
+      default: return CHEMSEMA_COMPRESSED_EXTENSION;
     }
   }
 
@@ -188,10 +188,10 @@ export function createDocumentFlow(options) {
 
   function lossyExportWarningMessage(format) {
     if (format === "sdf") {
-      return "SDF is a molecular structure exchange format. Exporting to SDF will save molecule structures and mappable data fields only; text, arrows, shapes, orbitals, colors, line widths, fonts, page layout, and other drawing styles will not be written. To preserve the full editable document appearance, save as ChemCore, CDXML, or CDX.";
+      return "SDF is a molecular structure exchange format. Exporting to SDF will save molecule structures and mappable data fields only; text, arrows, shapes, orbitals, colors, line widths, fonts, page layout, and other drawing styles will not be written. To preserve the full editable document appearance, save as ChemSema, CDXML, or CDX.";
     }
     if (format === "svg" || format === "emf") {
-      return `${format.toUpperCase()} is a presentation/export format. It does not preserve the full editable ChemCore document. To preserve editable molecules, objects, and styling, save as ChemCore, CDXML, or CDX.`;
+      return `${format.toUpperCase()} is a presentation/export format. It does not preserve the full editable ChemSema document. To preserve editable molecules, objects, and styling, save as ChemSema, CDXML, or CDX.`;
     }
     return "";
   }
@@ -236,12 +236,12 @@ export function createDocumentFlow(options) {
     if (format === "ccjs") {
       return {
         content: json,
-        mimeType: CHEMCORE_TEXT_MIME,
+        mimeType: CHEMSEMA_TEXT_MIME,
       };
     }
     return {
-      content: await compressChemcoreText(json),
-      mimeType: CHEMCORE_COMPRESSED_MIME,
+      content: await compressChemSemaText(json),
+      mimeType: CHEMSEMA_COMPRESSED_MIME,
     };
   }
 
@@ -256,13 +256,13 @@ export function createDocumentFlow(options) {
     if (options.desktopFileHost?.available) {
       return saveCurrentDocumentAs();
     }
-    const suggestedName = `${saveAsBaseName()}${CHEMCORE_COMPRESSED_EXTENSION}`;
+    const suggestedName = `${saveAsBaseName()}${CHEMSEMA_COMPRESSED_EXTENSION}`;
     if (window.showSaveFilePicker) {
       const handle = await window.showSaveFilePicker({
         suggestedName,
         types: [{
-          description: "ChemCore CCJZ",
-          accept: { [CHEMCORE_COMPRESSED_MIME]: [CHEMCORE_COMPRESSED_EXTENSION] },
+          description: "ChemSema CCJZ",
+          accept: { [CHEMSEMA_COMPRESSED_MIME]: [CHEMSEMA_COMPRESSED_EXTENSION] },
         }],
       });
       const payload = await savePayloadForFormat("ccjz");
@@ -312,7 +312,7 @@ export function createDocumentFlow(options) {
   }
 
   async function currentOleEditPayloadForSave() {
-    const chemcoreDocumentJson = await currentDocumentJsonForSave();
+    const chemsemaDocumentJson = await currentDocumentJsonForSave();
     let cdxml = null;
     try {
       cdxml = await currentDocumentCdxmlForSave();
@@ -320,8 +320,8 @@ export function createDocumentFlow(options) {
       console.warn("Failed to build OLE edit CDXML payload", error);
     }
     return {
-      chemcoreFragmentJson: null,
-      chemcoreDocumentJson,
+      chemsemaFragmentJson: null,
+      chemsemaDocumentJson,
       renderListJson: options.state.editorEngine?.renderListJson?.() || null,
       cdxml,
       svg: null,
@@ -452,12 +452,12 @@ export function createDocumentFlow(options) {
         suggestedName: suggestedSaveAsName(),
         types: [
           {
-            description: "ChemCore CCJZ",
-            accept: { [CHEMCORE_COMPRESSED_MIME]: [CHEMCORE_COMPRESSED_EXTENSION] },
+            description: "ChemSema CCJZ",
+            accept: { [CHEMSEMA_COMPRESSED_MIME]: [CHEMSEMA_COMPRESSED_EXTENSION] },
           },
           {
-            description: "ChemCore CCJS",
-            accept: { [CHEMCORE_TEXT_MIME]: [CHEMCORE_TEXT_EXTENSION] },
+            description: "ChemSema CCJS",
+            accept: { [CHEMSEMA_TEXT_MIME]: [CHEMSEMA_TEXT_EXTENSION] },
           },
           { description: "ChemDraw CDXML", accept: { "chemical/x-cdxml": [".cdxml"], "text/xml": [".cdxml"] } },
           { description: "ChemDraw CDX", accept: { [CHEMDRAW_CDX_MIME]: [".cdx"], "application/x-cdx": [".cdx"] } },
@@ -489,7 +489,7 @@ export function createDocumentFlow(options) {
 
   function isOleEditPath(path) {
     const fileName = fileNameFromPath(path).toLowerCase();
-    return fileName.startsWith("chemcore-ole-edit-") && fileName.endsWith(".ccjs");
+    return fileName.startsWith("chemsema-ole-edit-") && fileName.endsWith(".ccjs");
   }
 
   async function desktopContentForFormat(format) {
@@ -543,8 +543,8 @@ export function createDocumentFlow(options) {
       await loadCdxDocumentIntoEditor(new Uint8Array(await file.arrayBuffer()), file.name || null, null);
       return;
     }
-    const text = looksLikeCompressedChemcoreFile(file)
-      ? await decompressChemcoreText(await file.arrayBuffer())
+    const text = looksLikeCompressedChemSemaFile(file)
+      ? await decompressChemSemaText(await file.arrayBuffer())
       : await file.text();
     if (looksLikeSdfFile(file, text)) {
       await loadSdfDocumentIntoEditor(text, file.name || null, null);
@@ -636,7 +636,7 @@ export function createDocumentFlow(options) {
     if (window.showOpenFilePicker) {
       const [handle] = await window.showOpenFilePicker({
         multiple: false,
-        types: chemcoreOpenAcceptTypes(),
+        types: chemsemaOpenAcceptTypes(),
         excludeAcceptAllOption: false,
       });
       if (!handle) {

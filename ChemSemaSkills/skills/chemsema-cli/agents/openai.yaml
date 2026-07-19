@@ -1,0 +1,4 @@
+interface:
+  display_name: "ChemSema CLI"
+  short_description: "Use ChemSema's CLI protocols for chemical documents."
+  default_prompt: "Use ChemSema CLI to inspect, edit, capture, convert, or query a chemical document."

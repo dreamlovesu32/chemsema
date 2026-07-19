@@ -1,10 +1,10 @@
-# ChemCore Rust Engine
+# ChemSema Rust Engine
 
-ChemCore editing capability is governed by the Rust core. Web, Windows, and iPad surfaces are responsible for UI, input events, file systems, and pixel rendering; the document model, hit testing, snapping, tool state, and command behavior belong in the same engine.
+ChemSema editing capability is governed by the Rust core. Web, Windows, and iPad surfaces are responsible for UI, input events, file systems, and pixel rendering; the document model, hit testing, snapping, tool state, and command behavior belong in the same engine.
 
 ## Target Boundary
 
-`crates/chemcore-engine` is responsible for:
+`crates/chemsema-engine` is responsible for:
 
 - `.ccjs` / `.ccjz` native document model and serialization
 - editing tool state
@@ -23,7 +23,7 @@ Platform shells are responsible for:
 
 ## Relationship Between WASM And Native
 
-WASM is the browser/WebView runtime form of the same Rust `chemcore-engine`.
+WASM is the browser/WebView runtime form of the same Rust `chemsema-engine`.
 
 The long-term runtime boundary is:
 
@@ -81,4 +81,4 @@ Full verification before commit or delivery:
 npm run verify
 ```
 
-The viewer uses `viewer/engine/chemcore_engine.js`, `viewer/engine/chemcore_engine.d.ts`, and `viewer/engine/chemcore_engine_bg.wasm`. These files are current runtime artifacts for the Web shell; routine development may leave them briefly out of sync, but they must be synchronized with Rust core changes before viewer validation or commit.
+The viewer uses `viewer/engine/chemsema_engine.js`, `viewer/engine/chemsema_engine.d.ts`, and `viewer/engine/chemsema_engine_bg.wasm`. These files are current runtime artifacts for the Web shell; routine development may leave them briefly out of sync, but they must be synchronized with Rust core changes before viewer validation or commit.

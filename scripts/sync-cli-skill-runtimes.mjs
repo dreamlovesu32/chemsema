@@ -4,16 +4,16 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
-const skillAssets = join(rootDir, "ChemCoreSkills", "skills", "chemcore-cli", "assets");
+const skillAssets = join(rootDir, "ChemSemaSkills", "skills", "chemsema-cli", "assets");
 const manifestPath = join(skillAssets, "runtime-manifest.json");
 const runtimes = {
   "win-x64": {
-    source: join(rootDir, "target", "release", "chemcore-cli.exe"),
-    path: "bin/win-x64/chemcore-cli.exe",
+    source: join(rootDir, "target", "release", "chemsema-cli.exe"),
+    path: "bin/win-x64/chemsema-cli.exe",
   },
   "linux-x64": {
-    source: join(rootDir, "target", "wsl-ubuntu", "release", "chemcore-cli"),
-    path: "bin/linux-x64/chemcore-cli",
+    source: join(rootDir, "target", "wsl-ubuntu", "release", "chemsema-cli"),
+    path: "bin/linux-x64/chemsema-cli",
   },
 };
 

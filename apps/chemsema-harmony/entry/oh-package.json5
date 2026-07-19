@@ -1,0 +1,10 @@
+{
+  "modelVersion": "5.0.0",
+  "name": "entry",
+  "version": "1.0.0",
+  "description": "ChemSema HarmonyOS entry module",
+  "main": "",
+  "author": "ChemSema",
+  "license": "Apache-2.0",
+  "dependencies": {}
+}

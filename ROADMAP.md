@@ -1,6 +1,6 @@
 # Roadmap
 
-ChemCore is in public beta. The near-term roadmap focuses on making the editor easier to try, easier to validate, and safer to evolve with outside contributors.
+ChemSema is in public beta. The near-term roadmap focuses on making the editor easier to try, easier to validate, and safer to evolve with outside contributors.
 
 ## v1.0.0-beta Series
 

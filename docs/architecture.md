@@ -1,8 +1,8 @@
-# chemcore Architecture
+# chemsema Architecture
 
 ## Purpose
 
-`chemcore` is intended to be a long-lived chemistry document core shared by:
+`chemsema` is intended to be a long-lived chemistry document core shared by:
 
 - browser hosts
 - desktop hosts
@@ -84,9 +84,9 @@ The long-term backend set may include:
 
 ### 5. Import is a first-class subsystem
 
-`chemcore` must be able to ingest legacy formats, especially CDXML.
+`chemsema` must be able to ingest legacy formats, especially CDXML.
 
-Imports should target the `chemcore` document model directly.
+Imports should target the `chemsema` document model directly.
 
 ## Layered Structure
 
@@ -94,7 +94,7 @@ The intended system is split into layers.
 
 ### Layer A: File Format
 
-The persisted `chemcore` document.
+The persisted `chemsema` document.
 
 Responsibilities:
 
@@ -167,15 +167,15 @@ Hosts reuse the core document model.
 ## Why CDXML Parsing Lives In The Core
 
 CDXML is currently the main import path because it provides a practical bridge
-from ChemDraw-based workflows into a `chemcore` document.
+from ChemDraw-based workflows into a `chemsema` document.
 
 The active CDXML parser and writer live in the Rust engine:
 
-- [crates/chemcore-engine/src/cdxml.rs](../crates/chemcore-engine/src/cdxml.rs)
+- [crates/chemsema-engine/src/cdxml.rs](../crates/chemsema-engine/src/cdxml.rs)
 
 Their role is:
 
-- parse CDXML into native `ChemcoreDocument` objects and molecule fragments
+- parse CDXML into native `ChemSemaDocument` objects and molecule fragments
 - preserve enough import metadata to retain source drawing options
 - export the current document back to ChemDraw-readable CDXML
 
@@ -183,8 +183,8 @@ Their role is:
 
 The first meaningful milestone is:
 
-1. `chemcore` file format v0.1
-2. `chemcore` runtime model v0.1
+1. `chemsema` file format v0.1
+2. `chemsema` runtime model v0.1
 3. native CDXML import/export through the Rust engine
 4. a renderer backend that proves the model is sufficient
 

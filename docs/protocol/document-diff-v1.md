@@ -1,14 +1,14 @@
-# ChemCore Document Diff v1
+# ChemSema Document Diff v1
 
-Protocol id: `chemcore.document.diff.v1`.
+Protocol id: `chemsema.document.diff.v1`.
 
-`chemcore-cli diff` compares two editable documents by ChemCore object identity
+`chemsema-cli diff` compares two editable documents by ChemSema object identity
 and structured fields. It is not a textual JSON diff.
 
 ## Command
 
 ```powershell
-chemcore-cli diff before.ccjs after.ccjs --out diff.json --pretty
+chemsema-cli diff before.ccjs after.ccjs --out diff.json --pretty
 ```
 
 ## Output

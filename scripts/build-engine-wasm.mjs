@@ -22,7 +22,7 @@ function run(command, args, options = {}) {
 }
 
 function wasmBuildEnv() {
-  const jobs = process.env.CHEMCORE_BUILD_JOBS
+  const jobs = process.env.CHEMSEMA_BUILD_JOBS
     || process.env.CARGO_BUILD_JOBS
     || String(Math.max(1, availableParallelism()));
   const remapPrefixes = [
@@ -57,7 +57,7 @@ run("wasm-pack", [
   join(rootDir, "viewer", "engine"),
   // Keep local builds deterministic even when wasm-pack's bundled wasm-opt is unavailable or misconfigured.
   "--no-opt",
-  join(rootDir, "crates", "chemcore-engine"),
+  join(rootDir, "crates", "chemsema-engine"),
   "--features",
   "wasm",
 ], { env: wasmBuildEnv() });

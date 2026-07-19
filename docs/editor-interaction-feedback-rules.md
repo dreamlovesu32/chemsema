@@ -1,6 +1,6 @@
 # Editor Interaction Feedback Rules
 
-This document defines the visual feedback contract for hover, focus, preview, and temporary drag layers in the ChemCore editor. These rules keep interaction feedback consistent across small and large documents.
+This document defines the visual feedback contract for hover, focus, preview, and temporary drag layers in the ChemSema editor. These rules keep interaction feedback consistent across small and large documents.
 
 ## Visual Handles
 

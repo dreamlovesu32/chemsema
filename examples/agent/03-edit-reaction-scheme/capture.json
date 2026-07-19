@@ -21,13 +21,13 @@
       "top": 0.0
     }
   },
-  "input": "D:\\Projects\\chemcore\\examples\\agent\\03-edit-reaction-scheme\\output.ccjs",
+  "input": "D:\\Projects\\chemsema\\examples\\agent\\03-edit-reaction-scheme\\output.ccjs",
   "ok": true,
   "output": {
     "bytes": 33620,
     "defaulted": false,
     "format": "png",
-    "path": "D:\\Projects\\chemcore\\examples\\agent\\03-edit-reaction-scheme\\crop.png",
+    "path": "D:\\Projects\\chemsema\\examples\\agent\\03-edit-reaction-scheme\\crop.png",
     "pixelSize": {
       "height": 941,
       "scaleX": 1.5283842794759825,

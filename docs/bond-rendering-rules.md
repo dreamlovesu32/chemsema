@@ -1,4 +1,4 @@
-# ChemCore Bond Rendering Rules
+# ChemSema Bond Rendering Rules
 
 This document records the bond rendering and bond-contact rules currently used by the Rust rendering kernel. It fixes geometry definitions, implementation boundaries, and refactor baselines.
 

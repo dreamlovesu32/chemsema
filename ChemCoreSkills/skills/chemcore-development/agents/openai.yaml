@@ -1,4 +1,0 @@
-interface:
-  display_name: "ChemCore Development"
-  short_description: "Build, test, package, and diagnose ChemCore repositories."
-  default_prompt: "Use ChemCore development workflows to run checks, rebuild WASM/desktop packages, or debug CI."

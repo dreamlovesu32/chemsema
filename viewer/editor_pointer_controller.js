@@ -216,8 +216,8 @@ export function createEditorPointerController(options) {
 
   function clearInteractionOverlayBeforeCommit() {
     const cleared = clearInteractionOverlayNow();
-    if (cleared && window.__chemcoreDebug) {
-      window.__chemcoreDebug.creationPreviewClearedBeforeCommitAt = performance.now();
+    if (cleared && window.__chemsemaDebug) {
+      window.__chemsemaDebug.creationPreviewClearedBeforeCommitAt = performance.now();
     }
     return cleared;
   }
@@ -247,7 +247,7 @@ export function createEditorPointerController(options) {
   }
 
   function recordCreationCommitTiming(sample) {
-    const debug = window.__chemcoreDebug;
+    const debug = window.__chemsemaDebug;
     if (!debug) {
       return;
     }
@@ -261,7 +261,7 @@ export function createEditorPointerController(options) {
   }
 
   function recordInteractionCommitTiming(sample) {
-    const debug = window.__chemcoreDebug;
+    const debug = window.__chemsemaDebug;
     if (!debug) {
       return;
     }
@@ -288,27 +288,27 @@ export function createEditorPointerController(options) {
       }
       try {
         if (gesture.backendDocumentPreviewActive) {
-          if (window.__chemcoreDebug) {
-            const stats = window.__chemcoreDebug.backendPreviewSchedulerStats || { runs: 0, backendRuns: 0, errors: [] };
+          if (window.__chemsemaDebug) {
+            const stats = window.__chemsemaDebug.backendPreviewSchedulerStats || { runs: 0, backendRuns: 0, errors: [] };
             stats.runs += 1;
             stats.backendRuns += 1;
-            window.__chemcoreDebug.backendPreviewSchedulerStats = stats;
+            window.__chemsemaDebug.backendPreviewSchedulerStats = stats;
           }
           await options.applyBackendSelectionMovePreview?.(gesture.current, gesture.altKey);
           clearEditorOverlayRoot();
         } else if (options.applyDocumentObjectPreviewTransform()) {
-          if (window.__chemcoreDebug) {
-            const stats = window.__chemcoreDebug.backendPreviewSchedulerStats || { runs: 0, backendRuns: 0, errors: [] };
+          if (window.__chemsemaDebug) {
+            const stats = window.__chemsemaDebug.backendPreviewSchedulerStats || { runs: 0, backendRuns: 0, errors: [] };
             stats.runs += 1;
-            window.__chemcoreDebug.backendPreviewSchedulerStats = stats;
+            window.__chemsemaDebug.backendPreviewSchedulerStats = stats;
           }
           clearEditorOverlayRoot();
         }
       } catch (error) {
-        if (window.__chemcoreDebug) {
-          const stats = window.__chemcoreDebug.backendPreviewSchedulerStats || { runs: 0, backendRuns: 0, errors: [] };
+        if (window.__chemsemaDebug) {
+          const stats = window.__chemsemaDebug.backendPreviewSchedulerStats || { runs: 0, backendRuns: 0, errors: [] };
           stats.errors.push(String(error?.stack || error?.message || error));
-          window.__chemcoreDebug.backendPreviewSchedulerStats = stats;
+          window.__chemsemaDebug.backendPreviewSchedulerStats = stats;
         }
         throw error;
       } finally {

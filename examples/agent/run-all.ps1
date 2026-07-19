@@ -2,14 +2,14 @@ $ErrorActionPreference = "Stop"
 
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $root = Resolve-Path (Join-Path $here "..\..")
-$oldCli = $env:CHEMCORE_CLI
+$oldCli = $env:CHEMSEMA_CLI
 $setCli = $false
 
-if (-not $env:CHEMCORE_CLI) {
+if (-not $env:CHEMSEMA_CLI) {
   if (Get-Command cargo -ErrorAction SilentlyContinue) {
     Push-Location $root
     try {
-      & cargo build -p chemcore-cli
+      & cargo build -p chemsema-cli
       if ($LASTEXITCODE -ne 0) {
         exit $LASTEXITCODE
       }
@@ -19,20 +19,20 @@ if (-not $env:CHEMCORE_CLI) {
   }
 
   $candidates = @(
-    (Join-Path $root "target\debug\chemcore-cli.exe"),
-    (Join-Path $root "target\release\chemcore-cli.exe")
+    (Join-Path $root "target\debug\chemsema-cli.exe"),
+    (Join-Path $root "target\release\chemsema-cli.exe")
   )
   foreach ($candidate in $candidates) {
     if (Test-Path $candidate) {
-      $env:CHEMCORE_CLI = $candidate
+      $env:CHEMSEMA_CLI = $candidate
       $setCli = $true
       break
     }
   }
 }
 
-if (-not $env:CHEMCORE_CLI) {
-  $env:CHEMCORE_CLI = "chemcore-cli"
+if (-not $env:CHEMSEMA_CLI) {
+  $env:CHEMSEMA_CLI = "chemsema-cli"
   $setCli = $true
 }
 
@@ -67,9 +67,9 @@ try {
   Pop-Location
   if ($setCli) {
     if ($null -eq $oldCli) {
-      Remove-Item Env:\CHEMCORE_CLI -ErrorAction SilentlyContinue
+      Remove-Item Env:\CHEMSEMA_CLI -ErrorAction SilentlyContinue
     } else {
-      $env:CHEMCORE_CLI = $oldCli
+      $env:CHEMSEMA_CLI = $oldCli
     }
   }
 }

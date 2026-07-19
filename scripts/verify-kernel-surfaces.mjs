@@ -16,15 +16,15 @@ function requireFile(path, label) {
   return path;
 }
 
-const viewerWasm = requireFile(join(rootDir, "viewer", "engine", "chemcore_engine_bg.wasm"), "Web WASM");
+const viewerWasm = requireFile(join(rootDir, "viewer", "engine", "chemsema_engine_bg.wasm"), "Web WASM");
 const harmonyWasm = requireFile(
-  join(rootDir, "apps", "chemcore-harmony", "entry", "src", "main", "resources", "rawfile", "chemcore", "engine", "chemcore_engine_bg.wasm"),
+  join(rootDir, "apps", "chemsema-harmony", "entry", "src", "main", "resources", "rawfile", "chemsema", "engine", "chemsema_engine_bg.wasm"),
   "HarmonyOS WASM",
 );
-const desktop = requireFile(join(rootDir, "target", "release", "chemcore-desktop.exe"), "Desktop executable");
-const windowsCli = requireFile(join(rootDir, "target", "release", "chemcore-cli.exe"), "Windows CLI");
-const linuxCli = requireFile(join(rootDir, "target", "wsl-ubuntu", "release", "chemcore-cli"), "Ubuntu CLI");
-const skillAssets = join(rootDir, "ChemCoreSkills", "skills", "chemcore-cli", "assets");
+const desktop = requireFile(join(rootDir, "target", "release", "chemsema-desktop.exe"), "Desktop executable");
+const windowsCli = requireFile(join(rootDir, "target", "release", "chemsema-cli.exe"), "Windows CLI");
+const linuxCli = requireFile(join(rootDir, "target", "wsl-ubuntu", "release", "chemsema-cli"), "Ubuntu CLI");
+const skillAssets = join(rootDir, "ChemSemaSkills", "skills", "chemsema-cli", "assets");
 const manifest = JSON.parse(readFileSync(join(skillAssets, "runtime-manifest.json"), "utf8"));
 
 const checks = {

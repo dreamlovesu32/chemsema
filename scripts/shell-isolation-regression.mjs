@@ -8,7 +8,7 @@ import { chromium } from "playwright";
 
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const host = "127.0.0.1";
-const port = Number(process.env.CHEMCORE_DESKTOP_DEV_PORT || 8767);
+const port = Number(process.env.CHEMSEMA_DESKTOP_DEV_PORT || 8767);
 const baseUrl = `http://${host}:${port}/viewer/`;
 const edgePath = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
 
@@ -99,11 +99,11 @@ async function installTauriMock(context) {
 
 async function installHarmonyMock(context) {
   await context.addInitScript(() => {
-    window.chemcoreHarmony = {
+    window.chemsemaHarmony = {
       postMessage(message) {
         const { id } = JSON.parse(message);
         setTimeout(() => {
-          window.__chemcoreHarmonyResolve?.(id, JSON.stringify({ ok: true, value: null }));
+          window.__chemsemaHarmonyResolve?.(id, JSON.stringify({ ok: true, value: null }));
         }, 0);
         return "true";
       },
@@ -117,7 +117,7 @@ async function openViewer(context, errors, kind) {
   capturePageErrors(page, errors);
   await page.goto(`${baseUrl}?shell=${kind}-${Date.now()}`, { waitUntil: "domcontentloaded" });
   await page.waitForFunction(
-    () => !!window.__chemcoreDebug?.state?.editorEngine && !!window.__chemcoreDebug?.document,
+    () => !!window.__chemsemaDebug?.state?.editorEngine && !!window.__chemsemaDebug?.document,
     null,
     { timeout: 30000 },
   );

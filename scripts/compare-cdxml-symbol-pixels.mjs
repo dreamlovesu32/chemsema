@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import init, { WasmEngine } from "../viewer/engine/chemcore_engine.js";
+import init, { WasmEngine } from "../viewer/engine/chemsema_engine.js";
 import { launchBrowser } from "./playwright-browser.mjs";
 
 const CASES = [
@@ -367,7 +367,7 @@ async function runCase(page, testCase) {
   return report;
 }
 
-await init(await fs.readFile(new URL("../viewer/engine/chemcore_engine_bg.wasm", import.meta.url)));
+await init(await fs.readFile(new URL("../viewer/engine/chemsema_engine_bg.wasm", import.meta.url)));
 
 const browser = await launchBrowser({ headless: true });
 const page = await browser.newPage();

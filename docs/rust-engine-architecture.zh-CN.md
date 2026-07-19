@@ -1,10 +1,10 @@
-# ChemCore Rust Engine
+# ChemSema Rust Engine
 
-ChemCore 的编辑能力从现在开始以 Rust 核心为准。Web、Windows、iPad 端只负责 UI、输入事件、文件系统和像素渲染；文档模型、命中测试、吸附、工具状态和命令行为都应进入同一套 engine。
+ChemSema 的编辑能力从现在开始以 Rust 核心为准。Web、Windows、iPad 端只负责 UI、输入事件、文件系统和像素渲染；文档模型、命中测试、吸附、工具状态和命令行为都应进入同一套 engine。
 
 ## 目标边界
 
-`crates/chemcore-engine` 负责：
+`crates/chemsema-engine` 负责：
 
 - `.ccjs` / `.ccjz` 原生文档模型和序列化
 - 编辑工具状态
@@ -23,7 +23,7 @@ ChemCore 的编辑能力从现在开始以 Rust 核心为准。Web、Windows、i
 
 ## WASM 和 Native 的关系
 
-WASM 是同一个 Rust `chemcore-engine` 在浏览器/WebView 内的运行形态。
+WASM 是同一个 Rust `chemsema-engine` 在浏览器/WebView 内的运行形态。
 
 长期运行时边界如下：
 
@@ -81,4 +81,4 @@ npm run dev:engine
 npm run verify
 ```
 
-viewer 使用 `viewer/engine/chemcore_engine.js`、`viewer/engine/chemcore_engine.d.ts` 和 `viewer/engine/chemcore_engine_bg.wasm`。这些文件是当前 Web 壳的运行时产物；日常开发允许短暂不同步，但用 viewer 验证或提交前必须和 Rust core 改动同步。
+viewer 使用 `viewer/engine/chemsema_engine.js`、`viewer/engine/chemsema_engine.d.ts` 和 `viewer/engine/chemsema_engine_bg.wasm`。这些文件是当前 Web 壳的运行时产物；日常开发允许短暂不同步，但用 viewer 验证或提交前必须和 Rust core 改动同步。

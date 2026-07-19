@@ -7,10 +7,10 @@ import { chromium } from "playwright";
 
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const host = "127.0.0.1";
-const port = Number(process.env.CHEMCORE_DESKTOP_DEV_PORT || 8767);
+const port = Number(process.env.CHEMSEMA_DESKTOP_DEV_PORT || 8767);
 const baseUrl = `http://${host}:${port}/viewer/`;
 const edgePath = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
-const largeCdxml = process.env.CHEMCORE_STABILITY_PRIVATE_CDXML || process.env.CHEMCORE_INTERACTION_SMOKE_CDXML || "";
+const largeCdxml = process.env.CHEMSEMA_STABILITY_PRIVATE_CDXML || process.env.CHEMSEMA_INTERACTION_SMOKE_CDXML || "";
 const ENDPOINT_FEEDBACK_RADIUS_PX = 4;
 
 function waitForPort(timeoutMs = 5000) {
@@ -71,7 +71,7 @@ async function openViewer(browser) {
   const errors = [];
   capturePageErrors(page, errors);
   await page.goto(`${baseUrl}?v=${Date.now()}`, { waitUntil: "domcontentloaded" });
-  await page.waitForFunction(() => !!window.__chemcoreDebug, null, { timeout: 20000 });
+  await page.waitForFunction(() => !!window.__chemsemaDebug, null, { timeout: 20000 });
   return { page, errors };
 }
 
@@ -86,13 +86,13 @@ function capturePageErrors(page, errors) {
 
 async function waitForLargeCdxmlContent(page) {
   await page.waitForFunction(() => {
-    if (!window.__chemcoreDebug?.document) {
+    if (!window.__chemsemaDebug?.document) {
       return false;
     }
     if (document.querySelector('[data-layer="document-content"] [data-node-id], [data-layer="document-content"] [data-bond-id]')) {
       return true;
     }
-    const doc = window.__chemcoreDebug.document;
+    const doc = window.__chemsemaDebug.document;
     const visit = (object, out = []) => {
       if (!object) {
         return out;
@@ -125,7 +125,7 @@ async function openLargeCdxmlViewer(browser) {
   }
   capturePageErrors(popup, opened.errors);
   await popup.waitForLoadState("domcontentloaded");
-  await popup.waitForFunction(() => !!window.__chemcoreDebug, null, { timeout: 20000 });
+  await popup.waitForFunction(() => !!window.__chemsemaDebug, null, { timeout: 20000 });
   await waitForLargeCdxmlContent(popup);
   return { page: popup, errors: opened.errors, sourcePage: opened.page };
 }
@@ -151,7 +151,7 @@ async function verifyBondDrawing(browser) {
   await page.mouse.up();
   await page.waitForTimeout(250);
   const result = await page.evaluate(() => {
-    const command = JSON.parse(window.__chemcoreDebug.state.editorEngine.lastCommandResultJson?.() || "null");
+    const command = JSON.parse(window.__chemsemaDebug.state.editorEngine.lastCommandResultJson?.() || "null");
     return {
       previewLeft: !!document.querySelector('[data-role^="preview-"]'),
       creationPreviewLeft: !!document.querySelector('[data-layer="document-bond-creation-preview"]'),
@@ -174,8 +174,8 @@ async function verifyBondDrawing(browser) {
 
 async function visibleEndpointTarget(page) {
   return page.evaluate(() => {
-    const doc = JSON.parse(window.__chemcoreDebug.state.editorEngine.documentJson?.() || "null")
-      || window.__chemcoreDebug.document;
+    const doc = JSON.parse(window.__chemsemaDebug.state.editorEngine.documentJson?.() || "null")
+      || window.__chemsemaDebug.document;
     const objectType = (object) => object?.type || object?.objectType || object?.object_type;
     const visit = (object, out = []) => {
       if (!object) {
@@ -200,7 +200,7 @@ async function visibleEndpointTarget(page) {
       const translate = object.transform?.translate || [0, 0];
       const x = Number(translate[0] || 0) + Number(node.position[0] || 0);
       const y = Number(translate[1] || 0) + Number(node.position[1] || 0);
-      const client = window.__chemcoreDebug.worldToClient(x, y);
+      const client = window.__chemsemaDebug.worldToClient(x, y);
       if (client) {
         return { x: client.x, y: client.y, nodeId: node.id };
       }
@@ -211,8 +211,8 @@ async function visibleEndpointTarget(page) {
 
 async function documentBondCount(page) {
   return page.evaluate(() => {
-    const doc = JSON.parse(window.__chemcoreDebug.state.editorEngine.documentJson?.() || "null")
-      || window.__chemcoreDebug.document;
+    const doc = JSON.parse(window.__chemsemaDebug.state.editorEngine.documentJson?.() || "null")
+      || window.__chemsemaDebug.document;
     const objectType = (object) => object?.type || object?.objectType || object?.object_type;
     const visit = (object, out = []) => {
       if (!object) {
@@ -250,8 +250,8 @@ async function drawTwoBondJunction(page, center) {
   await page.mouse.up();
   await page.waitForTimeout(180);
   return page.evaluate(() => {
-    const doc = JSON.parse(window.__chemcoreDebug.state.editorEngine.documentJson?.() || "null")
-      || window.__chemcoreDebug.document;
+    const doc = JSON.parse(window.__chemsemaDebug.state.editorEngine.documentJson?.() || "null")
+      || window.__chemsemaDebug.document;
     const objectType = (object) => object?.type || object?.objectType || object?.object_type;
     const visit = (object, out = []) => {
       if (!object) {
@@ -289,7 +289,7 @@ async function drawTwoBondJunction(page, center) {
       const leftBond = adjacentBonds.sort((a, b) => a.otherX - b.otherX)[0];
       const x = Number(translate[0] || 0) + Number(node.position[0] || 0);
       const y = Number(translate[1] || 0) + Number(node.position[1] || 0);
-      const client = window.__chemcoreDebug.worldToClient(x, y);
+      const client = window.__chemsemaDebug.worldToClient(x, y);
       return client ? { x: client.x, y: client.y, nodeId: node.id, leftBondId: leftBond?.bondId || "" } : null;
     }
     return null;
@@ -298,8 +298,8 @@ async function drawTwoBondJunction(page, center) {
 
 async function firstEndpointWithAdjacentBond(page) {
   return page.evaluate(() => {
-    const doc = JSON.parse(window.__chemcoreDebug.state.editorEngine.documentJson?.() || "null")
-      || window.__chemcoreDebug.document;
+    const doc = JSON.parse(window.__chemsemaDebug.state.editorEngine.documentJson?.() || "null")
+      || window.__chemsemaDebug.document;
     const objectType = (object) => object?.type || object?.objectType || object?.object_type;
     const visit = (object, out = []) => {
       if (!object) {
@@ -325,7 +325,7 @@ async function firstEndpointWithAdjacentBond(page) {
       const translate = object.transform?.translate || [0, 0];
       const x = Number(translate[0] || 0) + Number(node.position[0] || 0);
       const y = Number(translate[1] || 0) + Number(node.position[1] || 0);
-      const client = window.__chemcoreDebug.worldToClient(x, y);
+      const client = window.__chemsemaDebug.worldToClient(x, y);
       return client ? { x: client.x, y: client.y, nodeId: node.id, bondId: bond.id } : null;
     }
     return null;
@@ -410,7 +410,7 @@ async function verifyElementEndpointPatchUpdatesConnectedBonds(browser) {
   await page.waitForTimeout(180);
 
   const after = await page.evaluate((bondId) => {
-    const command = JSON.parse(window.__chemcoreDebug.state.editorEngine.lastCommandResultJson?.() || "null");
+    const command = JSON.parse(window.__chemsemaDebug.state.editorEngine.lastCommandResultJson?.() || "null");
     const escapeCss = window.CSS?.escape || ((value) => String(value).replace(/["\\]/g, "\\$&"));
     const labelText = [...document.querySelectorAll('[data-layer="document-content"] [data-node-id]')]
       .map((element) => element.textContent || "")
@@ -442,10 +442,10 @@ async function verifyJunctionDragUsesBackendPrimitivePatch(browser) {
   assert(junction?.nodeId, `Could not create junction drag target: ${JSON.stringify(junction)}`);
 
   await page.evaluate(() => {
-    window.__chemcoreDebug.backendMovePreviewStats = { samples: [] };
-    window.__chemcoreDebug.state.editorEngine.clearSelection?.();
-    window.__chemcoreDebug.state.editorEngine.clearInteraction?.();
-    window.__chemcoreDebug.clearActiveSelectionGesture?.();
+    window.__chemsemaDebug.backendMovePreviewStats = { samples: [] };
+    window.__chemsemaDebug.state.editorEngine.clearSelection?.();
+    window.__chemsemaDebug.state.editorEngine.clearInteraction?.();
+    window.__chemsemaDebug.clearActiveSelectionGesture?.();
     document.querySelector('[data-layer="editor-overlay"]')?.replaceChildren();
   });
   await page.locator('button[data-tool="select"]').click();
@@ -454,7 +454,7 @@ async function verifyJunctionDragUsesBackendPrimitivePatch(browser) {
   await page.mouse.down();
   await page.mouse.move(junction.x + 62, junction.y + 22, { steps: 8 });
   await page.waitForFunction((nodeId) => {
-    const last = window.__chemcoreDebug.backendMovePreviewStats?.last;
+    const last = window.__chemsemaDebug.backendMovePreviewStats?.last;
     return last?.changed
       && last.nodeCount >= 1
       && last.bondCount >= 2
@@ -463,7 +463,7 @@ async function verifyJunctionDragUsesBackendPrimitivePatch(browser) {
   }, junction.nodeId, { timeout: 2500 });
 
   const preview = await page.evaluate((nodeId) => {
-    const doc = window.__chemcoreDebug.document;
+    const doc = window.__chemsemaDebug.document;
     const visit = (object, out = []) => {
       if (!object) {
         return out;
@@ -484,7 +484,7 @@ async function verifyJunctionDragUsesBackendPrimitivePatch(browser) {
         }
       }
     }
-    const primitives = JSON.parse(window.__chemcoreDebug.state.editorEngine.renderTargetsJson(JSON.stringify({
+    const primitives = JSON.parse(window.__chemsemaDebug.state.editorEngine.renderTargetsJson(JSON.stringify({
       nodes: [nodeId],
       bonds: [...connectedBonds],
     })));
@@ -505,7 +505,7 @@ async function verifyJunctionDragUsesBackendPrimitivePatch(browser) {
     ];
     const domElements = [...document.querySelectorAll(`[data-layer="document-content"] ${selectors.join(",")}`)]
       .filter((element) => getComputedStyle(element).visibility !== "hidden");
-    const stats = window.__chemcoreDebug.backendMovePreviewStats?.last || null;
+    const stats = window.__chemsemaDebug.backendMovePreviewStats?.last || null;
     return {
       nodeId,
       connectedBonds: [...connectedBonds],
@@ -533,7 +533,7 @@ async function verifyTransformedArrowRenderHitAndSelection(browser) {
   const { page, errors } = await openViewer(browser);
   const arrowObjectId = "arrow_transformed_alignment";
   const documentData = {
-    format: { name: "chemcore", version: "0.1", unit: "pt" },
+    format: { name: "chemsema", version: "0.1", unit: "pt" },
     document: {
       id: "doc_arrow_alignment",
       title: "Arrow alignment",
@@ -559,7 +559,7 @@ async function verifyTransformedArrowRenderHitAndSelection(browser) {
     resources: {
       mol_editor: {
         type: "molecule_fragment2d",
-        encoding: "chemcore.molecule.fragment2d",
+        encoding: "chemsema.molecule.fragment2d",
         data: { nodes: [], bonds: [] },
         meta: null,
       },
@@ -611,7 +611,7 @@ async function verifyTransformedArrowRenderHitAndSelection(browser) {
     ],
   };
 
-  await page.evaluate((doc) => window.__chemcoreDebug.loadDocumentForTest(doc), documentData);
+  await page.evaluate((doc) => window.__chemsemaDebug.loadDocumentForTest(doc), documentData);
   await page.waitForFunction(
     (objectId) => !!document.querySelector(`[data-layer="document-content"] [data-object-id="${CSS.escape(objectId)}"]`),
     arrowObjectId,
@@ -619,7 +619,7 @@ async function verifyTransformedArrowRenderHitAndSelection(browser) {
   );
 
   const alignment = await page.evaluate((objectId) => {
-    const doc = JSON.parse(window.__chemcoreDebug.state.editorEngine.documentJson?.() || "null");
+    const doc = JSON.parse(window.__chemsemaDebug.state.editorEngine.documentJson?.() || "null");
     const object = doc.objects.find((candidate) => candidate.id === objectId);
     const translate = object?.transform?.translate || [0, 0];
     const points = object?.payload?.points || [];
@@ -627,7 +627,7 @@ async function verifyTransformedArrowRenderHitAndSelection(browser) {
       x: Number(translate[0] || 0) + (Number(points[0]?.[0] || 0) + Number(points[1]?.[0] || 0)) * 0.5,
       y: Number(translate[1] || 0) + (Number(points[0]?.[1] || 0) + Number(points[1]?.[1] || 0)) * 0.5,
     };
-    const client = window.__chemcoreDebug.worldToClient(mid.x, mid.y);
+    const client = window.__chemsemaDebug.worldToClient(mid.x, mid.y);
     const rects = [...document.querySelectorAll(`[data-layer="document-content"] [data-object-id="${CSS.escape(objectId)}"]`)]
       .map((element) => element.getBoundingClientRect())
       .filter((rect) => rect.width > 0 || rect.height > 0);
@@ -636,7 +636,7 @@ async function verifyTransformedArrowRenderHitAndSelection(browser) {
     const right = Math.max(...rects.map((rect) => rect.right));
     const bottom = Math.max(...rects.map((rect) => rect.bottom));
     const domCenter = rects.length ? { x: (left + right) * 0.5, y: (top + bottom) * 0.5 } : null;
-    const hit = JSON.parse(window.__chemcoreDebug.state.editorEngine.contextHitTestJson?.(mid.x, mid.y) || "null");
+    const hit = JSON.parse(window.__chemsemaDebug.state.editorEngine.contextHitTestJson?.(mid.x, mid.y) || "null");
     return {
       mid,
       client,
@@ -654,7 +654,7 @@ async function verifyTransformedArrowRenderHitAndSelection(browser) {
   await page.locator('button[data-tool="select"]').click();
   await page.mouse.click(alignment.client.x, alignment.client.y);
   await page.waitForFunction((objectId) => {
-    const selection = window.__chemcoreDebug.engineState?.selection || {};
+    const selection = window.__chemsemaDebug.engineState?.selection || {};
     return (selection.arrowObjects || selection.arrow_objects || []).includes(objectId);
   }, arrowObjectId, { timeout: 1200 });
 
@@ -665,8 +665,8 @@ async function verifyTransformedArrowRenderHitAndSelection(browser) {
 async function verifyCursorAnchoredWheelZoom(browser) {
   const { page, errors } = await openViewer(browser);
   await page.evaluate(() => {
-    window.__chemcoreDebug.state.editorEngine.clearSelection?.();
-    window.__chemcoreDebug.state.editorEngine.clearInteraction?.();
+    window.__chemsemaDebug.state.editorEngine.clearSelection?.();
+    window.__chemsemaDebug.state.editorEngine.clearInteraction?.();
   });
   const box = await page.locator("#viewer-container").boundingBox();
   const anchor = {
@@ -675,7 +675,7 @@ async function verifyCursorAnchoredWheelZoom(browser) {
   };
   const before = await page.evaluate(({ x, y }) => ({
     zoom: Number(document.querySelector("#zoom-input")?.value || 0),
-    world: window.__chemcoreDebug.clientPointToWorld(x, y),
+    world: window.__chemsemaDebug.clientPointToWorld(x, y),
   }), anchor);
   await page.evaluate(({ x, y }) => {
     const container = document.querySelector("#viewer-container");
@@ -691,7 +691,7 @@ async function verifyCursorAnchoredWheelZoom(browser) {
   await page.waitForTimeout(120);
   const after = await page.evaluate((world) => ({
     zoom: Number(document.querySelector("#zoom-input")?.value || 0),
-    client: window.__chemcoreDebug.worldToClient(world.x, world.y),
+    client: window.__chemsemaDebug.worldToClient(world.x, world.y),
   }), before.world);
   const drift = Math.hypot(after.client.x - anchor.x, after.client.y - anchor.y);
   await page.close();
@@ -724,13 +724,13 @@ async function verifyQuickPaletteAndSelectDragRegression(browser) {
   await page.mouse.up();
   await page.waitForTimeout(180);
   const afterDrag = await page.evaluate(() => {
-    const command = JSON.parse(window.__chemcoreDebug.state.editorEngine.lastCommandResultJson?.() || "null");
+    const command = JSON.parse(window.__chemsemaDebug.state.editorEngine.lastCommandResultJson?.() || "null");
     return {
       commandType: command?.commandType || command?.command_type || command?.type || "",
       createdBonds: command?.created?.bonds?.length || 0,
       targetBonds: command?.targets?.bonds?.length || 0,
-      activeTool: window.__chemcoreDebug.engineState?.tool?.activeTool
-        || window.__chemcoreDebug.engineState?.tool?.active_tool
+      activeTool: window.__chemsemaDebug.engineState?.tool?.activeTool
+        || window.__chemsemaDebug.engineState?.tool?.active_tool
         || "",
       shieldActive: document.querySelector(".canvas-pointer-shield")?.classList.contains("is-active") || false,
     };
@@ -890,7 +890,7 @@ async function verifyGraphicObjectDragTracksPointerAndSelection(browser) {
     await page.waitForTimeout(160);
 
     const objectId = await page.evaluate(() => {
-      const command = JSON.parse(window.__chemcoreDebug.state.editorEngine.lastCommandResultJson?.() || "null");
+      const command = JSON.parse(window.__chemsemaDebug.state.editorEngine.lastCommandResultJson?.() || "null");
       return command?.targets?.objects?.[0] || command?.created?.objects?.[0] || "";
     });
     assert(objectId, `${tool} creation did not return an object id.`);
@@ -1015,7 +1015,7 @@ async function verifyCreationDragKeepsCanvasVisibleAfterToolSwitch(browser) {
     const before = await page.evaluate(() => {
       const flatten = (objects) => objects.flatMap((object) => [object, ...flatten(object.children || [])]);
       return {
-        objectCount: flatten(window.__chemcoreDebug.engineState.document.objects || [])
+        objectCount: flatten(window.__chemsemaDebug.engineState.document.objects || [])
           .filter((object) => (object.type || object.objectType || object.object_type) !== "molecule")
           .length,
         shieldActive: document.querySelector(".canvas-pointer-shield")?.classList.contains("is-active") || false,
@@ -1086,7 +1086,7 @@ async function verifyCreationDragKeepsCanvasVisibleAfterToolSwitch(browser) {
     }
     const after = await page.evaluate(() => {
       const flatten = (objects) => objects.flatMap((object) => [object, ...flatten(object.children || [])]);
-      const command = JSON.parse(window.__chemcoreDebug.state.editorEngine.lastCommandResultJson?.() || "null");
+      const command = JSON.parse(window.__chemsemaDebug.state.editorEngine.lastCommandResultJson?.() || "null");
       const objectIds = command?.targets?.objects?.length
         ? command.targets.objects
         : command?.created?.objects || [];
@@ -1095,7 +1095,7 @@ async function verifyCreationDragKeepsCanvasVisibleAfterToolSwitch(browser) {
         targets: command?.targets || null,
         created: command?.created || null,
         objectIds,
-        objectCount: flatten(window.__chemcoreDebug.engineState.document.objects || [])
+        objectCount: flatten(window.__chemsemaDebug.engineState.document.objects || [])
           .filter((object) => (object.type || object.objectType || object.object_type) !== "molecule")
           .length,
         shieldActive: document.querySelector(".canvas-pointer-shield")?.classList.contains("is-active") || false,
@@ -1153,8 +1153,8 @@ async function verifyDeleteToolTemporaryToolbarAndEmptyDocument(browser) {
     const flatten = (objects) => objects.flatMap((object) => [object, ...flatten(object.children || [])]);
     const shapeButton = document.querySelector('.tool-button[data-tool="shape"]');
     return {
-      activeTool: window.__chemcoreDebug.editorState.activeTool,
-      objectCount: flatten(window.__chemcoreDebug.engineState.document.objects || [])
+      activeTool: window.__chemsemaDebug.editorState.activeTool,
+      objectCount: flatten(window.__chemsemaDebug.engineState.document.objects || [])
         .filter((object) => (object.type || object.objectType || object.object_type) !== "molecule")
         .length,
       secondaryShapeButtons: document.querySelectorAll('#secondary-toolbar [data-secondary-value^="shape-"]').length,
@@ -1172,8 +1172,8 @@ async function verifyDeleteToolTemporaryToolbarAndEmptyDocument(browser) {
   const deleteToolbarState = await page.evaluate(() => {
     const deleteButton = document.querySelector('.icon-button[data-tool="delete"]');
     return {
-      activeTool: window.__chemcoreDebug.editorState.activeTool,
-      secondaryToolbarTool: window.__chemcoreDebug.editorState.secondaryToolbarTool,
+      activeTool: window.__chemsemaDebug.editorState.activeTool,
+      secondaryToolbarTool: window.__chemsemaDebug.editorState.secondaryToolbarTool,
       deleteActive: deleteButton?.classList.contains("is-active") || false,
       deleteBackground: getComputedStyle(deleteButton).backgroundColor,
       deleteBorderColor: getComputedStyle(deleteButton).borderColor,
@@ -1196,8 +1196,8 @@ async function verifyDeleteToolTemporaryToolbarAndEmptyDocument(browser) {
   await page.locator('#secondary-toolbar [data-secondary-value="shape-kind-rect"]').click();
   await page.waitForTimeout(120);
   const restoredToolState = await page.evaluate(() => ({
-    activeTool: window.__chemcoreDebug.editorState.activeTool,
-    shapeKind: window.__chemcoreDebug.editorState.shapeKind,
+    activeTool: window.__chemsemaDebug.editorState.activeTool,
+    shapeKind: window.__chemsemaDebug.editorState.shapeKind,
   }));
   assert(
     restoredToolState.activeTool === "shape" && restoredToolState.shapeKind === "rect",
@@ -1206,7 +1206,7 @@ async function verifyDeleteToolTemporaryToolbarAndEmptyDocument(browser) {
 
   const shapeSelectionTarget = await page.evaluate(() => {
     const flatten = (objects) => objects.flatMap((object) => [object, ...flatten(object.children || [])]);
-    const shapeIds = flatten(window.__chemcoreDebug.engineState.document.objects || [])
+    const shapeIds = flatten(window.__chemsemaDebug.engineState.document.objects || [])
       .filter((object) => (object.type || object.objectType || object.object_type) === "shape")
       .map((object) => object.id);
     for (const objectId of shapeIds) {
@@ -1232,9 +1232,9 @@ async function verifyDeleteToolTemporaryToolbarAndEmptyDocument(browser) {
   const unselectedInteriorDeleteState = await page.evaluate((objectId) => {
     const flatten = (objects) => objects.flatMap((object) => [object, ...flatten(object.children || [])]);
     return {
-      activeTool: window.__chemcoreDebug.editorState.activeTool,
-      objectExists: flatten(window.__chemcoreDebug.engineState.document.objects || []).some((object) => object.id === objectId),
-      lastCommand: JSON.parse(window.__chemcoreDebug.state.editorEngine.lastCommandResultJson?.() || "null"),
+      activeTool: window.__chemsemaDebug.editorState.activeTool,
+      objectExists: flatten(window.__chemsemaDebug.engineState.document.objects || []).some((object) => object.id === objectId),
+      lastCommand: JSON.parse(window.__chemsemaDebug.state.editorEngine.lastCommandResultJson?.() || "null"),
     };
   }, shapeSelectionTarget.objectId);
   assert(
@@ -1243,7 +1243,7 @@ async function verifyDeleteToolTemporaryToolbarAndEmptyDocument(browser) {
   );
 
   await page.evaluate(async () => {
-    await window.__chemcoreDebug.resetEditorEngine();
+    await window.__chemsemaDebug.resetEditorEngine();
   });
   await page.waitForFunction(() => document.querySelector('[data-layer="document-content"]'));
   await page.locator('button[data-tool="bond"]').click();
@@ -1260,8 +1260,8 @@ async function verifyDeleteToolTemporaryToolbarAndEmptyDocument(browser) {
   }
 
   const documentStructureState = async () => page.evaluate(() => {
-    const doc = JSON.parse(window.__chemcoreDebug.state.editorEngine.documentJson?.() || "null")
-      || window.__chemcoreDebug.document;
+    const doc = JSON.parse(window.__chemsemaDebug.state.editorEngine.documentJson?.() || "null")
+      || window.__chemsemaDebug.document;
     const visit = (object, out = []) => {
       if (!object) {
         return out;
@@ -1338,7 +1338,7 @@ async function verifyDeleteToolTemporaryToolbarAndEmptyDocument(browser) {
   }
   const afterDeleteAll = {
     ...(await documentStructureState()),
-    lastPatch: await page.evaluate(() => window.__chemcoreDebug.objectPrimitivePatchStats || null),
+    lastPatch: await page.evaluate(() => window.__chemsemaDebug.objectPrimitivePatchStats || null),
   };
   assert(
     afterDeleteAll.nodeCount === 0
@@ -1446,12 +1446,12 @@ async function waitForCanvasCursor(page, x, y, expected, label) {
       svgCursor: getComputedStyle(svg).cursor,
       shieldCursor: getComputedStyle(document.querySelector(".canvas-pointer-shield")).cursor,
       world: world ? { x: world.x, y: world.y } : null,
-      shapeAction: world ? window.__chemcoreDebug?.state?.editorEngine?.hoverShapeAction?.(world.x, world.y) || "" : "",
-      activeTool: window.__chemcoreDebug?.engineState?.tool?.activeTool
-        || window.__chemcoreDebug?.engineState?.tool?.active_tool
+      shapeAction: world ? window.__chemsemaDebug?.state?.editorEngine?.hoverShapeAction?.(world.x, world.y) || "" : "",
+      activeTool: window.__chemsemaDebug?.engineState?.tool?.activeTool
+        || window.__chemsemaDebug?.engineState?.tool?.active_tool
         || null,
-      selection: window.__chemcoreDebug?.engineState?.selection || null,
-      fastSelectHoverStats: window.__chemcoreDebug?.fastSelectHoverStats || null,
+      selection: window.__chemsemaDebug?.engineState?.selection || null,
+      fastSelectHoverStats: window.__chemsemaDebug?.fastSelectHoverStats || null,
     };
   };
   await page.waitForFunction(
@@ -1534,8 +1534,8 @@ async function verifyDragHandleCursors(browser) {
   await page.locator('button[data-tool="select"]').click();
   await page.waitForFunction(() => document.querySelector('button[data-tool="select"]')?.classList.contains("is-active"));
   const bracketCursorTargets = await page.evaluate(() => {
-    const documentData = JSON.parse(window.__chemcoreDebug.state.editorEngine.documentJson?.() || "null")
-      || window.__chemcoreDebug.document;
+    const documentData = JSON.parse(window.__chemsemaDebug.state.editorEngine.documentJson?.() || "null")
+      || window.__chemsemaDebug.document;
     const visit = (object, out = []) => {
       out.push(object);
       for (const child of object.children || []) {
@@ -1566,10 +1566,10 @@ async function verifyDragHandleCursors(browser) {
       for (const xRatio of xRatios) {
         const wx = tx + width * xRatio;
         const wy = ty + height * yRatio;
-        const hit = JSON.parse(window.__chemcoreDebug.state.editorEngine.contextHitTestJson?.(wx, wy) || "null");
-        const action = window.__chemcoreDebug.state.editorEngine.hoverShapeAction?.(wx, wy) || "";
+        const hit = JSON.parse(window.__chemsemaDebug.state.editorEngine.contextHitTestJson?.(wx, wy) || "null");
+        const action = window.__chemsemaDebug.state.editorEngine.hoverShapeAction?.(wx, wy) || "";
         if (hit?.objectId === sideObject?.id && !action) {
-          body = window.__chemcoreDebug.worldToClient(wx, wy);
+          body = window.__chemsemaDebug.worldToClient(wx, wy);
           break;
         }
       }
@@ -1579,7 +1579,7 @@ async function verifyDragHandleCursors(browser) {
     }
     return {
       body,
-      top: window.__chemcoreDebug.worldToClient(tx + handleX, ty),
+      top: window.__chemsemaDebug.worldToClient(tx + handleX, ty),
       sideObjectId: sideObject?.id || "",
       siblingObjectId: objects.find((object) => (
         (object.type || object.objectType || object.object_type) === "bracket"
@@ -1604,7 +1604,7 @@ async function verifyDragHandleCursors(browser) {
   );
   await page.mouse.click(center.x + 280, center.y - 160);
   await page.waitForFunction(() => {
-    const state = JSON.parse(window.__chemcoreDebug?.state?.editorEngine?.stateJson?.() || "{}");
+    const state = JSON.parse(window.__chemsemaDebug?.state?.editorEngine?.stateJson?.() || "{}");
     const selection = state.selection || {};
     return !(selection.arrowObjects || selection.arrow_objects || []).length
       && !(selection.textObjects || selection.text_objects || []).length
@@ -1627,8 +1627,8 @@ async function verifyDragHandleCursors(browser) {
     "Unselected bracket endpoint",
   );
   const bracketDragBefore = await page.evaluate(({ sideObjectId, siblingObjectId }) => {
-    const documentData = JSON.parse(window.__chemcoreDebug.state.editorEngine.documentJson?.() || "null")
-      || window.__chemcoreDebug.document;
+    const documentData = JSON.parse(window.__chemsemaDebug.state.editorEngine.documentJson?.() || "null")
+      || window.__chemsemaDebug.document;
     const visit = (object, out = []) => {
       out.push(object);
       for (const child of object.children || []) {
@@ -1656,14 +1656,14 @@ async function verifyDragHandleCursors(browser) {
   );
   await page.mouse.up();
   await page.waitForFunction((sideObjectId) => {
-    const state = JSON.parse(window.__chemcoreDebug?.state?.editorEngine?.stateJson?.() || "{}");
+    const state = JSON.parse(window.__chemsemaDebug?.state?.editorEngine?.stateJson?.() || "{}");
     const selection = state.selection || {};
     const arrowObjects = selection.arrowObjects || selection.arrow_objects || [];
     return arrowObjects.length === 1 && arrowObjects[0] === sideObjectId;
   }, bracketCursorTargets.sideObjectId);
   const bracketDragAfter = await page.evaluate(({ sideObjectId, siblingObjectId }) => {
-    const documentData = JSON.parse(window.__chemcoreDebug.state.editorEngine.documentJson?.() || "null")
-      || window.__chemcoreDebug.document;
+    const documentData = JSON.parse(window.__chemsemaDebug.state.editorEngine.documentJson?.() || "null")
+      || window.__chemsemaDebug.document;
     const visit = (object, out = []) => {
       out.push(object);
       for (const child of object.children || []) {
@@ -1693,7 +1693,7 @@ async function verifyDragHandleCursors(browser) {
 }
 
 function largeFileTargetFinder() {
-  const doc = window.__chemcoreDebug.document;
+  const doc = window.__chemsemaDebug.document;
   const visit = (object, out = []) => {
     if (!object) {
       return out;
@@ -1755,7 +1755,7 @@ function largeFileTargetFinder() {
       const x = Number(translate[0] || 0) + Number(node.position[0] || 0);
       const y = Number(translate[1] || 0) + Number(node.position[1] || 0);
       nodePositions.set(node.id, { x, y });
-      const client = window.__chemcoreDebug.worldToClient(x, y);
+      const client = window.__chemsemaDebug.worldToClient(x, y);
       if (!client
         || client.x <= 80
         || client.x >= innerWidth - 80
@@ -1781,7 +1781,7 @@ function largeFileTargetFinder() {
       if (!begin || !end) {
         continue;
       }
-      const client = window.__chemcoreDebug.worldToClient(
+      const client = window.__chemsemaDebug.worldToClient(
         (begin.x + end.x) * 0.5,
         (begin.y + end.y) * 0.5,
       );
@@ -1815,7 +1815,7 @@ function largeFileTargetFinder() {
       };
       const boundsCenter = Array.isArray(bbox)
         ? {
-          client: window.__chemcoreDebug.worldToClient(
+          client: window.__chemsemaDebug.worldToClient(
             Number(translate[0] || 0) + Number(bbox[0] || 0) + Number(bbox[2] || 0) * 0.5,
             Number(translate[1] || 0) + Number(bbox[1] || 0) + Number(bbox[3] || 0) * 0.5,
           ),
@@ -1852,7 +1852,7 @@ function largeFileTargetFinder() {
           && candidate.client.y > 120
           && candidate.client.y < innerHeight - 80)
         .find((candidate) => {
-          const hit = JSON.parse(window.__chemcoreDebug.state.editorEngine.contextHitTestJson?.(candidate.world.x, candidate.world.y) || "null");
+          const hit = JSON.parse(window.__chemsemaDebug.state.editorEngine.contextHitTestJson?.(candidate.world.x, candidate.world.y) || "null");
           return hit?.objectId === object.id;
         });
       if (!rect
@@ -1887,7 +1887,7 @@ function largeFileTargetFinder() {
       const yCandidates = [ty + height * 0.25, ty + height * 0.5, ty + height * 0.75, ty, ty + height];
       for (const x of xCandidates) {
         for (const y of yCandidates) {
-          const hover = window.__chemcoreDebug.worldToClient(x, y);
+          const hover = window.__chemsemaDebug.worldToClient(x, y);
           if (!hover
             || hover.x <= 80
             || hover.x >= innerWidth - 80
@@ -1895,7 +1895,7 @@ function largeFileTargetFinder() {
             || hover.y >= innerHeight - 80) {
             continue;
           }
-          const hit = JSON.parse(window.__chemcoreDebug.state.editorEngine.contextHitTestJson?.(x, y) || "null");
+          const hit = JSON.parse(window.__chemsemaDebug.state.editorEngine.contextHitTestJson?.(x, y) || "null");
           if (hit?.objectId !== object.id) {
             continue;
           }
@@ -1993,9 +1993,9 @@ function largeFileTargetFinder() {
 async function verifyLargeDragTarget(page, target, kind) {
   await page.keyboard.press("Escape").catch(() => {});
   await page.evaluate(() => {
-    window.__chemcoreDebug.state.editorEngine.clearSelection?.();
-    window.__chemcoreDebug.state.editorEngine.clearInteraction?.();
-    window.__chemcoreDebug.clearActiveSelectionGesture?.();
+    window.__chemsemaDebug.state.editorEngine.clearSelection?.();
+    window.__chemsemaDebug.state.editorEngine.clearInteraction?.();
+    window.__chemsemaDebug.clearActiveSelectionGesture?.();
     document.querySelector('[data-layer="editor-overlay"]')?.replaceChildren();
   });
   await page.locator('button[data-tool="select"]').click();
@@ -2019,7 +2019,7 @@ async function verifyLargeDragTarget(page, target, kind) {
   await page.mouse.down();
   await page.mouse.move(target.x + 24, target.y + 12, { steps: 6 });
   const backendDomMatches = (nodeId) => {
-    const doc = window.__chemcoreDebug.document;
+    const doc = window.__chemsemaDebug.document;
     const connectedBonds = new Set();
     const visit = (object, out = []) => {
       if (!object) {
@@ -2040,7 +2040,7 @@ async function verifyLargeDragTarget(page, target, kind) {
         }
       }
     }
-    const renderList = JSON.parse(window.__chemcoreDebug.state.editorEngine.renderTargetsJson(JSON.stringify({
+    const renderList = JSON.parse(window.__chemsemaDebug.state.editorEngine.renderTargetsJson(JSON.stringify({
       nodes: [nodeId],
       bonds: [...connectedBonds],
     })));
@@ -2066,7 +2066,7 @@ async function verifyLargeDragTarget(page, target, kind) {
       domCount,
       matches: backendCount > 0 && backendCount === domCount,
       partialChildren: document.querySelector('[data-layer="document-partial-bond-preview"]')?.childElementCount || 0,
-      gesture: window.__chemcoreDebug.activeSelectionGesture || null,
+      gesture: window.__chemsemaDebug.activeSelectionGesture || null,
     };
   };
   await page.evaluate((source) => {
@@ -2139,7 +2139,7 @@ async function verifyLargeDragTarget(page, target, kind) {
       previews: overlay?.querySelectorAll('[data-role^="preview-"]').length || 0,
       partial: !!document.querySelector('[data-layer="document-partial-bond-preview"]'),
       transformed: document.querySelectorAll(".is-preview-transforming").length,
-      gesture: window.__chemcoreDebug.activeSelectionGesture || null,
+      gesture: window.__chemsemaDebug.activeSelectionGesture || null,
     };
   });
   assert(during.partialChildren === 0, `${kind} drag used front-end partial bond preview.`);
@@ -2148,7 +2148,7 @@ async function verifyLargeDragTarget(page, target, kind) {
   assert(after.previews === 0, `${kind} drag left preview overlay behind.`);
   assert(after.gesture === null, `${kind} drag left an active selection gesture behind.`);
   const commandTargets = await page.evaluate((nodeId) => {
-    const raw = window.__chemcoreDebug.state.editorEngine.lastCommandResultJson?.() || "null";
+    const raw = window.__chemsemaDebug.state.editorEngine.lastCommandResultJson?.() || "null";
     const result = JSON.parse(raw);
     const targetNodes = new Set([
       ...(result?.targets?.nodes || []),
@@ -2213,8 +2213,8 @@ async function verifyLargeDragTarget(page, target, kind) {
       }
       return null;
     };
-    const engineDoc = JSON.parse(window.__chemcoreDebug.state.editorEngine.documentJson?.() || "null");
-    const frontendDoc = window.__chemcoreDebug.document;
+    const engineDoc = JSON.parse(window.__chemsemaDebug.state.editorEngine.documentJson?.() || "null");
+    const frontendDoc = window.__chemsemaDebug.document;
     const engine = worldPositionForNode(engineDoc, nodeId);
     const frontend = worldPositionForNode(frontendDoc, nodeId);
     const distance = engine && frontend ? Math.hypot(engine.x - frontend.x, engine.y - frontend.y) : null;
@@ -2229,14 +2229,14 @@ async function verifyLargeDragTarget(page, target, kind) {
 async function verifyLargeRegionSelectionDoesNotDragGroup(page, target) {
   await page.keyboard.press("Escape").catch(() => {});
   await page.evaluate(() => {
-    window.__chemcoreDebug.state.editorEngine.clearSelection?.();
-    window.__chemcoreDebug.state.editorEngine.clearInteraction?.();
-    window.__chemcoreDebug.clearActiveSelectionGesture?.();
+    window.__chemsemaDebug.state.editorEngine.clearSelection?.();
+    window.__chemsemaDebug.state.editorEngine.clearInteraction?.();
+    window.__chemsemaDebug.clearActiveSelectionGesture?.();
     document.querySelector('[data-layer="editor-overlay"]')?.replaceChildren();
   });
   await page.locator('button[data-tool="select"]').click();
   const selected = await page.evaluate((regionTarget) => {
-    const engine = window.__chemcoreDebug.state.editorEngine;
+    const engine = window.__chemsemaDebug.state.editorEngine;
     const doc = JSON.parse(engine.documentJson());
     const objectTypeById = new Map();
     const visit = (object) => {
@@ -2276,7 +2276,7 @@ async function verifyLargeRegionSelectionDoesNotDragGroup(page, target) {
   );
 
   const moved = await page.evaluate((regionTarget) => {
-    const engine = window.__chemcoreDebug.state.editorEngine;
+    const engine = window.__chemsemaDebug.state.editorEngine;
     const nodePosition = (doc, nodeId) => {
       for (const resource of Object.values(doc.resources || {})) {
         for (const node of resource?.data?.nodes || []) {
@@ -2332,9 +2332,9 @@ async function verifyLargeRegionSelectionDoesNotDragGroup(page, target) {
     `Large CDXML region-selected molecule drag did not report moved node target: ${JSON.stringify({ target, moved })}`,
   );
   await page.evaluate(async () => {
-    window.__chemcoreDebug.state.editorEngine.clearSelection?.();
-    window.__chemcoreDebug.state.editorEngine.clearInteraction?.();
-    await window.__chemcoreDebug.syncDocument?.();
+    window.__chemsemaDebug.state.editorEngine.clearSelection?.();
+    window.__chemsemaDebug.state.editorEngine.clearInteraction?.();
+    await window.__chemsemaDebug.syncDocument?.();
   });
 }
 
@@ -2362,7 +2362,7 @@ async function verifyLargeFileSelectionLatency(page, target) {
   await page.mouse.up();
   const selectUpMs = Date.now() - stepStarted;
   await page.waitForFunction(() => {
-    const selection = window.__chemcoreDebug.engineState?.selection;
+    const selection = window.__chemsemaDebug.engineState?.selection;
     const count = (selection?.textObjects?.length || 0)
       + (selection?.arrowObjects?.length || 0)
       + (selection?.labelNodes?.length || 0)
@@ -2372,7 +2372,7 @@ async function verifyLargeFileSelectionLatency(page, target) {
   }, null, { timeout: 1000 });
   const selected = await page.evaluate(() => ({
     overlayChildren: document.querySelector('[data-layer="editor-overlay"]')?.childElementCount || 0,
-    selection: window.__chemcoreDebug.engineState?.selection || null,
+    selection: window.__chemsemaDebug.engineState?.selection || null,
   }));
   assert(selectionItemCount(selected.selection) > 0 && selected.overlayChildren > 0, `Large CDXML selection box did not appear: ${JSON.stringify(selected)}`);
   assert(
@@ -2388,7 +2388,7 @@ async function verifyLargeFileSelectionLatency(page, target) {
   await page.mouse.up();
   const clearUpMs = Date.now() - stepStarted;
   await page.waitForFunction(() => {
-    const selection = window.__chemcoreDebug.engineState?.selection;
+    const selection = window.__chemsemaDebug.engineState?.selection;
     const count = (selection?.textObjects?.length || 0)
       + (selection?.arrowObjects?.length || 0)
       + (selection?.labelNodes?.length || 0)
@@ -2398,7 +2398,7 @@ async function verifyLargeFileSelectionLatency(page, target) {
   }, null, { timeout: 1000 });
   const cleared = await page.evaluate(() => ({
     overlayChildren: document.querySelector('[data-layer="editor-overlay"]')?.childElementCount || 0,
-    selection: window.__chemcoreDebug.engineState?.selection || null,
+    selection: window.__chemsemaDebug.engineState?.selection || null,
   }));
   assert(selectionItemCount(cleared.selection) === 0 && cleared.overlayChildren === 0, `Large CDXML blank click did not clear selection: ${JSON.stringify(cleared)}`);
   assert(
@@ -2407,9 +2407,9 @@ async function verifyLargeFileSelectionLatency(page, target) {
   );
   await page.keyboard.press("Escape").catch(() => {});
   await page.evaluate(() => {
-    window.__chemcoreDebug.state.editorEngine.clearSelection?.();
-    window.__chemcoreDebug.state.editorEngine.clearInteraction?.();
-    window.__chemcoreDebug.clearActiveSelectionGesture?.();
+    window.__chemsemaDebug.state.editorEngine.clearSelection?.();
+    window.__chemsemaDebug.state.editorEngine.clearInteraction?.();
+    window.__chemsemaDebug.clearActiveSelectionGesture?.();
     document.querySelector('[data-layer="editor-overlay"]')?.replaceChildren();
   });
   await page.mouse.move(blank.x, blank.y);
@@ -2422,9 +2422,9 @@ async function verifyDiagnosticMarkerHidesDuringDrag(page, target, dragTarget = 
   }
   await page.keyboard.press("Escape").catch(() => {});
   await page.evaluate(() => {
-    window.__chemcoreDebug.state.editorEngine.clearSelection?.();
-    window.__chemcoreDebug.state.editorEngine.clearInteraction?.();
-    window.__chemcoreDebug.clearActiveSelectionGesture?.();
+    window.__chemsemaDebug.state.editorEngine.clearSelection?.();
+    window.__chemsemaDebug.state.editorEngine.clearInteraction?.();
+    window.__chemsemaDebug.clearActiveSelectionGesture?.();
     document.querySelector('[data-layer="editor-overlay"]')?.replaceChildren();
   });
   await page.locator('button[data-tool="select"]').click();
@@ -2442,7 +2442,7 @@ async function verifyDiagnosticMarkerHidesDuringDrag(page, target, dragTarget = 
   }
   await page.mouse.click(dragTarget.x, dragTarget.y);
   await page.waitForFunction((id) => {
-    const selection = window.__chemcoreDebug.engineState?.selection || window.__chemcoreDebug.getEngineState?.()?.selection || {};
+    const selection = window.__chemsemaDebug.engineState?.selection || window.__chemsemaDebug.getEngineState?.()?.selection || {};
     return (selection.nodes || []).includes(id)
       || (selection.labelNodes || []).includes(id)
       || (selection.textObjects || []).includes(id)
@@ -2460,9 +2460,9 @@ async function verifyDiagnosticMarkerHidesDuringDrag(page, target, dragTarget = 
       visibleDiagnostics: [...document.querySelectorAll(".document-diagnostic-marker")]
         .filter((element) => getComputedStyle(element).visibility !== "hidden").length,
       previewDiagnostics: document.querySelectorAll('[data-layer="document-partial-bond-preview"] .document-diagnostic-marker').length,
-      gesture: window.__chemcoreDebug.getActiveSelectionGesture?.() || null,
-      selection: window.__chemcoreDebug.engineState?.selection || window.__chemcoreDebug.getEngineState?.()?.selection || null,
-      previewStats: window.__chemcoreDebug.backendMovePreviewStats?.last || null,
+      gesture: window.__chemsemaDebug.getActiveSelectionGesture?.() || null,
+      selection: window.__chemsemaDebug.engineState?.selection || window.__chemsemaDebug.getEngineState?.()?.selection || null,
+      previewStats: window.__chemsemaDebug.backendMovePreviewStats?.last || null,
     };
   }, target.id);
   await page.mouse.up();
@@ -2486,9 +2486,9 @@ async function verifyBracketHoverFocus(page, target) {
   }
   await page.keyboard.press("Escape").catch(() => {});
   await page.evaluate(() => {
-    window.__chemcoreDebug.state.editorEngine.clearSelection?.();
-    window.__chemcoreDebug.state.editorEngine.clearInteraction?.();
-    window.__chemcoreDebug.clearActiveSelectionGesture?.();
+    window.__chemsemaDebug.state.editorEngine.clearSelection?.();
+    window.__chemsemaDebug.state.editorEngine.clearInteraction?.();
+    window.__chemsemaDebug.clearActiveSelectionGesture?.();
     document.querySelector('[data-layer="editor-overlay"]')?.replaceChildren();
   });
   await page.locator('button[data-tool="select"]').click();
@@ -2500,7 +2500,7 @@ async function verifyBracketHoverFocus(page, target) {
   }, null, { timeout: 800 });
   const elapsed = Date.now() - started;
   const debug = await page.evaluate(() => ({
-    fastHover: window.__chemcoreDebug.fastSelectHoverStats || null,
+    fastHover: window.__chemsemaDebug.fastSelectHoverStats || null,
     overlayChildren: document.querySelector('[data-layer="editor-overlay"]')?.childElementCount || 0,
     handles: document.querySelectorAll('[data-role="hover-shape-handle"]').length,
     handleStyle: (() => {
@@ -2530,15 +2530,15 @@ async function verifyBracketHoverFocus(page, target) {
 async function verifyAllSquareBracketsHover(page) {
   await page.keyboard.press("Escape").catch(() => {});
   await page.evaluate(() => {
-    window.__chemcoreDebug.state.editorEngine.clearSelection?.();
-    window.__chemcoreDebug.state.editorEngine.clearInteraction?.();
-    window.__chemcoreDebug.clearActiveSelectionGesture?.();
+    window.__chemsemaDebug.state.editorEngine.clearSelection?.();
+    window.__chemsemaDebug.state.editorEngine.clearInteraction?.();
+    window.__chemsemaDebug.clearActiveSelectionGesture?.();
     document.querySelector('[data-layer="editor-overlay"]')?.replaceChildren();
   });
   await page.locator('button[data-tool="select"]').click();
   const targets = await page.evaluate(() => {
-    const documentData = JSON.parse(window.__chemcoreDebug.state.editorEngine.documentJson?.() || "null")
-      || window.__chemcoreDebug.document;
+    const documentData = JSON.parse(window.__chemsemaDebug.state.editorEngine.documentJson?.() || "null")
+      || window.__chemsemaDebug.document;
     const visit = (object, out = []) => {
       if (!object) {
         return out;
@@ -2569,7 +2569,7 @@ async function verifyAllSquareBracketsHover(page) {
         const yCandidates = [ty + height * 0.25, ty + height * 0.5, ty + height * 0.75, ty, ty + height];
         for (const x of xCandidates) {
           for (const y of yCandidates) {
-            const client = window.__chemcoreDebug.worldToClient(x, y);
+            const client = window.__chemsemaDebug.worldToClient(x, y);
             if (!client
               || client.x <= 80
               || client.x >= innerWidth - 80
@@ -2577,7 +2577,7 @@ async function verifyAllSquareBracketsHover(page) {
               || client.y >= innerHeight - 80) {
               continue;
             }
-            const hit = JSON.parse(window.__chemcoreDebug.state.editorEngine.contextHitTestJson?.(x, y) || "null");
+            const hit = JSON.parse(window.__chemsemaDebug.state.editorEngine.contextHitTestJson?.(x, y) || "null");
             if (hit?.objectId === object.id) {
               return {
                 id: object.id,
@@ -2601,7 +2601,7 @@ async function verifyAllSquareBracketsHover(page) {
   const failures = [];
   for (const target of targets) {
     await page.evaluate(() => {
-      window.__chemcoreDebug.state.editorEngine.clearInteraction?.();
+      window.__chemsemaDebug.state.editorEngine.clearInteraction?.();
       document.querySelector('[data-layer="editor-overlay"]')?.replaceChildren();
     });
     await page.mouse.move(Math.max(1, target.x - 30), Math.max(1, target.y - 30));
@@ -2615,8 +2615,8 @@ async function verifyAllSquareBracketsHover(page) {
     } catch {
       const debug = await page.evaluate((probe) => ({
         target: probe,
-        hit: JSON.parse(window.__chemcoreDebug.state.editorEngine.contextHitTestJson?.(probe.worldX, probe.worldY) || "null"),
-        interaction: JSON.parse(window.__chemcoreDebug.state.editorEngine.interactionRenderListJson?.() || "[]"),
+        hit: JSON.parse(window.__chemsemaDebug.state.editorEngine.contextHitTestJson?.(probe.worldX, probe.worldY) || "null"),
+        interaction: JSON.parse(window.__chemsemaDebug.state.editorEngine.interactionRenderListJson?.() || "[]"),
         handles: document.querySelectorAll('[data-role="hover-shape-handle"]').length,
         overlayChildren: document.querySelector('[data-layer="editor-overlay"]')?.childElementCount || 0,
       }), target);
@@ -2629,15 +2629,15 @@ async function verifyAllSquareBracketsHover(page) {
 async function verifyImportedBracketSideDragIsolation(page) {
   await page.keyboard.press("Escape").catch(() => {});
   await page.evaluate(() => {
-    window.__chemcoreDebug.state.editorEngine.clearSelection?.();
-    window.__chemcoreDebug.state.editorEngine.clearInteraction?.();
-    window.__chemcoreDebug.clearActiveSelectionGesture?.();
+    window.__chemsemaDebug.state.editorEngine.clearSelection?.();
+    window.__chemsemaDebug.state.editorEngine.clearInteraction?.();
+    window.__chemsemaDebug.clearActiveSelectionGesture?.();
     document.querySelector('[data-layer="editor-overlay"]')?.replaceChildren();
   });
   await page.locator('button[data-tool="select"]').click();
   const target = await page.evaluate(() => {
-    const documentData = JSON.parse(window.__chemcoreDebug.state.editorEngine.documentJson?.() || "null")
-      || window.__chemcoreDebug.document;
+    const documentData = JSON.parse(window.__chemsemaDebug.state.editorEngine.documentJson?.() || "null")
+      || window.__chemsemaDebug.document;
     const objectType = (object) => object?.type || object?.objectType || object?.object_type;
     const payloadValue = (object, key) => object?.payload?.[key] || object?.payload?.extra?.[key] || "";
     const hitTargetForSide = (object) => {
@@ -2654,7 +2654,7 @@ async function verifyImportedBracketSideDragIsolation(page) {
       const yCandidates = [ty + height * 0.5, ty + height * 0.25, ty + height * 0.75];
       for (const x of xCandidates) {
         for (const y of yCandidates) {
-          const client = window.__chemcoreDebug.worldToClient(x, y);
+          const client = window.__chemsemaDebug.worldToClient(x, y);
           if (!client
             || client.x <= 80
             || client.x >= innerWidth - 80
@@ -2662,7 +2662,7 @@ async function verifyImportedBracketSideDragIsolation(page) {
             || client.y >= innerHeight - 80) {
             continue;
           }
-          const hit = JSON.parse(window.__chemcoreDebug.state.editorEngine.contextHitTestJson?.(x, y) || "null");
+          const hit = JSON.parse(window.__chemsemaDebug.state.editorEngine.contextHitTestJson?.(x, y) || "null");
           if (hit?.objectId === object.id) {
             return { x: client.x, y: client.y, worldX: x, worldY: y };
           }
@@ -2714,8 +2714,8 @@ async function verifyImportedBracketSideDragIsolation(page) {
     return;
   }
   const before = await page.evaluate(({ sideObjectId, siblingObjectId }) => {
-    const documentData = JSON.parse(window.__chemcoreDebug.state.editorEngine.documentJson?.() || "null")
-      || window.__chemcoreDebug.document;
+    const documentData = JSON.parse(window.__chemsemaDebug.state.editorEngine.documentJson?.() || "null")
+      || window.__chemsemaDebug.document;
     const visit = (object, out = []) => {
       if (!object) {
         return out;
@@ -2739,8 +2739,8 @@ async function verifyImportedBracketSideDragIsolation(page) {
   await page.mouse.up();
   await page.waitForTimeout(250);
   const after = await page.evaluate(({ sideObjectId, siblingObjectId }) => {
-    const documentData = JSON.parse(window.__chemcoreDebug.state.editorEngine.documentJson?.() || "null")
-      || window.__chemcoreDebug.document;
+    const documentData = JSON.parse(window.__chemsemaDebug.state.editorEngine.documentJson?.() || "null")
+      || window.__chemsemaDebug.document;
     const visit = (object, out = []) => {
       if (!object) {
         return out;
@@ -2752,8 +2752,8 @@ async function verifyImportedBracketSideDragIsolation(page) {
       return out;
     };
     const byId = new Map((documentData.objects || []).flatMap((object) => visit(object, [])).map((object) => [object.id, object]));
-    const selection = window.__chemcoreDebug.engineState?.selection
-      || window.__chemcoreDebug.getEngineState?.()?.selection
+    const selection = window.__chemsemaDebug.engineState?.selection
+      || window.__chemsemaDebug.getEngineState?.()?.selection
       || {};
     const arrowObjects = selection.arrowObjects || selection.arrow_objects || [];
     return {
@@ -2782,9 +2782,9 @@ async function verifyMixedObjectFollowsStructureDrag(page, structureTarget, obje
   }
   await page.keyboard.press("Escape").catch(() => {});
   await page.evaluate(() => {
-    window.__chemcoreDebug.state.editorEngine.clearSelection?.();
-    window.__chemcoreDebug.state.editorEngine.clearInteraction?.();
-    window.__chemcoreDebug.clearActiveSelectionGesture?.();
+    window.__chemsemaDebug.state.editorEngine.clearSelection?.();
+    window.__chemsemaDebug.state.editorEngine.clearInteraction?.();
+    window.__chemsemaDebug.clearActiveSelectionGesture?.();
     document.querySelector('[data-layer="editor-overlay"]')?.replaceChildren();
   });
   await page.locator('button[data-tool="select"]').click();
@@ -2794,7 +2794,7 @@ async function verifyMixedObjectFollowsStructureDrag(page, structureTarget, obje
   await page.keyboard.up("Shift");
   try {
     await page.waitForFunction((objectId) => {
-      const selection = window.__chemcoreDebug.engineState?.selection || {};
+      const selection = window.__chemsemaDebug.engineState?.selection || {};
       const hasStructure = (selection.nodes || []).length > 0
         || (selection.labelNodes || []).length > 0
         || (selection.bonds || []).length > 0;
@@ -2808,10 +2808,10 @@ async function verifyMixedObjectFollowsStructureDrag(page, structureTarget, obje
         ? new DOMPoint(target.x, target.y).matrixTransform(matrix.inverse())
         : null;
       return {
-        selection: window.__chemcoreDebug.engineState?.selection || window.__chemcoreDebug.getEngineState?.()?.selection || null,
+        selection: window.__chemsemaDebug.engineState?.selection || window.__chemsemaDebug.getEngineState?.()?.selection || null,
         world: world ? { x: world.x, y: world.y } : null,
-        contextHit: world ? window.__chemcoreDebug.state.editorEngine.contextHitTestJson?.(world.x, world.y) : null,
-        object: window.__chemcoreDebug.document?.objects
+        contextHit: world ? window.__chemsemaDebug.state.editorEngine.contextHitTestJson?.(world.x, world.y) : null,
+        object: window.__chemsemaDebug.document?.objects
           ?.flatMap((object) => {
             const out = [];
             const visit = (candidate) => {
@@ -2858,10 +2858,10 @@ async function verifyMixedObjectFollowsStructureDrag(page, structureTarget, obje
     }, objectTarget.id, { timeout: 700 });
   } catch (error) {
     const diagnostics = await page.evaluate((objectId) => ({
-      gesture: window.__chemcoreDebug.getActiveSelectionGesture?.() || null,
-      selection: window.__chemcoreDebug.engineState?.selection || window.__chemcoreDebug.getEngineState?.()?.selection || null,
-      previewStats: window.__chemcoreDebug.backendMovePreviewStats?.last || null,
-      schedulerStats: window.__chemcoreDebug.backendPreviewSchedulerStats || null,
+      gesture: window.__chemsemaDebug.getActiveSelectionGesture?.() || null,
+      selection: window.__chemsemaDebug.engineState?.selection || window.__chemsemaDebug.getEngineState?.()?.selection || null,
+      previewStats: window.__chemsemaDebug.backendMovePreviewStats?.last || null,
+      schedulerStats: window.__chemsemaDebug.backendPreviewSchedulerStats || null,
       elements: [...document.querySelectorAll(`[data-layer="document-content"] [data-object-id="${CSS.escape(objectId)}"]`)]
         .map((element) => ({
           tag: element.tagName,
@@ -2931,8 +2931,8 @@ async function verifyMixedObjectFollowsStructureDrag(page, structureTarget, obje
       }
       return null;
     };
-    const engineDoc = JSON.parse(window.__chemcoreDebug.state.editorEngine.documentJson?.() || "null");
-    const frontendDoc = window.__chemcoreDebug.document;
+    const engineDoc = JSON.parse(window.__chemsemaDebug.state.editorEngine.documentJson?.() || "null");
+    const frontendDoc = window.__chemsemaDebug.document;
     const engine = translateForObject(engineDoc, objectId);
     const frontend = translateForObject(frontendDoc, objectId);
     const distance = engine && frontend ? Math.hypot(engine.x - frontend.x, engine.y - frontend.y) : null;
@@ -2950,16 +2950,16 @@ async function verifyObjectOnlySelectionDragPreview(page, target, kind) {
   }
   await page.keyboard.press("Escape").catch(() => {});
   await page.evaluate(() => {
-    window.__chemcoreDebug.state.editorEngine.clearSelection?.();
-    window.__chemcoreDebug.state.editorEngine.clearInteraction?.();
-    window.__chemcoreDebug.clearActiveSelectionGesture?.();
+    window.__chemsemaDebug.state.editorEngine.clearSelection?.();
+    window.__chemsemaDebug.state.editorEngine.clearInteraction?.();
+    window.__chemsemaDebug.clearActiveSelectionGesture?.();
     document.querySelector('[data-layer="editor-overlay"]')?.replaceChildren();
   });
   await page.locator('button[data-tool="select"]').click();
   await page.mouse.click(target.x, target.y);
   const selected = await page.waitForFunction((targetId) => {
-    const selection = window.__chemcoreDebug.engineState?.selection
-      || window.__chemcoreDebug.getEngineState?.()?.selection
+    const selection = window.__chemsemaDebug.engineState?.selection
+      || window.__chemsemaDebug.getEngineState?.()?.selection
       || {};
     const objectId = (selection.textObjects || []).includes(targetId)
       ? targetId
@@ -2969,9 +2969,9 @@ async function verifyObjectOnlySelectionDragPreview(page, target, kind) {
     return objectId ? { selection, objectId } : false;
   }, target.id, { timeout: 1200 }).then((handle) => handle.jsonValue());
   const before = await page.evaluate((objectId) => {
-    const bounds = JSON.parse(window.__chemcoreDebug.state.editorEngine.selectionBoundsJson?.() || "null");
+    const bounds = JSON.parse(window.__chemsemaDebug.state.editorEngine.selectionBoundsJson?.() || "null");
     const center = bounds
-      ? window.__chemcoreDebug.worldToClient((bounds.minX + bounds.maxX) * 0.5, (bounds.minY + bounds.maxY) * 0.5)
+      ? window.__chemsemaDebug.worldToClient((bounds.minX + bounds.maxX) * 0.5, (bounds.minY + bounds.maxY) * 0.5)
       : null;
     const rects = [...document.querySelectorAll(`[data-layer="document-content"] [data-object-id="${CSS.escape(objectId)}"]`)]
       .filter((element) => !element.classList.contains("document-diagnostic-marker"))
@@ -3031,7 +3031,7 @@ async function verifyObjectOnlySelectionDragPreview(page, target, kind) {
       return (beforeCenters || []).some((before) => Math.hypot(cx - before.x, cy - before.y) < 2);
     }).length;
     return {
-      gesture: window.__chemcoreDebug.getActiveSelectionGesture?.() || null,
+      gesture: window.__chemsemaDebug.getActiveSelectionGesture?.() || null,
       count: rects.length,
       x: rects.length ? (left + right) * 0.5 : null,
       y: rects.length ? (top + bottom) * 0.5 : null,
@@ -3061,7 +3061,7 @@ async function verifyObjectOnlySelectionDragPreview(page, target, kind) {
 async function resetViewerUi(page) {
   await page.keyboard.press("Escape").catch(() => {});
   await page.keyboard.press("Escape").catch(() => {});
-  await page.waitForFunction(() => !window.__chemcoreDebug?.activeTextEditor, null, { timeout: 800 }).catch(() => {});
+  await page.waitForFunction(() => !window.__chemsemaDebug?.activeTextEditor, null, { timeout: 800 }).catch(() => {});
   await page.waitForTimeout(30);
 }
 
@@ -3078,8 +3078,8 @@ async function measureCommitLatency(page, label, action, predicate, predicateArg
     const diagnostics = await page.evaluate((start) => ({
       measureStartedAt: start,
       measureEndedAt: performance.now(),
-      commitTiming: window.__chemcoreDebug?.creationCommitStats?.last || null,
-      lastCommandResult: JSON.parse(window.__chemcoreDebug?.state?.editorEngine?.lastCommandResultJson?.() || "null"),
+      commitTiming: window.__chemsemaDebug?.creationCommitStats?.last || null,
+      lastCommandResult: JSON.parse(window.__chemsemaDebug?.state?.editorEngine?.lastCommandResultJson?.() || "null"),
     }), started);
     assert(false, `${label} committed too slowly: ${elapsed.toFixed(1)}ms (action=${actionMs}ms wait=${waitMs}ms) ${JSON.stringify(diagnostics)}`);
   }
@@ -3094,7 +3094,7 @@ async function verifyLargeFileCommitLatency(page) {
   await page.locator('button[data-tool="bracket"]').click();
   await page.waitForFunction(() => getComputedStyle(document.querySelector("#viewer-svg")).pointerEvents === "none");
   await page.evaluate(() => {
-    const engine = window.__chemcoreDebug.state.editorEngine;
+    const engine = window.__chemsemaDebug.state.editorEngine;
     window.__viewerSmokeEngineTimings = [];
     for (const name of ["pointerMove", "interactionRenderListJson"]) {
       const original = engine?.[name];
@@ -3115,11 +3115,11 @@ async function verifyLargeFileCommitLatency(page) {
     }
   });
   const bracketBefore = await page.evaluate(() => ({
-    activeTool: window.__chemcoreDebug.engineState?.tool?.activeTool
-      || window.__chemcoreDebug.engineState?.tool?.active_tool
+    activeTool: window.__chemsemaDebug.engineState?.tool?.activeTool
+      || window.__chemsemaDebug.engineState?.tool?.active_tool
       || null,
-    selection: window.__chemcoreDebug.engineState?.selection || null,
-    activeGesture: window.__chemcoreDebug.activeSelectionGesture || null,
+    selection: window.__chemsemaDebug.engineState?.selection || null,
+    activeGesture: window.__chemsemaDebug.activeSelectionGesture || null,
     overlayChildren: document.querySelector('[data-layer="editor-overlay"]')?.childElementCount || 0,
     documentChildren: document.querySelector('[data-layer="document-content"]')?.childElementCount || 0,
     documentPointerEvents: document.querySelector('[data-layer="document-content"]')?.getAttribute("pointer-events") || getComputedStyle(document.querySelector('[data-layer="document-content"]')).pointerEvents,
@@ -3146,7 +3146,7 @@ async function verifyLargeFileCommitLatency(page) {
         window.__viewerSmokeBracketTiming = timing;
       }, { moveMs, downMs, dragMs, upMs, shieldAfterDown });
     },
-    () => !!window.__chemcoreDebug.activeTextEditor?.bracketLabelObjectId,
+    () => !!window.__chemsemaDebug.activeTextEditor?.bracketLabelObjectId,
     null,
     60000,
   );
@@ -3166,7 +3166,7 @@ async function verifyLargeFileCommitLatency(page) {
       await page.mouse.click(symbolPoint.x, symbolPoint.y);
     },
     () => {
-      const result = JSON.parse(window.__chemcoreDebug.state.editorEngine.lastCommandResultJson?.() || "null");
+      const result = JSON.parse(window.__chemsemaDebug.state.editorEngine.lastCommandResultJson?.() || "null");
       const objectId = [
         ...(result?.targets?.objects || []),
         ...(result?.created?.objects || []),
@@ -3186,8 +3186,8 @@ async function verifyLargeFileCommitLatency(page) {
   let bondPreviewBeforeUp = null;
   let bondCleanupBeforeCommit = null;
   await page.evaluate(() => {
-    if (window.__chemcoreDebug) {
-      window.__chemcoreDebug.creationPreviewClearedBeforeCommitAt = null;
+    if (window.__chemsemaDebug) {
+      window.__chemsemaDebug.creationPreviewClearedBeforeCommitAt = null;
     }
   });
   const bondMs = await measureCommitLatency(
@@ -3212,12 +3212,12 @@ async function verifyLargeFileCommitLatency(page) {
         if (dragChildren !== 0 || creationPreview) {
           return false;
         }
-        const stats = window.__chemcoreDebug?.creationCommitStats?.last || null;
+        const stats = window.__chemsemaDebug?.creationCommitStats?.last || null;
         return {
           elapsedMs: performance.now() - startTime,
           commitAlreadyRecorded: !!stats && Number(stats.commitStartedAt || 0) >= startTime,
           commitStartedAt: stats?.commitStartedAt || null,
-          previewClearedAt: window.__chemcoreDebug?.creationPreviewClearedBeforeCommitAt || null,
+          previewClearedAt: window.__chemsemaDebug?.creationPreviewClearedBeforeCommitAt || null,
         };
       }, started, { timeout: 1000 });
       bondCleanupBeforeCommit = await cleanupHandle.jsonValue();
@@ -3250,11 +3250,11 @@ async function verifyLargeFileCommitLatency(page) {
   await page.mouse.move(orbitalEnd.x, orbitalEnd.y, { steps: 6 });
   await page.mouse.up();
   await page.waitForFunction(() => {
-    const command = JSON.parse(window.__chemcoreDebug.state.editorEngine.lastCommandResultJson?.() || "null");
+    const command = JSON.parse(window.__chemsemaDebug.state.editorEngine.lastCommandResultJson?.() || "null");
     return !!(command?.targets?.objects?.[0] || command?.created?.objects?.[0]);
   }, null, { timeout: 1500 });
   const orbitalObjectId = await page.evaluate(() => {
-    const command = JSON.parse(window.__chemcoreDebug.state.editorEngine.lastCommandResultJson?.() || "null");
+    const command = JSON.parse(window.__chemsemaDebug.state.editorEngine.lastCommandResultJson?.() || "null");
     return command?.targets?.objects?.[0] || command?.created?.objects?.[0] || "";
   });
   await page.locator('button[data-tool="select"]').click();
@@ -3278,7 +3278,7 @@ async function verifyLargeFileHoverAndDrag(browser) {
   if (!largeCdxml || !existsSync(largeCdxml)) {
     const reason = largeCdxml
       ? `missing configured private file ${basename(largeCdxml)}`
-      : "set CHEMCORE_STABILITY_PRIVATE_CDXML to enable";
+      : "set CHEMSEMA_STABILITY_PRIVATE_CDXML to enable";
     console.log(`[viewer-interaction-smoke] skipping private large-file hover; ${reason}`);
     return;
   }

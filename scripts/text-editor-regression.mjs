@@ -73,11 +73,11 @@ async function selectedEditorText() {
 logStep("goto");
 await page.goto(url, { waitUntil: "networkidle" });
 logStep("wait-engine");
-await page.waitForFunction(() => window.__chemcoreDebug?.state?.editorEngine && window.__chemcoreDebug?.document);
+await page.waitForFunction(() => window.__chemsemaDebug?.state?.editorEngine && window.__chemsemaDebug?.document);
 
 logStep("new-doc");
 await page.click('[data-command="new"]');
-await page.waitForFunction(() => window.__chemcoreDebug?.document && Array.isArray(window.__chemcoreDebug.document.objects));
+await page.waitForFunction(() => window.__chemsemaDebug?.document && Array.isArray(window.__chemsemaDebug.document.objects));
 
 const svg = page.locator("#viewer-svg");
 const viewerContainer = page.locator("#viewer-container");
@@ -91,9 +91,9 @@ await page.mouse.move(bondStart.x, bondStart.y);
 await page.mouse.down();
 await page.mouse.move(bondEnd.x, bondEnd.y, { steps: 12 });
 await page.mouse.up();
-await page.waitForFunction(() => window.__chemcoreDebug?.document?.objects?.length > 0);
+await page.waitForFunction(() => window.__chemsemaDebug?.document?.objects?.length > 0);
 const endpointWorld = await page.evaluate(() => {
-  const point = window.__chemcoreDebug.engineState.document.resources.mol_editor.data.nodes[1].position;
+  const point = window.__chemsemaDebug.engineState.document.resources.mol_editor.data.nodes[1].position;
   return { x: point[0], y: point[1] };
 });
 const endpointClient = await clientPointFromWorld(endpointWorld.x, endpointWorld.y);
@@ -102,9 +102,9 @@ logStep("open-label-editor");
 await clickTool("text");
 await page.mouse.click(endpointClient.x, endpointClient.y);
 await page.waitForSelector(".text-editor");
-assert.equal(await page.evaluate(() => window.__chemcoreDebug.activeTextEditor?.session?.target?.kind), "endpoint-label");
+assert.equal(await page.evaluate(() => window.__chemsemaDebug.activeTextEditor?.session?.target?.kind), "endpoint-label");
 logStep("type-chemical");
-assert.equal(await page.evaluate(() => window.__chemcoreDebug.insertEditorText("H2SO4")), true);
+assert.equal(await page.evaluate(() => window.__chemsemaDebug.insertEditorText("H2SO4")), true);
 await page.waitForFunction(() => Array.from(
   document.querySelectorAll('.text-editor-display [data-script="subscript"]'),
   (node) => node.textContent || "",
@@ -169,8 +169,8 @@ assert(visibleCanvasBox, "viewer container is not visible after zoom");
 const plainTextPoint = pointInBox(visibleCanvasBox, 0.18, 0.32);
 await page.mouse.click(plainTextPoint.x, plainTextPoint.y);
 await page.waitForSelector(".text-editor");
-await page.waitForFunction(() => window.__chemcoreDebug.activeTextEditor?.session?.target?.kind === "text-object");
-assert.equal(await page.evaluate(() => window.__chemcoreDebug.insertEditorText("Hello")), true);
+await page.waitForFunction(() => window.__chemsemaDebug.activeTextEditor?.session?.target?.kind === "text-object");
+assert.equal(await page.evaluate(() => window.__chemsemaDebug.insertEditorText("Hello")), true);
 assert.equal(await currentEditorText(), "Hello");
 const hasScriptedRuns = await page.evaluate(() => document.querySelector('.text-editor-display [data-script="subscript"], .text-editor-display [data-script="superscript"]') !== null);
 assert.equal(hasScriptedRuns, false, "plain text editor unexpectedly applied chemical scripts");

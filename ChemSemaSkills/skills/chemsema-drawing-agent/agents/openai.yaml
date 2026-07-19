@@ -1,0 +1,4 @@
+interface:
+  display_name: "ChemSema Drawing Agent"
+  short_description: "Plan ChemSema-native drawing commands using engine queries."
+  default_prompt: "Use ChemSema drawing-agent workflows to produce command scripts that match GUI behavior."

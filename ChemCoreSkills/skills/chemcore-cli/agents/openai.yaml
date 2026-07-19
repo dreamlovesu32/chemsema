@@ -1,4 +1,0 @@
-interface:
-  display_name: "ChemCore CLI"
-  short_description: "Use ChemCore's CLI protocols for chemical documents."
-  default_prompt: "Use ChemCore CLI to inspect, edit, capture, convert, or query a chemical document."

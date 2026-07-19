@@ -2,18 +2,18 @@
 set -euo pipefail
 
 root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cli_path="$root_dir/target/release/chemcore-cli"
-out_dir="$root_dir/dist/chemcore-cli"
+cli_path="$root_dir/target/release/chemsema-cli"
+out_dir="$root_dir/dist/chemsema-cli"
 version=""
 
 usage() {
   cat <<'EOF'
-Package the ChemCore CLI Linux x86_64 portable distribution.
+Package the ChemSema CLI Linux x86_64 portable distribution.
 
 Usage: scripts/package-linux-cli.sh --version <version> [options]
 
 Options:
-  --cli <path>       Linux chemcore-cli executable
+  --cli <path>       Linux chemsema-cli executable
   --out-dir <path>   Output directory
   --version <value>  Package version
 EOF
@@ -35,25 +35,25 @@ if [[ -z "$version" ]]; then
 fi
 [[ -n "$version" ]] || { echo "Could not determine the CLI version" >&2; exit 1; }
 
-package_name="chemcore-cli-${version}-linux-x86_64"
+package_name="chemsema-cli-${version}-linux-x86_64"
 temporary="$(mktemp -d)"
 trap 'rm -rf "$temporary"' EXIT
 stage="$temporary/$package_name"
-mkdir -p "$stage/bin" "$stage/share/chemcore" "$stage/plugins" "$out_dir"
+mkdir -p "$stage/bin" "$stage/share/chemsema" "$stage/plugins" "$out_dir"
 
-install -m755 "$cli_path" "$stage/bin/chemcore-cli"
+install -m755 "$cli_path" "$stage/bin/chemsema-cli"
 install -m755 "$root_dir/packaging/linux-cli/install.sh" "$stage/install.sh"
 install -m755 "$root_dir/packaging/linux-cli/uninstall.sh" "$stage/uninstall.sh"
 install -m644 "$root_dir/packaging/linux-cli/README.md" "$stage/README.md"
-install -m644 "$root_dir/docs/chemcore-cli-guide.md" "$stage/share/chemcore/chemcore-cli-guide.md"
-install -m644 "$root_dir/docs/chemcore-cli-guide.zh-CN.md" "$stage/share/chemcore/chemcore-cli-guide.zh-CN.md"
-install -m644 "$root_dir/LICENSE" "$stage/share/chemcore/LICENSE"
-printf '%s\n' "$version" > "$stage/share/chemcore/VERSION"
+install -m644 "$root_dir/docs/chemsema-cli-guide.md" "$stage/share/chemsema/chemsema-cli-guide.md"
+install -m644 "$root_dir/docs/chemsema-cli-guide.zh-CN.md" "$stage/share/chemsema/chemsema-cli-guide.zh-CN.md"
+install -m644 "$root_dir/LICENSE" "$stage/share/chemsema/LICENSE"
+printf '%s\n' "$version" > "$stage/share/chemsema/VERSION"
 (
   cd "$stage"
-  sha256sum bin/chemcore-cli share/chemcore/chemcore-cli-guide.md \
-    share/chemcore/chemcore-cli-guide.zh-CN.md share/chemcore/LICENSE \
-    > share/chemcore/SHA256SUMS
+  sha256sum bin/chemsema-cli share/chemsema/chemsema-cli-guide.md \
+    share/chemsema/chemsema-cli-guide.zh-CN.md share/chemsema/LICENSE \
+    > share/chemsema/SHA256SUMS
 )
 
 archive="$out_dir/$package_name.tar.gz"

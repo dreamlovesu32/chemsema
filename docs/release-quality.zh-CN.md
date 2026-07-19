@@ -1,4 +1,4 @@
-# ChemCore 发布质量矩阵
+# ChemSema 发布质量矩阵
 
 这份矩阵记录主要公开能力当前的可信度。它是发布质量边界，不是营销承诺。
 
@@ -34,7 +34,7 @@
 公开 beta 发布前：
 
 1. 运行 `npm ci`。
-2. 运行 `cargo build -p chemcore-office -p chemcore-cli --release`。
+2. 运行 `cargo build -p chemsema-office -p chemsema-cli --release`。
 3. 运行 `cargo test`。
 4. 运行 `npm run verify`。
 5. 用 `npm run desktop:build` 构建安装包。
@@ -43,5 +43,5 @@
 
 ## 当前对外边界
 
-ChemCore 已经在 CDXML 保真、Office 工作流和 agent-oriented CLI 上形成可验证原型。
+ChemSema 已经在 CDXML 保真、Office 工作流和 agent-oriented CLI 上形成可验证原型。
 它仍是 beta，需要更多真实文件、真实工作流、安全硬化和干净安装验证，之后才能被描述为完整 ChemDraw 替代品。

@@ -7,15 +7,15 @@ import { fileURLToPath } from "node:url";
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const runId = new Date().toISOString().replace(/[:.]/g, "-");
 const stabilityDir = join(rootDir, "tmp", "stability");
-const fixtureDir = process.env.CHEMCORE_STABILITY_FIXTURE_DIR || join(stabilityDir, "fixtures");
+const fixtureDir = process.env.CHEMSEMA_STABILITY_FIXTURE_DIR || join(stabilityDir, "fixtures");
 const outputDir = join(stabilityDir, "outputs", runId);
 const reportDir = join(stabilityDir, "reports");
 const markdownReportPath = join(reportDir, `stability-report-${runId}.md`);
 const jsonReportPath = join(reportDir, `stability-report-${runId}.json`);
-const privateCdxml = process.env.CHEMCORE_STABILITY_PRIVATE_CDXML || process.env.CHEMCORE_INTERACTION_SMOKE_CDXML || "";
+const privateCdxml = process.env.CHEMSEMA_STABILITY_PRIVATE_CDXML || process.env.CHEMSEMA_INTERACTION_SMOKE_CDXML || "";
 const privateCdxmlExists = Boolean(privateCdxml && existsSync(privateCdxml));
-const commandTimeoutMs = Number(process.env.CHEMCORE_STABILITY_COMMAND_TIMEOUT_MS || 15 * 60 * 1000);
-const desktopBuildTimeoutMs = Number(process.env.CHEMCORE_STABILITY_DESKTOP_BUILD_TIMEOUT_MS || 20 * 60 * 1000);
+const commandTimeoutMs = Number(process.env.CHEMSEMA_STABILITY_COMMAND_TIMEOUT_MS || 15 * 60 * 1000);
+const desktopBuildTimeoutMs = Number(process.env.CHEMSEMA_STABILITY_DESKTOP_BUILD_TIMEOUT_MS || 20 * 60 * 1000);
 
 mkdirSync(fixtureDir, { recursive: true });
 mkdirSync(outputDir, { recursive: true });
@@ -100,7 +100,7 @@ async function runCommand(task) {
       cwd: rootDir,
       env: {
         ...process.env,
-        CHEMCORE_STABILITY_FIXTURE_DIR: fixtureDir,
+        CHEMSEMA_STABILITY_FIXTURE_DIR: fixtureDir,
         ...(task.env || {}),
       },
       shell: false,
@@ -289,7 +289,7 @@ const syntheticEditedReport = join(outputDir, "synthetic-large-edited.report.jso
 const syntheticEdited = join(outputDir, "synthetic-large-edited.ccjs");
 const privateInspect = join(outputDir, "private-large.inspect.json");
 const privateSvg = join(outputDir, "private-large.svg");
-const cliBinary = join(rootDir, "target", "debug", process.platform === "win32" ? "chemcore-cli.exe" : "chemcore-cli");
+const cliBinary = join(rootDir, "target", "debug", process.platform === "win32" ? "chemsema-cli.exe" : "chemsema-cli");
 
 const jsCheckFiles = [
   "viewer/app.js",
@@ -437,7 +437,7 @@ const stages = [
         id: "cli-build",
         layer: "CLI Build",
         command: "cargo",
-        args: ["build", "-p", "chemcore-cli"],
+        args: ["build", "-p", "chemsema-cli"],
         timeoutMs: commandTimeoutMs,
       },
       ...cliTasks,
@@ -451,7 +451,7 @@ const stages = [
         layer: "Browser Interaction",
         command: process.execPath,
         args: ["scripts/stability-user-paths.mjs"],
-        env: { CHEMCORE_DESKTOP_DEV_PORT: "8773" },
+        env: { CHEMSEMA_DESKTOP_DEV_PORT: "8773" },
       },
       {
         id: "browser-viewer-interaction-smoke",
@@ -459,8 +459,8 @@ const stages = [
         command: process.execPath,
         args: ["scripts/viewer-interaction-smoke.mjs"],
         env: {
-          CHEMCORE_DESKTOP_DEV_PORT: "8774",
-          ...(privateCdxmlExists ? { CHEMCORE_STABILITY_PRIVATE_CDXML: privateCdxml } : {}),
+          CHEMSEMA_DESKTOP_DEV_PORT: "8774",
+          ...(privateCdxmlExists ? { CHEMSEMA_STABILITY_PRIVATE_CDXML: privateCdxml } : {}),
         },
         timeoutMs: commandTimeoutMs,
       },
@@ -469,14 +469,14 @@ const stages = [
         layer: "Desktop Hybrid",
         command: process.execPath,
         args: ["scripts/desktop-hybrid-latency-regression.mjs"],
-        env: { CHEMCORE_DESKTOP_DEV_PORT: "8775" },
+        env: { CHEMSEMA_DESKTOP_DEV_PORT: "8775" },
       },
       {
         id: "large-object-operation-regression",
         layer: "Browser Interaction",
         command: process.execPath,
         args: ["scripts/large-object-operation-regression.mjs"],
-        env: { CHEMCORE_DESKTOP_DEV_PORT: "8776" },
+        env: { CHEMSEMA_DESKTOP_DEV_PORT: "8776" },
         timeoutMs: commandTimeoutMs,
       },
       {
@@ -484,7 +484,7 @@ const stages = [
         layer: "Browser Interaction",
         command: process.execPath,
         args: ["scripts/large-drag-preview-regression.mjs"],
-        env: { CHEMCORE_DESKTOP_DEV_PORT: "8777" },
+        env: { CHEMSEMA_DESKTOP_DEV_PORT: "8777" },
         timeoutMs: commandTimeoutMs,
       },
     ],
@@ -559,7 +559,7 @@ function tail(text, max = 6000) {
 
 function renderMarkdownReport(data) {
   const lines = [];
-  lines.push("# ChemCore Stability Report");
+  lines.push("# ChemSema Stability Report");
   lines.push("");
   lines.push(`- Run: \`${data.runId}\``);
   lines.push(`- Generated: \`${data.generatedAt}\``);

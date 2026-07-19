@@ -9,7 +9,7 @@ function parseArgs(argv) {
     searchLimit: 24,
     threshold: 740,
     labelLeft: "ChemDraw",
-    labelRight: "ChemCore",
+    labelRight: "ChemSema",
     inputs: [],
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -475,7 +475,7 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help || args.inputs.length !== 2) {
     console.log(
-      "Usage: node scripts/compare-svg-pixels.mjs [--out dir] [--base-scale 4] [--search-limit 24] [--left-label ChemDraw] [--right-label ChemCore] <left.svg> <right.svg>",
+      "Usage: node scripts/compare-svg-pixels.mjs [--out dir] [--base-scale 4] [--search-limit 24] [--left-label ChemDraw] [--right-label ChemSema] <left.svg> <right.svg>",
     );
     if (args.help) return;
     process.exit(args.inputs.length === 2 ? 0 : 1);

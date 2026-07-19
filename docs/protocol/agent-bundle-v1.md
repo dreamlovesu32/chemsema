@@ -1,8 +1,8 @@
-# ChemCore Agent Bundle v1
+# ChemSema Agent Bundle v1
 
-Protocol id: `chemcore.agent.bundle.v1`.
+Protocol id: `chemsema.agent.bundle.v1`.
 
-`chemcore-cli bundle` writes a deterministic directory of artifacts for one
+`chemsema-cli bundle` writes a deterministic directory of artifacts for one
 object-grounded agent work unit. It combines target detail, nearby context,
 visual capture, editable subset export, and identity mapping without requiring
 the caller to stitch separate CLI outputs together.
@@ -10,7 +10,7 @@ the caller to stitch separate CLI outputs together.
 ## Command
 
 ```powershell
-chemcore-cli bundle input.cdxml --target object:obj_mol_001 --out-dir output/bundle --context-radius 40 --capture-format png --subset-format ccjs --pretty
+chemsema-cli bundle input.cdxml --target object:obj_mol_001 --out-dir output/bundle --context-radius 40 --capture-format png --subset-format ccjs --pretty
 ```
 
 Accepted target forms are `object:<id>`, `molecule:<index>`, `node:<id>`,
@@ -34,13 +34,13 @@ The output directory contains:
 `visualScope`, `artifacts`, `artifactVerification`, `integrity`, and
 `provenance`.
 
-`identity-map.json` uses `chemcore.identity-map.v1`. Entries are sorted by
-selector and preserve ChemCore object, resource, style, node, and bond ids
+`identity-map.json` uses `chemsema.identity-map.v1`. Entries are sorted by
+selector and preserve ChemSema object, resource, style, node, and bond ids
 when those ids survive in the editable subset. Each entry includes
 `sourceSelector`, `bundleSelector`, `kind`, `includedBecause`, and
 `sourceDocumentHash`.
 
-`provenance.json` uses `chemcore.agent.provenance.v1`. It records the
+`provenance.json` uses `chemsema.agent.provenance.v1`. It records the
 privacy-preserving source file name, source file SHA-256, source document hash,
 document revision, target selector(s), source bounds, visual bounds, editable
 subset counts, identity-map summary, and the translation applied when the

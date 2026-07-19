@@ -5210,7 +5210,7 @@
   "resources": [
     {
       "bondCount": 7,
-      "encoding": "chemcore.molecule.fragment2d",
+      "encoding": "chemsema.molecule.fragment2d",
       "id": "mol_001",
       "kind": "fragment",
       "nodeCount": 8,
@@ -5218,7 +5218,7 @@
     },
     {
       "bondCount": 7,
-      "encoding": "chemcore.molecule.fragment2d",
+      "encoding": "chemsema.molecule.fragment2d",
       "id": "mol_002",
       "kind": "fragment",
       "nodeCount": 8,
@@ -5226,7 +5226,7 @@
     },
     {
       "bondCount": 8,
-      "encoding": "chemcore.molecule.fragment2d",
+      "encoding": "chemsema.molecule.fragment2d",
       "id": "mol_003",
       "kind": "fragment",
       "nodeCount": 9,
@@ -5234,7 +5234,7 @@
     },
     {
       "bondCount": 7,
-      "encoding": "chemcore.molecule.fragment2d",
+      "encoding": "chemsema.molecule.fragment2d",
       "id": "mol_004",
       "kind": "fragment",
       "nodeCount": 8,
@@ -5242,7 +5242,7 @@
     },
     {
       "bondCount": 8,
-      "encoding": "chemcore.molecule.fragment2d",
+      "encoding": "chemsema.molecule.fragment2d",
       "id": "mol_005",
       "kind": "fragment",
       "nodeCount": 9,
@@ -5250,7 +5250,7 @@
     },
     {
       "bondCount": 7,
-      "encoding": "chemcore.molecule.fragment2d",
+      "encoding": "chemsema.molecule.fragment2d",
       "id": "mol_006",
       "kind": "fragment",
       "nodeCount": 8,
@@ -5258,7 +5258,7 @@
     },
     {
       "bondCount": 7,
-      "encoding": "chemcore.molecule.fragment2d",
+      "encoding": "chemsema.molecule.fragment2d",
       "id": "mol_007",
       "kind": "fragment",
       "nodeCount": 8,
@@ -5266,7 +5266,7 @@
     },
     {
       "bondCount": 34,
-      "encoding": "chemcore.molecule.fragment2d",
+      "encoding": "chemsema.molecule.fragment2d",
       "id": "mol_008",
       "kind": "fragment",
       "nodeCount": 29,
@@ -5274,7 +5274,7 @@
     },
     {
       "bondCount": 7,
-      "encoding": "chemcore.molecule.fragment2d",
+      "encoding": "chemsema.molecule.fragment2d",
       "id": "mol_009",
       "kind": "fragment",
       "nodeCount": 8,
@@ -5282,7 +5282,7 @@
     },
     {
       "bondCount": 16,
-      "encoding": "chemcore.molecule.fragment2d",
+      "encoding": "chemsema.molecule.fragment2d",
       "id": "mol_010",
       "kind": "fragment",
       "nodeCount": 16,
@@ -5290,7 +5290,7 @@
     },
     {
       "bondCount": 21,
-      "encoding": "chemcore.molecule.fragment2d",
+      "encoding": "chemsema.molecule.fragment2d",
       "id": "mol_011",
       "kind": "fragment",
       "nodeCount": 19,
@@ -5653,7 +5653,7 @@
     "documentId": "doc_cdxml_import",
     "documentStylePreset": "default",
     "format": {
-      "name": "chemcore",
+      "name": "chemsema",
       "unit": "pt",
       "version": "0.1"
     },

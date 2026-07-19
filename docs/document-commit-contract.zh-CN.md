@@ -1,6 +1,6 @@
 # Document Commit 合同
 
-本文定义 ChemCore 编辑器里的“有效操作”和内核命令系统。保存按钮、撤销/重做、Office/OLE 回写、自动保存、测试和二次开发都必须以同一个 Document Commit 结果为准。
+本文定义 ChemSema 编辑器里的“有效操作”和内核命令系统。保存按钮、撤销/重做、Office/OLE 回写、自动保存、测试和二次开发都必须以同一个 Document Commit 结果为准。
 
 ## 核心定义
 
@@ -92,8 +92,8 @@ desktop_engine_execute_command_json(sessionId, commandJson): string
 ```json
 {
   "command": { "type": "add-bond", "...": "..." },
-  "before": "<ChemcoreDocument>",
-  "after": "<ChemcoreDocument>"
+  "before": "<ChemSemaDocument>",
+  "after": "<ChemSemaDocument>"
 }
 ```
 
@@ -297,7 +297,7 @@ pointer up / finish
 
 这是一条文档级命令，即便它内部会批量修改键长、键宽、字体和图形 stroke。
 
-ChemCore JSON 会在文件靠前位置持久化当前默认参数，即 `style.preset` 和
+ChemSema JSON 会在文件靠前位置持久化当前默认参数，即 `style.preset` 和
 `style.defaults`。CLI 的 `new` 和 `run` 会从文档读取这些默认值；后续编辑命令
 没有显式传入样式参数时，就使用文档级默认值。`apply-document-style` 和对象设置
 命令必须同步维护这份文档级样式账本。

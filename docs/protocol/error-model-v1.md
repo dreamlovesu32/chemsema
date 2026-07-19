@@ -1,6 +1,6 @@
-# ChemCore CLI Error Model v1
+# ChemSema CLI Error Model v1
 
-Protocol id: `chemcore-cli-error.v1`.
+Protocol id: `chemsema-cli-error.v1`.
 
 Failed CLI commands print JSON:
 

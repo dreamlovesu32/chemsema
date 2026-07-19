@@ -1,4 +1,4 @@
-# ChemCore Abbreviation Recognition Rules
+# ChemSema Abbreviation Recognition Rules
 
 This document defines the current kernel behavior for recognizing structural endpoint labels, functional-group abbreviations, and formula-like labels. Ordinary free text is handled by text-object rules.
 
@@ -41,7 +41,7 @@ Field rules:
 - Current `groupKind` values are `terminal-fragment`, `valence-fragment`, `bridge-fragment`, and `chemical-text`.
 - `source: "valence-parser"` is written only on `valence-fragment`.
 - `chemical-text` does not produce an `expansion`.
-- `expansion.schema` is fixed as `chemcore.functionalGroupExpansion.v1`.
+- `expansion.schema` is fixed as `chemsema.functionalGroupExpansion.v1`.
 - `expansion.connectionKind` is currently `terminal` or `bridge`.
 - `expansion.atoms[].id` is a local id inside the expansion and does not pollute main molecular graph node ids.
 - `expansion.atoms[]` may carry `numHydrogens`, `label`, and `formalCharge`.
@@ -178,7 +178,7 @@ Current valence exceptions:
 
 Element labels with explicit parenthesized Roman oxidation states, such as `Cu(II)` or `Fe(III)`, are recognized as chemical text labels, not functional-group expansions. Their source text stays unchanged, but normal attached-label reversal still applies, so a right-side/right-aligned `Cu(II)` renders visibly as `(II)Cu`.
 
-Metal-leading labels and reagent text are intentionally tolerant. If a chemical label starts with a metal element token, ChemCore preserves it as recognized `chemical-text` rather than marking it invalid just because the ordinary organic functional-group parser cannot expand it. This covers coordination and salt text such as `Cu(NO3)2` while still avoiding a generated expansion. Unknown nonmetal-leading strings must not be promoted to recognized chemical text merely because they contain a metal symbol such as `Y` or `Na` later in the string.
+Metal-leading labels and reagent text are intentionally tolerant. If a chemical label starts with a metal element token, ChemSema preserves it as recognized `chemical-text` rather than marking it invalid just because the ordinary organic functional-group parser cannot expand it. This covers coordination and salt text such as `Cu(NO3)2` while still avoiding a generated expansion. Unknown nonmetal-leading strings must not be promoted to recognized chemical text merely because they contain a metal symbol such as `Y` or `Na` later in the string.
 
 The following patterns are currently not relaxed:
 

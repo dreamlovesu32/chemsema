@@ -1,0 +1,27 @@
+name: Legacy redirect monitor
+
+on:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+jobs:
+  redirects:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Check retired-name boundary
+        run: npm run check:retired-name
+
+      - name: Check GitHub compatibility redirects
+        run: npm run check:legacy-redirects

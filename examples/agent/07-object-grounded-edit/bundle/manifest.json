@@ -153,9 +153,9 @@
         "width": 185.82
       }
     },
-    "schema": "chemcore.agent.provenance.v1"
+    "schema": "chemsema.agent.provenance.v1"
   },
-  "schema": "chemcore.agent.bundle.v1",
+  "schema": "chemsema.agent.bundle.v1",
   "source": {
     "documentHash": "880febac1eace591111d0c4366ccd77d871faf96c6b41463e5701abba6bee2b7",
     "documentRevision": 0,

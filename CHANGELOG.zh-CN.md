@@ -1,11 +1,23 @@
 # Changelog
 
-ChemCore 的公开变更记录会保存在这里。
+ChemSema 的公开变更记录会保存在这里。
+
+## ChemSema 1.0.0-beta.1 — 2026-07-19
+
+这是 ChemSema 名称下的第一个公开 beta。
+
+- 仓库、代码接口、包、应用、CLI、skills、文档、生成 bindings 和公开网址统一改为
+  ChemSema 身份。
+- 新品牌公开版本从 `1.0.0-beta.1` 重新开始；为保留既有历史 tag，采用唯一 tag
+  `chemsema-v1.0.0-beta.1`。
+- 为此前的 GitHub 仓库和 Pages 入口保留永久兼容处理，并加入自动监测。
+- 包含此前 beta 线最新的编辑器、Office/OLE、agent CLI、CDXML/CDX、渲染和化学
+  标签改进。
 
 ## 1.0.0-beta.8
 
 对齐 ChemDraw 的化学标签解释与连接锚点、稳定且语义可读的 CDX/CDXML 往返、
-短键渲染保真度，以及覆盖所有 ChemCore 外壳的 Windows/Ubuntu CLI 交付链路。
+短键渲染保真度，以及覆盖所有 ChemSema 外壳的 Windows/Ubuntu CLI 交付链路。
 
 - 重构结构化化学标签的 token 与显示方向规则。`C10H21` 这类分子式组合既保留
   内部元素/计数结构，又能在 attached label 翻转时作为一个整体移动；多组合分子式
@@ -40,14 +52,14 @@ ChemCore 的公开变更记录会保存在这里。
   Codex skills 使用的共享内核。Web 与鸿蒙包携带完全相同的 WASM artifact，桌面端
   和 CLI release build 使用同一 Rust 内核行为；鸿蒙构建也能在干净环境中生成
   unsigned HAP，且不会覆盖本地签名配置。
-- 新增一等的 Ubuntu/WSL CLI 验证和 Linux skill 打包。ChemCore CLI skill 现在同时
+- 新增一等的 Ubuntu/WSL CLI 验证和 Linux skill 打包。ChemSema CLI skill 现在同时
   携带带 manifest hash 的 `win-x64` 与 `linux-x64` 运行时；新增 WSL build/smoke/test
   命令验证 Linux binary，并在 CI 中加入独立 Ubuntu job，执行 engine/CLI 测试和
   skill contract 检查。无头 PNG 截图在 fontconfig 没有提供 alias 时，也会把通用
   字体族绑定到 Linux 环境中实际存在的字体，因此最小化 Ubuntu 环境即使没有
   Microsoft 字体也能正常渲染文本。
 - 扩展化学标签翻转、CDX/CDXML 稳定导出、显式与推断锚点、逐 glyph 裁切、中心/
-  侧双键和短虚键的回归覆盖。更新后的内核还对 ChemCore OCR registry 前 1000 个
+  侧双键和短虚键的回归覆盖。更新后的内核还对 ChemSema OCR registry 前 1000 个
   分子完成了新旧像素对比审阅，未替换数据库记录。
 
 ## 1.0.0-beta.7
@@ -55,13 +67,13 @@ ChemCore 的公开变更记录会保存在这里。
 对象级 agent 工作流、事务式 CLI 编辑、结构化文档 diff，以及围绕可编辑化学文档的
 公开定位调整。
 
-- 新增 `chemcore-cli` Object-Grounded Agent Layer。新的 `bundle` 命令可以把一个
+- 新增 `chemsema-cli` Object-Grounded Agent Layer。新的 `bundle` 命令可以把一个
   target selector 打包成完整工作单元，包含 `target.json`、`context.json`、
   确定性的 `capture.png`/`capture.svg`、只包含目标范围的可编辑子文档、
   `identity-map.json`、`provenance.json`，以及明确区分 editable scope 和
   visual scope 的 manifest。
-- 新增结构化文档 diff：`chemcore-cli diff` 会按 object、resource、style、
-  molecule node、molecule bond 和字段路径身份比较 ChemCore 文档，而不是做原始
+- 新增结构化文档 diff：`chemsema-cli diff` 会按 object、resource、style、
+  molecule node、molecule bond 和字段路径身份比较 ChemSema 文档，而不是做原始
   JSON 文本 diff。这样 before/after 报告可以用于 agent 审计、回归测试和人工确认。
 - 新增事务式 command-script 支持。transaction envelope 可以声明期望的 document
   hash/revision、必需 selector、可编辑范围、是否允许创建/删除、dry-run 行为、
@@ -79,23 +91,23 @@ ChemCore 的公开变更记录会保存在这里。
   约束的 node-label 修改、结构化 diff、完整文档导出、target-only 可编辑导出，并
   生成 `acceptance.json` 验收报告。
 - 更新 CLI protocol 文档、runtime schema/capabilities discovery、command-script 与
-  session 指南、中英文 CLI guide，以及 ChemCore CLI skill 参考，使新 bundle、diff、
+  session 指南、中英文 CLI guide，以及 ChemSema CLI skill 参考，使新 bundle、diff、
   transaction、identity-map 和 provenance 契约都能被机器调用方发现。
-- 重构中英文 README 的前部定位，把 ChemCore 更明确地描述为可编辑化学文档平台，
+- 重构中英文 README 的前部定位，把 ChemSema 更明确地描述为可编辑化学文档平台，
   并突出同一套对象身份如何贯穿可视化编辑、Office 工作流、CLI 检查、受范围约束的
   agent 修改、验证和可编辑导出。
 - 改进真实论文 CDXML 图的渲染保真度。键与键相交时会保留 ChemDraw 风格的透明
   margin knockout；标签退让由 glyph clipping 和导入的 `MarginWidth` profile 驱动；
   attached molecule label 现在对末端字母、prime、上下标使用按 ChemDraw 校准的同一
   行锚点。
-- 刷新 README 公开视觉素材，包括 ChemCore 编辑器界面截图，以及基于
-  `figure1.cdxml` 和 `figure2.cdxml` 重新生成的 ChemDraw/ChemCore 对比资产。
+- 刷新 README 公开视觉素材，包括 ChemSema 编辑器界面截图，以及基于
+  `figure1.cdxml` 和 `figure2.cdxml` 重新生成的 ChemDraw/ChemSema 对比资产。
 
 ## 1.0.0-beta.6
 
 鸿蒙 PC 端基础、GUI 一致性回归、agent/CLI 工作流扩展，以及新一轮编辑器保真度修复。
 
-- 新增第一阶段鸿蒙 PC 端壳。新的 `apps/chemcore-harmony` 工程把现有 Web Viewer 和共享 Rust/WASM 内核打包进 ArkWeb rawfile 应用，面向桌面级 `2in1` 设备，并加入 DevEco 构建/签名模板、应用图标、viewer 同步/构建脚本，以及覆盖打开、保存、新建、文档标签页、剪贴板桥接、窗口标题和 rawfile 资源的 smoke/bridge 回归。
+- 新增第一阶段鸿蒙 PC 端壳。新的 `apps/chemsema-harmony` 工程把现有 Web Viewer 和共享 Rust/WASM 内核打包进 ArkWeb rawfile 应用，面向桌面级 `2in1` 设备，并加入 DevEco 构建/签名模板、应用图标、viewer 同步/构建脚本，以及覆盖打开、保存、新建、文档标签页、剪贴板桥接、窗口标题和 rawfile 资源的 smoke/bridge 回归。
 - 隔离浏览器、Tauri 桌面端和鸿蒙宿主壳行为。鸿蒙端现在使用 native-frame 顶栏和紧凑系统风格文档标签页，不显示桌面端自绘窗口控制；Tauri 桌面端保留自己的自绘标题栏；浏览器模式保持浏览器原生行为。
 - 扩展共享 viewer 的端到端 GUI 回归，覆盖打开、保存、导出、`Ctrl+S`、应用内复制/粘贴/剪切、工具栏图标、光标、选择覆盖层、删除工具、缩放、文档样式预设、宿主壳隔离、工具栏健康、鸿蒙桥接和大 CDXML 速度检查。
 - 将更多交互反馈和预览行为移动到共享 Rust/WASM engine 路径。键创建预览、对象坐标预览、渲染目标查询、悬停/聚焦反馈、图形命中半径、预览依赖追踪、缩放锚点和空文档渲染现在在浏览器、桌面端和鸿蒙端之间更一致。
@@ -105,7 +117,7 @@ ChemCore 的公开变更记录会保存在这里。
 - 改进标签、OCR 和命令式化学编辑工作流。`label-query` 支持源文本和可见文本反查，并包含连接与含氢锚点语义；直接命令可编辑节点电荷和氢标签，保留 label source text，并保留导入或 OCR 得到的端点框、glyph polygon 和 label text position。
 - 改进 CDXML/文档导入保真度和样式默认值。导入时保留 CDXML molecule fragment，默认把断开的化学结构拆成独立 molecule object，保留交叉但断开的 fixture 覆盖；ACS/文档样式默认值会贯穿导入、命令、渲染、标签、键、SDF/CDXML 路径和导出。
 - 修复 Office 全文档复制行为，并刷新桌面/Office 架构文档，确保全文档和目标级剪贴板/OLE payload 路径清晰，同时化学逻辑仍保留在共享 engine 中。
-- 新增公开的 ChemCore Codex skill 套件和 agent 示例。本版本包含 CLI、development、drawing-agent、Office skills 及中英文说明、安装/同步脚本、运行时发现、session helper、仓库卫生和构建测试参考，并加入完整 reaction-agent POC：请求、命令、截图、context/detail/targets JSON、Office payload、CDXML/SVG 输出和运行器。
+- 新增公开的 ChemSema Codex skill 套件和 agent 示例。本版本包含 CLI、development、drawing-agent、Office skills 及中英文说明、安装/同步脚本、运行时发现、session helper、仓库卫生和构建测试参考，并加入完整 reaction-agent POC：请求、命令、截图、context/detail/targets JSON、Office payload、CDXML/SVG 输出和运行器。
 - 更新中英文 README、CLI 指南、command-script/JSONL session 协议说明、CLI-GUI parity checklist、编辑器命令历史、项目规则、架构文档和公开元数据；同时重建共享浏览器/鸿蒙 WASM engine artifact，使所有壳使用最新内核行为。
 
 ## 1.0.0-beta.5
@@ -116,7 +128,7 @@ ChemCore 的公开变更记录会保存在这里。
 
 面向 agent 的 CLI 扩展、安装入口完善，以及桌面端/浏览器端的进一步稳定化。
 
-- 将 `chemcore-cli` 作为桌面端安装包的一部分安装，加入安装器 PATH 注册、`chemcore-entrypoints.json`、随包 agent 指南，并可通过 `guide` / `doctor` 让机器调用方发现入口和文档。
+- 将 `chemsema-cli` 作为桌面端安装包的一部分安装，加入安装器 PATH 注册、`chemsema-entrypoints.json`、随包 agent 指南，并可通过 `guide` / `doctor` 让机器调用方发现入口和文档。
 - 明确 CLI 的两种调用方式：PowerShell 单命令用于独立任务，JSONL `session` 用于同一个已载入文档上的连续操作。
 - 扩展 CLI agent 工作流，加入 `targets`、`context`、`detail`、`capture` 和 `copy`，覆盖稳定 selector、周边对象摘要、原始对象/详情查询、精确裁图，以及 Office/OLE 剪贴板 payload 生成。
 - 增加确定性的高清截图能力，支持 object、molecule、node、bond、all、显式 bounds 和多目标 selection。多选截图使用所有目标 bounds 的最小并集，和 GUI 选择框一致，并支持绝对/相对单边扩展、固定像素尺寸、渲染元数据，以及 PNG/SVG 落盘校验。
@@ -135,8 +147,8 @@ ChemCore 的公开变更记录会保存在这里。
 
 大文件交互、CDXML 兼容和 agent-friendly CLI beta 版本。
 
-- 新增 `chemcore-cli` crate 和直接 engine 命令，支持 headless 文档检查、转换、导出、编辑，以及结构化 JSON 执行报告。
-- 新增 `--document-json`、`--inspect-after`，并改进 `.json`/`.ccjs` 处理，让脚本和 agent 可以不驱动 GUI 就交换 ChemCore 文档。
+- 新增 `chemsema-cli` crate 和直接 engine 命令，支持 headless 文档检查、转换、导出、编辑，以及结构化 JSON 执行报告。
+- 新增 `--document-json`、`--inspect-after`，并改进 `.json`/`.ccjs` 处理，让脚本和 agent 可以不驱动 GUI 就交换 ChemSema 文档。
 - 改进 CDXML 导入导出保真度，覆盖标签、箭头、符号、粗线宽度、自由基价态、grouped graphics、堆叠/连接标签、标签内部缓存 fragment 和括号标签。
 - 将导入的 CDXML 成对括号表示为 bracket group，左右括号边可独立拖动，同时保留 repeat count 和括号标签语义。
 - 收紧 glyph clipping、标签几何、导入标签锚点，并同步 synthetic SVG 快照。
@@ -153,7 +165,7 @@ ChemCore 的公开变更记录会保存在这里。
 
 安装包热修复 beta 版本。
 
-- 修复 Windows NSIS 安装器里的 Office/OLE 注册 hook：现在会在实际安装目录中查找 `chemcore-office.exe`，不再固定假设它位于旧的 `resources` 子目录。
+- 修复 Windows NSIS 安装器里的 Office/OLE 注册 hook：现在会在实际安装目录中查找 `chemsema-office.exe`，不再固定假设它位于旧的 `resources` 子目录。
 - 同时兼容安装目录根部和 `resources` 子目录两种 Office server 布局，避免旧打包实验路径影响注册。
 - 加固安装后注册流程：安装器会优先尝试 machine-wide COM/OLE 注册；如果 machine 注册无法启动或返回失败码，会自动降级为当前用户注册。
 - 加固卸载清理流程：卸载时会同时尝试清理 machine-wide 和 current-user Office/OLE 注册。

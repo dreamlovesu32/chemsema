@@ -55,7 +55,7 @@
         "beforeRevision": 0,
         "hashAlgorithm": "sha256",
         "hashChanged": true,
-        "hashInput": "chemcore-document-json-v1"
+        "hashInput": "chemsema-document-json-v1"
       },
       "engineResult": {
         "beforeRevision": 0,
@@ -162,7 +162,7 @@
         "beforeRevision": 1,
         "hashAlgorithm": "sha256",
         "hashChanged": true,
-        "hashInput": "chemcore-document-json-v1"
+        "hashInput": "chemsema-document-json-v1"
       },
       "engineResult": {
         "beforeRevision": 1,
@@ -268,7 +268,7 @@
         "beforeRevision": 2,
         "hashAlgorithm": "sha256",
         "hashChanged": true,
-        "hashInput": "chemcore-document-json-v1"
+        "hashInput": "chemsema-document-json-v1"
       },
       "engineResult": {
         "beforeRevision": 2,
@@ -363,7 +363,7 @@
         "beforeRevision": 3,
         "hashAlgorithm": "sha256",
         "hashChanged": true,
-        "hashInput": "chemcore-document-json-v1"
+        "hashInput": "chemsema-document-json-v1"
       },
       "engineResult": {
         "beforeRevision": 3,
@@ -413,7 +413,7 @@
     "beforeRevision": 0,
     "hashAlgorithm": "sha256",
     "hashChanged": true,
-    "hashInput": "chemcore-document-json-v1"
+    "hashInput": "chemsema-document-json-v1"
   },
   "executedCount": 4,
   "failedCount": 0,
@@ -424,14 +424,14 @@
     "operation": "new",
     "output": {
       "format": "ccjs",
-      "path": "D:\\Projects\\chemcore\\examples\\agent\\03-edit-reaction-scheme\\output.ccjs"
+      "path": "D:\\Projects\\chemsema\\examples\\agent\\03-edit-reaction-scheme\\output.ccjs"
     },
-    "script": "D:\\Projects\\chemcore\\examples\\agent\\03-edit-reaction-scheme\\commands.json"
+    "script": "D:\\Projects\\chemsema\\examples\\agent\\03-edit-reaction-scheme\\commands.json"
   },
   "ok": true,
   "save": {
     "format": "ccjs",
     "ok": true,
-    "path": "D:\\Projects\\chemcore\\examples\\agent\\03-edit-reaction-scheme\\output.ccjs"
+    "path": "D:\\Projects\\chemsema\\examples\\agent\\03-edit-reaction-scheme\\output.ccjs"
   }
 }

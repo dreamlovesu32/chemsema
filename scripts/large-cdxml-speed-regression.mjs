@@ -8,16 +8,16 @@ import { chromium } from "playwright";
 
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const host = "127.0.0.1";
-const port = Number(process.env.CHEMCORE_DESKTOP_DEV_PORT || 8767);
+const port = Number(process.env.CHEMSEMA_DESKTOP_DEV_PORT || 8767);
 const baseUrl = `http://${host}:${port}/viewer/`;
 const edgePath = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
 const defaultFixturePath = "C:\\Users\\Dream\\OneDrive\\DFT\\Pd-Esterification\\钯催化-jjb.cdxml";
-const fixturePath = process.env.CHEMCORE_LARGE_CDXML_PATH || defaultFixturePath;
-const sampleCount = Number(process.env.CHEMCORE_LARGE_CDXML_SAMPLES || 3);
-const maxOpenMs = Number(process.env.CHEMCORE_LARGE_CDXML_MAX_OPEN_MS || 5000);
-const maxFitMs = Number(process.env.CHEMCORE_LARGE_CDXML_MAX_FIT_MS || 1000);
-const maxZoomMs = Number(process.env.CHEMCORE_LARGE_CDXML_MAX_ZOOM_MS || 600);
-const minRenderPrimitives = Number(process.env.CHEMCORE_LARGE_CDXML_MIN_PRIMITIVES || 100);
+const fixturePath = process.env.CHEMSEMA_LARGE_CDXML_PATH || defaultFixturePath;
+const sampleCount = Number(process.env.CHEMSEMA_LARGE_CDXML_SAMPLES || 3);
+const maxOpenMs = Number(process.env.CHEMSEMA_LARGE_CDXML_MAX_OPEN_MS || 5000);
+const maxFitMs = Number(process.env.CHEMSEMA_LARGE_CDXML_MAX_FIT_MS || 1000);
+const maxZoomMs = Number(process.env.CHEMSEMA_LARGE_CDXML_MAX_ZOOM_MS || 600);
+const minRenderPrimitives = Number(process.env.CHEMSEMA_LARGE_CDXML_MIN_PRIMITIVES || 100);
 const runId = new Date().toISOString().replace(/[:.]/g, "-");
 const outputDir = join(rootDir, "tmp", "performance", "large-cdxml-speed");
 const reportPath = join(outputDir, `large-cdxml-speed-${runId}.json`);
@@ -95,7 +95,7 @@ async function nextPaint(page) {
 
 async function waitForReady(page) {
   await page.waitForFunction(
-    () => !!window.__chemcoreDebug?.state?.editorEngine && !!window.__chemcoreDebug?.document,
+    () => !!window.__chemsemaDebug?.state?.editorEngine && !!window.__chemsemaDebug?.document,
     null,
     { timeout: 30000 },
   );
@@ -105,16 +105,16 @@ async function installNativeFileBridge(page, fileName, filePath, cdxmlText) {
   await page.addInitScript(({ name, path, text }) => {
     const respond = (id, response) => {
       setTimeout(() => {
-        window.__chemcoreHarmonyResolve?.(id, JSON.stringify(response));
+        window.__chemsemaHarmonyResolve?.(id, JSON.stringify(response));
       }, 0);
     };
-    window.__chemcoreLargeCdxmlFixture = {
+    window.__chemsemaLargeCdxmlFixture = {
       name,
       path,
       byteLength: new TextEncoder().encode(text).byteLength,
       charLength: text.length,
     };
-    window.chemcoreHarmony = {
+    window.chemsemaHarmony = {
       postMessage(message) {
         const request = JSON.parse(message);
         const { id, command, payload = {} } = request;
@@ -157,7 +157,7 @@ function capturePageErrors(page, errors, phaseRef) {
 
 async function collectSummary(page) {
   return page.evaluate(() => {
-    const debug = window.__chemcoreDebug;
+    const debug = window.__chemsemaDebug;
     const doc = debug?.document || null;
     const resources = Object.values(doc?.resources || {});
     const resourceNodes = resources.reduce((sum, resource) => sum + (resource?.data?.nodes?.length || 0), 0);
@@ -206,8 +206,8 @@ async function runSample(browser, cdxmlText, fileName, index) {
   await page.locator('.editor-topbar button[data-command="open"]').click();
   await page.waitForFunction(
     ({ name, minPrimitives }) => (
-      window.__chemcoreDebug?.state?.currentFileName === name
-      && (window.__chemcoreDebug?.state?.coreRenderList?.length || 0) >= minPrimitives
+      window.__chemsemaDebug?.state?.currentFileName === name
+      && (window.__chemsemaDebug?.state?.coreRenderList?.length || 0) >= minPrimitives
     ),
     { name: fileName, minPrimitives: minRenderPrimitives },
     { timeout: maxOpenMs + 5000 },

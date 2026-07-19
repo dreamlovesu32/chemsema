@@ -1,20 +1,20 @@
 import { base64ToBytes, bytesToBase64 } from "./binary_helpers.js";
 import { normalizeDesktopPath } from "./desktop_file_host.js";
 import {
-  chemcoreOpenAcceptTypes,
-  decompressChemcoreText,
+  chemsemaOpenAcceptTypes,
+  decompressChemSemaText,
   looksLikeCdxFile,
   looksLikeCdxmlFile,
-  looksLikeCompressedChemcoreFile,
+  looksLikeCompressedChemSemaFile,
   looksLikeSdfFile,
   saveFormatFromFileName,
 } from "./file_io.js";
 
-const BROWSER_PENDING_DOCUMENT_KEY_PREFIX = "chemcore:pending-browser-document:";
-const BROWSER_PENDING_DOCUMENT_PARAM = "chemcorePendingDocument";
+const BROWSER_PENDING_DOCUMENT_KEY_PREFIX = "chemsema:pending-browser-document:";
+const BROWSER_PENDING_DOCUMENT_PARAM = "chemsemaPendingDocument";
 const BROWSER_PENDING_DOCUMENT_WAIT_MS = 10000;
 const BROWSER_PENDING_DOCUMENT_WAIT_INTERVAL_MS = 50;
-const BROWSER_PENDING_DOCUMENT_RESERVED_STATUS = "__chemcore_pending_document_reserved__";
+const BROWSER_PENDING_DOCUMENT_RESERVED_STATUS = "__chemsema_pending_document_reserved__";
 
 export function createBrowserDocumentTabs(options) {
   const {
@@ -174,8 +174,8 @@ export function createBrowserDocumentTabs(options) {
         format: "cdx",
       };
     }
-    const text = looksLikeCompressedChemcoreFile(file)
-      ? await decompressChemcoreText(await file.arrayBuffer())
+    const text = looksLikeCompressedChemSemaFile(file)
+      ? await decompressChemSemaText(await file.arrayBuffer())
       : await file.text();
     return {
       text,
@@ -537,7 +537,7 @@ export function createBrowserDocumentTabs(options) {
     if (window.showOpenFilePicker) {
       const [handle] = await window.showOpenFilePicker({
         multiple: false,
-        types: chemcoreOpenAcceptTypes(),
+        types: chemsemaOpenAcceptTypes(),
         excludeAcceptAllOption: false,
       });
       if (handle) {

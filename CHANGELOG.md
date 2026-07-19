@@ -1,12 +1,25 @@
 # Changelog
 
-All notable public changes to ChemCore are tracked here.
+All notable public changes to ChemSema are tracked here.
+
+## ChemSema 1.0.0-beta.1 — 2026-07-19
+
+The first public beta under the ChemSema name.
+
+- Renamed the repository, code surfaces, packages, applications, CLI, skills,
+  documentation, generated bindings, and public URLs to the ChemSema identity.
+- Restarted the public brand version at `1.0.0-beta.1`, using the unique Git tag
+  `chemsema-v1.0.0-beta.1` so existing historical tags remain untouched.
+- Added permanent compatibility handling and automated monitoring for earlier
+  GitHub repository and Pages links.
+- Included the latest editor, Office/OLE, agent CLI, CDXML/CDX, rendering, and
+  chemical-label improvements from the previous beta line.
 
 ## 1.0.0-beta.8
 
 ChemDraw-aligned chemical-label interpretation and attachment geometry, stable
 semantic CDX/CDXML round trips, short-bond rendering fidelity, and shared
-Windows/Ubuntu CLI delivery across every ChemCore shell.
+Windows/Ubuntu CLI delivery across every ChemSema shell.
 
 - Refined structural chemical-label tokenization and display direction. Formula
   groups such as `C10H21` keep their internal element/count structure and move
@@ -59,7 +72,7 @@ Windows/Ubuntu CLI delivery across every ChemCore shell.
   the same Rust engine behavior and the Harmony build can produce an unsigned
   HAP in clean environments without overwriting local signing configuration.
 - Added first-class Ubuntu/WSL CLI validation and Linux skill packaging. The
-  ChemCore CLI skill now bundles both `win-x64` and `linux-x64` runtimes with
+  ChemSema CLI skill now bundles both `win-x64` and `linux-x64` runtimes with
   manifest hashes, WSL build/smoke/test commands verify the Linux binary, and a
   dedicated Ubuntu CI job runs the engine/CLI tests and skill contract checks.
   Headless PNG capture also binds generic font families to an installed Linux
@@ -68,7 +81,7 @@ Windows/Ubuntu CLI delivery across every ChemCore shell.
 - Expanded regression coverage for chemical-label reversal, CDX/CDXML stable
   export, explicit and inferred attachments, per-glyph clipping, centered and
   side double bonds, and short dashed bonds. The updated engine was also
-  reviewed against the first 1,000 ChemCore OCR registry molecules with
+  reviewed against the first 1,000 ChemSema OCR registry molecules with
   before/after pixel comparisons, without replacing database records.
 
 ## 1.0.0-beta.7
@@ -77,13 +90,13 @@ Object-grounded agent workflows, transactional CLI editing, structured
 document diffs, and clearer public positioning around editable chemical
 documents.
 
-- Added the Object-Grounded Agent Layer for `chemcore-cli`. The new `bundle`
+- Added the Object-Grounded Agent Layer for `chemsema-cli`. The new `bundle`
   command packages a target selector into a complete work unit with
   `target.json`, `context.json`, deterministic `capture.png`/`capture.svg`, an
   editable target-only subset, `identity-map.json`, `provenance.json`, and a
   manifest that separates editable scope from visual scope.
-- Added structured document diffing with `chemcore-cli diff`. Diffs compare
-  ChemCore documents by object, resource, style, molecule node, molecule bond,
+- Added structured document diffing with `chemsema-cli diff`. Diffs compare
+  ChemSema documents by object, resource, style, molecule node, molecule bond,
   and field path identity instead of raw JSON text, making before/after reports
   usable for agent audit, regression tests, and user review.
 - Added transactional command-script support for agent edits. Transaction
@@ -105,7 +118,7 @@ documents.
   exports both the full edited document and target-only editable subsets, and
   writes an `acceptance.json` report.
 - Updated CLI protocol documentation, runtime schema/capabilities discovery,
-  command-script and session guides, English/Chinese CLI guides, and ChemCore
+  command-script and session guides, English/Chinese CLI guides, and ChemSema
   CLI skill references for the new bundle, diff, transaction, identity-map, and
   provenance contracts.
 - Refocused the English and Chinese README around editable chemical documents
@@ -117,8 +130,8 @@ documents.
   label retreat is driven by glyph clipping and the imported `MarginWidth`
   profile, and attached molecule labels now use a ChemDraw-calibrated line
   anchor for terminal letters, primes, superscripts, and subscripts.
-- Refreshed the public README visuals, including the ChemCore editor interface
-  screenshot and the ChemDraw/ChemCore comparison assets generated from
+- Refreshed the public README visuals, including the ChemSema editor interface
+  screenshot and the ChemDraw/ChemSema comparison assets generated from
   `figure1.cdxml` and `figure2.cdxml`.
 
 ## 1.0.0-beta.6
@@ -126,7 +139,7 @@ documents.
 HarmonyOS PC groundwork, stronger GUI parity coverage, expanded agent/CLI
 workflows, and another round of editor fidelity fixes.
 
-- Added the first-stage HarmonyOS PC shell. The new `apps/chemcore-harmony` project packages the existing web viewer and shared Rust/WASM engine into an ArkWeb rawfile app for desktop-class `2in1` devices, with DevEco-oriented build/signing templates, app icons, viewer sync/build wrappers, and smoke/bridge regressions for Open/Save/New, document tabs, clipboard handoff, window titles, and rawfile assets.
+- Added the first-stage HarmonyOS PC shell. The new `apps/chemsema-harmony` project packages the existing web viewer and shared Rust/WASM engine into an ArkWeb rawfile app for desktop-class `2in1` devices, with DevEco-oriented build/signing templates, app icons, viewer sync/build wrappers, and smoke/bridge regressions for Open/Save/New, document tabs, clipboard handoff, window titles, and rawfile assets.
 - Isolated the browser, Tauri desktop, and Harmony host shells. Harmony now uses a native-frame top bar with compact system-style document tabs and no custom desktop window controls, while the Tauri shell keeps its own custom titlebar and browser mode keeps browser-native behavior.
 - Expanded end-to-end GUI regression coverage for the shared viewer surface, including file open/save/export, `Ctrl+S`, internal copy/paste/cut, toolbar icons, cursor styles, selection overlays, delete-tool behavior, zoom, document style presets, host-shell isolation, toolbar health, Harmony bridge behavior, and large-CDXML speed checks.
 - Moved more interaction feedback and preview behavior into the shared Rust/WASM engine path. Bond creation previews, object-coordinate previews, render-target queries, hover/focus feedback, graphic hit radii, preview dependency tracking, zoom anchoring, and empty-document rendering now behave more consistently across browser, desktop, and Harmony.
@@ -136,7 +149,7 @@ workflows, and another round of editor fidelity fixes.
 - Improved label, OCR, and command-driven chemistry workflows. `label-query` now supports source-text and reverse visible-text lookup with connection and hydrogen-anchor semantics; direct commands can edit node charge and hydrogen labels, preserve label source text, and keep measured endpoint boxes, glyph polygons, and label text positions for imported or OCR-derived labels.
 - Improved CDXML/document import fidelity for disconnected structures and style defaults. Imported CDXML molecule fragments are preserved, disconnected chemistry is split into separate molecule objects by default, crossing disconnected fixtures remain covered, and ACS/document style defaults persist through import, commands, rendering, labels, bonds, SDF/CDXML paths, and export.
 - Fixed Office full-document copy behavior and refreshed desktop/Office architecture documentation so full-document and target-specific clipboard/OLE payload paths stay clear while chemical logic remains in the shared engine.
-- Added the public ChemCore Codex skill suite and agent examples. The release includes CLI, development, drawing-agent, and Office skills with English/Chinese guidance, install/sync helpers, runtime discovery, session helpers, repo hygiene/build references, plus a complete reaction-agent POC with request, commands, captures, context/detail/targets JSON, Office payload output, CDXML/SVG output, and a runner.
+- Added the public ChemSema Codex skill suite and agent examples. The release includes CLI, development, drawing-agent, and Office skills with English/Chinese guidance, install/sync helpers, runtime discovery, session helpers, repo hygiene/build references, plus a complete reaction-agent POC with request, commands, captures, context/detail/targets JSON, Office payload output, CDXML/SVG output, and a runner.
 - Updated the English and Chinese README, CLI guides, command-script and JSONL session protocol notes, CLI-GUI parity checklist, editor command history, project rules, architecture docs, and public metadata. The shared browser/Harmony WASM engine artifact was rebuilt so all shipped shells use the updated engine behavior.
 
 ## 1.0.0-beta.5
@@ -148,7 +161,7 @@ desktop/browser stabilization.
   contracts, an agent demo corpus, an agent POC workflow note,
   release-quality matrices, and a split `agent/` CLI module layout to keep the
   expanded agent surface maintainable.
-- Packaged an installed `chemcore-cli` entry point alongside the desktop app, with installer PATH registration, `chemcore-entrypoints.json`, an installed agent guide, and `guide`/`doctor` discovery for machine callers.
+- Packaged an installed `chemsema-cli` entry point alongside the desktop app, with installer PATH registration, `chemsema-entrypoints.json`, an installed agent guide, and `guide`/`doctor` discovery for machine callers.
 - Clarified the CLI's two invocation modes: one-shot PowerShell commands for independent work, and JSONL `session` for repeated operations on the same loaded document.
 - Expanded the CLI agent workflow with `targets`, `context`, `detail`, `capture`, and `copy`, covering stable selectors, nearby-object summaries, raw object/detail lookup, precise crops, and Office/OLE clipboard payload generation.
 - Added deterministic high-resolution capture for objects, molecules, nodes, bonds, all content, explicit bounds, and multi-target selections. Multi-target crops use the minimum union bounds, matching the GUI selection box, and support absolute/relative per-side expansion, fixed pixel sizing, render metadata, and verified PNG/SVG writes.
@@ -167,8 +180,8 @@ desktop/browser stabilization.
 
 Large-document interaction, CDXML fidelity, and agent-friendly CLI beta release.
 
-- Added the `chemcore-cli` crate and direct engine commands for headless inspection, conversion, export, document editing, and structured JSON execution reports.
-- Added `--document-json`, `--inspect-after`, and improved `.json`/`.ccjs` handling so scripts and agents can exchange ChemCore documents without driving the GUI.
+- Added the `chemsema-cli` crate and direct engine commands for headless inspection, conversion, export, document editing, and structured JSON execution reports.
+- Added `--document-json`, `--inspect-after`, and improved `.json`/`.ccjs` handling so scripts and agents can exchange ChemSema documents without driving the GUI.
 - Improved CDXML import/export fidelity across labels, arrows, symbols, bold widths, radicals, grouped graphics, stacked/attached labels, cached fragments, and bracketed labels.
 - Imported CDXML bracket pairs as bracket groups with independently draggable left/right sides while preserving repeat-count and bracket-label semantics.
 - Tightened glyph clipping, label geometry, imported label anchors, and synthetic SVG snapshots.
@@ -185,7 +198,7 @@ Large-document interaction, CDXML fidelity, and agent-friendly CLI beta release.
 
 Installer hotfix beta release.
 
-- Fixed the Windows NSIS installer Office/OLE registration hook so it finds `chemcore-office.exe` in the installed application directory instead of assuming the old `resources` subdirectory layout.
+- Fixed the Windows NSIS installer Office/OLE registration hook so it finds `chemsema-office.exe` in the installed application directory instead of assuming the old `resources` subdirectory layout.
 - Kept compatibility with both root-level and `resources`-level Office server layouts so older packaging experiments do not break registration.
 - Hardened post-install registration: the installer now tries machine-wide COM/OLE registration first, then falls back to current-user registration if the machine step cannot run or returns a failure code.
 - Hardened uninstall cleanup by attempting both machine-wide and current-user Office/OLE unregistration.

@@ -211,25 +211,25 @@ def run_chemdraw_svg(records: list[dict[str, object]], out_root: Path, repo_root
         record["chemdraw_svg"] = str(out_dir / f"{record['stem']}.chemdraw.svg")
 
 
-def build_chemcore_example(repo_root: Path) -> Path:
-    run(["cargo", "build", "-p", "chemcore-engine", "--example", "cdxml_to_svg"], cwd=repo_root)
+def build_chemsema_example(repo_root: Path) -> Path:
+    run(["cargo", "build", "-p", "chemsema-engine", "--example", "cdxml_to_svg"], cwd=repo_root)
     exe = repo_root / "target" / "debug" / "examples" / "cdxml_to_svg.exe"
     if not exe.exists():
         raise RuntimeError(f"missing built example: {exe}")
     return exe
 
 
-def run_chemcore_svg(records: list[dict[str, object]], out_root: Path, repo_root: Path) -> None:
-    out_dir = out_root / "svg" / "chemcore"
+def run_chemsema_svg(records: list[dict[str, object]], out_root: Path, repo_root: Path) -> None:
+    out_dir = out_root / "svg" / "chemsema"
     out_dir.mkdir(parents=True, exist_ok=True)
-    exe = build_chemcore_example(repo_root)
+    exe = build_chemsema_example(repo_root)
     for record in records:
         cdxml = Path(str(record.get("cdxml", "")))
         if not cdxml.exists():
             continue
-        output = out_dir / f"{record['stem']}.chemcore.svg"
+        output = out_dir / f"{record['stem']}.chemsema.svg"
         run([str(exe), str(cdxml), str(output)], cwd=repo_root)
-        record["chemcore_svg"] = str(output)
+        record["chemsema_svg"] = str(output)
 
 
 def render_compare_pngs(records: list[dict[str, object]], out_root: Path, repo_root: Path, scale: int) -> None:
@@ -238,8 +238,8 @@ def render_compare_pngs(records: list[dict[str, object]], out_root: Path, repo_r
     items = []
     for record in records:
         chemdraw_svg = Path(str(record.get("chemdraw_svg", "")))
-        chemcore_svg = Path(str(record.get("chemcore_svg", "")))
-        if not chemdraw_svg.exists() or not chemcore_svg.exists():
+        chemsema_svg = Path(str(record.get("chemsema_svg", "")))
+        if not chemdraw_svg.exists() or not chemsema_svg.exists():
             continue
         output = png_dir / f"{record['stem']}.compare.png"
         record["compare_png"] = str(output)
@@ -250,7 +250,7 @@ def render_compare_pngs(records: list[dict[str, object]], out_root: Path, repo_r
                 "sourcePpt": record.get("pptx_name", ""),
                 "embedding": record.get("embedding", ""),
                 "chemdrawSvg": str(chemdraw_svg),
-                "chemcoreSvg": str(chemcore_svg),
+                "chemsemaSvg": str(chemsema_svg),
                 "output": str(output),
             }
         )
@@ -279,7 +279,7 @@ def write_manifest(records: list[dict[str, object]], pptx_paths: list[Path], out
     }
     (out_root / "manifest.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     lines = [
-        "# ChemDraw / ChemCore PPTX CDX Render Comparison",
+        "# ChemDraw / ChemSema PPTX CDX Render Comparison",
         "",
         f"- PPTX files: {len(pptx_paths)}",
         f"- Extracted CDX/CDXML: {len(records)}",
@@ -297,10 +297,10 @@ def write_manifest(records: list[dict[str, object]], pptx_paths: list[Path], out
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Extract PPTX ChemDraw CDX, render ChemDraw/ChemCore SVG, and make side-by-side PNGs.")
+    parser = argparse.ArgumentParser(description="Extract PPTX ChemDraw CDX, render ChemDraw/ChemSema SVG, and make side-by-side PNGs.")
     parser.add_argument("inputs", nargs="+", help="PPTX files or folders containing PPTX files")
     parser.add_argument("--out", default=None, help="Output folder")
-    parser.add_argument("--repo-root", default=str(Path.cwd()), help="ChemCore repository root")
+    parser.add_argument("--repo-root", default=str(Path.cwd()), help="ChemSema repository root")
     parser.add_argument("--chemdraw-chunk-size", type=int, default=20)
     parser.add_argument("--png-scale", type=int, default=3)
     args = parser.parse_args()
@@ -310,7 +310,7 @@ def main() -> None:
         out_root = Path(args.out).resolve()
     else:
         stamp = time.strftime("%Y%m%d-%H%M%S")
-        out_root = Path.home() / "Desktop" / f"chemcore-chemdraw-pptx-compare-{stamp}"
+        out_root = Path.home() / "Desktop" / f"chemsema-chemdraw-pptx-compare-{stamp}"
     out_root.mkdir(parents=True, exist_ok=True)
 
     pptx_paths = discover_pptx(args.inputs)
@@ -324,7 +324,7 @@ def main() -> None:
         raise RuntimeError("no CDX objects extracted")
     convert_cdx_to_cdxml_with_pycdxml(records, out_root)
     run_chemdraw_svg(records, out_root, repo_root, args.chemdraw_chunk_size)
-    run_chemcore_svg(records, out_root, repo_root)
+    run_chemsema_svg(records, out_root, repo_root)
     render_compare_pngs(records, out_root, repo_root, args.png_scale)
     write_manifest(records, pptx_paths, out_root)
     print(f"[DONE] output: {out_root}")

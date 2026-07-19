@@ -26,7 +26,7 @@ export function createCanvasContextMenuHost(options) {
     }
     try {
       const payload = await options.desktopFileHost.readClipboard();
-      return Boolean(payload?.chemcoreFragmentJson);
+      return Boolean(payload?.chemsemaFragmentJson);
     } catch (error) {
       console.warn("Failed to inspect native clipboard", error);
       return false;
@@ -264,9 +264,9 @@ export function createCanvasContextMenuHost(options) {
     }
     hideCanvasContextMenu();
     let changed = false;
-    const executeDocumentCommand = async (chemcoreCommand, apply) => {
+    const executeDocumentCommand = async (chemsemaCommand, apply) => {
       if (options.commandEngine?.executeEngineCommand) {
-        const result = await options.commandEngine.executeEngineCommand(chemcoreCommand, apply);
+        const result = await options.commandEngine.executeEngineCommand(chemsemaCommand, apply);
         if (result.changed) {
           options.renderDocumentChange?.(result) || options.renderDocument();
         }

@@ -2,7 +2,7 @@ export function parseEngineJson(json, fallback = null) {
   try {
     return JSON.parse(json);
   } catch (error) {
-    console.warn("Failed to parse chemcore engine JSON", error);
+    console.warn("Failed to parse chemsema engine JSON", error);
     return fallback;
   }
 }

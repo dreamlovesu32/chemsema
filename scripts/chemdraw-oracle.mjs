@@ -99,7 +99,7 @@ export async function generateChemDrawOracle(options = {}) {
     return { input, outputs };
   });
 
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "chemcore-chemdraw-oracle-"));
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "chemsema-chemdraw-oracle-"));
   const jobsPath = path.join(tempDir, "jobs.json");
   const scriptPath = path.join(tempDir, "run.ps1");
   await fs.writeFile(jobsPath, JSON.stringify(jobs, null, 2), "utf8");

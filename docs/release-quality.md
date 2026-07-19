@@ -1,4 +1,4 @@
-# ChemCore Release Quality Matrix
+# ChemSema Release Quality Matrix
 
 This matrix records the current confidence level for major public surfaces. It
 is a release-quality guide, not a marketing claim.
@@ -35,7 +35,7 @@ The current beta treats these areas as hardening priorities:
 Before a public beta release:
 
 1. Run `npm ci`.
-2. Run `cargo build -p chemcore-office -p chemcore-cli --release`.
+2. Run `cargo build -p chemsema-office -p chemsema-cli --release`.
 3. Run `cargo test`.
 4. Run `npm run verify`.
 5. Build the installer with `npm run desktop:build`.
@@ -44,7 +44,7 @@ Before a public beta release:
 
 ## Current Communication Boundary
 
-ChemCore has a verifiable prototype for CDXML fidelity, Office workflows, and
+ChemSema has a verifiable prototype for CDXML fidelity, Office workflows, and
 agent-oriented CLI operation. It is still a beta build and needs more real
 files, real workflows, security hardening, and clean-install validation before
 being described as a full ChemDraw replacement.

@@ -161,7 +161,7 @@ export function createTextSymbolPalette({ mount, payload, elementPayload, onSele
       keepElementPlacement: !!options.keepElementPlacement,
     });
     if (open) {
-      document.dispatchEvent(new CustomEvent("chemcore:quick-palette-open", { detail: { mode: currentMode() } }));
+      document.dispatchEvent(new CustomEvent("chemsema:quick-palette-open", { detail: { mode: currentMode() } }));
     }
   }
 
@@ -227,10 +227,10 @@ export function createTextSymbolPalette({ mount, payload, elementPayload, onSele
     event.preventDefault();
   });
 
-  document.addEventListener("chemcore:quick-palette-toggle", (event) => {
+  document.addEventListener("chemsema:quick-palette-toggle", (event) => {
     toggleMode(event.detail?.mode);
   });
-  document.addEventListener("chemcore:quick-palette-open-mode", (event) => {
+  document.addEventListener("chemsema:quick-palette-open-mode", (event) => {
     setOpen(true, event.detail?.mode);
   });
   document.addEventListener("pointerdown", (event) => {

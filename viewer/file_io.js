@@ -1,25 +1,25 @@
-export const CHEMCORE_TEXT_EXTENSION = ".ccjs";
-export const CHEMCORE_COMPRESSED_EXTENSION = ".ccjz";
-export const CHEMCORE_TEXT_MIME = "application/vnd.chemcore+json";
-export const CHEMCORE_COMPRESSED_MIME = "application/vnd.chemcore+gzip";
+export const CHEMSEMA_TEXT_EXTENSION = ".ccjs";
+export const CHEMSEMA_COMPRESSED_EXTENSION = ".ccjz";
+export const CHEMSEMA_TEXT_MIME = "application/vnd.chemsema+json";
+export const CHEMSEMA_COMPRESSED_MIME = "application/vnd.chemsema+gzip";
 export const CHEMDRAW_CDX_MIME = "chemical/x-cdx";
 export const MDL_SDF_MIME = "chemical/x-mdl-sdfile";
 
 export function documentTitleForFileName(documentData) {
-  const rawTitle = String(documentData?.document?.title || "chemcore-document").trim();
+  const rawTitle = String(documentData?.document?.title || "chemsema-document").trim();
   const safeTitle = rawTitle
     .replace(/[\\/:*?"<>|]+/g, "-")
     .replace(/\s+/g, "-")
     .replace(/^-+|-+$/g, "");
-  return `${safeTitle || "chemcore-document"}${CHEMCORE_COMPRESSED_EXTENSION}`;
+  return `${safeTitle || "chemsema-document"}${CHEMSEMA_COMPRESSED_EXTENSION}`;
 }
 
 export function saveFormatFromFileName(fileName) {
   const lowerName = String(fileName || "").toLowerCase();
-  if (lowerName.endsWith(CHEMCORE_TEXT_EXTENSION)) {
+  if (lowerName.endsWith(CHEMSEMA_TEXT_EXTENSION)) {
     return "ccjs";
   }
-  if (lowerName.endsWith(CHEMCORE_COMPRESSED_EXTENSION)) {
+  if (lowerName.endsWith(CHEMSEMA_COMPRESSED_EXTENSION)) {
     return "ccjz";
   }
   if (lowerName.endsWith(".svg")) {
@@ -79,38 +79,38 @@ export function looksLikeSdfFile(file, text = "") {
   return /(?:^|\n)M  END(?:\n|\r\n?)\s*\$\$\$\$/i.test(text);
 }
 
-export function looksLikeCompressedChemcoreFile(file) {
+export function looksLikeCompressedChemSemaFile(file) {
   const name = (file?.name || "").toLowerCase();
   const type = (file?.type || "").toLowerCase();
-  return name.endsWith(CHEMCORE_COMPRESSED_EXTENSION) || type.includes("gzip");
+  return name.endsWith(CHEMSEMA_COMPRESSED_EXTENSION) || type.includes("gzip");
 }
 
-export async function compressChemcoreText(text) {
+export async function compressChemSemaText(text) {
   if (!globalThis.CompressionStream) {
     throw new Error("This browser cannot write compressed .ccjz files.");
   }
-  const stream = new Blob([text], { type: CHEMCORE_TEXT_MIME })
+  const stream = new Blob([text], { type: CHEMSEMA_TEXT_MIME })
     .stream()
     .pipeThrough(new CompressionStream("gzip"));
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
-export async function decompressChemcoreText(bytes) {
+export async function decompressChemSemaText(bytes) {
   if (!globalThis.DecompressionStream) {
     throw new Error("This browser cannot open compressed .ccjz files.");
   }
-  const stream = new Blob([bytes], { type: CHEMCORE_COMPRESSED_MIME })
+  const stream = new Blob([bytes], { type: CHEMSEMA_COMPRESSED_MIME })
     .stream()
     .pipeThrough(new DecompressionStream("gzip"));
   return new Response(stream).text();
 }
 
-export function chemcoreOpenAcceptTypes() {
+export function chemsemaOpenAcceptTypes() {
   return [{
-    description: "ChemCore, ChemDraw, or SDF",
+    description: "ChemSema, ChemDraw, or SDF",
     accept: {
-      [CHEMCORE_COMPRESSED_MIME]: [CHEMCORE_COMPRESSED_EXTENSION],
-      [CHEMCORE_TEXT_MIME]: [CHEMCORE_TEXT_EXTENSION],
+      [CHEMSEMA_COMPRESSED_MIME]: [CHEMSEMA_COMPRESSED_EXTENSION],
+      [CHEMSEMA_TEXT_MIME]: [CHEMSEMA_TEXT_EXTENSION],
       "text/xml": [".cdxml"],
       "application/xml": [".cdxml"],
       "application/x-cdxml": [".cdxml"],
@@ -126,14 +126,14 @@ export function chemcoreOpenAcceptTypes() {
   }];
 }
 
-export function chemcoreOpenAcceptString() {
+export function chemsemaOpenAcceptString() {
   return [
-    CHEMCORE_COMPRESSED_EXTENSION,
-    CHEMCORE_TEXT_EXTENSION,
+    CHEMSEMA_COMPRESSED_EXTENSION,
+    CHEMSEMA_TEXT_EXTENSION,
     ".cdxml",
     ".cdx",
-    CHEMCORE_COMPRESSED_MIME,
-    CHEMCORE_TEXT_MIME,
+    CHEMSEMA_COMPRESSED_MIME,
+    CHEMSEMA_TEXT_MIME,
     "text/xml",
     "application/xml",
     "application/x-cdxml",

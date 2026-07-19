@@ -1,6 +1,6 @@
-class ChemcoreColorHost {
+class ChemSemaColorHost {
   constructor({ root = document.body, getPalette } = {}) {
-    this.kind = "chemcore";
+    this.kind = "chemsema";
     this.root = root;
     this.getPalette = getPalette;
   }
@@ -10,7 +10,7 @@ class ChemcoreColorHost {
     existing?.querySelector(".color-dialog-close")?.click();
     const palette = await this.palette(initialColor, customColors);
     return new Promise((resolve) => {
-      const dialog = new ChemcoreColorDialog({
+      const dialog = new ChemSemaColorDialog({
         root: this.root,
         palette,
         resolve,
@@ -27,13 +27,13 @@ class ChemcoreColorHost {
     try {
       return normalizeColorDialogPalette(await this.getPalette(initialColor, customColors), fallback);
     } catch (error) {
-      console.warn("[chemcore] failed to load engine color palette", error);
+      console.warn("[chemsema] failed to load engine color palette", error);
       return fallback;
     }
   }
 }
 
-class ChemcoreColorDialog {
+class ChemSemaColorDialog {
   constructor({ root, palette, resolve }) {
     this.root = root;
     this.resolve = resolve;
@@ -253,7 +253,7 @@ class ChemcoreColorDialog {
 }
 
 export function createColorHost(options = {}) {
-  return new ChemcoreColorHost(options);
+  return new ChemSemaColorHost(options);
 }
 
 function colorChipHtml(color, selected) {

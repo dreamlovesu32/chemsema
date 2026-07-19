@@ -1,8 +1,8 @@
-# chemcore Format v0.1
+# chemsema Format v0.1
 
 ## Scope
 
-This document defines the first persisted document format for `chemcore`.
+This document defines the first persisted document format for `chemsema`.
 
 Version `0.1` is intentionally narrow. It is a document/object format for
 rendering and future editing.
@@ -36,7 +36,7 @@ At a high level:
 ```json
 {
   "format": {
-    "name": "chemcore",
+    "name": "chemsema",
     "version": "0.1",
     "unit": "pt"
   },
@@ -248,7 +248,7 @@ Example:
 "resources": {
   "mol_a": {
     "type": "molecule_fragment2d",
-    "encoding": "chemcore.molecule.fragment2d",
+    "encoding": "chemsema.molecule.fragment2d",
     "data": {}
   }
 }
@@ -450,7 +450,7 @@ consume `expansion`:
         { "label": "Et", "kind": "terminal", "parentIndex": 2, "bondOrderToParent": 1 }
       ],
       "expansion": {
-        "schema": "chemcore.functionalGroupExpansion.v1",
+        "schema": "chemsema.functionalGroupExpansion.v1",
         "connectionKind": "terminal",
         "complete": true,
         "atoms": [
@@ -540,7 +540,7 @@ For CDXML/CDX imports, the source `<t BoundingBox>` is preserved only as
 `meta.import.cdxml.boundingBox`. The native active `box` / `boxField` is rebuilt
 from the current label runs, baseline, alignment, and shared glyph metrics.
 Imported bounding boxes are cached source evidence and may be stale; they must
-not override current ChemCore label geometry.
+not override current ChemSema label geometry.
 
 CDXML/CDX root drawing defaults are preserved under
 `document.meta.import.cdxml.defaults`. Numeric physical values such as bond
@@ -838,7 +838,7 @@ Example:
     "background": "#ffffff"
   },
   "meta": {
-    "createdBy": "chemcore"
+    "createdBy": "chemsema"
   }
 }
 ```
@@ -895,8 +895,8 @@ Those capabilities belong in future versions once the base model is proven.
 
 The native document extensions are:
 
-- `.ccjz`: the default save format, containing gzip-compressed ChemCore JSON.
-- `.ccjs`: the readable/debug format, containing uncompressed ChemCore JSON.
+- `.ccjz`: the default save format, containing gzip-compressed ChemSema JSON.
+- `.ccjs`: the readable/debug format, containing uncompressed ChemSema JSON.
 
 This keeps the JSON payload inspectable without making the default file unnecessarily large:
 

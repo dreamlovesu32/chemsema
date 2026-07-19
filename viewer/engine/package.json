@@ -1,24 +1,24 @@
 {
-  "name": "chemcore-engine",
+  "name": "chemsema-engine",
   "type": "module",
   "collaborators": [
     "Jiajun Zhang"
   ],
-  "description": "Shared Rust engine for ChemCore chemical documents, editing, rendering, and import/export.",
-  "version": "1.0.0-beta.8",
+  "description": "Shared Rust engine for ChemSema chemical documents, editing, rendering, and import/export.",
+  "version": "1.0.0-beta.1",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/dreamlovesu32/chemcore"
+    "url": "https://github.com/dreamlovesu32/chemsema"
   },
   "files": [
-    "chemcore_engine_bg.wasm",
-    "chemcore_engine.js",
-    "chemcore_engine.d.ts"
+    "chemsema_engine_bg.wasm",
+    "chemsema_engine.js",
+    "chemsema_engine.d.ts"
   ],
-  "main": "chemcore_engine.js",
-  "homepage": "https://dreamlovesu32.github.io/chemcore/",
-  "types": "chemcore_engine.d.ts",
+  "main": "chemsema_engine.js",
+  "homepage": "https://dreamlovesu32.github.io/chemsema/",
+  "types": "chemsema_engine.d.ts",
   "sideEffects": [
     "./snippets/*"
   ]

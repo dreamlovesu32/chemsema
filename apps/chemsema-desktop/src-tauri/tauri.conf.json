@@ -1,0 +1,104 @@
+{
+  "$schema": "../../../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "ChemSema",
+  "version": "1.0.0-beta.1",
+  "identifier": "com.chemsema.desktop",
+  "build": {
+    "frontendDist": "../../../viewer",
+    "devUrl": "http://127.0.0.1:8767/viewer/",
+    "beforeDevCommand": "node ../../scripts/desktop-dev-server.mjs",
+    "beforeBuildCommand": "node ../../scripts/build-engine-wasm.mjs"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "ChemSema",
+        "width": 1280,
+        "height": 900,
+        "minWidth": 960,
+        "minHeight": 640,
+        "resizable": true,
+        "decorations": false,
+        "shadow": true,
+        "dragDropEnabled": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: asset: http://asset.localhost; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost asset: http://asset.localhost; media-src 'self' data: blob:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+      "devCsp": "default-src 'self' http://127.0.0.1:8767; script-src 'self' http://127.0.0.1:8767 'wasm-unsafe-eval' 'unsafe-eval'; style-src 'self' http://127.0.0.1:8767 'unsafe-inline'; img-src 'self' http://127.0.0.1:8767 data: blob: asset: http://asset.localhost; font-src 'self' http://127.0.0.1:8767 data:; connect-src 'self' http://127.0.0.1:8767 ws://127.0.0.1:8767 ipc: http://ipc.localhost asset: http://asset.localhost; media-src 'self' data: blob:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "publisher": "Jiajun Zhang",
+    "resources": {
+      "resources/chemsema-entrypoints.json": "chemsema-entrypoints.json",
+      "resources/chemsema-agent-guide.md": "chemsema-agent-guide.md",
+      "../../../docs/chemsema-cli-guide.md": "chemsema-cli-guide.md",
+      "../../../target/release/chemsema-cli.exe": "chemsema-cli.exe",
+      "../../../target/release/chemsema-office.exe": "chemsema-office.exe"
+    },
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "fileAssociations": [
+      {
+        "ext": ["ccjz"],
+        "name": "ChemSema Compressed Document",
+        "description": "ChemSema compressed document",
+        "role": "Editor",
+        "mimeType": "application/vnd.chemsema+gzip"
+      },
+      {
+        "ext": ["ccjs"],
+        "name": "ChemSema JSON Document",
+        "description": "ChemSema readable JSON document",
+        "role": "Editor",
+        "mimeType": "application/vnd.chemsema+json"
+      },
+      {
+        "ext": ["cdxml"],
+        "name": "ChemDraw CDXML Document",
+        "description": "ChemDraw CDXML document",
+        "role": "Editor",
+        "mimeType": "chemical/x-cdxml"
+      },
+      {
+        "ext": ["cdx"],
+        "name": "ChemDraw CDX Document",
+        "description": "ChemDraw CDX document",
+        "role": "Editor",
+        "mimeType": "chemical/x-cdx"
+      },
+      {
+        "ext": ["sdf", "sd"],
+        "name": "MDL SDfile",
+        "description": "MDL structure-data file",
+        "role": "Editor",
+        "mimeType": "chemical/x-mdl-sdfile"
+      }
+    ],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "offlineInstaller",
+        "silent": true
+      },
+      "nsis": {
+        "installerIcon": "icons/icon.ico",
+        "installMode": "perMachine",
+        "displayLanguageSelector": true,
+        "installerHooks": "./installer/office-registration.nsh"
+      }
+    },
+    "android": {
+      "debugApplicationIdSuffix": ".debug"
+    }
+  }
+}

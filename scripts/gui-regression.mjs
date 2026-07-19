@@ -8,11 +8,11 @@ import { chromium } from "playwright";
 
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const host = "127.0.0.1";
-const port = Number(process.env.CHEMCORE_DESKTOP_DEV_PORT || 8767);
+const port = Number(process.env.CHEMSEMA_DESKTOP_DEV_PORT || 8767);
 const baseUrl = `http://${host}:${port}/viewer/`;
 const edgePath = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
 const tmpDir = join(rootDir, "tmp", "gui-regression");
-const exactTieOnly = process.env.CHEMCORE_GUI_CASE === "exact-tie-double";
+const exactTieOnly = process.env.CHEMSEMA_GUI_CASE === "exact-tie-double";
 
 function waitForPort(timeoutMs = 5000) {
   const deadline = Date.now() + timeoutMs;
@@ -73,10 +73,10 @@ function capturePageErrors(page, errors) {
 async function installBrowserMocks(context) {
   await context.addInitScript(() => {
     const encoder = new TextEncoder();
-    window.__chemcoreSavePickerWrites = [];
-    window.__chemcoreSavePickerQueue = [];
-    window.__chemcoreSetSavePickerQueue = (names) => {
-      window.__chemcoreSavePickerQueue = Array.from(names || []);
+    window.__chemsemaSavePickerWrites = [];
+    window.__chemsemaSavePickerQueue = [];
+    window.__chemsemaSetSavePickerQueue = (names) => {
+      window.__chemsemaSavePickerQueue = Array.from(names || []);
     };
     window.confirm = () => true;
 
@@ -92,9 +92,9 @@ async function installBrowserMocks(context) {
     Object.defineProperty(window, "showSaveFilePicker", {
       configurable: true,
       value: async (options = {}) => {
-        const name = window.__chemcoreSavePickerQueue.shift()
+        const name = window.__chemsemaSavePickerQueue.shift()
           || options.suggestedName
-          || "chemcore-document.ccjz";
+          || "chemsema-document.ccjz";
         const record = {
           name,
           suggestedName: options.suggestedName || null,
@@ -103,7 +103,7 @@ async function installBrowserMocks(context) {
           chunkTypes: [],
           closed: false,
         };
-        window.__chemcoreSavePickerWrites.push(record);
+        window.__chemsemaSavePickerWrites.push(record);
         return {
           name,
           async createWritable() {
@@ -160,7 +160,7 @@ async function openViewer(context, errors, viewport = { width: 1400, height: 100
 
 async function waitForReady(page) {
   await page.waitForFunction(
-    () => !!window.__chemcoreDebug?.state?.editorEngine && !!window.__chemcoreDebug?.document,
+    () => !!window.__chemsemaDebug?.state?.editorEngine && !!window.__chemsemaDebug?.document,
     null,
     { timeout: 30000 },
   );
@@ -181,21 +181,21 @@ async function drawBondWithMouse(page) {
 
 async function documentSummary(page) {
   return page.evaluate(() => {
-    const doc = window.__chemcoreDebug?.document || null;
+    const doc = window.__chemsemaDebug?.document || null;
     const resources = Object.values(doc?.resources || {});
     const resourceBonds = resources.reduce((sum, resource) => sum + (resource?.data?.bonds?.length || 0), 0);
     const resourceNodes = resources.reduce((sum, resource) => sum + (resource?.data?.nodes?.length || 0), 0);
-    const selectionBounds = JSON.parse(window.__chemcoreDebug?.state?.editorEngine?.selectionBoundsJson?.() || "null");
+    const selectionBounds = JSON.parse(window.__chemsemaDebug?.state?.editorEngine?.selectionBoundsJson?.() || "null");
     return {
       title: doc?.document?.title || null,
-      currentFileName: window.__chemcoreDebug?.state?.currentFileName || null,
+      currentFileName: window.__chemsemaDebug?.state?.currentFileName || null,
       objects: doc?.objects?.length || 0,
       resourceBonds,
       resourceNodes,
       renderedBonds: document.querySelectorAll("[data-bond-id]").length,
       renderedNodes: document.querySelectorAll("[data-node-id]").length,
       selectionBounds,
-      activeTool: window.__chemcoreDebug?.editorState?.activeTool || null,
+      activeTool: window.__chemsemaDebug?.editorState?.activeTool || null,
       bondToolbarButtons: document.querySelectorAll('#secondary-toolbar [data-secondary-value^="bond-"]').length,
       blankToolbarIcons: [...document.querySelectorAll("#secondary-toolbar button")]
         .filter((button) => !button.querySelector("svg")).length,
@@ -205,17 +205,17 @@ async function documentSummary(page) {
 
 async function setSaveQueue(page, names) {
   await page.evaluate((nextNames) => {
-    window.__chemcoreSetSavePickerQueue(nextNames);
+    window.__chemsemaSetSavePickerQueue(nextNames);
   }, names);
 }
 
 async function saveWrites(page) {
-  return page.evaluate(() => window.__chemcoreSavePickerWrites);
+  return page.evaluate(() => window.__chemsemaSavePickerWrites);
 }
 
 async function waitForSaveWrite(page, index) {
   await page.waitForFunction(
-    (targetIndex) => window.__chemcoreSavePickerWrites?.[targetIndex]?.closed === true,
+    (targetIndex) => window.__chemsemaSavePickerWrites?.[targetIndex]?.closed === true,
     index,
   );
   return (await saveWrites(page))[index];
@@ -343,7 +343,7 @@ async function verifySelectionOverlayConsistency(page) {
 
 function makeShortDoubleBondDocument() {
   return {
-    format: { name: "chemcore", version: "0.1" },
+    format: { name: "chemsema", version: "0.1" },
     document: {
       id: "doc_short_double",
       title: "short double bond",
@@ -370,9 +370,9 @@ function makeShortDoubleBondDocument() {
     resources: {
       mol_001: {
         type: "molecule_fragment2d",
-        encoding: "chemcore.molecule.fragment2d",
+        encoding: "chemsema.molecule.fragment2d",
         data: {
-          schema: "chemcore.molecule.fragment2d",
+          schema: "chemsema.molecule.fragment2d",
           bbox: [95, 95, 20, 10],
           nodes: [
             { id: "n1", element: "C", atomicNumber: 6, position: [100, 100], charge: 0, numHydrogens: 0 },
@@ -387,7 +387,7 @@ function makeShortDoubleBondDocument() {
 
 function makeExactTieDoubleBondDocument() {
   return {
-    format: { name: "chemcore", version: "0.1" },
+    format: { name: "chemsema", version: "0.1" },
     document: {
       id: "doc_exact_tie_double",
       title: "exact tie double bond",
@@ -414,9 +414,9 @@ function makeExactTieDoubleBondDocument() {
     resources: {
       mol_001: {
         type: "molecule_fragment2d",
-        encoding: "chemcore.molecule.fragment2d",
+        encoding: "chemsema.molecule.fragment2d",
         data: {
-          schema: "chemcore.molecule.fragment2d",
+          schema: "chemsema.molecule.fragment2d",
           bbox: [100, 70, 30, 60],
           nodes: [
             { id: "n1", element: "C", atomicNumber: 6, position: [100, 100], charge: 0, numHydrogens: 0 },
@@ -438,13 +438,13 @@ function makeExactTieDoubleBondDocument() {
 }
 
 async function verifyExactTieDoubleBondIncrementalReplacement(page) {
-  await page.evaluate((doc) => window.__chemcoreDebug.loadDocumentForTest(doc), makeExactTieDoubleBondDocument());
+  await page.evaluate((doc) => window.__chemsemaDebug.loadDocumentForTest(doc), makeExactTieDoubleBondDocument());
   await page.waitForFunction(() => document.querySelectorAll('[data-layer="document-content"] [data-bond-id="b1"]').length === 2);
   await page.locator('button[data-tool="bond"]').click();
   await page.locator('button[data-secondary-value="bond-single"]').click();
   const points = await page.evaluate(() => ({
-    start: window.__chemcoreDebug.worldToClient(130, 100),
-    end: window.__chemcoreDebug.worldToClient(130, 130),
+    start: window.__chemsemaDebug.worldToClient(130, 100),
+    end: window.__chemsemaDebug.worldToClient(130, 130),
   }));
 
   await page.mouse.move(points.start.x, points.start.y);
@@ -454,8 +454,8 @@ async function verifyExactTieDoubleBondIncrementalReplacement(page) {
   await page.waitForTimeout(300);
 
   const result = await page.evaluate(() => {
-    const command = JSON.parse(window.__chemcoreDebug.state.editorEngine.lastCommandResultJson?.() || "null");
-    const doc = JSON.parse(window.__chemcoreDebug.state.editorEngine.documentJson());
+    const command = JSON.parse(window.__chemsemaDebug.state.editorEngine.lastCommandResultJson?.() || "null");
+    const doc = JSON.parse(window.__chemsemaDebug.state.editorEngine.documentJson());
     const fragment = doc.resources?.mol_001?.data;
     return {
       command,
@@ -481,20 +481,20 @@ async function verifyExactTieDoubleBondIncrementalReplacement(page) {
 }
 
 async function verifyDeleteToolFocusedBondCenter(page) {
-  await page.evaluate((doc) => window.__chemcoreDebug.loadDocumentForTest(doc), makeShortDoubleBondDocument());
+  await page.evaluate((doc) => window.__chemsemaDebug.loadDocumentForTest(doc), makeShortDoubleBondDocument());
   await page.waitForFunction(() => document.querySelector('[data-bond-id="b1"]'));
   await page.locator('button[data-tool="delete"]').click();
-  const center = await page.evaluate(() => window.__chemcoreDebug.worldToClient(105, 100));
+  const center = await page.evaluate(() => window.__chemsemaDebug.worldToClient(105, 100));
 
   await page.mouse.move(center.x, center.y);
   await page.mouse.click(center.x, center.y);
 
   await page.waitForFunction(() => {
-    const doc = JSON.parse(window.__chemcoreDebug.state.editorEngine.documentJson());
+    const doc = JSON.parse(window.__chemsemaDebug.state.editorEngine.documentJson());
     return doc.resources?.mol_001?.data?.bonds?.[0]?.order === 1;
   });
   const after = await page.evaluate(() => {
-    const doc = JSON.parse(window.__chemcoreDebug.state.editorEngine.documentJson());
+    const doc = JSON.parse(window.__chemsemaDebug.state.editorEngine.documentJson());
     return doc.resources?.mol_001?.data || null;
   });
   assert.equal(after?.nodes?.length, 2, `Delete tool removed the short double bond endpoint: ${JSON.stringify(after)}`);
@@ -506,13 +506,13 @@ async function verifyCopyPasteCut(page) {
   await drawBondWithMouse(page);
   const before = await documentSummary(page);
   await page.keyboard.press("Control+A");
-  await page.waitForFunction(() => JSON.parse(window.__chemcoreDebug.state.editorEngine.selectionBoundsJson() || "null"));
+  await page.waitForFunction(() => JSON.parse(window.__chemsemaDebug.state.editorEngine.selectionBoundsJson() || "null"));
   const selected = await documentSummary(page);
   assert(selected.selectionBounds, `Ctrl+A did not create a selection: ${JSON.stringify(selected)}`);
 
   await page.locator('button[data-command="copy"]').click();
   const copied = await page.evaluate(() => {
-    const engine = window.__chemcoreDebug.state.editorEngine;
+    const engine = window.__chemsemaDebug.state.editorEngine;
     return {
       hasClipboard: engine.hasClipboard?.() || false,
       fragmentLength: engine.clipboardSelectionJson?.()?.length || 0,
@@ -545,7 +545,7 @@ async function verifySaveAsFormats(page) {
   await page.locator('button[data-command="save-as"]').click();
   const ccjs = await waitForSaveWrite(page, 0);
   assert.equal(ccjs.name, "gui-save.ccjs");
-  assert(ccjs.text.includes('"objects"') && JSON.parse(ccjs.text).resources, "Save As .ccjs did not write a ChemCore JSON document.");
+  assert(ccjs.text.includes('"objects"') && JSON.parse(ccjs.text).resources, "Save As .ccjs did not write a ChemSema JSON document.");
 
   await page.locator('button[data-command="save-as"]').click();
   const cdxml = await waitForSaveWrite(page, 1);
@@ -566,7 +566,7 @@ async function verifySaveAsFormats(page) {
 async function createOpenFixture(context, errors) {
   const page = await openViewer(context, errors);
   await drawBondWithMouse(page);
-  const documentJson = await page.evaluate(() => window.__chemcoreDebug.state.editorEngine.documentJson());
+  const documentJson = await page.evaluate(() => window.__chemsemaDebug.state.editorEngine.documentJson());
   await page.close();
   const fixturePath = join(tmpDir, "gui-open-source.ccjs");
   writeFileSync(fixturePath, `${JSON.stringify(JSON.parse(documentJson), null, 2)}\n`, "utf8");
@@ -606,7 +606,7 @@ async function verifyZoomAndStyleMenu(page) {
   await page.locator('[data-document-style-preset="acs-document-1996"]').click();
   const styleState = await page.evaluate(() => ({
     menuHidden: document.querySelector("#document-style-menu")?.hidden,
-    preset: window.__chemcoreDebug?.state?.editorEngine?.documentStylePreset?.() || null,
+    preset: window.__chemsemaDebug?.state?.editorEngine?.documentStylePreset?.() || null,
   }));
   assert.equal(styleState.menuHidden, true, `Style menu did not close after selection: ${JSON.stringify(styleState)}`);
   assert.equal(styleState.preset, "acs-document-1996", `Style preset was not applied: ${JSON.stringify(styleState)}`);

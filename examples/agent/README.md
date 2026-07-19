@@ -1,15 +1,15 @@
-# ChemCore Agent Examples
+# ChemSema Agent Examples
 
 These examples are small, reproducible workflows for agents that use
-`chemcore-cli` without source-code context.
+`chemsema-cli` without source-code context.
 
-Set `CHEMCORE_CLI` to a local executable when testing from the repository:
+Set `CHEMSEMA_CLI` to a local executable when testing from the repository:
 
 ```powershell
-$env:CHEMCORE_CLI = "$PWD\target\debug\chemcore-cli.exe"
+$env:CHEMSEMA_CLI = "$PWD\target\debug\chemsema-cli.exe"
 ```
 
-Otherwise the scripts call `chemcore-cli` from PATH, which is how installed
+Otherwise the scripts call `chemsema-cli` from PATH, which is how installed
 desktop builds expose the CLI.
 
 Run every checked-in workflow from the repository root:

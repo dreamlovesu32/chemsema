@@ -15,7 +15,7 @@ const jbrBin = path.join(devEcoHome, "jbr", "bin");
 const ohpmBin = path.join(devEcoHome, "tools", "ohpm", "bin");
 const openHarmonyToolchains = path.join(openHarmonySdkHome, "toolchains");
 const hmsToolchains = path.join(sdkHome, "default", "hms", "toolchains");
-const harmonyProjectDir = path.join(process.cwd(), "apps", "chemcore-harmony");
+const harmonyProjectDir = path.join(process.cwd(), "apps", "chemsema-harmony");
 const buildProfile = path.join(harmonyProjectDir, "build-profile.json5");
 const exampleBuildProfile = path.join(harmonyProjectDir, "build-profile.example.json5");
 

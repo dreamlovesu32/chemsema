@@ -27,27 +27,27 @@ function logStep(label) {
 
 async function waitForReady() {
   await page.goto(url, { waitUntil: "networkidle" });
-  await page.waitForFunction(() => window.__chemcoreDebug?.state?.editorEngine && window.__chemcoreDebug?.document);
-  blankDocumentJson = await page.evaluate(() => window.__chemcoreDebug.state.editorEngine.documentJson());
+  await page.waitForFunction(() => window.__chemsemaDebug?.state?.editorEngine && window.__chemsemaDebug?.document);
+  blankDocumentJson = await page.evaluate(() => window.__chemsemaDebug.state.editorEngine.documentJson());
 }
 
 async function resetDocument() {
   await page.evaluate((documentJson) => {
-    const debug = window.__chemcoreDebug;
+    const debug = window.__chemsemaDebug;
     debug.state.editorEngine.loadDocumentJson(documentJson);
     debug.syncDocument();
   }, blankDocumentJson);
   await page.waitForFunction(() => (
-    window.__chemcoreDebug?.document
-    && window.__chemcoreDebug?.state?.editorEngine
-    && window.__chemcoreDebug?.engineState?.document?.resources?.mol_editor?.data?.nodes?.length === 0
-    && window.__chemcoreDebug?.engineState?.document?.resources?.mol_editor?.data?.bonds?.length === 0
+    window.__chemsemaDebug?.document
+    && window.__chemsemaDebug?.state?.editorEngine
+    && window.__chemsemaDebug?.engineState?.document?.resources?.mol_editor?.data?.nodes?.length === 0
+    && window.__chemsemaDebug?.engineState?.document?.resources?.mol_editor?.data?.bonds?.length === 0
   ));
 }
 
 async function engineEval(payload) {
   return page.evaluate((input) => {
-    const debug = window.__chemcoreDebug;
+    const debug = window.__chemsemaDebug;
     const engine = debug.state.editorEngine;
     const fragment = () => debug.engineState.document.resources.mol_editor.data;
     if (input.action === "drawBond") {
@@ -180,12 +180,12 @@ function normalProjection(node, center, normal) {
 
 async function saveWorldCrop(outputName, worldBounds) {
   await page.evaluate(() => {
-    const debug = window.__chemcoreDebug;
+    const debug = window.__chemsemaDebug;
     debug.state.editorEngine.clearInteraction();
     debug.syncDocument();
   });
   const clip = await page.evaluate((bounds) => {
-    const debug = window.__chemcoreDebug;
+    const debug = window.__chemsemaDebug;
     const topLeft = debug.worldToClient(bounds.x1, bounds.y1);
     const bottomRight = debug.worldToClient(bounds.x2, bounds.y2);
     return {

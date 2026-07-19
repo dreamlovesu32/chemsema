@@ -1,4 +1,4 @@
-# ChemCore 电荷与自由基符号归属规则
+# ChemSema 电荷与自由基符号归属规则
 
 本文档定义 8 个电荷/电子符号的化学语义。这些符号靠近分子端点或 attached label 时，应归属到对应原子，并参与价态、隐式氢、红框合法性和 repeating unit expansion。
 

@@ -1,14 +1,18 @@
-# ChemCore
+# ChemSema
 
 [中文版](./README.zh-CN.md) | **English**
 
-[![CI](https://github.com/dreamlovesu32/chemcore/actions/workflows/ci.yml/badge.svg)](https://github.com/dreamlovesu32/chemcore/actions/workflows/ci.yml)
-[![Demo](https://img.shields.io/badge/demo-GitHub%20Pages-2ea44f)](https://dreamlovesu32.github.io/chemcore/)
-[![Windows installer](https://img.shields.io/badge/Windows-installer-0078d4)](https://github.com/dreamlovesu32/chemcore/releases/download/v1.0.0-beta.8/Chemcore_1.0.0-beta.8_x64-setup.exe)
+[![CI](https://github.com/dreamlovesu32/chemsema/actions/workflows/ci.yml/badge.svg)](https://github.com/dreamlovesu32/chemsema/actions/workflows/ci.yml)
+[![Demo](https://img.shields.io/badge/demo-GitHub%20Pages-2ea44f)](https://dreamlovesu32.github.io/chemsema/)
+[![Windows installer](https://img.shields.io/badge/Windows-installer-0078d4)](https://github.com/dreamlovesu32/chemsema/releases/download/chemsema-v1.0.0-beta.1/ChemSema_1.0.0-beta.1_x64-setup.exe)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](./LICENSE)
-[![Version](https://img.shields.io/badge/version-1.0.0--beta.8-orange)](https://github.com/dreamlovesu32/chemcore/releases/tag/v1.0.0-beta.8)
+[![Version](https://img.shields.io/badge/version-1.0.0--beta.1-orange)](https://github.com/dreamlovesu32/chemsema/releases/tag/chemsema-v1.0.0-beta.1)
 
-ChemCore is an open-source platform for editable chemical documents. It is
+ChemSema was formerly published as **ChemCore**. The Git history remains intact,
+while current code, packages, documentation, and public paths use the new name.
+See the [project rename and compatibility notes](./docs/migration-to-chemsema.md).
+
+ChemSema is an open-source platform for editable chemical documents. It is
 built around the daily work of drawing structures, arranging reaction schemes,
 importing and exporting ChemDraw files, and moving editable chemistry through
 Word and PowerPoint without losing the ability to come back and edit it.
@@ -20,7 +24,7 @@ import/export, render primitives, structured diffing, and editable export. The
 goal is not only to display chemistry, but to preserve enough document state
 that humans, scripts, and agents can all operate on the same objects.
 
-For AI agents, ChemCore exposes that document model directly: one selector can
+For AI agents, ChemSema exposes that document model directly: one selector can
 move through structured inspection, local visual rendering, scoped editing,
 provenance, validation, and editable export without changing identity.
 
@@ -40,19 +44,19 @@ targets -> object:obj_mol_001
       `-- target.cdxml
 ```
 
-For researchers, ChemCore is a visual editor for structures, schemes, figures,
+For researchers, ChemSema is a visual editor for structures, schemes, figures,
 and Office documents. For agents, it is an object-grounded operation layer:
 agents can target a single object, read only the necessary data, inspect the
 matching local pixels, perform a range-limited edit, and prove that unrelated
 parts of the document were not changed.
 
-Windows users can try the current beta with the [ChemCore 1.0.0-beta.8 x64 installer](https://github.com/dreamlovesu32/chemcore/releases/download/v1.0.0-beta.8/Chemcore_1.0.0-beta.8_x64-setup.exe). The installer includes the desktop app and the Windows Office/OLE integration service; it is not code-signed yet, so Windows may show a SmartScreen warning during this beta stage. Maintainer: Jiajun ZHANG, [dreamlovesu@hotmail.com](mailto:dreamlovesu@hotmail.com). Feedback, issues, real CDXML files, and contributions are very welcome. The long-term goal is to make ChemCore a free research infrastructure platform that can grow into automation, batch processing, AI-assisted research interfaces, and more carefully designed scientific software.
+Windows users can try the current beta with the [ChemSema 1.0.0-beta.1 x64 installer](https://github.com/dreamlovesu32/chemsema/releases/download/chemsema-v1.0.0-beta.1/ChemSema_1.0.0-beta.1_x64-setup.exe). The installer includes the desktop app and the Windows Office/OLE integration service; it is not code-signed yet, so Windows may show a SmartScreen warning during this beta stage. Maintainer: Jiajun ZHANG, [dreamlovesu@hotmail.com](mailto:dreamlovesu@hotmail.com). Feedback, issues, real CDXML files, and contributions are very welcome. The long-term goal is to make ChemSema a free research infrastructure platform that can grow into automation, batch processing, AI-assisted research interfaces, and more carefully designed scientific software.
 
-![ChemCore editor interface](./docs/assets/readme/product-screenshot.png)
+![ChemSema editor interface](./docs/assets/readme/product-screenshot.png)
 
 ## Object-Grounded Agent CLI
 
-ChemCore's CLI is a protocol surface over the same engine used by the editor.
+ChemSema's CLI is a protocol surface over the same engine used by the editor.
 It is designed for agents that need to work on real chemical figures without
 reading the whole document, guessing from screenshots, or treating exported
 images as the source of truth.
@@ -80,15 +84,15 @@ Transactions add a safety layer before mutation. An agent can state the
 expected document hash or revision, the selectors it is allowed to edit,
 whether creation or deletion is allowed, whether the run is a dry run, and
 which postconditions must hold. Structured `diff` then compares documents by
-ChemCore ids and field paths, so the result can be audited by an agent, a test,
+ChemSema ids and field paths, so the result can be audited by an agent, a test,
 or a human reviewer.
 
 ```bash
-chemcore-cli targets figure1.cdxml --pretty
-chemcore-cli bundle figure1.cdxml --target object:obj_mol_004 --out-dir tmp/mol-bundle --context-radius 55 --capture-format png --subset-format ccjs --pretty
-chemcore-cli run figure1.cdxml transaction.json --out edited.ccjs --results report.json --pretty
-chemcore-cli diff before.ccjs edited.ccjs --out diff.json --pretty
-chemcore-cli export edited.ccjs target.cdxml --target object:obj_mol_004 --format cdxml
+chemsema-cli targets figure1.cdxml --pretty
+chemsema-cli bundle figure1.cdxml --target object:obj_mol_004 --out-dir tmp/mol-bundle --context-radius 55 --capture-format png --subset-format ccjs --pretty
+chemsema-cli run figure1.cdxml transaction.json --out edited.ccjs --results report.json --pretty
+chemsema-cli diff before.ccjs edited.ccjs --out diff.json --pretty
+chemsema-cli export edited.ccjs target.cdxml --target object:obj_mol_004 --format cdxml
 ```
 
 The checked-in [object-grounded edit example](./examples/agent/07-object-grounded-edit/)
@@ -118,8 +122,8 @@ target arrow itself, the partly overlapping molecule
 
 ## Project History
 
-ChemCore development started on April 23, 2026. The early development history is
-published on the [`history/pre-public-release`](https://github.com/dreamlovesu32/chemcore/tree/history/pre-public-release)
+ChemSema development started on April 23, 2026. The early development history is
+published on the [`history/pre-public-release`](https://github.com/dreamlovesu32/chemsema/tree/history/pre-public-release)
 branch so readers can follow how the project grew before the public release.
 
 ## Published Figure Comparison
@@ -134,15 +138,15 @@ Enantioselective C–H Cyanation of Trisubstituted Allenes,
 These real publication figures exercise molecule rendering, text layout,
 reaction arrows, brackets, colors, radical/single-electron dots, graphical
 objects, and Office-oriented vector output. The left column is exported by
-ChemDraw; the right column is exported by ChemCore after importing the same
+ChemDraw; the right column is exported by ChemSema after importing the same
 CDXML files.
 
 These benchmark CDXML files were authored by the maintainer and are included
 for reproducible rendering comparison.
 
-![ChemDraw and ChemCore CDXML rendering comparison](./docs/assets/readme/comparison/published-cdxml-comparison.svg)
+![ChemDraw and ChemSema CDXML rendering comparison](./docs/assets/readme/comparison/published-cdxml-comparison.svg)
 
-The generated SVG and Office EMF vector files for both ChemDraw and ChemCore
+The generated SVG and Office EMF vector files for both ChemDraw and ChemSema
 are kept in [docs/assets/readme/comparison](./docs/assets/readme/comparison/),
 and the README comparison image is regenerated from those refreshed assets.
 
@@ -151,8 +155,8 @@ The original CDXML files are tracked at the repository root:
 
 ## Agent Skills
 
-ChemCore includes a dedicated agent skill suite in
-[ChemCoreSkills](./ChemCoreSkills/). These skills package the project-specific
+ChemSema includes a dedicated agent skill suite in
+[ChemSemaSkills](./ChemSemaSkills/). These skills package the project-specific
 workflows for the CLI protocol, command scripts, drawing-agent planning,
 Office/OLE debugging, and repository development. The suite can
 be flattened into Codex skills or Claude Code skills; keep the installable
@@ -161,30 +165,30 @@ discovering them.
 
 ## Current Status
 
-Current version: `1.0.0-beta.8`.
+Current version: `1.0.0-beta.1`.
 
 The Windows x64 installer is available from the
-[v1.0.0-beta.8 release](https://github.com/dreamlovesu32/chemcore/releases/tag/v1.0.0-beta.8).
+[chemsema-v1.0.0-beta.1 release](https://github.com/dreamlovesu32/chemsema/releases/tag/chemsema-v1.0.0-beta.1).
 It bundles the Tauri/WebView2 desktop app, file associations, and the
 Office/OLE integration service. The first-stage HarmonyOS PC shell is available
 from source for DevEco Studio experiments, but it is not part of the Windows
 installer. The installer is still a beta build and is not code-signed yet. The
 browser demo is published through GitHub Pages:
-<https://dreamlovesu32.github.io/chemcore/>.
+<https://dreamlovesu32.github.io/chemsema/>.
 
 ## Product Highlights
 
-- **Built for real research drawing workflows**: ChemCore is designed around drawing structures, arranging reaction schemes, copying into Word or PowerPoint, and returning later for editing.
+- **Built for real research drawing workflows**: ChemSema is designed around drawing structures, arranging reaction schemes, copying into Word or PowerPoint, and returning later for editing.
 - **ChemDraw-compatible files and layout habits**: CDXML/CDX import and export are first-class paths, with source structure, text, arrows, brackets, symbols, colors, and object positions preserved as much as possible.
 - **One shared core for browser, desktop, and Office integration**: Editing rules, hit testing, chemical labels, render primitives, and import/export logic live in the Rust engine to avoid behavior drift between surfaces.
 - **Low-latency editing**: Hover, focus, selection, drag preview, rotation, and zoom use local WASM/Rust hot paths.
 - **Modern desktop behavior**: The Tauri/WebView2 desktop shell supports file open/save, drag-to-open, recent files, tabs, unsaved-change prompts, shortcuts, and Windows file association.
-- **Office paste and embedding are treated seriously**: Copy operations consider native ChemCore data, CDXML, SVG, EMF, RTF/OOXML, and OLE payloads so Office display and later editing remain reliable.
+- **Office paste and embedding are treated seriously**: Copy operations consider native ChemSema data, CDXML, SVG, EMF, RTF/OOXML, and OLE payloads so Office display and later editing remain reliable.
 - **Agent-oriented headless CLI**: The CLI can inspect documents, convert formats, query object ids and relationships, create exact PNG/SVG crops, execute JSON editing commands with audit reports, and reuse large documents through cache/session workflows.
 
 ## Implemented Capabilities
 
-- **CDXML/CDX import and export**: The Rust engine parses and writes ChemDraw-oriented formats, maps them into the ChemCore document model, and keeps enough drawing information for re-rendering and round trips.
+- **CDXML/CDX import and export**: The Rust engine parses and writes ChemDraw-oriented formats, maps them into the ChemSema document model, and keeps enough drawing information for re-rendering and round trips.
 - **Unified document and rendering model**: The document model, runtime scene, hit testing, selection state, and render primitives are defined in the engine while the front end focuses on events and display.
 - **Complex bond geometry**: Single, double, triple, bold, dashed, solid wedge, hashed wedge, label clipping, bond joins, crossing gaps, and ChemDraw-style template parameters are implemented.
 - **Arrows and graphical objects**: Reaction arrows, equilibrium arrows, hollow arrows, curved arrows, brackets, lines, shapes, and symbols are supported and continue to be aligned with ChemDraw interaction details.
@@ -197,7 +201,7 @@ browser demo is published through GitHub Pages:
 
 ## Design Details
 
-ChemCore focuses on the small details that decide whether a chemistry editor is
+ChemSema focuses on the small details that decide whether a chemistry editor is
 pleasant enough for real daily use. These rules live in the shared Rust engine
 where possible, so the browser, desktop shell, SVG/EMF output, and Office paths
 consume the same geometry.
@@ -261,7 +265,7 @@ documents. Selected content suppresses internal hover, drag previews follow
 locally before committing to the engine, and each desktop tab preserves its
 document, zoom, and runtime view state.
 
-Architecturally, ChemCore keeps the rules that affect consistency inside the
+Architecturally, ChemSema keeps the rules that affect consistency inside the
 engine wherever possible: hit testing, selection ranges, hover behavior,
 drawing geometry, text clipping, bond joins, implicit hydrogen, abbreviation
 recognition, CDXML parsing, and export rendering are shared by the browser,
@@ -275,28 +279,28 @@ screenshots, or real Office workflows are especially useful.
 
 If you use ChemDraw heavily, care about free research infrastructure, or are
 interested in AI-assisted scientific software development, you are very welcome
-to try ChemCore, open issues, join discussions, or contribute code.
+to try ChemSema, open issues, join discussions, or contribute code.
 
 The most useful feedback usually comes in two forms: concrete files with
 screenshots that help align ChemDraw display and interaction, and real writing
 workflows that expose copy/paste, Office editing, layout, or export problems.
-ChemCore is built to become a tool that can enter daily research work.
+ChemSema is built to become a tool that can enter daily research work.
 
 Please contact the maintainer using the email address at the top of this README.
 
 ## Repository Layout
 
 ```text
-chemcore/
-  crates/chemcore-engine/          Rust document, editing, rendering, CDXML, and WASM core
-  crates/chemcore-cli/             Headless file inspection, conversion, export, and command runner
-  crates/chemcore-desktop-service/ Native desktop engine sessions and file helpers
-  apps/chemcore-desktop/           Tauri Windows desktop application
-  apps/chemcore-office/            Windows Office/OLE integration server
+chemsema/
+  crates/chemsema-engine/          Rust document, editing, rendering, CDXML, and WASM core
+  crates/chemsema-cli/             Headless file inspection, conversion, export, and command runner
+  crates/chemsema-desktop-service/ Native desktop engine sessions and file helpers
+  apps/chemsema-desktop/           Tauri Windows desktop application
+  apps/chemsema-office/            Windows Office/OLE integration server
   viewer/                          Browser editor host and generated WASM package
   docs/                            Public rules, specs, architecture notes, and assets
-  ChemCoreSkills/                  Codex/Claude skills for ChemCore agent and development workflows
-  examples/                        Example ChemCore native documents
+  ChemSemaSkills/                  Codex/Claude skills for ChemSema agent and development workflows
+  examples/                        Example ChemSema native documents
   fixtures/                        Public synthetic CDXML regression fixtures
   scripts/                         Build, verification, and regression helpers
   shared/                          Shared JSON data consumed by Rust and viewer code
@@ -353,7 +357,7 @@ Build release binaries:
 
 ```bash
 npm run desktop:build-fast
-cargo build -p chemcore-office -p chemcore-cli --release
+cargo build -p chemsema-office -p chemsema-cli --release
 ```
 
 Register the Office/OLE integration for the current user:
@@ -383,9 +387,9 @@ Useful focused commands:
 
 ```bash
 npm test
-cargo test -p chemcore-engine
-cargo test -p chemcore-office
-cargo test -p chemcore-engine public_cdxml_fixture_svg_golden_snapshots_match --test render_document
+cargo test -p chemsema-engine
+cargo test -p chemsema-office
+cargo test -p chemsema-engine public_cdxml_fixture_svg_golden_snapshots_match --test render_document
 npm run build:engine-wasm
 node --check viewer/app.js
 ```
@@ -397,7 +401,7 @@ workflow is documented in [Rendering Comparison And Regression Assets](./docs/re
 
 Some scripts compare output against locally installed desktop applications or
 Office. Those flows are optional and may require Windows-specific software,
-local documents, or `CHEMCORE_PYTHON` to point at a Python environment with the
+local documents, or `CHEMSEMA_PYTHON` to point at a Python environment with the
 needed analysis packages.
 
 ## Design Documents
@@ -407,8 +411,8 @@ needed analysis packages.
 - Bond rendering rules: [English](./docs/bond-rendering-rules.md) / [中文](./docs/bond-rendering-rules.zh-CN.md)
 - Charge and radical symbol rules: [English](./docs/charge-radical-symbol-rules.md) / [中文](./docs/charge-radical-symbol-rules.zh-CN.md)
 - Agent POC workflow: [English](./docs/agent-poc-workflow.md) / [中文](./docs/agent-poc-workflow.zh-CN.md)
-- ChemCore agent skills: [English](./ChemCoreSkills/README.md) / [中文](./ChemCoreSkills/README_ZH.md)
-- ChemCore CLI command guide: [English](./docs/chemcore-cli-guide.md) / [中文](./docs/chemcore-cli-guide.zh-CN.md)
+- ChemSema agent skills: [English](./ChemSemaSkills/README.md) / [中文](./ChemSemaSkills/README_ZH.md)
+- ChemSema CLI command guide: [English](./docs/chemsema-cli-guide.md) / [中文](./docs/chemsema-cli-guide.zh-CN.md)
 - CLI/GUI parity checklist: [docs/cli-gui-parity-checklist.md](./docs/cli-gui-parity-checklist.md)
 - CLI protocol contracts: [docs/protocol](./docs/protocol/README.md)
 - Document commit contract: [English](./docs/document-commit-contract.md) / [中文](./docs/document-commit-contract.zh-CN.md)
@@ -430,5 +434,5 @@ needed analysis packages.
 
 ## License
 
-ChemCore is licensed under the Apache License, Version 2.0. See
+ChemSema is licensed under the Apache License, Version 2.0. See
 [LICENSE](./LICENSE) and [NOTICE](./NOTICE).

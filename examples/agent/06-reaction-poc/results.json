@@ -67,7 +67,7 @@
         "beforeRevision": 0,
         "hashAlgorithm": "sha256",
         "hashChanged": true,
-        "hashInput": "chemcore-document-json-v1"
+        "hashInput": "chemsema-document-json-v1"
       },
       "engineResult": {
         "beforeRevision": 0,
@@ -193,7 +193,7 @@
         "beforeRevision": 1,
         "hashAlgorithm": "sha256",
         "hashChanged": true,
-        "hashInput": "chemcore-document-json-v1"
+        "hashInput": "chemsema-document-json-v1"
       },
       "engineResult": {
         "beforeRevision": 1,
@@ -260,7 +260,7 @@
     "beforeRevision": 0,
     "hashAlgorithm": "sha256",
     "hashChanged": true,
-    "hashInput": "chemcore-document-json-v1"
+    "hashInput": "chemsema-document-json-v1"
   },
   "executedCount": 2,
   "failedCount": 0,
@@ -268,7 +268,7 @@
   "failedIndices": [],
   "io": {
     "input": {
-      "path": "D:\\Projects\\chemcore\\figure1.cdxml"
+      "path": "D:\\Projects\\chemsema\\figure1.cdxml"
     },
     "operation": "run",
     "output": {

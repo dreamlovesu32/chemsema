@@ -7,7 +7,7 @@ modify_path=true
 
 usage() {
   cat <<'EOF'
-Uninstall ChemCore CLI.
+Uninstall ChemSema CLI.
 
 Usage: uninstall.sh [options]
 
@@ -59,16 +59,16 @@ else
   esac
 fi
 
-marker_begin="# >>> chemcore-cli >>>"
-marker_end="# <<< chemcore-cli <<<"
+marker_begin="# >>> chemsema-cli >>>"
+marker_end="# <<< chemsema-cli <<<"
 
 if [[ -d "$prefix/plugins" ]] && find "$prefix/plugins" -mindepth 1 -maxdepth 1 -print -quit | grep -q .; then
-  echo "ChemCore plugins are still installed under $prefix/plugins." >&2
-  echo "Uninstall them before removing ChemCore CLI." >&2
+  echo "ChemSema plugins are still installed under $prefix/plugins." >&2
+  echo "Uninstall them before removing ChemSema CLI." >&2
   exit 1
 fi
 if [[ -n "$config_path" && -f "$config_path" ]]; then
-  temporary="$(mktemp "${config_path}.chemcore.XXXXXX")"
+  temporary="$(mktemp "${config_path}.chemsema.XXXXXX")"
   awk -v begin="$marker_begin" -v end="$marker_end" '
     $0 == begin { skipping = 1; next }
     $0 == end { skipping = 0; next }
@@ -79,16 +79,16 @@ if [[ -n "$config_path" && -f "$config_path" ]]; then
 fi
 
 rm -f \
-  "$prefix/bin/chemcore-cli" \
-  "$prefix/share/chemcore/chemcore-cli-guide.md" \
-  "$prefix/share/chemcore/chemcore-cli-guide.zh-CN.md" \
-  "$prefix/share/chemcore/LICENSE" \
-  "$prefix/share/chemcore/VERSION" \
-  "$prefix/share/chemcore/SHA256SUMS" \
-  "$prefix/share/chemcore/uninstall.sh"
-rmdir "$prefix/plugins" "$prefix/share/chemcore" "$prefix/share" "$prefix/bin" "$prefix" 2>/dev/null || true
+  "$prefix/bin/chemsema-cli" \
+  "$prefix/share/chemsema/chemsema-cli-guide.md" \
+  "$prefix/share/chemsema/chemsema-cli-guide.zh-CN.md" \
+  "$prefix/share/chemsema/LICENSE" \
+  "$prefix/share/chemsema/VERSION" \
+  "$prefix/share/chemsema/SHA256SUMS" \
+  "$prefix/share/chemsema/uninstall.sh"
+rmdir "$prefix/plugins" "$prefix/share/chemsema" "$prefix/share" "$prefix/bin" "$prefix" 2>/dev/null || true
 
-echo "ChemCore CLI removed from $prefix"
+echo "ChemSema CLI removed from $prefix"
 if [[ -n "$config_path" ]]; then
-  echo "ChemCore PATH block removed from $config_path"
+  echo "ChemSema PATH block removed from $config_path"
 fi

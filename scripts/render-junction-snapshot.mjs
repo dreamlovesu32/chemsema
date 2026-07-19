@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import init, { WasmEngine } from "../viewer/engine/chemcore_engine.js";
+import init, { WasmEngine } from "../viewer/engine/chemsema_engine.js";
 
 const BOND_STROKE = 0.035;
 const CHEMDRAW_INK = "#000000";
@@ -110,7 +110,7 @@ function renderSvg(primitives) {
 `;
 }
 
-await init(await fs.readFile(new URL("../viewer/engine/chemcore_engine_bg.wasm", import.meta.url)));
+await init(await fs.readFile(new URL("../viewer/engine/chemsema_engine_bg.wasm", import.meta.url)));
 
 const engine = new WasmEngine();
 engine.setTool("bond", "single");

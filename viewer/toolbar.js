@@ -110,7 +110,7 @@ const ICON_BLACK = "#111318";
 const ICON_BLUE = "#2f6fed";
 
 function iconSvg(content, className = "") {
-  const classAttr = className ? ` class="chemcore-icon ${className}"` : ` class="chemcore-icon"`;
+  const classAttr = className ? ` class="chemsema-icon ${className}"` : ` class="chemsema-icon"`;
   return `<svg${classAttr} viewBox="${ICON_VIEWBOX}" aria-hidden="true">${content}</svg>`;
 }
 
@@ -840,7 +840,7 @@ function arrowIconSvg(type = "solid", editorState = null) {
 }
 
 function kernelArrowIconSvg(viewBox, body) {
-  return `<svg class="chemcore-icon cc-arrow-icon cc-kernel-arrow-icon" viewBox="${viewBox}" aria-hidden="true">${body}</svg>`;
+  return `<svg class="chemsema-icon cc-arrow-icon cc-kernel-arrow-icon" viewBox="${viewBox}" aria-hidden="true">${body}</svg>`;
 }
 
 function currentArrowIconSvg(editorState) {

@@ -2,7 +2,7 @@
 
 ## 目标
 
-`chemcore` 需要与宿主无关的化学标签文本几何。
+`chemsema` 需要与宿主无关的化学标签文本几何。
 
 Rust engine 负责：
 
@@ -17,7 +17,7 @@ Rust engine 负责：
 
 当前活跃的 glyph geometry 实现在 Rust 中：
 
-- [crates/chemcore-engine/src/glyph_kernel.rs](../crates/chemcore-engine/src/glyph_kernel.rs)
+- [crates/chemsema-engine/src/glyph_kernel.rs](../crates/chemsema-engine/src/glyph_kernel.rs)
 
 Rust engine 现在消费三个共享 manifest：
 
@@ -72,14 +72,14 @@ python scripts/generate-glyph-clip-polygons.py
 
 同一套 glyph polygons 现在贯穿整个栈：
 
-- `chemcore-engine` Rust kernel 构造 glyph polygons：
-  - [crates/chemcore-engine/src/glyph_kernel.rs](../crates/chemcore-engine/src/glyph_kernel.rs)
+- `chemsema-engine` Rust kernel 构造 glyph polygons：
+  - [crates/chemsema-engine/src/glyph_kernel.rs](../crates/chemsema-engine/src/glyph_kernel.rs)
 - label-aware bond clipping 直接使用这些 polygons：
-  - [crates/chemcore-engine/src/render/labels.rs](../crates/chemcore-engine/src/render/labels.rs)
+  - [crates/chemsema-engine/src/render/labels.rs](../crates/chemsema-engine/src/render/labels.rs)
 - document knockouts 使用同一套 polygons：
-  - [crates/chemcore-engine/src/render_objects.rs](../crates/chemcore-engine/src/render_objects.rs)
+  - [crates/chemsema-engine/src/render_objects.rs](../crates/chemsema-engine/src/render_objects.rs)
 - Office / EMF preview 通过同一 glyph clipping algorithm 重放 engine polygons：
-  - [apps/chemcore-office/src/windows_office/emf_preview/renderer.rs](../apps/chemcore-office/src/windows_office/emf_preview/renderer.rs)
+  - [apps/chemsema-office/src/windows_office/emf_preview/renderer.rs](../apps/chemsema-office/src/windows_office/emf_preview/renderer.rs)
 
 这意味着 kernel clipping、SVG/document knockouts 和 EMF preview 共享同一个几何来源。
 
@@ -87,7 +87,7 @@ python scripts/generate-glyph-clip-polygons.py
 
 Web viewer 通过 WASM 消费 Rust engine state 和 render primitives：
 
-- [crates/chemcore-engine/src/wasm.rs](../crates/chemcore-engine/src/wasm.rs)
+- [crates/chemsema-engine/src/wasm.rs](../crates/chemsema-engine/src/wasm.rs)
 - [viewer/app.js](../viewer/app.js)
 
 旧的 C++ glyph kernel 和 standalone glyph WASM path 已移除。当前验证应通过 Rust engine tests 和 viewer engine WASM build。

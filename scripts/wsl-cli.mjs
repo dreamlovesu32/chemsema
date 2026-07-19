@@ -51,14 +51,14 @@ function shellQuote(value) {
 
 const repo = shellQuote(translated);
 const target = shellQuote(`${translated}/target/wsl-ubuntu`);
-const cli = shellQuote(`${translated}/target/wsl-ubuntu/release/chemcore-cli`);
+const cli = shellQuote(`${translated}/target/wsl-ubuntu/release/chemsema-cli`);
 const common = [
   "set -euo pipefail",
   `cd ${repo}`,
   `export CARGO_TARGET_DIR=${target}`,
   "export CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS:-$(nproc)}",
 ];
-const build = ["cargo build --locked --release -p chemcore-cli"];
+const build = ["cargo build --locked --release -p chemsema-cli"];
 const smoke = [
   `test -x ${cli}`,
   `${cli} version --pretty`,
@@ -74,7 +74,7 @@ if (mode === "build") {
 } else {
   commands = [
     ...common,
-    "cargo test --locked -p chemcore-engine -p chemcore-cli",
+    "cargo test --locked -p chemsema-engine -p chemsema-cli",
     ...build,
     ...smoke,
   ];

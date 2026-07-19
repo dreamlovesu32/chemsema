@@ -5,7 +5,7 @@ import {
   renderListFromEngine,
 } from "./engine_bridge.js";
 import { createAppDomRefs } from "./app_dom.js";
-import { registerChemcoreDebug } from "./app_debug.js";
+import { registerChemSemaDebug } from "./app_debug.js";
 import { createColorHost } from "./color_host.js";
 import { createObjectSettingsHost } from "./object_settings_host.js";
 import { createNumericDialogHost } from "./numeric_dialog_host.js";
@@ -204,7 +204,7 @@ const appInitialDocumentReady = new Promise((resolve) => {
   resolveAppInitialDocumentReady = resolve;
 });
 let lastEditorPointerActivityAt = 0;
-registerChemcoreDebug({
+registerChemSemaDebug({
   state,
   getEditorState: () => editorState,
   getEngineState: () => currentEditorEngineState(),
@@ -336,7 +336,7 @@ const syncWindowTitle = () => {
   updateActiveDocumentTabTitle();
   const title = documentTitleFromState();
   const displayTitle = documentTitleWithDirtyMarker(title, currentDocumentIsDirty());
-  document.title = `${displayTitle} - Chemcore`;
+  document.title = `${displayTitle} - ChemSema`;
   desktopFileHost?.setWindowTitle?.(displayTitle).catch?.(() => {});
 };
 
@@ -572,7 +572,7 @@ function canSaveCurrentDocument() {
 
 function isOleEditFilePath(path) {
   const fileName = fileNameFromPath(path).toLowerCase();
-  return fileName.startsWith("chemcore-ole-edit-") && fileName.endsWith(".ccjs");
+  return fileName.startsWith("chemsema-ole-edit-") && fileName.endsWith(".ccjs");
 }
 
 function markCurrentDocumentOfficeSynced() {
@@ -630,8 +630,8 @@ async function buildOleEditPayloadForTab(tab) {
     console.warn("Failed to build OLE edit CDXML payload", error);
   }
   return {
-    chemcoreFragmentJson: null,
-    chemcoreDocumentJson: documentJson,
+    chemsemaFragmentJson: null,
+    chemsemaDocumentJson: documentJson,
     renderListJson: tab.editorEngine?.renderListJson?.() || null,
     cdxml,
     svg: null,
@@ -666,7 +666,7 @@ async function syncOleEditDocumentTabToOffice(tab, options = {}) {
   if (desktopFileHost.writeOleEditPayload) {
     await desktopFileHost.writeOleEditPayload(tab.currentFilePath, payload);
   } else {
-    await desktopFileHost.writeTransientPath(tab.currentFilePath, payload.chemcoreDocumentJson);
+    await desktopFileHost.writeTransientPath(tab.currentFilePath, payload.chemsemaDocumentJson);
   }
   tab.oleSyncedDocumentJson = fingerprint;
   tab.oleSyncedRevision = revision;
@@ -703,7 +703,7 @@ async function handleDocumentCommandCommitted(event) {
     syncWindowTitle();
     refreshCommandAvailability();
     scheduleDeferredDocumentSync();
-    console.debug?.("[chemcore] document command committed", {
+    console.debug?.("[chemsema] document command committed", {
       type: event.commandType,
       revision: event.revision,
       source: event.source,
@@ -719,7 +719,7 @@ async function handleDocumentCommandCommitted(event) {
   renderDocumentTabs();
   syncWindowTitle();
   refreshCommandAvailability();
-  console.debug?.("[chemcore] document command committed", {
+  console.debug?.("[chemsema] document command committed", {
     type: event.commandType,
     revision: event.revision,
     source: event.source,
@@ -1399,10 +1399,10 @@ function currentEditorRenderList() {
     return [];
   }
   if (!cache.renderList) {
-    if (window.__chemcoreDebug?.renderStats) {
-      window.__chemcoreDebug.renderStats.renderListJsonCount += 1;
-      if (window.__chemcoreDebug.renderStats.captureRenderListStacks) {
-        window.__chemcoreDebug.renderStats.lastRenderListJsonStack = new Error().stack || "";
+    if (window.__chemsemaDebug?.renderStats) {
+      window.__chemsemaDebug.renderStats.renderListJsonCount += 1;
+      if (window.__chemsemaDebug.renderStats.captureRenderListStacks) {
+        window.__chemsemaDebug.renderStats.lastRenderListJsonStack = new Error().stack || "";
       }
     }
     cache.renderListJson = state.editorEngine.renderListJson?.() || "[]";
@@ -3812,8 +3812,8 @@ function renderDocument() {
   if (!documentData) {
     return;
   }
-  if (window.__chemcoreDebug?.renderStats) {
-    window.__chemcoreDebug.renderStats.documentRenderCount += 1;
+  if (window.__chemsemaDebug?.renderStats) {
+    window.__chemsemaDebug.renderStats.documentRenderCount += 1;
   }
 
   const page = documentData.document.page;
@@ -3822,7 +3822,7 @@ function renderDocument() {
   resetDocumentRenderState();
   applyViewerViewport();
   const pageBackground = normalizeDisplayColor(page.background, CHEMDRAW_PAGE_BACKGROUND);
-  viewerSvg.style.setProperty("--chemcore-page-bg", pageBackground);
+  viewerSvg.style.setProperty("--chemsema-page-bg", pageBackground);
   viewerSvg.appendChild(makeSvgNode("rect", {
     x: viewBox.x,
     y: viewBox.y,

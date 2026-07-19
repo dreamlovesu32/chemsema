@@ -2,7 +2,7 @@
 
 ## Goals
 
-This document fixes ChemCore glyph clipping rules so that the kernel, SVG, EMF, and Word/OLE use one shared geometry definition.
+This document fixes ChemSema glyph clipping rules so that the kernel, SVG, EMF, and Word/OLE use one shared geometry definition.
 
 The only valid runtime source of clipping geometry is:
 
@@ -14,10 +14,10 @@ The generation script is:
 
 Runtime consumers are:
 
-- [crates/chemcore-engine/src/glyph_kernel.rs](../crates/chemcore-engine/src/glyph_kernel.rs)
-- [crates/chemcore-engine/src/render/labels.rs](../crates/chemcore-engine/src/render/labels.rs)
-- [crates/chemcore-engine/src/render_objects.rs](../crates/chemcore-engine/src/render_objects.rs)
-- [apps/chemcore-office/src/windows_office/emf_preview/renderer.rs](../apps/chemcore-office/src/windows_office/emf_preview/renderer.rs)
+- [crates/chemsema-engine/src/glyph_kernel.rs](../crates/chemsema-engine/src/glyph_kernel.rs)
+- [crates/chemsema-engine/src/render/labels.rs](../crates/chemsema-engine/src/render/labels.rs)
+- [crates/chemsema-engine/src/render_objects.rs](../crates/chemsema-engine/src/render_objects.rs)
+- [apps/chemsema-office/src/windows_office/emf_preview/renderer.rs](../apps/chemsema-office/src/windows_office/emf_preview/renderer.rs)
 
 ## Geometry Source Boundary
 

@@ -1,4 +1,0 @@
-interface:
-  display_name: "ChemCore Drawing Agent"
-  short_description: "Plan ChemCore-native drawing commands using engine queries."
-  default_prompt: "Use ChemCore drawing-agent workflows to produce command scripts that match GUI behavior."

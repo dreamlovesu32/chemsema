@@ -4,9 +4,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
-const appDir = join(rootDir, "apps", "chemcore-desktop");
+const appDir = join(rootDir, "apps", "chemsema-desktop");
 const tauriCli = join(rootDir, "node_modules", "@tauri-apps", "cli", "tauri.js");
-const jobs = process.env.CHEMCORE_BUILD_JOBS
+const jobs = process.env.CHEMSEMA_BUILD_JOBS
   || process.env.CARGO_BUILD_JOBS
   || String(Math.max(1, availableParallelism()));
 

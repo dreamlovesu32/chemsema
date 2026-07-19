@@ -1,0 +1,10 @@
+{
+  "app": {
+    "bundleName": "org.chemsema.harmony",
+    "vendor": "ChemSema",
+    "versionCode": 1,
+    "versionName": "1.0.0",
+    "icon": "$media:app_icon_layered",
+    "label": "$string:app_name"
+  }
+}

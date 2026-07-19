@@ -8,7 +8,7 @@ import { chromium } from "playwright";
 
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const host = "127.0.0.1";
-const port = Number(process.env.CHEMCORE_DESKTOP_DEV_PORT || 8767);
+const port = Number(process.env.CHEMSEMA_DESKTOP_DEV_PORT || 8767);
 const baseUrl = `http://${host}:${port}/viewer/`;
 const edgePath = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
 
@@ -71,7 +71,7 @@ function capturePageErrors(page, errors) {
 async function installHarmonyBridgeMock(context) {
   await context.addInitScript(() => {
     window.confirm = () => true;
-    window.__chemcoreHarmonyMock = {
+    window.__chemsemaHarmonyMock = {
       clipboard: null,
       commands: [],
       files: {},
@@ -80,14 +80,14 @@ async function installHarmonyBridgeMock(context) {
       titles: [],
       writes: [],
     };
-    window.__chemcoreHarmonySetFile = (path, text) => {
-      window.__chemcoreHarmonyMock.files[String(path)] = String(text);
+    window.__chemsemaHarmonySetFile = (path, text) => {
+      window.__chemsemaHarmonyMock.files[String(path)] = String(text);
     };
-    window.__chemcoreHarmonyQueueOpen = (paths) => {
-      window.__chemcoreHarmonyMock.openQueue = Array.from(paths || []);
+    window.__chemsemaHarmonyQueueOpen = (paths) => {
+      window.__chemsemaHarmonyMock.openQueue = Array.from(paths || []);
     };
-    window.__chemcoreHarmonyQueueSave = (paths) => {
-      window.__chemcoreHarmonyMock.saveQueue = Array.from(paths || []);
+    window.__chemsemaHarmonyQueueSave = (paths) => {
+      window.__chemsemaHarmonyMock.saveQueue = Array.from(paths || []);
     };
 
     const fileNameFromPath = (path) => {
@@ -104,15 +104,15 @@ async function installHarmonyBridgeMock(context) {
     };
     const respond = (id, response) => {
       setTimeout(() => {
-        window.__chemcoreHarmonyResolve?.(id, JSON.stringify(response));
+        window.__chemsemaHarmonyResolve?.(id, JSON.stringify(response));
       }, 0);
     };
 
-    window.chemcoreHarmony = {
+    window.chemsemaHarmony = {
       postMessage(message) {
         const request = JSON.parse(message);
         const { id, command, payload = {} } = request;
-        const mock = window.__chemcoreHarmonyMock;
+        const mock = window.__chemsemaHarmonyMock;
         mock.commands.push({ command, payload });
         try {
           if (command === "chooseOpenPath") {
@@ -121,7 +121,7 @@ async function installHarmonyBridgeMock(context) {
             return "true";
           }
           if (command === "chooseSavePath" || command === "chooseExportSavePath") {
-            const path = mock.saveQueue.shift() || payload.suggestedName || "chemcore-document.ccjz";
+            const path = mock.saveQueue.shift() || payload.suggestedName || "chemsema-document.ccjz";
             respond(id, { ok: true, value: path });
             return "true";
           }
@@ -183,7 +183,7 @@ async function installHarmonyBridgeMock(context) {
 
 async function waitForReady(page) {
   await page.waitForFunction(
-    () => !!window.__chemcoreDebug?.state?.editorEngine && !!window.__chemcoreDebug?.document,
+    () => !!window.__chemsemaDebug?.state?.editorEngine && !!window.__chemsemaDebug?.document,
     null,
     { timeout: 30000 },
   );
@@ -212,7 +212,7 @@ async function drawBondWithMouse(page) {
 }
 
 async function harmonyMock(page) {
-  return page.evaluate(() => window.__chemcoreHarmonyMock);
+  return page.evaluate(() => window.__chemsemaHarmonyMock);
 }
 
 async function verifyHarmonyShell(page) {
@@ -245,7 +245,7 @@ async function verifyNativeFrameNewDocument(page) {
       title: tab.textContent.trim(),
       active: tab.classList.contains("is-active"),
     })),
-    fileName: window.__chemcoreDebug?.state?.currentFileName || null,
+    fileName: window.__chemsemaDebug?.state?.currentFileName || null,
   }));
   assert.equal(shell.tabbarDisplay, "flex", `Harmony new document hid the tabbar: ${JSON.stringify(shell)}`);
   assert.equal(shell.tabs.length, 2, `Harmony new document did not create a visible tab: ${JSON.stringify(shell)}`);
@@ -255,38 +255,38 @@ async function verifyNativeFrameNewDocument(page) {
 
 async function verifySaveOpenClipboard(page) {
   await drawBondWithMouse(page);
-  await page.evaluate(() => window.__chemcoreHarmonyQueueSave(["harmony-save.ccjs"]));
+  await page.evaluate(() => window.__chemsemaHarmonyQueueSave(["harmony-save.ccjs"]));
   await page.keyboard.press("Control+Shift+S");
-  await page.waitForFunction(() => window.__chemcoreHarmonyMock.writes.length >= 1);
+  await page.waitForFunction(() => window.__chemsemaHarmonyMock.writes.length >= 1);
   const saved = await harmonyMock(page);
   assert.equal(saved.writes[0].path, "harmony-save.ccjs", `Save did not use Harmony path: ${JSON.stringify(saved.writes[0])}`);
-  assert(saved.writes[0].content.includes('"objects"'), "Harmony save did not write ChemCore JSON.");
+  assert(saved.writes[0].content.includes('"objects"'), "Harmony save did not write ChemSema JSON.");
 
   await page.keyboard.press("Control+A");
   await page.keyboard.press("Control+C");
-  await page.waitForFunction(() => !!window.__chemcoreHarmonyMock.clipboard?.chemcoreFragmentJson);
+  await page.waitForFunction(() => !!window.__chemsemaHarmonyMock.clipboard?.chemsemaFragmentJson);
   await page.keyboard.press("Control+X");
   await page.waitForFunction(() => document.querySelectorAll("[data-bond-id]").length === 0);
   await page.keyboard.press("Control+V");
   await page.waitForFunction(() => document.querySelectorAll("[data-bond-id]").length > 0);
 
   await page.keyboard.press("Control+S");
-  await page.waitForFunction(() => window.__chemcoreHarmonyMock.writes.length >= 2);
+  await page.waitForFunction(() => window.__chemsemaHarmonyMock.writes.length >= 2);
 
   await page.evaluate((text) => {
-    window.__chemcoreHarmonySetFile("harmony-open.ccjs", text);
-    window.__chemcoreHarmonyQueueOpen(["harmony-open.ccjs"]);
+    window.__chemsemaHarmonySetFile("harmony-open.ccjs", text);
+    window.__chemsemaHarmonyQueueOpen(["harmony-open.ccjs"]);
   }, saved.writes[0].content);
   await page.keyboard.press("Control+O");
-  await page.waitForFunction(() => window.__chemcoreDebug?.state?.currentFileName === "harmony-open.ccjs");
+  await page.waitForFunction(() => window.__chemsemaDebug?.state?.currentFileName === "harmony-open.ccjs");
   await page.waitForFunction(() => document.querySelectorAll("[data-bond-id]").length > 0);
 
   const opened = await page.evaluate(() => ({
-    fileName: window.__chemcoreDebug?.state?.currentFileName || null,
+    fileName: window.__chemsemaDebug?.state?.currentFileName || null,
     tabbarDisplay: getComputedStyle(document.querySelector(".document-tabbar")).display,
     tabTitles: [...document.querySelectorAll(".document-tab-title")].map((tab) => tab.textContent.trim()),
     title: document.title,
-    windowTitles: window.__chemcoreHarmonyMock.titles,
+    windowTitles: window.__chemsemaHarmonyMock.titles,
   }));
   assert.equal(opened.fileName, "harmony-open.ccjs", `Open did not preserve Harmony file name: ${JSON.stringify(opened)}`);
   assert.equal(opened.tabbarDisplay, "flex", `Harmony open hid the tabbar: ${JSON.stringify(opened)}`);

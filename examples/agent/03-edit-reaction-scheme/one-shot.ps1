@@ -1,5 +1,5 @@
 $ErrorActionPreference = "Stop"
-$cli = if ($env:CHEMCORE_CLI) { $env:CHEMCORE_CLI } else { "chemcore-cli" }
+$cli = if ($env:CHEMSEMA_CLI) { $env:CHEMSEMA_CLI } else { "chemsema-cli" }
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 & $cli new (Join-Path $here "commands.json") `
   --out (Join-Path $here "output.ccjs") `

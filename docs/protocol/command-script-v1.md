@@ -1,10 +1,10 @@
-# ChemCore Command Script v1
+# ChemSema Command Script v1
 
 Command scripts are JSON inputs for:
 
 ```powershell
-chemcore-cli new commands.json --out output.cdxml --results results.json
-chemcore-cli run input.cdxml commands.json --out edited.cdxml --results results.json
+chemsema-cli new commands.json --out output.cdxml --results results.json
+chemsema-cli run input.cdxml commands.json --out edited.cdxml --results results.json
 ```
 
 The input may be a single JSON object command, an array of command objects, or

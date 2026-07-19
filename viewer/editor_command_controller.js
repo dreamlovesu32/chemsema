@@ -15,8 +15,8 @@ export function createEditorCommandController(options) {
       const cdxml = await state.editorEngine.documentCdxml?.() || null;
       const svg = null;
       await options.desktopFileHost.writeClipboard({
-        chemcoreFragmentJson: resolvedFragmentJson,
-        chemcoreDocumentJson: resolvedDocumentJson,
+        chemsemaFragmentJson: resolvedFragmentJson,
+        chemsemaDocumentJson: resolvedDocumentJson,
         renderListJson: resolvedDocumentJson ? null : state.editorEngine.renderListJson?.() || null,
         cdxml,
         svg,
@@ -36,13 +36,13 @@ export function createEditorCommandController(options) {
     }
     try {
       const payload = await options.desktopFileHost.readClipboard();
-      if (payload?.chemcoreFragmentJson) {
+      if (payload?.chemsemaFragmentJson) {
         return await executeDocumentCommand(
           {
             type: "paste-clipboard",
             payload: { source: "native" },
           },
-          () => state.editorEngine.pasteClipboardJson(payload.chemcoreFragmentJson),
+          () => state.editorEngine.pasteClipboardJson(payload.chemsemaFragmentJson),
         );
       }
     } catch (error) {

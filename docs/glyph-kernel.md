@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`chemcore` needs host-independent text geometry for chemical labels.
+`chemsema` needs host-independent text geometry for chemical labels.
 
 The Rust engine owns:
 
@@ -17,7 +17,7 @@ If hosts derive these details independently, web and desktop renderers will drif
 
 The active glyph geometry implementation lives in Rust:
 
-- [crates/chemcore-engine/src/glyph_kernel.rs](../crates/chemcore-engine/src/glyph_kernel.rs)
+- [crates/chemsema-engine/src/glyph_kernel.rs](../crates/chemsema-engine/src/glyph_kernel.rs)
 
 The Rust engine now consumes two shared manifests:
 
@@ -82,15 +82,15 @@ margin to the document source margin.
 
 The same glyph polygons now flow through the whole stack:
 
-- `chemcore-engine` Rust kernel builds glyph polygons:
-  - [crates/chemcore-engine/src/glyph_kernel.rs](../crates/chemcore-engine/src/glyph_kernel.rs)
+- `chemsema-engine` Rust kernel builds glyph polygons:
+  - [crates/chemsema-engine/src/glyph_kernel.rs](../crates/chemsema-engine/src/glyph_kernel.rs)
 - label-aware bond clipping uses those polygons directly:
-  - [crates/chemcore-engine/src/render/labels.rs](../crates/chemcore-engine/src/render/labels.rs)
+  - [crates/chemsema-engine/src/render/labels.rs](../crates/chemsema-engine/src/render/labels.rs)
 - document knockouts use the same polygons:
-  - [crates/chemcore-engine/src/render_objects.rs](../crates/chemcore-engine/src/render_objects.rs)
+  - [crates/chemsema-engine/src/render_objects.rs](../crates/chemsema-engine/src/render_objects.rs)
 - Office / EMF preview replays the engine polygons through the same glyph
   clipping algorithm:
-  - [apps/chemcore-office/src/windows_office/emf_preview/renderer.rs](../apps/chemcore-office/src/windows_office/emf_preview/renderer.rs)
+  - [apps/chemsema-office/src/windows_office/emf_preview/renderer.rs](../apps/chemsema-office/src/windows_office/emf_preview/renderer.rs)
 
 This means kernel clipping, SVG/document knockouts, and EMF preview now share one
 geometry source.
@@ -99,7 +99,7 @@ geometry source.
 
 The web viewer consumes Rust engine state and render primitives through WASM:
 
-- [crates/chemcore-engine/src/wasm.rs](../crates/chemcore-engine/src/wasm.rs)
+- [crates/chemsema-engine/src/wasm.rs](../crates/chemsema-engine/src/wasm.rs)
 - [viewer/app.js](../viewer/app.js)
 
 The old C++ glyph kernel and standalone glyph WASM path have been removed. Current validation should go through the Rust engine tests and viewer engine WASM build.

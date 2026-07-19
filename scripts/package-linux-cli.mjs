@@ -32,20 +32,20 @@ if (process.platform === "win32") {
     "--version",
     version,
     "--cli",
-    `${repo}/target/wsl-ubuntu/release/chemcore-cli`,
+    `${repo}/target/wsl-ubuntu/release/chemsema-cli`,
     "--out-dir",
-    `${repo}/dist/chemcore-cli`,
+    `${repo}/dist/chemsema-cli`,
   ]);
 } else if (process.platform === "linux") {
-  run("cargo", ["build", "--locked", "--release", "-p", "chemcore-cli"]);
+  run("cargo", ["build", "--locked", "--release", "-p", "chemsema-cli"]);
   run("bash", [
     "scripts/package-linux-cli.sh",
     "--version",
     version,
     "--cli",
-    "target/release/chemcore-cli",
+    "target/release/chemsema-cli",
     "--out-dir",
-    "dist/chemcore-cli",
+    "dist/chemsema-cli",
   ]);
 } else {
   console.error(`Linux CLI packaging is not supported on ${process.platform}.`);

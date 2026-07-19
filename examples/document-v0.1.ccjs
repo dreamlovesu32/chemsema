@@ -1,6 +1,6 @@
 {
   "format": {
-    "name": "chemcore",
+    "name": "chemsema",
     "version": "0.1",
     "unit": "pt"
   },
@@ -13,7 +13,7 @@
       "background": "#ffffff"
     },
     "meta": {
-      "createdBy": "chemcore",
+      "createdBy": "chemsema",
       "sourceFormat": "manual"
     }
   },
@@ -178,9 +178,9 @@
   "resources": {
     "mol_a": {
       "type": "molecule_fragment2d",
-      "encoding": "chemcore.molecule.fragment2d",
+      "encoding": "chemsema.molecule.fragment2d",
       "data": {
-        "schema": "chemcore.molecule.fragment2d",
+        "schema": "chemsema.molecule.fragment2d",
         "bbox": [
           0,
           0,

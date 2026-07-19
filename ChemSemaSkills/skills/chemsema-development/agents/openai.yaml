@@ -1,0 +1,4 @@
+interface:
+  display_name: "ChemSema Development"
+  short_description: "Build, test, package, and diagnose ChemSema repositories."
+  default_prompt: "Use ChemSema development workflows to run checks, rebuild WASM/desktop packages, or debug CI."

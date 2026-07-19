@@ -1,0 +1,4 @@
+interface:
+  display_name: "ChemSema Office"
+  short_description: "Debug ChemSema Office/OLE copy and paste workflows."
+  default_prompt: "Use ChemSema Office workflows to copy a ChemSema selection into Word or inspect an Office payload."

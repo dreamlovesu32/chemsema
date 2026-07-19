@@ -439,15 +439,15 @@ export function createEditorDocumentRenderer(options) {
       patched: false,
     };
     if (!objectIds.size) {
-      if (window.__chemcoreDebug) {
-        window.__chemcoreDebug.objectPrimitivePatchStats = debugSample;
+      if (window.__chemsemaDebug) {
+        window.__chemsemaDebug.objectPrimitivePatchStats = debugSample;
       }
       return false;
     }
     const documentLayer = viewerSvg.querySelector('[data-layer="document-content"]');
     if (!documentLayer) {
-      if (window.__chemcoreDebug) {
-        window.__chemcoreDebug.objectPrimitivePatchStats = {
+      if (window.__chemsemaDebug) {
+        window.__chemsemaDebug.objectPrimitivePatchStats = {
           ...debugSample,
           missingDocumentLayer: true,
         };
@@ -490,8 +490,8 @@ export function createEditorDocumentRenderer(options) {
       patched = true;
     }
     debugSample.patched = patched;
-    if (window.__chemcoreDebug) {
-      window.__chemcoreDebug.objectPrimitivePatchStats = debugSample;
+    if (window.__chemsemaDebug) {
+      window.__chemsemaDebug.objectPrimitivePatchStats = debugSample;
     }
     if (!patched) {
       return false;
@@ -832,7 +832,7 @@ export function createEditorDocumentRenderer(options) {
   }
   
   function recordBackendMovePreviewTiming(sample) {
-    const debug = window.__chemcoreDebug;
+    const debug = window.__chemsemaDebug;
     if (!debug) {
       return;
     }

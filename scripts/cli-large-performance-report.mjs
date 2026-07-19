@@ -14,10 +14,10 @@ const cacheDir = join(outputDir, "cache");
 const reportDir = join(perfDir, "reports");
 const markdownReportPath = join(reportDir, `cli-large-performance-${runId}.md`);
 const jsonReportPath = join(reportDir, `cli-large-performance-${runId}.json`);
-const commandTimeoutMs = Number(process.env.CHEMCORE_CLI_PERF_TIMEOUT_MS || 10 * 60 * 1000);
-const nodeCount = Number(process.env.CHEMCORE_CLI_PERF_SYNTHETIC_NODES || 6400);
-const objectRepeats = Number(process.env.CHEMCORE_CLI_PERF_SYNTHETIC_OBJECT_REPEATS || 48);
-const cliBinary = join(rootDir, "target", "debug", process.platform === "win32" ? "chemcore-cli.exe" : "chemcore-cli");
+const commandTimeoutMs = Number(process.env.CHEMSEMA_CLI_PERF_TIMEOUT_MS || 10 * 60 * 1000);
+const nodeCount = Number(process.env.CHEMSEMA_CLI_PERF_SYNTHETIC_NODES || 6400);
+const objectRepeats = Number(process.env.CHEMSEMA_CLI_PERF_SYNTHETIC_OBJECT_REPEATS || 48);
+const cliBinary = join(rootDir, "target", "debug", process.platform === "win32" ? "chemsema-cli.exe" : "chemsema-cli");
 
 mkdirSync(fixtureDir, { recursive: true });
 mkdirSync(outputDir, { recursive: true });
@@ -200,7 +200,7 @@ async function runSessionTask(task) {
     stdoutTail: "",
     stderrTail: tail(stderr),
     parsed: {
-      protocol: "chemcore-cli-session-jsonl-v1",
+      protocol: "chemsema-cli-session-jsonl-v1",
       responseCount: responses.length,
       failedResponses: failedResponses.length,
       responses,
@@ -341,7 +341,7 @@ function cliTask(id, group, args, options = {}) {
     args,
     ...options,
     env: {
-      CHEMCORE_CLI_CACHE_DIR: cacheDir,
+      CHEMSEMA_CLI_CACHE_DIR: cacheDir,
       ...(options.env || {}),
     },
   };
@@ -382,7 +382,7 @@ const setupTasks = [
     id: "build-cli-debug",
     group: "setup",
     command: "cargo",
-    args: ["build", "-p", "chemcore-cli"],
+    args: ["build", "-p", "chemsema-cli"],
     timeoutMs: commandTimeoutMs,
   },
   cliTask("convert-ccjs-to-cdxml", "setup", ["convert", rel(fixtureLargeCcjs), rel(fixtureLargeCdxml)], {
@@ -557,7 +557,7 @@ function escapeTable(value) {
 
 function renderMarkdownReport(data) {
   const lines = [];
-  lines.push("# ChemCore CLI Large-File Performance Report");
+  lines.push("# ChemSema CLI Large-File Performance Report");
   lines.push("");
   lines.push(`- Run: \`${data.runId}\``);
   lines.push(`- Generated: \`${data.generatedAt}\``);
@@ -624,7 +624,7 @@ function renderMarkdownReport(data) {
 }
 
 function renderSummary(result) {
-  if (result.parsed?.protocol === "chemcore-cli-session-jsonl-v1") {
+  if (result.parsed?.protocol === "chemsema-cli-session-jsonl-v1") {
     return (result.parsed.responses || [])
       .filter((response) => response.render)
       .map((response) => `${response.op}:${response.render.mode} primitives=${response.render.primitiveCount}`)

@@ -1,6 +1,6 @@
 # Code of Conduct
 
-ChemCore aims to be a precise, useful, and welcoming technical project.
+ChemSema aims to be a precise, useful, and welcoming technical project.
 
 Be respectful, assume good intent, and keep disagreements focused on evidence,
 reproduction cases, and maintainable design. Harassment, personal attacks,

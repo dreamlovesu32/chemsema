@@ -4377,7 +4377,7 @@
         "resource:mol_004"
       ]
     },
-    "schema": "chemcore.document.diff.v1",
+    "schema": "chemsema.document.diff.v1",
     "styles": {
       "created": [],
       "deleted": [],
@@ -4525,7 +4525,7 @@
     "ok": true,
     "path": "output.ccjs"
   },
-  "schema": "chemcore.command-transaction.v1",
+  "schema": "chemsema.command-transaction.v1",
   "scope": {
     "allowCreate": false,
     "allowDelete": false,
@@ -4562,6 +4562,6 @@
     "applied": true,
     "atomic": true,
     "dryRun": false,
-    "schema": "chemcore.command-transaction.v1"
+    "schema": "chemsema.command-transaction.v1"
   }
 }
