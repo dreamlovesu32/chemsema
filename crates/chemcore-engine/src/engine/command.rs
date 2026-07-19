@@ -57,6 +57,8 @@ pub enum TextCommandDisplayMode {
     PreserveLeft,
     PreserveRight,
     PreserveCenter,
+    StackAbove,
+    StackBelow,
 }
 
 impl TextCommandDisplayMode {
@@ -68,6 +70,8 @@ impl TextCommandDisplayMode {
             Self::PreserveLeft => "preserve-left",
             Self::PreserveRight => "preserve-right",
             Self::PreserveCenter => "preserve-center",
+            Self::StackAbove => "stack-above",
+            Self::StackBelow => "stack-below",
         }
     }
 }

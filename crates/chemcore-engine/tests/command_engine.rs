@@ -655,6 +655,50 @@ fn direct_node_label_runs_can_override_source_text_for_visible_order() {
 }
 
 #[test]
+fn direct_node_label_runs_can_stack_visible_text_above_source_runs() {
+    let mut engine = Engine::new();
+    let add = execute(
+        &mut engine,
+        json!({
+            "type": "add-bond",
+            "begin": { "x": 100.0, "y": 100.0 },
+            "end": { "x": 100.0, "y": 148.0 },
+            "order": 1,
+            "variant": "single"
+        }),
+    );
+    let node_id = created_node_id(&add, 0);
+
+    let update = execute(
+        &mut engine,
+        json!({
+            "type": "set-node-label-runs",
+            "nodeId": node_id,
+            "text": "NH",
+            "runs": [
+                { "text": "NH", "script": "normal" }
+            ],
+            "sourceText": "NH",
+            "displayMode": "stack-above",
+            "defaultChemical": false
+        }),
+    );
+
+    assert_eq!(update["changed"], true);
+    let document = document_value(&engine);
+    let node = find_node(&document, &node_id);
+    let label = &node["label"];
+    assert_eq!(label["text"], json!("H\nN"));
+    assert_eq!(label["sourceText"], json!("NH"));
+    assert!(label.get("runs").is_none());
+    assert_eq!(label["lines"], json!(["H", "N"]));
+    assert_eq!(label["lineRuns"][0][0]["text"], json!("H"));
+    assert_eq!(label["lineRuns"][1][0]["text"], json!("N"));
+    assert_eq!(label["meta"]["sourceRuns"][0]["text"], json!("NH"));
+    assert_eq!(label["layout"], json!("attached-group-above"));
+}
+
+#[test]
 fn direct_node_charge_updates_attached_label_valence_semantics() {
     let mut engine = Engine::new();
     let add = execute(

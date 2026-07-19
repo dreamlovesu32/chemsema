@@ -1770,6 +1770,8 @@ pub(super) fn label_display_mode_from_meta_value(
         "preserve-center" | "display-center" | "center" => {
             Some(TextCommandDisplayMode::PreserveCenter)
         }
+        "stack-above" | "above" | "display-above" => Some(TextCommandDisplayMode::StackAbove),
+        "stack-below" | "below" | "display-below" => Some(TextCommandDisplayMode::StackBelow),
         _ => None,
     }
 }
@@ -1805,6 +1807,14 @@ pub(super) fn label_layout_decision_for_command_display_mode(
         TextCommandDisplayMode::PreserveCenter => Some(crate::LabelLayoutDecision {
             flow: LabelFlow::Forward,
             anchor: crate::LabelAnchorPolicy::WholeLabel,
+        }),
+        TextCommandDisplayMode::StackAbove => Some(crate::LabelLayoutDecision {
+            flow: LabelFlow::StackAbove,
+            anchor: crate::LabelAnchorPolicy::FirstGroupLeadGlyph,
+        }),
+        TextCommandDisplayMode::StackBelow => Some(crate::LabelLayoutDecision {
+            flow: LabelFlow::StackBelow,
+            anchor: crate::LabelAnchorPolicy::FirstGroupLeadGlyph,
         }),
     }
 }
