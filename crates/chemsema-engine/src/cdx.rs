@@ -541,6 +541,8 @@ fn decode_property(
         PropertyKind::UInt8 => read_u8(data)?.to_string(),
         PropertyKind::Int16 => read_i16(data)?.to_string(),
         PropertyKind::UInt16 => read_u16(data)?.to_string(),
+        PropertyKind::LineHeightInt16 => decode_line_height(read_i16(data)? as i64),
+        PropertyKind::LineHeightUInt16 => decode_line_height(read_u16(data)? as i64),
         PropertyKind::Int32 => read_i32(data)?.to_string(),
         PropertyKind::Fixed16_16 => fmt_num(read_i32(data)? as f64 / 65536.0),
         PropertyKind::UInt32 => read_u32(data)?.to_string(),
@@ -575,6 +577,8 @@ enum PropertyKind {
     UInt8,
     Int16,
     UInt16,
+    LineHeightInt16,
+    LineHeightUInt16,
     Int32,
     Fixed16_16,
     UInt32,
@@ -588,6 +592,27 @@ enum PropertyKind {
     Int16ListWithCounts,
     Enum8(&'static [(i16, &'static str)]),
     Enum(&'static [(i16, &'static str)]),
+}
+
+fn decode_line_height(value: i64) -> String {
+    match value {
+        0 => "variable".to_string(),
+        1 => "auto".to_string(),
+        _ => value.to_string(),
+    }
+}
+
+fn encode_line_height(value: &str, unsigned: bool) -> Option<Vec<u8>> {
+    let numeric = match value.trim().to_ascii_lowercase().as_str() {
+        "variable" => 0,
+        "auto" => 1,
+        value => value.parse::<i32>().ok()?,
+    };
+    if unsigned {
+        Some(u16::try_from(numeric).ok()?.to_le_bytes().to_vec())
+    } else {
+        Some(i16::try_from(numeric).ok()?.to_le_bytes().to_vec())
+    }
 }
 
 fn property_schema(tag: u16) -> Option<PropertySchema> {
@@ -635,8 +660,12 @@ fn property_schema(tag: u16) -> Option<PropertySchema> {
         0x0609 => ("EndAttach", PropertyKind::UInt8),
         0x060A => ("BS", PropertyKind::Enum(BOND_STEREO)),
         0x0701 => ("Justification", PropertyKind::Enum8(JUSTIFICATION)),
+        0x0702 => ("LineHeight", PropertyKind::LineHeightUInt16),
+        0x0703 => ("WordWrapWidth", PropertyKind::Int16),
         0x0704 => ("LineStarts", PropertyKind::Int16ListWithCounts),
         0x0705 => ("LabelAlignment", PropertyKind::Enum8(LABEL_ALIGNMENT)),
+        0x0706 => ("LabelLineHeight", PropertyKind::LineHeightInt16),
+        0x0707 => ("CaptionLineHeight", PropertyKind::LineHeightInt16),
         0x0708 => ("InterpretChemically", PropertyKind::Boolean),
         0x0709 => ("UTF8Text", PropertyKind::String),
         0x0802 => ("PrintMargins", PropertyKind::Rectangle),
@@ -754,8 +783,12 @@ fn property_tag(name: &str) -> Option<u16> {
         "EndAttach" => 0x0609,
         "BS" => 0x060A,
         "Justification" => 0x0701,
+        "LineHeight" => 0x0702,
+        "WordWrapWidth" => 0x0703,
         "LineStarts" => 0x0704,
         "LabelAlignment" => 0x0705,
+        "LabelLineHeight" => 0x0706,
+        "CaptionLineHeight" => 0x0707,
         "InterpretChemically" => 0x0708,
         "UTF8Text" => 0x0709,
         "PrintMargins" => 0x0802,
@@ -833,6 +866,8 @@ fn encode_property(name: &str, value: &str) -> Option<(u16, Vec<u8>)> {
         PropertyKind::UInt8 => vec![value.parse::<u8>().ok()?],
         PropertyKind::Int16 => value.parse::<i16>().ok()?.to_le_bytes().to_vec(),
         PropertyKind::UInt16 => value.parse::<u16>().ok()?.to_le_bytes().to_vec(),
+        PropertyKind::LineHeightInt16 => encode_line_height(value, false)?,
+        PropertyKind::LineHeightUInt16 => encode_line_height(value, true)?,
         PropertyKind::Int32 => value.parse::<i32>().ok()?.to_le_bytes().to_vec(),
         PropertyKind::Fixed16_16 => ((value.parse::<f64>().ok()? * 65536.0).round() as i32)
             .to_le_bytes()
@@ -997,6 +1032,7 @@ const LABEL_ALIGNMENT: &[(i16, &str)] = &[
     (3, "Right"),
     (4, "Above"),
     (5, "Below"),
+    (6, "Best"),
 ];
 const GRAPHIC_TYPE: &[(i16, &str)] = &[
     (1, "Line"),
@@ -1871,5 +1907,31 @@ mod tests {
         let (_, decoded) =
             decode_property(encoded.0, &encoded.1, None).expect("chain angle should decode");
         assert_eq!(decoded, "120");
+    }
+
+    #[test]
+    fn cdx_text_layout_properties_follow_the_official_tags_and_special_values() {
+        for (name, value, tag, bytes, decoded) in [
+            ("LineHeight", "variable", 0x0702, vec![0, 0], "variable"),
+            ("LineHeight", "auto", 0x0702, vec![1, 0], "auto"),
+            ("WordWrapWidth", "144", 0x0703, vec![144, 0], "144"),
+            ("LabelLineHeight", "12", 0x0706, vec![12, 0], "12"),
+            ("CaptionLineHeight", "auto", 0x0707, vec![1, 0], "auto"),
+        ] {
+            let encoded = encode_property(name, value).expect("property should encode");
+            assert_eq!(encoded.0, tag, "{name}");
+            assert_eq!(encoded.1, bytes, "{name}");
+            let (decoded_name, decoded_value) =
+                decode_property(tag, &encoded.1, None).expect("property should decode");
+            assert_eq!(decoded_name, name);
+            assert_eq!(decoded_value, decoded);
+        }
+
+        let best = encode_property("LabelAlignment", "Best").expect("Best should encode");
+        assert_eq!(best, (0x0705, vec![6]));
+        assert_eq!(
+            decode_property(best.0, &best.1, None),
+            Some(("LabelAlignment", "Best".to_string()))
+        );
     }
 }

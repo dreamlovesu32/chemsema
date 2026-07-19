@@ -1390,8 +1390,8 @@ fn text_object(
     let bbox = parse_bbox(node.attr("BoundingBox"));
     let point = parse_xy(node.attr("p")).or_else(|| bbox.map(|bbox| [bbox[0], bbox[1]]))?;
     let align = node
-        .attr("Justification")
-        .or_else(|| node.attr("LabelJustification"))
+        .attr("CaptionJustification")
+        .or_else(|| node.attr("Justification"))
         .unwrap_or(defaults.caption_justification.as_cdxml())
         .to_ascii_lowercase();
     let default_caption_font = defaults.caption_font.to_string();
@@ -1505,7 +1505,21 @@ fn text_object(
             scale: [1.0, 1.0],
         },
         style_ref: Some(style_id),
-        meta: json!({"source": "cdxml", "role": role.as_str(), "textId": node.attr("id")}),
+        meta: json!({
+            "source": "cdxml",
+            "role": role.as_str(),
+            "textId": node.attr("id"),
+            "import": {
+                "cdxml": {
+                    "captionJustification": node.attr("CaptionJustification"),
+                    "justification": node.attr("Justification"),
+                    "lineHeight": node.attr("LineHeight"),
+                    "captionLineHeight": node.attr("CaptionLineHeight"),
+                    "wordWrapWidth": node.attr("WordWrapWidth"),
+                    "lineStarts": node.attr("LineStarts"),
+                }
+            }
+        }),
         payload: ObjectPayload {
             resource_ref: None,
             bbox: None,
@@ -1516,12 +1530,17 @@ fn text_object(
 }
 
 fn cdxml_text_line_height(node: &XmlNode, font_size: f64) -> f64 {
-    match node.attr("LineHeight").map(str::trim) {
-        Some(value) if !value.eq_ignore_ascii_case("auto") => {
-            parse_f64(Some(value)).unwrap_or(font_size * 1.2)
+    match node
+        .attr("CaptionLineHeight")
+        .or_else(|| node.attr("LineHeight"))
+        .map(str::trim)
+    {
+        Some(value)
+            if !value.eq_ignore_ascii_case("auto") && !value.eq_ignore_ascii_case("variable") =>
+        {
+            parse_f64(Some(value)).unwrap_or_else(|| cdxml_auto_text_line_height(node, font_size))
         }
-        Some(_) => cdxml_auto_text_line_height(node, font_size),
-        None => font_size * 1.2,
+        _ => cdxml_auto_text_line_height(node, font_size),
     }
 }
 

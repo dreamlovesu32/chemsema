@@ -332,6 +332,9 @@ cargo build -p chemsema-cli
 npm run benchmark:cdxml-public
 ```
 
+当前基线有 404 个连续三代精确往返案例；其余 9 个均明确分类为安全清洗、无损归一化、
+预期拒绝或传输编码输入，未预期语义漂移和计数漂移均为 0。
+
 部分脚本会和本机桌面应用或 Office 做输出对照。这些流程是可选的，可能需要 Windows 专有软件、本地文档，或用 `CHEMSEMA_PYTHON` 指向装有分析依赖的 Python 环境。
 
 ## 引用

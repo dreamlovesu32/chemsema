@@ -651,6 +651,7 @@ pub(super) fn layout_display_runs(
             .rev()
             .flat_map(reverse_styled_group_for_display)
             .collect()],
+        LabelFlow::Preserve => preserve_styled_lines(display_runs),
         LabelFlow::StackAbove => {
             if groups.len() > 1 {
                 vec![groups[1..].concat(), groups[0].clone()]
@@ -675,6 +676,35 @@ pub(super) fn layout_display_runs(
         .map(|line| merge_styled_glyph_runs(line))
         .collect();
     (line_texts, line_runs)
+}
+
+fn preserve_styled_lines(display_runs: &[LabelRun]) -> Vec<Vec<StyledGlyph>> {
+    let mut lines = vec![Vec::new()];
+    for run in display_runs {
+        for ch in run.text.chars() {
+            if ch == '\n' {
+                lines.push(Vec::new());
+                continue;
+            }
+            lines
+                .last_mut()
+                .expect("a text line exists")
+                .push(StyledGlyph {
+                    ch,
+                    run: LabelRun {
+                        text: ch.to_string(),
+                        font_family: run.font_family.clone(),
+                        font_size: run.font_size,
+                        fill: run.fill.clone(),
+                        font_weight: run.font_weight,
+                        font_style: run.font_style.clone(),
+                        underline: run.underline,
+                        script: run.script.clone(),
+                    },
+                });
+        }
+    }
+    lines
 }
 
 pub(super) fn split_styled_groups(
@@ -1684,74 +1714,33 @@ fn cdxml_imported_label_layout_override(
         .meta
         .pointer("/import/cdxml/labelDisplay")
         .and_then(serde_json::Value::as_str);
-    let alignment = label
-        .meta
-        .pointer("/import/cdxml/labelAlignment")
-        .and_then(serde_json::Value::as_str);
-    let justification = label
-        .meta
-        .pointer("/import/cdxml/labelJustification")
-        .and_then(serde_json::Value::as_str)
-        .or_else(|| {
-            label
-                .meta
-                .pointer("/import/cdxml/justification")
-                .and_then(serde_json::Value::as_str)
-        });
     let normalized = |value: &str| value.trim().to_ascii_lowercase();
     let decision_for_fixed_value = |value: &str| match normalized(value).as_str() {
-        "above" => Some(crate::LabelLayoutDecision {
-            flow: LabelFlow::StackAbove,
-            anchor: crate::LabelAnchorPolicy::FirstGroupLeadGlyph,
+        "above" | "left" | "full" => Some(crate::LabelLayoutDecision {
+            flow: LabelFlow::Preserve,
+            anchor: crate::LabelAnchorPolicy::FirstGlyph,
         }),
         "below" => Some(crate::LabelLayoutDecision {
-            flow: LabelFlow::StackBelow,
-            anchor: crate::LabelAnchorPolicy::FirstGroupLeadGlyph,
-        }),
-        "left" | "full" => Some(crate::LabelLayoutDecision {
-            flow: LabelFlow::Forward,
+            flow: LabelFlow::Preserve,
             anchor: crate::LabelAnchorPolicy::FirstGlyph,
         }),
         "right" => Some(crate::LabelLayoutDecision {
-            flow: LabelFlow::Forward,
+            flow: LabelFlow::Preserve,
             anchor: crate::LabelAnchorPolicy::LastGlyph,
         }),
         "center" => Some(crate::LabelLayoutDecision {
-            flow: LabelFlow::Forward,
+            flow: LabelFlow::Preserve,
             anchor: crate::LabelAnchorPolicy::WholeLabel,
         }),
         _ => None,
     };
-    let decision_for_realized_alignment = |value: &str| match normalized(value).as_str() {
-        "above" => Some(crate::LabelLayoutDecision {
-            flow: LabelFlow::StackAbove,
-            anchor: crate::LabelAnchorPolicy::FirstGroupLeadGlyph,
-        }),
-        "below" => Some(crate::LabelLayoutDecision {
-            flow: LabelFlow::StackBelow,
-            anchor: crate::LabelAnchorPolicy::FirstGroupLeadGlyph,
-        }),
-        "right" => Some(crate::LabelLayoutDecision {
-            flow: LabelFlow::Reverse,
-            anchor: crate::LabelAnchorPolicy::OriginalFirstGroup,
-        }),
-        value => decision_for_fixed_value(value),
-    };
 
-    // Above/Below is an orthogonal placement axis in ChemDraw and must not be
-    // masked by a horizontal LabelJustification value such as Left.
-    for value in [display, justification, alignment].into_iter().flatten() {
-        if matches!(normalized(value).as_str(), "above" | "below") {
-            return decision_for_fixed_value(value);
-        }
-    }
-    if let Some(decision) = display.and_then(decision_for_fixed_value) {
-        return Some(decision);
-    }
-    if let Some(decision) = justification.and_then(decision_for_realized_alignment) {
-        return Some(decision);
-    }
-    alignment.and_then(decision_for_realized_alignment)
+    // LabelDisplay is the node-level override. LabelAlignment records the
+    // realized alignment chosen by ChemDraw, while LabelJustification and the
+    // obsolete Justification property are style defaults. Modern ChemDraw
+    // still applies connection-aware chemical ordering when any of those text
+    // properties are explicit, so none of them may replace the automatic flow.
+    display.and_then(decision_for_fixed_value)
 }
 
 pub(super) fn label_display_mode_from_meta_value(
@@ -1906,6 +1895,26 @@ pub(super) fn refreshed_attached_node_label(
             override_decision.anchor = crate::LabelAnchorPolicy::WholeLabel;
         }
         decision = override_decision;
+    } else if fragment.bonds.iter().any(|bond| {
+        (bond.begin == node_id
+            && bond
+                .meta
+                .pointer("/endpointAttachments/begin/characterIndex")
+                .is_some())
+            || (bond.end == node_id
+                && bond
+                    .meta
+                    .pointer("/endpointAttachments/end/characterIndex")
+                    .is_some())
+    }) {
+        // BeginAttach/EndAttach character indices address the authored text.
+        // Reordering that text would move the explicit connection to another
+        // glyph even though the numeric index still round-trips unchanged.
+        decision.flow = LabelFlow::Preserve;
+    } else if is_cdxml_imported_attached_label(label) && text.contains('\n') {
+        // Authored CDXML line breaks are structural data. Automatic chemical
+        // layout may choose an anchor, but it must not reorder those lines.
+        decision.flow = LabelFlow::Preserve;
     }
     let display_runs = display_runs_from_source_runs(&source_runs, &font_family, font_size, &fill);
     let (anchor_offset, box_value) =

@@ -160,7 +160,7 @@ pub fn parse_cdxml_document(cdxml: &str, title: Option<&str>) -> Result<ChemSema
     let bonded_node_ids = cdxml_bonded_node_ids(&root);
     let mut molecule_index = 1usize;
     for fragment in &fragments {
-        let Some(bbox) = parse_bbox(fragment.attr("BoundingBox")) else {
+        let Some(bbox) = cdxml_fragment_bbox(fragment, defaults.bond_length) else {
             continue;
         };
         let Some(resource) = normalize_fragment(fragment, bbox, defaults, &colors, &fonts) else {
@@ -824,10 +824,59 @@ fn collect_display_fragments<'a>(
 }
 
 fn cdxml_node_is_display_fragment(node: &XmlNode) -> bool {
-    node.is("fragment")
-        && node.attr("BoundingBox").is_some()
-        && node.direct_children("n").count() >= 2
-        && node.direct_children("b").next().is_some()
+    if !node.is("fragment") {
+        return false;
+    }
+    let has_bond = node.direct_children("b").next().is_some();
+    let has_chemical_node = node
+        .direct_children("n")
+        .any(|child| child.attr("Element").is_some());
+    has_bond || has_chemical_node
+}
+
+fn cdxml_fragment_bbox(fragment: &XmlNode, bond_length: f64) -> Option<[f64; 4]> {
+    if let Some(bbox) = parse_bbox(fragment.attr("BoundingBox")) {
+        return Some(bbox);
+    }
+
+    let mut bounds = [
+        f64::INFINITY,
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+        f64::NEG_INFINITY,
+    ];
+    let mut found = false;
+    let mut include = |point: [f64; 2]| {
+        found = true;
+        bounds[0] = bounds[0].min(point[0]);
+        bounds[1] = bounds[1].min(point[1]);
+        bounds[2] = bounds[2].max(point[0]);
+        bounds[3] = bounds[3].max(point[1]);
+    };
+    for node in fragment.direct_children("n") {
+        if let Some(point) = parse_xy(node.attr("p")) {
+            include(point);
+        }
+        for text in node.direct_children("t") {
+            if let Some(bbox) = parse_bbox(text.attr("BoundingBox")) {
+                include([bbox[0], bbox[1]]);
+                include([bbox[2], bbox[3]]);
+            }
+        }
+    }
+    if !found {
+        return None;
+    }
+    let half_padding = bond_length.max(1.0) * 0.5;
+    if (bounds[2] - bounds[0]).abs() <= EPSILON {
+        bounds[0] -= half_padding;
+        bounds[2] += half_padding;
+    }
+    if (bounds[3] - bounds[1]).abs() <= EPSILON {
+        bounds[1] -= half_padding;
+        bounds[3] += half_padding;
+    }
+    Some(bounds.map(round2))
 }
 
 fn cdxml_node_has_cached_fragment(node: &XmlNode) -> bool {
@@ -859,19 +908,16 @@ fn normalize_fragment(
     fonts: &BTreeMap<String, String>,
 ) -> Option<MoleculeFragment> {
     let origin = [bbox[0], bbox[1]];
-    let node_ids: BTreeSet<String> = fragment
-        .direct_children("n")
-        .filter_map(|node| node.attr("id").map(ToString::to_string))
-        .collect();
     let nodes: Vec<Node> = fragment
         .direct_children("n")
         .filter_map(|node| normalize_node(node, origin, colors, fonts, defaults))
         .collect();
+    let node_ids: BTreeSet<String> = nodes.iter().map(|node| node.id.clone()).collect();
     let bonds: Vec<Bond> = fragment
         .direct_children("b")
         .filter_map(|bond| normalize_bond(bond, &node_ids, &nodes, defaults, colors))
         .collect();
-    if nodes.len() < 2 || bonds.is_empty() {
+    if nodes.is_empty() {
         return None;
     }
     let mut fragment = MoleculeFragment {
@@ -1197,6 +1243,7 @@ fn normalize_node(
             "cdxml": {
                 "z": parse_i32(node.attr("Z")),
                 "nodeType": empty_as_null(node.attr("NodeType")),
+                "elementList": empty_as_null(node.attr("ElementList")),
                 "labelDisplay": empty_as_null(node.attr("LabelDisplay")),
                 "explicitNumHydrogens": explicit_num_hydrogens,
             }
@@ -1330,16 +1377,7 @@ fn node_label(
         text_el.attr("LabelAlignment"),
     );
     let is_centered = inferred_align == "center";
-    let layout = match cdxml_label_flow(
-        label_display,
-        label_justification,
-        text_el.attr("LabelAlignment"),
-    ) {
-        Some(crate::LabelFlow::StackAbove) => Some("attached-group-above".to_string()),
-        Some(crate::LabelFlow::StackBelow) => Some("attached-group-below".to_string()),
-        _ if is_centered => Some("attached-group-center".to_string()),
-        _ => None,
-    };
+    let layout = is_centered.then(|| "attached-group-center".to_string());
     Some(NodeLabel {
         text: text.clone(),
         source_text: Some(text.clone()),
@@ -1382,6 +1420,10 @@ fn node_label(
                     "labelAlignment": empty_as_null(text_el.attr("LabelAlignment")),
                     "labelJustification": empty_as_null(text_el.attr("LabelJustification")),
                     "justification": empty_as_null(text_el.attr("Justification")),
+                    "lineHeight": empty_as_null(text_el.attr("LineHeight")),
+                    "labelLineHeight": empty_as_null(text_el.attr("LabelLineHeight")),
+                    "wordWrapWidth": empty_as_null(text_el.attr("WordWrapWidth")),
+                    "lineStarts": empty_as_null(text_el.attr("LineStarts")),
                     "interpretChemically": interpret_chemically,
                     "interpretChemicallyExplicit": explicit_interpret_chemically.is_some(),
                     "marginWidth": defaults.margin_width,
@@ -1414,34 +1456,18 @@ fn infer_cdxml_label_align(
         "right"
     } else if attr_eq_ignore_ascii_case(label_display, "Left") {
         "left"
-    } else if attr_eq_ignore_ascii_case(label_justification, "Center") {
-        "center"
-    } else if attr_eq_ignore_ascii_case(label_justification, "Right") {
-        "right"
-    } else if attr_eq_ignore_ascii_case(label_justification, "Left") {
-        "left"
     } else if attr_eq_ignore_ascii_case(label_alignment, "Center") {
         "center"
     } else if attr_eq_ignore_ascii_case(label_alignment, "Right") {
         "right"
+    } else if attr_eq_ignore_ascii_case(label_alignment, "Left") {
+        "left"
+    } else if attr_eq_ignore_ascii_case(label_justification, "Center") {
+        "center"
+    } else if attr_eq_ignore_ascii_case(label_justification, "Right") {
+        "right"
     } else {
         "left"
-    }
-}
-
-fn cdxml_label_flow(
-    label_display: Option<&str>,
-    label_justification: Option<&str>,
-    label_alignment: Option<&str>,
-) -> Option<crate::LabelFlow> {
-    let value = label_display
-        .filter(|value| matches!(*value, "Above" | "Below"))
-        .or_else(|| label_justification.filter(|value| matches!(*value, "Above" | "Below")))
-        .or_else(|| label_alignment.filter(|value| matches!(*value, "Above" | "Below")));
-    match value {
-        Some("Above") => Some(crate::LabelFlow::StackAbove),
-        Some("Below") => Some(crate::LabelFlow::StackBelow),
-        _ => None,
     }
 }
 

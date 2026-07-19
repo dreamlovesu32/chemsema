@@ -1,7 +1,8 @@
 {
-  "schema": "chemsema.public-cdxml-roundtrip-summary.v1",
-  "generatedAt": "2026-07-19T15:41:03.399Z",
+  "schema": "chemsema.public-cdxml-roundtrip-summary.v2",
+  "generatedAt": "2026-07-19T16:29:00.952Z",
   "cliVersion": "1.0.0-beta.1",
+  "generations": 3,
   "sources": [
     {
       "id": "rdkit",
@@ -52,25 +53,26 @@
   "summary": {
     "total": 413,
     "statuses": {
-      "exact-counts": 364,
-      "count-drift": 43,
+      "exact": 404,
+      "expected-sanitization": 1,
       "expected-reject": 2,
+      "expected-normalization": 2,
       "skipped": 4
     },
     "bySource": {
       "rdkit": {
         "total": 220,
         "statuses": {
-          "exact-counts": 181,
-          "count-drift": 38,
-          "expected-reject": 1
+          "exact": 216,
+          "expected-sanitization": 1,
+          "expected-reject": 1,
+          "expected-normalization": 2
         }
       },
       "indigo": {
         "total": 151,
         "statuses": {
-          "exact-counts": 142,
-          "count-drift": 4,
+          "exact": 146,
           "expected-reject": 1,
           "skipped": 4
         }
@@ -78,24 +80,23 @@
       "cdxml-toolkit": {
         "total": 36,
         "statuses": {
-          "exact-counts": 35,
-          "count-drift": 1
+          "exact": 36
         }
       },
       "sampl6": {
         "total": 3,
         "statuses": {
-          "exact-counts": 3
+          "exact": 3
         }
       },
       "sampl9": {
         "total": 3,
         "statuses": {
-          "exact-counts": 3
+          "exact": 3
         }
       }
     },
     "unexpectedFailures": 0,
-    "countDrift": 43
+    "countDrift": 0
   }
 }

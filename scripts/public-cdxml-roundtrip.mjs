@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
@@ -32,6 +33,7 @@ const reportPath = join(outputRoot, "report.json");
 const summaryOutput = option("--summary-out", null);
 const workRoot = join(outputRoot, "work");
 const limit = Number.parseInt(option("--limit", "0"), 10);
+const generations = Math.max(1, Number.parseInt(option("--generations", "3"), 10));
 const strictCounts = args.includes("--strict-counts");
 
 function discoverCli() {
@@ -58,7 +60,7 @@ function runCli(commandArgs) {
   const result = spawnSync(cliPath, commandArgs, {
     cwd: repoRoot,
     encoding: "utf8",
-    maxBuffer: 16 * 1024 * 1024,
+    maxBuffer: 32 * 1024 * 1024,
   });
   return {
     ok: result.status === 0,
@@ -91,27 +93,222 @@ function normalizedRelative(root, path) {
   return relative(root, path).split(sep).join("/");
 }
 
-function readSummary(path) {
-  return JSON.parse(readFileSync(path, "utf8")).summary;
+function canonicalize(value) {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, item]) => item !== undefined)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, item]) => [key, canonicalize(item)]),
+    );
+  }
+  return value;
+}
+
+function digest(value) {
+  return createHash("sha256").update(JSON.stringify(canonicalize(value))).digest("hex");
+}
+
+function roundNumber(value) {
+  return typeof value === "number" && Number.isFinite(value) ? Math.round(value * 100) / 100 : value;
+}
+
+function roundGeometry(value) {
+  if (Array.isArray(value)) return value.map(roundGeometry);
+  return roundNumber(value);
+}
+
+function flattenObjects(objects, output = []) {
+  for (const object of objects || []) {
+    output.push(object);
+    flattenObjects(object.children, output);
+  }
+  return output;
+}
+
+function payloadValue(object, key) {
+  return object?.payload?.[key] ?? object?.payload?.extra?.[key];
+}
+
+function fragmentForObject(document, object) {
+  const resourceRef = payloadValue(object, "resourceRef");
+  const resource = document.resources?.[resourceRef];
+  return resource?.data?.nodes && resource?.data?.bonds ? resource.data : null;
+}
+
+function summarizeCounts(document) {
+  const objects = flattenObjects(document.objects);
+  const objectTypes = {};
+  let molecules = 0;
+  let nodes = 0;
+  let bonds = 0;
+  for (const object of objects) {
+    objectTypes[object.type] = (objectTypes[object.type] || 0) + 1;
+    if (object.type !== "molecule") continue;
+    molecules += 1;
+    const fragment = fragmentForObject(document, object);
+    nodes += fragment?.nodes?.length || 0;
+    bonds += fragment?.bonds?.length || 0;
+  }
+  return {
+    molecules,
+    nodes,
+    bonds,
+    objects: objects.length,
+    resources: Object.keys(document.resources || {}).length,
+    styles: Object.keys(document.styles || {}).length,
+    objectTypes,
+  };
+}
+
+function nodeSignature(node) {
+  const label = node.label;
+  return {
+    atomicNumber: node.atomicNumber ?? null,
+    element: node.element ?? null,
+    charge: node.charge ?? 0,
+    numHydrogens: node.numHydrogens ?? null,
+    isotope: node.isotope ?? null,
+    radical: node.radical ?? null,
+    placeholder: node.isPlaceholder ?? false,
+    externalConnectionPoint: node.isExternalConnectionPoint ?? false,
+    label: label
+      ? {
+          sourceText: label.sourceText ?? null,
+          runs: (label.runs || []).map((run) => ({
+            text: run.text ?? "",
+            script: run.script ?? null,
+          })),
+        }
+      : null,
+  };
+}
+
+function bondSignature(bond, nodeIndexes) {
+  const begin = nodeIndexes.get(bond.begin) ?? -1;
+  const end = nodeIndexes.get(bond.end) ?? -1;
+  return {
+    endpoints: [Math.min(begin, end), Math.max(begin, end)],
+    order: bond.order ?? null,
+    stereo: bond.stereo ?? null,
+    double: bond.double
+      ? { placement: bond.double.placement ?? null }
+      : null,
+    lineStyles: bond.lineStyles ?? null,
+    endpointAttachments: bond.endpointAttachments ?? null,
+  };
+}
+
+function moleculeSignatures(document, objects) {
+  const signatures = objects
+    .filter((object) => object.type === "molecule")
+    .map((object) => {
+      const fragment = fragmentForObject(document, object);
+      if (!fragment) return { missingResource: true };
+      const nodeIndexes = new Map(fragment.nodes.map((node, index) => [node.id, index]));
+      return {
+        nodes: fragment.nodes.map(nodeSignature),
+        bonds: fragment.bonds
+          .map((bond) => bondSignature(bond, nodeIndexes))
+          .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))),
+      };
+    });
+  return signatures.map((signature) => JSON.stringify(canonicalize(signature))).sort();
+}
+
+function arrowSignatures(objects) {
+  return objects
+    .filter((object) => object.type === "line" && payloadValue(object, "arrowHead"))
+    .map((object) => {
+      const arrowHead = payloadValue(object, "arrowHead");
+      return {
+        kind: arrowHead.kind ?? null,
+        headStyle: arrowHead.head ?? null,
+        tailStyle: arrowHead.tail ?? null,
+        fillType: arrowHead.fillType ?? null,
+        noGo: arrowHead.noGo ?? null,
+        curve: arrowHead.curve ?? null,
+        bold: arrowHead.bold ?? null,
+        points: roundGeometry(payloadValue(object, "points") ?? []),
+      };
+    })
+    .map((signature) => JSON.stringify(canonicalize(signature)))
+    .sort();
+}
+
+function bracketSignatures(objects) {
+  return objects
+    .filter((object) => object.type === "bracket")
+    .map((object) => ({
+      kind: payloadValue(object, "kind") ?? null,
+      side: payloadValue(object, "side") ?? null,
+      bbox: roundGeometry(payloadValue(object, "bbox") ?? null),
+      translate: roundGeometry(object.transform?.translate ?? null),
+    }))
+    .map((signature) => JSON.stringify(canonicalize(signature)))
+    .sort();
+}
+
+function semanticSnapshot(document) {
+  const objects = flattenObjects(document.objects);
+  const molecules = moleculeSignatures(document, objects);
+  const arrows = arrowSignatures(objects);
+  const brackets = bracketSignatures(objects);
+  const metrics = {
+    moleculeObjects: objects.filter((object) => object.type === "molecule").length,
+    arrows: arrows.length,
+    headlessArrows: objects.filter(
+      (object) =>
+        object.type === "line" &&
+        payloadValue(object, "arrowHead") &&
+        (payloadValue(object, "arrowHead").head ?? "none") === "none" &&
+        (payloadValue(object, "arrowHead").tail ?? "none") === "none",
+    ).length,
+    brackets: brackets.length,
+    bracketGroups: objects.filter((object) => object.meta?.kind === "bracket-group").length,
+  };
+  const components = {
+    molecules: digest(molecules),
+    arrows: digest(arrows),
+    brackets: digest(brackets),
+  };
+  return { hash: digest({ components, metrics }), components, metrics };
+}
+
+function readGeneration(path) {
+  const document = JSON.parse(readFileSync(path, "utf8"));
+  return { counts: summarizeCounts(document), semantic: semanticSnapshot(document) };
 }
 
 const countKeys = ["molecules", "nodes", "bonds", "objects", "resources", "styles"];
 
 function compareCounts(before, after) {
   const delta = Object.fromEntries(countKeys.map((key) => [key, (after[key] || 0) - (before[key] || 0)]));
-  const objectTypes = [...new Set([
-    ...Object.keys(before.objectTypes || {}),
-    ...Object.keys(after.objectTypes || {}),
-  ])].sort();
+  const objectTypes = [
+    ...new Set([...Object.keys(before.objectTypes || {}), ...Object.keys(after.objectTypes || {})]),
+  ].sort();
   const objectTypeDelta = Object.fromEntries(
     objectTypes.map((key) => [key, (after.objectTypes?.[key] || 0) - (before.objectTypes?.[key] || 0)]),
   );
   return {
-    exact: Object.values(delta).every((value) => value === 0)
-      && Object.values(objectTypeDelta).every((value) => value === 0),
+    exact:
+      Object.values(delta).every((value) => value === 0) &&
+      Object.values(objectTypeDelta).every((value) => value === 0),
     delta,
     objectTypeDelta,
   };
+}
+
+function compareSemantic(before, after) {
+  const changed = Object.keys(before.components).filter(
+    (component) => before.components[component] !== after.components[component],
+  );
+  return { exact: before.hash === after.hash, changed };
+}
+
+function failureMessage(result) {
+  return result.stderr || result.stdout || result.error;
 }
 
 const versionResult = runCli(["version"]);
@@ -133,11 +330,6 @@ for (const source of manifest.sources) {
     const classification = special?.class || "valid";
     const format = extname(inputPath).toLowerCase().slice(1);
     const key = String(caseIndex).padStart(4, "0");
-    const beforePath = join(workRoot, `${key}-before.json`);
-    const afterPath = join(workRoot, `${key}-after.json`);
-    const roundTripPath = join(workRoot, `${key}-roundtrip.${format}`);
-    for (const path of [beforePath, afterPath, roundTripPath]) rmSync(path, { force: true });
-
     const record = {
       caseId: key,
       source: source.id,
@@ -154,47 +346,79 @@ for (const source of manifest.sources) {
       continue;
     }
 
-    const beforeRun = runCli(["inspect", inputPath, "--include", "summary", "--out", beforePath]);
+    const modelPaths = Array.from({ length: generations + 1 }, (_, index) =>
+      join(workRoot, `${key}-generation-${index}.ccjs`),
+    );
+    const roundTripPaths = Array.from({ length: generations }, (_, index) =>
+      join(workRoot, `${key}-generation-${index + 1}.${format}`),
+    );
+    for (const path of [...modelPaths, ...roundTripPaths]) rmSync(path, { force: true });
+
+    const initialRun = runCli(["convert", inputPath, modelPaths[0]]);
     if (classification === "invalid") {
-      record.status = beforeRun.ok ? "unexpected-accept" : "expected-reject";
+      record.status = initialRun.ok ? "unexpected-accept" : "expected-reject";
       record.reason = special.reason;
-      if (!beforeRun.ok) record.error = beforeRun.stderr || beforeRun.stdout || beforeRun.error;
+      if (!initialRun.ok) record.error = failureMessage(initialRun);
       cases.push(record);
       continue;
     }
-
-    if (!beforeRun.ok) {
+    if (!initialRun.ok) {
       record.status = "import-failed";
-      record.error = beforeRun.stderr || beforeRun.stdout || beforeRun.error;
+      record.error = failureMessage(initialRun);
       cases.push(record);
       continue;
     }
 
-    const before = readSummary(beforePath).counts;
-    const convertRun = runCli(["convert", inputPath, roundTripPath]);
-    if (!convertRun.ok) {
-      record.status = "export-failed";
-      record.before = before;
-      record.error = convertRun.stderr || convertRun.stdout || convertRun.error;
+    record.generations = [readGeneration(modelPaths[0])];
+    let previousPath = inputPath;
+    for (let generation = 1; generation <= generations; generation += 1) {
+      const exportRun = runCli(["convert", previousPath, roundTripPaths[generation - 1]]);
+      if (!exportRun.ok) {
+        record.status = "export-failed";
+        record.failedGeneration = generation;
+        record.error = failureMessage(exportRun);
+        break;
+      }
+      const importRun = runCli(["convert", roundTripPaths[generation - 1], modelPaths[generation]]);
+      if (!importRun.ok) {
+        record.status = "reimport-failed";
+        record.failedGeneration = generation;
+        record.error = failureMessage(importRun);
+        break;
+      }
+      record.generations.push(readGeneration(modelPaths[generation]));
+      previousPath = roundTripPaths[generation - 1];
+    }
+    if (record.status !== "pending") {
       cases.push(record);
       continue;
     }
 
-    const afterRun = runCli(["inspect", roundTripPath, "--include", "summary", "--out", afterPath]);
-    if (!afterRun.ok) {
-      record.status = "reimport-failed";
-      record.before = before;
-      record.error = afterRun.stderr || afterRun.stdout || afterRun.error;
-      cases.push(record);
-      continue;
-    }
+    record.comparisons = record.generations.slice(1).map((generation, index) => ({
+      from: index,
+      to: index + 1,
+      counts: compareCounts(record.generations[index].counts, generation.counts),
+      semantic: compareSemantic(record.generations[index].semantic, generation.semantic),
+    }));
+    const initial = record.comparisons[0];
+    const later = record.comparisons.slice(1);
+    const laterStable = later.every((comparison) => comparison.counts.exact && comparison.semantic.exact);
 
-    const after = readSummary(afterPath).counts;
-    const comparison = compareCounts(before, after);
-    record.status = comparison.exact ? "exact-counts" : "count-drift";
-    record.before = before;
-    record.after = after;
-    record.comparison = comparison;
+    if (!laterStable) {
+      record.status = "non-idempotent";
+    } else if (!initial.semantic.exact) {
+      record.status = "semantic-drift";
+    } else if (classification === "normalization") {
+      record.status = "expected-normalization";
+      record.reason = special.reason;
+    } else if (classification === "sanitized") {
+      record.status = "expected-sanitization";
+      record.reason = special.reason;
+    } else if (!initial.counts.exact) {
+      record.status = "count-drift";
+    } else {
+      record.status = "exact";
+    }
     cases.push(record);
   }
   if (limit > 0 && cases.length >= limit) break;
@@ -214,13 +438,16 @@ const unexpectedStatuses = new Set([
   "import-failed",
   "export-failed",
   "reimport-failed",
+  "semantic-drift",
+  "non-idempotent",
 ]);
 const unexpectedFailures = cases.filter((item) => unexpectedStatuses.has(item.status));
 const countDrift = cases.filter((item) => item.status === "count-drift");
 const report = {
-  schema: "chemsema.public-cdxml-roundtrip-report.v1",
+  schema: "chemsema.public-cdxml-roundtrip-report.v2",
   generatedAt: new Date().toISOString(),
   cliVersion,
+  generations,
   manifest: normalizedRelative(repoRoot, manifestPath),
   corpusRoot,
   summary: {
@@ -237,9 +464,10 @@ writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
 if (summaryOutput) {
   const summaryPath = resolve(summaryOutput);
   const summaryReport = {
-    schema: "chemsema.public-cdxml-roundtrip-summary.v1",
+    schema: "chemsema.public-cdxml-roundtrip-summary.v2",
     generatedAt: report.generatedAt,
     cliVersion,
+    generations,
     sources: manifest.sources.map((source) => ({
       id: source.id,
       revision: source.revision,

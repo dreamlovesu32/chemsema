@@ -16,7 +16,9 @@ The pinned manifest currently provides 413 files from five upstream projects:
 
 Two files are deliberate malformed-input tests. Four `.cdx` files contain
 Base64 transport text rather than raw CDX bytes and are classified separately.
-The remaining 407 files are positive round-trip cases.
+The remaining 407 files are positive round-trip cases. One deliberately broken
+coordinate fixture is classified as safe sanitization, and two fixtures that
+only discard unused shape styles are classified as lossless normalization.
 
 ## Reproduce
 
@@ -28,16 +30,21 @@ npm run benchmark:cdxml-public
 
 Set `CHEMSEMA_PUBLIC_CDXML_DIR` to choose another download directory. The
 runner writes a detailed untracked report to
-`tmp/public-cdxml-roundtrip/report.json`. Pass `--strict-counts` to treat any
-object/count drift as a failing exit status.
+`tmp/public-cdxml-roundtrip/report.json`. By default, every positive case is
+saved and reopened three times. Each generation is checked with molecule,
+arrow-identity, and bracket-geometry semantic fingerprints as well as object,
+resource, style, and object-type counts. Semantic drift and non-idempotence
+always fail the run; pass `--strict-counts` to also fail on a classified count
+drift.
 
-The initial ChemSema 1.0.0-beta.1 baseline accepts all 407 positive cases,
-rejects both negative cases, and exactly preserves molecule, node, bond,
-object, resource, style, and object-type counts in 364 cases. The remaining 43
-cases round-trip successfully with count drift; most add explicit group objects
-on export, while a smaller set exposes molecule/resource or style changes that
-need semantic and visual analysis. Exact counts are a useful first signal, not
-a complete fidelity metric.
+The current ChemSema 1.0.0-beta.1 source baseline has no unexpected failures,
+semantic drift, non-idempotence, or unclassified count drift. Of 413 files, 404
+are exact through all three generations, one is expected safe sanitization, two
+are expected lossless normalization, two are expected import rejection, and
+four transport-encoded files are skipped. The semantic gates cover atomic
+identity and charge, molecule connectivity, headless-arrow identity, and
+bracket grouping and geometry; the count gates independently catch object and
+resource growth.
 
 The manifest pins every upstream commit and records its license URL. When the
 corpus changes, update the manifest, rerun the benchmark, and commit a new

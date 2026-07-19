@@ -2356,6 +2356,194 @@ fn export_cdxml_preserves_text_run_style_across_reimport() {
 }
 
 #[test]
+fn cdxml_single_atom_fragments_roundtrip_as_chemical_objects() {
+    let source = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<CDXML BoundingBox="0 0 160 80" LabelFont="3" LabelSize="10">
+  <fonttable><font id="3" charset="iso-8859-1" name="Arial"/></fonttable>
+  <page id="1" BoundingBox="0 0 160 80">
+    <fragment id="2" BoundingBox="10 10 30 30"><n id="3" p="20 20" Element="1"/></fragment>
+    <fragment id="4" BoundingBox="50 10 70 30"><n id="5" p="60 20" Element="19" Charge="1"/></fragment>
+    <fragment id="6" BoundingBox="90 10 110 30"><n id="7" p="100 20" Element="55" Charge="1"/></fragment>
+  </page>
+</CDXML>"#;
+
+    let imported = parse_cdxml_document(source, Some("single atoms")).expect("source imports");
+    let exported = document_to_cdxml(&imported);
+    let reopened =
+        parse_cdxml_document(&exported, Some("single atoms reopened")).expect("export imports");
+    let mut atoms: Vec<_> = reopened
+        .resources
+        .values()
+        .filter_map(|resource| resource.data.as_fragment())
+        .filter_map(|fragment| fragment.nodes.first())
+        .map(|node| (node.atomic_number, node.charge))
+        .collect();
+    atoms.sort_unstable();
+
+    assert_eq!(atoms, vec![(1, 0), (19, 1), (55, 1)]);
+    assert_eq!(
+        reopened
+            .objects
+            .iter()
+            .filter(|object| object.object_type == "molecule")
+            .count(),
+        3
+    );
+    assert!(!reopened
+        .objects
+        .iter()
+        .any(|object| object.object_type == "text"));
+}
+
+#[test]
+fn cdxml_custom_element_labels_preserve_atomic_identity() {
+    let source = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<CDXML BoundingBox="0 0 160 80" LabelFont="3" LabelSize="10">
+  <fonttable><font id="3" charset="iso-8859-1" name="Arial"/></fonttable>
+  <page id="1" BoundingBox="0 0 160 80">
+    <fragment id="2" BoundingBox="10 10 130 50">
+      <n id="3" p="20 30" Element="8" Charge="-1"><t p="16 34" BoundingBox="16 22 26 36" UTF8Text="O"><s font="3" size="10">O</s></t></n>
+      <n id="4" p="70 30" Element="7"><t p="62 34" BoundingBox="62 18 78 38" UTF8Text="N&#10;H"><s font="3" size="10">N&#10;H</s></t></n>
+      <n id="5" p="120 30" Element="62"><t p="104 34" BoundingBox="104 22 136 36" UTF8Text="SmIII"><s font="3" size="10">SmIII</s></t></n>
+      <b id="6" B="3" E="4"/><b id="7" B="4" E="5"/>
+    </fragment>
+  </page>
+</CDXML>"#;
+
+    let imported = parse_cdxml_document(source, Some("custom elements")).expect("source imports");
+    let exported = document_to_cdxml(&imported);
+    assert!(exported.contains("Element=\"8\""));
+    assert!(exported.contains("Element=\"7\""));
+    assert!(exported.contains("Element=\"62\""));
+    let reopened =
+        parse_cdxml_document(&exported, Some("custom elements reopened")).expect("export imports");
+    let fragment = reopened
+        .resources
+        .values()
+        .find_map(|resource| resource.data.as_fragment())
+        .expect("molecule survives");
+    let atomic_numbers: Vec<_> = fragment
+        .nodes
+        .iter()
+        .map(|node| node.atomic_number)
+        .collect();
+
+    assert_eq!(atomic_numbers, vec![8, 7, 62]);
+    assert_eq!(fragment.nodes[0].charge, -1);
+    assert!(fragment.nodes.iter().all(|node| !node.is_placeholder));
+}
+
+#[test]
+fn cdxml_headless_arrow_remains_an_arrow() {
+    let source = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<CDXML BoundingBox="0 0 160 80">
+  <page id="1" BoundingBox="0 0 160 80">
+    <arrow id="2" Tail3D="20 40 0" Head3D="140 40 0" ArrowheadHead="None" ArrowheadTail="None"/>
+  </page>
+</CDXML>"#;
+
+    let imported = parse_cdxml_document(source, Some("headless arrow")).expect("source imports");
+    let exported = document_to_cdxml(&imported);
+    assert!(
+        exported.contains("<arrow"),
+        "arrow identity must survive: {exported}"
+    );
+    assert!(!exported.contains("GraphicType=\"Line\""));
+    let reopened =
+        parse_cdxml_document(&exported, Some("headless arrow reopened")).expect("export imports");
+    let arrow = reopened
+        .objects
+        .iter()
+        .find(|object| object.object_type == "line")
+        .expect("arrow survives");
+    let arrow_head = arrow
+        .payload
+        .extra
+        .get("arrowHead")
+        .expect("headless arrow keeps arrow payload");
+    assert_eq!(
+        arrow_head.get("head").and_then(|value| value.as_str()),
+        Some("none")
+    );
+    assert_eq!(
+        arrow_head.get("tail").and_then(|value| value.as_str()),
+        Some("none")
+    );
+}
+
+#[test]
+fn cdxml_round_brackets_do_not_gain_groups_or_expand() {
+    let source = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<CDXML BoundingBox="0 0 160 100">
+  <page id="1" BoundingBox="0 0 160 100">
+    <graphic id="2" GraphicType="Bracket" BracketType="Round" BoundingBox="30 80 30 20"/>
+    <graphic id="3" GraphicType="Bracket" BracketType="Round" BoundingBox="130 20 130 80"/>
+  </page>
+</CDXML>"#;
+
+    let first = parse_cdxml_document(source, Some("round brackets")).expect("source imports");
+    let first_group = first
+        .objects
+        .iter()
+        .find(|object| object_is_bracket_group(object))
+        .expect("bracket group exists");
+    let first_positions: Vec<_> = first_group
+        .children
+        .iter()
+        .map(|child| child.transform.translate)
+        .collect();
+    let exported = document_to_cdxml(&first);
+    assert!(
+        !exported.contains("<group"),
+        "synthetic group must not be serialized"
+    );
+    let second = parse_cdxml_document(&exported, Some("round brackets second"))
+        .expect("first export imports");
+    let second_export = document_to_cdxml(&second);
+    let third = parse_cdxml_document(&second_export, Some("round brackets third"))
+        .expect("second export imports");
+
+    for document in [&second, &third] {
+        let groups: Vec<_> = document
+            .objects
+            .iter()
+            .filter(|object| object_is_bracket_group(object))
+            .collect();
+        assert_eq!(groups.len(), 1);
+        let positions: Vec<_> = groups[0]
+            .children
+            .iter()
+            .map(|child| child.transform.translate)
+            .collect();
+        assert_eq!(positions, first_positions);
+    }
+}
+
+#[test]
+fn cdxml_drops_bonds_whose_normalized_endpoint_is_missing() {
+    let source = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<CDXML BoundingBox="0 0 100 60">
+  <page id="1" BoundingBox="0 0 100 60">
+    <fragment id="2" BoundingBox="10 10 90 50">
+      <n id="3" p="20 30"/><n id="4" p="60 30"/><n id="5" p="not-a-point"/>
+      <b id="6" B="3" E="4"/><b id="7" B="4" E="5"/>
+    </fragment>
+  </page>
+</CDXML>"#;
+
+    let document = parse_cdxml_document(source, Some("missing endpoint")).expect("source imports");
+    let fragment = document
+        .resources
+        .values()
+        .find_map(|resource| resource.data.as_fragment())
+        .expect("valid component survives");
+    assert_eq!(fragment.nodes.len(), 2);
+    assert_eq!(fragment.bonds.len(), 1);
+    assert_eq!(fragment.bonds[0].begin, "3");
+    assert_eq!(fragment.bonds[0].end, "4");
+}
+
+#[test]
 fn cdxml_import_export_import_is_render_stable_for_tmp_fixtures() {
     let fixtures = [
         "molecule.cdxml",
@@ -5604,6 +5792,122 @@ fn cdxml_represented_radical_symbol_does_not_double_count_node_radical() {
 }
 
 #[test]
+fn cdxml_represented_charge_symbol_roundtrips_without_accumulating_charge() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML BondLength="14.40" LineWidth="0.60" color="0" bgcolor="1">
+  <page id="1">
+    <fragment id="2" BoundingBox="0 0 40 20">
+      <n id="3" p="10 10" Element="6" Charge="-1" NumHydrogens="1">
+        <t id="4" p="10 10" BoundingBox="5 5 15 15" InterpretChemically="yes" UTF8Text="CH"><s face="96">CH</s></t>
+      </n>
+      <n id="5" p="24.4 10"/>
+      <b id="6" B="3" E="5"/>
+    </fragment>
+    <graphic id="7" BoundingBox="10 15 10 5" GraphicType="Symbol" SymbolType="CircleMinus">
+      <represent attribute="Charge" object="3"/>
+    </graphic>
+  </page>
+</CDXML>"##;
+    let mut engine = Engine::new();
+    engine
+        .load_cdxml_document(cdxml)
+        .expect("represented charge should import");
+    let exported = document_to_cdxml(&engine.state().document);
+    assert!(
+        exported.contains("<represent attribute=\"Charge\" object="),
+        "{exported}"
+    );
+    let mut reimported = Engine::new();
+    reimported
+        .load_cdxml_document(&exported)
+        .expect("represented charge export should import");
+    let fragment = reimported
+        .state()
+        .document
+        .resources
+        .values()
+        .find_map(|resource| resource.data.as_fragment())
+        .expect("fragment should survive");
+    assert_eq!(
+        fragment
+            .nodes
+            .iter()
+            .find(|node| node.charge != 0)
+            .map(|node| node.charge),
+        Some(-1)
+    );
+}
+
+#[test]
+fn cdxml_element_list_query_roundtrips_without_becoming_a_nickname() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML BondLength="14.40" LineWidth="0.60" color="0" bgcolor="1">
+  <page id="1">
+    <fragment id="2" BoundingBox="0 0 40 20">
+      <n id="3" p="10 10" NodeType="ElementList" ElementList="6 7 15">
+        <t id="4" p="10 10" BoundingBox="5 5 25 15" UTF8Text="[C,N,P]"><s face="96">[C,N,P]</s></t>
+      </n>
+      <n id="5" p="24.4 10"/>
+      <b id="6" B="3" E="5"/>
+    </fragment>
+  </page>
+</CDXML>"##;
+    let document = parse_cdxml_document(cdxml, Some("element list")).expect("query should import");
+    let exported = document_to_cdxml(&document);
+    assert!(exported.contains("NodeType=\"ElementList\""), "{exported}");
+    assert!(exported.contains("ElementList=\"6 7 15\""), "{exported}");
+    let reimported = parse_cdxml_document(&exported, Some("element list export"))
+        .expect("query should reimport");
+    let query_node = reimported
+        .resources
+        .values()
+        .find_map(|resource| resource.data.as_fragment())
+        .and_then(|fragment| fragment.nodes.iter().find(|node| node.label.is_some()))
+        .expect("query node should survive");
+    assert!(!query_node.is_placeholder);
+    assert_eq!(
+        query_node
+            .meta
+            .pointer("/import/cdxml/elementList")
+            .and_then(|value| value.as_str()),
+        Some("6 7 15")
+    );
+}
+
+#[test]
+fn cdxml_left_dashed_double_bond_preserves_which_line_is_dashed() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML BondLength="14.40" LineWidth="0.60" color="0" bgcolor="1">
+  <page id="1">
+    <fragment id="2" BoundingBox="0 0 40 20">
+      <n id="3" p="10 10"/><n id="4" p="24.4 10"/>
+      <b id="5" B="3" E="4" Order="2" DoublePosition="Left" Display2="Dash"/>
+    </fragment>
+  </page>
+</CDXML>"##;
+    let document = parse_cdxml_document(cdxml, Some("left dashed double")).expect("bond imports");
+    let exported = document_to_cdxml(&document);
+    assert!(exported.contains("Display2=\"Dash\""), "{exported}");
+    assert!(!exported.contains(" Display=\"Dash\""), "{exported}");
+    let reimported =
+        parse_cdxml_document(&exported, Some("left dashed double export")).expect("bond reimports");
+    let bond = reimported
+        .resources
+        .values()
+        .find_map(|resource| resource.data.as_fragment())
+        .and_then(|fragment| fragment.bonds.first())
+        .expect("bond survives");
+    assert_eq!(
+        bond.line_styles.main,
+        chemsema_engine::BondLinePattern::Solid
+    );
+    assert_eq!(
+        bond.line_styles.left,
+        chemsema_engine::BondLinePattern::Dashed
+    );
+}
+
+#[test]
 fn parse_cdxml_color_table_keeps_duplicate_slots() {
     let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
 <CDXML color="0" bgcolor="1">
@@ -6582,11 +6886,11 @@ fn render_cdxml_imported_atom_label_uses_text_primitive() {
             }
             _ => None,
         })
-        .expect("NH label should render as text");
+        .expect("HN label should render as text");
 
     assert_eq!(
         text.iter().map(|run| run.text.as_str()).collect::<String>(),
-        "NH"
+        "HN"
     );
     assert!(!primitives.iter().any(|primitive| matches!(
         primitive,
@@ -6771,7 +7075,7 @@ fn parse_cdxml_attached_chemical_label_preserves_visible_spaces() {
 }
 
 #[test]
-fn parse_cdxml_normal_face_attached_label_uses_group_layout() {
+fn parse_cdxml_normal_face_attached_label_uses_connection_aware_group_layout() {
     let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >
 <CDXML BondLength="14.40" LineWidth="0.99" BoldWidth="2.01" HashSpacing="2.49" BondSpacing="18" LabelSize="10">
@@ -6829,22 +7133,22 @@ fn parse_cdxml_normal_face_attached_label_uses_group_layout() {
         Some("NTs")
     );
 
-    let reversed = fragments
+    let mixed_direction = fragments
         .iter()
         .flat_map(|fragment| fragment.nodes.iter())
         .find(|node| node.id == "n4")
         .and_then(|node| node.label.as_ref())
-        .expect("right aligned NTs label should import");
-    assert_eq!(reversed.text, "TsN");
+        .expect("mixed-direction NTs label should import");
+    assert_eq!(mixed_direction.text, "NTs");
     assert_eq!(
-        reversed
+        mixed_direction
             .meta
             .pointer("/sourceRuns/0/script")
             .and_then(serde_json::Value::as_str),
         Some("normal")
     );
     assert_eq!(
-        reversed
+        mixed_direction
             .meta
             .pointer("/labelRecognition/components/1/label")
             .and_then(serde_json::Value::as_str),
@@ -7485,6 +7789,212 @@ fn parse_cdxml_node_labels_use_internal_attached_layout() {
         reimported_label.layout.as_deref(),
         Some("attached-group-above")
     );
+}
+
+#[test]
+fn parse_cdxml_left_justification_does_not_override_connection_aware_label_layout() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML BondLength="14.40" LineWidth="0.60" BoldWidth="2" HashSpacing="2.50" LabelJustification="Auto">
+  <page id="1">
+    <fragment id="2" BoundingBox="0 0 180 80">
+      <n id="right" p="20 40" Element="7" NumHydrogens="1">
+        <t id="right_text" p="20 44" BoundingBox="14 32 26 46" LabelJustification="Left">
+          <s font="3" size="10" color="0" face="96">NH</s>
+        </t>
+      </n>
+      <n id="right_up" p="34 32"/>
+      <n id="right_down" p="34 48"/>
+      <b id="right_bond_up" B="right" E="right_up"/>
+      <b id="right_bond_down" B="right" E="right_down"/>
+
+      <n id="below" p="80 24" Element="7" NumHydrogens="1">
+        <t id="below_text" p="80 28" BoundingBox="74 16 86 30" LabelJustification="Left">
+          <s font="3" size="10" color="0" face="96">NH</s>
+        </t>
+      </n>
+      <n id="below_left" p="72 40"/>
+      <n id="below_right" p="88 40"/>
+      <b id="below_bond_left" B="below" E="below_left"/>
+      <b id="below_bond_right" B="below" E="below_right"/>
+
+      <n id="above" p="140 48" Element="7" NumHydrogens="1">
+        <t id="above_text" p="140 52" BoundingBox="134 40 146 54" LabelJustification="Left">
+          <s font="3" size="10" color="0" face="96">NH</s>
+        </t>
+      </n>
+      <n id="above_left" p="132 32"/>
+      <n id="above_right" p="148 32"/>
+      <b id="above_bond_left" B="above" E="above_left"/>
+      <b id="above_bond_right" B="above" E="above_right"/>
+    </fragment>
+  </page>
+</CDXML>"##;
+    let document = parse_cdxml_document(cdxml, Some("left-justified automatic labels"))
+        .expect("CDXML should parse");
+    let label = |node_id: &str| {
+        document
+            .resources
+            .iter()
+            .filter_map(|(_, resource)| resource.data.as_fragment())
+            .flat_map(|fragment| fragment.nodes.iter())
+            .find(|node| node.id == node_id)
+            .and_then(|node| node.label.as_ref())
+            .unwrap_or_else(|| panic!("missing label for {node_id}"))
+    };
+
+    let reversed = label("right");
+    assert_eq!(reversed.source_text.as_deref(), Some("NH"));
+    assert_eq!(reversed.text, "HN");
+    assert_eq!(reversed.layout.as_deref(), Some("attached-group"));
+    assert_eq!(
+        reversed
+            .meta
+            .pointer("/import/cdxml/labelJustification")
+            .and_then(serde_json::Value::as_str),
+        Some("Left")
+    );
+
+    let stacked_above = label("below");
+    assert_eq!(stacked_above.lines, ["H", "N"]);
+    assert_eq!(
+        stacked_above.layout.as_deref(),
+        Some("attached-group-above")
+    );
+
+    let stacked_below = label("above");
+    assert_eq!(stacked_below.lines, ["N", "H"]);
+    assert_eq!(
+        stacked_below.layout.as_deref(),
+        Some("attached-group-below")
+    );
+}
+
+#[test]
+fn parse_cdxml_explicit_label_display_still_overrides_connection_aware_layout() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML BondLength="14.40" LineWidth="0.60" LabelJustification="Auto">
+  <page id="1">
+    <fragment id="2" BoundingBox="0 0 60 40">
+      <n id="fixed" p="16 20" Element="7" NumHydrogens="1" LabelDisplay="Left">
+        <t id="fixed_text" p="16 24" BoundingBox="10 12 22 26" LabelJustification="Left">
+          <s font="3" size="10" color="0" face="96">NH</s>
+        </t>
+      </n>
+      <n id="right_up" p="32 12"/>
+      <n id="right_down" p="32 28"/>
+      <b id="bond_up" B="fixed" E="right_up"/>
+      <b id="bond_down" B="fixed" E="right_down"/>
+    </fragment>
+  </page>
+</CDXML>"##;
+    let document =
+        parse_cdxml_document(cdxml, Some("fixed left label display")).expect("CDXML should parse");
+    let label = document
+        .resources
+        .values()
+        .find_map(|resource| resource.data.as_fragment())
+        .and_then(|fragment| fragment.nodes.iter().find(|node| node.id == "fixed"))
+        .and_then(|node| node.label.as_ref())
+        .expect("fixed label should import");
+
+    assert_eq!(label.source_text.as_deref(), Some("NH"));
+    assert_eq!(label.text, "NH");
+    assert_eq!(label.align.as_deref(), Some("left"));
+    assert_eq!(label.anchor.as_deref(), Some("start"));
+}
+
+#[test]
+fn parse_cdxml_label_fields_keep_their_official_layout_roles() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML BondLength="14.40" LineWidth="0.60" LabelJustification="Auto">
+  <page id="1">
+    <fragment id="2" BoundingBox="0 0 190 110">
+      <n id="alignment_right" p="42 20" Element="7" NumHydrogens="1">
+        <t p="42 24" LabelAlignment="Right"><s font="3" size="10" face="96">NH</s></t>
+      </n>
+      <n id="ar_up" p="26 12"/><n id="ar_down" p="26 28"/>
+      <b id="ar_b1" B="alignment_right" E="ar_up"/><b id="ar_b2" B="alignment_right" E="ar_down"/>
+
+      <n id="alignment_above" p="76 20" Element="7" NumHydrogens="1">
+        <t p="76 24" LabelAlignment="Above"><s font="3" size="10" face="96">NH</s></t>
+      </n>
+      <n id="aa_up" p="92 12"/><n id="aa_down" p="92 28"/>
+      <b id="aa_b1" B="alignment_above" E="aa_up"/><b id="aa_b2" B="alignment_above" E="aa_down"/>
+
+      <n id="display_above" p="112 20" Element="7" NumHydrogens="1" LabelDisplay="Above">
+        <t p="112 12" LabelAlignment="Above"><s font="3" size="10" face="96">NH</s></t>
+      </n>
+      <n id="da_up" p="128 12"/><n id="da_down" p="128 28"/>
+      <b id="da_b1" B="display_above" E="da_up"/><b id="da_b2" B="display_above" E="da_down"/>
+
+      <n id="authored_lines" p="154 20" NodeType="Fragment">
+        <t p="154 24" LineStarts="4 7"><s font="3" size="10" face="96">Cl2&#10;Zr</s></t>
+      </n>
+      <n id="ml_up" p="170 12"/><n id="ml_down" p="170 28"/>
+      <b id="ml_b1" B="authored_lines" E="ml_up"/><b id="ml_b2" B="authored_lines" E="ml_down"/>
+    </fragment>
+  </page>
+</CDXML>"##;
+    let document = parse_cdxml_document(cdxml, Some("label field roles")).expect("CDXML");
+    let label = |node_id: &str| {
+        document
+            .resources
+            .values()
+            .filter_map(|resource| resource.data.as_fragment())
+            .flat_map(|fragment| fragment.nodes.iter())
+            .find(|node| node.id == node_id)
+            .and_then(|node| node.label.as_ref())
+            .unwrap_or_else(|| panic!("missing {node_id}"))
+    };
+
+    assert_eq!(label("alignment_right").text, "NH");
+    assert_eq!(label("alignment_above").text, "HN");
+    assert!(label("alignment_above").lines.is_empty());
+    assert_eq!(label("display_above").text, "NH");
+    assert!(label("display_above").lines.is_empty());
+    assert_eq!(label("authored_lines").text, "Cl2\nZr");
+    assert_eq!(label("authored_lines").lines, ["Cl2", "Zr"]);
+}
+
+#[test]
+fn cdxml_caption_fields_override_obsolete_text_fields_and_roundtrip() {
+    let source = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML CaptionJustification="Left">
+  <page id="1" BoundingBox="0 0 120 60">
+    <t id="2" p="80 30" BoundingBox="20 10 80 34"
+       CaptionJustification="Right" Justification="Left" LabelJustification="Center"
+       LineHeight="9" CaptionLineHeight="auto" WordWrapWidth="72" LineStarts="6 12">
+      <s font="3" size="10">alpha&#10;beta</s>
+    </t>
+  </page>
+</CDXML>"##;
+    let document = parse_cdxml_document(source, Some("caption fields")).expect("CDXML");
+    let text = document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "text")
+        .expect("text object");
+    assert_eq!(text.payload.extra.get("align"), Some(&json!("right")));
+    assert_eq!(
+        text.meta.pointer("/import/cdxml/captionLineHeight"),
+        Some(&json!("auto"))
+    );
+
+    let exported = document_to_cdxml(&document);
+    for expected in [
+        "CaptionJustification=\"Right\"",
+        "Justification=\"Left\"",
+        "CaptionLineHeight=\"auto\"",
+        "LineHeight=\"9\"",
+        "WordWrapWidth=\"72\"",
+        "LineStarts=\"6 12\"",
+    ] {
+        assert!(
+            exported.contains(expected),
+            "missing {expected}: {exported}"
+        );
+    }
+    assert!(!exported.contains("LabelJustification=\"Center\""));
 }
 
 #[test]

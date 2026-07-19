@@ -22,9 +22,24 @@
       "expectedFiles": { "cdxml": 94, "cdx": 126 },
       "specialCases": [
         {
+          "path": "Code/GraphMol/test_data/CDXML/bad-coords.cdxml",
+          "class": "sanitized",
+          "reason": "Deliberate malformed-coordinate fixture; the importer drops the node that cannot be normalized and its dangling bond, then requires stable output."
+        },
+        {
           "path": "Code/GraphMol/test_data/CDXML/malformed.cdxml",
           "class": "invalid",
           "reason": "Deliberately truncated XML parser regression fixture."
+        },
+        {
+          "path": "External/ChemDraw/test_data/patents/US20030032827A1-20030213-C00040.CDX",
+          "class": "normalization",
+          "reason": "The source contains one unused shape style; export removes the unreferenced style and must stabilize after the first generation."
+        },
+        {
+          "path": "External/ChemDraw/test_data/patents/US20060029544A1-20060209-C00020.CDX",
+          "class": "normalization",
+          "reason": "The source contains one unused shape style; export removes the unreferenced style and must stabilize after the first generation."
         }
       ]
     },

@@ -411,6 +411,11 @@ cargo build -p chemsema-cli
 npm run benchmark:cdxml-public
 ```
 
+The current baseline has 404 exact three-generation round trips, with the other
+nine files explicitly classified as safe sanitization, lossless normalization,
+expected rejection, or transport-encoded input; unexpected semantic and count
+drift are both zero.
+
 Some scripts compare output against locally installed desktop applications or
 Office. Those flows are optional and may require Windows-specific software,
 local documents, or `CHEMSEMA_PYTHON` to point at a Python environment with the

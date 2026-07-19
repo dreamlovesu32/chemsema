@@ -7,6 +7,13 @@ All notable public changes to ChemSema are tracked here.
 - Added a reproducible public CDXML/CDX round-trip corpus pinned to 413
   license-clear files from RDKit, Indigo, cdxml-toolkit, SAMPL6, and SAMPL9,
   together with machine-readable baseline reporting.
+- Upgraded that corpus gate to three-generation semantic fingerprints and fixed
+  all unexpected drift it exposed: element and isotope labels, singleton atoms,
+  dangling bonds, represented charge symbols, element-list queries, headless
+  arrows, bracket groups and anchors, and dashed secondary double-bond lines.
+- Restored connection-aware layout for imported attached atom labels: horizontal
+  CDXML text justification no longer suppresses `NH`/`NH2` reversal or vertical
+  stacking, while explicit node-level `LabelDisplay` modes remain authoritative.
 - Made CDXML file loading tolerate isolated Windows-1252 punctuation bytes in
   legacy files that incorrectly declare UTF-8, while keeping other document
   formats on the strict UTF-8 path.

@@ -8,7 +8,7 @@ use std::fmt::Write;
 
 use super::{
     colors::{rgb_fractions, CdxmlColorTable},
-    element_symbol, CdxmlDefaults, CdxmlJustification,
+    CdxmlDefaults, CdxmlJustification,
 };
 
 pub fn document_to_cdxml(document: &ChemSemaDocument) -> String {
@@ -257,6 +257,7 @@ fn value_margins(value: &Value) -> Option<[f64; 4]> {
 struct CdxmlDocumentWriter<'a> {
     document: &'a ChemSemaDocument,
     next_id: u64,
+    node_ids: BTreeMap<String, String>,
     colors: CdxmlColorTable,
     fonts: CdxmlFontTable,
     defaults: CdxmlDefaults,
@@ -288,6 +289,7 @@ impl<'a> CdxmlDocumentWriter<'a> {
         Self {
             document,
             next_id: 1,
+            node_ids: BTreeMap::new(),
             colors,
             fonts,
             defaults,
@@ -385,6 +387,10 @@ impl<'a> CdxmlDocumentWriter<'a> {
         if object.children.is_empty() {
             return;
         }
+        if object.meta.get("kind").and_then(Value::as_str) == Some("bracket-group") {
+            self.write_scene_object_children(out, object);
+            return;
+        }
         let mut scratch = self.document.clone();
         scratch.objects = object.children.clone();
         let bbox = crate::render_primitives_bounds(crate::render_document(&scratch).iter())
@@ -411,6 +417,11 @@ impl<'a> CdxmlDocumentWriter<'a> {
         )
         .expect("writing group should not fail");
 
+        self.write_scene_object_children(out, object);
+        out.push_str("    </group>\n");
+    }
+
+    fn write_scene_object_children(&mut self, out: &mut String, object: &SceneObject) {
         let mut children: Vec<&SceneObject> = object
             .children
             .iter()
@@ -420,7 +431,6 @@ impl<'a> CdxmlDocumentWriter<'a> {
         for child in children {
             self.write_scene_object(out, child);
         }
-        out.push_str("    </group>\n");
     }
 
     fn write_color_table(&self, out: &mut String) {
@@ -487,6 +497,7 @@ impl<'a> CdxmlDocumentWriter<'a> {
         for node in &fragment.nodes {
             node_ids.insert(node.id.clone(), self.alloc_id());
         }
+        self.node_ids.extend(node_ids.clone());
         for node in &fragment.nodes {
             self.write_node(out, object, node, &node_ids[&node.id]);
         }
@@ -511,17 +522,31 @@ impl<'a> CdxmlDocumentWriter<'a> {
             .cloned();
         let is_plain_carbon =
             node.atomic_number == 6 && label_text.is_none() && !node.is_placeholder;
-        let is_nickname =
-            node.is_placeholder || should_export_node_as_nickname(node, label_text.as_deref());
+        let is_nickname = node.is_placeholder;
         let mut attrs = vec![("id", cdxml_id.to_string()), ("p", fmt_point(point))];
         attrs.push(("Z", object.z_index.to_string()));
-        if !is_plain_carbon && !is_nickname && node.atomic_number > 0 {
+        if !is_plain_carbon && node.atomic_number > 0 && (!is_nickname || node.atomic_number != 6) {
             attrs.push(("Element", node.atomic_number.to_string()));
         }
+        let imported_node_type = node
+            .meta
+            .pointer("/import/cdxml/nodeType")
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty());
         if node.is_external_connection_point {
             attrs.push(("NodeType", "ExternalConnectionPoint".to_string()));
+        } else if let Some(node_type) = imported_node_type {
+            attrs.push(("NodeType", node_type.to_string()));
         } else if is_nickname {
             attrs.push(("NodeType", "Nickname".to_string()));
+        }
+        if let Some(element_list) = node
+            .meta
+            .pointer("/import/cdxml/elementList")
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+        {
+            attrs.push(("ElementList", element_list.to_string()));
         }
         if let Some(label) = node.label.as_ref() {
             if let Some(display) = imported_cdxml_label_attr(label, "labelDisplay") {
@@ -592,7 +617,18 @@ impl<'a> CdxmlDocumentWriter<'a> {
         if let Some(justification) = imported_cdxml_label_attr(label, "justification") {
             attrs.push(("Justification", justification.to_string()));
         }
-        if let Some(line_starts) = cdxml_label_line_starts(label) {
+        for (name, xml_name) in [
+            ("lineHeight", "LineHeight"),
+            ("labelLineHeight", "LabelLineHeight"),
+            ("wordWrapWidth", "WordWrapWidth"),
+        ] {
+            if let Some(value) = imported_cdxml_label_attr(label, name) {
+                attrs.push((xml_name, value.to_string()));
+            }
+        }
+        if let Some(line_starts) = imported_cdxml_label_attr(label, "lineStarts") {
+            attrs.push(("LineStarts", line_starts.to_string()));
+        } else if let Some(line_starts) = cdxml_label_line_starts(label) {
             attrs.push(("LineStarts", line_starts));
         }
         write_open_tag(out, 8, "t", attrs);
@@ -692,7 +728,13 @@ impl<'a> CdxmlDocumentWriter<'a> {
             ("color", self.colors.id_for(&stroke)),
             ("Z", object.z_index.to_string()),
         ];
-        if has_head || has_tail {
+        let is_arrow = arrow.is_some()
+            || object
+                .meta
+                .pointer("/import/cdxml/kind")
+                .and_then(Value::as_str)
+                == Some("arrow");
+        if is_arrow || has_head || has_tail {
             let bold = arrow
                 .and_then(|value| value.get("bold"))
                 .and_then(Value::as_bool)
@@ -1213,19 +1255,40 @@ impl<'a> CdxmlDocumentWriter<'a> {
             let center_y = (bbox[1] + bbox[3]) * 0.5;
             let symbol_bbox =
                 cdxml_symbol_anchor_bbox(center_x, center_y, anchor_width, anchor_height);
-            write_empty_tag(
-                out,
-                4,
-                "graphic",
-                vec![
-                    ("id", self.alloc_id()),
-                    ("GraphicType", "Symbol".to_string()),
-                    ("SymbolType", symbol_type.to_string()),
-                    ("color", color_id),
-                    ("BoundingBox", fmt_bbox(symbol_bbox)),
-                    ("Z", object.z_index.to_string()),
-                ],
-            );
+            let attrs = vec![
+                ("id", self.alloc_id()),
+                ("GraphicType", "Symbol".to_string()),
+                ("SymbolType", symbol_type.to_string()),
+                ("color", color_id),
+                ("BoundingBox", fmt_bbox(symbol_bbox)),
+                ("Z", object.z_index.to_string()),
+            ];
+            let represented_node = object
+                .payload
+                .extra
+                .get("attachedAtomId")
+                .and_then(Value::as_str)
+                .and_then(|node_id| self.node_ids.get(node_id));
+            let represented_attribute = object
+                .payload
+                .extra
+                .get("representAttribute")
+                .and_then(Value::as_str);
+            if let (Some(node_id), Some(attribute)) = (represented_node, represented_attribute) {
+                write_open_tag(out, 4, "graphic", attrs);
+                write_empty_tag(
+                    out,
+                    6,
+                    "represent",
+                    vec![
+                        ("attribute", attribute.to_string()),
+                        ("object", node_id.clone()),
+                    ],
+                );
+                out.push_str("    </graphic>\n");
+            } else {
+                write_empty_tag(out, 4, "graphic", attrs);
+            }
             return;
         }
 
@@ -1238,9 +1301,15 @@ impl<'a> CdxmlDocumentWriter<'a> {
             _ => "Round",
         };
         if let Some(side) = object.payload.extra.get("side").and_then(Value::as_str) {
+            let bracket_x = match (kind.as_str(), side) {
+                ("round", "right") => bbox[0],
+                ("round", _) => bbox[2],
+                (_, "right") => bbox[2],
+                _ => bbox[0],
+            };
             let bracket_bbox = match side {
-                "right" => [bbox[2], bbox[1], bbox[2], bbox[3]],
-                _ => [bbox[0], bbox[3], bbox[0], bbox[1]],
+                "right" => [bracket_x, bbox[1], bracket_x, bbox[3]],
+                _ => [bracket_x, bbox[3], bracket_x, bbox[1]],
             };
             write_empty_tag(
                 out,
@@ -1339,18 +1408,42 @@ impl<'a> CdxmlDocumentWriter<'a> {
             object.transform.translate[0] + box_value[0] + box_value[2],
             object.transform.translate[1] + box_value[1] + box_value[3],
         ];
-        let attrs = vec![
+        let mut attrs = vec![
             ("id", self.alloc_id()),
             ("p", fmt_point(anchor)),
             ("BoundingBox", fmt_bbox(bbox)),
             (
-                "Justification",
+                "CaptionJustification",
                 cdxml_justification(payload_string_cdxml(&object.payload, "align").as_deref())
                     .to_string(),
             ),
             ("Z", object.z_index.to_string()),
             ("UTF8Text", text.clone()),
         ];
+        for (name, xml_name) in [
+            ("justification", "Justification"),
+            ("lineHeight", "LineHeight"),
+            ("captionLineHeight", "CaptionLineHeight"),
+            ("wordWrapWidth", "WordWrapWidth"),
+            ("lineStarts", "LineStarts"),
+        ] {
+            if let Some(value) = imported_cdxml_object_attr(object, name) {
+                attrs.push((xml_name, value.to_string()));
+            }
+        }
+        if imported_cdxml_object_attr(object, "lineHeight").is_none()
+            && imported_cdxml_object_attr(object, "captionLineHeight").is_none()
+            && object.meta.pointer("/import/cdxml").is_none()
+        {
+            if let Some(line_height) = object
+                .payload
+                .extra
+                .get("lineHeight")
+                .and_then(Value::as_f64)
+            {
+                attrs.push(("CaptionLineHeight", fmt_num(line_height)));
+            }
+        }
         write_open_tag(out, 4, "t", attrs);
         let runs = object
             .payload
@@ -1778,56 +1871,19 @@ fn translate_bbox(bbox: [f64; 4], translate: [f64; 2]) -> [f64; 4] {
     ]
 }
 
-fn should_export_node_as_nickname(node: &Node, label_text: Option<&str>) -> bool {
-    let Some(text) = label_text else {
-        return false;
-    };
-    let trimmed = text.trim();
-    !trimmed.is_empty()
-        && !element_label_text_matches_node(node, trimmed)
-        && !(node.atomic_number == 6 && trimmed == "C")
-}
-
-fn element_label_text_matches_node(node: &Node, text: &str) -> bool {
-    if node.atomic_number == 0 {
-        return false;
-    }
-    let symbol = element_symbol(node.atomic_number);
-    let hydrogen = hydrogen_suffix(node.num_hydrogens);
-    let charge = charge_suffix(node.charge);
-    let canonical = format!("{symbol}{hydrogen}{charge}");
-    if text == canonical {
-        return true;
-    }
-    if node.num_hydrogens > 0 {
-        let hydrogen_first = format!("{hydrogen}{symbol}{charge}");
-        if text == hydrogen_first {
-            return true;
-        }
-    }
-    false
-}
-
-fn hydrogen_suffix(count: u8) -> String {
-    match count {
-        0 => String::new(),
-        1 => "H".to_string(),
-        value => format!("H{value}"),
-    }
-}
-
-fn charge_suffix(charge: i32) -> String {
-    match charge {
-        0 => String::new(),
-        1 => "+".to_string(),
-        -1 => "-".to_string(),
-        value if value > 1 => format!("{value}+"),
-        value => format!("{}-", value.abs()),
-    }
-}
-
 fn imported_cdxml_label_attr<'a>(label: &'a NodeLabel, name: &str) -> Option<&'a str> {
     label
+        .meta
+        .get("import")?
+        .get("cdxml")?
+        .get(name)?
+        .as_str()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
+fn imported_cdxml_object_attr<'a>(object: &'a SceneObject, name: &str) -> Option<&'a str> {
+    object
         .meta
         .get("import")?
         .get("cdxml")?
@@ -1942,25 +1998,27 @@ fn cdxml_bond_display(bond: &Bond, second: bool) -> Option<&'static str> {
         }
     }
     if second {
-        if bond.line_styles.right == crate::BondLinePattern::Dashed {
+        let (line_style, line_weight) = match bond.double.as_ref().map(|double| double.placement) {
+            Some(crate::DoubleBondPlacement::Left) => {
+                (bond.line_styles.left, bond.line_weights.left)
+            }
+            _ => (bond.line_styles.right, bond.line_weights.right),
+        };
+        if line_style == crate::BondLinePattern::Dashed {
             return Some("Dash");
         }
-        if bond.line_weights.right == crate::BondLineWeight::Bold {
+        if line_weight == crate::BondLineWeight::Bold {
             return Some("Bold");
         }
         return None;
     }
-    if bond.line_styles.main == crate::BondLinePattern::Dashed
-        || bond.line_styles.left == crate::BondLinePattern::Dashed
-    {
+    if bond.line_styles.main == crate::BondLinePattern::Dashed {
         return Some("Dash");
     }
     if bond.line_styles.main == crate::BondLinePattern::Wavy {
         return Some("Wavy");
     }
-    if bond.line_weights.main == crate::BondLineWeight::Bold
-        || bond.line_weights.left == crate::BondLineWeight::Bold
-    {
+    if bond.line_weights.main == crate::BondLineWeight::Bold {
         return Some("Bold");
     }
     None

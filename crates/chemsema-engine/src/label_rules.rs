@@ -8,6 +8,8 @@ const DIRECTION_EPSILON: f64 = 1.0e-6;
 pub enum LabelFlow {
     Forward,
     Reverse,
+    /// Keep the authored text and line breaks exactly as stored.
+    Preserve,
     StackAbove,
     StackBelow,
 }
@@ -375,6 +377,31 @@ pub fn layout_label_text(text: &str, decision: &LabelLayoutDecision) -> LabelLay
                 lines: vec![rendered_text.clone()],
                 rendered_text,
                 anchor_line: 0,
+                anchor_char,
+            }
+        }
+        LabelFlow::Preserve => {
+            let lines = text
+                .split('\n')
+                .map(ToString::to_string)
+                .collect::<Vec<_>>();
+            let anchor_line = match decision.anchor {
+                LabelAnchorPolicy::LastGlyph => lines.len().saturating_sub(1),
+                _ => 0,
+            };
+            let anchor_char = match decision.anchor {
+                LabelAnchorPolicy::LastGlyph => lines
+                    .get(anchor_line)
+                    .map(|line| line.chars().count().saturating_sub(1))
+                    .unwrap_or(0),
+                _ => 0,
+            };
+            LabelLayout {
+                flow: decision.flow.clone(),
+                anchor: decision.anchor.clone(),
+                rendered_text: lines.join("\n"),
+                lines,
+                anchor_line,
                 anchor_char,
             }
         }
