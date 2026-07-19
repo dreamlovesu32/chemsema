@@ -4,16 +4,18 @@ If ChemSema contributes to published research, please cite the archived software
 release used for the work. GitHub reads the repository metadata from
 [`CITATION.cff`](./CITATION.cff) and exposes it through **Cite this repository**.
 
-Until a Zenodo DOI has been minted for the release, use this software citation:
+For ChemSema 1.0.0-beta.1, use this version-specific citation:
 
-> Zhang, Jiajun. (2026). *ChemSema* (Version 1.0.0-beta.1) [Computer software].
-> https://github.com/dreamlovesu32/chemsema
+> Zhang, Jiajun. (2026). *ChemSema* (Version chemsema-v1.0.0-beta.1)
+> [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.21443043
 
 Author ORCID: [0000-0003-1765-5612](https://orcid.org/0000-0003-1765-5612).
 
-After the GitHub repository is connected to Zenodo and a release is archived,
-replace the repository URL in manuscripts with the version-specific DOI. Keep
-the concept DOI for references to the project across all versions.
+Use the version DOI
+[10.5281/zenodo.21443043](https://doi.org/10.5281/zenodo.21443043) when the
+exact archived release matters. Use the concept DOI
+[10.5281/zenodo.21443042](https://doi.org/10.5281/zenodo.21443042) to cite the
+ChemSema project across all versions; it always resolves to the latest archive.
 
 ## 引用 ChemSema
 
@@ -21,12 +23,14 @@ the concept DOI for references to the project across all versions.
 GitHub 会读取 [`CITATION.cff`](./CITATION.cff)，并通过仓库的 **Cite this repository**
 入口提供引用信息。
 
-在 Zenodo 尚未为 release 生成 DOI 前，请使用以下软件引用：
+引用 ChemSema 1.0.0-beta.1 时，请使用以下版本专属引用：
 
-> Zhang, Jiajun. (2026). *ChemSema* (Version 1.0.0-beta.1) [Computer software].
-> https://github.com/dreamlovesu32/chemsema
+> Zhang, Jiajun. (2026). *ChemSema* (Version chemsema-v1.0.0-beta.1)
+> [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.21443043
 
 作者 ORCID：[0000-0003-1765-5612](https://orcid.org/0000-0003-1765-5612)。
 
-GitHub 仓库连接 Zenodo 并归档 release 后，论文中应优先使用对应版本 DOI；需要指向
-跨版本项目时使用 Zenodo concept DOI。
+需要精确指向本次归档版本时，使用版本 DOI
+[10.5281/zenodo.21443043](https://doi.org/10.5281/zenodo.21443043)；需要引用跨版本的
+ChemSema 项目时，使用概念 DOI
+[10.5281/zenodo.21443042](https://doi.org/10.5281/zenodo.21443042)，它会始终指向最新归档。

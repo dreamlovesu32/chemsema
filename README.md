@@ -7,6 +7,7 @@
 [![Windows installer](https://img.shields.io/badge/Windows-installer-0078d4)](https://github.com/dreamlovesu32/chemsema/releases/download/chemsema-v1.0.0-beta.1/ChemSema_1.0.0-beta.1_x64-setup.exe)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](./LICENSE)
 [![Version](https://img.shields.io/badge/version-1.0.0--beta.1-orange)](https://github.com/dreamlovesu32/chemsema/releases/tag/chemsema-v1.0.0-beta.1)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21443042.svg)](https://doi.org/10.5281/zenodo.21443042)
 
 ChemSema was formerly published as **ChemCore**. The Git history remains intact,
 while current code, packages, documentation, and public paths use the new name.
@@ -407,9 +408,12 @@ needed analysis packages.
 ## Citation
 
 If ChemSema contributes to published research, cite the archived software
-release used for the work. Citation metadata, the author ORCID, and the current
-pre-DOI citation are available in [CITING.md](./CITING.md). GitHub also reads
-[CITATION.cff](./CITATION.cff) for its **Cite this repository** entry.
+release used for the work. The current version DOI is
+[10.5281/zenodo.21443043](https://doi.org/10.5281/zenodo.21443043), and the
+all-versions concept DOI is
+[10.5281/zenodo.21443042](https://doi.org/10.5281/zenodo.21443042). Citation
+metadata and the author ORCID are available in [CITING.md](./CITING.md). GitHub
+also reads [CITATION.cff](./CITATION.cff) for its **Cite this repository** entry.
 
 ## Design Documents
 

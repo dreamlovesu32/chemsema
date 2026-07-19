@@ -7,6 +7,7 @@
 [![Windows 安装包](https://img.shields.io/badge/Windows-installer-0078d4)](https://github.com/dreamlovesu32/chemsema/releases/download/chemsema-v1.0.0-beta.1/ChemSema_1.0.0-beta.1_x64-setup.exe)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](./LICENSE)
 [![Version](https://img.shields.io/badge/version-1.0.0--beta.1-orange)](https://github.com/dreamlovesu32/chemsema/releases/tag/chemsema-v1.0.0-beta.1)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21443042.svg)](https://doi.org/10.5281/zenodo.21443042)
 
 ChemSema 的原公开名称为 **ChemCore**。本次改名保留完整 Git 历史，当前代码、包、
 文档和公开路径统一使用新名称。详见[项目改名与兼容说明](./docs/migration-to-chemsema.zh-CN.md)。
@@ -325,9 +326,11 @@ node --check viewer/app.js
 
 ## 引用
 
-如果 ChemSema 对已发表研究有实质贡献，请引用研究实际使用的软件归档版本。引用元数据、
-作者 ORCID 和当前尚未生成 DOI 时的引用格式见 [CITING.md](./CITING.md)。GitHub 也会读取
-[CITATION.cff](./CITATION.cff)，并显示 **Cite this repository** 入口。
+如果 ChemSema 对已发表研究有实质贡献，请引用研究实际使用的软件归档版本。当前版本 DOI
+为 [10.5281/zenodo.21443043](https://doi.org/10.5281/zenodo.21443043)，跨版本概念 DOI
+为 [10.5281/zenodo.21443042](https://doi.org/10.5281/zenodo.21443042)。引用元数据和作者
+ORCID 见 [CITING.md](./CITING.md)。GitHub 也会读取 [CITATION.cff](./CITATION.cff)，并显示
+**Cite this repository** 入口。
 
 ## 设计文档
 
