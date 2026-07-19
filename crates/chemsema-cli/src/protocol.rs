@@ -110,6 +110,18 @@ const COMMAND_SPECS: &[CommandSpec] = &[
         example: "chemsema-cli label-query --visible-text F3C --connection-angle 0 --pretty",
     },
     CommandSpec {
+        name: "insert-smiles",
+        summary: "Parse SMILES with the shared Rust chemistry kernel and insert the generated 2D structure into a new or existing document.",
+        usage: "chemsema-cli insert-smiles <smiles> [--input <document>] --out <document> [--x <pt>] [--y <pt>] [--pretty]",
+        example: "chemsema-cli insert-smiles 'CC(=O)O' --out acetate.ccjs --pretty",
+    },
+    CommandSpec {
+        name: "chemistry",
+        summary: "Generate a chemical identifier for a complete molecule using the shared Rust chemistry kernel.",
+        usage: "chemsema-cli chemistry <input> [--format smiles|inchi|inchi-key] [--node <id> ...] [--out <json>] [--pretty]",
+        example: "chemsema-cli chemistry molecule.ccjs --format smiles --pretty",
+    },
+    CommandSpec {
         name: "inspect",
         summary: "Inspect a document and write JSON summary/object/molecule/resource data.",
         usage: "chemsema-cli inspect <input> [--include summary,objects,molecules,resources,styles] [--out <path>] [--pretty]",

@@ -2047,6 +2047,9 @@ pub(super) fn implicit_hydrogen_count(fragment: &crate::MoleculeFragment, node_i
     if let Some(num_hydrogens) = cdxml_explicit_num_hydrogens(node) {
         return num_hydrogens;
     }
+    if let Some(num_hydrogens) = smiles_semantic_num_hydrogens(node) {
+        return num_hydrogens;
+    }
     if node.is_placeholder || node.atomic_number == 1 || node.atomic_number == 6 {
         return 0;
     }
@@ -2065,6 +2068,37 @@ pub(super) fn implicit_hydrogen_count(fragment: &crate::MoleculeFragment, node_i
     };
     let charge_hydrogen_penalty = implicit_hydrogen_charge_penalty(node.atomic_number, charge);
     (valence - radical_count - connection_count - charge_hydrogen_penalty).clamp(0, 9) as u8
+}
+
+fn smiles_semantic_num_hydrogens(node: &crate::Node) -> Option<u8> {
+    let smiles = node.meta.pointer("/chemistry/smiles")?;
+    if smiles.get("noImplicit").and_then(Value::as_bool) != Some(true) {
+        // Ordinary SMILES atoms keep participating in the live engine valence
+        // calculation after the user edits their bonds. The imported count is
+        // provenance, not a frozen override.
+        return None;
+    }
+    let source_matches = smiles
+        .get("sourceAtomicNumber")
+        .and_then(Value::as_u64)
+        .is_none_or(|value| value == u64::from(node.atomic_number))
+        && smiles
+            .get("sourceSymbol")
+            .and_then(Value::as_str)
+            .is_none_or(|value| value == node.element)
+        && smiles
+            .get("sourceCharge")
+            .and_then(Value::as_i64)
+            .is_none_or(|value| value == i64::from(node.charge));
+    if !source_matches {
+        return None;
+    }
+    let explicit = smiles
+        .get("explicitHydrogens")
+        .and_then(Value::as_u64)
+        .unwrap_or(0)
+        .min(u64::from(u8::MAX)) as u8;
+    Some(explicit)
 }
 
 fn cdxml_explicit_num_hydrogens(node: &crate::Node) -> Option<u8> {

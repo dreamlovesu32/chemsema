@@ -124,6 +124,14 @@ pub enum DocumentCommandFormat {
     Svg,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ChemicalAnalysisFormat {
+    Smiles,
+    Inchi,
+    InchiKey,
+}
+
 impl From<&BondAnchor> for CommandAnchor {
     fn from(anchor: &BondAnchor) -> Self {
         Self {
@@ -188,6 +196,16 @@ pub enum EditorCommand {
     InspectDocument {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         include: Vec<String>,
+    },
+    InsertSmiles {
+        smiles: String,
+        x: f64,
+        y: f64,
+    },
+    ChemicalAnalysis {
+        format: ChemicalAnalysisFormat,
+        #[serde(default)]
+        targets: CommandTargetSet,
     },
     SelectTargets {
         targets: CommandTargetSet,

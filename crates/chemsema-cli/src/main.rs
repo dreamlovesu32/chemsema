@@ -3,8 +3,9 @@ mod protocol;
 
 use chemsema_desktop_service::DesktopDocumentService;
 use chemsema_engine::{
-    compact_label_text, decide_label_layout, layout_label_text, reverse_label_groups, Engine,
-    LabelAnchorPolicy, LabelFlow, LabelLayoutDecision,
+    compact_label_text, decide_label_layout, layout_label_text, reverse_label_groups,
+    ChemicalAnalysisFormat, CommandTargetSet, EditorCommand, Engine, LabelAnchorPolicy, LabelFlow,
+    LabelLayoutDecision,
 };
 use protocol::{
     about_command, capabilities_command, doctor_command, examples_command, guide_command,
@@ -85,6 +86,11 @@ fn run() -> CliResult<()> {
         "guide" => guide_command(&args[1..]).map_err(CliError::message),
         "label-query" | "label" => label_query_command(&args[1..])
             .map_err(|error| CliError::for_command("label-query", error)),
+        "insert-smiles" => insert_smiles_command(&args[1..])
+            .map_err(|error| CliError::for_command("insert-smiles", error)),
+        "chemistry" | "chemical-analysis" => {
+            chemistry_command(&args[1..]).map_err(|error| CliError::for_command("chemistry", error))
+        }
         "targets" => agent::targets_command(&args[1..])
             .map_err(|error| CliError::for_command("targets", error)),
         "capture" => agent::capture_command(&args[1..])
@@ -118,6 +124,163 @@ fn run() -> CliResult<()> {
         }
         other => Err(CliError::unknown_command(other)),
     }
+}
+
+fn insert_smiles_command(args: &[String]) -> Result<(), String> {
+    let mut smiles = None;
+    let mut input = None;
+    let mut output = None;
+    let mut x = 0.0;
+    let mut y = 0.0;
+    let mut pretty = false;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--smiles" | "-s" => {
+                index += 1;
+                smiles = Some(
+                    args.get(index)
+                        .ok_or_else(|| "--smiles requires a value.".to_string())?
+                        .clone(),
+                );
+            }
+            "--input" | "-i" => {
+                index += 1;
+                input = Some(
+                    args.get(index)
+                        .ok_or_else(|| "--input requires a path.".to_string())?
+                        .clone(),
+                );
+            }
+            "--out" | "-o" => {
+                index += 1;
+                output = Some(
+                    args.get(index)
+                        .ok_or_else(|| "--out requires a path.".to_string())?
+                        .clone(),
+                );
+            }
+            "--x" => {
+                index += 1;
+                x = parse_f64_arg(
+                    args.get(index)
+                        .ok_or_else(|| "--x requires a value.".to_string())?,
+                    "--x",
+                )?;
+            }
+            "--y" => {
+                index += 1;
+                y = parse_f64_arg(
+                    args.get(index)
+                        .ok_or_else(|| "--y requires a value.".to_string())?,
+                    "--y",
+                )?;
+            }
+            "--pretty" => pretty = true,
+            value if smiles.is_none() => smiles = Some(value.to_string()),
+            value => return Err(format!("Unexpected insert-smiles argument '{value}'.")),
+        }
+        index += 1;
+    }
+    let smiles = smiles.ok_or_else(|| "insert-smiles requires a SMILES string.".to_string())?;
+    let output = output.ok_or_else(|| "insert-smiles requires --out <document>.".to_string())?;
+    let mut engine = if let Some(input) = input {
+        load_engine_from_file(&input)?
+    } else {
+        Engine::new()
+    };
+    let result = engine.execute_command(EditorCommand::InsertSmiles { smiles, x, y })?;
+    write_engine_output(&engine, &output, None)?;
+    write_json_value(
+        json!({
+            "ok": true,
+            "command": "insert-smiles",
+            "output": output,
+            "result": result,
+        }),
+        None,
+        pretty,
+    )
+}
+
+fn chemistry_command(args: &[String]) -> Result<(), String> {
+    let mut input = None;
+    let mut format = ChemicalAnalysisFormat::Smiles;
+    let mut node_ids = Vec::new();
+    let mut output = None;
+    let mut pretty = false;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--format" | "-f" => {
+                index += 1;
+                format = match args
+                    .get(index)
+                    .ok_or_else(|| "--format requires a value.".to_string())?
+                    .to_ascii_lowercase()
+                    .replace('_', "-")
+                    .as_str()
+                {
+                    "smiles" => ChemicalAnalysisFormat::Smiles,
+                    "inchi" => ChemicalAnalysisFormat::Inchi,
+                    "inchikey" | "inchi-key" => ChemicalAnalysisFormat::InchiKey,
+                    value => return Err(format!("Unsupported chemistry format '{value}'.")),
+                };
+            }
+            "--node" => {
+                index += 1;
+                node_ids.push(
+                    args.get(index)
+                        .ok_or_else(|| "--node requires an id.".to_string())?
+                        .clone(),
+                );
+            }
+            "--out" | "-o" => {
+                index += 1;
+                output = Some(
+                    args.get(index)
+                        .ok_or_else(|| "--out requires a path.".to_string())?
+                        .clone(),
+                );
+            }
+            "--pretty" => pretty = true,
+            value if input.is_none() => input = Some(value.to_string()),
+            value => return Err(format!("Unexpected chemistry argument '{value}'.")),
+        }
+        index += 1;
+    }
+    let input = input.ok_or_else(|| "chemistry requires an input document.".to_string())?;
+    let mut engine = load_engine_from_file(&input)?;
+    let targets = if node_ids.is_empty() {
+        let object_id = engine
+            .state()
+            .document
+            .editable_fragment()
+            .ok_or_else(|| "document has no editable molecule.".to_string())?
+            .object
+            .id
+            .clone();
+        CommandTargetSet {
+            objects: vec![object_id],
+            ..CommandTargetSet::default()
+        }
+    } else {
+        CommandTargetSet {
+            nodes: node_ids,
+            ..CommandTargetSet::default()
+        }
+    };
+    let result = engine.execute_command(EditorCommand::ChemicalAnalysis { format, targets })?;
+    write_json_value(
+        json!({
+            "ok": true,
+            "command": "chemistry",
+            "input": input,
+            "analysis": result.output,
+        }),
+        output.as_deref(),
+        pretty,
+    )
 }
 
 fn label_query_command(args: &[String]) -> Result<(), String> {

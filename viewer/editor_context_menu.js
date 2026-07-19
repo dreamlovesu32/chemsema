@@ -354,6 +354,17 @@ export function createCanvasContextMenuHost(options) {
       await options.numericDialogHost.choose("line-height");
       await finishTemporaryContextSelection();
       return;
+    } else if (command === "smiles-dialog") {
+      const point = activeContextMenuState?.point;
+      if (point) {
+        await options.smilesDialogHost?.open(point);
+      }
+      await finishTemporaryContextSelection();
+      return;
+    } else if (command === "chemical-copy") {
+      await copyChemicalAnalysis(value);
+      await finishTemporaryContextSelection();
+      return;
     } else if (command === "chemical-check" || command === "interpret-chemically") {
       changed = await executeDocumentCommand(
         { type: "apply-text-style", payload: { changes: { interpretChemically: value !== "off" } } },
@@ -420,6 +431,55 @@ export function createCanvasContextMenuHost(options) {
       options.refreshCommandAvailability();
     }
     await finishTemporaryContextSelection();
+  }
+
+  async function copyChemicalAnalysis(format) {
+    const displayName = format === "inchi-key" ? "InChIKey"
+      : format === "inchi" ? "InChI"
+        : "SMILES";
+    try {
+      const result = await options.commandEngine.executeCommand({
+        type: "chemical-analysis",
+        format,
+        targets: {},
+        meta: { source: "chemical-analysis-menu" },
+      }, { sync: false });
+      let value = String(result?.output?.value || "");
+      if (!value && result?.output?.molfile && format !== "smiles") {
+        const identifiers = await options.inchiHost.analyzeMolfile(result.output.molfile);
+        value = format === "inchi-key" ? identifiers.inchikey : identifiers.inchi;
+      }
+      if (!value) {
+        throw new Error(displayName + " was not generated.");
+      }
+      if (options.desktopFileHost?.available) {
+        await options.desktopFileHost.writeClipboard({ text: value });
+      } else if (globalThis.navigator?.clipboard?.writeText) {
+        await globalThis.navigator.clipboard.writeText(value);
+      } else {
+        legacyCopyText(value);
+      }
+      options.transientNotificationHost?.show(displayName + " copied");
+    } catch (error) {
+      const message = String(error?.message || error || displayName + " generation failed")
+        .replace(/^Error:\s*/i, "");
+      options.transientNotificationHost?.show(message, { error: true, duration: 3600 });
+    }
+  }
+
+  function legacyCopyText(value) {
+    const textarea = document.createElement("textarea");
+    textarea.value = value;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.select();
+    const copied = document.execCommand("copy");
+    textarea.remove();
+    if (!copied) {
+      throw new Error("Clipboard access is unavailable.");
+    }
   }
 
   function endpointStylePayloadName(style) {

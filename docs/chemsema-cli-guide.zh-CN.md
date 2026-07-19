@@ -1678,3 +1678,43 @@ npm run cli -- run input.cdxml edit.json --out output.cdxml --results edit-resul
 ```powershell
 npm run cli -- inspect output.cdxml --include summary,objects,molecules --out after.json --pretty
 ```
+
+## 17. 导入 SMILES 与复制化学标识符
+
+使用共享的 Rust 化学内核从 SMILES 创建文档：
+
+```powershell
+npm run cli -- insert-smiles "CC(=O)O" --out acetic-acid.ccjs --x 120 --y 100 --pretty
+```
+
+使用 `--input existing.ccjs` 可插入已有文档。最终渲染后的选择框左上角会对齐
+`--x`、`--y`；以点分隔的多个组分仍属于同一条导入记录。
+
+以下命令为第一个完整分子生成标识符；也可以重复提供 `--node <id>` 来限定分子：
+
+```powershell
+npm run cli -- chemistry acetic-acid.ccjs --format smiles --pretty
+npm run cli -- chemistry acetic-acid.ccjs --format inchi --pretty
+npm run cli -- chemistry acetic-acid.ccjs --format inchi-key --pretty
+```
+
+当前 SMILES 输出为异构 SMILES，并使用与输入编号无关的 canonical 原子排序。四面体
+奇偶性与归一化 E/Z 斜线方向都会按 canonical 遍历重写，因此这些情况也返回
+`"canonical": true`。当前比较器能够区分全部四个配体时，普通四面体中心还会带 `cip`
+R/S 描述符。InChI 和 InChIKey 使用官方 IUPAC InChI
+1.07.5 在本机生成：原生构建静态链接随仓库提供的 C 库，GUI 则加载官方
+WebAssembly 构建；整个过程不依赖 Python，也不访问远程服务。
+
+当前 InChI 桥接层通过确定的立体坐标投影保留归一化 E/Z，并通过与构型一致的 V2000
+楔键保留四面体手性。它仍会拒绝
+配位键，而不会悄悄将其改成单键；金属断键与重连层策略将作为独立的化学内核任务
+继续开发。
+
+命令脚本也可使用相同操作：
+
+```json
+[
+  { "type": "insert-smiles", "smiles": "CCO", "x": 120.0, "y": 100.0 },
+  { "type": "chemical-analysis", "format": "smiles", "targets": {} }
+]
+```

@@ -44,7 +44,7 @@ function wasmBuildEnv() {
   };
 }
 
-function normalizeGeneratedJson(filePath) {
+function normalizeGeneratedText(filePath) {
   const content = readFileSync(filePath, "utf8").replace(/\r\n/g, "\n");
   writeFileSync(filePath, content.endsWith("\n") ? content : `${content}\n`);
 }
@@ -65,7 +65,9 @@ run("wasm-pack", [
 // wasm-pack writes an ignore-all file for publishable packages. In this repo the
 // viewer consumes these runtime artifacts directly, so they need to stay tracked.
 rmSync(join(rootDir, "viewer", "engine", ".gitignore"), { force: true });
-normalizeGeneratedJson(join(rootDir, "viewer", "engine", "package.json"));
+for (const fileName of ["package.json", "LICENSE"]) {
+  normalizeGeneratedText(join(rootDir, "viewer", "engine", fileName));
+}
 
 const viewerSharedDir = join(rootDir, "viewer", "shared");
 mkdirSync(viewerSharedDir, { recursive: true });

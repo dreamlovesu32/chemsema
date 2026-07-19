@@ -1782,3 +1782,49 @@ Inspect again:
 ```powershell
 npm run cli -- inspect output.cdxml --include summary,objects,molecules --out after.json --pretty
 ```
+
+## 17. Import SMILES And Copy Chemical Identifiers
+
+Create a document from SMILES with the shared Rust chemistry kernel:
+
+```powershell
+npm run cli -- insert-smiles "CC(=O)O" --out acetic-acid.ccjs --x 120 --y 100 --pretty
+```
+
+`--input existing.ccjs` inserts into an existing document. The final rendered
+selection box is anchored at `--x`, `--y`; dot-separated components remain one
+import record.
+
+Generate an identifier for the first complete molecule, or restrict the input
+with repeated `--node <id>` options:
+
+```powershell
+npm run cli -- chemistry acetic-acid.ccjs --format smiles --pretty
+npm run cli -- chemistry acetic-acid.ccjs --format inchi --pretty
+npm run cli -- chemistry acetic-acid.ccjs --format inchi-key --pretty
+```
+
+SMILES output is isomeric and uses input-order-independent canonical atom
+ranking. Tetrahedral parity and normalized E/Z slash directions are rewritten
+for the canonical traversal, so these cases also report `"canonical": true`.
+Ordinary tetrahedral centers include a `cip` R/S descriptor when all four
+ligands are distinguishable by the supported comparison. InChI and
+InChIKey use the official IUPAC InChI 1.07.5
+implementation locally: native builds statically link the vendored C library,
+while the GUI loads the official WebAssembly build. No Python runtime or remote
+service is involved.
+
+The current InChI bridge preserves normalized E/Z through deterministic stereo
+coordinate projection and tetrahedral chirality through a configuration-aware
+V2000 wedge. It rejects dative bonds instead of silently converting them
+to single bonds; metal-disconnection and reconnected-layer policy remains a
+separate chemistry-kernel task.
+
+The same operations are available in command scripts:
+
+```json
+[
+  { "type": "insert-smiles", "smiles": "CCO", "x": 120.0, "y": 100.0 },
+  { "type": "chemical-analysis", "format": "smiles", "targets": {} }
+]
+```

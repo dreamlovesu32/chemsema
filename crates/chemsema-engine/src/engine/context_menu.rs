@@ -72,13 +72,21 @@ impl Engine {
             .and_then(JsonValue::as_str)
             .unwrap_or("canvas");
         if hit_kind == "canvas" {
-            return self.clipboard_items(true, has_paste);
+            let mut items = self.clipboard_items(true, has_paste);
+            if self.selection_is_complete_molecule() {
+                items.extend([separator(), chemical_analysis_submenu()]);
+            }
+            items.extend([separator(), item("From SMILES...", "smiles-dialog", "")]);
+            return items;
         }
 
         let selected_count = self.context_selection_count();
         let selected_types = self.selected_object_types();
         let single_object_type = self.single_selected_object_type();
         let mut items = self.clipboard_items(false, has_paste);
+        if self.selection_is_complete_molecule() {
+            items.extend([separator(), chemical_analysis_submenu()]);
+        }
 
         if selected_count > 1 || selected_types.contains("group") {
             items.extend([
@@ -275,6 +283,42 @@ impl Engine {
             + self.state.selection.nodes.len()
             + self.state.selection.bonds.len()
             + self.state.selection.label_nodes.len()
+    }
+
+    fn selection_is_complete_molecule(&self) -> bool {
+        let Some(entry) = self.state.document.editable_fragment() else {
+            return false;
+        };
+        if self
+            .state
+            .selection
+            .molecule_objects
+            .contains(&entry.object.id)
+        {
+            return !entry.fragment.nodes.is_empty();
+        }
+        let selected_nodes = self
+            .state
+            .selection
+            .nodes
+            .iter()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
+        if selected_nodes.is_empty() {
+            return false;
+        }
+        let selected_bonds = self
+            .state
+            .selection
+            .bonds
+            .iter()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
+        entry.fragment.bonds.iter().all(|bond| {
+            let begin = selected_nodes.contains(bond.begin.as_str());
+            let end = selected_nodes.contains(bond.end.as_str());
+            begin == end && (!begin || selected_bonds.contains(bond.id.as_str()))
+        })
     }
 
     fn selected_scene_object_count(&self) -> usize {
@@ -817,6 +861,17 @@ fn label_recognition_expansion_complete(node: &Node) -> Option<bool> {
 
 fn separator() -> JsonValue {
     json!({ "type": "separator" })
+}
+
+fn chemical_analysis_submenu() -> JsonValue {
+    submenu(
+        "Chemical Analysis",
+        vec![
+            item("SMILES", "chemical-copy", "smiles"),
+            item("InChI", "chemical-copy", "inchi"),
+            item("InChIKey", "chemical-copy", "inchi-key"),
+        ],
+    )
 }
 
 fn item(label: &str, command: &str, value: &str) -> JsonValue {

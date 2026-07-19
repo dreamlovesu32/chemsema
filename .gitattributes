@@ -23,6 +23,11 @@
 # Preserve ChemDraw source files exactly as exported.
 *.cdxml binary
 
+# Preserve the vendored official IUPAC InChI source byte-for-byte. Upstream
+# source intentionally contains whitespace that does not follow this repo's
+# authored-source style checks.
+/third_party/inchi-1.07.5/** -text -whitespace
+
 # Keep Windows-native scripts in CRLF form for local execution ergonomics.
 *.ps1 text eol=crlf
 *.bat text eol=crlf

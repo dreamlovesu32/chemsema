@@ -9,6 +9,9 @@ import { registerChemSemaDebug } from "./app_debug.js";
 import { createColorHost } from "./color_host.js";
 import { createObjectSettingsHost } from "./object_settings_host.js";
 import { createNumericDialogHost } from "./numeric_dialog_host.js";
+import { createSmilesDialogHost } from "./smiles_dialog_host.js";
+import { createTransientNotificationHost } from "./transient_notification_host.js";
+import { createInchiHost } from "./inchi_host.js";
 import { createDesktopFileHost, normalizeDesktopPath } from "./desktop_file_host.js";
 import { createEngineHost } from "./engine_host.js?v=20260629-local-text-commit";
 import { bindEditorControls, openColorDialog } from "./editor_bindings.js?v=20260627-browser-drop-tabs";
@@ -129,6 +132,17 @@ const numericDialogHost = createNumericDialogHost({
     renderDocumentChange(result);
   },
 });
+const smilesDialogHost = createSmilesDialogHost({
+  root: document.body,
+  commandEngine,
+  onApply: async (result) => {
+    renderDocumentChange(result);
+  },
+});
+const transientNotificationHost = createTransientNotificationHost({
+  root: document.body,
+});
+const inchiHost = createInchiHost();
 const isDesktopShell = !!desktopFileHost?.usesCustomWindowChrome;
 const isNativeFrameShell = !!desktopFileHost?.available && !isDesktopShell;
 let sharedGlyphProfiles = null;
@@ -2048,6 +2062,9 @@ canvasContextMenuHost = createCanvasContextMenuHost({
   colorHost,
   objectSettingsHost,
   numericDialogHost,
+  smilesDialogHost,
+  transientNotificationHost,
+  inchiHost,
   commandEngine,
   openColorDialog,
   isEditingRustDocument,

@@ -44,6 +44,8 @@ The following command names are stable in v1:
 - `session`
 - `new`
 - `run`
+- `insert-smiles`
+- `chemistry`
 - `convert`
 - `export`
 - `diff`

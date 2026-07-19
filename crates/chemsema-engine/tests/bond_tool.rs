@@ -3477,6 +3477,13 @@ fn object_settings_multi_selection_uses_union_and_blanks_mixed_values() {
 #[test]
 fn engine_provides_context_menu_and_numeric_dialog_schemas() {
     let mut engine = Engine::new();
+    let canvas_menu: serde_json::Value =
+        serde_json::from_str(&engine.context_menu_json(r#"{"kind":"canvas"}"#, false)).unwrap();
+    assert!(canvas_menu.as_array().unwrap().iter().any(|item| {
+        item.get("command").and_then(serde_json::Value::as_str) == Some("smiles-dialog")
+            && item.get("label").and_then(serde_json::Value::as_str) == Some("From SMILES...")
+    }));
+
     engine.set_tool_state(bond_tool());
     click(&mut engine, px(300.0), px(260.0));
     let hit = engine.context_hit_test_json(Point::new(FIRST_CENTER_X, FIRST_CENTER_Y));
@@ -3496,6 +3503,26 @@ fn engine_provides_context_menu_and_numeric_dialog_schemas() {
     assert_eq!(scale["kind"], "scale");
     assert_eq!(scale["field"]["unit"], "%");
     assert!(engine.select_all());
+    let molecule_menu: serde_json::Value =
+        serde_json::from_str(&engine.context_menu_json(&hit, false)).unwrap();
+    assert!(molecule_menu.as_array().unwrap().iter().any(|item| {
+        item.get("label").and_then(serde_json::Value::as_str) == Some("Chemical Analysis")
+            && item
+                .get("submenu")
+                .and_then(serde_json::Value::as_array)
+                .is_some_and(|items| {
+                    ["SMILES", "InChI", "InChIKey"].iter().all(|label| {
+                        items.iter().any(|item| {
+                            item.get("label").and_then(serde_json::Value::as_str) == Some(label)
+                        })
+                    })
+                })
+    }));
+    let selected_canvas_menu: serde_json::Value =
+        serde_json::from_str(&engine.context_menu_json(r#"{"kind":"canvas"}"#, false)).unwrap();
+    assert!(selected_canvas_menu.as_array().unwrap().iter().any(|item| {
+        item.get("label").and_then(serde_json::Value::as_str) == Some("Chemical Analysis")
+    }));
     assert!(engine
         .apply_selection_numeric_dialog_json(r#"{"kind":"scale","value":110}"#)
         .unwrap());

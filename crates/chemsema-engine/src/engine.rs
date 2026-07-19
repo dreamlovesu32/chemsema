@@ -2,6 +2,7 @@ mod arrows;
 mod bond_styles;
 mod bond_tools;
 mod brackets;
+mod chemistry;
 mod clipboard;
 mod command;
 mod context_menu;
@@ -21,10 +22,10 @@ mod text_edit;
 pub(crate) use self::context_styles::expand_complete_labels_in_fragment;
 
 pub use self::command::{
-    CommandAnchor, CommandDelta, CommandDoubleBond, CommandResult, CommandTargetDelta,
-    CommandTargetSet, CommandTargets, DocumentCommandFormat, EditorCommand, FocusedDeleteSource,
-    HistoryEntry, HistorySnapshot, ObjectSettingsPatch, TextCommandContent, TextCommandDisplayMode,
-    TextEditCommandTarget,
+    ChemicalAnalysisFormat, CommandAnchor, CommandDelta, CommandDoubleBond, CommandResult,
+    CommandTargetDelta, CommandTargetSet, CommandTargets, DocumentCommandFormat, EditorCommand,
+    FocusedDeleteSource, HistoryEntry, HistorySnapshot, ObjectSettingsPatch, TextCommandContent,
+    TextCommandDisplayMode, TextEditCommandTarget,
 };
 use self::text_edit::{
     element_symbol_info, endpoint_label_world_bounds, implicit_hydrogen_label_text_for_count,
@@ -475,6 +476,10 @@ enum PendingSelectTarget {
     TextObject(String),
     MoleculeNode(String),
     MoleculeBond(String),
+    MoleculeSelection {
+        nodes: Vec<String>,
+        bonds: Vec<String>,
+    },
 }
 
 impl Default for Engine {
@@ -1639,6 +1644,11 @@ impl Engine {
             PendingSelectTarget::MoleculeBond(bond_id) => {
                 self.selection_for_molecule_component_containing_bond(bond_id)
             }
+            PendingSelectTarget::MoleculeSelection { nodes, bonds } => Some(SelectionState {
+                nodes: nodes.clone(),
+                bonds: bonds.clone(),
+                ..SelectionState::default()
+            }),
         }
     }
 
@@ -2044,6 +2054,17 @@ impl Engine {
                     Some(command),
                     self.inspect_document_output(&include),
                 ));
+            }
+            EditorCommand::InsertSmiles { smiles, x, y } => {
+                let molecule =
+                    chemsema_chemistry::parse_smiles(&smiles).map_err(|error| error.to_string())?;
+                self.with_command(command.clone(), |engine| {
+                    engine.insert_smiles_untracked(&molecule, &smiles, Point::new(x, y))
+                })
+            }
+            EditorCommand::ChemicalAnalysis { format, targets } => {
+                let output = self.chemical_analysis_output(format, &targets)?;
+                return Ok(self.readonly_command_result(Some(command), output));
             }
             EditorCommand::SelectTargets { targets } => {
                 let selection_changed = self.select_targets_direct(&targets);
@@ -4538,6 +4559,8 @@ fn editor_command_type_name(command: &EditorCommand) -> &'static str {
         EditorCommand::ExportDocument { .. } => "export-document",
         EditorCommand::ConvertDocument { .. } => "convert-document",
         EditorCommand::InspectDocument { .. } => "inspect-document",
+        EditorCommand::InsertSmiles { .. } => "insert-smiles",
+        EditorCommand::ChemicalAnalysis { .. } => "chemical-analysis",
         EditorCommand::SelectTargets { .. } => "select-targets",
         EditorCommand::SelectAll => "select-all",
         EditorCommand::ClearSelection => "clear-selection",

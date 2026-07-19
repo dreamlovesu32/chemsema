@@ -620,6 +620,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
 
 [[package]]
+name = "chemsema-chemistry"
+version = "1.0.0-beta.1"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "chemsema-cli"
 version = "1.0.0-beta.1"
 dependencies = [
@@ -665,10 +672,19 @@ dependencies = [
 name = "chemsema-engine"
 version = "1.0.0-beta.1"
 dependencies = [
+ "chemsema-chemistry",
+ "chemsema-inchi",
  "quick-xml",
  "serde",
  "serde_json",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "chemsema-inchi"
+version = "1.0.0-beta.1"
+dependencies = [
+ "cc",
 ]
 
 [[package]]
