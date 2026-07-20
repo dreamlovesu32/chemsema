@@ -102,5 +102,8 @@
 10. `bracketedgroup/bracketattachment@GraphicID` 是左右括号归组的权威关系。先按这组显式 ID 配对，只有没有被任何组引用的孤立括号才允许按几何位置回退配对；不能用中心或高度容差否决显式附件。
 11. 同一组左右括号各自保留源 `BoundingBox` 的纵向起点和高度。组包围框只用于选择、移动和整体范围，不能把两侧强制拉到组包围框的统一高度。
 12. 二进制 CDX 的 `SymbolType`（property `0x0A07`）是 `INT16` 枚举，不是可直接透传的普通整数。导入导出必须按官方值映射 `LonePair=0`、`Electron=1`、`RadicalCation=2`、`RadicalAnion=3`、`CirclePlus=4`、`CircleMinus=5`、`Dagger=6`、`DoubleDagger=7`、`Plus=8`、`Minus=9`、`Racemic=10`、`Absolute=11`、`Relative=12`。
+13. `objecttag@PositioningType` 缺省值是官方定义的 `auto`，不能一概把内部 `t@p` 或 `t@BoundingBox` 当成最终显示位置。桌面 ChemDraw 生成的增强立体标签以所附节点为锚点，用缓存文本框相对节点的方向选择象限，再按字号归一化显示半径；只有 `offset`、`absolute` 等显式定位模式继续使用记录坐标。公共文件同时证明 ChemDraw JS 2.0 具有相反的生产者约定：它也省略 `PositioningType`，但 ChemDraw 打开时保留缓存位置。因此这里只在字段语义确实矛盾时按根级 `CreationProgram="ChemDraw JS …"` 兼容该生产者，而不按案例或文件名分支。
+14. 键上的自动 `query` 标签以键中点为锚点，并用缓存文本框判断位于键的哪一侧。文字框必须完整落在该侧，水平/垂直留白由字号度量得到；这使不同方向的 `Rxn` 标签保持相同视觉间距，同时不改写显式 `PositioningType="offset"` 的标签。
+15. 普通楔形虚线的 `HashSpacing` 不是完整的短划线中心节距；中心节距还包含与 `LineWidth` 成比例的短划线补偿。若只把 `HashSpacing - 短划线长度` 当作空白并强制均分，普通 30 pt 立体键会比 ChemDraw 多画一条短划线。接触端退让不能复用这个补偿量，仍使用文件记录的原始 `HashSpacing`；楔键连到 `Nickname`/外部连接片段（例如 `Me`）时也保持记录节距，而普通元素标签（例如 `OH`）不触发这项片段兼容。短键仍按实际可用长度取整，不能统一减一。
 
-对应回归测试覆盖显式/隐藏对象标签、缺省增强立体标签、`HDot`、`HDash`、未连接 `MultiAttachment`、显式括号附件及 CDX 符号枚举；公共图像门禁继续负责验证这些语义的最终像素位置和尺寸。
+对应回归测试覆盖显式/隐藏对象标签、自动/显式对象标签定位、缺省增强立体标签、楔形虚线节距、`HDot`、`HDash`、未连接 `MultiAttachment`、显式括号附件及 CDX 符号枚举；公共图像门禁继续负责验证这些语义的最终像素位置和尺寸。

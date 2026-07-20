@@ -1286,6 +1286,14 @@ pub(super) fn append_text_objects(
     bonded_node_ids: &BTreeSet<String>,
 ) {
     let mut index = 1;
+    let node_positions: BTreeMap<String, [f64; 2]> = descendants(root)
+        .into_iter()
+        .filter(|node| node.is("n"))
+        .filter_map(|node| Some((node.attr("id")?.to_string(), parse_xy(node.attr("p"))?)))
+        .collect();
+    let auto_position_enhanced_stereo = !root
+        .attr("CreationProgram")
+        .is_some_and(|program| program.starts_with("ChemDraw JS"));
     append_text_objects_recursive(
         root,
         false,
@@ -1296,6 +1304,11 @@ pub(super) fn append_text_objects(
         0,
         None,
         CdxmlTextObjectRole::FreeText,
+        None,
+        false,
+        auto_position_enhanced_stereo,
+        &node_positions,
+        None,
         &mut index,
         objects,
         styles,
@@ -1486,6 +1499,11 @@ pub(super) fn append_text_objects_recursive(
     placeholder_depth: usize,
     inherited_z: Option<i32>,
     text_role: CdxmlTextObjectRole,
+    containing_node_position: Option<[f64; 2]>,
+    automatic_object_tag: bool,
+    auto_position_enhanced_stereo: bool,
+    node_positions: &BTreeMap<String, [f64; 2]>,
+    containing_bond_points: Option<([f64; 2], [f64; 2])>,
     index: &mut usize,
     objects: &mut Vec<SceneObject>,
     styles: &mut BTreeMap<String, Value>,
@@ -1546,6 +1564,24 @@ pub(super) fn append_text_objects_recursive(
         0
     };
     let next_text_role = object_tag_role.unwrap_or(text_role);
+    let next_containing_node_position = if node.is("n") {
+        parse_xy(node.attr("p")).or(containing_node_position)
+    } else {
+        containing_node_position
+    };
+    let next_automatic_object_tag = if object_tag_role.is_some() {
+        uses_automatic_object_tag_positioning(node)
+    } else {
+        automatic_object_tag
+    };
+    let next_containing_bond_points = if node.is("b") {
+        node.attr("B")
+            .zip(node.attr("E"))
+            .and_then(|(begin, end)| Some((*node_positions.get(begin)?, *node_positions.get(end)?)))
+            .or(containing_bond_points)
+    } else {
+        containing_bond_points
+    };
     let next_auto_bracket_label_right_x =
         if node.is("graphic") && node.attr("GraphicType") == Some("Bracket") {
             parse_bbox(node.attr("BoundingBox")).map(|bbox| bbox[0].max(bbox[2]))
@@ -1568,6 +1604,14 @@ pub(super) fn append_text_objects_recursive(
             next_text_role,
             visible,
             auto_bracket_label_right_x,
+            (next_text_role == CdxmlTextObjectRole::EnhancedStereo
+                && next_automatic_object_tag
+                && auto_position_enhanced_stereo)
+                .then_some(next_containing_node_position)
+                .flatten(),
+            (next_text_role == CdxmlTextObjectRole::Query && next_automatic_object_tag)
+                .then_some(next_containing_bond_points)
+                .flatten(),
             styles,
             defaults,
             colors,
@@ -1593,6 +1637,11 @@ pub(super) fn append_text_objects_recursive(
             next_placeholder_depth,
             current_z,
             next_text_role,
+            next_containing_node_position,
+            next_automatic_object_tag,
+            auto_position_enhanced_stereo,
+            node_positions,
+            next_containing_bond_points,
             index,
             objects,
             styles,
@@ -1658,6 +1707,8 @@ fn text_object(
     role: CdxmlTextObjectRole,
     visible: bool,
     auto_bracket_label_right_x: Option<f64>,
+    auto_enhanced_stereo_anchor: Option<[f64; 2]>,
+    auto_query_bond_points: Option<([f64; 2], [f64; 2])>,
     styles: &mut BTreeMap<String, Value>,
     defaults: CdxmlDefaults,
     colors: &CdxmlColorTable,
@@ -1732,7 +1783,18 @@ fn text_object(
         .map(|bbox| (bbox[3] - bbox[1]).abs())
         .filter(|height| *height > crate::EPSILON)
         .unwrap_or(font_size * 1.4);
-    let translate = if let Some(bbox) = bbox {
+    let auto_enhanced_stereo_placement = bbox.and_then(|bbox| {
+        auto_enhanced_stereo_anchor
+            .and_then(|anchor| automatic_enhanced_stereo_text_placement(anchor, bbox, font_size))
+    });
+    let auto_query_placement = bbox.and_then(|bbox| {
+        auto_query_bond_points
+            .and_then(|points| automatic_query_bond_text_placement(points, bbox, font_size))
+    });
+    let automatic_placement = auto_enhanced_stereo_placement.or(auto_query_placement);
+    let translate = if let Some((translate, _)) = automatic_placement {
+        translate
+    } else if let Some(bbox) = bbox {
         let x = match align.as_str() {
             _ if role.is_bracket_label() => auto_bracket_label_right_x
                 .map(|right_x| right_x + font_size * CHEMDRAW_AUTO_BRACKET_LABEL_GAP_EM)
@@ -1768,7 +1830,10 @@ fn text_object(
         ))),
     );
     extra.insert("fontSize".to_string(), json!(round2(font_size)));
-    if let Some(point) = parse_xy(node.attr("p")) {
+    if let Some((_, baseline_offset)) = automatic_placement {
+        extra.insert("anchorOffsetX".to_string(), json!(0.0));
+        extra.insert("baselineOffset".to_string(), json!(round2(baseline_offset)));
+    } else if let Some(point) = parse_xy(node.attr("p")) {
         extra.insert(
             "anchorOffsetX".to_string(),
             json!(round2(point[0] - translate[0])),
@@ -1817,6 +1882,83 @@ fn text_object(
         },
         children: Vec::new(),
     })
+}
+
+fn automatic_enhanced_stereo_text_placement(
+    anchor: [f64; 2],
+    bbox: [f64; 4],
+    font_size: f64,
+) -> Option<([f64; 2], f64)> {
+    let width = (bbox[2] - bbox[0]).abs();
+    let height = (bbox[3] - bbox[1]).abs();
+    if width <= crate::EPSILON || height <= crate::EPSILON {
+        return None;
+    }
+    let cached_center = [(bbox[0] + bbox[2]) * 0.5, (bbox[1] + bbox[3]) * 0.5];
+    let dx = cached_center[0] - anchor[0];
+    let dy = cached_center[1] - anchor[1];
+    let length = dx.hypot(dy);
+    if length <= crate::EPSILON {
+        return None;
+    }
+    let unit = [dx / length, dy / length];
+    let nearly_vertical = unit[0].abs() < 0.1;
+    let radius = font_size * if nearly_vertical { 0.65 } else { 0.75 };
+    let horizontal_bias = if nearly_vertical {
+        -font_size * 0.115
+    } else {
+        0.0
+    };
+    let center = [
+        anchor[0] + unit[0] * radius + horizontal_bias,
+        anchor[1] + unit[1] * radius,
+    ];
+    let translate = [
+        round2(center[0] - width * 0.5),
+        round2(center[1] - height * 0.5),
+    ];
+    let baseline_offset = height + font_size * 0.08;
+    Some((translate, baseline_offset))
+}
+
+fn automatic_query_bond_text_placement(
+    points: ([f64; 2], [f64; 2]),
+    bbox: [f64; 4],
+    font_size: f64,
+) -> Option<([f64; 2], f64)> {
+    let width = (bbox[2] - bbox[0]).abs();
+    let height = (bbox[3] - bbox[1]).abs();
+    if width <= crate::EPSILON || height <= crate::EPSILON {
+        return None;
+    }
+    let midpoint = [
+        (points.0[0] + points.1[0]) * 0.5,
+        (points.0[1] + points.1[1]) * 0.5,
+    ];
+    let cached_center = [(bbox[0] + bbox[2]) * 0.5, (bbox[1] + bbox[3]) * 0.5];
+    let dx = cached_center[0] - midpoint[0];
+    let dy = cached_center[1] - midpoint[1];
+    let length = dx.hypot(dy);
+    if length <= crate::EPSILON {
+        return None;
+    }
+    let unit = [dx / length, dy / length];
+    let translate = if unit[0] < -0.4 && unit[1] < -0.4 {
+        [
+            midpoint[0] - width - font_size * 0.18,
+            midpoint[1] - height - font_size * 0.07,
+        ]
+    } else if unit[0] < -0.7 {
+        [
+            midpoint[0] - width - font_size * 0.47,
+            midpoint[1] + font_size * 0.065,
+        ]
+    } else if unit[0] > 0.7 {
+        [midpoint[0] + font_size * 0.317, midpoint[1] - height * 0.45]
+    } else {
+        return None;
+    };
+    Some(([round2(translate[0]), round2(translate[1])], height))
 }
 
 fn cdxml_text_line_height(

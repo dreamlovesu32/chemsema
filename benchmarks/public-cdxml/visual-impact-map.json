@@ -1,0 +1,57 @@
+{
+  "schema": "chemsema.public_cdxml.visual_impact_map.v1",
+  "rules": [
+    {
+      "name": "cdxml-object-tags",
+      "pathSubstrings": [
+        "crates/chemsema-engine/src/cdxml/import_objects.rs"
+      ],
+      "formats": ["cdxml"],
+      "features": [
+        "object-tag",
+        "enhanced-stereo",
+        "query",
+        "bracket",
+        "symbol",
+        "multi-attachment",
+        "hydrogen-marker"
+      ],
+      "regressionCases": ["0030", "0031", "0061", "0062", "0276", "0277", "0278"]
+    },
+    {
+      "name": "hashed-wedge-rendering",
+      "pathSubstrings": [
+        "crates/chemsema-engine/src/render/bond_metrics.rs",
+        "crates/chemsema-engine/src/render_bonds.rs"
+      ],
+      "features": ["hashed-wedge"],
+      "regressionCases": ["0032", "0049", "0059", "0060", "0067", "0069", "0070", "0251", "0409"]
+    },
+    {
+      "name": "render-core",
+      "pathEquals": ["crates/chemsema-engine/src/render.rs"],
+      "features": ["bond", "text", "graphics"],
+      "regressionCases": ["0032", "0049", "0061", "0062"]
+    },
+    {
+      "name": "visual-gate-definition",
+      "pathSubstrings": [
+        "scripts/public-cdxml-visual-gate.mjs",
+        "scripts/render-public-cdxml-visual-review.mjs",
+        "scripts/public-cdxml-impact.mjs",
+        "scripts/plan-public-cdxml-affected-gate.mjs",
+        "benchmarks/public-cdxml/visual-impact-map.json"
+      ],
+      "full": true
+    }
+  ],
+  "ignoredPathPrefixes": [
+    "docs/",
+    "crates/chemsema-engine/tests/"
+  ],
+  "productionPathPrefixes": [
+    "crates/chemsema-engine/src/",
+    "scripts/"
+  ],
+  "unknownProductionChange": "full"
+}

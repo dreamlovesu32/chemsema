@@ -53,6 +53,29 @@ npm run benchmark:cdxml-public:visual-gate:report
 生成只含通过案例的 `passed.html`；使用 `--reuse-report report.json` 可以直接从已有报告重建
 该页面，无需重新执行像素分析。
 
+### 增量视觉门禁
+
+日常渲染修复不再默认重跑全部 413 个文件。增量门禁参考 OCR 仓库的 affected-gate 约定，先把当前代码改动映射到视觉规则族，再从机器生成的 `tmp/public-cdxml-feature-index.json` 选择同类文件和历史回归样例。选择计划写入 `tmp/public-cdxml-affected-gate-plan.json`，不能用手写编号列表替代；额外诊断样例通过 `--extra` 进入计划并保留理由。
+
+第一次把既有全量报告用作缓存基线时，只需为它记录参考图和候选 SVG 的内容哈希：
+
+```bash
+node scripts/public-cdxml-visual-gate.mjs \
+  --gallery tmp/public-cdxml-chemdraw-review-all \
+  --stamp-report tmp/public-cdxml-chemdraw-review-all/gate-report.json
+```
+
+普通开发循环先检查计划，再运行受影响门禁：
+
+```bash
+npm run benchmark:cdxml-public:visual-gate:affected -- --dry-run
+npm run benchmark:cdxml-public:visual-gate:affected
+```
+
+规划器会增量更新完整图集的对应条目。像素门禁按“ChemDraw 参考图哈希 + ChemSema SVG 哈希 + 门禁策略版本”复用未变化案例，只分析真正改变的图片；最终报告仍包含完整基线的全部案例，并在 `cache.reused`/`cache.analyzed` 中记录复用和重算数量。基线模式允许历史红图继续留待后续修复，但任何旧绿转红都会写入 `delta.regressions` 并让命令失败。代码路径到特征族及历史回归样例的映射保存在 `benchmarks/public-cdxml/visual-impact-map.json`。未登记的生产代码改动会保守地强制全量，门禁算法本身变化也必须全量验证。
+
+如果后续全量门禁发现增量计划漏掉的回归，应先补充影响映射或特征提取，让同类样例以后能被自动选中，再修绘制规则；不能只把漏网文件手工加进一次性命令。
+
 可用 `CHEMSEMA_PUBLIC_CDXML_DIR` 修改下载目录。详细报告写入未跟踪的
 `tmp/public-cdxml-roundtrip/report.json`。默认会对每个正向案例连续保存并重新打开三代，
 每一代同时检查分子、箭头身份、括号几何、原子标签和自由文本的语义指纹，以及对象、

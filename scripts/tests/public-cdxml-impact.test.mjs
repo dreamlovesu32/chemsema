@@ -1,0 +1,90 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { mergeIncrementalManifestItems } from "../render-public-cdxml-visual-review.mjs";
+import { classifyBaselineChanges } from "../public-cdxml-visual-gate.mjs";
+import { featuresFromCdxml, selectAffectedCases } from "../public-cdxml-impact.mjs";
+
+test("CDXML feature extraction recognizes visual rule families", () => {
+  const features = featuresFromCdxml(`
+    <CDXML><fragment><n id="1" NodeType="Nickname"><t><s>Me</s></t></n>
+    <n id="2" EnhancedStereoType="Or"/><b B="1" E="2" Display="WedgedHashBegin">
+    <objecttag Name="query"><t><s>Rxn</s></t></objecttag></b></fragment></CDXML>
+  `);
+  for (const expected of ["bond", "text", "nickname", "enhanced-stereo", "hashed-wedge", "object-tag", "query"]) {
+    assert.ok(features.includes(expected), expected);
+  }
+});
+
+test("affected selection combines feature hits and historical regressions", () => {
+  const featureIndex = {
+    cases: [
+      { caseId: "0001", relativeCdxml: "a.cdxml", format: "cdxml", features: ["hashed-wedge"] },
+      { caseId: "0002", relativeCdxml: "b.cdxml", format: "cdxml", features: ["text"] },
+      { caseId: "0003", relativeCdxml: "c.cdx", format: "cdx", features: ["hashed-wedge"] },
+    ],
+  };
+  const impactMap = {
+    rules: [{
+      name: "hash",
+      pathSubstrings: ["bond_metrics.rs"],
+      features: ["hashed-wedge"],
+      regressionCases: ["0002"],
+    }],
+    productionPathPrefixes: ["crates/"],
+    ignoredPathPrefixes: [],
+    unknownProductionChange: "full",
+  };
+  const result = selectAffectedCases({
+    changedFiles: ["crates/engine/bond_metrics.rs"],
+    featureIndex,
+    impactMap,
+  });
+  assert.deepEqual(result.selected.map((entry) => entry.caseId), ["0001", "0002", "0003"]);
+  assert.equal(result.forceFull, false);
+});
+
+test("unknown production changes conservatively force a full selection", () => {
+  const result = selectAffectedCases({
+    changedFiles: ["crates/engine/new_renderer.rs"],
+    featureIndex: {
+      cases: [
+        { caseId: "0001", relativeCdxml: "a.cdxml", format: "cdxml", features: [] },
+        { caseId: "0002", relativeCdxml: "b.cdx", format: "cdx", features: [] },
+      ],
+    },
+    impactMap: {
+      rules: [],
+      productionPathPrefixes: ["crates/"],
+      ignoredPathPrefixes: [],
+      unknownProductionChange: "full",
+    },
+  });
+  assert.equal(result.forceFull, true);
+  assert.equal(result.selected.length, 2);
+});
+
+test("incremental manifest replacement preserves full gallery order", () => {
+  const retained = [{ id: "a", value: 1, label: "001 — a" }, { id: "b", value: 2, label: "002 — b" }];
+  const updated = [{ id: "b", value: 3, label: "001 — b" }, { id: "c", value: 4, label: "002 — c" }];
+  assert.deepEqual(mergeIncrementalManifestItems(retained, updated), [
+    { id: "a", value: 1, label: "001 — a" },
+    { id: "b", value: 3, label: "002 — b" },
+    { id: "c", value: 4, label: "002 — c" },
+  ]);
+});
+
+test("baseline mode blocks regressions without requiring historical failures to turn green", () => {
+  const baseline = new Map([
+    ["old-failure.cdxml", { status: "fail" }],
+    ["regression.cdxml", { status: "pass" }],
+    ["improvement.cdxml", { status: "fail" }],
+  ]);
+  const delta = classifyBaselineChanges([
+    { relativeCdxml: "old-failure.cdxml", status: "fail" },
+    { relativeCdxml: "regression.cdxml", status: "fail" },
+    { relativeCdxml: "improvement.cdxml", status: "pass" },
+  ], baseline);
+  assert.equal(delta.regressions.length, 1);
+  assert.equal(delta.improvements.length, 1);
+  assert.equal(delta.changes.length, 2);
+});

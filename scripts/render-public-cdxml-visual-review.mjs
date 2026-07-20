@@ -14,6 +14,7 @@ function parseArgs(argv) {
     outDir: "tmp/public-cdxml-visual-review",
     report: "tmp/public-cdxml-roundtrip-label-audit/report.json",
     all: false,
+    incremental: false,
     patterns: [],
     cli: process.platform === "win32"
       ? "target/debug/chemsema-cli.exe"
@@ -25,6 +26,7 @@ function parseArgs(argv) {
     else if (arg === "--out") args.outDir = argv[++index];
     else if (arg === "--report") args.report = argv[++index];
     else if (arg === "--all") args.all = true;
+    else if (arg === "--incremental") args.incremental = true;
     else if (arg === "--only") args.patterns.push(argv[++index]);
     else if (arg === "--cli") args.cli = argv[++index];
     else if (arg === "--help" || arg === "-h") args.help = true;
@@ -867,13 +869,16 @@ async function fullCorpusPairs(root, reportPath, outDir, patterns = []) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
-    console.log("Usage: node scripts/render-public-cdxml-visual-review.mjs [--root corpus] [--out directory] [--cli chemsema-cli] [--all --report report.json] [--only case-or-path]");
+    console.log("Usage: node scripts/render-public-cdxml-visual-review.mjs [--root corpus] [--out directory] [--cli chemsema-cli] [--all --report report.json] [--only case-or-path] [--incremental]");
     return;
   }
 
   const root = path.resolve(args.root);
   const outDir = path.resolve(args.outDir);
   const cli = path.resolve(args.cli);
+  const retainedManifest = args.incremental
+    ? JSON.parse(await fs.readFile(path.join(outDir, "manifest.json"), "utf8"))
+    : null;
   const allFiles = await walk(root);
   const pairs = args.all
     ? await fullCorpusPairs(root, args.report, outDir, args.patterns)
@@ -991,14 +996,34 @@ async function main() {
     await browser.close();
   }
 
+  const finalManifestItems = retainedManifest
+    ? mergeIncrementalManifestItems(retainedManifest.items, manifestItems)
+    : manifestItems;
   await Promise.all([
-    fs.writeFile(path.join(outDir, "index.html"), viewerHtml(manifestItems)),
+    fs.writeFile(path.join(outDir, "index.html"), viewerHtml(finalManifestItems)),
     fs.writeFile(
       path.join(outDir, "manifest.json"),
-      `${JSON.stringify({ generatedAt: new Date().toISOString(), count: manifestItems.length, items: manifestItems }, null, 2)}\n`,
+      `${JSON.stringify({
+        generatedAt: new Date().toISOString(),
+        count: finalManifestItems.length,
+        incremental: Boolean(retainedManifest),
+        updatedCount: manifestItems.length,
+        items: finalManifestItems,
+      }, null, 2)}\n`,
     ),
   ]);
   console.log(`Review gallery: ${pathToFileURL(path.join(outDir, "index.html")).href}`);
+}
+
+export function mergeIncrementalManifestItems(retainedItems, updatedItems) {
+  const updates = new Map(updatedItems.map((item) => [item.id, item]));
+  const merged = retainedItems.map((item) => {
+    const update = updates.get(item.id);
+    return update ? { ...update, label: item.label } : item;
+  });
+  const retainedIds = new Set(retainedItems.map((item) => item.id));
+  merged.push(...updatedItems.filter((item) => !retainedIds.has(item.id)));
+  return merged;
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

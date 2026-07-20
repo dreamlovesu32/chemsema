@@ -51,6 +51,8 @@
     "benchmark:cdxml-public": "node scripts/public-cdxml-roundtrip.mjs",
     "benchmark:cdxml-public:visual-gate": "node scripts/public-cdxml-visual-gate.mjs",
     "benchmark:cdxml-public:visual-gate:report": "node scripts/public-cdxml-visual-gate.mjs --report-only",
+    "benchmark:cdxml-public:visual-gate:affected": "node scripts/plan-public-cdxml-affected-gate.mjs",
+    "benchmark:cdxml-public:visual-gate:affected:test": "node --test scripts/tests/public-cdxml-impact.test.mjs",
     "regression:label-anchor": "node scripts/label-anchor-regression.mjs",
     "regression:large-object-operations": "node scripts/large-object-operation-regression.mjs",
     "regression:large-cdxml-speed": "node scripts/large-cdxml-speed-regression.mjs",

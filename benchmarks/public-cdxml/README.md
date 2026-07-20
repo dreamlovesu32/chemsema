@@ -75,6 +75,29 @@ denominator. Every gate run also writes
 without mixing in failures. Use `--reuse-report report.json` to rebuild that
 page without rerunning pixel analysis.
 
+### Incremental visual gate
+
+Ordinary rendering fixes should not rerun all 413 files. The affected gate follows the OCR repository's contract: map changed code paths to visual rule families, select matching corpus features plus historical regression cases, and save the machine-generated contract to `tmp/public-cdxml-affected-gate-plan.json`. Do not replace that plan with a hand-written case list; use `--extra` for additional diagnostic cases.
+
+Stamp an existing full report once so it can serve as the content-hashed baseline:
+
+```bash
+node scripts/public-cdxml-visual-gate.mjs \
+  --gallery tmp/public-cdxml-chemdraw-review-all \
+  --stamp-report tmp/public-cdxml-chemdraw-review-all/gate-report.json
+```
+
+Inspect and then run the affected plan:
+
+```bash
+npm run benchmark:cdxml-public:visual-gate:affected -- --dry-run
+npm run benchmark:cdxml-public:visual-gate:affected
+```
+
+The planner updates only selected gallery items. The gate reuses unchanged cases by ChemDraw-oracle hash, ChemSema-SVG hash, and gate-definition identity, while the resulting report still covers the complete baseline. `cache.reused` and `cache.analyzed` expose the split. Baseline mode permits historical failures to remain open, but every pass-to-fail transition is recorded in `delta.regressions` and fails the command. Path-to-feature declarations and historical regression cases live in `benchmarks/public-cdxml/visual-impact-map.json`; unknown production changes and gate-definition changes conservatively force a full run.
+
+If a later full gate finds a regression that escaped the affected plan, first repair the impact map or feature extraction so that family is selected in the future, then fix the renderer. A one-off manual case addition is not a complete repair.
+
 Set `CHEMSEMA_PUBLIC_CDXML_DIR` to choose another download directory. The
 runner writes a detailed untracked report to
 `tmp/public-cdxml-roundtrip/report.json`. By default, every positive case is

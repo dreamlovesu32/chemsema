@@ -5319,6 +5319,22 @@ fn parse_cdxml_imports_visible_stereo_object_tags_inside_fragments() {
         tagged_text,
         vec![("or1", "enhanced_stereo"), ("(R)", "stereo")]
     );
+    let enhanced = document
+        .objects
+        .iter()
+        .find(|object| {
+            object.meta.get("role").and_then(|value| value.as_str()) == Some("enhanced_stereo")
+        })
+        .expect("enhanced-stereo label should import");
+    assert_eq!(enhanced.transform.translate, [19.35, 14.15]);
+    assert_eq!(
+        enhanced
+            .payload
+            .extra
+            .get("baselineOffset")
+            .and_then(|value| value.as_f64()),
+        Some(6.6)
+    );
     assert!(document.objects.iter().any(|object| {
         object.object_type == "text"
             && !object.visible
@@ -5329,6 +5345,85 @@ fn parse_cdxml_imports_visible_stereo_object_tags_inside_fragments() {
                 .and_then(|value| value.as_str())
                 == Some("(S)")
     }));
+}
+
+#[test]
+fn parse_cdxml_preserves_chemdraw_js_cached_enhanced_stereo_position() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML CreationProgram="ChemDraw JS 2.0.0.9" BondLength="14.4" LineWidth="0.6">
+  <page id="1"><fragment id="2">
+    <n id="3" p="20 20" EnhancedStereoType="Absolute">
+      <objecttag Name="enhancedstereo">
+        <t p="23 18" BoundingBox="23 12 35 18"><s font="3" size="7.5">abs</s></t>
+      </objecttag>
+    </n>
+  </fragment></page>
+</CDXML>"##;
+    let document = parse_cdxml_document(cdxml, Some("ChemDraw JS enhanced stereo"))
+        .expect("ChemDraw JS enhanced-stereo tag should parse");
+    let label = document
+        .objects
+        .iter()
+        .find(|object| {
+            object.meta.get("role").and_then(|value| value.as_str()) == Some("enhanced_stereo")
+        })
+        .expect("enhanced-stereo label should import");
+    assert_eq!(label.transform.translate, [23.0, 12.0]);
+    assert_eq!(
+        label
+            .payload
+            .extra
+            .get("baselineOffset")
+            .and_then(|value| value.as_f64()),
+        Some(6.0)
+    );
+}
+
+#[test]
+fn parse_cdxml_automatically_positions_query_tags_relative_to_their_bonds() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML BondLength="30" LineWidth="1" BoldWidth="4" HashSpacing="2.7">
+  <page id="1"><fragment id="2">
+    <n id="3" p="0 0"/><n id="4" p="30 0"/>
+    <n id="5" p="50 0"/><n id="6" p="50 30"/>
+    <n id="7" p="80 0"/><n id="8" p="80 30"/>
+    <n id="9" p="110 0"/><n id="10" p="110 30"/>
+    <b id="11" B="3" E="4"><objecttag Name="query">
+      <t p="0 -4" BoundingBox="0 -10 12 -4"><s font="3" size="7.5">Rxn</s></t>
+    </objecttag></b>
+    <b id="12" B="5" E="6"><objecttag Name="query">
+      <t p="32 21" BoundingBox="32 15 44 21"><s font="3" size="7.5">Rxn</s></t>
+    </objecttag></b>
+    <b id="13" B="7" E="8"><objecttag Name="query">
+      <t p="86 16" BoundingBox="86 10 98 16"><s font="3" size="7.5">Rxn</s></t>
+    </objecttag></b>
+    <b id="14" B="9" E="10"><objecttag Name="query" PositioningType="offset" PositioningOffset="2 3">
+      <t p="120 18" BoundingBox="120 12 132 18"><s font="3" size="7.5">Rxn</s></t>
+    </objecttag></b>
+  </fragment></page>
+</CDXML>"##;
+    let document = parse_cdxml_document(cdxml, Some("automatic bond query tags"))
+        .expect("bond query tags should parse");
+    let labels: Vec<_> = document
+        .objects
+        .iter()
+        .filter(|object| object.meta.get("role").and_then(|value| value.as_str()) == Some("query"))
+        .collect();
+    assert_eq!(labels.len(), 4);
+    assert_eq!(labels[0].transform.translate, [1.65, -6.53]);
+    assert_eq!(labels[1].transform.translate, [34.48, 15.49]);
+    assert_eq!(labels[2].transform.translate, [82.38, 12.3]);
+    assert_eq!(labels[3].transform.translate, [120.0, 12.0]);
+    for label in &labels[..3] {
+        assert_eq!(
+            label
+                .payload
+                .extra
+                .get("baselineOffset")
+                .and_then(|value| value.as_f64()),
+            Some(6.0)
+        );
+    }
 }
 
 #[test]

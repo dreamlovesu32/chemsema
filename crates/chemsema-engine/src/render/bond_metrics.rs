@@ -66,13 +66,21 @@ pub(super) fn hash_target_gap_length_for_bond(bond: &Bond, stroke_width: f64) ->
     let scale = stroke_width / VIEWER_BOND_STROKE;
     let stripe_length = HASH_BLACK_SEGMENT_LENGTH * scale;
     bond.hash_spacing
-        .map(|spacing| (spacing - stripe_length).max(stripe_length * 0.25))
+        .map(|spacing| {
+            // ChemDraw's HashSpacing is not the complete center-to-center pitch
+            // of wedged hashes.  The one-line stripe itself contributes a small
+            // line-width-dependent allowance.  Without it, equal redistribution
+            // squeezes one extra stripe into ordinary 30 pt stereobonds.
+            (spacing - stripe_length + stroke_width * 0.25).max(stripe_length * 0.25)
+        })
         .unwrap_or(HASH_TARGET_GAP_LENGTH * scale)
 }
 
 pub(super) fn hash_contact_retreat_distance_for_bond(bond: &Bond, stroke_width: f64) -> f64 {
     let scale = stroke_width / VIEWER_BOND_STROKE;
-    HASH_BLACK_SEGMENT_LENGTH * scale + hash_target_gap_length_for_bond(bond, stroke_width)
+    bond.hash_spacing
+        .filter(|spacing| *spacing > EPSILON)
+        .unwrap_or(HASH_BLACK_SEGMENT_LENGTH * scale + HASH_TARGET_GAP_LENGTH * scale)
 }
 
 pub(super) fn multi_bond_inner_gap(
@@ -477,6 +485,7 @@ pub(super) fn hashed_wedge_gap_intervals(
     length: f64,
     stroke_width: f64,
     bond: &Bond,
+    preserve_recorded_pitch: bool,
 ) -> Vec<(f64, f64)> {
     if length <= EPSILON {
         return Vec::new();
@@ -484,12 +493,19 @@ pub(super) fn hashed_wedge_gap_intervals(
     let scale = stroke_width / VIEWER_BOND_STROKE;
     let start_offset = (crate::HASH_WEDGE_GAP_START_OFFSET_PT.value() * scale).min(length * 0.06);
     let end_inset = (crate::HASH_WEDGE_GAP_END_INSET_PT.value() * scale).min(length * 0.03);
+    let target_gap = if preserve_recorded_pitch {
+        bond.hash_spacing
+            .map(|spacing| (spacing - HASH_BLACK_SEGMENT_LENGTH * scale).max(stroke_width * 0.25))
+            .unwrap_or(HASH_TARGET_GAP_LENGTH * scale)
+    } else {
+        hash_target_gap_length_for_bond(bond, stroke_width)
+    };
     equal_black_segment_gap_intervals(
         length,
         start_offset,
         end_inset,
         (HASH_BLACK_SEGMENT_LENGTH * scale).max(length * 0.014),
-        hash_target_gap_length_for_bond(bond, stroke_width).max(length * 0.018),
+        target_gap.max(length * 0.018),
     )
 }
 
@@ -1371,7 +1387,9 @@ pub(super) fn bond_stereo_kind(bond: &Bond) -> Option<BondStereoKind> {
 #[cfg(test)]
 mod tests {
     use super::{
-        chemdraw_dashed_bond_gap_intervals_with_endpoint_insets, line_pattern_dash_array_for_bond,
+        chemdraw_dashed_bond_gap_intervals_with_endpoint_insets,
+        hash_contact_retreat_distance_for_bond, hash_target_gap_length_for_bond,
+        hashed_wedge_gap_intervals, line_pattern_dash_array_for_bond,
     };
     use crate::{
         Bond, BondLinePattern, BondLineStyles, BondLineWeight, BondLineWeights, DEFAULT_BOND_STROKE,
@@ -1422,6 +1440,26 @@ mod tests {
                 crate::DEFAULT_HASH_SPACING_PT.value()
             ]
         );
+    }
+
+    #[test]
+    fn hashed_wedge_pitch_includes_the_line_width_allowance() {
+        let gap = hash_target_gap_length_for_bond(&test_bond(Some(2.7)), 1.0);
+        assert!((gap - 1.95).abs() < 1.0e-9, "{gap}");
+    }
+
+    #[test]
+    fn hashed_wedge_contact_retreat_keeps_the_recorded_hash_spacing() {
+        let retreat = hash_contact_retreat_distance_for_bond(&test_bond(Some(2.7)), 1.0);
+        assert!((retreat - 2.7).abs() < 1.0e-9, "{retreat}");
+    }
+
+    #[test]
+    fn label_clipped_hashed_wedge_preserves_the_recorded_pitch() {
+        let bond = test_bond(Some(2.7));
+        let automatic = hashed_wedge_gap_intervals(25.0, 1.0, &bond, false);
+        let label_clipped = hashed_wedge_gap_intervals(25.0, 1.0, &bond, true);
+        assert!(label_clipped.len() > automatic.len());
     }
 
     #[test]

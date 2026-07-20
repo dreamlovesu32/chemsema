@@ -1327,7 +1327,7 @@ mod tests {
 
     #[test]
     fn hashed_wedge_gap_intervals_respect_start_offset_and_end_inset() {
-        let gaps = hashed_wedge_gap_intervals(18.0, VIEWER_BOND_STROKE * 2.0, &test_bond());
+        let gaps = hashed_wedge_gap_intervals(18.0, VIEWER_BOND_STROKE * 2.0, &test_bond(), false);
         assert!(!gaps.is_empty());
         assert!(gaps[0].0 > 0.0);
         assert!(gaps.last().unwrap().1 < 18.0);

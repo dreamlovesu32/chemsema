@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -38,6 +39,7 @@ const DEFAULTS = Object.freeze({
 });
 
 const ALIGNMENT_ALGORITHM = "ink-iou-coarse-refined-precision-v2";
+const CACHE_IDENTITY = "chemsema-public-cdxml-visual-gate-cache-v1";
 
 function parseArgs(argv) {
   const options = { ...DEFAULTS, patterns: [] };
@@ -47,6 +49,8 @@ function parseArgs(argv) {
     else if (arg === "--out") options.out = argv[++index];
     else if (arg === "--passed-gallery") options.passedGallery = argv[++index];
     else if (arg === "--reuse-report") options.reuseReport = argv[++index];
+    else if (arg === "--baseline-report") options.baselineReport = argv[++index];
+    else if (arg === "--stamp-report") options.stampReport = argv[++index];
     else if (arg === "--only") options.patterns.push(argv[++index]);
     else if (arg === "--limit") options.limit = Number(argv[++index]);
     else if (arg === "--analysis-scale") options.analysisScale = Number(argv[++index]);
@@ -132,6 +136,62 @@ function mimeType(filePath) {
 async function fileDataUrl(filePath) {
   const bytes = await fs.readFile(filePath);
   return `data:${mimeType(filePath)};base64,${bytes.toString("base64")}`;
+}
+
+async function sha256File(filePath) {
+  const bytes = await fs.readFile(filePath);
+  return crypto.createHash("sha256").update(bytes).digest("hex");
+}
+
+async function artifactHashes(galleryDir, item) {
+  const [reference, candidate] = await Promise.all([
+    sha256File(path.resolve(galleryDir, item.reference)),
+    sha256File(path.resolve(galleryDir, item.chemsema)),
+  ]);
+  return { reference, candidate };
+}
+
+function reportsUseSameGateDefinition(report, options) {
+  return report?.cacheIdentity === CACHE_IDENTITY
+    && JSON.stringify(report.policy) === JSON.stringify(gatePolicy(options));
+}
+
+function artifactHashesEqual(left, right) {
+  return left?.reference === right?.reference && left?.candidate === right?.candidate;
+}
+
+export function classifyBaselineChanges(cases, baselineCases) {
+  const changes = cases.flatMap((entry) => {
+    const before = baselineCases.get(entry.relativeCdxml)?.status;
+    return before && before !== entry.status
+      ? [{ relativeCdxml: entry.relativeCdxml, before, after: entry.status }]
+      : [];
+  });
+  return {
+    changes,
+    regressions: changes.filter((entry) => entry.before === "pass" && entry.after !== "pass"),
+    improvements: changes.filter((entry) => entry.before !== "pass" && entry.after === "pass"),
+  };
+}
+
+async function stampExistingReport(manifest, reportPath, galleryDir) {
+  const report = JSON.parse(await fs.readFile(reportPath, "utf8"));
+  if (report.gallery && path.resolve(report.gallery) !== galleryDir) {
+    throw new Error(`Report gallery does not match --gallery: ${report.gallery}`);
+  }
+  const casesByPath = new Map(report.cases.map((entry) => [entry.relativeCdxml, entry]));
+  let stamped = 0;
+  for (const item of manifest.items) {
+    const entry = casesByPath.get(item.relativeCdxml);
+    if (!entry) continue;
+    entry.artifactHashes = await artifactHashes(galleryDir, item);
+    stamped += 1;
+  }
+  report.cacheIdentity = CACHE_IDENTITY;
+  report.gallery = galleryDir;
+  report.cache = { stamped, reused: 0, analyzed: 0 };
+  await fs.writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`);
+  return { reportPath, stamped, cacheIdentity: CACHE_IDENTITY };
 }
 
 async function oracleIsUnavailable(filePath) {
@@ -934,6 +994,8 @@ async function main() {
   if (options.help) {
     console.log("Usage: node scripts/public-cdxml-visual-gate.mjs [--gallery dir] [--out report.json] [--passed-gallery html] [--only text] [--limit n] [--report-only]");
     console.log("       node scripts/public-cdxml-visual-gate.mjs --reuse-report report.json [--gallery dir] [--passed-gallery html]");
+    console.log("       node scripts/public-cdxml-visual-gate.mjs --gallery dir --stamp-report report.json");
+    console.log("       node scripts/public-cdxml-visual-gate.mjs --gallery dir --baseline-report report.json --out report.json");
     console.log("       node scripts/public-cdxml-visual-gate.mjs --self-test");
     return;
   }
@@ -946,6 +1008,14 @@ async function main() {
   const galleryDir = path.resolve(options.gallery);
   const manifestPath = path.join(galleryDir, "manifest.json");
   const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8"));
+  if (options.stampReport) {
+    console.log(JSON.stringify(await stampExistingReport(
+      manifest,
+      path.resolve(options.stampReport),
+      galleryDir,
+    )));
+    return;
+  }
   if (options.reuseReport) {
     const report = JSON.parse(await fs.readFile(path.resolve(options.reuseReport), "utf8"));
     console.log(JSON.stringify(await writePassedGallery(
@@ -964,14 +1034,42 @@ async function main() {
   if (Number.isFinite(options.limit)) items = items.slice(0, Math.max(0, options.limit));
   if (!items.length) throw new Error("No visual-gate cases matched the requested filters");
 
-  const browser = await launchBrowser({ headless: true });
-  const page = await browser.newPage();
+  const baselineReport = options.baselineReport
+    ? JSON.parse(await fs.readFile(path.resolve(options.baselineReport), "utf8"))
+    : null;
+  const baselineCases = reportsUseSameGateDefinition(baselineReport, options)
+    ? new Map(baselineReport.cases.map((entry) => [entry.relativeCdxml, entry]))
+    : new Map();
+
+  let browser = null;
+  let page = null;
+  async function analysisPage() {
+    if (page) return page;
+    browser = await launchBrowser({ headless: true });
+    page = await browser.newPage();
+    return page;
+  }
   const cases = [];
   try {
     for (let index = 0; index < items.length; index += 1) {
       const item = items[index];
       const referencePath = path.resolve(galleryDir, item.reference);
       const candidatePath = path.resolve(galleryDir, item.chemsema);
+      const hashes = await artifactHashes(galleryDir, item);
+      const baselineCase = baselineCases.get(item.relativeCdxml);
+      if (baselineCase && artifactHashesEqual(baselineCase.artifactHashes, hashes)) {
+        cases.push({
+          ...baselineCase,
+          id: item.id,
+          relativeCdxml: item.relativeCdxml,
+          artifactHashes: hashes,
+          cacheStatus: "reused",
+        });
+        if ((index + 1) % 100 === 0 || index + 1 === items.length) {
+          console.log(`[CACHE ${index + 1}/${items.length}] reused unchanged visual-gate results`);
+        }
+        continue;
+      }
       try {
         if (await oracleIsUnavailable(referencePath)) {
           cases.push({
@@ -979,6 +1077,8 @@ async function main() {
             relativeCdxml: item.relativeCdxml,
             status: "unavailable",
             reason: "ChemDraw oracle is unavailable",
+            artifactHashes: hashes,
+            cacheStatus: "analyzed",
           });
           console.log(`[${index + 1}/${items.length}] UNAVAILABLE ${item.relativeCdxml}`);
           continue;
@@ -987,11 +1087,12 @@ async function main() {
           fileDataUrl(referencePath),
           fileDataUrl(candidatePath),
         ]);
+        const activePage = await analysisPage();
         const alignment = item.alignment?.algorithm === ALIGNMENT_ALGORITHM
           ? item.alignment
-          : await computeImageAlignment(page, referenceDataUrl, candidateDataUrl);
+          : await computeImageAlignment(activePage, referenceDataUrl, candidateDataUrl);
         const coarseMetrics = await analyzeAlignedImages(
-          page,
+          activePage,
           referenceDataUrl,
           candidateDataUrl,
           alignment,
@@ -1000,7 +1101,7 @@ async function main() {
         const coarseTopologyCandidate = fineTopologyCandidate(coarseMetrics, options);
         const detailMetrics = coarseMetrics.passed || coarseTopologyCandidate
           ? await analyzeAlignedImages(
-            page,
+            activePage,
             referenceDataUrl,
             candidateDataUrl,
             alignment,
@@ -1035,6 +1136,8 @@ async function main() {
           relativeCdxml: item.relativeCdxml,
           status: metrics.passed ? "pass" : "fail",
           alignment,
+          artifactHashes: hashes,
+          cacheStatus: "analyzed",
           ...metrics,
         });
         console.log(`[${index + 1}/${items.length}] ${metrics.passed ? "PASS" : "FAIL"} ${item.relativeCdxml}`);
@@ -1044,12 +1147,14 @@ async function main() {
           relativeCdxml: item.relativeCdxml,
           status: "error",
           error: error instanceof Error ? error.stack ?? error.message : String(error),
+          artifactHashes: hashes,
+          cacheStatus: "analyzed",
         });
         console.log(`[${index + 1}/${items.length}] ERROR ${item.relativeCdxml}`);
       }
     }
   } finally {
-    await browser.close();
+    await browser?.close();
   }
 
   const passed = cases.filter((entry) => entry.status === "pass").length;
@@ -1057,8 +1162,12 @@ async function main() {
   const errors = cases.filter((entry) => entry.status === "error").length;
   const unavailable = cases.filter((entry) => entry.status === "unavailable").length;
   const comparable = passed + failed;
+  const reused = cases.filter((entry) => entry.cacheStatus === "reused").length;
+  const analyzed = cases.length - reused;
+  const delta = classifyBaselineChanges(cases, baselineCases);
   const report = {
     schema: "chemsema-public-cdxml-visual-gate-v1",
+    cacheIdentity: CACHE_IDENTITY,
     generatedAt: new Date().toISOString(),
     gallery: galleryDir,
     policy: gatePolicy(options),
@@ -1071,6 +1180,12 @@ async function main() {
       comparable,
       passRate: comparable ? passed / comparable : 0,
     },
+    cache: {
+      baselineReport: options.baselineReport ? path.resolve(options.baselineReport) : null,
+      reused,
+      analyzed,
+    },
+    delta,
     cases,
   };
   const outputPath = path.resolve(options.out);
@@ -1082,8 +1197,18 @@ async function main() {
     galleryDir,
     options.passedGallery,
   );
-  console.log(JSON.stringify({ outputPath, ...passedGallery, ...report.summary }));
-  if (!options.reportOnly && (failed || errors)) process.exitCode = 1;
+  console.log(JSON.stringify({
+    outputPath,
+    ...passedGallery,
+    ...report.summary,
+    cache: report.cache,
+    improvements: delta.improvements.length,
+    regressions: delta.regressions.length,
+  }));
+  const baselineMode = baselineCases.size > 0;
+  if (!options.reportOnly && (errors || (baselineMode ? delta.regressions.length : failed))) {
+    process.exitCode = 1;
+  }
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
