@@ -844,6 +844,73 @@ fn coordinate_free_cdxml_aromatic_ring_and_missing_bond_ids_remain_visible() {
 }
 
 #[test]
+fn positioned_cdxml_aromatic_dash_remains_visibly_dashed() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<CDXML HashSpacing="2.7"><page><fragment>
+  <n id="1" p="10 10"/><n id="2" p="40 10"/>
+  <b id="3" B="1" E="2" Order="1.5" Display="Dash"/>
+</fragment></page></CDXML>"#;
+    let document = parse_cdxml_document(cdxml, Some("positioned aromatic dash"))
+        .expect("positioned aromatic dash should import");
+    let fragment = document
+        .resources
+        .values()
+        .find_map(|resource| resource.data.as_fragment())
+        .expect("fragment should survive");
+    let bond = fragment.bonds.first().expect("bond should survive");
+
+    assert_eq!(bond.order, 1);
+    assert_eq!(
+        bond.line_styles.main,
+        chemsema_engine::BondLinePattern::Dashed
+    );
+    assert_eq!(
+        bond.meta
+            .pointer("/import/cdxml/aromatic")
+            .and_then(serde_json::Value::as_bool),
+        Some(true)
+    );
+    assert!(document_bond_polygon_count_for_object(&render_document(&document), "obj_mol_001") > 1);
+
+    let exported = document_to_cdxml(&document);
+    assert!(exported.contains("Order=\"1.5\""), "{exported}");
+    assert!(exported.contains("Display=\"Dash\""), "{exported}");
+}
+
+#[test]
+fn positioned_unlabeled_hetero_atom_gets_its_element_label() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<CDXML LabelFont="3" LabelSize="10"><fonttable>
+  <font id="3" charset="iso-8859-1" name="Arial"/>
+</fonttable><page><fragment>
+  <n id="1" p="10 20"/><n id="2" p="40 20" Element="7" NumHydrogens="0"/>
+  <b id="3" B="1" E="2"/>
+</fragment></page></CDXML>"#;
+    let document = parse_cdxml_document(cdxml, Some("positioned unlabeled nitrogen"))
+        .expect("positioned nitrogen should import");
+    let fragment = document
+        .resources
+        .values()
+        .find_map(|resource| resource.data.as_fragment())
+        .expect("fragment should survive");
+    let nitrogen = fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == "2")
+        .expect("nitrogen should survive");
+
+    assert_eq!(
+        nitrogen.label.as_ref().map(|label| label.text.as_str()),
+        Some("N")
+    );
+    assert!(render_document(&document).iter().any(|primitive| matches!(
+        primitive,
+        RenderPrimitive::Text { text, runs, .. }
+            if text == "N" || runs.iter().any(|run| run.text == "N")
+    )));
+}
+
+#[test]
 fn coordinate_free_cdxml_dative_chain_keeps_donor_hydrogen_and_arrowhead() {
     let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
 <CDXML CreationProgram="CDXMLWriter"><page><fragment>

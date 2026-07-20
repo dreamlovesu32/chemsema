@@ -1564,7 +1564,7 @@ fn normalize_node(
     let atomic_number = parse_u8(node.attr("Element")).unwrap_or(6);
     let node_type = node.attr("NodeType").unwrap_or("");
     let mut label = node_label(node, origin, colors, fonts, defaults);
-    if label.is_none() && node.attr("p").is_none() && atomic_number != 6 {
+    if label.is_none() && atomic_number != 6 {
         let mut generated = crate::engine::make_periodic_element_node_label(
             element_symbol(atomic_number),
             local_position,
@@ -1849,6 +1849,17 @@ fn normalize_bond(
         .is_some_and(|order| (order - 1.5).abs() <= EPSILON)
         && display == "Dash"
         && display2.is_empty();
+    let is_topology_only_aromatic_dash = is_aromatic_dash
+        && [&begin, &end].iter().all(|node_id| {
+            nodes.iter().any(|node| {
+                node.id == **node_id
+                    && node
+                        .meta
+                        .pointer("/import/cdxml/generatedPosition")
+                        .and_then(Value::as_bool)
+                        == Some(true)
+            })
+        });
     let stroke_width = parse_f64(bond.attr("LineWidth")).unwrap_or(defaults.line_width);
     let bold_width = parse_f64(bond.attr("BoldWidth")).unwrap_or(defaults.bold_width);
     let hash_spacing = parse_f64(bond.attr("HashSpacing")).unwrap_or(defaults.hash_spacing);
@@ -1885,7 +1896,7 @@ fn normalize_bond(
     } else {
         cdxml_bond_order(bond.attr("Order"))
     };
-    let mut line_styles = if is_aromatic_dash {
+    let mut line_styles = if is_topology_only_aromatic_dash {
         BondLineStyles::default()
     } else {
         cdxml_bond_line_styles(order, display, display2)

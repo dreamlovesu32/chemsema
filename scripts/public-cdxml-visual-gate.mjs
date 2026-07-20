@@ -32,14 +32,24 @@ const DEFAULTS = Object.freeze({
   maxRepeatedMicroDefectArea: 2,
   minRepeatedMicroCoverage: 0.9,
   minimumTopologyComponentCount: 8,
+  minimumSmallTopologyComponentCount: 3,
+  minimumSmallTopologyLocalCoverage: 0.7,
   maximumTopologyCandidateComponentCount: 300,
   maxTopologyCandidateCountRatio: 0.1,
   maxRelativeComponentCenterDistance: 0.02,
   maxComponentPositionDistributionDelta: 0.03,
+  minStrongPixelCoverage: 0.99,
+  minStrongPixelLocalCoverage: 0.9,
+  maxStrongPixelComponentCountDelta: 2,
+  minSlenderDefectCoverage: 0.98,
+  minSlenderDefectLocalCoverage: 0.75,
+  maxSlenderDefectArea: 24,
+  maxSlenderDefectSpan: 30,
+  maxSlenderDefectThickness: 1,
 });
 
 const ALIGNMENT_ALGORITHM = "ink-iou-coarse-refined-precision-v2";
-const CACHE_IDENTITY = "chemsema-public-cdxml-visual-gate-cache-v1";
+const CACHE_IDENTITY = "chemsema-public-cdxml-visual-gate-cache-v2";
 
 function parseArgs(argv) {
   const options = { ...DEFAULTS, patterns: [] };
@@ -74,10 +84,20 @@ function parseArgs(argv) {
     else if (arg === "--max-repeated-micro-defect-area") options.maxRepeatedMicroDefectArea = Number(argv[++index]);
     else if (arg === "--min-repeated-micro-coverage") options.minRepeatedMicroCoverage = Number(argv[++index]);
     else if (arg === "--minimum-topology-component-count") options.minimumTopologyComponentCount = Number(argv[++index]);
+    else if (arg === "--minimum-small-topology-component-count") options.minimumSmallTopologyComponentCount = Number(argv[++index]);
+    else if (arg === "--minimum-small-topology-local-coverage") options.minimumSmallTopologyLocalCoverage = Number(argv[++index]);
     else if (arg === "--maximum-topology-candidate-component-count") options.maximumTopologyCandidateComponentCount = Number(argv[++index]);
     else if (arg === "--max-topology-candidate-count-ratio") options.maxTopologyCandidateCountRatio = Number(argv[++index]);
     else if (arg === "--max-relative-component-center-distance") options.maxRelativeComponentCenterDistance = Number(argv[++index]);
     else if (arg === "--max-component-position-distribution-delta") options.maxComponentPositionDistributionDelta = Number(argv[++index]);
+    else if (arg === "--min-strong-pixel-coverage") options.minStrongPixelCoverage = Number(argv[++index]);
+    else if (arg === "--min-strong-pixel-local-coverage") options.minStrongPixelLocalCoverage = Number(argv[++index]);
+    else if (arg === "--max-strong-pixel-component-count-delta") options.maxStrongPixelComponentCountDelta = Number(argv[++index]);
+    else if (arg === "--min-slender-defect-coverage") options.minSlenderDefectCoverage = Number(argv[++index]);
+    else if (arg === "--min-slender-defect-local-coverage") options.minSlenderDefectLocalCoverage = Number(argv[++index]);
+    else if (arg === "--max-slender-defect-area") options.maxSlenderDefectArea = Number(argv[++index]);
+    else if (arg === "--max-slender-defect-span") options.maxSlenderDefectSpan = Number(argv[++index]);
+    else if (arg === "--max-slender-defect-thickness") options.maxSlenderDefectThickness = Number(argv[++index]);
     else if (arg === "--report-only") options.reportOnly = true;
     else if (arg === "--self-test") options.selfTest = true;
     else if (arg === "--help" || arg === "-h") options.help = true;
@@ -97,7 +117,9 @@ function validateOptions(options) {
     }
   }
   for (const key of [
-    "minCoverage", "minRepeatedMicroCoverage",
+    "minCoverage", "minRepeatedMicroCoverage", "minimumSmallTopologyLocalCoverage",
+    "minStrongPixelCoverage", "minStrongPixelLocalCoverage",
+    "minSlenderDefectCoverage", "minSlenderDefectLocalCoverage",
     "maxRelativeComponentCenterDistance", "maxTopologyCandidateCountRatio",
     "maxComponentPositionDistributionDelta",
   ]) {
@@ -109,6 +131,8 @@ function validateOptions(options) {
     "maxDefectArea", "maxDefectSpan", "maxComponentCountDelta",
     "maxEnclosedSmallComponentDimensionDelta", "maxRepeatedMicroDefects",
     "maxRepeatedMicroDefectArea", "minimumTopologyComponentCount",
+    "minimumSmallTopologyComponentCount", "maxStrongPixelComponentCountDelta",
+    "maxSlenderDefectArea", "maxSlenderDefectSpan", "maxSlenderDefectThickness",
     "maximumTopologyCandidateComponentCount",
   ]) {
     if (!Number.isFinite(options[key]) || options[key] < 0) {
@@ -820,7 +844,7 @@ export function fineTopologyEquivalent(detail, options = {}) {
   const settings = { ...DEFAULTS, ...options };
   const features = detail.detailFeatures;
   return Math.min(features.referenceComponentCount, features.candidateComponentCount)
-      >= settings.minimumTopologyComponentCount
+      >= settings.minimumSmallTopologyComponentCount
     && features.componentCountDelta === 0
     && features.componentPositionDistributionDelta
       <= settings.maxComponentPositionDistributionDelta;
@@ -837,10 +861,46 @@ export function fineTopologyCandidate(coarse, options = {}) {
     features.referenceComponentCount,
     features.candidateComponentCount,
   );
-  return minimumCount >= settings.minimumTopologyComponentCount
+  const enoughComponents = minimumCount >= settings.minimumTopologyComponentCount
+    || (
+      minimumCount >= settings.minimumSmallTopologyComponentCount
+      && Math.min(coarse.local.referenceCoverage, coarse.local.candidateCoverage)
+        >= settings.minimumSmallTopologyLocalCoverage
+    );
+  return enoughComponents
     && maximumCount <= settings.maximumTopologyCandidateComponentCount
     && features.componentCountDelta / Math.max(maximumCount, 1)
       <= settings.maxTopologyCandidateCountRatio;
+}
+
+export function strongPixelEquivalent(coarse, detail, options = {}) {
+  const settings = { ...DEFAULTS, ...options };
+  return coarse.passed
+    && Math.min(coarse.referenceCoverage, coarse.candidateCoverage)
+      >= settings.minStrongPixelCoverage
+    && Math.min(coarse.local.referenceCoverage, coarse.local.candidateCoverage)
+      >= settings.minStrongPixelLocalCoverage
+    && detail.detailFeatures.componentCountDelta
+      <= settings.maxStrongPixelComponentCountDelta;
+}
+
+function defectThickness(defect) {
+  if (!defect || defect.area === 0) return 0;
+  return defect.span > 0 ? defect.area / defect.span : Number.POSITIVE_INFINITY;
+}
+
+export function slenderDefectEquivalent(coarse, options = {}) {
+  const settings = { ...DEFAULTS, ...options };
+  return Math.min(coarse.referenceCoverage, coarse.candidateCoverage)
+      >= settings.minSlenderDefectCoverage
+    && Math.min(coarse.local.referenceCoverage, coarse.local.candidateCoverage)
+      >= settings.minSlenderDefectLocalCoverage
+    && coarse.largestMissing.area <= settings.maxSlenderDefectArea
+    && coarse.largestExtra.area <= settings.maxSlenderDefectArea
+    && coarse.largestMissing.span <= settings.maxSlenderDefectSpan
+    && coarse.largestExtra.span <= settings.maxSlenderDefectSpan
+    && defectThickness(coarse.largestMissing) <= settings.maxSlenderDefectThickness
+    && defectThickness(coarse.largestExtra) <= settings.maxSlenderDefectThickness;
 }
 
 function detailAnalysisOptions(options) {
@@ -876,12 +936,22 @@ function gatePolicy(options) {
       maximumRepeatedMicroDefectArea: options.maxRepeatedMicroDefectArea,
       minimumRepeatedMicroCoverage: options.minRepeatedMicroCoverage,
       minimumTopologyComponentCount: options.minimumTopologyComponentCount,
+      minimumSmallTopologyComponentCount: options.minimumSmallTopologyComponentCount,
+      minimumSmallTopologyLocalCoverage: options.minimumSmallTopologyLocalCoverage,
       maximumTopologyCandidateComponentCount:
         options.maximumTopologyCandidateComponentCount,
       maximumTopologyCandidateCountRatio: options.maxTopologyCandidateCountRatio,
       maximumRelativeComponentCenterDistance: options.maxRelativeComponentCenterDistance,
       maximumComponentPositionDistributionDelta:
         options.maxComponentPositionDistributionDelta,
+      minimumStrongPixelCoverage: options.minStrongPixelCoverage,
+      minimumStrongPixelLocalCoverage: options.minStrongPixelLocalCoverage,
+      maximumStrongPixelComponentCountDelta: options.maxStrongPixelComponentCountDelta,
+      minimumSlenderDefectCoverage: options.minSlenderDefectCoverage,
+      minimumSlenderDefectLocalCoverage: options.minSlenderDefectLocalCoverage,
+      maximumSlenderDefectArea: options.maxSlenderDefectArea,
+      maximumSlenderDefectSpan: options.maxSlenderDefectSpan,
+      maximumSlenderDefectThickness: options.maxSlenderDefectThickness,
     },
     raster: {
       pixelsPerReferenceUnit: options.analysisScale,
@@ -976,6 +1046,42 @@ async function runSelfTest(options) {
     topologyDetail.detailFeatures.componentPositionDistributionDelta += 0.001;
     if (fineTopologyEquivalent(topologyDetail, options)) {
       throw new Error("fine-topology position threshold regression");
+    }
+    const smallTopologyCoarse = {
+      local: {
+        referenceCoverage: options.minimumSmallTopologyLocalCoverage,
+        candidateCoverage: options.minimumSmallTopologyLocalCoverage,
+      },
+      detailFeatures: {
+        referenceComponentCount: options.minimumSmallTopologyComponentCount,
+        candidateComponentCount: options.minimumSmallTopologyComponentCount,
+        componentCountDelta: 0,
+      },
+    };
+    if (!fineTopologyCandidate(smallTopologyCoarse, options)) {
+      throw new Error("small-topology candidate regression");
+    }
+    smallTopologyCoarse.local.referenceCoverage -= 0.001;
+    if (fineTopologyCandidate(smallTopologyCoarse, options)) {
+      throw new Error("small-topology local-coverage negative-control regression");
+    }
+    const slenderCoarse = {
+      passed: false,
+      referenceCoverage: options.minSlenderDefectCoverage,
+      candidateCoverage: options.minSlenderDefectCoverage,
+      local: {
+        referenceCoverage: options.minSlenderDefectLocalCoverage,
+        candidateCoverage: options.minSlenderDefectLocalCoverage,
+      },
+      largestMissing: { area: 12, span: 12 },
+      largestExtra: { area: 0, span: 0 },
+    };
+    if (!slenderDefectEquivalent(slenderCoarse, options)) {
+      throw new Error("slender-defect acceptance regression");
+    }
+    slenderCoarse.largestMissing.area = options.maxSlenderDefectArea + 0.01;
+    if (slenderDefectEquivalent(slenderCoarse, options)) {
+      throw new Error("slender-defect area negative-control regression");
     }
     console.log(JSON.stringify({
       passed: true,
@@ -1109,10 +1215,15 @@ async function main() {
           )
           : null;
         const detailReasons = detailMetrics ? detailGateReasons(detailMetrics, options) : [];
+        if (detailMetrics && strongPixelEquivalent(coarseMetrics, detailMetrics, options)) {
+          const componentReason = detailReasons.indexOf("detail-component-count");
+          if (componentReason >= 0) detailReasons.splice(componentReason, 1);
+        }
         const topologyEquivalent = detailMetrics
           ? fineTopologyEquivalent(detailMetrics, options)
           : false;
-        const coarseAccepted = coarseMetrics.passed || topologyEquivalent;
+        const slenderEquivalent = slenderDefectEquivalent(coarseMetrics, options);
+        const coarseAccepted = coarseMetrics.passed || topologyEquivalent || slenderEquivalent;
         const metrics = {
           ...coarseMetrics,
           passed: coarseAccepted && detailReasons.length === 0,
@@ -1122,6 +1233,7 @@ async function main() {
           ],
           coarsePassed: coarseMetrics.passed,
           coarseAcceptedByFineTopology: !coarseMetrics.passed && topologyEquivalent,
+          coarseAcceptedBySlenderDefect: !coarseMetrics.passed && slenderEquivalent,
           detail: detailMetrics ? {
             local: detailMetrics.local,
             largestMissing: detailMetrics.largestMissing,

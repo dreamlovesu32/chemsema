@@ -598,7 +598,7 @@ fn decode_line_height(value: i64) -> String {
     match value {
         0 => "variable".to_string(),
         1 => "auto".to_string(),
-        _ => value.to_string(),
+        _ => fmt_num(value as f64 / 20.0),
     }
 }
 
@@ -606,7 +606,7 @@ fn encode_line_height(value: &str, unsigned: bool) -> Option<Vec<u8>> {
     let numeric = match value.trim().to_ascii_lowercase().as_str() {
         "variable" => 0,
         "auto" => 1,
-        value => value.parse::<i32>().ok()?,
+        value => (value.parse::<f64>().ok()? * 20.0).round() as i32,
     };
     if unsigned {
         Some(u16::try_from(numeric).ok()?.to_le_bytes().to_vec())
@@ -2048,7 +2048,8 @@ mod tests {
             ("LineHeight", "variable", 0x0702, vec![0, 0], "variable"),
             ("LineHeight", "auto", 0x0702, vec![1, 0], "auto"),
             ("WordWrapWidth", "144", 0x0703, vec![144, 0], "144"),
-            ("LabelLineHeight", "12", 0x0706, vec![12, 0], "12"),
+            ("LabelLineHeight", "12", 0x0706, vec![240, 0], "12"),
+            ("CaptionLineHeight", "8.25", 0x0707, vec![165, 0], "8.25"),
             ("CaptionLineHeight", "auto", 0x0707, vec![1, 0], "auto"),
         ] {
             let encoded = encode_property(name, value).expect("property should encode");

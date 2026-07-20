@@ -2,6 +2,20 @@
   "schema": "chemsema.public_cdxml.visual_impact_map.v1",
   "rules": [
     {
+      "name": "cdx-text-layout-import",
+      "pathEquals": ["crates/chemsema-engine/src/cdx.rs"],
+      "formats": ["cdx"],
+      "features": ["text"],
+      "regressionCases": ["0129", "0130", "0131"]
+    },
+    {
+      "name": "cdxml-bond-import",
+      "pathEquals": ["crates/chemsema-engine/src/cdxml.rs"],
+      "formats": ["cdxml"],
+      "features": ["bond", "dashed-bond"],
+      "regressionCases": ["0016", "0017", "0018", "0019", "0020", "0021", "0023", "0025", "0026", "0028", "0029", "0204", "0205", "0212", "0220", "0295"]
+    },
+    {
       "name": "cdxml-object-tags",
       "pathSubstrings": [
         "crates/chemsema-engine/src/cdxml/import_objects.rs"
