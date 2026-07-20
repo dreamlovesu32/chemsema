@@ -46,10 +46,18 @@ const DEFAULTS = Object.freeze({
   maxSlenderDefectArea: 24,
   maxSlenderDefectSpan: 30,
   maxSlenderDefectThickness: 1,
+  minBoundedLocalCoverage: 0.96,
+  maxBoundedLocalDefectSpan: 32,
+  minBoundedRelativeComponentCoverage: 0.877,
+  boundedComponentDeltaPenalty: 0.01,
+  maxBoundedComponentCountDelta: 8,
+  maxTightBoundedLocalDefectSpan: 20,
+  minTightBoundedRelativeComponentCoverage: 0.88,
+  maxTightBoundedComponentCountDelta: 5,
 });
 
 const ALIGNMENT_ALGORITHM = "ink-iou-coarse-refined-precision-v2";
-const CACHE_IDENTITY = "chemsema-public-cdxml-visual-gate-cache-v2";
+const CACHE_IDENTITY = "chemsema-public-cdxml-visual-gate-cache-v3";
 
 function parseArgs(argv) {
   const options = { ...DEFAULTS, patterns: [] };
@@ -98,6 +106,14 @@ function parseArgs(argv) {
     else if (arg === "--max-slender-defect-area") options.maxSlenderDefectArea = Number(argv[++index]);
     else if (arg === "--max-slender-defect-span") options.maxSlenderDefectSpan = Number(argv[++index]);
     else if (arg === "--max-slender-defect-thickness") options.maxSlenderDefectThickness = Number(argv[++index]);
+    else if (arg === "--min-bounded-local-coverage") options.minBoundedLocalCoverage = Number(argv[++index]);
+    else if (arg === "--max-bounded-local-defect-span") options.maxBoundedLocalDefectSpan = Number(argv[++index]);
+    else if (arg === "--min-bounded-relative-component-coverage") options.minBoundedRelativeComponentCoverage = Number(argv[++index]);
+    else if (arg === "--bounded-component-delta-penalty") options.boundedComponentDeltaPenalty = Number(argv[++index]);
+    else if (arg === "--max-bounded-component-count-delta") options.maxBoundedComponentCountDelta = Number(argv[++index]);
+    else if (arg === "--max-tight-bounded-local-defect-span") options.maxTightBoundedLocalDefectSpan = Number(argv[++index]);
+    else if (arg === "--min-tight-bounded-relative-component-coverage") options.minTightBoundedRelativeComponentCoverage = Number(argv[++index]);
+    else if (arg === "--max-tight-bounded-component-count-delta") options.maxTightBoundedComponentCountDelta = Number(argv[++index]);
     else if (arg === "--report-only") options.reportOnly = true;
     else if (arg === "--self-test") options.selfTest = true;
     else if (arg === "--help" || arg === "-h") options.help = true;
@@ -120,6 +136,8 @@ function validateOptions(options) {
     "minCoverage", "minRepeatedMicroCoverage", "minimumSmallTopologyLocalCoverage",
     "minStrongPixelCoverage", "minStrongPixelLocalCoverage",
     "minSlenderDefectCoverage", "minSlenderDefectLocalCoverage",
+    "minBoundedLocalCoverage", "minBoundedRelativeComponentCoverage",
+    "minTightBoundedRelativeComponentCoverage", "boundedComponentDeltaPenalty",
     "maxRelativeComponentCenterDistance", "maxTopologyCandidateCountRatio",
     "maxComponentPositionDistributionDelta",
   ]) {
@@ -133,6 +151,8 @@ function validateOptions(options) {
     "maxRepeatedMicroDefectArea", "minimumTopologyComponentCount",
     "minimumSmallTopologyComponentCount", "maxStrongPixelComponentCountDelta",
     "maxSlenderDefectArea", "maxSlenderDefectSpan", "maxSlenderDefectThickness",
+    "maxBoundedLocalDefectSpan", "maxBoundedComponentCountDelta",
+    "maxTightBoundedLocalDefectSpan", "maxTightBoundedComponentCountDelta",
     "maximumTopologyCandidateComponentCount",
   ]) {
     if (!Number.isFinite(options[key]) || options[key] < 0) {
@@ -903,6 +923,33 @@ export function slenderDefectEquivalent(coarse, options = {}) {
     && defectThickness(coarse.largestExtra) <= settings.maxSlenderDefectThickness;
 }
 
+export function boundedLocalTopologyEquivalent(coarse, options = {}) {
+  const settings = { ...DEFAULTS, ...options };
+  const features = coarse.detailFeatures;
+  const componentDelta = features.componentCountDelta;
+  const relativeCoverage = features.relativeComponentMatchCoverage;
+  const maximumDefectSpan = Math.max(
+    coarse.largestMissing.span,
+    coarse.largestExtra.span,
+  );
+  if (
+    Math.min(coarse.referenceCoverage, coarse.candidateCoverage)
+      < settings.minBoundedLocalCoverage
+    || maximumDefectSpan > settings.maxBoundedLocalDefectSpan
+    || componentDelta > settings.maxBoundedComponentCountDelta
+  ) {
+    return false;
+  }
+  const tightLocalDefect =
+    maximumDefectSpan <= settings.maxTightBoundedLocalDefectSpan
+    && componentDelta <= settings.maxTightBoundedComponentCountDelta
+    && relativeCoverage >= settings.minTightBoundedRelativeComponentCoverage;
+  const topologyAdjustedCoverage =
+    settings.minBoundedRelativeComponentCoverage
+    + settings.boundedComponentDeltaPenalty * componentDelta;
+  return tightLocalDefect || relativeCoverage >= topologyAdjustedCoverage;
+}
+
 function detailAnalysisOptions(options) {
   return {
     analysisScale: options.detailAnalysisScale,
@@ -952,6 +999,18 @@ function gatePolicy(options) {
       maximumSlenderDefectArea: options.maxSlenderDefectArea,
       maximumSlenderDefectSpan: options.maxSlenderDefectSpan,
       maximumSlenderDefectThickness: options.maxSlenderDefectThickness,
+      minimumBoundedLocalCoverage: options.minBoundedLocalCoverage,
+      maximumBoundedLocalDefectSpan: options.maxBoundedLocalDefectSpan,
+      minimumBoundedRelativeComponentCoverage:
+        options.minBoundedRelativeComponentCoverage,
+      boundedComponentDeltaPenalty: options.boundedComponentDeltaPenalty,
+      maximumBoundedComponentCountDelta: options.maxBoundedComponentCountDelta,
+      maximumTightBoundedLocalDefectSpan:
+        options.maxTightBoundedLocalDefectSpan,
+      minimumTightBoundedRelativeComponentCoverage:
+        options.minTightBoundedRelativeComponentCoverage,
+      maximumTightBoundedComponentCountDelta:
+        options.maxTightBoundedComponentCountDelta,
     },
     raster: {
       pixelsPerReferenceUnit: options.analysisScale,
@@ -1205,7 +1264,10 @@ async function main() {
           options,
         );
         const coarseTopologyCandidate = fineTopologyCandidate(coarseMetrics, options);
-        const detailMetrics = coarseMetrics.passed || coarseTopologyCandidate
+        const boundedLocalEquivalent = boundedLocalTopologyEquivalent(coarseMetrics, options);
+        const detailMetrics = coarseMetrics.passed
+          || coarseTopologyCandidate
+          || boundedLocalEquivalent
           ? await analyzeAlignedImages(
             activePage,
             referenceDataUrl,
@@ -1219,11 +1281,18 @@ async function main() {
           const componentReason = detailReasons.indexOf("detail-component-count");
           if (componentReason >= 0) detailReasons.splice(componentReason, 1);
         }
+        if (boundedLocalEquivalent) {
+          const componentReason = detailReasons.indexOf("detail-component-count");
+          if (componentReason >= 0) detailReasons.splice(componentReason, 1);
+        }
         const topologyEquivalent = detailMetrics
           ? fineTopologyEquivalent(detailMetrics, options)
           : false;
         const slenderEquivalent = slenderDefectEquivalent(coarseMetrics, options);
-        const coarseAccepted = coarseMetrics.passed || topologyEquivalent || slenderEquivalent;
+        const coarseAccepted = coarseMetrics.passed
+          || topologyEquivalent
+          || slenderEquivalent
+          || boundedLocalEquivalent;
         const metrics = {
           ...coarseMetrics,
           passed: coarseAccepted && detailReasons.length === 0,
@@ -1234,6 +1303,8 @@ async function main() {
           coarsePassed: coarseMetrics.passed,
           coarseAcceptedByFineTopology: !coarseMetrics.passed && topologyEquivalent,
           coarseAcceptedBySlenderDefect: !coarseMetrics.passed && slenderEquivalent,
+          coarseAcceptedByBoundedLocalTopology:
+            !coarseMetrics.passed && boundedLocalEquivalent,
           detail: detailMetrics ? {
             local: detailMetrics.local,
             largestMissing: detailMetrics.largestMissing,

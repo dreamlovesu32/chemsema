@@ -5598,6 +5598,42 @@ fn parse_cdxml_imports_visible_number_and_query_object_tags_inside_bonded_nodes(
 }
 
 #[test]
+fn parse_cdxml_only_paints_unknown_object_tags_when_explicitly_visible() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML>
+  <page id="1">
+    <objecttag Name="producer-note">
+      <t p="10 10" BoundingBox="10 4 40 10"><s font="3" size="7.5">hidden</s></t>
+    </objecttag>
+    <objecttag Name="producer-note" Visible="yes">
+      <t p="10 20" BoundingBox="10 14 40 20"><s font="3" size="7.5">shown</s></t>
+    </objecttag>
+  </page>
+</CDXML>"##;
+    let document = parse_cdxml_document(cdxml, Some("unknown object-tag visibility"))
+        .expect("unknown object tags should parse");
+    let visibility = document
+        .objects
+        .iter()
+        .filter(|object| object.object_type == "text")
+        .map(|object| {
+            (
+                object
+                    .payload
+                    .extra
+                    .get("text")
+                    .and_then(|value| value.as_str()),
+                object.visible,
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        visibility,
+        vec![(Some("hidden"), false), (Some("shown"), true)]
+    );
+}
+
+#[test]
 fn parse_cdxml_synthesizes_missing_enhanced_stereo_object_tag_opposite_wedge() {
     let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
 <CDXML BondLength="30" LineWidth="1" BoldWidth="4" LabelFont="3" LabelSize="10">
@@ -6952,6 +6988,37 @@ fn parse_cdxml_color_table_keeps_duplicate_slots() {
         parse_cdxml_document(cdxml, Some("duplicate colors")).expect("cdxml should parse");
 
     assert_eq!(cdxml_shape_fills_by_z(&document), vec!["#ff0000"]);
+}
+
+#[test]
+fn parse_cdxml_old_circle_uses_ordered_graphic_bounding_box_as_radius_and_center() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML LineWidth="0.5">
+  <page id="1">
+    <graphic id="2" BoundingBox="98.5875 87.6 95.2875 87.6"
+      GraphicType="Oval" OvalType="Circle"/>
+  </page>
+</CDXML>"##;
+    let document = parse_cdxml_document(cdxml, Some("legacy circle")).expect("CDXML");
+    let shape = document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "shape")
+        .expect("legacy circle should import");
+
+    assert_eq!(shape.payload.extra.get("kind"), Some(&json!("circle")));
+    assert_eq!(
+        shape.payload.extra.get("center"),
+        Some(&json!([95.29, 87.6]))
+    );
+    assert_eq!(
+        shape.payload.extra.get("majorAxisEnd"),
+        Some(&json!([98.59, 87.6]))
+    );
+    assert_eq!(
+        shape.payload.extra.get("minorAxisEnd"),
+        Some(&json!([95.29, 90.9]))
+    );
 }
 
 #[test]
@@ -8981,6 +9048,67 @@ fn parse_cdxml_label_fields_keep_their_official_layout_roles() {
     assert!(label("display_above").lines.is_empty());
     assert_eq!(label("authored_lines").text, "Cl2\nZr");
     assert_eq!(label("authored_lines").lines, ["Cl2", "Zr"]);
+    assert!(label("authored_lines").runs.is_empty());
+    assert_eq!(label("authored_lines").line_runs.len(), 2);
+    assert_eq!(
+        label("authored_lines").line_runs[0]
+            .iter()
+            .map(|run| run.text.as_str())
+            .collect::<String>(),
+        "Cl2"
+    );
+    assert_eq!(
+        label("authored_lines").line_runs[1]
+            .iter()
+            .map(|run| run.text.as_str())
+            .collect::<String>(),
+        "Zr"
+    );
+}
+
+#[test]
+fn parse_cdxml_infers_nested_fragment_external_connection_for_parent_bond() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML BondLength="10" LabelSize="10">
+  <page id="1">
+    <fragment id="2">
+      <n id="wrapper" NodeType="Fragment">
+        <fragment id="3">
+          <n id="inner" p="10 20"/>
+          <n id="anchor" p="20 20"/>
+          <n id="external" NodeType="ExternalConnectionPoint"/>
+          <b id="i1" B="inner" E="anchor"/>
+          <b id="i2" B="anchor" E="external"/>
+        </fragment>
+        <t><s font="3" size="10" face="96">DCM</s></t>
+      </n>
+      <n id="m" NodeType="GenericNickname" p="40 20">
+        <t p="40 20"><s font="3" size="10" face="96">M</s></t>
+      </n>
+      <b id="outer" B="wrapper" E="m"/>
+    </fragment>
+  </page>
+</CDXML>"##;
+    let document = parse_cdxml_document(cdxml, Some("nested fragment connection")).expect("CDXML");
+    let fragment = document
+        .resources
+        .values()
+        .find_map(|resource| resource.data.as_fragment())
+        .expect("parent fragment");
+    let wrapper = fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == "wrapper")
+        .expect("wrapper node");
+
+    assert!(fragment.bonds.iter().any(|bond| bond.id == "outer"));
+    assert!(wrapper.label.is_some());
+    let m = fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == "m")
+        .expect("M");
+    assert!((m.position[0] - wrapper.position[0] - 10.0).abs() < 0.01);
 }
 
 #[test]

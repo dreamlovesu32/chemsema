@@ -292,7 +292,7 @@ fn is_charge_marker(chars: &[char], index: usize) -> bool {
     ) {
         return false;
     }
-    chars.get(index + 1).is_none()
+    matches!(chars.get(index + 1), None | Some('\n'))
 }
 
 #[cfg(test)]
@@ -331,6 +331,21 @@ mod tests {
                 .map(|run| (run.text.as_str(), run.script.as_deref()))
                 .collect::<Vec<_>>(),
             vec![("Fe", Some("normal")), ("3+", Some("superscript"))]
+        );
+    }
+
+    #[test]
+    fn expand_chemical_run_treats_line_terminal_charge_as_superscript() {
+        let runs = expand_chemical_run(&chemical_base(), "H+\nN");
+        assert_eq!(
+            runs.iter()
+                .map(|run| (run.text.as_str(), run.script.as_deref()))
+                .collect::<Vec<_>>(),
+            vec![
+                ("H", Some("normal")),
+                ("+", Some("superscript")),
+                ("\nN", Some("normal")),
+            ]
         );
     }
 

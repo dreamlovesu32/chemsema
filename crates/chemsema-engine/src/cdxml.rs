@@ -977,20 +977,51 @@ fn cdxml_fragment_node_positions(
         .direct_children("n")
         .filter_map(|node| node.attr("id").map(|id| (id.to_string(), node)))
         .collect();
-    let explicit: BTreeMap<_, _> = nodes
+    let mut explicit: BTreeMap<_, _> = nodes
         .iter()
         .filter_map(|(id, node)| parse_xy(node.attr("p")).map(|point| (id.clone(), point)))
         .collect();
+    let bonds: Vec<_> = fragment
+        .direct_children("b")
+        .filter_map(|bond| Some((bond.attr("B")?.to_string(), bond.attr("E")?.to_string())))
+        .collect();
+    let inferable_node_ids: BTreeSet<_> = nodes
+        .iter()
+        .filter(|(_, node)| {
+            node.attr("p").is_none() && node.attr("NodeType") != Some("ExternalConnectionPoint")
+        })
+        .map(|(id, _)| id.clone())
+        .collect();
+    loop {
+        let mut inferred = Vec::new();
+        for (begin, end) in &bonds {
+            match (explicit.get(begin).copied(), explicit.get(end).copied()) {
+                (Some(point), None) if inferable_node_ids.contains(end) => inferred.push((
+                    end.clone(),
+                    [round2(point[0] + bond_length.max(1.0)), point[1]],
+                )),
+                (None, Some(point)) if inferable_node_ids.contains(begin) => inferred.push((
+                    begin.clone(),
+                    [round2(point[0] - bond_length.max(1.0)), point[1]],
+                )),
+                _ => {}
+            }
+        }
+        inferred.retain(|(id, _)| !explicit.contains_key(id));
+        if inferred.is_empty() {
+            break;
+        }
+        for (id, point) in inferred {
+            explicit.entry(id).or_insert(point);
+        }
+    }
     if !explicit.is_empty() || nodes.is_empty() {
         return explicit;
     }
 
     fallback_cdxml_topology_positions(
         &nodes.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>(),
-        &fragment
-            .direct_children("b")
-            .filter_map(|bond| Some((bond.attr("B")?.to_string(), bond.attr("E")?.to_string())))
-            .collect::<Vec<_>>(),
+        &bonds,
         bond_length.max(1.0),
     )
 }
@@ -1573,6 +1604,11 @@ fn normalize_node(
     let atomic_number = parse_u8(node.attr("Element")).unwrap_or(6);
     let node_type = node.attr("NodeType").unwrap_or("");
     let mut label = node_label(node, origin, colors, fonts, defaults);
+    if let Some(label) = &mut label {
+        if label.position.is_none() {
+            label.position = Some(local_position);
+        }
+    }
     if label.is_none() && atomic_number != 6 {
         let mut generated = crate::engine::make_periodic_element_node_label(
             element_symbol(atomic_number),
@@ -1729,6 +1765,11 @@ fn node_label(
         }
     }
     let runs = label_display_runs_from_source_runs(&source_runs);
+    let line_runs = if text.contains('\n') {
+        split_label_runs_by_line(&runs)
+    } else {
+        Vec::new()
+    };
     let text_position = parse_xy(text_el.attr("p")).or_else(|| parse_xy(node.attr("p")));
     let local_node_position = parse_xy(node.attr("p"))
         .map(|point| [round2(point[0] - origin[0]), round2(point[1] - origin[1])]);
@@ -1749,8 +1790,12 @@ fn node_label(
         source_text: Some(text.clone()),
         position: local_node_position,
         box_field: None,
-        runs,
-        line_runs: Vec::new(),
+        runs: if line_runs.is_empty() {
+            runs
+        } else {
+            Vec::new()
+        },
+        line_runs,
         lines: if text.contains('\n') {
             text.lines().map(ToString::to_string).collect()
         } else {
@@ -1806,6 +1851,24 @@ fn node_label(
             "sourceRuns": source_runs,
         }),
     })
+}
+
+fn split_label_runs_by_line(runs: &[LabelRun]) -> Vec<Vec<LabelRun>> {
+    let mut lines = vec![Vec::new()];
+    for run in runs {
+        let parts: Vec<&str> = run.text.split('\n').collect();
+        for (index, part) in parts.iter().enumerate() {
+            if !part.is_empty() {
+                let mut part_run = run.clone();
+                part_run.text = (*part).to_string();
+                lines.last_mut().expect("line run bucket").push(part_run);
+            }
+            if index + 1 < parts.len() {
+                lines.push(Vec::new());
+            }
+        }
+    }
+    lines
 }
 
 fn attr_eq_ignore_ascii_case(value: Option<&str>, expected: &str) -> bool {

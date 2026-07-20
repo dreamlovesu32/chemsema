@@ -11,20 +11,59 @@ pub(super) fn world_point(object: &SceneObject, node: &Node) -> Point {
 pub(super) fn attached_label_glyph_anchor_world(
     object: &SceneObject,
     node: &Node,
-    glyph_index: usize,
+    authored_character_index: usize,
 ) -> Option<Point> {
     let label = node.label.as_ref()?;
+    let source = label.source_text.as_deref().unwrap_or(&label.text);
+    let glyph_index = authored_character_glyph_index(source, authored_character_index)?;
     let polygons = label.glyph_polygons();
     let bounds = polygon_bounds(polygons.get(glyph_index)?)?;
-    let baseline_y = label.position?[1];
-    let font_size = label
-        .font_size
-        .unwrap_or(crate::DEFAULT_MOLECULE_LABEL_FONT_SIZE_PT);
+    let anchor_y = if source.contains('\r') || source.contains('\n') {
+        (bounds.y1 + bounds.y2) * 0.5
+    } else {
+        let baseline_y = label.position?[1];
+        let font_size = label
+            .font_size
+            .unwrap_or(crate::DEFAULT_MOLECULE_LABEL_FONT_SIZE_PT);
+        baseline_y - font_size * crate::MOLECULE_LABEL_ANCHOR_BASELINE_RATIO
+    };
     Some(Point::new(
         (bounds.x1 + bounds.x2) * 0.5 + object.transform.translate[0],
-        baseline_y - font_size * crate::MOLECULE_LABEL_ANCHOR_BASELINE_RATIO
-            + object.transform.translate[1],
+        anchor_y + object.transform.translate[1],
     ))
+}
+
+fn authored_character_glyph_index(source: &str, authored_character_index: usize) -> Option<usize> {
+    let mut visible_index = 0usize;
+    for (index, character) in source.chars().enumerate() {
+        if index == authored_character_index {
+            return if matches!(character, '\r' | '\n') {
+                visible_index.checked_sub(1)
+            } else {
+                Some(visible_index)
+            };
+        }
+        if !matches!(character, '\r' | '\n') {
+            visible_index += 1;
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod attachment_tests {
+    use super::authored_character_glyph_index;
+
+    #[test]
+    fn authored_multiline_attachment_indices_map_to_visible_glyphs() {
+        assert_eq!(authored_character_glyph_index("H+\nN", 2), Some(1));
+        assert_eq!(authored_character_glyph_index("H+\nN", 3), Some(2));
+    }
+
+    #[test]
+    fn authored_single_line_attachment_indices_are_unchanged() {
+        assert_eq!(authored_character_glyph_index("(PhO)2POH", 6), Some(6));
+    }
 }
 
 pub(super) fn label_box_world(node: &Node, object: &SceneObject) -> Option<RectBox> {

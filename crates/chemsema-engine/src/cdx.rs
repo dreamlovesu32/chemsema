@@ -555,12 +555,17 @@ fn decode_property(
         PropertyKind::Boolean => bool_from_bytes(data),
         PropertyKind::BooleanImplied => "yes".to_string(),
         PropertyKind::BondOrder => decode_bond_order(data)?,
-        PropertyKind::BondSpacing => (read_i16(data)? as f64 / 10.0).round().to_string(),
+        // CDX stores BondSpacing in tenths of a percent.  Preserve that
+        // fractional digit: rounding here changes the distance between the
+        // strokes of every multiple bond in documents that use values such as
+        // 12.5%, and the error grows with the bond length.
+        PropertyKind::BondSpacing => fmt_num(read_i16(data)? as f64 / 10.0),
         PropertyKind::FontStyle => return None,
         PropertyKind::ObjectIdArray => decode_u32_array(data)?,
         PropertyKind::Int16ListWithCounts => decode_i16_counted_list(data)?,
         PropertyKind::Enum8(values) => enum_name(read_i8(data)? as i16, values).to_string(),
         PropertyKind::Enum(values) => enum_name(read_i16_lossy(data)?, values).to_string(),
+        PropertyKind::BitFlags(values) => decode_bit_flags(read_i16_lossy(data)?, values),
     };
     Some((schema.name, value))
 }
@@ -597,6 +602,7 @@ enum PropertyKind {
     Int16ListWithCounts,
     Enum8(&'static [(i16, &'static str)]),
     Enum(&'static [(i16, &'static str)]),
+    BitFlags(&'static [(i16, &'static str)]),
 }
 
 fn decode_line_height(value: i64) -> String {
@@ -712,10 +718,10 @@ fn property_schema(tag: u16) -> Option<PropertySchema> {
         0x0901 => ("WindowPosition", PropertyKind::Point2D),
         0x0902 => ("WindowSize", PropertyKind::Point2D),
         0x0A00 => ("GraphicType", PropertyKind::Enum(GRAPHIC_TYPE)),
-        0x0A01 => ("LineType", PropertyKind::Enum(LINE_TYPE)),
+        0x0A01 => ("LineType", PropertyKind::BitFlags(LINE_TYPE)),
         0x0A02 => ("ArrowType", PropertyKind::Enum(ARROW_TYPE)),
-        0x0A03 => ("RectangleType", PropertyKind::Int16),
-        0x0A04 => ("OvalType", PropertyKind::Int16),
+        0x0A03 => ("RectangleType", PropertyKind::BitFlags(RECTANGLE_TYPE)),
+        0x0A04 => ("OvalType", PropertyKind::BitFlags(OVAL_TYPE)),
         0x0A05 => ("OrbitalType", PropertyKind::Enum(ORBITAL_TYPE)),
         0x0A06 => ("BracketType", PropertyKind::Enum(BRACKET_TYPE)),
         0x0A07 => ("SymbolType", PropertyKind::Enum(SYMBOL_TYPE)),
@@ -920,6 +926,7 @@ fn encode_property(name: &str, value: &str) -> Option<(u16, Vec<u8>)> {
         PropertyKind::Int16ListWithCounts => encode_i16_counted_list(value)?,
         PropertyKind::Enum8(values) => vec![enum_value(value, values)? as i8 as u8],
         PropertyKind::Enum(values) => enum_value(value, values)?.to_le_bytes().to_vec(),
+        PropertyKind::BitFlags(values) => encode_bit_flags(value, values)?.to_le_bytes().to_vec(),
     };
     Some((tag, bytes))
 }
@@ -1106,12 +1113,24 @@ const SYMBOL_TYPE: &[(i16, &str)] = &[
     (11, "Absolute"),
     (12, "Relative"),
 ];
-const LINE_TYPE: &[(i16, &str)] = &[
-    (0, "Solid"),
-    (1, "Dashed"),
-    (2, "Bold"),
-    (3, "Wavy"),
-    (4, "Bold Dashed"),
+const LINE_TYPE: &[(i16, &str)] = &[(0, "Solid"), (1, "Dashed"), (2, "Bold"), (4, "Wavy")];
+const RECTANGLE_TYPE: &[(i16, &str)] = &[
+    (0, "Plain"),
+    (1, "RoundEdge"),
+    (2, "Shadow"),
+    (4, "Shaded"),
+    (8, "Filled"),
+    (16, "Dashed"),
+    (32, "Bold"),
+];
+const OVAL_TYPE: &[(i16, &str)] = &[
+    (0, "Plain"),
+    (1, "Circle"),
+    (2, "Shaded"),
+    (4, "Filled"),
+    (8, "Dashed"),
+    (16, "Bold"),
+    (32, "Shadowed"),
 ];
 const ARROW_TYPE: &[(i16, &str)] = &[
     (0, "NoHead"),
@@ -1166,6 +1185,39 @@ fn enum_value(name: &str, values: &'static [(i16, &'static str)]) -> Option<i16>
     values
         .iter()
         .find_map(|(value, candidate)| candidate.eq_ignore_ascii_case(name).then_some(*value))
+}
+
+fn decode_bit_flags(value: i16, values: &'static [(i16, &'static str)]) -> String {
+    if value == 0 {
+        return values
+            .iter()
+            .find_map(|(flag, name)| (*flag == 0).then_some(*name))
+            .unwrap_or("0")
+            .to_string();
+    }
+    let names = values
+        .iter()
+        .filter_map(|(flag, name)| (*flag != 0 && value & *flag == *flag).then_some(*name))
+        .collect::<Vec<_>>();
+    if names.is_empty() {
+        value.to_string()
+    } else {
+        names.join(" ")
+    }
+}
+
+fn encode_bit_flags(value: &str, values: &'static [(i16, &'static str)]) -> Option<i16> {
+    if let Ok(numeric) = value.parse::<i16>() {
+        return Some(numeric);
+    }
+    let mut encoded = 0_i16;
+    let mut matched = false;
+    for token in value.split_whitespace() {
+        let flag = enum_value(token, values)?;
+        encoded |= flag;
+        matched = true;
+    }
+    matched.then_some(encoded)
 }
 
 fn read_i8(data: &[u8]) -> Option<i8> {
@@ -2095,9 +2147,25 @@ mod tests {
             ("LabelLineHeight", "12", 0x0706, vec![240, 0], "12"),
             ("CaptionLineHeight", "8.25", 0x0707, vec![165, 0], "8.25"),
             ("CaptionLineHeight", "auto", 0x0707, vec![1, 0], "auto"),
+            ("BondSpacing", "12.5", 0x0804, vec![125, 0], "12.5"),
             ("BondSpacingAbs", "1.25", 0x0822, vec![0, 64, 1, 0], "1.25"),
             ("BracketType", "Square", 0x0A06, vec![3, 0], "Square"),
             ("BracketType", "Round", 0x0A06, vec![5, 0], "Round"),
+            (
+                "OvalType",
+                "Circle Shaded",
+                0x0A04,
+                vec![3, 0],
+                "Circle Shaded",
+            ),
+            (
+                "RectangleType",
+                "RoundEdge Shadow",
+                0x0A03,
+                vec![3, 0],
+                "RoundEdge Shadow",
+            ),
+            ("LineType", "Bold Dashed", 0x0A01, vec![3, 0], "Dashed Bold"),
             ("LipSize", "60", 0x0A22, vec![60, 0], "60"),
             ("PositioningType", "absolute", 0x0D06, vec![3], "absolute"),
             (

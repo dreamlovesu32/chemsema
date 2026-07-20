@@ -351,9 +351,15 @@ pub(super) fn append_shape_objects(
         if !matches!(graphic_type, "Rectangle" | "Oval") {
             continue;
         }
-        let Some(bbox) = parse_bbox(node.attr("BoundingBox")) else {
+        let Some(raw_bbox) = parse_ordered_bbox(node.attr("BoundingBox")) else {
             continue;
         };
+        let bbox = [
+            raw_bbox[0].min(raw_bbox[2]),
+            raw_bbox[1].min(raw_bbox[3]),
+            raw_bbox[0].max(raw_bbox[2]),
+            raw_bbox[1].max(raw_bbox[3]),
+        ];
         let type_value = node
             .attr(if graphic_type == "Rectangle" {
                 "RectangleType"
@@ -367,7 +373,7 @@ pub(super) fn append_shape_objects(
         let shadow = type_value.contains("Shadow");
         let line_type = node.attr("LineType").unwrap_or("");
         let dashed = type_value.contains("Dashed") || line_type.contains("Dashed");
-        let bold = line_type.contains("Bold");
+        let bold = type_value.contains("Bold") || line_type.contains("Bold");
         let stroke_width = parse_f64(node.attr("LineWidth")).unwrap_or(if bold {
             defaults.bold_width
         } else {
@@ -389,11 +395,32 @@ pub(super) fn append_shape_objects(
             }),
         );
         let (transform, payload) = if graphic_type == "Oval" {
-            let (Some(center), Some(major), Some(minor)) = (
+            let axes = match (
                 parse_xyz2(node.attr("Center3D")),
                 parse_xyz2(node.attr("MajorAxisEnd3D")),
                 parse_xyz2(node.attr("MinorAxisEnd3D")),
-            ) else {
+            ) {
+                (Some(center), Some(major), Some(minor)) => Some((center, major, minor)),
+                // Older CDX circle graphics use the two ordered BoundingBox
+                // points as a radial endpoint followed by the center.  The
+                // official BoundingBox documentation explicitly says Graphic
+                // objects overload the rectangle as a pair of defining points.
+                // Preserve that representation when the later 3D-axis fields
+                // are absent.
+                _ if type_value.contains("Circle") => {
+                    let center = [raw_bbox[2], raw_bbox[3]];
+                    let major = [raw_bbox[0], raw_bbox[1]];
+                    let dx = major[0] - center[0];
+                    let dy = major[1] - center[1];
+                    (dx.hypot(dy) > crate::EPSILON).then_some((
+                        center,
+                        major,
+                        [center[0] - dy, center[1] + dx],
+                    ))
+                }
+                _ => None,
+            };
+            let Some((center, major, minor)) = axes else {
                 continue;
             };
             let mut extra = BTreeMap::new();
@@ -1682,6 +1709,9 @@ pub(super) fn append_text_objects_recursive(
         !node
             .attr("Visible")
             .is_some_and(|value| value.eq_ignore_ascii_case("no"))
+    } else if node.is("objecttag") {
+        node.attr("Visible")
+            .is_some_and(|value| value.eq_ignore_ascii_case("yes"))
     } else {
         text_visible
     };

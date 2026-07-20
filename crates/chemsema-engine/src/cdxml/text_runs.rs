@@ -169,7 +169,7 @@ fn is_cdxml_charge_marker(chars: &[char], index: usize) -> bool {
     ) {
         return false;
     }
-    next.is_none()
+    next.is_none() || next == Some(&'\n')
 }
 
 #[cfg(test)]
@@ -203,6 +203,21 @@ mod tests {
                 .map(|run| (run.text.as_str(), run.script.as_deref()))
                 .collect::<Vec<_>>(),
             vec![("Fe", Some("normal")), ("3+", Some("superscript"))]
+        );
+    }
+
+    #[test]
+    fn chemical_runs_treat_charge_before_line_break_as_line_terminal() {
+        let runs = expand_cdxml_chemical_run(&chemical_run("H+\nN"));
+        assert_eq!(
+            runs.iter()
+                .map(|run| (run.text.as_str(), run.script.as_deref()))
+                .collect::<Vec<_>>(),
+            vec![
+                ("H", Some("normal")),
+                ("+", Some("superscript")),
+                ("\nN", Some("normal"))
+            ]
         );
     }
 
