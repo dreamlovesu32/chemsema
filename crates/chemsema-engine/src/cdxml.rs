@@ -906,12 +906,12 @@ fn cdxml_node_is_display_fragment(node: &XmlNode, include_exported_singletons: b
         return false;
     }
     let has_bond = node.direct_children("b").next().is_some();
-    if node.attr("BoundingBox").is_none() {
-        return has_bond;
-    }
     let has_chemical_node = node
         .direct_children("n")
         .any(|child| child.attr("Element").is_some());
+    if node.attr("BoundingBox").is_none() {
+        return has_bond || has_chemical_node;
+    }
     let has_node = node.direct_children("n").next().is_some();
     has_bond || has_chemical_node || (include_exported_singletons && has_node)
 }

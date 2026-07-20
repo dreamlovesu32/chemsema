@@ -1887,6 +1887,22 @@ pub(super) fn refreshed_attached_node_label(
         &connection_angles,
         layout_as_grouped_attached_label,
     );
+    // With no bond to establish a left/right attachment direction, ChemDraw
+    // writes chalcogen and halogen hydrides in element-first source order but
+    // displays their conventional formula order (H2O, HCl, and so on). Group
+    // 15 hydrides remain element-first (NH3), so this is a periodic-group rule
+    // rather than a blanket reversal for isolated atoms.
+    if connection_angles.is_empty()
+        && matches!(
+            node.atomic_number,
+            8 | 9 | 16 | 17 | 34 | 35 | 52 | 53 | 84 | 85
+        )
+        && node.num_hydrogens > 0
+        && label_text_matches_node_element(&text, node)
+    {
+        decision.flow = LabelFlow::Reverse;
+        decision.anchor = crate::LabelAnchorPolicy::OriginalFirstGroup;
+    }
     if let Some(override_decision) =
         label_layout_decision_for_command_display_mode(display_mode, &text)
     {

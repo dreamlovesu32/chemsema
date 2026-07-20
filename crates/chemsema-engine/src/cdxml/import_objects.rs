@@ -24,8 +24,15 @@ pub(super) fn append_line_objects(
         if node.attr("SupersededBy").is_some() {
             continue;
         }
-        let head = parse_xyz2(node.attr("Head3D"));
-        let tail = parse_xyz2(node.attr("Tail3D"));
+        // CDXML permits plain line graphics (and legacy line-shaped arrows) to
+        // store their two endpoints only in BoundingBox. For these objects the
+        // first pair is the head and the second pair is the tail; unlike a
+        // rectangular extent, their authored order must be preserved.
+        let bbox_endpoints = cdxml_line_bbox_endpoints(node.attr("BoundingBox"));
+        let head =
+            parse_xyz2(node.attr("Head3D")).or_else(|| bbox_endpoints.map(|points| points.0));
+        let tail =
+            parse_xyz2(node.attr("Tail3D")).or_else(|| bbox_endpoints.map(|points| points.1));
         let (Some(tail), Some(head)) = (tail, head) else {
             continue;
         };
@@ -187,6 +194,13 @@ pub(super) fn append_line_objects(
         });
         index += 1;
     }
+}
+
+fn cdxml_line_bbox_endpoints(value: Option<&str>) -> Option<([f64; 2], [f64; 2])> {
+    let mut parts = value?.split_whitespace();
+    let head = [parts.next()?.parse().ok()?, parts.next()?.parse().ok()?];
+    let tail = [parts.next()?.parse().ok()?, parts.next()?.parse().ok()?];
+    Some((head, tail))
 }
 
 fn cdxml_arrow_kind(node: &XmlNode) -> &'static str {

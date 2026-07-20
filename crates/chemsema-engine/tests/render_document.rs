@@ -6358,6 +6358,78 @@ fn parse_cdxml_imports_table_lines_and_text_boxes() {
 }
 
 #[test]
+fn parse_cdxml_imports_line_endpoints_from_bounding_box() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML BondLength="14.40" LineWidth="0.60">
+  <page id="1">
+    <graphic id="2" BoundingBox="80 10 20 10" GraphicType="Line"/>
+  </page>
+</CDXML>"##;
+    let document = parse_cdxml_document(cdxml, Some("bbox line")).expect("parse cdxml");
+    let line = document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "line")
+        .expect("BoundingBox-only line should import");
+    assert_eq!(
+        line.payload.extra["points"],
+        json!([[20.0, 10.0], [80.0, 10.0]])
+    );
+    assert!(render_document(&document).iter().any(|primitive| matches!(
+        primitive,
+        RenderPrimitive::Polyline {
+            role: RenderRole::DocumentGraphic,
+            ..
+        }
+    )));
+}
+
+#[test]
+fn parse_cdxml_displays_isolated_group_16_and_17_hydrides_hydrogen_first() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML LabelFont="3" LabelSize="10" LabelFace="96">
+  <fonttable><font id="3" name="Arial" charset="iso-8859-1"/></fonttable>
+  <page id="1">
+    <fragment id="2">
+      <n id="3" p="20 20" Element="17" NumHydrogens="1">
+        <t p="20 20" LabelJustification="Left"><s font="3" size="10" face="96">ClH</s></t>
+      </n>
+      <n id="4" p="60 20" Element="8" NumHydrogens="2">
+        <t p="60 20" LabelJustification="Left"><s font="3" size="10" face="96">OH2</s></t>
+      </n>
+      <n id="5" p="100 20" Element="7" NumHydrogens="3">
+        <t p="100 20" LabelJustification="Left"><s font="3" size="10" face="96">NH3</s></t>
+      </n>
+    </fragment>
+  </page>
+</CDXML>"##;
+    let document = parse_cdxml_document(cdxml, Some("isolated hydrides")).expect("parse cdxml");
+    let rendered_text = render_document(&document)
+        .iter()
+        .filter_map(|primitive| match primitive {
+            RenderPrimitive::Text { text, runs, .. } => Some(if runs.is_empty() {
+                text.clone()
+            } else {
+                runs.iter().map(|run| run.text.as_str()).collect::<String>()
+            }),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        rendered_text.iter().any(|text| text == "HCl"),
+        "{rendered_text:?}"
+    );
+    assert!(
+        rendered_text.iter().any(|text| text == "H2O"),
+        "{rendered_text:?}"
+    );
+    assert!(
+        rendered_text.iter().any(|text| text == "NH3"),
+        "{rendered_text:?}"
+    );
+}
+
+#[test]
 fn parse_cdxml_renders_acs_dashed_bond_patterns_like_chemdraw() {
     let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
 <CDXML BondLength="14.40" BondSpacing="18" LineWidth="0.60" BoldWidth="2" HashSpacing="2.50">
