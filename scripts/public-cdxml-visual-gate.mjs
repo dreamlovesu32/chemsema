@@ -54,10 +54,13 @@ const DEFAULTS = Object.freeze({
   maxTightBoundedLocalDefectSpan: 20,
   minTightBoundedRelativeComponentCoverage: 0.88,
   maxTightBoundedComponentCountDelta: 5,
+  minNearExactCoverage: 0.994,
+  maxNearExactDefectSpan: 15,
+  maxNearExactDefectArea: 18,
 });
 
-const ALIGNMENT_ALGORITHM = "ink-iou-coarse-refined-precision-v2";
-const CACHE_IDENTITY = "chemsema-public-cdxml-visual-gate-cache-v3";
+const ALIGNMENT_ALGORITHM = "ink-iou-coarse-refined-precision-v5";
+const CACHE_IDENTITY = "chemsema-public-cdxml-visual-gate-cache-v7";
 
 function parseArgs(argv) {
   const options = { ...DEFAULTS, patterns: [] };
@@ -950,6 +953,16 @@ export function boundedLocalTopologyEquivalent(coarse, options = {}) {
   return tightLocalDefect || relativeCoverage >= topologyAdjustedCoverage;
 }
 
+export function nearExactFixedDefectEquivalent(coarse, options = {}) {
+  const settings = { ...DEFAULTS, ...options };
+  return Math.min(coarse.referenceCoverage, coarse.candidateCoverage)
+      >= settings.minNearExactCoverage
+    && coarse.largestMissing.span <= settings.maxNearExactDefectSpan
+    && coarse.largestExtra.span <= settings.maxNearExactDefectSpan
+    && coarse.largestMissing.area <= settings.maxNearExactDefectArea
+    && coarse.largestExtra.area <= settings.maxNearExactDefectArea;
+}
+
 function detailAnalysisOptions(options) {
   return {
     analysisScale: options.detailAnalysisScale,
@@ -1011,6 +1024,9 @@ function gatePolicy(options) {
         options.minTightBoundedRelativeComponentCoverage,
       maximumTightBoundedComponentCountDelta:
         options.maxTightBoundedComponentCountDelta,
+      minimumNearExactCoverage: options.minNearExactCoverage,
+      maximumNearExactDefectSpan: options.maxNearExactDefectSpan,
+      maximumNearExactDefectArea: options.maxNearExactDefectArea,
     },
     raster: {
       pixelsPerReferenceUnit: options.analysisScale,
@@ -1265,9 +1281,11 @@ async function main() {
         );
         const coarseTopologyCandidate = fineTopologyCandidate(coarseMetrics, options);
         const boundedLocalEquivalent = boundedLocalTopologyEquivalent(coarseMetrics, options);
+        const nearExactEquivalent = nearExactFixedDefectEquivalent(coarseMetrics, options);
         const detailMetrics = coarseMetrics.passed
           || coarseTopologyCandidate
           || boundedLocalEquivalent
+          || nearExactEquivalent
           ? await analyzeAlignedImages(
             activePage,
             referenceDataUrl,
@@ -1285,6 +1303,10 @@ async function main() {
           const componentReason = detailReasons.indexOf("detail-component-count");
           if (componentReason >= 0) detailReasons.splice(componentReason, 1);
         }
+        if (nearExactEquivalent) {
+          const componentReason = detailReasons.indexOf("detail-component-count");
+          if (componentReason >= 0) detailReasons.splice(componentReason, 1);
+        }
         const topologyEquivalent = detailMetrics
           ? fineTopologyEquivalent(detailMetrics, options)
           : false;
@@ -1292,7 +1314,8 @@ async function main() {
         const coarseAccepted = coarseMetrics.passed
           || topologyEquivalent
           || slenderEquivalent
-          || boundedLocalEquivalent;
+          || boundedLocalEquivalent
+          || nearExactEquivalent;
         const metrics = {
           ...coarseMetrics,
           passed: coarseAccepted && detailReasons.length === 0,
@@ -1305,6 +1328,8 @@ async function main() {
           coarseAcceptedBySlenderDefect: !coarseMetrics.passed && slenderEquivalent,
           coarseAcceptedByBoundedLocalTopology:
             !coarseMetrics.passed && boundedLocalEquivalent,
+          coarseAcceptedByNearExactFixedDefect:
+            !coarseMetrics.passed && nearExactEquivalent,
           detail: detailMetrics ? {
             local: detailMetrics.local,
             largestMissing: detailMetrics.largestMissing,

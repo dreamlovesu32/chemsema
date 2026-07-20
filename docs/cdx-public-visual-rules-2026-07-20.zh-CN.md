@@ -23,3 +23,9 @@
 - IUPAC FAIRSpec CDX SDK：`Node_Type`、`Bracket_Type`、`Bond_Order`、`BondSpacingAbs`、`SupersededBy`。
 - 真实 ChemDraw 21 保存的 CDX/CDXML 对照。
 - 公共语料的 ChemDraw SVG oracle 与细节无关尺寸门禁。
+
+## 2026-07-21 补充规则
+
+14. `ArrowheadHead="FullHead"` 是官方完整箭头端点枚举，导入时必须归一化为完整端点；不能因为内部规范名称是 `full` 就把 `FullHead` 当成未知值。
+15. 实心完整箭头的 `ArrowheadCenterSize` 同时控制尖端凹口深度和凹口附近的贝塞尔收束。ChemDraw 的内侧控制点半宽为凹口深度的约 `1/8`，并受外侧箭头半宽限制；不能按整个 `ArrowheadWidth` 的固定比例生成，否则浅凹口箭头会在尖端两翼明显鼓起。该公式与箭头方向无关，横向、纵向和斜向箭头共用。
+16. ChemDraw SVG oracle 的 `matrix(a 0 0 a tx ty)` 明确给出 SVG 内部坐标变换；ChemDraw 的 CD 坐标以二十分之一文档单位写入该 SVG。视觉对齐器可将 `20a` 作为尺度候选，但最终仍须以实际墨迹重叠优于普通搜索结果为采用条件。门禁的近完全等价分支同时要求双向覆盖率不低于 `0.994`，且任一连通缺陷的跨度不超过 `15` 个参考单位、面积不超过 `18` 个参考平方单位；这些固定上限不得随画布或文件大小放宽。

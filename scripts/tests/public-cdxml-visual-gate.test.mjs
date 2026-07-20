@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { boundedLocalTopologyEquivalent } from "../public-cdxml-visual-gate.mjs";
+import {
+  boundedLocalTopologyEquivalent,
+  nearExactFixedDefectEquivalent,
+} from "../public-cdxml-visual-gate.mjs";
 
 function metrics({
   coverage = 0.98,
@@ -45,4 +48,19 @@ test("very tight defects allow a small bounded component mismatch", () => {
     componentDelta: 5,
     relativeCoverage: 0.89,
   })), true);
+});
+
+test("near-exact fixed defects ignore sparse-window percentages", () => {
+  const coarse = metrics({ coverage: 0.994, missingSpan: 15, extraSpan: 15 });
+  coarse.largestMissing.area = 18;
+  coarse.largestExtra.area = 18;
+  assert.equal(nearExactFixedDefectEquivalent(coarse), true);
+});
+
+test("near-exact defects remain bounded independently of image size", () => {
+  const coarse = metrics({ coverage: 0.9999, missingSpan: 15.01, extraSpan: 1 });
+  coarse.largestMissing.area = 1;
+  coarse.largestExtra.area = 1;
+  coarse.totals = { referenceInk: 10_000_000, candidateInk: 10_000_000 };
+  assert.equal(nearExactFixedDefectEquivalent(coarse), false);
 });

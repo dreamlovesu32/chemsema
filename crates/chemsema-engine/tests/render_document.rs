@@ -4359,6 +4359,10 @@ fn cdxml_arrow_head_dimensions_are_relative_to_line_width() {
         arrow_head.get("width").and_then(|value| value.as_f64()),
         Some(5.63)
     );
+    assert_eq!(
+        arrow_head.get("head").and_then(|value| value.as_str()),
+        Some("full")
+    );
 
     let primitives = render_document(&document);
     let head_points = primitives
@@ -4395,6 +4399,10 @@ fn cdxml_arrow_head_dimensions_are_relative_to_line_width() {
         .fold(f64::NEG_INFINITY, f64::max);
     assert!((head_max_x - head_min_x - 13.5).abs() <= 0.001);
     assert!((head_max_y - head_min_y - 6.856).abs() <= 0.001);
+    let notch = head_points[3];
+    let left_control = head_points[2];
+    assert!((left_control.x - notch.x).abs() <= 0.001);
+    assert!((left_control.y - notch.y - 1.47675).abs() <= 0.001);
 }
 
 #[test]

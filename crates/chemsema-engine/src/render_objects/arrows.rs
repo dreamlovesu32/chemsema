@@ -1503,7 +1503,10 @@ fn solid_full_arrow_head_path(
     let head_length = arrow_head.length;
     let head_half_width = solid_arrow_head_outer_half_width(arrow_head);
     let notch_length = arrow_head.center_length.max(0.0).min(head_length);
-    let control_half_width = head_half_width * 7.0 / 16.0;
+    // ChemDraw ties the inner Bezier handles to the notch depth, not to the
+    // outer arrowhead width. This keeps a shallow ArrowheadCenterSize notch
+    // narrow instead of making both wings bulge toward the shaft.
+    let control_half_width = (notch_length * 0.125).min(head_half_width);
 
     let tip = to;
     let left = to

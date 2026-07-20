@@ -243,7 +243,7 @@ fn cdxml_arrow_head_enabled(node: &XmlNode) -> bool {
 
 fn canonical_arrow_endpoint(value: &str) -> &'static str {
     match value.to_ascii_lowercase().as_str() {
-        "full" => "full",
+        "full" | "fullhead" => "full",
         "halfleft" | "half-left" | "left" | "top" => "half-left",
         "halfright" | "half-right" | "right" | "bottom" => "half-right",
         _ => "none",

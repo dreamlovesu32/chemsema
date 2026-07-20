@@ -75,6 +75,22 @@ export async function computeImageAlignment(page, referenceDataUrl, chemsemaData
       return image;
     }
 
+    async function chemDrawSvgScale(src) {
+      if (!src.startsWith("data:image/svg+xml")) return null;
+      const svg = await (await fetch(src)).text();
+      const scales = [];
+      for (const match of svg.matchAll(/matrix\(\s*([\d.eE+-]+)\s+0\s+0\s+([\d.eE+-]+)/g)) {
+        const x = Number(match[1]);
+        const y = Number(match[2]);
+        if (Number.isFinite(x) && Number.isFinite(y) && x > 0 && Math.abs(x - y) <= 1e-6) {
+          scales.push(x * 20);
+        }
+      }
+      if (scales.length === 0) return null;
+      scales.sort((left, right) => left - right);
+      return scales[Math.floor(scales.length / 2)];
+    }
+
     function imageInkGeometry(image, maxDimension) {
       const scale = maxDimension / Math.max(image.naturalWidth, image.naturalHeight, 1);
       const width = Math.max(1, Math.ceil(image.naturalWidth * scale));
@@ -220,15 +236,26 @@ export async function computeImageAlignment(page, referenceDataUrl, chemsemaData
     const heightScale = referenceGeometry.bbox.height / Math.max(chemsemaGeometry.bbox.height, 1e-6);
     const initialScale = Math.sqrt(widthScale * heightScale);
 
-    async function search(maxDimension, centerScale, scaleStep, scaleRadius, shiftRadius) {
+    async function search(
+      maxDimension,
+      centerScale,
+      scaleStep,
+      scaleRadius,
+      shiftRadius,
+      centerAlignment = null,
+    ) {
       const analysisScale = maxDimension / Math.max(referenceImage.naturalWidth, referenceImage.naturalHeight, 1);
       const padding = shiftRadius + 10;
       const reference = maskForReference(referenceImage, analysisScale, padding);
       let best = null;
       for (let scaleIndex = -scaleRadius; scaleIndex <= scaleRadius; scaleIndex += 1) {
         const scale = centerScale * (1 + scaleIndex * scaleStep);
-        const baseDx = referenceGeometry.centroid.x - chemsemaGeometry.centroid.x * scale;
-        const baseDy = referenceGeometry.centroid.y - chemsemaGeometry.centroid.y * scale;
+        const baseDx = centerAlignment
+          ? centerAlignment.dx + chemsemaGeometry.centroid.x * (centerAlignment.scale - scale)
+          : referenceGeometry.centroid.x - chemsemaGeometry.centroid.x * scale;
+        const baseDy = centerAlignment
+          ? centerAlignment.dy + chemsemaGeometry.centroid.y * (centerAlignment.scale - scale)
+          : referenceGeometry.centroid.y - chemsemaGeometry.centroid.y * scale;
         const points = candidateInkPoints(
           chemsemaImage,
           reference,
@@ -250,16 +277,27 @@ export async function computeImageAlignment(page, referenceDataUrl, chemsemaData
       return best;
     }
 
-    const coarse = await search(180, initialScale, 0.005, 4, 5);
-    const refined = await search(360, coarse.scale, 0.00125, 2, 3);
-    // The 360 px pass quantizes translation too coarsely for one-point bond
-    // details (roughly 1.5 reference pixels on a tall oracle). A final local
-    // pass resolves sub-pixel placement without reopening the broad search.
-    const precise = Math.max(referenceImage.naturalWidth, referenceImage.naturalHeight) >= 400
-      ? await search(1440, refined.scale, 0.0003125, 2, 4)
+    const coarse = await search(180, initialScale, 0.005, 4, 20);
+    let refined = await search(360, coarse.scale, 0.00125, 2, 6, coarse);
+    // ChemDraw SVG stores CD coordinates in twentieths before applying its
+    // explicit uniform matrix. Treat that declared vector scale as a second
+    // seed, but retain it only when it produces more actual ink overlap.
+    const declaredScale = await chemDrawSvgScale(referenceDataUrl);
+    if (declaredScale && declaredScale >= 0.2 && declaredScale <= 20) {
+      const declared = await search(360, declaredScale, 0, 0, 20);
+      if (declared.iou > refined.iou) refined = declared;
+    }
+    // The 360 px pass can settle on a text-heavy local optimum whose scale is
+    // slightly wrong for long bonds and arrows. Reopen a wider scale interval
+    // at medium resolution, then finish with a narrow high-resolution pass.
+    const stabilized = Math.max(referenceImage.naturalWidth, referenceImage.naturalHeight) >= 400
+      ? await search(720, refined.scale, 0.0003125, 12, 6, refined)
       : refined;
+    const precise = Math.max(referenceImage.naturalWidth, referenceImage.naturalHeight) >= 400
+      ? await search(1440, stabilized.scale, 0.00015625, 3, 5, stabilized)
+      : stabilized;
     return {
-      algorithm: "ink-iou-coarse-refined-precision-v2",
+      algorithm: "ink-iou-coarse-refined-precision-v5",
       scale: precise.scale,
       dx: precise.dx,
       dy: precise.dy,
