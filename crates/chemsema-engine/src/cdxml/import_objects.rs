@@ -891,6 +891,8 @@ struct PendingCdxmlBracket {
     graphic_id: Option<String>,
     repeat_count: Option<u32>,
     stroke: String,
+    stroke_width: f64,
+    lip_size: i16,
 }
 
 pub(super) fn append_bracket_objects(
@@ -928,6 +930,10 @@ pub(super) fn append_bracket_objects(
                     graphic_id,
                     repeat_count,
                     stroke: colors.resolve(node.attr("color")),
+                    stroke_width: parse_f64(node.attr("LineWidth")).unwrap_or(defaults.line_width),
+                    lip_size: parse_i32(node.attr("LipSize"))
+                        .and_then(|value| i16::try_from(value).ok())
+                        .unwrap_or(60),
                 });
             }
             "Symbol" => {
@@ -1137,7 +1143,7 @@ fn cdxml_bracket_side_scene_object(
     pair_x: f64,
     pair_width: f64,
 ) -> SceneObject {
-    let stroke_width = 1.0;
+    let stroke_width = bracket.stroke_width;
     let side_height = height_of(bounds);
     let side_width = cdxml_bracket_side_width(&bracket.kind, pair_width, side_height)
         .max(stroke_width)
@@ -1153,7 +1159,7 @@ fn cdxml_bracket_side_scene_object(
     extra.insert("side".to_string(), json!(side));
     extra.insert("stroke".to_string(), json!(bracket.stroke.clone()));
     extra.insert("strokeWidth".to_string(), json!(stroke_width));
-    extra.insert("lipSize".to_string(), json!(60));
+    extra.insert("lipSize".to_string(), json!(bracket.lip_size));
     SceneObject {
         id: object_id,
         object_type: "bracket".to_string(),
@@ -1451,6 +1457,147 @@ pub(super) fn append_synthesized_enhanced_stereo_text_objects(
         });
         index += 1;
     }
+}
+
+pub(super) fn append_synthesized_bond_query_text_objects(
+    root: &XmlNode,
+    objects: &mut Vec<SceneObject>,
+    styles: &mut BTreeMap<String, Value>,
+    defaults: CdxmlDefaults,
+    colors: &CdxmlColorTable,
+    fonts: &BTreeMap<String, String>,
+) {
+    let node_positions: BTreeMap<&str, [f64; 2]> = descendants(root)
+        .into_iter()
+        .filter(|node| node.is("n"))
+        .filter_map(|node| Some((node.attr("id")?, parse_xy(node.attr("p"))?)))
+        .collect();
+    let font_size = defaults.label_size * 0.75;
+    let font_id = defaults.label_font.to_string();
+    let font_family = fonts
+        .get(&font_id)
+        .cloned()
+        .unwrap_or_else(|| "Arial".to_string());
+    let fill = colors.resolve(Some(&defaults.color.to_string()));
+    let mut index = objects
+        .iter()
+        .filter(|object| object.object_type == "text")
+        .count()
+        + 1;
+
+    for bond in descendants(root).into_iter().filter(|node| node.is("b")) {
+        let Some(label) = synthesized_bond_query_label(bond.attr("Order")) else {
+            continue;
+        };
+        if bond.direct_children("objecttag").any(|tag| {
+            tag.attr("Name") == Some("query")
+                && !tag
+                    .attr("Visible")
+                    .is_some_and(|value| value.eq_ignore_ascii_case("no"))
+        }) {
+            continue;
+        }
+        let Some((begin, end)) = bond.attr("B").zip(bond.attr("E")).and_then(|(begin, end)| {
+            Some((*node_positions.get(begin)?, *node_positions.get(end)?))
+        }) else {
+            continue;
+        };
+        let midpoint = [(begin[0] + end[0]) * 0.5, (begin[1] + end[1]) * 0.5];
+        let bond_length = (end[0] - begin[0]).hypot(end[1] - begin[1]);
+        let vertical_fraction = if bond_length > crate::EPSILON {
+            ((end[1] - begin[1]) / bond_length).abs()
+        } else {
+            0.0
+        };
+        let width = estimated_annotation_text_width(&label, font_size);
+        let height = font_size * 0.86;
+        // ChemDraw anchors the synthetic query mnemonic just left of the bond
+        // midpoint and above the shaft. The offset follows the bond slope so
+        // horizontal and conventional 30-degree bonds retain the same gap.
+        let left = midpoint[0] + font_size * (-0.475 + 0.424 * vertical_fraction);
+        let top = midpoint[1] + font_size * (-1.169 + 0.372 * vertical_fraction);
+        let style_id = format!("style_text_auto_query_{index:03}");
+        styles.insert(
+            style_id.clone(),
+            json!({
+                "kind": "text",
+                "fontFamily": font_family,
+                "fontSize": font_size,
+                "fontWeight": 400,
+                "fill": fill,
+                "stroke": null,
+            }),
+        );
+        let mut extra = BTreeMap::new();
+        extra.insert("text".to_string(), json!(label));
+        extra.insert("box".to_string(), json!([0.0, 0.0, width, height]));
+        extra.insert("align".to_string(), json!("left"));
+        extra.insert("valign".to_string(), json!("top"));
+        extra.insert("lineHeight".to_string(), json!(font_size * 1.15));
+        extra.insert("fontSize".to_string(), json!(font_size));
+        extra.insert("anchorOffsetX".to_string(), json!(0.0));
+        extra.insert("baselineOffset".to_string(), json!(font_size * 0.82));
+        extra.insert("preserveLines".to_string(), json!(true));
+        extra.insert(
+            "runs".to_string(),
+            json!([LabelRun {
+                text: label.clone(),
+                font_family: Some(font_family.clone()),
+                font_size: Some(font_size),
+                fill: Some(fill.clone()),
+                font_weight: Some(400),
+                font_style: Some("normal".to_string()),
+                underline: Some(false),
+                script: Some("normal".to_string()),
+            }]),
+        );
+        objects.push(SceneObject {
+            id: format!("obj_text_auto_query_{index:03}"),
+            object_type: "text".to_string(),
+            name: format!("bond query label {}", bond.attr("id").unwrap_or("")),
+            visible: true,
+            locked: false,
+            z_index: parse_i32(bond.attr("Z")).unwrap_or(30),
+            transform: Transform {
+                translate: [round2(left), round2(top)],
+                rotate: 0.0,
+                scale: [1.0, 1.0],
+            },
+            style_ref: Some(style_id),
+            meta: json!({
+                "source": "cdxml",
+                "role": "query",
+                "synthetic": true,
+                "bondId": bond.attr("id"),
+                "order": bond.attr("Order"),
+            }),
+            payload: ObjectPayload {
+                resource_ref: None,
+                bbox: None,
+                extra,
+            },
+            children: Vec::new(),
+        });
+        index += 1;
+    }
+}
+
+fn synthesized_bond_query_label(order: Option<&str>) -> Option<String> {
+    let tokens = order?.split_whitespace().collect::<Vec<_>>();
+    if tokens.len() < 2 {
+        return None;
+    }
+    tokens
+        .into_iter()
+        .map(|token| match token {
+            "1" => Some("S"),
+            "1.5" => Some("A"),
+            "2" => Some("D"),
+            "3" => Some("T"),
+            _ => None,
+        })
+        .collect::<Option<Vec<_>>>()
+        .map(|parts| parts.join("/"))
 }
 
 fn enhanced_stereo_label_direction(

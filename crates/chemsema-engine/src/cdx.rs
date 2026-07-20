@@ -472,11 +472,16 @@ fn parse_cdx_string(data: &[u8], font_table: Option<&FontTable>) -> ParsedText {
 }
 
 fn decode_text(data: &[u8], font_id: Option<u16>, font_table: Option<&FontTable>) -> String {
-    let _charset = font_id
+    let charset = font_id
         .and_then(|id| font_table.and_then(|table| table.fonts.iter().find(|font| font.id == id)))
         .map(|font| font.charset)
         .unwrap_or(1252);
-    String::from_utf8_lossy(data).replace('\r', "\n")
+    let decoded = if charset == 65001 || std::str::from_utf8(data).is_ok() {
+        String::from_utf8_lossy(data).into_owned()
+    } else {
+        encoding_rs::WINDOWS_1252.decode(data).0.into_owned()
+    };
+    decoded.replace('\r', "\n")
 }
 
 fn parse_font_table(data: &[u8]) -> Option<FontTable> {
@@ -625,6 +630,7 @@ fn property_schema(tag: u16) -> Option<PropertySchema> {
         0x0009 => ("Comment", PropertyKind::String),
         0x000A => ("Z", PropertyKind::Int16),
         0x0011 => ("Visible", PropertyKind::Boolean),
+        0x0012 | 0x0013 => ("SupersededBy", PropertyKind::UInt32),
         0x0200 => ("p", PropertyKind::Point2D),
         0x0201 => ("xyz", PropertyKind::Point3D),
         0x0202 => ("extent", PropertyKind::Point2D),
@@ -647,10 +653,12 @@ fn property_schema(tag: u16) -> Option<PropertySchema> {
         0x0421 => ("Charge", PropertyKind::Int8),
         0x0424 => ("ImplicitHydrogens", PropertyKind::BooleanImplied),
         0x042B => ("NumHydrogens", PropertyKind::UInt16),
+        0x0433 => ("GenericNickname", PropertyKind::String),
         0x0437 => ("AS", PropertyKind::Enum(ATOM_STEREO)),
         0x0444 => ("HideImplicitHydrogens", PropertyKind::Boolean),
         0x0445 => ("ShowAtomEnhancedStereo", PropertyKind::Boolean),
         0x0504 => ("Weight", PropertyKind::Float64),
+        0x0505 => ("ConnectionOrder", PropertyKind::ObjectIdArray),
         0x0600 => ("Order", PropertyKind::BondOrder),
         0x0601 => ("Display", PropertyKind::Enum(BOND_DISPLAY)),
         0x0602 => ("Display2", PropertyKind::Enum(BOND_DISPLAY)),
@@ -660,6 +668,7 @@ fn property_schema(tag: u16) -> Option<PropertySchema> {
         0x0608 => ("BeginAttach", PropertyKind::UInt8),
         0x0609 => ("EndAttach", PropertyKind::UInt8),
         0x060A => ("BS", PropertyKind::Enum(BOND_STEREO)),
+        0x060B => ("BondCircularOrdering", PropertyKind::ObjectIdArray),
         0x060E => ("CrossingBonds", PropertyKind::ObjectIdArray),
         0x0701 => ("Justification", PropertyKind::Enum8(JUSTIFICATION)),
         0x0702 => ("LineHeight", PropertyKind::LineHeightUInt16),
@@ -697,6 +706,7 @@ fn property_schema(tag: u16) -> Option<PropertySchema> {
         0x081D => ("CaptionSize", PropertyKind::Int16),
         0x081E => ("LabelFace", PropertyKind::Int16),
         0x081F => ("CaptionFace", PropertyKind::Int16),
+        0x0822 => ("BondSpacingAbs", PropertyKind::Coordinate),
         0x0823 => ("LabelJustification", PropertyKind::Enum8(JUSTIFICATION)),
         0x0900 => ("WindowIsZoomed", PropertyKind::BooleanImplied),
         0x0901 => ("WindowPosition", PropertyKind::Point2D),
@@ -707,9 +717,11 @@ fn property_schema(tag: u16) -> Option<PropertySchema> {
         0x0A03 => ("RectangleType", PropertyKind::Int16),
         0x0A04 => ("OvalType", PropertyKind::Int16),
         0x0A05 => ("OrbitalType", PropertyKind::Enum(ORBITAL_TYPE)),
-        0x0A06 => ("BracketType", PropertyKind::Int16),
+        0x0A06 => ("BracketType", PropertyKind::Enum(BRACKET_TYPE)),
         0x0A07 => ("SymbolType", PropertyKind::Enum(SYMBOL_TYPE)),
         0x0A20 => ("HeadSize", PropertyKind::Int16),
+        0x0A22 => ("LipSize", PropertyKind::Int16),
+        0x0A27 => ("BracketedObjectIDs", PropertyKind::ObjectIdArray),
         0x0A28 => ("RepeatCount", PropertyKind::Float64),
         0x0A2B => ("GraphicID", PropertyKind::UInt32),
         0x0A2F => ("ArrowheadType", PropertyKind::Enum(ARROW_HEAD_TYPE)),
@@ -733,6 +745,9 @@ fn property_schema(tag: u16) -> Option<PropertySchema> {
         0x0B80 => ("ExternalConnectionID", PropertyKind::UInt32),
         0x0B81 => ("BracketedObjects", PropertyKind::ObjectIdArray),
         0x0B83 => ("RepeatPattern", PropertyKind::String),
+        0x0D06 => ("PositioningType", PropertyKind::Enum8(POSITIONING_TYPE)),
+        0x0D07 => ("PositioningAngle", PropertyKind::Fixed16_16),
+        0x0D08 => ("PositioningOffset", PropertyKind::Point2D),
         _ => return None,
     };
     Some(PropertySchema {
@@ -751,6 +766,7 @@ fn property_tag(name: &str) -> Option<u16> {
         "Comment" => 0x0009,
         "Z" => 0x000A,
         "Visible" => 0x0011,
+        "SupersededBy" => 0x0012,
         "p" => 0x0200,
         "xyz" => 0x0201,
         "extent" => 0x0202,
@@ -785,6 +801,9 @@ fn property_tag(name: &str) -> Option<u16> {
         "BeginAttach" => 0x0608,
         "EndAttach" => 0x0609,
         "BS" => 0x060A,
+        "BondCircularOrdering" => 0x060B,
+        "GenericNickname" => 0x0433,
+        "ConnectionOrder" => 0x0505,
         "CrossingBonds" => 0x060E,
         "Justification" => 0x0701,
         "LineHeight" => 0x0702,
@@ -820,6 +839,7 @@ fn property_tag(name: &str) -> Option<u16> {
         "CaptionSize" => 0x081D,
         "LabelFace" => 0x081E,
         "CaptionFace" => 0x081F,
+        "BondSpacingAbs" => 0x0822,
         "LabelJustification" => 0x0823,
         "WindowIsZoomed" => 0x0900,
         "WindowPosition" => 0x0901,
@@ -833,6 +853,8 @@ fn property_tag(name: &str) -> Option<u16> {
         "BracketType" => 0x0A06,
         "SymbolType" => 0x0A07,
         "HeadSize" => 0x0A20,
+        "LipSize" => 0x0A22,
+        "BracketedObjectIDs" => 0x0A27,
         "GraphicID" => 0x0A2B,
         "ArrowheadType" => 0x0A2F,
         "ArrowheadCenterSize" => 0x0A30,
@@ -853,6 +875,9 @@ fn property_tag(name: &str) -> Option<u16> {
         "ExternalConnectionID" => 0x0B80,
         "BracketedObjects" => 0x0B81,
         "RepeatPattern" => 0x0B83,
+        "PositioningType" => 0x0D06,
+        "PositioningAngle" => 0x0D07,
+        "PositioningOffset" => 0x0D08,
         _ => return None,
     })
 }
@@ -1007,9 +1032,18 @@ const BOND_STEREO: &[(i16, &str)] = &[(0, "U"), (1, "N"), (2, "E"), (3, "Z")];
 const NODE_TYPE: &[(i16, &str)] = &[
     (0, "Unspecified"),
     (1, "Element"),
+    (2, "ElementList"),
+    (3, "ElementListNickname"),
     (4, "Nickname"),
     (5, "Fragment"),
+    (6, "Formula"),
+    (7, "GenericNickname"),
+    (8, "AnonymousAlternativeGroup"),
+    (9, "NamedAlternativeGroup"),
+    (10, "MultiAttachment"),
+    (11, "VariableAttachment"),
     (12, "ExternalConnectionPoint"),
+    (13, "LinkNode"),
 ];
 const LABEL_DISPLAY: &[(i16, &str)] = &[
     (0, "Auto"),
@@ -1047,6 +1081,16 @@ const GRAPHIC_TYPE: &[(i16, &str)] = &[
     (6, "Bracket"),
     (7, "Symbol"),
 ];
+const BRACKET_TYPE: &[(i16, &str)] = &[
+    (0, "RoundPair"),
+    (1, "SquarePair"),
+    (2, "CurlyPair"),
+    (3, "Square"),
+    (4, "Curly"),
+    (5, "Round"),
+];
+const POSITIONING_TYPE: &[(i16, &str)] =
+    &[(0, "auto"), (1, "angle"), (2, "offset"), (3, "absolute")];
 const SYMBOL_TYPE: &[(i16, &str)] = &[
     (0, "LonePair"),
     (1, "Electron"),
@@ -2051,6 +2095,18 @@ mod tests {
             ("LabelLineHeight", "12", 0x0706, vec![240, 0], "12"),
             ("CaptionLineHeight", "8.25", 0x0707, vec![165, 0], "8.25"),
             ("CaptionLineHeight", "auto", 0x0707, vec![1, 0], "auto"),
+            ("BondSpacingAbs", "1.25", 0x0822, vec![0, 64, 1, 0], "1.25"),
+            ("BracketType", "Square", 0x0A06, vec![3, 0], "Square"),
+            ("BracketType", "Round", 0x0A06, vec![5, 0], "Round"),
+            ("LipSize", "60", 0x0A22, vec![60, 0], "60"),
+            ("PositioningType", "absolute", 0x0D06, vec![3], "absolute"),
+            (
+                "NodeType",
+                "GenericNickname",
+                0x0400,
+                vec![7, 0],
+                "GenericNickname",
+            ),
         ] {
             let encoded = encode_property(name, value).expect("property should encode");
             assert_eq!(encoded.0, tag, "{name}");
@@ -2067,5 +2123,32 @@ mod tests {
             decode_property(best.0, &best.1, None),
             Some(("LabelAlignment", "Best".to_string()))
         );
+    }
+
+    #[test]
+    fn chemdraw_8_one_byte_bracket_type_uses_the_documented_enum() {
+        assert_eq!(
+            decode_property(0x0A06, &[3], None),
+            Some(("BracketType", "Square".to_string()))
+        );
+    }
+
+    #[test]
+    fn cdx_superseded_by_reads_the_legacy_alias_and_writes_the_official_tag() {
+        let encoded = encode_property("SupersededBy", "203").expect("property should encode");
+        assert_eq!(encoded, (0x0012, 203_u32.to_le_bytes().to_vec()));
+
+        for tag in [0x0012, 0x0013] {
+            assert_eq!(
+                decode_property(tag, &203_u32.to_le_bytes(), None),
+                Some(("SupersededBy", "203".to_string()))
+            );
+        }
+    }
+
+    #[test]
+    fn cdx_text_uses_utf8_when_valid_and_windows_1252_for_legacy_bytes() {
+        assert_eq!(decode_text("11 °F".as_bytes(), None, None), "11 °F");
+        assert_eq!(decode_text(b"11 \xB0F", None, None), "11 °F");
     }
 }

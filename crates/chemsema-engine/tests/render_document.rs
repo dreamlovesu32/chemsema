@@ -5119,7 +5119,7 @@ fn parse_cdxml_uses_explicit_bracket_attachments_before_geometry_pairing() {
 <CDXML BondLength="14.40" LineWidth="0.60" BoldWidth="2" HashSpacing="2.50">
   <page id="1">
     <graphic id="2" BoundingBox="20 75 20 15" GraphicType="Bracket" BracketType="Square"/>
-    <graphic id="3" BoundingBox="80 10 80 70" GraphicType="Bracket" BracketType="Square">
+    <graphic id="3" BoundingBox="80 10 80 70" GraphicType="Bracket" BracketType="Square" LineWidth="0.75">
       <objecttag id="1" Name="bracketusage">
         <t p="0 0" BoundingBox="0 -6.30 4.17 0"><s font="3" size="7.5" color="0">2</s></t>
       </objecttag>
@@ -5196,6 +5196,14 @@ fn parse_cdxml_uses_explicit_bracket_attachments_before_geometry_pairing() {
     assert_eq!(
         right_side.payload.bbox.expect("right bracket bbox")[3],
         60.0
+    );
+    assert_eq!(
+        left_side.payload.extra.get("strokeWidth"),
+        Some(&json!(0.6))
+    );
+    assert_eq!(
+        right_side.payload.extra.get("strokeWidth"),
+        Some(&json!(0.75))
     );
 
     let text_objects: Vec<_> = document
@@ -5491,6 +5499,45 @@ fn parse_cdxml_automatically_positions_query_tags_relative_to_their_bonds() {
             Some(6.0)
         );
     }
+}
+
+#[test]
+fn parse_cdxml_synthesizes_combined_bond_order_query_mnemonic() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML BondLength="30" LineWidth="1" BoldWidth="4" HashSpacing="2.7">
+  <page id="1"><fragment id="2">
+    <n id="3" p="0 0"/><n id="4" p="30 0"/>
+    <b id="5" B="3" E="4" Order="1 2"/>
+  </fragment></page>
+</CDXML>"##;
+    let document = parse_cdxml_document(cdxml, Some("combined bond-order query"))
+        .expect("combined bond-order query should parse");
+    let label = document
+        .objects
+        .iter()
+        .find(|object| object.meta.get("role").and_then(|value| value.as_str()) == Some("query"))
+        .expect("combined bond order should synthesize a visible query mnemonic");
+    assert_eq!(label.payload.extra.get("text"), Some(&json!("S/D")));
+    assert_eq!(label.meta.get("synthetic"), Some(&json!(true)));
+}
+
+#[test]
+fn parse_cdxml_prefers_absolute_multiple_bond_spacing() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML BondLength="30" BondSpacing="12">
+  <page id="1"><fragment id="2">
+    <n id="3" p="0 0"/><n id="4" p="20 0"/>
+    <b id="5" B="3" E="4" Order="2" BondSpacing="40" BondSpacingAbs="2"/>
+  </fragment></page>
+</CDXML>"##;
+    let document = parse_cdxml_document(cdxml, Some("absolute bond spacing"))
+        .expect("absolute bond spacing should parse");
+    let fragment = document
+        .resources
+        .values()
+        .find_map(|resource| resource.data.as_fragment())
+        .expect("molecule fragment should import");
+    assert_eq!(fragment.bonds[0].bond_spacing, Some(10.0));
 }
 
 #[test]

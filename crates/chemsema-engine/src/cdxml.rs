@@ -16,8 +16,9 @@ use self::colors::CdxmlColorTable;
 pub use self::export::document_to_cdxml;
 use self::import_objects::{
     append_bracket_objects, append_line_objects, append_orbital_shape_objects,
-    append_shape_objects, append_synthesized_enhanced_stereo_text_objects,
-    append_table_shape_objects, append_text_objects, append_tlc_plate_shape_objects,
+    append_shape_objects, append_synthesized_bond_query_text_objects,
+    append_synthesized_enhanced_stereo_text_objects, append_table_shape_objects,
+    append_text_objects, append_tlc_plate_shape_objects,
 };
 use self::text_runs::{label_display_runs, label_display_runs_from_source_runs, label_source_run};
 pub(crate) use self::xml::parse_xml_tree;
@@ -271,6 +272,14 @@ pub fn parse_cdxml_document(cdxml: &str, title: Option<&str>) -> Result<ChemSema
         &fonts,
         &display_fragment_ids,
         &bonded_node_ids,
+    );
+    append_synthesized_bond_query_text_objects(
+        &root,
+        &mut objects,
+        &mut styles,
+        defaults,
+        &colors,
+        &fonts,
     );
     append_synthesized_enhanced_stereo_text_objects(
         &root,
@@ -1863,7 +1872,21 @@ fn normalize_bond(
     let stroke_width = parse_f64(bond.attr("LineWidth")).unwrap_or(defaults.line_width);
     let bold_width = parse_f64(bond.attr("BoldWidth")).unwrap_or(defaults.bold_width);
     let hash_spacing = parse_f64(bond.attr("HashSpacing")).unwrap_or(defaults.hash_spacing);
-    let bond_spacing = parse_f64(bond.attr("BondSpacing")).unwrap_or(defaults.bond_spacing);
+    // ChemDraw gives the absolute spacing field precedence when both encodings
+    // are present. Internally bonds store the equivalent percentage of their
+    // actual endpoint distance so the renderer can keep one spacing model.
+    let bond_spacing_abs = parse_f64(bond.attr("BondSpacingAbs"));
+    let bond_length = nodes
+        .iter()
+        .find(|node| node.id == begin)
+        .zip(nodes.iter().find(|node| node.id == end))
+        .map(|(begin, end)| begin.point().distance(end.point()));
+    let bond_spacing = bond_spacing_abs
+        .zip(bond_length)
+        .filter(|(_, length)| *length > EPSILON)
+        .map(|(spacing, length)| spacing / length * 100.0)
+        .or_else(|| parse_f64(bond.attr("BondSpacing")))
+        .unwrap_or(defaults.bond_spacing);
     let stereo = match display {
         "WedgeBegin" => Some(BondStereo {
             kind: "solid-wedge".to_string(),
@@ -1940,6 +1963,7 @@ fn normalize_bond(
         "sourceId": source_id,
         "generatedId": source_id.is_none(),
         "aromatic": is_aromatic_dash,
+        "bondSpacingAbs": bond_spacing_abs,
     }}});
     if let Some(value) = bond.attr("CrossingBonds") {
         let crossing_bonds: Vec<_> = value
