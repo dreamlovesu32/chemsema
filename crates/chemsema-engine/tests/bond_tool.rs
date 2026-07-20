@@ -11433,7 +11433,7 @@ fn symbol_tool_click_on_single_bond_endpoint_uses_extension_angle() {
         .find(|object| object.object_type == "symbol")
         .expect("clicking endpoint should create a symbol");
     assert_eq!(round_to_2(symbol.transform.translate[0]), 132.50);
-    assert_eq!(round_to_2(symbol.transform.translate[1]), 96.25);
+    assert_eq!(round_to_2(symbol.transform.translate[1]), 96.40);
 }
 
 #[test]
@@ -11466,8 +11466,8 @@ fn symbol_tool_click_on_two_bond_junction_uses_convex_side_center() {
         .iter()
         .find(|object| object.object_type == "symbol")
         .expect("clicking two-bond junction should create a symbol");
-    assert_eq!(round_to_2(symbol.transform.translate[0]), 96.25);
-    assert_eq!(round_to_2(symbol.transform.translate[1]), 90.00);
+    assert_eq!(round_to_2(symbol.transform.translate[0]), 96.40);
+    assert_eq!(round_to_2(symbol.transform.translate[1]), 90.30);
 }
 
 #[test]

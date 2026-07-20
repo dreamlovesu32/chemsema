@@ -28,23 +28,72 @@ cargo build -p chemsema-cli
 npm run benchmark:cdxml-public
 ```
 
+To build the ChemDraw-versus-ChemSema visual review gallery for every corpus
+entry, run:
+
+```bash
+node scripts/render-public-cdxml-visual-review.mjs --all \
+  --root tmp/public-corpus-pilot \
+  --report tmp/public-cdxml-roundtrip-label-audit/report.json \
+  --out tmp/public-cdxml-chemdraw-review-all
+```
+
+The gallery normalizes both panels into the ChemDraw reference coordinate
+space and searches image scale and translation for maximum ink overlap. Large
+references receive a final high-resolution subpixel search so a one-pixel
+thumbnail offset cannot masquerade as a bond-contact defect. Review
+state, notes, the current item, display mode, opacity, and box-selection mode
+are saved to browser local storage as they change. A box drawn on either panel
+is stored in reference coordinates, appears on both panels, and immediately
+marks the item as an issue. Box-selection mode remains active while navigating
+and after reopening the gallery.
+
+The gallery is a diagnostic aid, not the release gate. The automated visual
+gate consumes its retained ChemDraw oracles and aligned ChemSema renders:
+
+```bash
+npm run benchmark:cdxml-public:visual-gate
+# Inspect the current baseline without returning a failing exit status:
+npm run benchmark:cdxml-public:visual-gate:report
+```
+
+The gate gives every comparable document one vote, regardless of canvas or
+file size. Blank canvas pixels never enter the score. Its coarse stage uses
+fixed-size local windows and connected missing/extra ink components. A second,
+finer stage checks connected-object count, the dimensions of small symbols,
+and repeated compact micro-defects such as disconnected dashed-bond endpoint
+miters. For complex multi-object drawings, equal component counts plus a close
+normalized X/Y position distribution can confirm topology even when one global
+pixel scale cannot align every text glyph. All thresholds are expressed in
+ChemDraw reference coordinates or normalized structure coordinates, so a
+small missing label, sign, or bond detail cannot be diluted by a large molecule,
+reaction scheme, or page. The JSON report includes canonical-coordinate boxes
+and explicit reason codes for the strongest local defects. Cases without a
+real ChemDraw oracle are reported separately and excluded from the pass-rate
+denominator. Every gate run also writes
+`passed.html` beside the full gallery so accepted cases can be inspected
+without mixing in failures. Use `--reuse-report report.json` to rebuild that
+page without rerunning pixel analysis.
+
 Set `CHEMSEMA_PUBLIC_CDXML_DIR` to choose another download directory. The
 runner writes a detailed untracked report to
 `tmp/public-cdxml-roundtrip/report.json`. By default, every positive case is
 saved and reopened three times. Each generation is checked with molecule,
-arrow-identity, and bracket-geometry semantic fingerprints as well as object,
-resource, style, and object-type counts. Semantic drift and non-idempotence
-always fail the run; pass `--strict-counts` to also fail on a classified count
-drift.
+arrow-identity, bracket-geometry, atom-label, and free-text semantic
+fingerprints as well as object, resource, style, and object-type counts. The
+text gates compare source and displayed text, line structure, runs, alignment,
+anchor, wrapping, line height, and label/text geometry. Semantic drift and
+non-idempotence always fail the run; pass `--strict-counts` to also fail on a
+classified count drift.
 
 The current ChemSema 1.0.0-beta.1 source baseline has no unexpected failures,
 semantic drift, non-idempotence, or unclassified count drift. Of 413 files, 404
 are exact through all three generations, one is expected safe sanitization, two
 are expected lossless normalization, two are expected import rejection, and
 four transport-encoded files are skipped. The semantic gates cover atomic
-identity and charge, molecule connectivity, headless-arrow identity, and
-bracket grouping and geometry; the count gates independently catch object and
-resource growth.
+identity and charge, molecule connectivity, headless-arrow identity, bracket
+grouping and geometry, atom-label realization, and free-text layout; the count
+gates independently catch object and resource growth.
 
 The manifest pins every upstream commit and records its license URL. When the
 corpus changes, update the manifest, rerun the benchmark, and commit a new

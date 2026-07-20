@@ -258,6 +258,7 @@ struct CdxmlDocumentWriter<'a> {
     document: &'a ChemSemaDocument,
     next_id: u64,
     node_ids: BTreeMap<String, String>,
+    bond_ids: BTreeMap<(String, String), String>,
     colors: CdxmlColorTable,
     fonts: CdxmlFontTable,
     defaults: CdxmlDefaults,
@@ -290,6 +291,7 @@ impl<'a> CdxmlDocumentWriter<'a> {
             document,
             next_id: 1,
             node_ids: BTreeMap::new(),
+            bond_ids: BTreeMap::new(),
             colors,
             fonts,
             defaults,
@@ -298,6 +300,7 @@ impl<'a> CdxmlDocumentWriter<'a> {
     }
 
     fn write(mut self) -> String {
+        self.prepare_bond_ids();
         let page = &self.document.document.page;
         let width = page.width.max(1.0);
         let height = page.height.max(1.0);
@@ -307,7 +310,7 @@ impl<'a> CdxmlDocumentWriter<'a> {
         out.push_str("<!DOCTYPE CDXML SYSTEM \"http://www.cambridgesoft.com/xml/cdxml.dtd\" >\n");
         write!(
             out,
-            "<CDXML CreationProgram=\"ChemSema\" Name=\"{}\" BoundingBox=\"{}\" WindowPosition=\"0 0\" WindowSize=\"-32768 -32768\" WindowIsZoomed=\"yes\" FractionalWidths=\"{}\" InterpretChemically=\"{}\" ShowAtomQuery=\"{}\" ShowAtomStereo=\"{}\" ShowAtomEnhancedStereo=\"{}\" ShowAtomNumber=\"{}\" ShowResidueID=\"{}\" ShowBondQuery=\"{}\" ShowBondRxn=\"{}\" ShowBondStereo=\"{}\" ShowTerminalCarbonLabels=\"{}\" ShowNonTerminalCarbonLabels=\"{}\" HideImplicitHydrogens=\"{}\" LabelFont=\"{}\" LabelSize=\"{}\" LabelFace=\"{}\" CaptionFont=\"{}\" CaptionSize=\"{}\" CaptionFace=\"{}\" LineWidth=\"{}\" BoldWidth=\"{}\" BondLength=\"{}\" BondSpacing=\"{}\" HashSpacing=\"{}\" MarginWidth=\"{}\" ChainAngle=\"{}\" LabelJustification=\"{}\" CaptionJustification=\"{}\" PrintMargins=\"{}\" color=\"{}\" bgcolor=\"{}\">\n",
+            "<CDXML CreationProgram=\"ChemSema\" Name=\"{}\" BoundingBox=\"{}\" WindowPosition=\"0 0\" WindowSize=\"-32768 -32768\" WindowIsZoomed=\"yes\" FractionalWidths=\"{}\" InterpretChemically=\"{}\" ShowAtomQuery=\"{}\" ShowAtomStereo=\"{}\" ShowAtomEnhancedStereo=\"{}\" ShowAtomNumber=\"{}\" ShowResidueID=\"{}\" ShowBondQuery=\"{}\" ShowBondRxn=\"{}\" ShowBondStereo=\"{}\" ShowTerminalCarbonLabels=\"{}\" ShowNonTerminalCarbonLabels=\"{}\" HideImplicitHydrogens=\"{}\" LabelFont=\"{}\" LabelSize=\"{}\" LabelFace=\"{}\" CaptionFont=\"{}\" CaptionSize=\"{}\" CaptionFace=\"{}\" LineWidth=\"{}\" BoldWidth=\"{}\" BondLength=\"{}\" BondSpacing=\"{}\" HashSpacing=\"{}\" MarginWidth=\"{}\" ChainAngle=\"{}\" LabelJustification=\"{}\" CaptionJustification=\"{}\" PrintMargins=\"{}\" color=\"{}\" bgcolor=\"{}\"",
             xml_escape_attr(&self.document.document.title),
             root_bbox,
             fmt_cdxml_bool(self.defaults.fractional_widths),
@@ -343,6 +346,23 @@ impl<'a> CdxmlDocumentWriter<'a> {
             self.colors.background_id(),
         )
         .expect("writing CDXML root should not fail");
+        for (name, xml_name) in [
+            ("lineHeight", "LineHeight"),
+            ("labelLineHeight", "LabelLineHeight"),
+            ("captionLineHeight", "CaptionLineHeight"),
+        ] {
+            if let Some(value) = self
+                .document
+                .document
+                .meta
+                .pointer(&format!("/import/cdxml/defaults/{name}"))
+                .and_then(Value::as_str)
+            {
+                write!(out, " {xml_name}=\"{}\"", xml_escape_attr(value))
+                    .expect("writing CDXML line-height default should not fail");
+            }
+        }
+        out.push_str(">\n");
         self.write_color_table(&mut out);
         self.write_font_table(&mut out);
         write!(
@@ -362,9 +382,7 @@ impl<'a> CdxmlDocumentWriter<'a> {
             .filter(|object| object.visible)
             .collect();
         objects.sort_by(|a, b| a.z_index.cmp(&b.z_index).then_with(|| a.id.cmp(&b.id)));
-        for object in objects {
-            self.write_scene_object(&mut out, object);
-        }
+        self.write_scene_objects(&mut out, &objects);
 
         out.push_str("  </page>\n");
         out.push_str("</CDXML>\n");
@@ -380,6 +398,35 @@ impl<'a> CdxmlDocumentWriter<'a> {
             "text" => self.write_text_object(out, object),
             "group" => self.write_group_object(out, object),
             _ => {}
+        }
+    }
+
+    fn write_scene_objects(&mut self, out: &mut String, objects: &[&SceneObject]) {
+        let mut emitted = std::collections::BTreeSet::new();
+        for object in objects {
+            if emitted.contains(&object.id) {
+                continue;
+            }
+            if object.object_type == "molecule" {
+                let scope = cdxml_bond_crossing_scope(object);
+                if scope.starts_with("cdxml-fragment:") {
+                    let components: Vec<_> = objects
+                        .iter()
+                        .copied()
+                        .filter(|candidate| {
+                            candidate.object_type == "molecule"
+                                && cdxml_bond_crossing_scope(candidate) == scope
+                        })
+                        .collect();
+                    if components.len() > 1 {
+                        emitted.extend(components.iter().map(|component| component.id.clone()));
+                        self.write_molecule_objects_as_fragment(out, &components);
+                        continue;
+                    }
+                }
+            }
+            emitted.insert(object.id.clone());
+            self.write_scene_object(out, object);
         }
     }
 
@@ -428,9 +475,7 @@ impl<'a> CdxmlDocumentWriter<'a> {
             .filter(|child| child.visible)
             .collect();
         children.sort_by(|a, b| a.z_index.cmp(&b.z_index).then_with(|| a.id.cmp(&b.id)));
-        for child in children {
-            self.write_scene_object(out, child);
-        }
+        self.write_scene_objects(out, &children);
     }
 
     fn write_color_table(&self, out: &mut String) {
@@ -464,45 +509,78 @@ impl<'a> CdxmlDocumentWriter<'a> {
     }
 
     fn write_molecule_object(&mut self, out: &mut String, object: &SceneObject) {
-        let Some(fragment) = object
-            .payload
-            .resource_ref
-            .as_ref()
-            .and_then(|resource_ref| self.document.resources.get(resource_ref))
-            .and_then(|resource| resource.data.as_fragment())
-        else {
-            return;
-        };
-        if fragment.nodes.is_empty() {
+        self.write_molecule_objects_as_fragment(out, &[object]);
+    }
+
+    fn write_molecule_objects_as_fragment(&mut self, out: &mut String, objects: &[&SceneObject]) {
+        let components: Vec<_> = objects
+            .iter()
+            .filter_map(|object| {
+                object
+                    .payload
+                    .resource_ref
+                    .as_ref()
+                    .and_then(|resource_ref| self.document.resources.get(resource_ref))
+                    .and_then(|resource| resource.data.as_fragment())
+                    .map(|fragment| (*object, fragment))
+            })
+            .filter(|(_, fragment)| !fragment.nodes.is_empty())
+            .collect();
+        if components.is_empty() {
             return;
         }
 
         let fragment_id = self.alloc_id();
-        let bbox = molecule_world_bbox(object, fragment).unwrap_or([
-            object.transform.translate[0],
-            object.transform.translate[1],
-            object.transform.translate[0] + 1.0,
-            object.transform.translate[1] + 1.0,
-        ]);
+        let bbox = components
+            .iter()
+            .filter_map(|(object, fragment)| molecule_world_bbox(object, fragment))
+            .reduce(|left, right| {
+                [
+                    left[0].min(right[0]),
+                    left[1].min(right[1]),
+                    left[2].max(right[2]),
+                    left[3].max(right[3]),
+                ]
+            })
+            .unwrap_or([0.0, 0.0, 1.0, 1.0]);
+        let z_index = components
+            .iter()
+            .map(|(object, _)| object.z_index)
+            .min()
+            .unwrap_or(10);
         writeln!(
             out,
             "    <fragment id=\"{}\" BoundingBox=\"{}\" Z=\"{}\">",
             fragment_id,
             fmt_bbox(bbox),
-            object.z_index
+            z_index
         )
         .expect("writing fragment should not fail");
 
         let mut node_ids = BTreeMap::new();
-        for node in &fragment.nodes {
-            node_ids.insert(node.id.clone(), self.alloc_id());
+        for (_, fragment) in &components {
+            for node in &fragment.nodes {
+                node_ids.insert(node.id.clone(), self.alloc_id());
+            }
         }
         self.node_ids.extend(node_ids.clone());
-        for node in &fragment.nodes {
-            self.write_node(out, object, node, &node_ids[&node.id]);
+        for (object, fragment) in &components {
+            for node in &fragment.nodes {
+                self.write_node(out, object, node, &node_ids[&node.id]);
+            }
         }
-        for bond in &fragment.bonds {
-            self.write_bond(out, bond, &node_ids);
+        for (object, fragment) in &components {
+            let crossing_scope = cdxml_bond_crossing_scope(object);
+            for bond in &fragment.bonds {
+                let Some(cdxml_id) = self
+                    .bond_ids
+                    .get(&(crossing_scope.clone(), bond.id.clone()))
+                    .cloned()
+                else {
+                    continue;
+                };
+                self.write_bond(out, bond, &cdxml_id, &node_ids, &crossing_scope);
+            }
         }
         out.push_str("    </fragment>\n");
     }
@@ -562,6 +640,14 @@ impl<'a> CdxmlDocumentWriter<'a> {
         }
         if let Some(num_hydrogens) = cdxml_node_num_hydrogens_for_export(node) {
             attrs.push(("NumHydrogens", num_hydrogens.to_string()));
+        }
+        if let Some(implicit_hydrogens) = node
+            .meta
+            .pointer("/import/cdxml/implicitHydrogens")
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+        {
+            attrs.push(("ImplicitHydrogens", implicit_hydrogens.to_string()));
         }
         attrs.push(("AS", "N".to_string()));
         if let Some(label) = node.label.as_ref().filter(|label| label.has_visible_text()) {
@@ -636,25 +722,59 @@ impl<'a> CdxmlDocumentWriter<'a> {
         out.push_str("        </t>\n");
     }
 
-    fn write_bond(&mut self, out: &mut String, bond: &Bond, node_ids: &BTreeMap<String, String>) {
+    fn write_bond(
+        &mut self,
+        out: &mut String,
+        bond: &Bond,
+        cdxml_id: &str,
+        node_ids: &BTreeMap<String, String>,
+        crossing_scope: &str,
+    ) {
         let (Some(begin), Some(end)) = (node_ids.get(&bond.begin), node_ids.get(&bond.end)) else {
             return;
         };
         let mut attrs = vec![
-            ("id", self.alloc_id()),
-            ("Z", "1".to_string()),
+            ("id", cdxml_id.to_string()),
+            (
+                "Z",
+                bond.meta
+                    .pointer("/import/cdxml/z")
+                    .and_then(Value::as_i64)
+                    .unwrap_or(1)
+                    .to_string(),
+            ),
             ("B", begin.clone()),
             ("E", end.clone()),
-            ("Order", bond.order.max(1).to_string()),
+            (
+                "Order",
+                preserved_cdxml_bond_order(bond).unwrap_or_else(|| bond.order.max(1).to_string()),
+            ),
             ("BS", "N".to_string()),
         ];
+        let crossing_bonds: Vec<_> = imported_cdxml_crossing_bonds(bond)
+            .filter_map(|source_id| {
+                self.bond_ids
+                    .get(&(crossing_scope.to_string(), source_id.to_string()))
+                    .cloned()
+            })
+            .collect();
+        if !crossing_bonds.is_empty() {
+            attrs.push(("CrossingBonds", crossing_bonds.join(" ")));
+        }
         if let Some(value) = bond_endpoint_attachment(bond, "begin") {
             attrs.push(("BeginAttach", value.to_string()));
         }
         if let Some(value) = bond_endpoint_attachment(bond, "end") {
             attrs.push(("EndAttach", value.to_string()));
         }
-        if let Some(display) = cdxml_bond_display(bond, false) {
+        if bond
+            .meta
+            .pointer("/import/cdxml/aromatic")
+            .and_then(Value::as_bool)
+            == Some(true)
+        {
+            attrs.push(("Display", "Dash".to_string()));
+        } else if let Some(display) = cdxml_bond_display(bond, false) {
             attrs.push(("Display", display.to_string()));
         }
         if let Some(display2) = cdxml_bond_display(bond, true) {
@@ -690,6 +810,17 @@ impl<'a> CdxmlDocumentWriter<'a> {
             attrs.push(("MarginWidth", fmt_num(value)));
         }
         write_empty_tag(out, 6, "b", attrs);
+    }
+
+    fn prepare_bond_ids(&mut self) {
+        let mut keys = Vec::new();
+        collect_cdxml_bond_export_keys(self.document, &self.document.objects, &mut keys);
+        for key in keys {
+            if !self.bond_ids.contains_key(&key) {
+                let cdxml_id = self.alloc_id();
+                self.bond_ids.insert(key, cdxml_id);
+            }
+        }
     }
 
     fn write_line_object(&mut self, out: &mut String, object: &SceneObject) {
@@ -1431,9 +1562,17 @@ impl<'a> CdxmlDocumentWriter<'a> {
                 attrs.push((xml_name, value.to_string()));
             }
         }
-        if imported_cdxml_object_attr(object, "lineHeight").is_none()
-            && imported_cdxml_object_attr(object, "captionLineHeight").is_none()
-            && object.meta.pointer("/import/cdxml").is_none()
+        let inherited_caption_line_height = self
+            .document
+            .document
+            .meta
+            .pointer("/import/cdxml/defaults/captionLineHeight")
+            .and_then(Value::as_str);
+        let should_materialize_caption_line_height = object.meta.pointer("/import/cdxml").is_none()
+            || (imported_cdxml_object_attr(object, "lineHeight").is_some()
+                && inherited_caption_line_height.is_none());
+        if imported_cdxml_object_attr(object, "captionLineHeight").is_none()
+            && should_materialize_caption_line_height
         {
             if let Some(line_height) = object
                 .payload
@@ -1441,7 +1580,10 @@ impl<'a> CdxmlDocumentWriter<'a> {
                 .get("lineHeight")
                 .and_then(Value::as_f64)
             {
-                attrs.push(("CaptionLineHeight", fmt_num(line_height)));
+                attrs.push((
+                    "CaptionLineHeight",
+                    line_height.round().clamp(0.0, i16::MAX as f64).to_string(),
+                ));
             }
         }
         write_open_tag(out, 4, "t", attrs);
@@ -1549,6 +1691,23 @@ impl<'a> CdxmlDocumentWriter<'a> {
             return extent;
         }
         (extent / self.editing_scale.max(crate::EPSILON) * 65536.0).round()
+    }
+}
+
+fn preserved_cdxml_bond_order(bond: &Bond) -> Option<String> {
+    let source = bond
+        .meta
+        .pointer("/import/cdxml/order")
+        .and_then(Value::as_str)?;
+    let aromatic = bond
+        .meta
+        .pointer("/import/cdxml/aromatic")
+        .and_then(Value::as_bool)
+        == Some(true);
+    if (aromatic && source == "1.5") || (bond.order == 1 && source.eq_ignore_ascii_case("dative")) {
+        Some(source.to_string())
+    } else {
+        None
     }
 }
 
@@ -1900,6 +2059,56 @@ fn bond_endpoint_attachment(bond: &Bond, endpoint: &str) -> Option<u64> {
         .and_then(Value::as_u64)
 }
 
+fn imported_cdxml_crossing_bonds(bond: &Bond) -> impl Iterator<Item = &str> {
+    bond.meta
+        .pointer("/import/cdxml/crossingBonds")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
+fn cdxml_bond_crossing_scope(object: &SceneObject) -> String {
+    object
+        .meta
+        .pointer("/import/cdxml/fragmentId")
+        .and_then(Value::as_str)
+        .map(|id| format!("cdxml-fragment:{id}"))
+        .unwrap_or_else(|| format!("object:{}", object.id))
+}
+
+fn collect_cdxml_bond_export_keys(
+    document: &ChemSemaDocument,
+    objects: &[SceneObject],
+    keys: &mut Vec<(String, String)>,
+) {
+    for object in objects {
+        if !object.visible {
+            continue;
+        }
+        if object.object_type == "molecule" {
+            if let Some(fragment) = object
+                .payload
+                .resource_ref
+                .as_ref()
+                .and_then(|resource_ref| document.resources.get(resource_ref))
+                .and_then(|resource| resource.data.as_fragment())
+            {
+                let scope = cdxml_bond_crossing_scope(object);
+                keys.extend(
+                    fragment
+                        .bonds
+                        .iter()
+                        .map(|bond| (scope.clone(), bond.id.clone())),
+                );
+            }
+        }
+        collect_cdxml_bond_export_keys(document, &object.children, keys);
+    }
+}
+
 fn cdxml_node_label_alignment(label: &NodeLabel) -> &'static str {
     if label.layout.as_deref() == Some("attached-group-above") {
         "Above"
@@ -2179,6 +2388,11 @@ fn cdxml_justification(value: Option<&str>) -> &'static str {
     match value.unwrap_or("").to_ascii_lowercase().as_str() {
         "center" | "middle" => "Center",
         "right" | "end" => "Right",
+        "full" | "justify" => "Full",
+        "above" => "Above",
+        "below" => "Below",
+        "auto" => "Auto",
+        "best" => "Best",
         _ => "Left",
     }
 }

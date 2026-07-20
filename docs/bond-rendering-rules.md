@@ -117,8 +117,9 @@ Rules:
 Additional rules:
 
 - Intersections may use extended lines; the intersection does not need to lie within the original segment length.
-- For very small angles, a miter limit may be used.
-- If a miter limit truncates the intersection, each bond must still own clipping points that lie on its own extended contour lines, and must not fall back to arbitrary empirical midpoints.
+- ChemDraw's acute-angle miter limit is relative to usable bond length, not a fixed angle or a fixed stroke-width multiple. For every participating contour, the absolute intersection projection must satisfy `|projection| <= 0.235 * extent`. The conservative `0.235` threshold is measured from real ChemDraw output; the observed transition lies around `0.235–0.237`.
+- If either contour exceeds the limit, that pair must not form a long spike. Each bond uses its own contour base at the node to form a bevel. Do not clamp the intersection to an arbitrary fixed distance and do not force both contour bases through a shared midpoint.
+- For equal-width bonds meeting at angle `phi`, the theoretical axial miter length is `m = halfWidth / tan(phi / 2)` and remains subject to the relative-length limit above.
 
 ### Three-Or-More-Bond Contact
 
@@ -153,6 +154,11 @@ Additional rules:
 - White cut segments are placed at equal intervals along the main axis.
 - Contact uses the body rectangle.
 - Black segment length may vary according to dash rules; ordinary dashed bonds do not require strictly equal black segments like the hash family.
+- When a dashed main line receives an endpoint contact profile, remove that
+  profile's inward axial extent from the equal black/gap interval domain. The
+  first and last black stripes absorb the contact miter; interior black and
+  white intervals remain equal. Do not compute the dash rhythm on the original
+  centerline and then paste a disconnected endpoint cap over it.
 
 ## Hash Bonds
 
@@ -359,12 +365,33 @@ Non-endpoint bond-bond crossings are intersections of two internal bond segments
 
 Rules:
 
-- Within the same molecule fragment, the later-rendered bond is considered the upper bond.
-- Before drawing the upper bond, generate a white knockout around it using that bond's `marginWidth`, so lower bonds break at the crossing.
+- CDX/CDXML `CrossingBonds` (CDX property `0x060E`, type `CDXObjectIDArray`) is authoritative crossing-pair semantics in document-global object-ID scope, including pairs whose bonds belong to different fragments. Import must preserve it and export must remap and write the new object IDs. If either bond in a pair has an explicit crossing list, no geometric crossing may be invented outside those lists; geometric fallback is allowed only when both bonds lack the property.
+- Layering follows final paint order: compare CDXML `Z` first and document order within the same layer. The later-painted bond is the upper bond.
+- Before drawing the upper bond, generate background knockout geometry only around each intersection so the lower bond breaks locally. Never clone the whole upper bond with an enlarged background stroke; a whole-bond silhouette erases valid endpoint contacts and unrelated nearby geometry.
 - White margin width uses the upper bond's template parameter: Default is `2.0pt`, ACS Document 1996 is `1.6pt`.
-- Knockout direction follows the upper bond axis; width covers the upper bond visible width plus both side margins, and length covers the lower bond visible width with crossing-angle compensation.
+- Let `n = (-axis.y, axis.x)` be the upper bond's unit normal. Determine the upper bond's ChemDraw cut envelope `[c_min, c_max]` along `n` at the intersection, then expand that interval by the source margin. The knockout strip is exactly `[c_min - marginWidth, c_max + marginWidth]`; it is not required to be symmetric about the parent bond axis.
+- A plain or bold filled line uses its visible body contour for `[c_min, c_max]`. A wedge uses its interpolated local contour. Composite line families instead use the envelope of their child centerlines: centered double and triple bonds use the outer child centers, and a side double uses the main and side-line centers. A wavy bond uses the extrema of its wave center path. Do not add the child stroke half-width again for these composite/path envelopes; the upper bond is repainted over the local knockout.
+- Therefore a centered double with center distance `d` uses `[-d/2, d/2]`. A left side double uses `[0, d]`, and a right side double uses `[-d, 0]`, where left/right follow `n`. This asymmetric interval is required: symmetrizing a side double erases too much of the lower bond on the empty side.
+- In the symmetric special case `[c_min, c_max] = [-h_over, h_over]`, with acute crossing angle `theta`, the lower bond's axial half-gap is:
+
+  ```text
+  gapHalf = (h_over + marginWidth) / abs(sin(theta))
+  ```
+
+- Both cut edges must be parallel to the upper bond. The other two local-knockout edges only confine the patch to the lower bond's complete visible contour and must not extend along the whole upper bond. A tiny antialiasing allowance may be added only to these lower-contour confinement edges; it must not widen the upper cut interval.
 - Bonds sharing endpoints still use the node contact kernel, not this white-margin rule.
-- Nearly parallel or overlapping bonds do not enter the first version of the bond-bond crossing white-margin rule.
+- For an interior centerline intersection, the intersection must lie inside both finite segments and the local strip rule above applies.
+- ChemDraw also tests the upper bond's **finite margin envelope** against the lower bond silhouette. The envelope expands each lateral side by `marginWidth` and extends past both butt caps by `marginWidth` along the bond axis. Therefore a near-endpoint miss can still shorten or notch the lower bond even when the two finite centerlines do not intersect. Render the overlap of that finite envelope and the lower visible silhouette; do not extend an infinite white strip through the document.
+- Shared endpoints remain node contacts, and nearly parallel or overlapping bonds do not enter this near-endpoint crossing rule.
+
+## Default Circled Charge Symbols
+
+- A default-style `CirclePlus` or `CircleMinus` bounding box is an anchor, not
+  the circle centerline diameter. The diameter is the anchor height minus
+  `0.30pt`; the source anchor remains unchanged for round-trip export.
+- At editing scale 1, the internal plus/minus sign is `5.444pt` wide/high as
+  applicable and uses a `0.8pt` stroke. These are symbol-template metrics, not
+  values inferred from the rendered bitmap.
 
 ## Preview
 

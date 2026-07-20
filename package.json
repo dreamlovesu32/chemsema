@@ -49,6 +49,8 @@
     "performance:cli-large": "node scripts/cli-large-performance-report.mjs",
     "benchmark:cdxml-public:fetch": "node scripts/fetch-public-cdxml-corpus.mjs",
     "benchmark:cdxml-public": "node scripts/public-cdxml-roundtrip.mjs",
+    "benchmark:cdxml-public:visual-gate": "node scripts/public-cdxml-visual-gate.mjs",
+    "benchmark:cdxml-public:visual-gate:report": "node scripts/public-cdxml-visual-gate.mjs --report-only",
     "regression:label-anchor": "node scripts/label-anchor-regression.mjs",
     "regression:large-object-operations": "node scripts/large-object-operation-regression.mjs",
     "regression:large-cdxml-speed": "node scripts/large-cdxml-speed-regression.mjs",

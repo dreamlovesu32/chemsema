@@ -742,11 +742,13 @@ pub fn cdxml_symbol_metrics_from_anchor(
     let (width, height, stroke_width) = match style {
         CdxmlSymbolStyle::Default => match kind {
             "double-dagger" | "dagger" => (4.0, 7.0, None),
-            "circle-plus" | "circle-minus" => (
-                anchor_height,
-                anchor_height,
-                Some(symbol_stroke_width(line_width)),
-            ),
+            "circle-plus" | "circle-minus" => {
+                // ChemDraw treats a symbol graphic's vertical BoundingBox as
+                // an anchor, not the circle centerline diameter. Default-style
+                // charge circles are 0.30 pt smaller than that anchor.
+                let diameter = (anchor_height - 0.30).max(anchor_height * 0.5);
+                (diameter, diameter, Some(symbol_stroke_width(line_width)))
+            }
             "plus" => (4.3335, 4.3335, None),
             "minus" => (4.3335, 0.8, None),
             "radical-cation" => (6.75, 4.333, None),
@@ -816,6 +818,14 @@ pub fn cdxml_symbol_anchor_height(kind: &str) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn default_circled_charge_uses_chemdraw_anchor_inset() {
+        let metrics = cdxml_symbol_metrics_from_bbox("circle-minus", [0.0, 0.0, 0.0, 10.0], 1.0);
+        assert!((metrics.width - 9.70).abs() < 1.0e-9, "{metrics:?}");
+        assert!((metrics.height - 9.70).abs() < 1.0e-9, "{metrics:?}");
+        assert_eq!(metrics.cdxml_anchor_height, 10.0);
+    }
 
     #[test]
     fn second_period_symbol_valence_does_not_expand_octet() {

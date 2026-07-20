@@ -91,8 +91,9 @@ export async function generateChemDrawOracle(options = {}) {
   }
 
   await fs.mkdir(outDir, { recursive: true });
-  const jobs = inputs.map((input) => {
-    const stem = safeStem(input);
+  const outputNames = options.outputNames ?? [];
+  const jobs = inputs.map((input, index) => {
+    const stem = outputNames[index] ?? safeStem(input);
     const outputs = Object.fromEntries(
       formats.map((format) => [format, path.join(outDir, `${stem}.chemdraw.${format}`)])
     );

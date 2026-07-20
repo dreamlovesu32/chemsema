@@ -277,11 +277,13 @@ pub(super) fn chemdraw_dashed_bond_gap_intervals(
     intervals
 }
 
-pub(super) fn dashed_bond_segment_polygons(
+pub(super) fn dashed_bond_segment_polygons_with_profiles(
     start: Point,
     end: Point,
     stroke_width: f64,
     dash_array: &[f64],
+    start_profile: Option<&[Point]>,
+    end_profile: Option<&[Point]>,
 ) -> Vec<Vec<Point>> {
     let stripe_length = dash_array
         .first()
@@ -293,12 +295,72 @@ pub(super) fn dashed_bond_segment_polygons(
         .copied()
         .filter(|value| *value > EPSILON)
         .unwrap_or(stripe_length);
-    dashed_segment_polygons_for_gap_intervals(
+    let direction = Vector::new(end.x - start.x, end.y - start.y);
+    let length = direction.length();
+    if length <= EPSILON {
+        return Vec::new();
+    }
+    let unit = direction.normalized();
+    let start_inset = endpoint_profile_inward_extent(start_profile, start, unit);
+    let end_inset = endpoint_profile_inward_extent(end_profile, end, Vector::new(-unit.x, -unit.y));
+    dashed_segment_polygons_for_gap_intervals_with_profiles(
         start,
         end,
         stroke_width * 0.5,
-        &chemdraw_dashed_bond_gap_intervals(start.distance(end), stripe_length, target_gap_length),
+        &chemdraw_dashed_bond_gap_intervals_with_endpoint_insets(
+            length,
+            stripe_length,
+            target_gap_length,
+            start_inset,
+            end_inset,
+        ),
+        start_profile,
+        end_profile,
     )
+}
+
+fn endpoint_profile_inward_extent(
+    profile: Option<&[Point]>,
+    endpoint: Point,
+    inward: Vector,
+) -> f64 {
+    profile
+        .into_iter()
+        .flatten()
+        .map(|point| {
+            vector_dot(
+                Vector::new(point.x - endpoint.x, point.y - endpoint.y),
+                inward,
+            )
+        })
+        .fold(0.0, f64::max)
+}
+
+fn chemdraw_dashed_bond_gap_intervals_with_endpoint_insets(
+    length: f64,
+    stripe_length: f64,
+    target_gap_length: f64,
+    start_inset: f64,
+    end_inset: f64,
+) -> Vec<(f64, f64)> {
+    if start_inset <= EPSILON && end_inset <= EPSILON {
+        return chemdraw_dashed_bond_gap_intervals(length, stripe_length, target_gap_length);
+    }
+    let usable_length = (length - start_inset - end_inset).max(0.0);
+    let stripe_count =
+        chemdraw_dashed_bond_stripe_count(usable_length, stripe_length, target_gap_length);
+    if stripe_count <= 1 {
+        return Vec::new();
+    }
+    let interval_length = usable_length / (stripe_count * 2 - 1) as f64;
+    (0..stripe_count - 1)
+        .map(|index| {
+            (
+                start_inset + (index * 2 + 1) as f64 * interval_length,
+                start_inset + (index * 2 + 2) as f64 * interval_length,
+            )
+        })
+        .collect()
 }
 
 pub(super) fn hash_bond_segment_polygons(
@@ -328,6 +390,19 @@ fn dashed_segment_polygons_for_gap_intervals(
     half_width: f64,
     gaps: &[(f64, f64)],
 ) -> Vec<Vec<Point>> {
+    dashed_segment_polygons_for_gap_intervals_with_profiles(
+        start, end, half_width, gaps, None, None,
+    )
+}
+
+fn dashed_segment_polygons_for_gap_intervals_with_profiles(
+    start: Point,
+    end: Point,
+    half_width: f64,
+    gaps: &[(f64, f64)],
+    start_profile: Option<&[Point]>,
+    end_profile: Option<&[Point]>,
+) -> Vec<Vec<Point>> {
     let direction = Vector::new(end.x - start.x, end.y - start.y);
     let length = direction.length();
     if length <= EPSILON {
@@ -347,10 +422,12 @@ fn dashed_segment_polygons_for_gap_intervals(
         segments.push((cursor, length));
     }
 
+    let segment_count = segments.len();
     segments
         .into_iter()
-        .filter(|(segment_start, segment_end)| segment_end > segment_start)
-        .map(|(segment_start, segment_end)| {
+        .enumerate()
+        .filter(|(_, (segment_start, segment_end))| segment_end > segment_start)
+        .map(|(index, (segment_start, segment_end))| {
             let from = Point::new(
                 start.x + unit.x * segment_start,
                 start.y + unit.y * segment_start,
@@ -359,18 +436,39 @@ fn dashed_segment_polygons_for_gap_intervals(
                 start.x + unit.x * segment_end,
                 start.y + unit.y * segment_end,
             );
-            compact_polygon_points(vec![
+            let default_start_profile = vec![
                 Point::new(
                     from.x + normal.x * half_width,
                     from.y + normal.y * half_width,
                 ),
-                Point::new(to.x + normal.x * half_width, to.y + normal.y * half_width),
-                Point::new(to.x - normal.x * half_width, to.y - normal.y * half_width),
                 Point::new(
                     from.x - normal.x * half_width,
                     from.y - normal.y * half_width,
                 ),
-            ])
+            ];
+            let default_end_profile = vec![
+                Point::new(to.x + normal.x * half_width, to.y + normal.y * half_width),
+                Point::new(to.x - normal.x * half_width, to.y - normal.y * half_width),
+            ];
+            let start_profile = if index == 0 {
+                endpoint_profile_global(
+                    start_profile.map(ToOwned::to_owned),
+                    false,
+                    default_start_profile,
+                )
+            } else {
+                default_start_profile
+            };
+            let end_profile = if index + 1 == segment_count {
+                endpoint_profile_global(
+                    end_profile.map(ToOwned::to_owned),
+                    true,
+                    default_end_profile,
+                )
+            } else {
+                default_end_profile
+            };
+            bond_polygon_from_endpoint_profiles(start_profile, end_profile)
         })
         .collect()
 }
@@ -1272,7 +1370,9 @@ pub(super) fn bond_stereo_kind(bond: &Bond) -> Option<BondStereoKind> {
 
 #[cfg(test)]
 mod tests {
-    use super::line_pattern_dash_array_for_bond;
+    use super::{
+        chemdraw_dashed_bond_gap_intervals_with_endpoint_insets, line_pattern_dash_array_for_bond,
+    };
     use crate::{
         Bond, BondLinePattern, BondLineStyles, BondLineWeight, BondLineWeights, DEFAULT_BOND_STROKE,
     };
@@ -1322,5 +1422,16 @@ mod tests {
                 crate::DEFAULT_HASH_SPACING_PT.value()
             ]
         );
+    }
+
+    #[test]
+    fn dashed_bond_endpoint_miters_are_absorbed_by_terminal_stripes() {
+        let gaps =
+            chemdraw_dashed_bond_gap_intervals_with_endpoint_insets(14.4, 2.5, 2.5, 1.2, 1.2);
+        assert_eq!(gaps.len(), 2, "{gaps:?}");
+        assert!((gaps[0].0 - 3.6).abs() < 1.0e-9, "{gaps:?}");
+        assert!((gaps[0].1 - 6.0).abs() < 1.0e-9, "{gaps:?}");
+        assert!((gaps[1].0 - 8.4).abs() < 1.0e-9, "{gaps:?}");
+        assert!((gaps[1].1 - 10.8).abs() < 1.0e-9, "{gaps:?}");
     }
 }

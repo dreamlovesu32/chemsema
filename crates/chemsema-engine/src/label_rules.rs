@@ -110,6 +110,11 @@ pub fn label_text_uses_whole_label_layout(text: &str, connection_count: usize) -
     let compact = compact_label_text(text);
     crate::recognized_abbreviation_uses_whole_label_layout(&compact, connection_count)
         || hyphenated_label_token_uses_whole_label_layout(&compact)
+        || bracketed_query_label_uses_whole_label_layout(&compact)
+}
+
+fn bracketed_query_label_uses_whole_label_layout(text: &str) -> bool {
+    text.len() >= 2 && text.starts_with('[') && text.ends_with(']')
 }
 
 fn hyphenated_label_token_uses_whole_label_layout(text: &str) -> bool {
@@ -466,6 +471,12 @@ mod tests {
         assert_eq!(split_label_groups("N(PhSO2)2"), vec!["N", "(PhSO2)2"]);
         assert_eq!(split_label_groups("C10H21"), vec!["C10H21"]);
         assert_eq!(split_label_groups("C10H21O3"), vec!["C10H21", "O3"]);
+    }
+
+    #[test]
+    fn bracketed_query_labels_stay_whole_during_connection_layout() {
+        assert!(label_text_uses_whole_label_layout("[C,N,P]", 2));
+        assert!(!label_text_uses_whole_label_layout("C,N,P", 2));
     }
 
     #[test]

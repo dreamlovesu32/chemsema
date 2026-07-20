@@ -73,7 +73,9 @@ const CENTER_DOUBLE_NO_EXTENSION_ANGLE_DEGREES: f64 = 162.0;
 const CHEMSEMA_INK: &str = "#000000";
 const KNOCKOUT_FILL: &str = "#ffffff";
 const BOLD_BOND_WIDTH: f64 = crate::BOLD_BOND_WIDTH_PT.value();
-const MAIN_CONTACT_MITER_LIMIT: f64 = 4.0;
+// Bracketed by real ChemDraw output at roughly 0.235-0.237 of the shorter
+// usable contour. Use the conservative edge of that observed transition.
+const CHEMDRAW_CONTACT_MITER_EXTENT_RATIO: f64 = 0.235;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct RectBox {
@@ -188,22 +190,22 @@ fn insert_bond_margin_silhouettes(
 ) -> Vec<RenderPrimitive> {
     let bonds = collect_document_bond_render_info(document);
     let mut rendered_bonds: Vec<&DocumentBondRenderInfo> = Vec::new();
-    let mut rendered_bond_keys = BTreeSet::new();
+    let mut prepared_bond_keys = BTreeSet::new();
     let mut with_silhouettes = Vec::with_capacity(primitives.len() * 2);
     for primitive in primitives {
-        if let Some(knockout) =
-            bond_margin_silhouette(document, &bonds, &rendered_bonds, &primitive)
-        {
-            with_silhouettes.push(knockout);
-        }
         if render_primitive_role(&primitive) == RenderRole::DocumentBond {
             if let (Some(object_id), Some(bond_id)) = (
                 primitive_object_id(&primitive),
                 primitive_bond_id(&primitive),
             ) {
                 let key = (Some(object_id.to_string()), bond_id.to_string());
-                if rendered_bond_keys.insert(key.clone()) {
+                if prepared_bond_keys.insert(key.clone()) {
                     if let Some(info) = bonds.get(&key) {
+                        with_silhouettes.extend(bond_crossing_knockouts(
+                            document,
+                            &rendered_bonds,
+                            info,
+                        ));
                         rendered_bonds.push(info);
                     }
                 }
@@ -217,11 +219,28 @@ fn insert_bond_margin_silhouettes(
 #[derive(Debug)]
 struct DocumentBondRenderInfo {
     object_id: Option<String>,
+    id: String,
     begin: String,
     end: String,
     start: Point,
     end_point: Point,
     margin_width: f64,
+    crossing_envelope: BondCrossingEnvelope,
+    explicit_crossings: Option<BTreeSet<String>>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct CrossingOffsets {
+    min: f64,
+    max: f64,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct BondCrossingEnvelope {
+    silhouette_start: CrossingOffsets,
+    silhouette_end: CrossingOffsets,
+    clearance_start: CrossingOffsets,
+    clearance_end: CrossingOffsets,
 }
 
 fn collect_document_bond_render_info(
@@ -264,15 +283,20 @@ fn collect_object_bond_render_info(
                 }
                 let stroke_width = bond_stroke_width(document, object, bond);
                 let object_id = Some(object.id.clone());
+                let crossing_envelope =
+                    document_bond_crossing_envelope(bond, start, end_point, stroke_width);
                 bonds.insert(
                     (object_id.clone(), bond.id.clone()),
                     DocumentBondRenderInfo {
                         object_id,
+                        id: bond.id.clone(),
                         begin: bond.begin.clone(),
                         end: bond.end.clone(),
                         start,
                         end_point,
                         margin_width: document_margin_width_for_bond(document, bond, stroke_width),
+                        crossing_envelope,
+                        explicit_crossings: imported_cdxml_crossing_bonds(bond),
                     },
                 );
             }
@@ -281,35 +305,39 @@ fn collect_object_bond_render_info(
     }
 }
 
-fn bond_margin_silhouette(
+fn bond_crossing_knockouts(
     document: &ChemSemaDocument,
-    bonds: &BTreeMap<(Option<String>, String), DocumentBondRenderInfo>,
     rendered_bonds: &[&DocumentBondRenderInfo],
-    primitive: &RenderPrimitive,
-) -> Option<RenderPrimitive> {
-    if render_primitive_role(primitive) != RenderRole::DocumentBond {
-        return None;
+    over_bond: &DocumentBondRenderInfo,
+) -> Vec<RenderPrimitive> {
+    if over_bond.margin_width <= EPSILON {
+        return Vec::new();
     }
-    let bond_id = primitive_bond_id(primitive)?;
-    let object_id = primitive_object_id(primitive).map(str::to_string);
-    let bond = bonds
-        .get(&(object_id.clone(), bond_id.to_string()))
-        .or_else(|| bonds.get(&(None, bond_id.to_string())))?;
-    if bond.margin_width <= EPSILON
-        || !rendered_bonds
-            .iter()
-            .any(|under_bond| document_bonds_cross_for_margin(under_bond, bond))
-    {
-        return None;
-    }
-    Some(knockout_silhouette_for_primitive(
-        primitive,
-        &document.document.page.background,
-        bond.margin_width,
-    ))
+    rendered_bonds
+        .iter()
+        .filter_map(|under_bond| {
+            if !bonds_are_crossing_candidates(under_bond, over_bond) {
+                return None;
+            }
+            if let Some(crossing) = bond_crossing_point_for_margin(under_bond, over_bond) {
+                local_bond_crossing_knockout(
+                    under_bond,
+                    over_bond,
+                    crossing,
+                    &document.document.page.background,
+                )
+            } else {
+                near_endpoint_bond_crossing_knockout(
+                    under_bond,
+                    over_bond,
+                    &document.document.page.background,
+                )
+            }
+        })
+        .collect()
 }
 
-fn document_bonds_cross_for_margin(
+fn bonds_are_crossing_candidates(
     under_bond: &DocumentBondRenderInfo,
     over_bond: &DocumentBondRenderInfo,
 ) -> bool {
@@ -318,6 +346,18 @@ fn document_bonds_cross_for_margin(
             || under_bond.begin == over_bond.end
             || under_bond.end == over_bond.begin
             || under_bond.end == over_bond.end)
+    {
+        return false;
+    }
+    if (under_bond.explicit_crossings.is_some() || over_bond.explicit_crossings.is_some())
+        && !under_bond
+            .explicit_crossings
+            .as_ref()
+            .is_some_and(|ids| ids.contains(&over_bond.id))
+        && !over_bond
+            .explicit_crossings
+            .as_ref()
+            .is_some_and(|ids| ids.contains(&under_bond.id))
     {
         return false;
     }
@@ -334,70 +374,404 @@ fn document_bonds_cross_for_margin(
     }
     let crossing_sin =
         target_render_vector_cross(under_vector.normalized(), over_vector.normalized()).abs();
-    if crossing_sin <= 0.1 {
-        return false;
-    }
+    crossing_sin > 0.1
+}
+
+fn bond_crossing_point_for_margin(
+    under_bond: &DocumentBondRenderInfo,
+    over_bond: &DocumentBondRenderInfo,
+) -> Option<Point> {
     target_render_segment_intersection(
         under_bond.start,
         under_bond.end_point,
         over_bond.start,
         over_bond.end_point,
     )
-    .is_some()
 }
 
-fn knockout_silhouette_for_primitive(
-    primitive: &RenderPrimitive,
+fn local_bond_crossing_knockout(
+    under_bond: &DocumentBondRenderInfo,
+    over_bond: &DocumentBondRenderInfo,
+    crossing: Point,
     background: &str,
-    margin_width: f64,
-) -> RenderPrimitive {
-    let mut knockout = primitive.clone();
-    match &mut knockout {
-        RenderPrimitive::Line {
-            role,
-            stroke,
-            stroke_width,
-            ..
-        } => {
-            *role = RenderRole::DocumentKnockout;
-            *stroke = background.to_string();
-            *stroke_width += margin_width * 2.0;
-        }
-        RenderPrimitive::Polygon {
-            role,
-            fill,
-            stroke,
-            stroke_width,
-            ..
-        } => {
-            *role = RenderRole::DocumentKnockout;
-            *fill = background.to_string();
-            *stroke = background.to_string();
-            *stroke_width += margin_width * 2.0;
-        }
-        RenderPrimitive::Polyline {
-            role,
-            stroke,
-            stroke_width,
-            ..
-        }
-        | RenderPrimitive::Path {
-            role,
-            stroke,
-            stroke_width,
-            ..
-        } => {
-            *role = RenderRole::DocumentKnockout;
-            *stroke = background.to_string();
-            *stroke_width += margin_width * 2.0;
-        }
-        RenderPrimitive::FilledPath { role, fill, .. } => {
-            *role = RenderRole::DocumentKnockout;
-            *fill = background.to_string();
-        }
-        _ => {}
+) -> Option<RenderPrimitive> {
+    let under_axis = Vector::new(
+        under_bond.end_point.x - under_bond.start.x,
+        under_bond.end_point.y - under_bond.start.y,
+    )
+    .normalized();
+    let over_axis = Vector::new(
+        over_bond.end_point.x - over_bond.start.x,
+        over_bond.end_point.y - over_bond.start.y,
+    )
+    .normalized();
+    let under_normal = Vector::new(-under_axis.y, under_axis.x);
+    let over_normal = Vector::new(-over_axis.y, over_axis.x);
+    let determinant = target_render_vector_cross(under_normal, over_normal);
+    if determinant.abs() <= 0.1 {
+        return None;
     }
-    knockout
+
+    // The two over-normal edges are the visible ChemDraw cut boundaries. The
+    // under-normal edges merely keep the background patch local to the lower
+    // bond and receive a tiny AA allowance without widening the cut itself.
+    let under_offsets = under_bond.silhouette_offsets_at(crossing);
+    let over_offsets = over_bond.clearance_offsets_at(crossing);
+    let under_min = under_offsets.min - 0.05;
+    let under_max = under_offsets.max + 0.05;
+    let over_min = over_offsets.min - over_bond.margin_width;
+    let over_max = over_offsets.max + over_bond.margin_width;
+    let local_corner = |under_offset: f64, over_offset: f64| {
+        let x = (under_offset * over_normal.y - under_normal.y * over_offset) / determinant;
+        let y = (under_normal.x * over_offset - under_offset * over_normal.x) / determinant;
+        Point::new(crossing.x + x, crossing.y + y)
+    };
+    let points = vec![
+        local_corner(under_max, over_max),
+        local_corner(under_min, over_max),
+        local_corner(under_min, over_min),
+        local_corner(under_max, over_min),
+    ];
+    Some(RenderPrimitive::Polygon {
+        role: RenderRole::DocumentKnockout,
+        object_id: over_bond.object_id.clone(),
+        node_id: None,
+        bond_id: Some(over_bond.id.clone()),
+        points,
+        fill: background.to_string(),
+        stroke: background.to_string(),
+        stroke_width: 0.0,
+    })
+}
+
+fn near_endpoint_bond_crossing_knockout(
+    under_bond: &DocumentBondRenderInfo,
+    over_bond: &DocumentBondRenderInfo,
+    background: &str,
+) -> Option<RenderPrimitive> {
+    // ChemDraw applies a finite margin silhouette to the upper bond, including
+    // a margin-width extension beyond both butt caps. This can notch or shorten
+    // a lower bond even when the two centerline segments narrowly miss. It is
+    // observable in warning-heavy CDXML where CrossingBonds records a contact
+    // whose infinite-line intersection falls just outside one segment.
+    let under_polygon = crossing_strip_polygon(
+        under_bond,
+        under_bond.crossing_envelope.silhouette_start,
+        under_bond.crossing_envelope.silhouette_end,
+        0.05,
+        0.0,
+    )?;
+    let over_polygon = crossing_strip_polygon(
+        over_bond,
+        over_bond.crossing_envelope.clearance_start,
+        over_bond.crossing_envelope.clearance_end,
+        over_bond.margin_width,
+        over_bond.margin_width,
+    )?;
+    let points = intersect_convex_polygons(&under_polygon, &over_polygon);
+    if points.len() < 3 || polygon_area_signed(&points).abs() <= 1.0e-4 {
+        return None;
+    }
+    Some(RenderPrimitive::Polygon {
+        role: RenderRole::DocumentKnockout,
+        object_id: over_bond.object_id.clone(),
+        node_id: None,
+        bond_id: Some(over_bond.id.clone()),
+        points,
+        fill: background.to_string(),
+        stroke: background.to_string(),
+        stroke_width: 0.0,
+    })
+}
+
+fn crossing_strip_polygon(
+    bond: &DocumentBondRenderInfo,
+    start_offsets: CrossingOffsets,
+    end_offsets: CrossingOffsets,
+    lateral_margin: f64,
+    longitudinal_margin: f64,
+) -> Option<Vec<Point>> {
+    crossing_strip_polygon_for_segment(
+        bond.start,
+        bond.end_point,
+        start_offsets,
+        end_offsets,
+        lateral_margin,
+        longitudinal_margin,
+    )
+}
+
+fn crossing_strip_polygon_for_segment(
+    start_point: Point,
+    end_point: Point,
+    start_offsets: CrossingOffsets,
+    end_offsets: CrossingOffsets,
+    lateral_margin: f64,
+    longitudinal_margin: f64,
+) -> Option<Vec<Point>> {
+    let axis = Vector::new(end_point.x - start_point.x, end_point.y - start_point.y);
+    if axis.length() <= EPSILON {
+        return None;
+    }
+    let unit = axis.normalized();
+    let normal = Vector::new(-unit.y, unit.x);
+    let start = start_point.translated(unit.scaled(-longitudinal_margin));
+    let end = end_point.translated(unit.scaled(longitudinal_margin));
+    Some(vec![
+        start.translated(normal.scaled(start_offsets.max + lateral_margin)),
+        end.translated(normal.scaled(end_offsets.max + lateral_margin)),
+        end.translated(normal.scaled(end_offsets.min - lateral_margin)),
+        start.translated(normal.scaled(start_offsets.min - lateral_margin)),
+    ])
+}
+
+fn intersect_convex_polygons(subject: &[Point], clip: &[Point]) -> Vec<Point> {
+    let mut output = subject.to_vec();
+    if output.len() < 3 || clip.len() < 3 {
+        return Vec::new();
+    }
+    let orientation = if polygon_area_signed(clip) >= 0.0 {
+        1.0
+    } else {
+        -1.0
+    };
+    for index in 0..clip.len() {
+        let edge_start = clip[index];
+        let edge_end = clip[(index + 1) % clip.len()];
+        let edge = Vector::new(edge_end.x - edge_start.x, edge_end.y - edge_start.y);
+        let input = std::mem::take(&mut output);
+        if input.is_empty() {
+            break;
+        }
+        let inside = |point: Point| {
+            orientation
+                * target_render_vector_cross(
+                    edge,
+                    Vector::new(point.x - edge_start.x, point.y - edge_start.y),
+                )
+                >= -1.0e-8
+        };
+        let intersection = |first: Point, second: Point| {
+            line_intersection(
+                first,
+                Vector::new(second.x - first.x, second.y - first.y),
+                edge_start,
+                edge,
+            )
+        };
+        let mut previous = *input.last().expect("non-empty polygon");
+        let mut previous_inside = inside(previous);
+        for current in input {
+            let current_inside = inside(current);
+            if current_inside != previous_inside {
+                if let Some(point) = intersection(previous, current) {
+                    output.push(point);
+                }
+            }
+            if current_inside {
+                output.push(current);
+            }
+            previous = current;
+            previous_inside = current_inside;
+        }
+    }
+    compact_polygon_points(output)
+}
+
+fn imported_cdxml_crossing_bonds(bond: &Bond) -> Option<BTreeSet<String>> {
+    bond.meta
+        .pointer("/import/cdxml/crossingBonds")
+        .and_then(JsonValue::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(JsonValue::as_str)
+                .map(str::trim)
+                .filter(|id| !id.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+}
+
+impl DocumentBondRenderInfo {
+    fn offsets_at(
+        &self,
+        point: Point,
+        start: CrossingOffsets,
+        end: CrossingOffsets,
+    ) -> CrossingOffsets {
+        let axis = Vector::new(
+            self.end_point.x - self.start.x,
+            self.end_point.y - self.start.y,
+        );
+        let length = axis.length();
+        if length <= EPSILON {
+            return CrossingOffsets {
+                min: start.min.min(end.min),
+                max: start.max.max(end.max),
+            };
+        }
+        let unit = axis.normalized();
+        let offset = Vector::new(point.x - self.start.x, point.y - self.start.y);
+        let fraction = (vector_dot(offset, unit) / length).clamp(0.0, 1.0);
+        CrossingOffsets {
+            min: start.min + (end.min - start.min) * fraction,
+            max: start.max + (end.max - start.max) * fraction,
+        }
+    }
+
+    fn silhouette_offsets_at(&self, point: Point) -> CrossingOffsets {
+        self.offsets_at(
+            point,
+            self.crossing_envelope.silhouette_start,
+            self.crossing_envelope.silhouette_end,
+        )
+    }
+
+    fn clearance_offsets_at(&self, point: Point) -> CrossingOffsets {
+        self.offsets_at(
+            point,
+            self.crossing_envelope.clearance_start,
+            self.crossing_envelope.clearance_end,
+        )
+    }
+}
+
+fn document_bond_crossing_envelope(
+    bond: &Bond,
+    start: Point,
+    end: Point,
+    stroke_width: f64,
+) -> BondCrossingEnvelope {
+    let main_half_width =
+        line_weight_stroke_width_for_bond(bond, stroke_width, bond.line_weights.main) * 0.5;
+    let symmetric = |half_width: f64| CrossingOffsets {
+        min: -half_width,
+        max: half_width,
+    };
+    let constant = |silhouette: CrossingOffsets, clearance: CrossingOffsets| BondCrossingEnvelope {
+        silhouette_start: silhouette,
+        silhouette_end: silhouette,
+        clearance_start: clearance,
+        clearance_end: clearance,
+    };
+
+    if let Some(stereo) = bond_stereo_kind(bond) {
+        let tip = solid_wedge_tip_half_width(stroke_width);
+        let wide = solid_wedge_half_width_for_bond(bond, stroke_width);
+        let (start_half_width, end_half_width) = match stereo {
+            BondStereoKind::SolidWedgeBegin
+            | BondStereoKind::HashedWedgeBegin
+            | BondStereoKind::HollowWedgeBegin => (wide, tip),
+            BondStereoKind::SolidWedgeEnd
+            | BondStereoKind::HashedWedgeEnd
+            | BondStereoKind::HollowWedgeEnd => (tip, wide),
+        };
+        let start_offsets = symmetric(start_half_width);
+        let end_offsets = symmetric(end_half_width);
+        return BondCrossingEnvelope {
+            silhouette_start: start_offsets,
+            silhouette_end: end_offsets,
+            clearance_start: start_offsets,
+            clearance_end: end_offsets,
+        };
+    }
+    if bond.order == 1 && bond.line_styles.main == BondLinePattern::Wavy {
+        let amplitude = wavy_bond_amplitude_for_bond(bond, stroke_width);
+        return constant(symmetric(amplitude + main_half_width), symmetric(amplitude));
+    }
+    if bond.order == 2 {
+        let (centerlines, silhouette) = match bond.double.as_ref().map(|double| double.placement) {
+            Some(DoubleBondPlacement::Left) => {
+                let outer_half_width =
+                    line_weight_stroke_width_for_bond(bond, stroke_width, bond.line_weights.left)
+                        * 0.5;
+                let center_distance = double_bond_center_distance_for_bond_weights(
+                    bond,
+                    start,
+                    end,
+                    stroke_width,
+                    bond.line_weights.main,
+                    bond.line_weights.left,
+                );
+                (
+                    CrossingOffsets {
+                        min: 0.0,
+                        max: center_distance,
+                    },
+                    CrossingOffsets {
+                        min: -main_half_width,
+                        max: center_distance + outer_half_width,
+                    },
+                )
+            }
+            Some(DoubleBondPlacement::Right) => {
+                let outer_half_width =
+                    line_weight_stroke_width_for_bond(bond, stroke_width, bond.line_weights.right)
+                        * 0.5;
+                let center_distance = double_bond_center_distance_for_bond_weights(
+                    bond,
+                    start,
+                    end,
+                    stroke_width,
+                    bond.line_weights.main,
+                    bond.line_weights.right,
+                );
+                (
+                    CrossingOffsets {
+                        min: -center_distance,
+                        max: 0.0,
+                    },
+                    CrossingOffsets {
+                        min: -center_distance - outer_half_width,
+                        max: main_half_width,
+                    },
+                )
+            }
+            _ => {
+                let left_half_width =
+                    line_weight_stroke_width_for_bond(bond, stroke_width, bond.line_weights.left)
+                        * 0.5;
+                let right_half_width =
+                    line_weight_stroke_width_for_bond(bond, stroke_width, bond.line_weights.right)
+                        * 0.5;
+                let center_distance = double_bond_center_distance_for_bond_weights(
+                    bond,
+                    start,
+                    end,
+                    stroke_width,
+                    bond.line_weights.left,
+                    bond.line_weights.right,
+                );
+                (
+                    CrossingOffsets {
+                        min: -center_distance * 0.5,
+                        max: center_distance * 0.5,
+                    },
+                    CrossingOffsets {
+                        min: -center_distance * 0.5 - left_half_width,
+                        max: center_distance * 0.5 + right_half_width,
+                    },
+                )
+            }
+        };
+        return constant(silhouette, centerlines);
+    }
+    if bond.order >= 3 {
+        let offset = triple_bond_offset_distance(start, end, stroke_width);
+        let left_half_width =
+            line_weight_stroke_width_for_bond(bond, stroke_width, bond.line_weights.left) * 0.5;
+        let right_half_width =
+            line_weight_stroke_width_for_bond(bond, stroke_width, bond.line_weights.right) * 0.5;
+        return constant(
+            CrossingOffsets {
+                min: (-offset - right_half_width).min(-main_half_width),
+                max: (offset + left_half_width).max(main_half_width),
+            },
+            symmetric(offset),
+        );
+    }
+    constant(symmetric(main_half_width), symmetric(main_half_width))
 }
 
 #[derive(Debug, Clone)]
@@ -407,6 +781,9 @@ struct TargetRenderBondSegment {
     end: String,
     start: Point,
     end_point: Point,
+    margin_width: f64,
+    crossing_envelope: BondCrossingEnvelope,
+    explicit_crossings: Option<BTreeSet<String>>,
 }
 
 fn expand_target_bond_ids_with_document_crossings(
@@ -467,12 +844,21 @@ fn collect_document_target_bond_segments(
             if start.distance(end_point) <= EPSILON {
                 continue;
             }
+            let stroke_width = bond_stroke_width(document, entry.object, bond);
             segments.push(TargetRenderBondSegment {
                 id: bond.id.clone(),
                 begin: bond.begin.clone(),
                 end: bond.end.clone(),
                 start,
                 end_point,
+                margin_width: document_margin_width_for_bond(document, bond, stroke_width),
+                crossing_envelope: document_bond_crossing_envelope(
+                    bond,
+                    start,
+                    end_point,
+                    stroke_width,
+                ),
+                explicit_crossings: imported_cdxml_crossing_bonds(bond),
             });
         }
     }
@@ -487,6 +873,18 @@ fn target_render_bond_segments_cross(
         || first.begin == second.end
         || first.end == second.begin
         || first.end == second.end
+    {
+        return false;
+    }
+    if (first.explicit_crossings.is_some() || second.explicit_crossings.is_some())
+        && !first
+            .explicit_crossings
+            .as_ref()
+            .is_some_and(|ids| ids.contains(&second.id))
+        && !second
+            .explicit_crossings
+            .as_ref()
+            .is_some_and(|ids| ids.contains(&first.id))
     {
         return false;
     }
@@ -506,8 +904,38 @@ fn target_render_bond_segments_cross(
     if crossing_sin <= 0.1 {
         return false;
     }
-    target_render_segment_intersection(first.start, first.end_point, second.start, second.end_point)
-        .is_some()
+    if target_render_segment_intersection(
+        first.start,
+        first.end_point,
+        second.start,
+        second.end_point,
+    )
+    .is_some()
+    {
+        return true;
+    }
+    let Some(first_polygon) = crossing_strip_polygon_for_segment(
+        first.start,
+        first.end_point,
+        first.crossing_envelope.silhouette_start,
+        first.crossing_envelope.silhouette_end,
+        0.05,
+        0.0,
+    ) else {
+        return false;
+    };
+    let Some(second_polygon) = crossing_strip_polygon_for_segment(
+        second.start,
+        second.end_point,
+        second.crossing_envelope.clearance_start,
+        second.crossing_envelope.clearance_end,
+        second.margin_width,
+        second.margin_width,
+    ) else {
+        return false;
+    };
+    let overlap = intersect_convex_polygons(&first_polygon, &second_polygon);
+    overlap.len() >= 3 && polygon_area_signed(&overlap).abs() > 1.0e-4
 }
 
 fn target_render_segment_intersection(a1: Point, a2: Point, b1: Point, b2: Point) -> Option<Point> {

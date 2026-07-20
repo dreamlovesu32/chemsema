@@ -645,6 +645,7 @@ fn property_schema(tag: u16) -> Option<PropertySchema> {
         0x0401 => ("LabelDisplay", PropertyKind::Enum8(LABEL_DISPLAY)),
         0x0402 => ("Element", PropertyKind::Int16),
         0x0421 => ("Charge", PropertyKind::Int8),
+        0x0424 => ("ImplicitHydrogens", PropertyKind::BooleanImplied),
         0x042B => ("NumHydrogens", PropertyKind::UInt16),
         0x0437 => ("AS", PropertyKind::Enum(ATOM_STEREO)),
         0x0444 => ("HideImplicitHydrogens", PropertyKind::Boolean),
@@ -659,6 +660,7 @@ fn property_schema(tag: u16) -> Option<PropertySchema> {
         0x0608 => ("BeginAttach", PropertyKind::UInt8),
         0x0609 => ("EndAttach", PropertyKind::UInt8),
         0x060A => ("BS", PropertyKind::Enum(BOND_STEREO)),
+        0x060E => ("CrossingBonds", PropertyKind::ObjectIdArray),
         0x0701 => ("Justification", PropertyKind::Enum8(JUSTIFICATION)),
         0x0702 => ("LineHeight", PropertyKind::LineHeightUInt16),
         0x0703 => ("WordWrapWidth", PropertyKind::Int16),
@@ -769,6 +771,7 @@ fn property_tag(name: &str) -> Option<u16> {
         "LabelDisplay" => 0x0401,
         "Element" => 0x0402,
         "Charge" => 0x0421,
+        "ImplicitHydrogens" => 0x0424,
         "NumHydrogens" => 0x042B,
         "AS" => 0x0437,
         "HideImplicitHydrogens" => 0x0444,
@@ -782,6 +785,7 @@ fn property_tag(name: &str) -> Option<u16> {
         "BeginAttach" => 0x0608,
         "EndAttach" => 0x0609,
         "BS" => 0x060A,
+        "CrossingBonds" => 0x060E,
         "Justification" => 0x0701,
         "LineHeight" => 0x0702,
         "WordWrapWidth" => 0x0703,
@@ -1567,6 +1571,85 @@ mod tests {
         assert!(decoded.contains("Display=\"Dash\""));
         let doc = parse_cdx_document(&cdx, Some("basic")).expect("CDX should import");
         assert_eq!(doc.resources.len(), 1);
+    }
+
+    #[test]
+    fn cdx_restrict_implicit_hydrogens_uses_official_implied_boolean_tag() {
+        let encoded = encode_property("ImplicitHydrogens", "yes")
+            .expect("implicit-hydrogen restriction should encode");
+        assert_eq!(encoded.0, 0x0424);
+        assert!(encoded.1.is_empty());
+        let (_, decoded) = decode_property(encoded.0, &encoded.1, None)
+            .expect("implicit-hydrogen restriction should decode");
+        assert_eq!(decoded, "yes");
+
+        let cdxml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML><page><fragment>
+  <n id="1" p="10 10" Element="6" ImplicitHydrogens="yes">
+    <t p="10 10" UTF8Text="C"/>
+  </n>
+  <n id="2" p="30 10" Element="6"/>
+  <b id="3" B="1" E="2"/>
+</fragment></page></CDXML>"#;
+        let cdx = cdxml_to_cdx(cdxml).expect("query CDXML should encode to CDX");
+        let decoded_cdxml = cdx_to_cdxml(&cdx).expect("query CDX should decode");
+        assert!(
+            decoded_cdxml.contains("ImplicitHydrogens=\"yes\""),
+            "{decoded_cdxml}"
+        );
+        let document = parse_cdx_document(&cdx, Some("atom query"))
+            .expect("query CDX should import into the document model");
+        let node = document
+            .resources
+            .values()
+            .find_map(|resource| resource.data.as_fragment())
+            .and_then(|fragment| fragment.nodes.iter().find(|node| node.id == "1"))
+            .expect("query node should survive");
+        assert_eq!(
+            node.meta
+                .pointer("/import/cdxml/restrictImplicitHydrogens")
+                .and_then(serde_json::Value::as_bool),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn cdx_crossing_bonds_use_official_object_id_array_tag_and_round_trip() {
+        let encoded =
+            encode_property("CrossingBonds", "20 21").expect("CrossingBonds should encode");
+        assert_eq!(encoded.0, 0x060E);
+        let (_, decoded) =
+            decode_property(encoded.0, &encoded.1, None).expect("CrossingBonds should decode");
+        assert_eq!(decoded, "20 21");
+
+        let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<CDXML BoundingBox="0 0 120 120" LineWidth="0.6" MarginWidth="1.6">
+  <page id="1" BoundingBox="0 0 120 120">
+    <fragment id="2">
+      <n id="10" p="20 60"/><n id="11" p="100 60"/>
+      <n id="12" p="60 20"/><n id="13" p="60 100"/>
+      <b id="20" Z="7" B="10" E="11" CrossingBonds="21"/>
+      <b id="21" Z="8" B="12" E="13" CrossingBonds="20"/>
+    </fragment>
+  </page>
+</CDXML>"#;
+        let cdx = cdxml_to_cdx(cdxml).expect("crossing CDXML should encode");
+        let decoded_cdxml = cdx_to_cdxml(&cdx).expect("crossing CDX should decode");
+        assert!(
+            decoded_cdxml.contains("CrossingBonds=\"21\""),
+            "{decoded_cdxml}"
+        );
+        assert!(
+            decoded_cdxml.contains("CrossingBonds=\"20\""),
+            "{decoded_cdxml}"
+        );
+
+        let imported = parse_cdx_document(&cdx, Some("crossings")).expect("CDX should import");
+        let first = document_to_cdx(&imported).expect("crossing CDX should export");
+        let reopened = parse_cdx_document(&first, Some("crossings"))
+            .expect("exported crossing CDX should reopen");
+        let second = document_to_cdx(&reopened).expect("crossing CDX should stabilize");
+        assert_eq!(second, first);
     }
 
     #[test]

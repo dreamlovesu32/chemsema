@@ -40,6 +40,9 @@ struct CdxmlDefaults {
     caption_face: u32,
     label_justification: CdxmlJustification,
     caption_justification: CdxmlJustification,
+    line_height: Option<CdxmlLineHeight>,
+    label_line_height: Option<CdxmlLineHeight>,
+    caption_line_height: Option<CdxmlLineHeight>,
     fractional_widths: bool,
     interpret_chemically: Option<bool>,
     show_atom_query: bool,
@@ -75,6 +78,9 @@ impl Default for CdxmlDefaults {
             caption_face: 0,
             label_justification: CdxmlJustification::Auto,
             caption_justification: CdxmlJustification::Left,
+            line_height: None,
+            label_line_height: None,
+            caption_line_height: None,
             fractional_widths: true,
             interpret_chemically: None,
             show_atom_query: true,
@@ -104,6 +110,41 @@ enum CdxmlJustification {
     Above,
     Below,
     Best,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum CdxmlLineHeight {
+    Variable,
+    Auto,
+    Fixed(f64),
+}
+
+fn parse_cdxml_line_height(value: Option<&str>) -> Option<CdxmlLineHeight> {
+    match value?.trim().to_ascii_lowercase().as_str() {
+        "variable" => Some(CdxmlLineHeight::Variable),
+        "auto" => Some(CdxmlLineHeight::Auto),
+        value => value
+            .parse::<f64>()
+            .ok()
+            .filter(|value| value.is_finite() && *value >= 0.0)
+            .map(CdxmlLineHeight::Fixed),
+    }
+}
+
+fn resolved_cdxml_label_line_height(
+    text: &XmlNode,
+    defaults: CdxmlDefaults,
+    font_size: f64,
+) -> f64 {
+    let value = parse_cdxml_line_height(text.attr("LabelLineHeight"))
+        .or_else(|| parse_cdxml_line_height(text.attr("LineHeight")))
+        .or(defaults.label_line_height)
+        .or(defaults.line_height)
+        .unwrap_or(CdxmlLineHeight::Variable);
+    match value {
+        CdxmlLineHeight::Fixed(value) if value > 1.0 => value,
+        _ => crate::molecule_label_line_advance(font_size),
+    }
 }
 
 impl CdxmlJustification {
@@ -160,10 +201,14 @@ pub fn parse_cdxml_document(cdxml: &str, title: Option<&str>) -> Result<ChemSema
     let bonded_node_ids = cdxml_bonded_node_ids(&root);
     let mut molecule_index = 1usize;
     for fragment in &fragments {
-        let Some(bbox) = cdxml_fragment_bbox(fragment, defaults.bond_length) else {
+        let node_positions = cdxml_fragment_node_positions(fragment, defaults.bond_length);
+        let Some(bbox) = cdxml_fragment_bbox(fragment, defaults.bond_length, &node_positions)
+        else {
             continue;
         };
-        let Some(resource) = normalize_fragment(fragment, bbox, defaults, &colors, &fonts) else {
+        let Some(resource) =
+            normalize_fragment(fragment, bbox, &node_positions, defaults, &colors, &fonts)
+        else {
             continue;
         };
         for component in split_cdxml_fragment_components(resource, bbox) {
@@ -272,6 +317,9 @@ pub fn parse_cdxml_document(cdxml: &str, title: Option<&str>) -> Result<ChemSema
                             "captionStyle": caption_style,
                             "labelJustification": defaults.label_justification.as_cdxml(),
                             "captionJustification": defaults.caption_justification.as_cdxml(),
+                            "lineHeight": empty_as_null(root.attr("LineHeight")),
+                            "labelLineHeight": empty_as_null(root.attr("LabelLineHeight")),
+                            "captionLineHeight": empty_as_null(root.attr("CaptionLineHeight")),
                             "fractionalWidths": defaults.fractional_widths,
                             "interpretChemically": defaults.interpret_chemically,
                             "showAtomQuery": defaults.show_atom_query,
@@ -679,6 +727,9 @@ fn cdxml_defaults(root: &XmlNode) -> CdxmlDefaults {
             .unwrap_or(fallback.label_justification),
         caption_justification: parse_cdxml_justification(root.attr("CaptionJustification"))
             .unwrap_or(fallback.caption_justification),
+        line_height: parse_cdxml_line_height(root.attr("LineHeight")),
+        label_line_height: parse_cdxml_line_height(root.attr("LabelLineHeight")),
+        caption_line_height: parse_cdxml_line_height(root.attr("CaptionLineHeight")),
         fractional_widths: parse_cdxml_bool(root.attr("FractionalWidths"))
             .unwrap_or(fallback.fractional_widths),
         interpret_chemically: parse_cdxml_bool(root.attr("InterpretChemically")),
@@ -805,36 +856,54 @@ fn cdxml_font_table(root: &XmlNode) -> BTreeMap<String, String> {
 
 fn display_fragments(root: &XmlNode) -> Vec<&XmlNode> {
     let mut fragments = Vec::new();
-    collect_display_fragments(root, false, &mut fragments);
+    let include_exported_singletons = root
+        .attr("CreationProgram")
+        .is_some_and(|value| value.eq_ignore_ascii_case("ChemSema"));
+    collect_display_fragments(root, false, include_exported_singletons, &mut fragments);
     fragments
 }
 
 fn collect_display_fragments<'a>(
     node: &'a XmlNode,
     inside_placeholder_node: bool,
+    include_exported_singletons: bool,
     fragments: &mut Vec<&'a XmlNode>,
 ) {
-    if !inside_placeholder_node && cdxml_node_is_display_fragment(node) {
+    if !inside_placeholder_node && cdxml_node_is_display_fragment(node, include_exported_singletons)
+    {
         fragments.push(node);
     }
     let next_inside_placeholder = inside_placeholder_node || cdxml_node_has_cached_fragment(node);
     for child in &node.children {
-        collect_display_fragments(child, next_inside_placeholder, fragments);
+        collect_display_fragments(
+            child,
+            next_inside_placeholder,
+            include_exported_singletons,
+            fragments,
+        );
     }
 }
 
-fn cdxml_node_is_display_fragment(node: &XmlNode) -> bool {
+fn cdxml_node_is_display_fragment(node: &XmlNode, include_exported_singletons: bool) -> bool {
     if !node.is("fragment") {
         return false;
     }
     let has_bond = node.direct_children("b").next().is_some();
+    if node.attr("BoundingBox").is_none() {
+        return has_bond;
+    }
     let has_chemical_node = node
         .direct_children("n")
         .any(|child| child.attr("Element").is_some());
-    has_bond || has_chemical_node
+    let has_node = node.direct_children("n").next().is_some();
+    has_bond || has_chemical_node || (include_exported_singletons && has_node)
 }
 
-fn cdxml_fragment_bbox(fragment: &XmlNode, bond_length: f64) -> Option<[f64; 4]> {
+fn cdxml_fragment_bbox(
+    fragment: &XmlNode,
+    bond_length: f64,
+    node_positions: &BTreeMap<String, [f64; 2]>,
+) -> Option<[f64; 4]> {
     if let Some(bbox) = parse_bbox(fragment.attr("BoundingBox")) {
         return Some(bbox);
     }
@@ -854,7 +923,11 @@ fn cdxml_fragment_bbox(fragment: &XmlNode, bond_length: f64) -> Option<[f64; 4]>
         bounds[3] = bounds[3].max(point[1]);
     };
     for node in fragment.direct_children("n") {
-        if let Some(point) = parse_xy(node.attr("p")) {
+        if let Some(point) = node
+            .attr("id")
+            .and_then(|id| node_positions.get(id))
+            .copied()
+        {
             include(point);
         }
         for text in node.direct_children("t") {
@@ -877,6 +950,233 @@ fn cdxml_fragment_bbox(fragment: &XmlNode, bond_length: f64) -> Option<[f64; 4]>
         bounds[3] += half_padding;
     }
     Some(bounds.map(round2))
+}
+
+fn cdxml_fragment_node_positions(
+    fragment: &XmlNode,
+    bond_length: f64,
+) -> BTreeMap<String, [f64; 2]> {
+    let nodes: Vec<_> = fragment
+        .direct_children("n")
+        .filter_map(|node| node.attr("id").map(|id| (id.to_string(), node)))
+        .collect();
+    let explicit: BTreeMap<_, _> = nodes
+        .iter()
+        .filter_map(|(id, node)| parse_xy(node.attr("p")).map(|point| (id.clone(), point)))
+        .collect();
+    if !explicit.is_empty() || nodes.is_empty() {
+        return explicit;
+    }
+
+    fallback_cdxml_topology_positions(
+        &nodes.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>(),
+        &fragment
+            .direct_children("b")
+            .filter_map(|bond| Some((bond.attr("B")?.to_string(), bond.attr("E")?.to_string())))
+            .collect::<Vec<_>>(),
+        bond_length.max(1.0),
+    )
+}
+
+fn fallback_cdxml_topology_positions(
+    node_ids: &[String],
+    edges: &[(String, String)],
+    bond_length: f64,
+) -> BTreeMap<String, [f64; 2]> {
+    let node_order: BTreeMap<_, _> = node_ids
+        .iter()
+        .enumerate()
+        .map(|(index, id)| (id.as_str(), index))
+        .collect();
+    let mut adjacency: BTreeMap<&str, Vec<&str>> = node_ids
+        .iter()
+        .map(|id| (id.as_str(), Vec::new()))
+        .collect();
+    for (begin, end) in edges {
+        if adjacency.contains_key(begin.as_str()) && adjacency.contains_key(end.as_str()) {
+            adjacency
+                .get_mut(begin.as_str())
+                .unwrap()
+                .push(end.as_str());
+            adjacency
+                .get_mut(end.as_str())
+                .unwrap()
+                .push(begin.as_str());
+        }
+    }
+    for neighbors in adjacency.values_mut() {
+        neighbors.sort_by_key(|id| node_order.get(id).copied().unwrap_or(usize::MAX));
+        neighbors.dedup();
+    }
+
+    let mut components = Vec::new();
+    let mut visited = BTreeSet::new();
+    for id in node_ids {
+        if visited.contains(id.as_str()) {
+            continue;
+        }
+        let mut component = Vec::new();
+        let mut queue = VecDeque::from([id.as_str()]);
+        while let Some(current) = queue.pop_front() {
+            if !visited.insert(current) {
+                continue;
+            }
+            component.push(current);
+            if let Some(neighbors) = adjacency.get(current) {
+                queue.extend(neighbors.iter().copied());
+            }
+        }
+        component.sort_by_key(|id| node_order.get(id).copied().unwrap_or(usize::MAX));
+        components.push(component);
+    }
+
+    let mut positions = BTreeMap::new();
+    let mut component_x = 0.0;
+    for component in components {
+        let component_set: BTreeSet<_> = component.iter().copied().collect();
+        let edge_count = component
+            .iter()
+            .map(|id| {
+                adjacency
+                    .get(id)
+                    .into_iter()
+                    .flatten()
+                    .filter(|neighbor| component_set.contains(**neighbor))
+                    .count()
+            })
+            .sum::<usize>()
+            / 2;
+        let is_path = component.len() <= 2
+            || (edge_count + 1 == component.len()
+                && component.iter().all(|id| {
+                    adjacency
+                        .get(id)
+                        .is_none_or(|neighbors| neighbors.len() <= 2)
+                }));
+        let is_cycle = component.len() >= 3
+            && edge_count == component.len()
+            && component.iter().all(|id| {
+                adjacency
+                    .get(id)
+                    .is_some_and(|neighbors| neighbors.len() == 2)
+            });
+        let ordered = if is_path {
+            topology_path_order(&component, &adjacency)
+        } else if is_cycle {
+            topology_cycle_order(&component, &adjacency)
+        } else {
+            component.clone()
+        };
+
+        let local = if is_path {
+            let dx = bond_length * (std::f64::consts::PI / 6.0).cos();
+            let dy = bond_length * 0.5;
+            ordered
+                .iter()
+                .enumerate()
+                .map(|(index, id)| {
+                    (
+                        *id,
+                        [index as f64 * dx, if index % 2 == 0 { 0.0 } else { dy }],
+                    )
+                })
+                .collect::<Vec<_>>()
+        } else {
+            let count = ordered.len().max(3);
+            let radius = bond_length / (2.0 * (std::f64::consts::PI / count as f64).sin());
+            let start_angle = if count == 4 || count % 2 == 1 {
+                -std::f64::consts::FRAC_PI_2 - std::f64::consts::PI / count as f64
+            } else {
+                -std::f64::consts::FRAC_PI_2
+            };
+            ordered
+                .iter()
+                .enumerate()
+                .map(|(index, id)| {
+                    let angle = start_angle + std::f64::consts::TAU * index as f64 / count as f64;
+                    (*id, [radius * angle.cos(), radius * angle.sin()])
+                })
+                .collect::<Vec<_>>()
+        };
+        let min_x = local
+            .iter()
+            .map(|(_, point)| point[0])
+            .fold(f64::INFINITY, f64::min);
+        let max_x = local
+            .iter()
+            .map(|(_, point)| point[0])
+            .fold(f64::NEG_INFINITY, f64::max);
+        let min_y = local
+            .iter()
+            .map(|(_, point)| point[1])
+            .fold(f64::INFINITY, f64::min);
+        for (id, point) in local {
+            positions.insert(
+                id.to_string(),
+                [
+                    round2(component_x + point[0] - min_x),
+                    round2(point[1] - min_y),
+                ],
+            );
+        }
+        component_x += (max_x - min_x).max(bond_length) + bond_length;
+    }
+    positions
+}
+
+fn topology_path_order<'a>(
+    component: &[&'a str],
+    adjacency: &BTreeMap<&'a str, Vec<&'a str>>,
+) -> Vec<&'a str> {
+    let start = component
+        .iter()
+        .copied()
+        .find(|id| {
+            adjacency
+                .get(id)
+                .is_none_or(|neighbors| neighbors.len() <= 1)
+        })
+        .unwrap_or(component[0]);
+    topology_walk_order(start, component.len(), adjacency, false)
+}
+
+fn topology_cycle_order<'a>(
+    component: &[&'a str],
+    adjacency: &BTreeMap<&'a str, Vec<&'a str>>,
+) -> Vec<&'a str> {
+    topology_walk_order(component[0], component.len(), adjacency, true)
+}
+
+fn topology_walk_order<'a>(
+    start: &'a str,
+    expected: usize,
+    adjacency: &BTreeMap<&'a str, Vec<&'a str>>,
+    allow_cycle_close: bool,
+) -> Vec<&'a str> {
+    let mut ordered = Vec::with_capacity(expected);
+    let mut previous = None;
+    let mut current = start;
+    while ordered.len() < expected {
+        ordered.push(current);
+        let next = adjacency
+            .get(current)
+            .into_iter()
+            .flatten()
+            .copied()
+            .find(|neighbor| {
+                Some(*neighbor) != previous
+                    && (!ordered.contains(neighbor) || (allow_cycle_close && *neighbor == start))
+            });
+        let Some(next) = next else {
+            break;
+        };
+        if next == start {
+            break;
+        }
+        previous = Some(current);
+        current = next;
+    }
+    ordered
 }
 
 fn cdxml_node_has_cached_fragment(node: &XmlNode) -> bool {
@@ -903,6 +1203,7 @@ fn cdxml_bonded_node_ids(root: &XmlNode) -> BTreeSet<String> {
 fn normalize_fragment(
     fragment: &XmlNode,
     bbox: [f64; 4],
+    node_positions: &BTreeMap<String, [f64; 2]>,
     defaults: CdxmlDefaults,
     colors: &CdxmlColorTable,
     fonts: &BTreeMap<String, String>,
@@ -910,12 +1211,15 @@ fn normalize_fragment(
     let origin = [bbox[0], bbox[1]];
     let nodes: Vec<Node> = fragment
         .direct_children("n")
-        .filter_map(|node| normalize_node(node, origin, colors, fonts, defaults))
+        .filter_map(|node| normalize_node(node, origin, node_positions, colors, fonts, defaults))
         .collect();
     let node_ids: BTreeSet<String> = nodes.iter().map(|node| node.id.clone()).collect();
     let bonds: Vec<Bond> = fragment
         .direct_children("b")
-        .filter_map(|bond| normalize_bond(bond, &node_ids, &nodes, defaults, colors))
+        .enumerate()
+        .filter_map(|(index, bond)| {
+            normalize_bond(bond, index, &node_ids, &nodes, defaults, colors)
+        })
         .collect();
     if nodes.is_empty() {
         return None;
@@ -1223,15 +1527,38 @@ fn cdxml_fragment_component_meta(
 fn normalize_node(
     node: &XmlNode,
     origin: [f64; 2],
+    node_positions: &BTreeMap<String, [f64; 2]>,
     colors: &CdxmlColorTable,
     fonts: &BTreeMap<String, String>,
     defaults: CdxmlDefaults,
 ) -> Option<Node> {
     let id = node.attr("id")?.to_string();
-    let position = parse_xy(node.attr("p"))?;
+    let position = parse_xy(node.attr("p")).or_else(|| node_positions.get(id.as_str()).copied())?;
+    let local_position = [
+        round2(position[0] - origin[0]),
+        round2(position[1] - origin[1]),
+    ];
     let atomic_number = parse_u8(node.attr("Element")).unwrap_or(6);
     let node_type = node.attr("NodeType").unwrap_or("");
-    let label = node_label(node, origin, colors, fonts, defaults);
+    let mut label = node_label(node, origin, colors, fonts, defaults);
+    if label.is_none() && node.attr("p").is_none() && atomic_number != 6 {
+        let mut generated = crate::engine::make_periodic_element_node_label(
+            element_symbol(atomic_number),
+            local_position,
+        );
+        generated.font_size = Some(defaults.label_size);
+        generated.font_family = Some(
+            fonts
+                .get(&defaults.label_font.to_string())
+                .cloned()
+                .unwrap_or_else(|| "Arial".to_string()),
+        );
+        for run in &mut generated.runs {
+            run.font_size = Some(defaults.label_size);
+            run.font_family = generated.font_family.clone();
+        }
+        label = Some(generated);
+    }
     let is_bullet_carbon = atomic_number == 6
         && label
             .as_ref()
@@ -1246,6 +1573,9 @@ fn normalize_node(
                 "elementList": empty_as_null(node.attr("ElementList")),
                 "labelDisplay": empty_as_null(node.attr("LabelDisplay")),
                 "explicitNumHydrogens": explicit_num_hydrogens,
+                "implicitHydrogens": empty_as_null(node.attr("ImplicitHydrogens")),
+                "restrictImplicitHydrogens": parse_cdxml_bool(node.attr("ImplicitHydrogens")).unwrap_or(false),
+                "generatedPosition": node.attr("p").is_none(),
             }
         }
     });
@@ -1256,10 +1586,7 @@ fn normalize_node(
         id,
         element: element_symbol(atomic_number).to_string(),
         atomic_number,
-        position: [
-            round2(position[0] - origin[0]),
-            round2(position[1] - origin[1]),
-        ],
+        position: local_position,
         charge: parse_i32(node.attr("Charge")).unwrap_or(0),
         num_hydrogens: explicit_num_hydrogens.unwrap_or(0),
         is_external_connection_point: node_type == "ExternalConnectionPoint",
@@ -1424,6 +1751,7 @@ fn node_label(
                     "labelLineHeight": empty_as_null(text_el.attr("LabelLineHeight")),
                     "wordWrapWidth": empty_as_null(text_el.attr("WordWrapWidth")),
                     "lineStarts": empty_as_null(text_el.attr("LineStarts")),
+                    "resolvedLineHeight": resolved_cdxml_label_line_height(text_el, defaults, parent_size),
                     "interpretChemically": interpret_chemically,
                     "interpretChemicallyExplicit": explicit_interpret_chemically.is_some(),
                     "marginWidth": defaults.margin_width,
@@ -1473,6 +1801,7 @@ fn infer_cdxml_label_align(
 
 fn normalize_bond(
     bond: &XmlNode,
+    index: usize,
     node_ids: &BTreeSet<String>,
     nodes: &[Node],
     defaults: CdxmlDefaults,
@@ -1484,6 +1813,12 @@ fn normalize_bond(
         return None;
     }
     let display = bond.attr("Display").unwrap_or("");
+    let display2 = bond.attr("Display2").unwrap_or("");
+    let source_order = bond.attr("Order").unwrap_or("");
+    let is_aromatic_dash = parse_f64(Some(source_order))
+        .is_some_and(|order| (order - 1.5).abs() <= EPSILON)
+        && display == "Dash"
+        && display2.is_empty();
     let stroke_width = parse_f64(bond.attr("LineWidth")).unwrap_or(defaults.line_width);
     let bold_width = parse_f64(bond.attr("BoldWidth")).unwrap_or(defaults.bold_width);
     let hash_spacing = parse_f64(bond.attr("HashSpacing")).unwrap_or(defaults.hash_spacing);
@@ -1515,9 +1850,16 @@ fn normalize_bond(
         }),
         _ => None,
     };
-    let order = cdxml_bond_order(bond.attr("Order"));
-    let display2 = bond.attr("Display2").unwrap_or("");
-    let mut line_styles = cdxml_bond_line_styles(order, display, display2);
+    let order = if is_aromatic_dash {
+        1
+    } else {
+        cdxml_bond_order(bond.attr("Order"))
+    };
+    let mut line_styles = if is_aromatic_dash {
+        BondLineStyles::default()
+    } else {
+        cdxml_bond_line_styles(order, display, display2)
+    };
     let mut line_weights = cdxml_bond_line_weights(order, display, display2);
     let placement = match bond
         .attr("DoublePosition")
@@ -1544,7 +1886,31 @@ fn normalize_bond(
     }
     let begin_attach = parse_u32(bond.attr("BeginAttach"));
     let end_attach = parse_u32(bond.attr("EndAttach"));
-    let mut meta = json!({"import": {"cdxml": {"z": parse_i32(bond.attr("Z")), "display": empty_as_null(bond.attr("Display")), "display2": empty_as_null(bond.attr("Display2")), "doublePosition": empty_as_null(bond.attr("DoublePosition"))}}});
+    let source_id = bond.attr("id").filter(|id| !id.trim().is_empty());
+    let id = source_id
+        .map(str::to_string)
+        .unwrap_or_else(|| format!("cdxml_bond_{:03}", index + 1));
+    let mut meta = json!({"import": {"cdxml": {
+        "z": parse_i32(bond.attr("Z")),
+        "display": empty_as_null(bond.attr("Display")),
+        "display2": empty_as_null(bond.attr("Display2")),
+        "doublePosition": empty_as_null(bond.attr("DoublePosition")),
+        "order": empty_as_null(bond.attr("Order")),
+        "sourceId": source_id,
+        "generatedId": source_id.is_none(),
+        "aromatic": is_aromatic_dash,
+    }}});
+    if let Some(value) = bond.attr("CrossingBonds") {
+        let crossing_bonds: Vec<_> = value
+            .split_whitespace()
+            .filter(|id| !id.is_empty())
+            .map(str::to_string)
+            .collect();
+        meta.pointer_mut("/import/cdxml")
+            .and_then(Value::as_object_mut)
+            .expect("bond CDXML metadata must be an object")
+            .insert("crossingBonds".to_string(), json!(crossing_bonds));
+    }
     if begin_attach.is_some() || end_attach.is_some() {
         let mut attachments = serde_json::Map::new();
         if let Some(value) = begin_attach {
@@ -1567,7 +1933,7 @@ fn normalize_bond(
             );
     }
     Some(Bond {
-        id: bond.attr("id").unwrap_or("").to_string(),
+        id,
         begin,
         end,
         order,

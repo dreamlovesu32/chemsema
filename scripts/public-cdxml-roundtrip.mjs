@@ -217,6 +217,21 @@ function moleculeSignatures(document, objects) {
   return signatures.map((signature) => JSON.stringify(canonicalize(signature))).sort();
 }
 
+function translatedPoint(point, translate) {
+  if (!Array.isArray(point) || point.length < 2) return null;
+  return roundGeometry([point[0] + (translate?.[0] || 0), point[1] + (translate?.[1] || 0)]);
+}
+
+function translatedBox(box, translate) {
+  if (!Array.isArray(box) || box.length < 4) return null;
+  return roundGeometry([
+    box[0] + (translate?.[0] || 0),
+    box[1] + (translate?.[1] || 0),
+    box[2] + (translate?.[0] || 0),
+    box[3] + (translate?.[1] || 0),
+  ]);
+}
+
 function labelSignature(label) {
   const imported = label?.meta?.import?.cdxml || {};
   return {
@@ -233,17 +248,11 @@ function labelSignature(label) {
     align: label?.align ?? null,
     anchor: label?.anchor ?? null,
     layout: label?.layout ?? null,
-    position: roundGeometry(label?.position ?? null),
-    box: roundGeometry(label?.boxField ?? label?.boxValue ?? null),
     cdxml: {
       labelDisplay: imported.labelDisplay ?? null,
-      labelAlignment: imported.labelAlignment ?? null,
-      labelJustification: imported.labelJustification ?? null,
-      justification: imported.justification ?? null,
       lineHeight: imported.lineHeight ?? null,
       labelLineHeight: imported.labelLineHeight ?? null,
       wordWrapWidth: imported.wordWrapWidth ?? null,
-      lineStarts: imported.lineStarts ?? null,
     },
   };
 }
@@ -251,14 +260,12 @@ function labelSignature(label) {
 function moleculeLabelSignatures(document, objects) {
   return objects
     .filter((object) => object.type === "molecule")
-    .flatMap((object, moleculeIndex) => {
+    .flatMap((object) => {
       const fragment = fragmentForObject(document, object);
       return (fragment?.nodes || [])
-        .map((node, nodeIndex) =>
+        .map((node) =>
           node.label
             ? {
-                moleculeIndex,
-                nodeIndex,
                 atomicNumber: node.atomicNumber ?? null,
                 label: labelSignature(node.label),
               }
@@ -268,6 +275,32 @@ function moleculeLabelSignatures(document, objects) {
     })
     .map((signature) => JSON.stringify(canonicalize(signature)))
     .sort();
+}
+
+function moleculeLabelGeometry(document, objects) {
+  return objects
+    .filter((object) => object.type === "molecule")
+    .flatMap((object) => {
+      const fragment = fragmentForObject(document, object);
+      return (fragment?.nodes || [])
+        .filter((node) => node.label)
+        .map((node) => ({
+          key: JSON.stringify([
+            node.atomicNumber ?? null,
+            node.label.sourceText ?? null,
+            node.label.text ?? null,
+          ]),
+          position: translatedPoint(node.label.position, object.transform?.translate),
+          box: translatedBox(
+            node.label.boxField ?? node.label.boxValue,
+            object.transform?.translate,
+          ),
+        }));
+    })
+    .sort((left, right) =>
+      left.key.localeCompare(right.key) ||
+      JSON.stringify(left.position).localeCompare(JSON.stringify(right.position)),
+    );
 }
 
 function textSignatures(objects) {
@@ -280,14 +313,43 @@ function textSignatures(objects) {
         script: run.script ?? null,
       })),
       align: payloadValue(object, "align") ?? null,
-      lineHeight: roundNumber(payloadValue(object, "lineHeight") ?? null),
       preserveLines: payloadValue(object, "preserveLines") ?? null,
-      box: roundGeometry(payloadValue(object, "box") ?? null),
-      translate: roundGeometry(object.transform?.translate ?? null),
-      cdxml: object.meta?.import?.cdxml ?? null,
+      cdxml: {
+        wordWrapWidth: object.meta?.import?.cdxml?.wordWrapWidth ?? null,
+      },
     }))
     .map((signature) => JSON.stringify(canonicalize(signature)))
     .sort();
+}
+
+function textGeometry(objects) {
+  return objects
+    .filter((object) => object.type === "text")
+    .map((object) => {
+      const translate = object.transform?.translate ?? [0, 0];
+      const box = payloadValue(object, "box");
+      return {
+        key: JSON.stringify([
+          payloadValue(object, "text") ?? "",
+          payloadValue(object, "align") ?? null,
+        ]),
+        position: roundGeometry(translate),
+        box:
+          Array.isArray(box) && box.length >= 4
+            ? roundGeometry([
+                translate[0] + box[0],
+                translate[1] + box[1],
+                translate[0] + box[0] + box[2],
+                translate[1] + box[1] + box[3],
+              ])
+            : null,
+        lineHeight: [roundNumber(payloadValue(object, "lineHeight") ?? 0)],
+      };
+    })
+    .sort((left, right) =>
+      left.key.localeCompare(right.key) ||
+      JSON.stringify(left.position).localeCompare(JSON.stringify(right.position)),
+    );
 }
 
 function arrowSignatures(objects) {
@@ -352,7 +414,15 @@ function semanticSnapshot(document) {
     arrows: digest(arrows),
     brackets: digest(brackets),
   };
-  return { hash: digest({ components, metrics }), components, metrics };
+  return {
+    hash: digest({ components, metrics }),
+    components,
+    metrics,
+    geometry: {
+      labels: moleculeLabelGeometry(document, objects),
+      texts: textGeometry(objects),
+    },
+  };
 }
 
 function readGeneration(path) {
@@ -383,7 +453,28 @@ function compareSemantic(before, after) {
   const changed = Object.keys(before.components).filter(
     (component) => before.components[component] !== after.components[component],
   );
-  return { exact: before.hash === after.hash, changed };
+  for (const component of ["labels", "texts"]) {
+    if (!compareVisualGeometry(before.geometry?.[component], after.geometry?.[component])) {
+      if (!changed.includes(component)) changed.push(component);
+    }
+  }
+  return { exact: before.hash === after.hash && changed.length === 0, changed };
+}
+
+function compareVisualGeometry(before = [], after = [], tolerance = 0.5) {
+  if (before.length !== after.length) return false;
+  const close = (left, right) => {
+    if (left == null || right == null) return left === right;
+    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return false;
+    return left.every((value, index) => Math.abs(value - right[index]) <= tolerance);
+  };
+  return before.every(
+    (item, index) =>
+      item.key === after[index]?.key &&
+      close(item.position, after[index].position) &&
+      close(item.box, after[index].box) &&
+      close(item.lineHeight, after[index].lineHeight),
+  );
 }
 
 function failureMessage(result) {
@@ -449,6 +540,14 @@ for (const source of manifest.sources) {
     }
 
     record.generations = [readGeneration(modelPaths[0])];
+    const sourceDeclaresBonds = format === "cdxml"
+      && /<b\b/i.test(readFileSync(inputPath, "utf8"));
+    if (sourceDeclaresBonds && record.generations[0].counts.bonds === 0) {
+      record.status = "topology-lost";
+      record.error = "Source CDXML declares bonds but the imported document contains none.";
+      cases.push(record);
+      continue;
+    }
     let previousPath = inputPath;
     for (let generation = 1; generation <= generations; generation += 1) {
       const exportRun = runCli(["convert", previousPath, roundTripPaths[generation - 1]]);
@@ -479,6 +578,7 @@ for (const source of manifest.sources) {
       counts: compareCounts(record.generations[index].counts, generation.counts),
       semantic: compareSemantic(record.generations[index].semantic, generation.semantic),
     }));
+    for (const generation of record.generations) delete generation.semantic.geometry;
     const initial = record.comparisons[0];
     const later = record.comparisons.slice(1);
     const laterStable = later.every((comparison) => comparison.counts.exact && comparison.semantic.exact);
@@ -517,6 +617,7 @@ const unexpectedStatuses = new Set([
   "import-failed",
   "export-failed",
   "reimport-failed",
+  "topology-lost",
   "semantic-drift",
   "non-idempotent",
 ]);

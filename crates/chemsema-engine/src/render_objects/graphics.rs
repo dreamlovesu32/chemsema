@@ -1035,7 +1035,9 @@ struct ChargeSymbolLayout {
 fn charge_symbol_layout(style: crate::CdxmlSymbolStyle) -> ChargeSymbolLayout {
     match style {
         crate::CdxmlSymbolStyle::Default => ChargeSymbolLayout {
-            circle_sign_size: 4.3335,
+            // ChemDraw's default circled charge uses a 5 4/9 pt internal
+            // sign at editing scale 1 (108.88 units in its 20x SVG export).
+            circle_sign_size: 5.444,
             circle_sign_offset: -0.01675,
             radical_sign_size: 4.3335,
             sign_thickness: 0.8,
@@ -2596,4 +2598,16 @@ fn shape_shadow_fill(stroke: Option<&str>, fill: Option<&str>) -> String {
         return color.to_string();
     };
     format!("rgba({r},{g},{b},0.247059)")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_circled_charge_sign_matches_chemdraw_width() {
+        let layout = charge_symbol_layout(crate::CdxmlSymbolStyle::Default);
+        assert!((layout.circle_sign_size - 5.444).abs() < 1.0e-9);
+        assert!((layout.sign_thickness - 0.8).abs() < 1.0e-9);
+    }
 }

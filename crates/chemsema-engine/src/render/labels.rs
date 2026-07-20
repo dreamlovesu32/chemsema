@@ -705,7 +705,14 @@ pub(super) fn render_fragment_line_with_profiles(
         let segment_polygons = if line_weight == BondLineWeight::Bold && is_hash_bond(bond) {
             hash_bond_segment_polygons(clipped_start, clipped_end, visual_width, stroke_width)
         } else {
-            dashed_bond_segment_polygons(clipped_start, clipped_end, visual_width, &dash_array)
+            dashed_bond_segment_polygons_with_profiles(
+                clipped_start,
+                clipped_end,
+                visual_width,
+                &dash_array,
+                start_endpoint_profile.as_deref(),
+                end_endpoint_profile.as_deref(),
+            )
         };
         if !segment_polygons.is_empty() {
             for points in segment_polygons {

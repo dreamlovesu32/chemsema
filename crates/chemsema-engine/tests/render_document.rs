@@ -381,10 +381,10 @@ fn render_document_adds_margin_knockout_for_later_crossing_bond() {
         unreachable!("knockout is a polygon");
     };
     let bounds = primitive_polygon_bounds(points);
-    assert!((bounds[0] - 59.5).abs() < 0.001, "{bounds:?}");
-    assert!((bounds[1] - 20.0).abs() < 0.001, "{bounds:?}");
-    assert!((bounds[2] - 60.5).abs() < 0.001, "{bounds:?}");
-    assert!((bounds[3] - 100.0).abs() < 0.001, "{bounds:?}");
+    assert!((bounds[0] - 57.5).abs() < 0.001, "{bounds:?}");
+    assert!((bounds[1] - 59.45).abs() < 0.001, "{bounds:?}");
+    assert!((bounds[2] - 62.5).abs() < 0.001, "{bounds:?}");
+    assert!((bounds[3] - 60.55).abs() < 0.001, "{bounds:?}");
 }
 
 #[test]
@@ -489,18 +489,14 @@ fn render_document_adds_wavy_margin_knockout_across_molecule_objects() {
         .position(|primitive| {
             matches!(
                 primitive,
-                RenderPrimitive::Path {
+                RenderPrimitive::Polygon {
                     role: RenderRole::DocumentKnockout,
                     bond_id,
-                    stroke,
-                    stroke_width,
                     ..
                 } if bond_id.as_deref() == Some("b_wavy")
-                    && stroke == "#ffffff"
-                    && (*stroke_width - 4.85).abs() < 0.001
             )
         })
-        .expect("wavy over-bond should insert its own margin silhouette");
+        .expect("wavy over-bond should insert a local crossing knockout");
     let wavy_index = primitives
         .iter()
         .position(|primitive| {
@@ -516,6 +512,455 @@ fn render_document_adds_wavy_margin_knockout_across_molecule_objects() {
         .expect("wavy bond should render");
 
     assert!(under_index < knockout_index && knockout_index < wavy_index);
+    let RenderPrimitive::Polygon { points, .. } = &primitives[knockout_index] else {
+        unreachable!("local wavy crossing knockout is a polygon");
+    };
+    let bounds = primitive_polygon_bounds(points);
+    assert!(bounds[2] - bounds[0] < 12.0, "{bounds:?}");
+    assert!(bounds[3] - bounds[1] < 2.0, "{bounds:?}");
+}
+
+#[test]
+fn cdxml_crossing_knockouts_match_chemdraw_style_envelopes() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<CDXML BoundingBox="0 0 320 110" LineWidth="0.60" BoldWidth="2.0"
+ BondLength="35" BondSpacing="18" MarginWidth="1.60">
+ <page id="1" BoundingBox="0 0 320 110">
+  <fragment id="11"><n id="100" p="10 65"/><n id="101" p="70 65"/><n id="102" p="40 35"/><n id="103" p="40 95"/>
+   <b id="110" Z="1" B="100" E="101" CrossingBonds="111"/><b id="111" Z="2" B="102" E="103" Order="2" DoublePosition="Center" CrossingBonds="110"/></fragment>
+  <fragment id="21"><n id="120" p="90 65"/><n id="121" p="150 65"/><n id="122" p="120 35"/><n id="123" p="120 95"/>
+   <b id="130" Z="1" B="120" E="121" CrossingBonds="131"/><b id="131" Z="2" B="122" E="123" Order="2" DoublePosition="Left" CrossingBonds="130"/></fragment>
+  <fragment id="31"><n id="140" p="170 65"/><n id="141" p="230 65"/><n id="142" p="200 35"/><n id="143" p="200 95"/>
+   <b id="150" Z="1" B="140" E="141" CrossingBonds="151"/><b id="151" Z="2" B="142" E="143" Display="WedgeBegin" CrossingBonds="150"/></fragment>
+  <fragment id="41"><n id="160" p="250 65"/><n id="161" p="310 65"/><n id="162" p="280 35"/><n id="163" p="280 95"/>
+   <b id="170" Z="1" B="160" E="161" CrossingBonds="171"/><b id="171" Z="2" B="162" E="163" Display="Wavy" CrossingBonds="170"/></fragment>
+ </page>
+</CDXML>"#;
+    let document = parse_cdxml_document(cdxml, Some("crossing style envelope"))
+        .expect("crossing style matrix should parse");
+    let mut bounds = render_document(&document)
+        .into_iter()
+        .filter_map(|primitive| match primitive {
+            RenderPrimitive::Polygon {
+                role: RenderRole::DocumentKnockout,
+                points,
+                ..
+            } => Some(primitive_polygon_bounds(&points)),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    bounds.sort_by(|left, right| left[0].total_cmp(&right[0]));
+
+    assert_eq!(bounds.len(), 4, "expected one local patch per crossing");
+    let expected_x = [(33.0, 47.0), (107.6, 121.6), (197.5, 202.5), (277.4, 282.6)];
+    for (bounds, (expected_min, expected_max)) in bounds.iter().zip(expected_x) {
+        assert!((bounds[0] - expected_min).abs() < 0.001, "{bounds:?}");
+        assert!((bounds[2] - expected_max).abs() < 0.001, "{bounds:?}");
+        assert!((bounds[1] - 64.65).abs() < 0.001, "{bounds:?}");
+        assert!((bounds[3] - 65.35).abs() < 0.001, "{bounds:?}");
+    }
+}
+
+#[test]
+fn cdxml_near_endpoint_crossings_use_finite_margin_caps() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<CDXML BoundingBox="0 0 260 110" LineWidth="0.60" BoldWidth="2.0"
+ BondLength="14.40" BondSpacing="18" MarginWidth="1.60">
+ <page id="1" BoundingBox="0 0 260 110">
+  <!-- Infinite lines meet 1.17 pt beyond the lower bond's end. -->
+  <fragment id="11">
+   <n id="100" p="43.15 43.94"/><n id="101" p="20.33 50.27"/>
+   <n id="102" p="10.74 43.32"/><n id="103" p="30.30 60.10"/>
+   <b id="110" Z="1" B="100" E="101"/><b id="111" Z="2" B="102" E="103"/>
+  </fragment>
+  <!-- Infinite lines meet 2.40 pt before the upper bond's begin cap. -->
+  <fragment id="21">
+   <n id="120" p="90.04 41.50"/><n id="121" p="93.21 72.94"/>
+   <n id="122" p="94.35 63.04"/><n id="123" p="113.55 47.01"/>
+   <b id="130" Z="1" B="120" E="121"/><b id="131" Z="2" B="122" E="123"/>
+  </fragment>
+  <!-- Same topology, but farther than the finite upper margin cap. -->
+  <fragment id="31">
+   <n id="140" p="170 25"/><n id="141" p="170 85"/>
+   <n id="142" p="174 60"/><n id="143" p="200 30"/>
+   <b id="150" Z="1" B="140" E="141"/><b id="151" Z="2" B="142" E="143"/>
+  </fragment>
+ </page>
+</CDXML>"#;
+    let document = parse_cdxml_document(cdxml, Some("near endpoint crossing caps"))
+        .expect("near-endpoint crossing matrix should parse");
+    let knockouts = render_document(&document)
+        .into_iter()
+        .filter_map(|primitive| match primitive {
+            RenderPrimitive::Polygon {
+                role: RenderRole::DocumentKnockout,
+                bond_id,
+                points,
+                ..
+            } => Some((bond_id, points)),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(knockouts.len(), 2, "{knockouts:?}");
+    assert_eq!(knockouts[0].0.as_deref(), Some("111"));
+    assert_eq!(knockouts[1].0.as_deref(), Some("131"));
+    for (points, expected) in [
+        (
+            &knockouts[0].1,
+            [20.236447, 49.695888, 21.730173, 50.607265],
+        ),
+        (
+            &knockouts[1].1,
+            [91.904096, 62.132698, 92.604508, 63.445850],
+        ),
+    ] {
+        let bounds = primitive_polygon_bounds(points);
+        for (actual, expected) in bounds.into_iter().zip(expected) {
+            assert!((actual - expected).abs() < 1.0e-5, "{bounds:?}");
+        }
+    }
+    assert!(
+        knockouts
+            .iter()
+            .all(|(_, points)| polygon_area(points).abs() > 1.0e-4),
+        "near-endpoint contacts must produce real finite overlap polygons: {knockouts:?}"
+    );
+
+    let mut engine = Engine::new();
+    engine
+        .load_document_json(&serde_json::to_string(&document).unwrap())
+        .expect("document should load for target rendering");
+    let target_primitives = engine.render_targets(
+        &BTreeSet::new(),
+        &BTreeSet::from(["110".to_string()]),
+        &BTreeSet::new(),
+    );
+    assert!(
+        target_primitives.iter().any(|primitive| matches!(
+            primitive,
+            RenderPrimitive::Polygon {
+                role: RenderRole::DocumentBond,
+                bond_id,
+                ..
+            } if bond_id.as_deref() == Some("111")
+        )),
+        "near-endpoint upper bond must be an incremental-render dependency: {target_primitives:?}"
+    );
+    assert!(
+        target_primitives.iter().any(|primitive| matches!(
+            primitive,
+            RenderPrimitive::Polygon {
+                role: RenderRole::DocumentKnockout,
+                bond_id,
+                ..
+            } if bond_id.as_deref() == Some("111")
+        )),
+        "incremental rendering must retain the near-endpoint knockout: {target_primitives:?}"
+    );
+}
+
+#[test]
+fn explicit_crossing_bonds_are_authoritative_over_geometric_fallback() {
+    let document = fragment_document_preserving_disconnected_components(
+        json!([
+            { "id": "n1", "element": "C", "atomicNumber": 6, "position": [20.0, 60.0], "charge": 0, "numHydrogens": 0 },
+            { "id": "n2", "element": "C", "atomicNumber": 6, "position": [100.0, 60.0], "charge": 0, "numHydrogens": 0 },
+            { "id": "n3", "element": "C", "atomicNumber": 6, "position": [60.0, 20.0], "charge": 0, "numHydrogens": 0 },
+            { "id": "n4", "element": "C", "atomicNumber": 6, "position": [60.0, 100.0], "charge": 0, "numHydrogens": 0 }
+        ]),
+        json!([
+            {
+                "id": "b_under", "begin": "n1", "end": "n2", "order": 1,
+                "strokeWidth": 1.0, "marginWidth": 2.0,
+                "meta": { "import": { "cdxml": { "crossingBonds": [] } } }
+            },
+            { "id": "b_over", "begin": "n3", "end": "n4", "order": 1, "strokeWidth": 1.0, "marginWidth": 2.0 }
+        ]),
+    );
+
+    assert!(
+        !render_document(&document).iter().any(|primitive| matches!(
+            primitive,
+            RenderPrimitive::Polygon {
+                role: RenderRole::DocumentKnockout,
+                ..
+            }
+        )),
+        "an explicit empty crossing list must suppress geometric inference"
+    );
+}
+
+#[test]
+fn explicit_crossing_bond_ids_are_global_across_fragments() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<CDXML BoundingBox="0 0 120 120" LineWidth="1" MarginWidth="2">
+  <page id="1" BoundingBox="0 0 120 120">
+    <fragment id="2">
+      <n id="10" p="20 60"/><n id="11" p="100 60"/>
+      <b id="20" Z="1" B="10" E="11" CrossingBonds="31"/>
+    </fragment>
+    <fragment id="3">
+      <n id="30" p="60 20"/><n id="32" p="60 100"/>
+      <b id="31" Z="2" B="30" E="32" CrossingBonds="20"/>
+    </fragment>
+  </page>
+</CDXML>"#;
+    let document = parse_cdxml_document(cdxml, Some("cross-fragment crossings"))
+        .expect("cross-fragment CDXML should parse");
+    let primitives = render_document(&document);
+    assert!(
+        primitives.iter().any(|primitive| matches!(
+            primitive,
+            RenderPrimitive::Polygon {
+                role: RenderRole::DocumentKnockout,
+                bond_id,
+                ..
+            } if bond_id.as_deref() == Some("31")
+        )),
+        "explicit crossing IDs must resolve in document scope: {primitives:?}"
+    );
+}
+
+#[test]
+fn cdxml_crossing_bonds_round_trip_with_remapped_object_ids() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<CDXML BoundingBox="0 0 120 120" LineWidth="0.6" MarginWidth="1.6">
+  <page id="1" BoundingBox="0 0 120 120">
+    <fragment id="2">
+      <n id="10" p="20 60"/><n id="11" p="100 60"/>
+      <n id="12" p="60 20"/><n id="13" p="60 100"/>
+      <b id="20" Z="7" B="10" E="11" CrossingBonds="21"/>
+      <b id="21" Z="8" B="12" E="13" CrossingBonds="20"/>
+    </fragment>
+  </page>
+</CDXML>"#;
+    let document = parse_cdxml_document(cdxml, Some("crossings")).expect("CDXML should parse");
+    let exported = document_to_cdxml(&document);
+    assert!(exported.contains("CrossingBonds=\""), "{exported}");
+    assert!(exported.contains("Z=\"7\""), "{exported}");
+    assert!(exported.contains("Z=\"8\""), "{exported}");
+
+    let reopened = parse_cdxml_document(&exported, Some("crossings reopened"))
+        .expect("exported CDXML should parse");
+    let bonds: Vec<_> = reopened
+        .resources
+        .values()
+        .filter_map(|resource| resource.data.as_fragment())
+        .flat_map(|fragment| fragment.bonds.iter())
+        .collect();
+    assert_eq!(bonds.len(), 2);
+    for (index, bond) in bonds.iter().enumerate() {
+        let other = bonds[1 - index];
+        let crossings = bond
+            .meta
+            .pointer("/import/cdxml/crossingBonds")
+            .and_then(serde_json::Value::as_array)
+            .expect("crossing list should survive");
+        assert_eq!(crossings, &vec![json!(other.id)]);
+    }
+}
+
+#[test]
+fn coordinate_free_cdxml_chain_gets_deterministic_topology_layout() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<CDXML CreationProgram="CDXMLWriter"><page id="10"><fragment id="11">
+  <n id="1" Element="6"/><n id="2" Element="6"/><n id="3" Element="6"/><n id="4" Element="6"/>
+  <b B="1" E="2" id="5"/><b B="2" E="3" id="6"/><b B="3" E="4" id="7"/>
+</fragment></page></CDXML>"#;
+    let document = parse_cdxml_document(cdxml, Some("coordinate-free chain"))
+        .expect("topology-only CDXML should import");
+    let fragment = document
+        .resources
+        .values()
+        .find_map(|resource| resource.data.as_fragment())
+        .expect("coordinate-free fragment should survive");
+
+    assert_eq!(fragment.nodes.len(), 4);
+    assert_eq!(fragment.bonds.len(), 3);
+    assert_eq!(fragment.nodes[0].position, [0.0, 0.0]);
+    assert_eq!(fragment.nodes[1].position, [25.98, 15.0]);
+    assert_eq!(fragment.nodes[2].position, [51.96, 0.0]);
+    assert_eq!(fragment.nodes[3].position, [77.94, 15.0]);
+    assert_eq!(
+        render_document(&document)
+            .iter()
+            .filter(|primitive| render_primitive_bond_id(primitive).is_some())
+            .count(),
+        3
+    );
+}
+
+#[test]
+fn coordinate_free_cdxml_aromatic_ring_and_missing_bond_ids_remain_visible() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<CDXML CreationProgram="CDXMLWriter"><page><fragment>
+  <n id="1"/><n id="2"/><n id="3"/><n id="4"/><n id="5"/><n id="6"/>
+  <b B="1" E="2" Order="1.5" Display="Dash"/><b B="2" E="3" Order="1.5" Display="Dash"/>
+  <b B="3" E="4" Order="1.5" Display="Dash"/><b B="4" E="5" Order="1.5" Display="Dash"/>
+  <b B="5" E="6" Order="1.5" Display="Dash"/><b B="6" E="1" Order="1.5" Display="Dash"/>
+</fragment></page></CDXML>"#;
+    let document = parse_cdxml_document(cdxml, Some("coordinate-free aromatic ring"))
+        .expect("topology-only aromatic ring should import");
+    let fragment = document
+        .resources
+        .values()
+        .find_map(|resource| resource.data.as_fragment())
+        .expect("coordinate-free ring should survive");
+    let ids = fragment
+        .bonds
+        .iter()
+        .map(|bond| bond.id.as_str())
+        .collect::<BTreeSet<_>>();
+
+    assert_eq!(fragment.nodes.len(), 6);
+    assert_eq!(fragment.bonds.len(), 6);
+    assert_eq!(ids.len(), 6);
+    assert!(ids.iter().all(|id| id.starts_with("cdxml_bond_")));
+    assert!(fragment.bonds.iter().all(|bond| {
+        bond.order == 1
+            && bond.line_styles.main == chemsema_engine::BondLinePattern::Solid
+            && bond
+                .meta
+                .pointer("/import/cdxml/aromatic")
+                .and_then(serde_json::Value::as_bool)
+                == Some(true)
+    }));
+    assert_eq!(
+        render_document(&document)
+            .iter()
+            .filter(|primitive| render_primitive_bond_id(primitive).is_some())
+            .count(),
+        6
+    );
+
+    let exported = document_to_cdxml(&document);
+    assert_eq!(exported.matches("Order=\"1.5\"").count(), 6, "{exported}");
+    assert_eq!(
+        exported.matches("Display=\"Dash\"").count(),
+        6,
+        "{exported}"
+    );
+}
+
+#[test]
+fn coordinate_free_cdxml_dative_chain_keeps_donor_hydrogen_and_arrowhead() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<CDXML CreationProgram="CDXMLWriter"><page><fragment>
+  <n id="1" Element="6"/><n id="2" Element="8"/><n id="3" Element="6"/><n id="4" Element="6"/>
+  <b id="5" B="1" E="2"/><b id="6" B="2" E="3" Order="dative"/><b id="7" B="3" E="4"/>
+</fragment></page></CDXML>"#;
+    let document = parse_cdxml_document(cdxml, Some("coordinate-free dative chain"))
+        .expect("topology-only dative chain should import");
+    let fragment = document
+        .resources
+        .values()
+        .find_map(|resource| resource.data.as_fragment())
+        .expect("coordinate-free dative chain should survive");
+    let oxygen = fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == "2")
+        .expect("oxygen donor should survive");
+
+    assert_eq!(oxygen.num_hydrogens, 1);
+    assert!(oxygen
+        .label
+        .as_ref()
+        .is_some_and(|label| label.text.contains('H')));
+    assert_eq!(
+        render_document(&document)
+            .iter()
+            .filter(|primitive| render_primitive_bond_id(primitive) == Some("6"))
+            .count(),
+        2,
+        "dative bond should render a shaft and one solid arrowhead"
+    );
+    assert!(document_to_cdxml(&document).contains("Order=\"dative\""));
+}
+
+#[test]
+fn cdxml_restrict_implicit_hydrogens_renders_an_independent_atom_query_marker() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML CreationProgram="ChemDraw 6.0.1" LabelFont="3" LabelSize="10" LabelFace="96"
+       BondLength="30" LineWidth="1" BoldWidth="4" MarginWidth="2">
+  <fonttable><font id="3" charset="iso-8859-1" name="Arial"/></fonttable>
+  <page><fragment>
+    <n id="22" p="131.35 270"/><n id="23" p="131.35 300"/>
+    <n id="24" p="159.89 309.27"/><n id="25" p="177.52 285"/>
+    <n id="26" p="159.89 260.73" NumHydrogens="1" Charge="-1"
+       ImplicitHydrogens="yes">
+      <t id="33" p="157.07 254.19" BoundingBox="158 247 163 265"
+         LabelAlignment="Above" LineStarts="2 3">
+        <s font="3" size="10" face="96">CH</s>
+      </t>
+    </n>
+    <b id="27" B="22" E="23" Order="2"/><b id="28" B="23" E="24"/>
+    <b id="29" B="24" E="25" Order="2"/><b id="30" B="25" E="26"/>
+    <b id="31" B="26" E="22"/>
+  </fragment></page>
+</CDXML>"#;
+    let document = parse_cdxml_document(cdxml, Some("legacy restricted hydrogen"))
+        .expect("legacy CDXML should import");
+    let carbon = document
+        .resources
+        .values()
+        .find_map(|resource| resource.data.as_fragment())
+        .and_then(|fragment| fragment.nodes.iter().find(|node| node.id == "26"))
+        .expect("labeled carbon should survive");
+    let label = carbon.label.as_ref().expect("carbon label should survive");
+
+    assert_eq!(carbon.num_hydrogens, 1);
+    assert_eq!(label.source_text.as_deref(), Some("CH"));
+    assert_eq!(label.lines, vec!["H", "C"]);
+    assert_eq!(label.text.matches('H').count(), 1);
+
+    let node_h_positions = |document: &ChemSemaDocument| {
+        render_document(document)
+            .iter()
+            .filter_map(|primitive| match primitive {
+                RenderPrimitive::Text {
+                    node_id: Some(node_id),
+                    x,
+                    runs,
+                    ..
+                } if node_id == "26" && runs.iter().any(|run| run.text.trim() == "H") => Some(*x),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    let h_positions = node_h_positions(&document);
+    assert_eq!(h_positions.len(), 2);
+    assert!(
+        h_positions.iter().any(|x| *x > 159.89),
+        "the query H should sit independently to the upper right of the atom label: {h_positions:?}"
+    );
+
+    let without_num_hydrogens = parse_cdxml_document(
+        &cdxml.replace(" NumHydrogens=\"1\"", ""),
+        Some("query marker without NumHydrogens"),
+    )
+    .expect("query marker should not depend on NumHydrogens");
+    assert_eq!(node_h_positions(&without_num_hydrogens).len(), 2);
+
+    let hidden_query_marker = parse_cdxml_document(
+        &cdxml.replace(
+            "<CDXML CreationProgram=",
+            "<CDXML ShowAtomQuery=\"no\" CreationProgram=",
+        ),
+        Some("hidden atom query marker"),
+    )
+    .expect("ShowAtomQuery=no should import");
+    assert_eq!(
+        node_h_positions(&hidden_query_marker).len(),
+        1,
+        "only the H authored inside CH should remain"
+    );
+
+    let exported = document_to_cdxml(&document);
+    assert!(exported.contains("NumHydrogens=\"1\""), "{exported}");
+    assert!(exported.contains("ImplicitHydrogens=\"yes\""), "{exported}");
+    assert!(exported.contains(">CH</s>"), "{exported}");
 }
 
 #[test]
@@ -4571,7 +5016,7 @@ H</s><s font="3" size="10" face="33" color="0">2</s><s font="3" size="10" face="
         .collect();
     line_heights.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
-    assert_eq!(line_heights, vec![11.5, 11.75, 13.45]);
+    assert_eq!(line_heights, vec![11.5, 13.45, 13.45]);
 }
 
 #[test]
@@ -10970,8 +11415,10 @@ fn render_document_emits_main_contact_patches_for_connected_bold_and_dashed_sing
     let primitives = render_document(&document);
     let polygons = centered_bond_polygons(&primitives, chemsema_engine::Point::new(56.0, 40.0));
     assert_eq!(polygons.len(), 2);
-    assert!(polygons.iter().any(|points| points.len() == 5));
-    assert!(polygons.iter().any(|points| points.len() == 4));
+    assert!(
+        polygons.iter().all(|points| points.len() == 5),
+        "the dashed terminal stripe must absorb its contact profile: {polygons:?}"
+    );
     assert!(object_knockout_polygons(&primitives).is_empty());
 }
 

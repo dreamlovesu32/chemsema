@@ -153,6 +153,13 @@ pub(super) fn render_molecule_object(
 
             for node in &fragment.nodes {
                 render_fragment_label(out, document, object, node, object_id.clone());
+                render_fragment_atom_query_annotations(
+                    out,
+                    document,
+                    object,
+                    node,
+                    object_id.clone(),
+                );
                 render_fragment_node_invalid_marker(out, object, node, object_id.clone());
             }
         }
@@ -203,6 +210,7 @@ pub(super) fn render_molecule_object_targets(
     expand_target_render_bond_ids_for_contact_nodes(&mut target_render_bond_ids, &fragment.bonds);
     expand_target_render_bond_ids_for_crossings(
         &mut target_render_bond_ids,
+        document,
         object,
         &fragment.bonds,
         &node_map,
@@ -244,9 +252,94 @@ pub(super) fn render_molecule_object_targets(
     for node in &fragment.nodes {
         if label_render_node_ids.contains(&node.id) {
             render_fragment_label(out, document, object, node, object_id.clone());
+            render_fragment_atom_query_annotations(out, document, object, node, object_id.clone());
             render_fragment_node_invalid_marker(out, object, node, object_id.clone());
         }
     }
+}
+
+fn render_fragment_atom_query_annotations(
+    out: &mut Vec<RenderPrimitive>,
+    document: &ChemSemaDocument,
+    object: &SceneObject,
+    node: &Node,
+    object_id: Option<String>,
+) {
+    let show_atom_query = document
+        .document
+        .meta
+        .pointer("/import/cdxml/defaults/showAtomQuery")
+        .and_then(JsonValue::as_bool)
+        .unwrap_or(true);
+    if !show_atom_query
+        || node
+            .meta
+            .pointer("/import/cdxml/restrictImplicitHydrogens")
+            .and_then(JsonValue::as_bool)
+            != Some(true)
+    {
+        return;
+    }
+
+    // CDXML's ImplicitHydrogens property is the atom-query restriction
+    // kCDXProp_Atom_RestrictImplicitHydrogens. ChemDraw displays it as an
+    // auxiliary H query marker; it is independent of both the authored atom
+    // label and NumHydrogens, so it must not be folded into either one.
+    let font_size = node
+        .label
+        .as_ref()
+        .map(fragment_label_font_size)
+        .unwrap_or(DEFAULT_MOLECULE_LABEL_FONT_SIZE_PT);
+    let font_family = node
+        .label
+        .as_ref()
+        .and_then(|label| label.font_family.clone())
+        .or_else(|| {
+            object
+                .style_ref
+                .as_ref()
+                .and_then(|style_ref| document.styles.get(style_ref))
+                .and_then(|style| style_string(style, "fontFamily"))
+        });
+    let fill = node
+        .label
+        .as_ref()
+        .and_then(|label| label.fill.clone())
+        .or_else(|| {
+            object
+                .style_ref
+                .as_ref()
+                .and_then(|style_ref| document.styles.get(style_ref))
+                .and_then(|style| style_string(style, "fill"))
+        });
+    let node_world = world_point(object, node);
+    let x = node_world.x + font_size * 0.17;
+    let baseline_y = label_box_world(node, object)
+        .map(|label_box| label_box.y1 - font_size * 0.07)
+        .unwrap_or(node_world.y - font_size * 0.55);
+    push_text_for_node(
+        out,
+        x,
+        baseline_y,
+        Some(font_size * 0.82),
+        String::new(),
+        font_size,
+        font_family.clone(),
+        fill.clone(),
+        Some("start".to_string()),
+        vec![LabelRun {
+            text: "H".to_string(),
+            font_family,
+            font_size: Some(font_size),
+            fill,
+            font_weight: Some(400),
+            font_style: Some("normal".to_string()),
+            underline: Some(false),
+            script: Some("normal".to_string()),
+        }],
+        object_id,
+        Some(node.id.clone()),
+    );
 }
 
 fn expand_target_render_bond_ids_for_contact_nodes(
@@ -274,6 +367,7 @@ fn expand_target_render_bond_ids_for_contact_nodes(
 
 fn expand_target_render_bond_ids_for_crossings(
     target_render_bond_ids: &mut BTreeSet<String>,
+    document: &ChemSemaDocument,
     object: &SceneObject,
     bonds: &[Bond],
     node_map: &BTreeMap<&str, &Node>,
@@ -297,7 +391,7 @@ fn expand_target_render_bond_ids_for_crossings(
             } else {
                 (&bonds[other_index], &bonds[target_index])
             };
-            if bonds_have_crossing_margin(object, node_map, over_bond, under_bond) {
+            if bonds_have_crossing_margin(document, object, node_map, over_bond, under_bond) {
                 extra.insert(over_bond.id.clone());
             }
         }
@@ -306,12 +400,25 @@ fn expand_target_render_bond_ids_for_crossings(
 }
 
 fn bonds_have_crossing_margin(
+    document: &ChemSemaDocument,
     object: &SceneObject,
     node_map: &BTreeMap<&str, &Node>,
     over_bond: &Bond,
     under_bond: &Bond,
 ) -> bool {
     if bonds_share_endpoint(over_bond, under_bond) {
+        return false;
+    }
+    let under_crossings = imported_cdxml_crossing_bonds(under_bond);
+    let over_crossings = imported_cdxml_crossing_bonds(over_bond);
+    if (under_crossings.is_some() || over_crossings.is_some())
+        && !under_crossings
+            .as_ref()
+            .is_some_and(|ids| ids.contains(&over_bond.id))
+        && !over_crossings
+            .as_ref()
+            .is_some_and(|ids| ids.contains(&under_bond.id))
+    {
         return false;
     }
     let Some((over_start, over_end)) = bond_world_segment(object, node_map, over_bond) else {
@@ -326,8 +433,45 @@ fn bonds_have_crossing_margin(
         return false;
     }
     let crossing_sin = vector_cross(over_vector.normalized(), under_vector.normalized()).abs();
-    crossing_sin > 0.1
-        && interior_segment_intersection(over_start, over_end, under_start, under_end).is_some()
+    if crossing_sin <= 0.1 {
+        return false;
+    }
+    if interior_segment_intersection(over_start, over_end, under_start, under_end).is_some() {
+        return true;
+    }
+
+    let under_stroke_width = bond_stroke_width(document, object, under_bond);
+    let over_stroke_width = bond_stroke_width(document, object, over_bond);
+    let margin_width = document_margin_width_for_bond(document, over_bond, over_stroke_width);
+    if margin_width <= EPSILON {
+        return false;
+    }
+    let under_envelope =
+        document_bond_crossing_envelope(under_bond, under_start, under_end, under_stroke_width);
+    let over_envelope =
+        document_bond_crossing_envelope(over_bond, over_start, over_end, over_stroke_width);
+    let Some(under_polygon) = crossing_strip_polygon_for_segment(
+        under_start,
+        under_end,
+        under_envelope.silhouette_start,
+        under_envelope.silhouette_end,
+        0.05,
+        0.0,
+    ) else {
+        return false;
+    };
+    let Some(over_polygon) = crossing_strip_polygon_for_segment(
+        over_start,
+        over_end,
+        over_envelope.clearance_start,
+        over_envelope.clearance_end,
+        margin_width,
+        margin_width,
+    ) else {
+        return false;
+    };
+    let overlap = intersect_convex_polygons(&under_polygon, &over_polygon);
+    overlap.len() >= 3 && polygon_area_signed(&overlap).abs() > 1.0e-4
 }
 
 fn bond_world_segment(

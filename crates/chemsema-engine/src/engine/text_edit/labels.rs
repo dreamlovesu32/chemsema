@@ -318,7 +318,10 @@ pub(super) fn make_centered_node_label_from_runs(
         lines.join("\n")
     };
     let anchor_char = label_anchor_char_for_layout(&line_runs, &layout);
-    let line_height = crate::molecule_label_line_advance(font_size);
+    let line_height = session
+        .line_height
+        .filter(|value| value.is_finite() && *value > 0.0)
+        .unwrap_or_else(|| crate::molecule_label_line_advance(font_size));
     let estimated_width = lines
         .iter()
         .zip(line_runs.iter())
@@ -1936,7 +1939,11 @@ pub(super) fn refreshed_attached_node_label(
         font_size: Some(font_size),
         fill: Some(fill.clone()),
         align: Some("left".to_string()),
-        line_height: Some(crate::molecule_label_line_advance(font_size)),
+        line_height: label
+            .meta
+            .pointer("/import/cdxml/resolvedLineHeight")
+            .and_then(Value::as_f64)
+            .or_else(|| Some(crate::molecule_label_line_advance(font_size))),
         box_value,
         anchor_offset,
         text_position: None,
@@ -2125,7 +2132,8 @@ fn implicit_hydrogen_connection_order(
         .bonds
         .iter()
         .filter_map(|bond| {
-            let other_id = if bond.begin == node.id {
+            let node_is_begin = bond.begin == node.id;
+            let other_id = if node_is_begin {
                 bond.end.as_str()
             } else if bond.end == node.id {
                 bond.begin.as_str()
@@ -2136,6 +2144,17 @@ fn implicit_hydrogen_connection_order(
                 .nodes
                 .iter()
                 .find(|candidate| candidate.id == other_id)?;
+            if node_is_begin
+                && bond
+                    .meta
+                    .pointer("/import/cdxml/order")
+                    .and_then(Value::as_str)
+                    .is_some_and(|order| order.eq_ignore_ascii_case("dative"))
+            {
+                // A dative donor supplies the electron pair; the coordinate
+                // bond does not consume another ordinary donor valence.
+                return Some(0);
+            }
             if should_ignore_metal_coordination_for_implicit_hydrogen(
                 node.atomic_number,
                 other.atomic_number,

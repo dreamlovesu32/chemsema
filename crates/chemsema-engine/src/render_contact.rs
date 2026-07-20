@@ -70,15 +70,6 @@ struct MainContourJoin {
     second: Point,
 }
 
-impl MainContourJoin {
-    fn midpoint(self) -> Point {
-        Point::new(
-            (self.first.x + self.second.x) * 0.5,
-            (self.first.y + self.second.y) * 0.5,
-        )
-    }
-}
-
 #[derive(Debug, Clone, Copy)]
 pub(super) struct MainBondContour {
     pub(super) base: Point,
@@ -511,7 +502,10 @@ fn supports_main_bond_contact_shape(bond: &Bond) -> bool {
     }
     if bond.order == 2 {
         return side_double_placement(bond).is_some()
-            && bond.line_styles.main == BondLinePattern::Solid
+            && matches!(
+                bond.line_styles.main,
+                BondLinePattern::Solid | BondLinePattern::Dashed
+            )
             && matches!(
                 bond.line_weights.main,
                 BondLineWeight::Normal | BondLineWeight::Bold
@@ -649,13 +643,14 @@ fn append_multi_bond_main_contact(
     for index in 0..ordered.len() {
         let current = ordered[index];
         let next = ordered[(index + 1) % ordered.len()];
-        let join = extended_main_contour_intersection(current.contour_plus, next.contour_minus);
-        ring_intersections.push(join.midpoint());
+        let join = chemdraw_main_contour_intersection(current.contour_plus, next.contour_minus);
+        ring_intersections.push(join);
     }
 
     for (index, current) in ordered.iter().enumerate() {
-        let previous_intersection = ring_intersections[(index + ordered.len() - 1) % ordered.len()];
-        let next_intersection = ring_intersections[index];
+        let previous_intersection =
+            ring_intersections[(index + ordered.len() - 1) % ordered.len()].second;
+        let next_intersection = ring_intersections[index].first;
 
         if supports_main_bond_polygon_endpoint_cap(current.bond) {
             let mut profile = vec![next_intersection, current.center, previous_intersection];
@@ -725,21 +720,10 @@ pub(super) fn bond_ray_is_acute(axis: Vector, other_axis: Vector) -> bool {
     vector_dot(axis.normalized(), other_axis.normalized()) > EPSILON
 }
 
-fn extended_main_contour_intersection(
+fn chemdraw_main_contour_intersection(
     first: MainBondContour,
     second: MainBondContour,
 ) -> MainContourJoin {
-    if let Some((intersection, _, _)) = line_intersection_with_parameters(
-        first.base,
-        first.direction,
-        second.base,
-        second.direction,
-    ) {
-        return MainContourJoin {
-            first: intersection,
-            second: intersection,
-        };
-    }
     bounded_main_contour_intersection(first, second)
 }
 
@@ -747,14 +731,6 @@ fn bounded_main_contour_intersection(
     first: MainBondContour,
     second: MainBondContour,
 ) -> MainContourJoin {
-    let max_distance = (first.half_width.max(second.half_width) * MAIN_CONTACT_MITER_LIMIT)
-        .min(first.extent.min(second.extent) * 0.38);
-    let fallback_distance = max_distance.min(
-        (first.extent.min(second.extent) * 0.18).max(first.half_width.max(second.half_width) * 2.5),
-    );
-    let fallback_first = point_on_main_contour(first, fallback_distance);
-    let fallback_second = point_on_main_contour(second, fallback_distance);
-
     let Some((intersection, _, _)) = line_intersection_with_parameters(
         first.base,
         first.direction,
@@ -762,8 +738,8 @@ fn bounded_main_contour_intersection(
         second.direction,
     ) else {
         return MainContourJoin {
-            first: fallback_first,
-            second: fallback_second,
+            first: first.base,
+            second: second.base,
         };
     };
 
@@ -780,33 +756,19 @@ fn bounded_main_contour_intersection(
         ),
         second_unit,
     );
-    if first_projection.abs() <= max_distance && second_projection.abs() <= max_distance {
+    let first_limit = first.extent * CHEMDRAW_CONTACT_MITER_EXTENT_RATIO;
+    let second_limit = second.extent * CHEMDRAW_CONTACT_MITER_EXTENT_RATIO;
+    if first_projection.abs() <= first_limit && second_projection.abs() <= second_limit {
         return MainContourJoin {
             first: intersection,
             second: intersection,
         };
     }
 
-    let clamped_first =
-        point_on_main_contour(first, first_projection.clamp(-max_distance, max_distance));
-    let clamped_second =
-        point_on_main_contour(second, second_projection.clamp(-max_distance, max_distance));
     MainContourJoin {
-        first: clamped_first,
-        second: clamped_second,
+        first: first.base,
+        second: second.base,
     }
-}
-
-fn point_on_main_contour(contour: MainBondContour, distance: f64) -> Point {
-    let length = contour.direction.length();
-    if length <= EPSILON {
-        return contour.base;
-    }
-    let unit = contour.direction.normalized();
-    Point::new(
-        contour.base.x + unit.x * distance,
-        contour.base.y + unit.y * distance,
-    )
 }
 
 #[cfg(test)]
@@ -864,27 +826,40 @@ mod tests {
     }
 
     #[test]
-    fn bounded_main_contour_intersection_clamps_far_miter() {
+    fn bounded_main_contour_intersection_bevels_far_miter_at_bases() {
         let first = contour(Point::new(0.0, 1.0), Vector::new(1.0, 0.0), 20.0, 1.0);
         let second = contour(Point::new(0.0, -1.0), Vector::new(1.0, 0.1), 20.0, 1.0);
 
         let join = bounded_main_contour_intersection(first, second);
-        approx_eq(join.first.distance(first.base), 4.0);
-        approx_eq(join.second.distance(second.base), 4.0);
-        assert!(join.first.x < 20.0);
-        assert!(join.second.x < 20.0);
+        assert_eq!(join.first, first.base);
+        assert_eq!(join.second, second.base);
     }
 
     #[test]
-    fn extended_main_contour_intersection_uses_true_line_intersection() {
-        let first = contour(Point::new(0.0, 1.0), Vector::new(1.0, 0.0), 10.0, 1.0);
-        let second = contour(Point::new(4.0, -1.0), Vector::new(0.0, 1.0), 10.0, 1.0);
+    fn chemdraw_main_contour_intersection_uses_true_nearby_intersection() {
+        let first = contour(Point::new(0.0, 1.0), Vector::new(1.0, 0.0), 20.0, 1.0);
+        let second = contour(Point::new(4.0, -1.0), Vector::new(0.0, 1.0), 20.0, 1.0);
 
-        let join = extended_main_contour_intersection(first, second);
+        let join = chemdraw_main_contour_intersection(first, second);
         approx_eq(join.first.x, 4.0);
         approx_eq(join.first.y, 1.0);
         approx_eq(join.second.x, 4.0);
         approx_eq(join.second.y, 1.0);
+    }
+
+    #[test]
+    fn chemdraw_miter_transition_uses_relative_contour_extent() {
+        let first = contour(Point::new(0.0, 1.0), Vector::new(1.0, 0.0), 20.0, 1.0);
+        let accepted_second = contour(Point::new(4.69, -1.0), Vector::new(0.0, 1.0), 20.0, 1.0);
+        let rejected_second = contour(Point::new(4.71, -1.0), Vector::new(0.0, 1.0), 20.0, 1.0);
+
+        let accepted = chemdraw_main_contour_intersection(first, accepted_second);
+        approx_eq(accepted.first.x, 4.69);
+        approx_eq(accepted.second.x, 4.69);
+
+        let rejected = chemdraw_main_contour_intersection(first, rejected_second);
+        assert_eq!(rejected.first, first.base);
+        assert_eq!(rejected.second, rejected_second.base);
     }
 
     #[test]

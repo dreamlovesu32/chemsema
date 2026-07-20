@@ -98,6 +98,30 @@ pub(super) fn render_fragment_bond(
         return;
     }
 
+    if imported_cdxml_dative_bond(bond) {
+        render_fragment_line(
+            out,
+            document,
+            object,
+            contact_kernel,
+            bonds,
+            node_map,
+            bond,
+            start,
+            finish,
+            begin_box,
+            end_box,
+            true,
+            stroke,
+            stroke_width,
+            Vec::new(),
+            bond.line_weights.main,
+            object_id.clone(),
+        );
+        render_dative_bond_head(out, bond, start, finish, stroke, stroke_width, object_id);
+        return;
+    }
+
     if bond.order == 2 {
         render_double_bond(
             out,
@@ -165,6 +189,52 @@ pub(super) fn render_fragment_bond(
         bond.line_weights.main,
         object_id,
     );
+}
+
+fn imported_cdxml_dative_bond(bond: &Bond) -> bool {
+    bond.meta
+        .pointer("/import/cdxml/order")
+        .and_then(JsonValue::as_str)
+        .is_some_and(|order| order.eq_ignore_ascii_case("dative"))
+}
+
+fn render_dative_bond_head(
+    out: &mut Vec<RenderPrimitive>,
+    bond: &Bond,
+    start: Point,
+    end: Point,
+    fill: &str,
+    stroke_width: f64,
+    object_id: Option<String>,
+) {
+    let axis = Vector::new(end.x - start.x, end.y - start.y);
+    let length = axis.length();
+    if length <= EPSILON {
+        return;
+    }
+    let unit = axis.normalized();
+    let normal = Vector::new(-unit.y, unit.x);
+    let head_length = (length * 0.28)
+        .clamp(stroke_width * 5.0, stroke_width * 10.0)
+        .min(length * 0.45);
+    let half_width = (head_length * 0.58).max(stroke_width * 2.0);
+    let base = end.translated(unit.scaled(-head_length));
+    let notch = end.translated(unit.scaled(-head_length * 0.42));
+    out.push(RenderPrimitive::Polygon {
+        role: RenderRole::DocumentBond,
+        object_id,
+        node_id: None,
+        bond_id: Some(bond.id.clone()),
+        points: vec![
+            end,
+            base.translated(normal.scaled(half_width)),
+            notch,
+            base.translated(normal.scaled(-half_width)),
+        ],
+        fill: fill.to_string(),
+        stroke: fill.to_string(),
+        stroke_width: 0.0,
+    });
 }
 
 fn bond_endpoint_world(object: &SceneObject, node: &Node, bond: &Bond, endpoint: &str) -> Point {

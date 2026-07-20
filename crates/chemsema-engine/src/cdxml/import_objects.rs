@@ -1475,7 +1475,9 @@ fn text_object(
     extra.insert("valign".to_string(), json!("top"));
     extra.insert(
         "lineHeight".to_string(),
-        json!(round2(cdxml_text_line_height(node, font_size))),
+        json!(round2(cdxml_text_line_height(
+            node, defaults, font_size, &runs,
+        ))),
     );
     extra.insert("fontSize".to_string(), json!(round2(font_size)));
     if let Some(point) = parse_xy(node.attr("p")) {
@@ -1529,22 +1531,24 @@ fn text_object(
     })
 }
 
-fn cdxml_text_line_height(node: &XmlNode, font_size: f64) -> f64 {
-    match node
-        .attr("CaptionLineHeight")
-        .or_else(|| node.attr("LineHeight"))
-        .map(str::trim)
-    {
-        Some(value)
-            if !value.eq_ignore_ascii_case("auto") && !value.eq_ignore_ascii_case("variable") =>
-        {
-            parse_f64(Some(value)).unwrap_or_else(|| cdxml_auto_text_line_height(node, font_size))
-        }
-        _ => cdxml_auto_text_line_height(node, font_size),
+fn cdxml_text_line_height(
+    node: &XmlNode,
+    defaults: CdxmlDefaults,
+    font_size: f64,
+    runs: &[LabelRun],
+) -> f64 {
+    let value = parse_cdxml_line_height(node.attr("CaptionLineHeight"))
+        .or_else(|| parse_cdxml_line_height(node.attr("LineHeight")))
+        .or(defaults.caption_line_height)
+        .or(defaults.line_height)
+        .unwrap_or(CdxmlLineHeight::Auto);
+    match value {
+        CdxmlLineHeight::Fixed(value) if value > 1.0 => value,
+        _ => cdxml_auto_text_line_height(node, font_size, runs),
     }
 }
 
-fn cdxml_auto_text_line_height(node: &XmlNode, font_size: f64) -> f64 {
+fn cdxml_auto_text_line_height(node: &XmlNode, font_size: f64, runs: &[LabelRun]) -> f64 {
     let mut has_bold = false;
     let mut has_manual_subscript = false;
     let mut has_manual_superscript = false;
@@ -1559,6 +1563,14 @@ fn cdxml_auto_text_line_height(node: &XmlNode, font_size: f64) -> f64 {
         }
         if has_superscript && !has_subscript {
             has_manual_superscript = true;
+        }
+    }
+    for run in runs {
+        has_bold |= run.font_weight.unwrap_or(400) >= 600;
+        match run.script.as_deref() {
+            Some("subscript") => has_manual_subscript = true,
+            Some("superscript") => has_manual_superscript = true,
+            _ => {}
         }
     }
 
