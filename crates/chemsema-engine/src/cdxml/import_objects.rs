@@ -998,7 +998,37 @@ pub(super) fn append_bracket_objects(
     }
 
     let mut used = vec![false; brackets.len()];
-    let mut object_index = 1;
+    let mut pairs = Vec::new();
+    let bracket_indices_by_graphic_id: BTreeMap<_, _> = brackets
+        .iter()
+        .enumerate()
+        .filter_map(|(index, bracket)| {
+            bracket
+                .graphic_id
+                .as_ref()
+                .map(|graphic_id| (graphic_id.as_str(), index))
+        })
+        .collect();
+    for group in descendants(root)
+        .into_iter()
+        .filter(|node| node.is("bracketedgroup"))
+    {
+        let attachment_indices: Vec<_> = group
+            .direct_children("bracketattachment")
+            .filter_map(|attachment| attachment.attr("GraphicID"))
+            .filter_map(|graphic_id| bracket_indices_by_graphic_id.get(graphic_id).copied())
+            .collect();
+        let [left_index, right_index] = attachment_indices.as_slice() else {
+            continue;
+        };
+        if left_index == right_index || used[*left_index] || used[*right_index] {
+            continue;
+        }
+        used[*left_index] = true;
+        used[*right_index] = true;
+        pairs.push((*left_index, *right_index));
+    }
+
     for left_index in 0..brackets.len() {
         if used[left_index] {
             continue;
@@ -1032,6 +1062,12 @@ pub(super) fn append_bracket_objects(
         };
         used[left_index] = true;
         used[right_index] = true;
+        pairs.push((left_index, right_index));
+    }
+
+    let mut object_index = 1;
+    for (left_index, right_index) in pairs {
+        let left = &brackets[left_index];
         let right = &brackets[right_index];
         let lb = normalized_bbox(left.bbox);
         let rb = normalized_bbox(right.bbox);
@@ -1062,9 +1098,7 @@ pub(super) fn append_bracket_objects(
             left_bracket,
             left_bounds,
             min_x,
-            min_y,
             pair_width,
-            pair_height,
         );
         let right_child = cdxml_bracket_side_scene_object(
             format!("{group_id}_right"),
@@ -1072,9 +1106,7 @@ pub(super) fn append_bracket_objects(
             right_bracket,
             right_bounds,
             min_x,
-            min_y,
             pair_width,
-            pair_height,
         );
         objects.push(SceneObject {
             id: group_id,
@@ -1103,12 +1135,11 @@ fn cdxml_bracket_side_scene_object(
     bracket: &PendingCdxmlBracket,
     bounds: [f64; 4],
     pair_x: f64,
-    pair_y: f64,
     pair_width: f64,
-    pair_height: f64,
 ) -> SceneObject {
     let stroke_width = 1.0;
-    let side_width = cdxml_bracket_side_width(&bracket.kind, pair_width, pair_height)
+    let side_height = height_of(bounds);
+    let side_width = cdxml_bracket_side_width(&bracket.kind, pair_width, side_height)
         .max(stroke_width)
         .max(bounds[2] - bounds[0]);
     let translate_x = match side {
@@ -1131,7 +1162,7 @@ fn cdxml_bracket_side_scene_object(
         locked: false,
         z_index: bracket.z_index,
         transform: Transform {
-            translate: [round2(translate_x), round2(pair_y)],
+            translate: [round2(translate_x), round2(bounds[1])],
             rotate: 0.0,
             scale: [1.0, 1.0],
         },
@@ -1143,7 +1174,7 @@ fn cdxml_bracket_side_scene_object(
         }),
         payload: ObjectPayload {
             resource_ref: None,
-            bbox: Some([0.0, 0.0, round2(side_width), round2(pair_height)]),
+            bbox: Some([0.0, 0.0, round2(side_width), round2(side_height)]),
             extra,
         },
         children: Vec::new(),
@@ -1584,6 +1615,8 @@ pub(super) enum CdxmlTextObjectRole {
     FreeText,
     BracketUsage,
     ParameterizedBracketLabel,
+    AtomNumber,
+    Query,
     Stereo,
     EnhancedStereo,
 }
@@ -1593,6 +1626,8 @@ impl CdxmlTextObjectRole {
         Some(match name? {
             "bracketusage" => Self::BracketUsage,
             "parameterizedBracketLabel" => Self::ParameterizedBracketLabel,
+            "number" => Self::AtomNumber,
+            "query" => Self::Query,
             "stereo" => Self::Stereo,
             "enhancedstereo" => Self::EnhancedStereo,
             _ => return None,
@@ -1604,6 +1639,8 @@ impl CdxmlTextObjectRole {
             Self::FreeText => "free_text",
             Self::BracketUsage => "bracket_usage",
             Self::ParameterizedBracketLabel => "parameterized_bracket_label",
+            Self::AtomNumber => "atom_number",
+            Self::Query => "query",
             Self::Stereo => "stereo",
             Self::EnhancedStereo => "enhanced_stereo",
         }

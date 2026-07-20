@@ -708,7 +708,7 @@ fn property_schema(tag: u16) -> Option<PropertySchema> {
         0x0A04 => ("OvalType", PropertyKind::Int16),
         0x0A05 => ("OrbitalType", PropertyKind::Enum(ORBITAL_TYPE)),
         0x0A06 => ("BracketType", PropertyKind::Int16),
-        0x0A07 => ("SymbolType", PropertyKind::Int16),
+        0x0A07 => ("SymbolType", PropertyKind::Enum(SYMBOL_TYPE)),
         0x0A20 => ("HeadSize", PropertyKind::Int16),
         0x0A28 => ("RepeatCount", PropertyKind::Float64),
         0x0A2B => ("GraphicID", PropertyKind::UInt32),
@@ -1046,6 +1046,21 @@ const GRAPHIC_TYPE: &[(i16, &str)] = &[
     (5, "Orbital"),
     (6, "Bracket"),
     (7, "Symbol"),
+];
+const SYMBOL_TYPE: &[(i16, &str)] = &[
+    (0, "LonePair"),
+    (1, "Electron"),
+    (2, "RadicalCation"),
+    (3, "RadicalAnion"),
+    (4, "CirclePlus"),
+    (5, "CircleMinus"),
+    (6, "Dagger"),
+    (7, "DoubleDagger"),
+    (8, "Plus"),
+    (9, "Minus"),
+    (10, "Racemic"),
+    (11, "Absolute"),
+    (12, "Relative"),
 ];
 const LINE_TYPE: &[(i16, &str)] = &[
     (0, "Solid"),
@@ -1571,6 +1586,41 @@ mod tests {
         assert!(decoded.contains("Display=\"Dash\""));
         let doc = parse_cdx_document(&cdx, Some("basic")).expect("CDX should import");
         assert_eq!(doc.resources.len(), 1);
+    }
+
+    #[test]
+    fn cdx_symbol_type_uses_official_enum_names_and_values() {
+        let encoded = encode_property("SymbolType", "Plus").expect("plus symbol should encode");
+        assert_eq!(encoded.0, 0x0A07);
+        assert_eq!(encoded.1, 8_i16.to_le_bytes());
+        let (_, decoded) =
+            decode_property(encoded.0, &encoded.1, None).expect("plus symbol should decode");
+        assert_eq!(decoded, "Plus");
+
+        let cdxml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML LineWidth="0.6" BondLength="14.4">
+  <page id="1">
+    <graphic id="2" GraphicType="Symbol" SymbolType="Plus"
+      BoundingBox="20 20 20 30"/>
+  </page>
+</CDXML>"#;
+        let cdx = cdxml_to_cdx(cdxml).expect("symbol CDXML should encode");
+        let decoded_cdxml = cdx_to_cdxml(&cdx).expect("symbol CDX should decode");
+        assert!(
+            decoded_cdxml.contains("SymbolType=\"Plus\""),
+            "{decoded_cdxml}"
+        );
+        let document = parse_cdx_document(&cdx, Some("plus symbol"))
+            .expect("symbol CDX should import into the document model");
+        assert!(document.scene_objects().iter().any(|object| {
+            object.object_type == "symbol"
+                && object
+                    .payload
+                    .extra
+                    .get("kind")
+                    .and_then(serde_json::Value::as_str)
+                    == Some("plus")
+        }));
     }
 
     #[test]

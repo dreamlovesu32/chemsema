@@ -90,7 +90,7 @@
 
 本轮公共 CDXML/CDX 像素对照补充了以下导入与绘制规则。这些规则按字段语义执行，不依赖文件名、案例编号或分子结构特例。
 
-1. `objecttag` 不是一律隐藏的元数据。`Name="stereo"`、`Name="enhancedstereo"` 和括号标签所包含的 `t/s` 文本都必须作为场景文字导入，并保留坐标、字体、字号、颜色和样式段。
+1. `objecttag` 不是一律隐藏的元数据。`Name="stereo"`、`Name="enhancedstereo"`、`Name="number"`、`Name="query"` 和括号标签所包含的 `t/s` 文本都必须作为场景文字导入，并保留坐标、字体、字号、颜色和样式段；`Visible="no"` 的普通对象标签仍作为隐藏往返数据保留。
 2. 括号标签采用字段优先级，而不是 `CreationProgram` 版本分支：同一 `graphic` 只有 `bracketusage` 时绘制它；新增 `parameterizedBracketLabel` 时，由后者提供 ChemDraw 实际生成的文字和位置，旧 `bracketusage` 仅保留为隐藏的往返数据。ChemDraw 22.2/23.1 文件是在旧结构上增加这个字段，没有改变旧字段在老文件中的含义。
 3. `parameterizedBracketLabel` 是一个生成字段：即使它或内部 `t` 标记为 `Visible="no"`，只要它与 `bracketusage` 同时存在，ChemDraw 仍用它生成可见括号标签。这是此专用字段的语义例外；普通对象标签仍严格遵守 `Visible`。
 4. 自动定位（`PositioningType` 缺省或 `auto`）时，文字左边缘位于承载它的右括号外侧 `0.1875 × 字号`，纵向基线继续使用 `t.p.y`。不能把 `t.p.x` 当成文字左边缘，因为它会随首字符及字体度量变化。
@@ -99,5 +99,8 @@
 7. 四面体节点的 `HDot="yes"` 绘制实心圆点；`HDash="yes"` 绘制位于节点下方的两条短横线。尺寸来自文档 `BoldWidth`、`LineWidth`，不能按截图像素或单个样例写死。
 8. `NodeType="MultiAttachment"` 且当前没有实际连接键时，绘制 ChemDraw 的三线星号占位标记；一旦该节点被键连接（例如金属到芳环多中心键），不再绘制星号。星号直径约为文档 `BondLength` 的 30%，线宽使用 `LineWidth`。
 9. 分裂不连通分子组件时，带 `MultiAttachment`、`HDot` 或 `HDash` 语义的孤立碳节点仍属于可见内容，不能按“无键普通碳”过滤。
+10. `bracketedgroup/bracketattachment@GraphicID` 是左右括号归组的权威关系。先按这组显式 ID 配对，只有没有被任何组引用的孤立括号才允许按几何位置回退配对；不能用中心或高度容差否决显式附件。
+11. 同一组左右括号各自保留源 `BoundingBox` 的纵向起点和高度。组包围框只用于选择、移动和整体范围，不能把两侧强制拉到组包围框的统一高度。
+12. 二进制 CDX 的 `SymbolType`（property `0x0A07`）是 `INT16` 枚举，不是可直接透传的普通整数。导入导出必须按官方值映射 `LonePair=0`、`Electron=1`、`RadicalCation=2`、`RadicalAnion=3`、`CirclePlus=4`、`CircleMinus=5`、`Dagger=6`、`DoubleDagger=7`、`Plus=8`、`Minus=9`、`Racemic=10`、`Absolute=11`、`Relative=12`。
 
-对应回归测试覆盖显式/隐藏对象标签、缺省增强立体标签、`HDot`、`HDash` 和未连接 `MultiAttachment`；公共图像门禁继续负责验证这些语义的最终像素位置和尺寸。
+对应回归测试覆盖显式/隐藏对象标签、缺省增强立体标签、`HDot`、`HDash`、未连接 `MultiAttachment`、显式括号附件及 CDX 符号枚举；公共图像门禁继续负责验证这些语义的最终像素位置和尺寸。

@@ -5047,11 +5047,11 @@ fn parse_cdxml_unescapes_text_entities() {
 }
 
 #[test]
-fn parse_cdxml_preserves_bracketusage_repeat_count() {
+fn parse_cdxml_uses_explicit_bracket_attachments_before_geometry_pairing() {
     let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
 <CDXML BondLength="14.40" LineWidth="0.60" BoldWidth="2" HashSpacing="2.50">
   <page id="1">
-    <graphic id="2" BoundingBox="20 70 20 10" GraphicType="Bracket" BracketType="Square"/>
+    <graphic id="2" BoundingBox="20 75 20 15" GraphicType="Bracket" BracketType="Square"/>
     <graphic id="3" BoundingBox="80 10 80 70" GraphicType="Bracket" BracketType="Square">
       <objecttag id="1" Name="bracketusage">
         <t p="0 0" BoundingBox="0 -6.30 4.17 0"><s font="3" size="7.5" color="0">2</s></t>
@@ -5101,6 +5101,35 @@ fn parse_cdxml_preserves_bracketusage_repeat_count() {
             .and_then(|value| value.as_str())
             == Some("right")
     }));
+    let left_side = sides
+        .iter()
+        .find(|object| {
+            object
+                .payload
+                .extra
+                .get("side")
+                .and_then(|value| value.as_str())
+                == Some("left")
+        })
+        .expect("left bracket side should import");
+    let right_side = sides
+        .iter()
+        .find(|object| {
+            object
+                .payload
+                .extra
+                .get("side")
+                .and_then(|value| value.as_str())
+                == Some("right")
+        })
+        .expect("right bracket side should import");
+    assert_eq!(left_side.transform.translate[1], 15.0);
+    assert_eq!(right_side.transform.translate[1], 10.0);
+    assert_eq!(left_side.payload.bbox.expect("left bracket bbox")[3], 60.0);
+    assert_eq!(
+        right_side.payload.bbox.expect("right bracket bbox")[3],
+        60.0
+    );
 
     let text_objects: Vec<_> = document
         .objects
@@ -5300,6 +5329,63 @@ fn parse_cdxml_imports_visible_stereo_object_tags_inside_fragments() {
                 .and_then(|value| value.as_str())
                 == Some("(S)")
     }));
+}
+
+#[test]
+fn parse_cdxml_imports_visible_number_and_query_object_tags_inside_bonded_nodes() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML BondLength="30" LineWidth="1" BoldWidth="4" HashSpacing="2.7">
+  <page id="1">
+    <fragment id="2">
+      <n id="3" p="20 20" ShowAtomNumber="yes" AtomNumber="1">
+        <objecttag Name="number">
+          <t p="16 14" BoundingBox="16 8 20 14"><s font="3" size="7.5">1</s></t>
+        </objecttag>
+        <objecttag Name="query">
+          <t p="23 28" BoundingBox="23 22 36 28"><s font="3" size="7.5">Any</s></t>
+        </objecttag>
+      </n>
+      <n id="4" p="50 20" ShowAtomNumber="yes" AtomNumber="2">
+        <objecttag Name="number" Visible="no">
+          <t p="46 14" BoundingBox="46 8 50 14"><s font="3" size="7.5">2</s></t>
+        </objecttag>
+      </n>
+      <b id="5" B="3" E="4"/>
+    </fragment>
+  </page>
+</CDXML>"##;
+    let document = parse_cdxml_document(cdxml, Some("number and query tags"))
+        .expect("number and query object tags should parse");
+    let tagged_text: Vec<_> = document
+        .objects
+        .iter()
+        .filter(|object| object.object_type == "text")
+        .map(|object| {
+            (
+                object
+                    .payload
+                    .extra
+                    .get("text")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or_default(),
+                object
+                    .meta
+                    .get("role")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or_default(),
+                object.visible,
+            )
+        })
+        .collect();
+
+    assert_eq!(
+        tagged_text,
+        vec![
+            ("1", "atom_number", true),
+            ("Any", "query", true),
+            ("2", "atom_number", false),
+        ]
+    );
 }
 
 #[test]
