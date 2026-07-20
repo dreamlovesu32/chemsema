@@ -16,8 +16,8 @@ use self::colors::CdxmlColorTable;
 pub use self::export::document_to_cdxml;
 use self::import_objects::{
     append_bracket_objects, append_line_objects, append_orbital_shape_objects,
-    append_shape_objects, append_table_shape_objects, append_text_objects,
-    append_tlc_plate_shape_objects,
+    append_shape_objects, append_synthesized_enhanced_stereo_text_objects,
+    append_table_shape_objects, append_text_objects, append_tlc_plate_shape_objects,
 };
 use self::text_runs::{label_display_runs, label_display_runs_from_source_runs, label_source_run};
 pub(crate) use self::xml::parse_xml_tree;
@@ -271,6 +271,14 @@ pub fn parse_cdxml_document(cdxml: &str, title: Option<&str>) -> Result<ChemSema
         &fonts,
         &display_fragment_ids,
         &bonded_node_ids,
+    );
+    append_synthesized_enhanced_stereo_text_objects(
+        &root,
+        &mut objects,
+        &mut styles,
+        defaults,
+        &colors,
+        &fonts,
     );
     apply_cdxml_groups(&root, &mut objects);
     let label_style = imported_document_text_style(
@@ -1399,6 +1407,21 @@ fn cdxml_component_has_visible_molecule_content(nodes: &[Node], bonds: &[Bond]) 
         || nodes.iter().any(|node| {
             node.atomic_number != 6
                 || node
+                    .meta
+                    .pointer("/import/cdxml/nodeType")
+                    .and_then(Value::as_str)
+                    == Some("MultiAttachment")
+                || node
+                    .meta
+                    .pointer("/import/cdxml/hDot")
+                    .and_then(Value::as_bool)
+                    == Some(true)
+                || node
+                    .meta
+                    .pointer("/import/cdxml/hDash")
+                    .and_then(Value::as_bool)
+                    == Some(true)
+                || node
                     .label
                     .as_ref()
                     .is_some_and(|label| label.has_visible_text())
@@ -1570,6 +1593,13 @@ fn normalize_node(
             "cdxml": {
                 "z": parse_i32(node.attr("Z")),
                 "nodeType": empty_as_null(node.attr("NodeType")),
+                "geometry": empty_as_null(node.attr("Geometry")),
+                "bondOrdering": empty_as_null(node.attr("BondOrdering")),
+                "hDot": parse_cdxml_bool(node.attr("HDot")).unwrap_or(false),
+                "hDash": parse_cdxml_bool(node.attr("HDash")).unwrap_or(false),
+                "attachments": empty_as_null(node.attr("Attachments")),
+                "enhancedStereoType": empty_as_null(node.attr("EnhancedStereoType")),
+                "enhancedStereoGroupNum": empty_as_null(node.attr("EnhancedStereoGroupNum")),
                 "elementList": empty_as_null(node.attr("ElementList")),
                 "labelDisplay": empty_as_null(node.attr("LabelDisplay")),
                 "explicitNumHydrogens": explicit_num_hydrogens,

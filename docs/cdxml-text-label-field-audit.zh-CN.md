@@ -71,6 +71,8 @@
 
 ## 规范来源
 
+- [Revvity 当前 CDXML DTD](https://static.chemistry.revvitycloud.com/cdxml/CDXML.dtd)
+- [Object Tag 对象](https://chemapps.stolaf.edu/iupac/cdx/sdk/ObjectTag.htm)
 - [Node 对象](https://iupac.github.io/IUPAC-FAIRSpec/cdx_sdk/Node.htm)
 - [Text 对象](https://iupac.github.io/IUPAC-FAIRSpec/cdx_sdk/Text.htm)
 - [LabelDisplay](https://iupac.github.io/IUPAC-FAIRSpec/cdx_sdk/properties/Node_LabelDisplay.htm)
@@ -83,3 +85,19 @@
 - [CaptionLineHeight](https://iupac.github.io/IUPAC-FAIRSpec/cdx_sdk/properties/CaptionLineHeight.htm)
 - [WordWrapWidth](https://iupac.github.io/IUPAC-FAIRSpec/cdx_sdk/properties/WordWrapWidth.htm)
 - [LineStarts](https://iupac.github.io/IUPAC-FAIRSpec/cdx_sdk/properties/LineStarts.htm)
+
+## 节点立体标记与对象标签补充规则
+
+本轮公共 CDXML/CDX 像素对照补充了以下导入与绘制规则。这些规则按字段语义执行，不依赖文件名、案例编号或分子结构特例。
+
+1. `objecttag` 不是一律隐藏的元数据。`Name="stereo"`、`Name="enhancedstereo"` 和括号标签所包含的 `t/s` 文本都必须作为场景文字导入，并保留坐标、字体、字号、颜色和样式段。
+2. 括号标签采用字段优先级，而不是 `CreationProgram` 版本分支：同一 `graphic` 只有 `bracketusage` 时绘制它；新增 `parameterizedBracketLabel` 时，由后者提供 ChemDraw 实际生成的文字和位置，旧 `bracketusage` 仅保留为隐藏的往返数据。ChemDraw 22.2/23.1 文件是在旧结构上增加这个字段，没有改变旧字段在老文件中的含义。
+3. `parameterizedBracketLabel` 是一个生成字段：即使它或内部 `t` 标记为 `Visible="no"`，只要它与 `bracketusage` 同时存在，ChemDraw 仍用它生成可见括号标签。这是此专用字段的语义例外；普通对象标签仍严格遵守 `Visible`。
+4. 自动定位（`PositioningType` 缺省或 `auto`）时，文字左边缘位于承载它的右括号外侧 `0.1875 × 字号`，纵向基线继续使用 `t.p.y`。不能把 `t.p.x` 当成文字左边缘，因为它会随首字符及字体度量变化。
+5. 显式定位（`PositioningType="offset"`、`absolute` 或 `angle`）时，使用文件记录的 `t.p`；这类字段会有意覆盖自动括号间距。ChemDraw 23.1 的同一文件同时包含自动和 `offset` 标签，证明这里应按定位字段分支，而不是按文件版本分支。
+6. 节点具有 `EnhancedStereoType`/`EnhancedStereoGroupNum`、但文件没有保存可见 `enhancedstereo` 对象标签时，ChemDraw 会生成 `abs`、`orN` 或 `&N`。ChemSema 同样生成标签；有显式楔键时，标签放在楔键的反方向，以落入立体中心周围的空白扇区。
+7. 四面体节点的 `HDot="yes"` 绘制实心圆点；`HDash="yes"` 绘制位于节点下方的两条短横线。尺寸来自文档 `BoldWidth`、`LineWidth`，不能按截图像素或单个样例写死。
+8. `NodeType="MultiAttachment"` 且当前没有实际连接键时，绘制 ChemDraw 的三线星号占位标记；一旦该节点被键连接（例如金属到芳环多中心键），不再绘制星号。星号直径约为文档 `BondLength` 的 30%，线宽使用 `LineWidth`。
+9. 分裂不连通分子组件时，带 `MultiAttachment`、`HDot` 或 `HDash` 语义的孤立碳节点仍属于可见内容，不能按“无键普通碳”过滤。
+
+对应回归测试覆盖显式/隐藏对象标签、缺省增强立体标签、`HDot`、`HDash` 和未连接 `MultiAttachment`；公共图像门禁继续负责验证这些语义的最终像素位置和尺寸。

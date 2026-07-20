@@ -153,6 +153,15 @@ pub(super) fn render_molecule_object(
 
             for node in &fragment.nodes {
                 render_fragment_label(out, document, object, node, object_id.clone());
+                render_fragment_cdxml_node_markers(
+                    out,
+                    document,
+                    object,
+                    fragment,
+                    node,
+                    &stroke,
+                    object_id.clone(),
+                );
                 render_fragment_atom_query_annotations(
                     out,
                     document,
@@ -252,10 +261,138 @@ pub(super) fn render_molecule_object_targets(
     for node in &fragment.nodes {
         if label_render_node_ids.contains(&node.id) {
             render_fragment_label(out, document, object, node, object_id.clone());
+            render_fragment_cdxml_node_markers(
+                out,
+                document,
+                object,
+                fragment,
+                node,
+                &stroke,
+                object_id.clone(),
+            );
             render_fragment_atom_query_annotations(out, document, object, node, object_id.clone());
             render_fragment_node_invalid_marker(out, object, node, object_id.clone());
         }
     }
+}
+
+fn render_fragment_cdxml_node_markers(
+    out: &mut Vec<RenderPrimitive>,
+    document: &ChemSemaDocument,
+    object: &SceneObject,
+    fragment: &MoleculeFragment,
+    node: &Node,
+    stroke: &str,
+    object_id: Option<String>,
+) {
+    let cdxml = node.meta.pointer("/import/cdxml");
+    let h_dot = cdxml
+        .and_then(|meta| meta.get("hDot"))
+        .and_then(JsonValue::as_bool)
+        == Some(true);
+    let h_dash = cdxml
+        .and_then(|meta| meta.get("hDash"))
+        .and_then(JsonValue::as_bool)
+        == Some(true);
+    let is_unbonded_multi_attachment = cdxml
+        .and_then(|meta| meta.get("nodeType"))
+        .and_then(JsonValue::as_str)
+        == Some("MultiAttachment")
+        && !fragment
+            .bonds
+            .iter()
+            .any(|bond| bond.begin == node.id || bond.end == node.id);
+    if !h_dot && !h_dash && !is_unbonded_multi_attachment {
+        return;
+    }
+
+    let center = world_point(object, node);
+    let line_width = document
+        .document
+        .meta
+        .pointer("/import/cdxml/defaults/lineWidth")
+        .and_then(JsonValue::as_f64)
+        .unwrap_or(DEFAULT_BOND_STROKE);
+    let bold_width = document
+        .document
+        .meta
+        .pointer("/import/cdxml/defaults/boldWidth")
+        .and_then(JsonValue::as_f64)
+        .unwrap_or(BOLD_BOND_WIDTH);
+    let bond_length = document
+        .document
+        .meta
+        .pointer("/import/cdxml/defaults/bondLength")
+        .and_then(JsonValue::as_f64)
+        .unwrap_or(crate::DEFAULT_BOND_LENGTH);
+
+    if h_dot {
+        out.push(RenderPrimitive::Circle {
+            role: RenderRole::DocumentGraphic,
+            object_id: object_id.clone(),
+            node_id: Some(node.id.clone()),
+            center,
+            radius: bold_width * 0.5,
+            fill: stroke.to_string(),
+            stroke: stroke.to_string(),
+            stroke_width: 0.0,
+        });
+    }
+    if h_dash {
+        let half_width = bold_width * 0.2625;
+        for offset_y in [bold_width * 0.75, bold_width * 1.275] {
+            push_cdxml_node_marker_line(
+                out,
+                object_id.clone(),
+                Point::new(center.x - half_width, center.y + offset_y),
+                Point::new(center.x + half_width, center.y + offset_y),
+                stroke,
+                line_width,
+            );
+        }
+    }
+    if is_unbonded_multi_attachment {
+        // ChemDraw's unbonded MultiAttachment placeholder spans roughly 30%
+        // of the document bond length (three full rays crossing at the node).
+        let radius = bond_length * 0.15;
+        for angle_degrees in [90.0_f64, 30.0, -30.0] {
+            let angle = angle_degrees.to_radians();
+            let dx = radius * angle.cos();
+            let dy = radius * angle.sin();
+            push_cdxml_node_marker_line(
+                out,
+                object_id.clone(),
+                Point::new(center.x - dx, center.y - dy),
+                Point::new(center.x + dx, center.y + dy),
+                stroke,
+                line_width,
+            );
+        }
+    }
+}
+
+fn push_cdxml_node_marker_line(
+    out: &mut Vec<RenderPrimitive>,
+    object_id: Option<String>,
+    from: Point,
+    to: Point,
+    stroke: &str,
+    stroke_width: f64,
+) {
+    out.push(RenderPrimitive::Path {
+        role: RenderRole::DocumentGraphic,
+        object_id,
+        bond_id: None,
+        d: format!("M {:.4} {:.4} L {:.4} {:.4}", from.x, from.y, to.x, to.y),
+        points: vec![from, to],
+        stroke: stroke.to_string(),
+        stroke_width,
+        dash_array: Vec::new(),
+        line_cap: Some("butt".to_string()),
+        line_join: Some("miter".to_string()),
+        rotate: 0.0,
+        rotate_center: None,
+    });
 }
 
 fn render_fragment_atom_query_annotations(

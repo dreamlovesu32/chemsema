@@ -1,6 +1,8 @@
 use super::*;
 use crate::Point;
 
+const CHEMDRAW_AUTO_BRACKET_LABEL_GAP_EM: f64 = 0.1875;
+
 fn non_bond_dash_array(defaults: CdxmlDefaults) -> Value {
     json!([defaults
         .hash_spacing
@@ -1256,6 +1258,10 @@ pub(super) fn append_text_objects(
     append_text_objects_recursive(
         root,
         false,
+        true,
+        false,
+        false,
+        None,
         0,
         None,
         CdxmlTextObjectRole::FreeText,
@@ -1270,9 +1276,182 @@ pub(super) fn append_text_objects(
     );
 }
 
+pub(super) fn append_synthesized_enhanced_stereo_text_objects(
+    root: &XmlNode,
+    objects: &mut Vec<SceneObject>,
+    styles: &mut BTreeMap<String, Value>,
+    defaults: CdxmlDefaults,
+    colors: &CdxmlColorTable,
+    fonts: &BTreeMap<String, String>,
+) {
+    let node_positions: BTreeMap<&str, [f64; 2]> = descendants(root)
+        .into_iter()
+        .filter(|node| node.is("n"))
+        .filter_map(|node| Some((node.attr("id")?, parse_xy(node.attr("p"))?)))
+        .collect();
+    let bonds = descendants(root)
+        .into_iter()
+        .filter(|node| node.is("b"))
+        .collect::<Vec<_>>();
+    let font_size = defaults.label_size * 0.75;
+    let font_id = defaults.label_font.to_string();
+    let font_family = fonts
+        .get(&font_id)
+        .cloned()
+        .unwrap_or_else(|| "Arial".to_string());
+    let fill = colors.resolve(Some(&defaults.color.to_string()));
+    let mut index = objects
+        .iter()
+        .filter(|object| object.object_type == "text")
+        .count()
+        + 1;
+
+    for node in descendants(root).into_iter().filter(|node| node.is("n")) {
+        let Some(stereo_type) = node.attr("EnhancedStereoType") else {
+            continue;
+        };
+        if node.direct_children("objecttag").any(|tag| {
+            tag.attr("Name") == Some("enhancedstereo")
+                && !tag
+                    .attr("Visible")
+                    .is_some_and(|value| value.eq_ignore_ascii_case("no"))
+        }) {
+            continue;
+        }
+        let Some(node_id) = node.attr("id") else {
+            continue;
+        };
+        let Some(position) = node_positions.get(node_id).copied() else {
+            continue;
+        };
+        let text = match stereo_type.to_ascii_lowercase().as_str() {
+            "absolute" | "abs" => "abs".to_string(),
+            "or" => format!("or{}", node.attr("EnhancedStereoGroupNum").unwrap_or("1")),
+            "and" => format!("&{}", node.attr("EnhancedStereoGroupNum").unwrap_or("1")),
+            _ => continue,
+        };
+        let direction = enhanced_stereo_label_direction(node_id, position, &bonds, &node_positions)
+            .unwrap_or(Point::new(1.0, -1.0));
+        let width = estimated_annotation_text_width(&text, font_size);
+        let height = font_size * 0.86;
+        let left = if direction.x >= 0.0 {
+            position[0] + font_size * 0.48
+        } else {
+            position[0] - width - font_size * 0.5
+        };
+        let top = if direction.y < 0.0 {
+            position[1] - font_size * 1.06
+        } else {
+            position[1] + font_size * 0.09
+        };
+        let style_id = format!("style_text_auto_enhanced_{index:03}");
+        styles.insert(
+            style_id.clone(),
+            json!({
+                "kind": "text",
+                "fontFamily": font_family,
+                "fontSize": font_size,
+                "fontWeight": 400,
+                "fill": fill,
+                "stroke": null,
+            }),
+        );
+        let mut extra = BTreeMap::new();
+        extra.insert("text".to_string(), json!(text));
+        extra.insert("box".to_string(), json!([0.0, 0.0, width, height]));
+        extra.insert("align".to_string(), json!("left"));
+        extra.insert("valign".to_string(), json!("top"));
+        extra.insert("lineHeight".to_string(), json!(font_size * 1.15));
+        extra.insert("fontSize".to_string(), json!(font_size));
+        extra.insert("anchorOffsetX".to_string(), json!(0.0));
+        extra.insert("baselineOffset".to_string(), json!(font_size * 0.84));
+        extra.insert("preserveLines".to_string(), json!(true));
+        extra.insert(
+            "runs".to_string(),
+            json!([LabelRun {
+                text: text.clone(),
+                font_family: Some(font_family.clone()),
+                font_size: Some(font_size),
+                fill: Some(fill.clone()),
+                font_weight: Some(400),
+                font_style: Some("normal".to_string()),
+                underline: Some(false),
+                script: Some("normal".to_string()),
+            }]),
+        );
+        objects.push(SceneObject {
+            id: format!("obj_text_auto_enhanced_{index:03}"),
+            object_type: "text".to_string(),
+            name: format!("enhanced stereo label {node_id}"),
+            visible: true,
+            locked: false,
+            z_index: parse_i32(node.attr("Z")).unwrap_or(30),
+            transform: Transform {
+                translate: [round2(left), round2(top)],
+                rotate: 0.0,
+                scale: [1.0, 1.0],
+            },
+            style_ref: Some(style_id),
+            meta: json!({
+                "source": "cdxml",
+                "role": "enhanced_stereo",
+                "synthetic": true,
+                "nodeId": node_id,
+            }),
+            payload: ObjectPayload {
+                resource_ref: None,
+                bbox: None,
+                extra,
+            },
+            children: Vec::new(),
+        });
+        index += 1;
+    }
+}
+
+fn enhanced_stereo_label_direction(
+    node_id: &str,
+    position: [f64; 2],
+    bonds: &[&XmlNode],
+    node_positions: &BTreeMap<&str, [f64; 2]>,
+) -> Option<Point> {
+    let bond = bonds.iter().copied().find(|bond| {
+        (bond.attr("B") == Some(node_id) || bond.attr("E") == Some(node_id))
+            && bond
+                .attr("Display")
+                .is_some_and(|display| display.to_ascii_lowercase().contains("wedge"))
+    })?;
+    let other_id = if bond.attr("B") == Some(node_id) {
+        bond.attr("E")?
+    } else {
+        bond.attr("B")?
+    };
+    let other = node_positions.get(other_id)?;
+    let dx = position[0] - other[0];
+    let dy = position[1] - other[1];
+    let length = (dx * dx + dy * dy).sqrt();
+    (length > crate::EPSILON).then(|| Point::new(dx / length, dy / length))
+}
+
+fn estimated_annotation_text_width(text: &str, font_size: f64) -> f64 {
+    text.chars()
+        .map(|character| match character {
+            '&' => 0.68,
+            '0'..='9' => 0.5,
+            'a'..='z' => 0.52,
+            _ => 0.55,
+        })
+        .sum::<f64>()
+        * font_size
+}
+
 pub(super) fn append_text_objects_recursive(
     node: &XmlNode,
     skip_text: bool,
+    text_visible: bool,
+    force_text_visible: bool,
+    prefer_parameterized_bracket_label: bool,
+    auto_bracket_label_right_x: Option<f64>,
     placeholder_depth: usize,
     inherited_z: Option<i32>,
     text_role: CdxmlTextObjectRole,
@@ -1285,17 +1464,45 @@ pub(super) fn append_text_objects_recursive(
     display_fragment_ids: &BTreeSet<String>,
     bonded_node_ids: &BTreeSet<String>,
 ) {
-    let next_skip_text = skip_text
-        || (node.is("objecttag") && node.attr("Name") == Some("bracketusage"))
-        || (node.is("fragment")
-            && node
-                .attr("id")
-                .is_some_and(|id| display_fragment_ids.contains(id)))
-        || (node.is("n")
-            && node.attr("Element").is_some()
-            && node
-                .attr("id")
-                .map_or(true, |id| bonded_node_ids.contains(id)));
+    let object_tag_role = node
+        .is("objecttag")
+        .then(|| CdxmlTextObjectRole::from_object_tag_name(node.attr("Name")))
+        .flatten();
+    let use_parameterized_bracket_label = object_tag_role
+        == Some(CdxmlTextObjectRole::ParameterizedBracketLabel)
+        && prefer_parameterized_bracket_label;
+    let suppress_bracket_usage = object_tag_role == Some(CdxmlTextObjectRole::BracketUsage)
+        && prefer_parameterized_bracket_label;
+    let next_force_text_visible = if object_tag_role.is_some() {
+        use_parameterized_bracket_label
+    } else {
+        force_text_visible
+    };
+    let next_text_visible = if use_parameterized_bracket_label {
+        true
+    } else if suppress_bracket_usage {
+        false
+    } else if object_tag_role.is_some() {
+        !node
+            .attr("Visible")
+            .is_some_and(|value| value.eq_ignore_ascii_case("no"))
+    } else {
+        text_visible
+    };
+    let next_skip_text = if object_tag_role.is_some() {
+        false
+    } else {
+        skip_text
+            || (node.is("fragment")
+                && node
+                    .attr("id")
+                    .is_some_and(|id| display_fragment_ids.contains(id)))
+            || (node.is("n")
+                && node.attr("Element").is_some()
+                && node
+                    .attr("id")
+                    .map_or(true, |id| bonded_node_ids.contains(id)))
+    };
     let next_placeholder_depth = if node.is("n")
         && matches!(
             node.attr("NodeType").unwrap_or(""),
@@ -1307,22 +1514,29 @@ pub(super) fn append_text_objects_recursive(
     } else {
         0
     };
-    let next_text_role = if node.is("objecttag") {
-        match node.attr("Name") {
-            Some("bracketusage") => CdxmlTextObjectRole::BracketUsage,
-            Some("parameterizedBracketLabel") => CdxmlTextObjectRole::ParameterizedBracketLabel,
-            _ => text_role,
-        }
-    } else {
-        text_role
-    };
+    let next_text_role = object_tag_role.unwrap_or(text_role);
+    let next_auto_bracket_label_right_x =
+        if node.is("graphic") && node.attr("GraphicType") == Some("Bracket") {
+            parse_bbox(node.attr("BoundingBox")).map(|bbox| bbox[0].max(bbox[2]))
+        } else if object_tag_role.is_some() && !uses_automatic_object_tag_positioning(node) {
+            None
+        } else {
+            auto_bracket_label_right_x
+        };
     let current_z = parse_i32(node.attr("Z")).or(inherited_z);
     if node.is("t") && !skip_text && placeholder_depth <= 1 {
+        let visible = text_visible
+            && (force_text_visible
+                || !node
+                    .attr("Visible")
+                    .is_some_and(|value| value.eq_ignore_ascii_case("no")));
         if let Some(object) = text_object(
             node,
             *index,
             current_z.unwrap_or(30),
             next_text_role,
+            visible,
+            auto_bracket_label_right_x,
             styles,
             defaults,
             colors,
@@ -1336,6 +1550,15 @@ pub(super) fn append_text_objects_recursive(
         append_text_objects_recursive(
             child,
             next_skip_text,
+            next_text_visible,
+            next_force_text_visible,
+            if node.is("graphic") {
+                node.direct_children("objecttag")
+                    .any(|tag| tag.attr("Name") == Some("parameterizedBracketLabel"))
+            } else {
+                prefer_parameterized_bracket_label
+            },
+            next_auto_bracket_label_right_x,
             next_placeholder_depth,
             current_z,
             next_text_role,
@@ -1351,20 +1574,43 @@ pub(super) fn append_text_objects_recursive(
     }
 }
 
+fn uses_automatic_object_tag_positioning(node: &XmlNode) -> bool {
+    node.attr("PositioningType")
+        .is_none_or(|value| value.eq_ignore_ascii_case("auto"))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum CdxmlTextObjectRole {
     FreeText,
     BracketUsage,
     ParameterizedBracketLabel,
+    Stereo,
+    EnhancedStereo,
 }
 
 impl CdxmlTextObjectRole {
+    fn from_object_tag_name(name: Option<&str>) -> Option<Self> {
+        Some(match name? {
+            "bracketusage" => Self::BracketUsage,
+            "parameterizedBracketLabel" => Self::ParameterizedBracketLabel,
+            "stereo" => Self::Stereo,
+            "enhancedstereo" => Self::EnhancedStereo,
+            _ => return None,
+        })
+    }
+
     fn as_str(self) -> &'static str {
         match self {
             Self::FreeText => "free_text",
             Self::BracketUsage => "bracket_usage",
             Self::ParameterizedBracketLabel => "parameterized_bracket_label",
+            Self::Stereo => "stereo",
+            Self::EnhancedStereo => "enhanced_stereo",
         }
+    }
+
+    fn is_bracket_label(self) -> bool {
+        matches!(self, Self::BracketUsage | Self::ParameterizedBracketLabel)
     }
 }
 
@@ -1373,6 +1619,8 @@ fn text_object(
     index: usize,
     z_index: i32,
     role: CdxmlTextObjectRole,
+    visible: bool,
+    auto_bracket_label_right_x: Option<f64>,
     styles: &mut BTreeMap<String, Value>,
     defaults: CdxmlDefaults,
     colors: &CdxmlColorTable,
@@ -1449,6 +1697,9 @@ fn text_object(
         .unwrap_or(font_size * 1.4);
     let translate = if let Some(bbox) = bbox {
         let x = match align.as_str() {
+            _ if role.is_bracket_label() => auto_bracket_label_right_x
+                .map(|right_x| right_x + font_size * CHEMDRAW_AUTO_BRACKET_LABEL_GAP_EM)
+                .unwrap_or(point[0]),
             "center" => (bbox[0] + bbox[2]) * 0.5,
             "right" => bbox[2],
             _ => bbox[0],
@@ -1498,7 +1749,7 @@ fn text_object(
         id: format!("obj_text_{index:03}"),
         object_type: "text".to_string(),
         name: format!("text {index}"),
-        visible: true,
+        visible,
         locked: false,
         z_index,
         transform: Transform {

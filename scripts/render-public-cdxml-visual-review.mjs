@@ -14,6 +14,7 @@ function parseArgs(argv) {
     outDir: "tmp/public-cdxml-visual-review",
     report: "tmp/public-cdxml-roundtrip-label-audit/report.json",
     all: false,
+    patterns: [],
     cli: process.platform === "win32"
       ? "target/debug/chemsema-cli.exe"
       : "target/debug/chemsema-cli",
@@ -24,6 +25,7 @@ function parseArgs(argv) {
     else if (arg === "--out") args.outDir = argv[++index];
     else if (arg === "--report") args.report = argv[++index];
     else if (arg === "--all") args.all = true;
+    else if (arg === "--only") args.patterns.push(argv[++index]);
     else if (arg === "--cli") args.cli = argv[++index];
     else if (arg === "--help" || arg === "-h") args.help = true;
     else throw new Error(`Unknown argument: ${arg}`);
@@ -781,9 +783,20 @@ function svgHasDrawableContent(svg) {
   return /<(?:path|polygon|polyline|line|circle|ellipse|rect|text)\b/i.test(svg);
 }
 
-async function fullCorpusPairs(root, reportPath, outDir) {
+async function fullCorpusPairs(root, reportPath, outDir, patterns = []) {
   const report = JSON.parse(await fs.readFile(path.resolve(reportPath), "utf8"));
-  const pairs = report.cases.map((entry) => {
+  const selectedCases = patterns.length === 0
+    ? report.cases
+    : report.cases.filter((entry) => {
+      const haystack = `${entry.caseId} ${entry.source} ${entry.path}`.toLowerCase();
+      return patterns.some((pattern) => {
+        const normalized = pattern.toLowerCase();
+        return /^\d+$/.test(normalized)
+          ? entry.caseId === normalized
+          : haystack.includes(normalized);
+      });
+    });
+  const pairs = selectedCases.map((entry) => {
     const input = path.join(root, entry.source, entry.path);
     const title = path.basename(input, path.extname(input));
     const oracleName = `${entry.caseId}_${entry.source}_${safeName(title)}`;
@@ -854,7 +867,7 @@ async function fullCorpusPairs(root, reportPath, outDir) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
-    console.log("Usage: node scripts/render-public-cdxml-visual-review.mjs [--root corpus] [--out directory] [--cli chemsema-cli] [--all --report report.json]");
+    console.log("Usage: node scripts/render-public-cdxml-visual-review.mjs [--root corpus] [--out directory] [--cli chemsema-cli] [--all --report report.json] [--only case-or-path]");
     return;
   }
 
@@ -863,7 +876,7 @@ async function main() {
   const cli = path.resolve(args.cli);
   const allFiles = await walk(root);
   const pairs = args.all
-    ? await fullCorpusPairs(root, args.report, outDir)
+    ? await fullCorpusPairs(root, args.report, outDir, args.patterns)
     : allFiles
       .filter((file) => file.toLowerCase().endsWith(".cdxml"))
       .map((cdxml) => ({

@@ -5109,6 +5109,7 @@ fn parse_cdxml_preserves_bracketusage_repeat_count() {
         .collect();
     let texts: Vec<_> = text_objects
         .iter()
+        .filter(|object| object.visible)
         .filter_map(|object| {
             object
                 .payload
@@ -5120,9 +5121,295 @@ fn parse_cdxml_preserves_bracketusage_repeat_count() {
     assert_eq!(texts, vec!["abc"]);
     let roles: Vec<_> = text_objects
         .iter()
+        .filter(|object| object.visible)
         .filter_map(|object| object.meta.get("role").and_then(|value| value.as_str()))
         .collect();
     assert_eq!(roles, vec!["parameterized_bracket_label"]);
+    assert!(text_objects.iter().any(|object| {
+        !object.visible
+            && object
+                .payload
+                .extra
+                .get("text")
+                .and_then(|value| value.as_str())
+                == Some("2")
+    }));
+    let label = text_objects
+        .iter()
+        .find(|object| object.visible)
+        .expect("parameterized bracket label should provide the visible text");
+    assert_eq!(label.transform.translate, [81.41, 68.0]);
+    assert_eq!(
+        label
+            .payload
+            .extra
+            .get("baselineOffset")
+            .and_then(|value| value.as_f64()),
+        Some(6.0)
+    );
+}
+
+#[test]
+fn parse_cdxml_bracketusage_without_parameterized_label_uses_automatic_bracket_anchor() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML BondLength="14.40" LineWidth="0.60" BoldWidth="2" HashSpacing="2.50">
+  <page id="1">
+    <graphic id="2" BoundingBox="20 70 20 10" GraphicType="Bracket" BracketType="Square"/>
+    <graphic id="3" BoundingBox="80 10 80 70" GraphicType="Bracket" BracketType="Square">
+      <objecttag id="1" Name="bracketusage" Value="2">
+        <t p="83.51 72.64" BoundingBox="83.75 67.37 87.37 72.64">
+          <s font="3" size="7.5" color="0">2</s>
+        </t>
+      </objecttag>
+    </graphic>
+    <bracketedgroup id="4" BracketUsage="MultipleGroup" RepeatCount="2">
+      <bracketattachment id="5" GraphicID="2"/>
+      <bracketattachment id="6" GraphicID="3"/>
+    </bracketedgroup>
+  </page>
+</CDXML>"##;
+    let document = parse_cdxml_document(cdxml, Some("legacy bracket text"))
+        .expect("legacy bracket label should parse");
+    let label = document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "text" && object.visible)
+        .expect("bracketusage should remain visible when no parameterized label exists");
+
+    assert_eq!(
+        label.meta.get("role").and_then(|value| value.as_str()),
+        Some("bracket_usage")
+    );
+    assert_eq!(label.transform.translate, [81.41, 67.37]);
+    assert_eq!(
+        label
+            .payload
+            .extra
+            .get("box")
+            .and_then(|value| value.as_array())
+            .and_then(|value| value.first())
+            .and_then(|value| value.as_f64()),
+        Some(2.34)
+    );
+    assert_eq!(
+        label
+            .payload
+            .extra
+            .get("baselineOffset")
+            .and_then(|value| value.as_f64()),
+        Some(5.27)
+    );
+}
+
+#[test]
+fn parse_cdxml_bracket_label_with_explicit_offset_uses_recorded_position() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML BondLength="14.40" LineWidth="0.60" BoldWidth="2" HashSpacing="2.50">
+  <page id="1">
+    <graphic id="2" BoundingBox="20 70 20 10" GraphicType="Bracket" BracketType="Square"/>
+    <graphic id="3" BoundingBox="80 10 80 70" GraphicType="Bracket" BracketType="Square">
+      <objecttag id="1" Name="bracketusage" Value="2" PositioningType="offset" PositioningOffset="12 4">
+        <t p="92 74" BoundingBox="92 68.73 95.62 74">
+          <s font="3" size="7.5" color="0">2</s>
+        </t>
+      </objecttag>
+    </graphic>
+    <bracketedgroup id="4" BracketUsage="MultipleGroup" RepeatCount="2">
+      <bracketattachment id="5" GraphicID="2"/>
+      <bracketattachment id="6" GraphicID="3"/>
+    </bracketedgroup>
+  </page>
+</CDXML>"##;
+    let document = parse_cdxml_document(cdxml, Some("offset bracket text"))
+        .expect("offset bracket label should parse");
+    let label = document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "text" && object.visible)
+        .expect("explicitly positioned bracket label should remain visible");
+
+    assert_eq!(label.transform.translate, [92.0, 68.73]);
+    assert_eq!(
+        label
+            .payload
+            .extra
+            .get("anchorOffsetX")
+            .and_then(|value| value.as_f64()),
+        Some(0.0)
+    );
+}
+
+#[test]
+fn parse_cdxml_imports_visible_stereo_object_tags_inside_fragments() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML BondLength="30" LineWidth="1" BoldWidth="4" HashSpacing="2.7">
+  <page id="1">
+    <fragment id="2">
+      <n id="3" p="20 20" EnhancedStereoType="Or" EnhancedStereoGroupNum="1">
+        <objecttag Name="enhancedstereo">
+          <t p="23 18" BoundingBox="23 12 34 18"><s font="3" size="7.5">or1</s></t>
+        </objecttag>
+      </n>
+      <n id="4" p="50 20" AS="R">
+        <objecttag Name="stereo">
+          <t p="42 18" BoundingBox="42 12 52 18"><s font="3" size="7.5">(R)</s></t>
+        </objecttag>
+      </n>
+      <n id="5" p="80 20">
+        <objecttag Name="stereo" Visible="no">
+          <t p="72 18" BoundingBox="72 12 82 18"><s font="3" size="7.5">(S)</s></t>
+        </objecttag>
+      </n>
+    </fragment>
+  </page>
+</CDXML>"##;
+    let document =
+        parse_cdxml_document(cdxml, Some("stereo tags")).expect("stereo object tags should parse");
+    let tagged_text: Vec<_> = document
+        .objects
+        .iter()
+        .filter(|object| object.object_type == "text" && object.visible)
+        .map(|object| {
+            (
+                object
+                    .payload
+                    .extra
+                    .get("text")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or_default(),
+                object
+                    .meta
+                    .get("role")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or_default(),
+            )
+        })
+        .collect();
+
+    assert_eq!(
+        tagged_text,
+        vec![("or1", "enhanced_stereo"), ("(R)", "stereo")]
+    );
+    assert!(document.objects.iter().any(|object| {
+        object.object_type == "text"
+            && !object.visible
+            && object
+                .payload
+                .extra
+                .get("text")
+                .and_then(|value| value.as_str())
+                == Some("(S)")
+    }));
+}
+
+#[test]
+fn parse_cdxml_synthesizes_missing_enhanced_stereo_object_tag_opposite_wedge() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML BondLength="30" LineWidth="1" BoldWidth="4" LabelFont="3" LabelSize="10">
+  <fonttable><font id="3" charset="iso-8859-1" name="Arial"/></fonttable>
+  <page id="1">
+    <fragment id="2">
+      <n id="3" p="20 20" EnhancedStereoType="Or" EnhancedStereoGroupNum="2"/>
+      <n id="4" p="10 30"/>
+      <b id="5" B="3" E="4" Display="WedgeBegin"/>
+    </fragment>
+  </page>
+</CDXML>"##;
+    let document = parse_cdxml_document(cdxml, Some("automatic enhanced stereo"))
+        .expect("enhanced stereo fields should parse");
+    let label = document
+        .objects
+        .iter()
+        .find(|object| {
+            object.meta.get("role").and_then(|value| value.as_str()) == Some("enhanced_stereo")
+        })
+        .expect("missing objecttag should synthesize a visible enhanced-stereo label");
+
+    assert_eq!(
+        label
+            .payload
+            .extra
+            .get("text")
+            .and_then(|value| value.as_str()),
+        Some("or2")
+    );
+    assert_eq!(
+        label
+            .meta
+            .get("synthetic")
+            .and_then(|value| value.as_bool()),
+        Some(true)
+    );
+    assert!(
+        label.transform.translate[0] > 20.0,
+        "label should sit opposite the down-left wedge"
+    );
+    assert!(
+        label.transform.translate[1] < 20.0,
+        "label should sit above the stereocenter"
+    );
+}
+
+#[test]
+fn render_cdxml_node_display_markers_from_official_node_properties() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML BondLength="30" LineWidth="1" BoldWidth="4" HashSpacing="2.7">
+  <page id="1">
+    <fragment id="2">
+      <n id="3" p="20 20" Geometry="Tetrahedral" HDot="yes"/>
+      <n id="4" p="50 20" Geometry="Tetrahedral" HDash="yes"/>
+      <n id="5" p="80 20" NodeType="MultiAttachment" Attachments="6 7 8"/>
+      <b id="6" B="3" E="4"/>
+    </fragment>
+  </page>
+</CDXML>"##;
+    let document = parse_cdxml_document(cdxml, Some("node markers"))
+        .expect("node display markers should parse");
+    let primitives = render_document(&document);
+    let dot_count = primitives
+        .iter()
+        .filter(|primitive| {
+            matches!(
+                primitive,
+                RenderPrimitive::Circle {
+                    radius,
+                    fill,
+                    stroke_width,
+                    ..
+                } if (*radius - 2.0).abs() < 1.0e-6
+                    && fill == "#000000"
+                    && stroke_width.abs() < 1.0e-6
+            )
+        })
+        .count();
+    let marker_path_count = primitives
+        .iter()
+        .filter(|primitive| matches!(primitive, RenderPrimitive::Path { bond_id: None, .. }))
+        .count();
+
+    assert_eq!(dot_count, 1, "HDot should render one filled dot");
+    assert_eq!(
+        marker_path_count, 5,
+        "HDash should render two bars and an unbonded MultiAttachment three rays"
+    );
+    let multi_attachment_vertical = primitives.iter().find_map(|primitive| match primitive {
+        RenderPrimitive::Path {
+            bond_id: None,
+            points,
+            stroke_width,
+            ..
+        } if points.len() == 2
+            && (points[0].x - points[1].x).abs() < 1.0e-6
+            && (points[0].y - points[1].y).abs() > 8.0 =>
+        {
+            Some((points[0], points[1], *stroke_width))
+        }
+        _ => None,
+    });
+    let (from, to, stroke_width) =
+        multi_attachment_vertical.expect("MultiAttachment should include a vertical ray");
+    assert!(((from.y - to.y).abs() - 9.0).abs() < 1.0e-6);
+    assert!((stroke_width - 1.0).abs() < 1.0e-6);
 }
 
 #[test]
@@ -5296,7 +5583,7 @@ fn parse_cdxml_bracket_label_fixtures_match_chemdraw_offsets() {
         let labels: Vec<_> = document
             .scene_objects()
             .into_iter()
-            .filter(|object| object.object_type == "text")
+            .filter(|object| object.object_type == "text" && object.visible)
             .filter(|object| {
                 object
                     .payload
@@ -5354,7 +5641,7 @@ fn parse_cdxml_bracket_label_fixtures_match_chemdraw_offsets() {
                 let bottom = bracket.transform.translate[1] + bbox[1] + bbox[3];
                 let dx = label.transform.translate[0] - right;
                 let dy = label_anchor_y - bottom;
-                let score = (dx - 3.12).abs() + (dy - 2.4).abs();
+                let score = (dx - 1.41).abs() + (dy - 2.4).abs();
                 closest = match closest {
                     Some((best_score, _, _)) if best_score <= score => closest,
                     _ => Some((score, dx, dy)),
@@ -5362,8 +5649,8 @@ fn parse_cdxml_bracket_label_fixtures_match_chemdraw_offsets() {
             }
             let (_, dx, dy) = closest.expect("label should match a right bracket");
             assert!(
-                (dx - 3.12).abs() < 0.02,
-                "{fixture} bracket label x offset should be 3.12 pt, got {dx}"
+                (dx - 1.41).abs() < 0.02,
+                "{fixture} automatic bracket label x offset should be 0.1875 em, got {dx}"
             );
             assert!(
                 (2.30..=2.50).contains(&dy),
