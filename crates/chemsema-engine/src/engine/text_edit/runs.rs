@@ -125,53 +125,43 @@ pub(super) fn display_runs_from_source_runs(
     fallback_font_size: f64,
     fallback_fill: &str,
 ) -> Vec<LabelRun> {
+    let chars: Vec<char> = source_runs
+        .iter()
+        .flat_map(|run| run.text.chars())
+        .collect();
+    let inferred_scripts = infer_chemical_scripts(&chars);
     let mut out = Vec::new();
-    let mut index = 0;
-    while index < source_runs.len() {
-        let run = &source_runs[index];
+    let mut char_index = 0;
+    for run in source_runs {
         if run.text.is_empty() {
-            index += 1;
             continue;
         }
-        match run.script.as_deref().unwrap_or("normal") {
-            "chemical" => {
-                let start = index;
-                while index < source_runs.len()
-                    && source_runs[index].script.as_deref() == Some("chemical")
-                {
-                    index += 1;
-                }
-                let bases = source_runs[start..index]
-                    .iter()
-                    .filter(|run| !run.text.is_empty())
-                    .map(|run| {
-                        display_run_base(
-                            run,
-                            fallback_font_family,
-                            fallback_font_size,
-                            fallback_fill,
-                        )
-                    })
-                    .collect::<Vec<_>>();
-                out.extend(expand_chemical_runs(&bases));
-                continue;
+        let authored_script = run.script.as_deref().unwrap_or("normal");
+        let base = display_run_base(run, fallback_font_family, fallback_font_size, fallback_fill);
+        let mut buffer = String::new();
+        let mut active_script = authored_script;
+        for character in run.text.chars() {
+            let script = if authored_script == "chemical" {
+                inferred_scripts[char_index]
+            } else {
+                authored_script
+            };
+            char_index += 1;
+            if !buffer.is_empty() && script != active_script {
+                let mut part = base.clone();
+                part.text = std::mem::take(&mut buffer);
+                part.script = Some(active_script.to_string());
+                out.push(part);
             }
-            "subscript" | "superscript" => {
-                let mut base =
-                    display_run_base(run, fallback_font_family, fallback_font_size, fallback_fill);
-                base.script = run.script.clone();
-                out.push(base);
-            }
-            _ => {
-                out.push(display_run_base(
-                    run,
-                    fallback_font_family,
-                    fallback_font_size,
-                    fallback_fill,
-                ));
-            }
+            active_script = script;
+            buffer.push(character);
         }
-        index += 1;
+        if !buffer.is_empty() {
+            let mut part = base;
+            part.text = buffer;
+            part.script = Some(active_script.to_string());
+            out.push(part);
+        }
     }
     merge_adjacent_runs(out)
 }
@@ -238,30 +228,10 @@ pub(super) fn expand_chemical_run(base: &LabelRun, text: &str) -> Vec<LabelRun> 
     expand_chemical_runs(&[base])
 }
 
+#[cfg(test)]
 fn expand_chemical_runs(base_runs: &[LabelRun]) -> Vec<LabelRun> {
     let chars: Vec<char> = base_runs.iter().flat_map(|run| run.text.chars()).collect();
-    let mut scripts = vec!["normal"; chars.len()];
-
-    let mut index = 0usize;
-    while index < chars.len() {
-        if !chars[index].is_ascii_digit() {
-            if is_charge_marker(&chars, index) {
-                scripts[index] = "superscript";
-            }
-            index += 1;
-            continue;
-        }
-        let start = index;
-        while index < chars.len() && chars[index].is_ascii_digit() {
-            index += 1;
-        }
-        if index < chars.len() && is_charge_marker(&chars, index) {
-            scripts[start..=index].fill("superscript");
-            index += 1;
-        } else if start > 0 && (chars[start - 1].is_ascii_alphabetic() || chars[start - 1] == ')') {
-            scripts[start..index].fill("subscript");
-        }
-    }
+    let scripts = infer_chemical_scripts(&chars);
 
     let mut out = Vec::new();
     let mut char_index = 0;
@@ -288,6 +258,33 @@ fn expand_chemical_runs(base_runs: &[LabelRun]) -> Vec<LabelRun> {
         }
     }
     out
+}
+
+fn infer_chemical_scripts(chars: &[char]) -> Vec<&'static str> {
+    let mut scripts = vec!["normal"; chars.len()];
+
+    let mut index = 0usize;
+    while index < chars.len() {
+        if !chars[index].is_ascii_digit() {
+            if is_charge_marker(&chars, index) {
+                scripts[index] = "superscript";
+            }
+            index += 1;
+            continue;
+        }
+        let start = index;
+        while index < chars.len() && chars[index].is_ascii_digit() {
+            index += 1;
+        }
+        if index < chars.len() && is_charge_marker(&chars, index) {
+            scripts[start..=index].fill("superscript");
+            index += 1;
+        } else if start > 0 && (chars[start - 1].is_ascii_alphabetic() || chars[start - 1] == ')') {
+            scripts[start..index].fill("subscript");
+        }
+    }
+
+    scripts
 }
 
 fn is_charge_marker(chars: &[char], index: usize) -> bool {
@@ -354,6 +351,32 @@ mod tests {
                 ("H", Some("normal")),
                 ("+", Some("superscript")),
                 ("\nN", Some("normal")),
+            ]
+        );
+    }
+
+    #[test]
+    fn display_chemical_digit_uses_regular_neighbor_runs_as_formula_context() {
+        let mut normal = chemical_base();
+        normal.script = Some("normal".to_string());
+        normal.text = "(PhO)".to_string();
+        let mut digit = chemical_base();
+        digit.script = Some("chemical".to_string());
+        digit.text = "2".to_string();
+        let mut suffix = chemical_base();
+        suffix.script = Some("normal".to_string());
+        suffix.text = "POH".to_string();
+
+        let runs =
+            display_runs_from_source_runs(&[normal, digit, suffix], "Arial", 10.0, "#000000");
+        assert_eq!(
+            runs.iter()
+                .map(|run| (run.text.as_str(), run.script.as_deref()))
+                .collect::<Vec<_>>(),
+            vec![
+                ("(PhO)", Some("normal")),
+                ("2", Some("subscript")),
+                ("POH", Some("normal"))
             ]
         );
     }

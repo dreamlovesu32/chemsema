@@ -78,25 +78,7 @@ pub(super) fn label_display_runs(
 }
 
 pub(super) fn label_display_runs_from_source_runs(source_runs: &[LabelRun]) -> Vec<LabelRun> {
-    let mut out = Vec::new();
-    let mut index = 0;
-
-    while index < source_runs.len() {
-        if source_runs[index].script.as_deref() != Some("chemical") {
-            out.push(source_runs[index].clone());
-            index += 1;
-            continue;
-        }
-
-        let start = index;
-        while index < source_runs.len() && source_runs[index].script.as_deref() == Some("chemical")
-        {
-            index += 1;
-        }
-        out.extend(expand_cdxml_chemical_runs(&source_runs[start..index]));
-    }
-
-    out
+    expand_cdxml_mixed_runs(source_runs)
 }
 
 struct CdxmlFace {
@@ -132,6 +114,10 @@ fn expand_cdxml_chemical_run(base: &LabelRun) -> Vec<LabelRun> {
 }
 
 fn expand_cdxml_chemical_runs(base_runs: &[LabelRun]) -> Vec<LabelRun> {
+    expand_cdxml_mixed_runs(base_runs)
+}
+
+fn expand_cdxml_mixed_runs(base_runs: &[LabelRun]) -> Vec<LabelRun> {
     let chars: Vec<char> = base_runs.iter().flat_map(|run| run.text.chars()).collect();
     let mut scripts = vec!["normal"; chars.len()];
 
@@ -160,9 +146,14 @@ fn expand_cdxml_chemical_runs(base_runs: &[LabelRun]) -> Vec<LabelRun> {
     let mut char_index = 0;
     for base in base_runs {
         let mut buffer = String::new();
-        let mut active_script = "normal";
+        let authored_script = base.script.as_deref().unwrap_or("normal");
+        let mut active_script = authored_script;
         for character in base.text.chars() {
-            let script = scripts[char_index];
+            let script = if authored_script == "chemical" {
+                scripts[char_index]
+            } else {
+                authored_script
+            };
             char_index += 1;
             if !buffer.is_empty() && script != active_script {
                 let mut run = base.clone();
@@ -311,6 +302,34 @@ mod tests {
                 ("(OCF", Some("normal")),
                 ("3", Some("subscript")),
                 (")n", Some("normal"))
+            ]
+        );
+    }
+
+    #[test]
+    fn chemical_face_digit_uses_neighboring_regular_runs_as_formula_context() {
+        let runs = label_display_runs_from_source_runs(&[
+            LabelRun {
+                text: "(PhO)".to_string(),
+                script: Some("normal".to_string()),
+                ..LabelRun::default()
+            },
+            chemical_run("2"),
+            LabelRun {
+                text: "POH".to_string(),
+                script: Some("normal".to_string()),
+                ..LabelRun::default()
+            },
+        ]);
+
+        assert_eq!(
+            runs.iter()
+                .map(|run| (run.text.as_str(), run.script.as_deref()))
+                .collect::<Vec<_>>(),
+            vec![
+                ("(PhO)", Some("normal")),
+                ("2", Some("subscript")),
+                ("POH", Some("normal"))
             ]
         );
     }

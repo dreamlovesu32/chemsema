@@ -113,6 +113,15 @@ fn glyph_anchor(label: &chemsema_engine::NodeLabel, index: usize) -> Point {
     )
 }
 
+fn glyph_hit_point(label: &chemsema_engine::NodeLabel, index: usize) -> Point {
+    let polygon = label
+        .glyph_polygons
+        .get(index)
+        .expect("label should have glyph polygons");
+    let bounds = polygon_bounds(polygon);
+    Point::new((bounds[0] + bounds[2]) * 0.5, (bounds[1] + bounds[3]) * 0.5)
+}
+
 fn polygon_bounds(points: &[[f64; 2]]) -> [f64; 4] {
     assert!(!points.is_empty(), "polygon should not be empty");
     points.iter().fold(
@@ -838,7 +847,11 @@ fn text_object_caret_treats_percent_as_wide_single_glyph() {
             .expect("caret offset should exist")
     };
 
-    assert!((caret_x(4) - caret_x(3) - 10.0).abs() < 1.0e-6);
+    let percent_advance = caret_x(4) - caret_x(3);
+    assert!(
+        percent_advance > 8.0 && percent_advance < 11.0,
+        "Arial percent should use its real wide advance: {percent_advance}"
+    );
 }
 
 #[test]
@@ -1159,7 +1172,11 @@ fn generated_hydrogen_label_hover_can_move_between_adjacent_glyphs() {
         let label = node.label.as_ref().expect("label should exist");
         assert_eq!(label.text, "NH3");
         assert!(label.glyph_polygons.len() >= 3);
-        (node.point(), glyph_anchor(label, 2), glyph_anchor(label, 1))
+        (
+            node.point(),
+            glyph_hit_point(label, 2),
+            glyph_hit_point(label, 1),
+        )
     };
 
     engine.set_tool_state(tool_state(BondVariant::Single));
@@ -1551,6 +1568,10 @@ fn endpoint_text_edit_populates_kernel_glyph_polygons_for_abbreviation_labels() 
     let label = node.label.as_ref().expect("label should be generated");
     assert_eq!(label.text, "Ph");
     assert_eq!(label.glyph_polygons.len(), 2, "{:?}", label.glyph_polygons);
+    assert!(
+        !label.glyph_clip_polygons.is_empty(),
+        "confirming the edit must atomically publish retreat geometry"
+    );
     for polygon in &label.glyph_polygons {
         assert!(polygon.len() >= 4, "{polygon:?}");
         let bounds = polygon_bounds(polygon);

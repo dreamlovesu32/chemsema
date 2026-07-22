@@ -238,26 +238,40 @@ fn implicit_hydrogen_charge_penalty(atomic_number: u8, charge: i32) -> i32 {
     }
 }
 
-pub(super) fn make_centered_node_label(text: &str, position: [f64; 2]) -> crate::NodeLabel {
+pub(super) fn make_centered_node_label(
+    text: &str,
+    position: [f64; 2],
+    glyph_clip_profile: GlyphClipProfile,
+) -> crate::NodeLabel {
     let font_size = DEFAULT_CENTERED_LABEL_FONT_SIZE;
     let (label_position, label_box) = estimated_centered_label_geometry(text, position, font_size);
+    let runs = vec![crate::LabelRun {
+        text: text.to_string(),
+        font_family: Some("Arial".to_string()),
+        font_size: Some(font_size),
+        fill: Some("#000000".to_string()),
+        font_weight: Some(700),
+        font_style: Some("normal".to_string()),
+        underline: Some(false),
+        outline: Some(false),
+        shadow: Some(false),
+        script: Some("normal".to_string()),
+    }];
+    let geometry = build_label_glyph_geometry_with_profile(
+        &runs,
+        &[],
+        [label_box[0], label_position[1]],
+        Some(label_box),
+        font_size,
+        position,
+        glyph_clip_profile,
+    );
     crate::NodeLabel {
         text: text.to_string(),
         source_text: Some(text.to_string()),
         position: Some(label_position),
         box_field: Some(label_box),
-        runs: vec![crate::LabelRun {
-            text: text.to_string(),
-            font_family: Some("Arial".to_string()),
-            font_size: Some(font_size),
-            fill: Some("#000000".to_string()),
-            font_weight: Some(700),
-            font_style: Some("normal".to_string()),
-            underline: Some(false),
-            outline: Some(false),
-            shadow: Some(false),
-            script: Some("normal".to_string()),
-        }],
+        runs,
         line_runs: Vec::new(),
         lines: Vec::new(),
         align: Some("center".to_string()),
@@ -267,7 +281,8 @@ pub(super) fn make_centered_node_label(text: &str, position: [f64; 2]) -> crate:
         font_family: Some("Arial".to_string()),
         fill: Some("#000000".to_string()),
         font_size: Some(font_size),
-        glyph_polygons: Vec::new(),
+        glyph_polygons: geometry.glyph_polygons,
+        glyph_clip_polygons: geometry.clip_polygons,
         box_value: Some(label_box),
         meta: serde_json::Value::Null,
     }
@@ -405,22 +420,24 @@ pub(super) fn make_centered_node_label_from_runs(
         "sourceRuns".to_string(),
         serde_json::to_value(source_runs).unwrap_or(Value::Array(Vec::new())),
     );
-    let mut glyph_polygons = build_label_glyph_polygons_with_profile(
+    let glyph_position = session
+        .text_position
+        .map(|position| [round2(position[0]), round2(position[1])])
+        .unwrap_or([x1, baseline_y]);
+    let mut glyph_geometry = build_label_glyph_geometry_with_profile(
         if line_runs.len() == 1 {
             line_runs.first().map(Vec::as_slice).unwrap_or(&[])
         } else {
             &[]
         },
         if line_runs.len() > 1 { &line_runs } else { &[] },
-        [x1, baseline_y],
+        glyph_position,
         Some([x1, y1, x2, y2]),
         font_size,
+        position,
         glyph_clip_profile,
     );
-    let has_authoritative_glyph_polygons = !session.glyph_polygons.is_empty();
-    if has_authoritative_glyph_polygons {
-        glyph_polygons = session.glyph_polygons.clone();
-    }
+    let glyph_polygons = &mut glyph_geometry.glyph_polygons;
     if !preserve_measured_box {
         if let Some(anchor_polygon_index) =
             label_anchor_polygon_index(&line_runs, layout.anchor_line, anchor_char)
@@ -452,7 +469,13 @@ pub(super) fn make_centered_node_label_from_runs(
                     x2 = round2(x2 + dx);
                     y2 = round2(y2 + dy);
                     baseline_y = round2(baseline_y + dy);
-                    for polygon in &mut glyph_polygons {
+                    for polygon in glyph_polygons.iter_mut() {
+                        for point in polygon {
+                            point[0] = round2(point[0] + dx);
+                            point[1] = round2(point[1] + dy);
+                        }
+                    }
+                    for polygon in &mut glyph_geometry.clip_polygons {
                         for point in polygon {
                             point[0] = round2(point[0] + dx);
                             point[1] = round2(point[1] + dy);
@@ -461,9 +484,6 @@ pub(super) fn make_centered_node_label_from_runs(
                 }
             }
         }
-    }
-    if has_authoritative_glyph_polygons {
-        meta.insert("glyphPolygonsAuthoritative".to_string(), Value::Bool(true));
     }
     let label_position = session
         .text_position
@@ -500,7 +520,8 @@ pub(super) fn make_centered_node_label_from_runs(
         font_family: Some(font_family.to_string()),
         fill: Some(fill.to_string()),
         font_size: Some(font_size),
-        glyph_polygons,
+        glyph_polygons: glyph_geometry.glyph_polygons,
+        glyph_clip_polygons: glyph_geometry.clip_polygons,
         box_value: Some([x1, y1, x2, y2]),
         meta: Value::Object(meta),
     }
@@ -1577,14 +1598,13 @@ pub(crate) fn refresh_label_recognition_for_node(
         set_node_implicit_hydrogen_label_meta(&mut fragment.nodes[node_index], None);
         return;
     };
-    let source_runs = source_runs_from_node_label(label);
     let text = label_source_text(label);
     let connection_count = fragment
         .bonds
         .iter()
         .filter(|bond| bond.begin == node_id || bond.end == node_id)
         .count();
-    if !source_runs_are_chemical(&source_runs)
+    if !label_interprets_chemically(label)
         && !recognized_placeholder_label(&fragment.nodes[node_index], &text, connection_count)
     {
         let node = &mut fragment.nodes[node_index];
@@ -1621,7 +1641,7 @@ fn refresh_element_valence_recognition_for_node(
     let Some(label) = fragment.nodes[node_index].label.as_ref() else {
         return;
     };
-    if !source_runs_are_chemical(&source_runs_from_node_label(label)) {
+    if !label_interprets_chemically(label) {
         return;
     }
     let text = label_source_text(label);
@@ -1682,6 +1702,14 @@ fn is_explicitly_nonchemical_cdxml_label(label: &crate::NodeLabel) -> bool {
             .get("defaultChemical")
             .and_then(Value::as_bool)
             .unwrap_or(true)
+}
+
+fn label_interprets_chemically(label: &crate::NodeLabel) -> bool {
+    label
+        .meta
+        .get("defaultChemical")
+        .and_then(Value::as_bool)
+        .unwrap_or_else(|| source_runs_are_chemical(&source_runs_from_node_label(label)))
 }
 
 fn is_source_measured_attached_label(label: &crate::NodeLabel) -> bool {
@@ -1854,10 +1882,32 @@ pub(super) fn refreshed_attached_node_label(
         round2(world_anchor.y - object_translate[1]),
     ];
     if is_generated_centered_label(label) {
-        return Some(make_centered_node_label(&label.text, local_anchor));
+        return Some(make_centered_node_label(
+            &label.text,
+            local_anchor,
+            glyph_clip_profile.unwrap_or_else(|| glyph_clip_profile_for_label(label)),
+        ));
     }
     if measured_label_geometry_is_authoritative(label) {
-        return Some(label.clone());
+        let mut next_label = label.clone();
+        let font_size = next_label.font_size.unwrap_or(DEFAULT_TEXT_FONT_SIZE);
+        let start = next_label.position.unwrap_or(node.position);
+        let geometry = build_label_glyph_geometry_with_profile(
+            if next_label.line_runs.is_empty() {
+                &next_label.runs
+            } else {
+                &[]
+            },
+            &next_label.line_runs,
+            start,
+            next_label.bbox(),
+            font_size,
+            node.position,
+            glyph_clip_profile.unwrap_or_else(|| glyph_clip_profile_for_label(label)),
+        );
+        next_label.glyph_polygons = geometry.glyph_polygons;
+        next_label.glyph_clip_polygons = geometry.clip_polygons;
+        return Some(next_label);
     }
     let text = if implicit_hydrogen_label_is_user_edited(label) {
         source_text.clone()
@@ -1886,9 +1936,9 @@ pub(super) fn refreshed_attached_node_label(
         source_runs_for_attached_label(node, source_runs, &text, label)
     };
     let display_mode = label_display_mode_from_meta_value(Some(&label.meta));
-    let layout_as_grouped_attached_label = source_runs_are_chemical(&source_runs)
-        || (is_cdxml_imported_attached_label(label)
-            && !is_explicitly_nonchemical_cdxml_label(label))
+    let interpret_chemically = label_interprets_chemically(label);
+    let layout_as_grouped_attached_label = (interpret_chemically
+        && (source_runs_are_chemical(&source_runs) || is_cdxml_imported_attached_label(label)))
         || is_source_measured_attached_label(label);
     let mut decision = label_layout_decision_for_text_mode(
         &text,
@@ -1900,7 +1950,8 @@ pub(super) fn refreshed_attached_node_label(
     // displays their conventional formula order (H2O, HCl, and so on). Group
     // 15 hydrides remain element-first (NH3), so this is a periodic-group rule
     // rather than a blanket reversal for isolated atoms.
-    if connection_angles.is_empty()
+    if interpret_chemically
+        && connection_angles.is_empty()
         && matches!(
             node.atomic_number,
             8 | 9 | 16 | 17 | 34 | 35 | 52 | 53 | 84 | 85
@@ -1973,9 +2024,7 @@ pub(super) fn refreshed_attached_node_label(
         text_position: None,
         glyph_polygons: Vec::new(),
         preserve_lines: true,
-        default_chemical: source_runs
-            .iter()
-            .any(|run| run.script.as_deref() == Some("chemical")),
+        default_chemical: interpret_chemically,
         display_mode,
     };
     let mut next_label = make_centered_node_label_from_runs(
@@ -1989,7 +2038,7 @@ pub(super) fn refreshed_attached_node_label(
         &connection_angles,
         &session,
         false,
-        false,
+        !interpret_chemically,
         layout_as_grouped_attached_label,
         Some(decision.clone()),
         glyph_clip_profile.unwrap_or_else(|| glyph_clip_profile_for_label(label)),
@@ -2002,6 +2051,11 @@ pub(super) fn refreshed_attached_node_label(
             next_label.box_field = Some(bbox);
             next_label.box_value = Some(bbox);
             for polygon in &mut next_label.glyph_polygons {
+                for point in polygon {
+                    point[0] = round2(point[0] + delta_x);
+                }
+            }
+            for polygon in &mut next_label.glyph_clip_polygons {
                 for point in polygon {
                     point[0] = round2(point[0] + delta_x);
                 }
@@ -2317,6 +2371,13 @@ pub(super) fn source_runs_for_attached_label(
     text: &str,
     label: &crate::NodeLabel,
 ) -> Vec<LabelRun> {
+    // Imported CDXML runs are authored presentation data. InterpretChemically
+    // controls chemical semantics; it does not grant permission to replace a
+    // regular/subscript/superscript face with formula styling during a later
+    // geometry refresh.
+    if label.meta.pointer("/import/cdxml/boundingBox").is_some() {
+        return source_runs;
+    }
     if node.is_placeholder || !label_text_matches_node_element(text, node) {
         return source_runs;
     }

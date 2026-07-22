@@ -1,93 +1,30 @@
-# Glyph Kernel
+# 字形内核
 
-## 目标
+ChemSema 在 Rust 内核中根据真实字体轮廓统一计算标签排版和键退让。轮廓数据来自 [shared/glyph_outlines.json](../shared/glyph_outlines.json)，覆盖多种字体，以及字体实际提供的常规、粗体、斜体和粗斜体 face。
 
-`chemsema` 需要与宿主无关的化学标签文本几何。
+设标签 margin 为 `m`、当前字形字号为 `s`：
 
-Rust engine 负责：
-
-- 用于键裁剪的逐字形 label 几何
-- glyph advance 估算
-- 下标/上标缩放和 baseline shift
-- 用于 knockout 和 label-aware bond retreat 的 background padding
-
-如果各宿主独立推导这些细节，Web 和桌面渲染器会逐渐产生偏差。
-
-## 当前模型
-
-当前活跃的 glyph geometry 实现在 Rust 中：
-
-- [crates/chemsema-engine/src/glyph_kernel.rs](../crates/chemsema-engine/src/glyph_kernel.rs)
-
-Rust engine 现在消费三个共享 manifest：
-
-- [shared/glyph_profiles.json](../shared/glyph_profiles.json)
-- [shared/glyph_clip_polygons.json](../shared/glyph_clip_polygons.json)
-- [shared/text_symbols.json](../shared/text_symbols.json) 列出 viewer 符号表和 profile 生成脚本使用的文本符号 catalog
-
-`glyph_profiles.json` 仍是归一化文本排版 metrics 的来源：
-
-- 归一化 glyph advance
-- 归一化 ink bounds
-- 用于 label layout metrics 的保守 background padding
-- normal / subscript / superscript layout
-- 对共享 profile manifest 中缺失字符的保守 Unicode 类别兜底
-
-`glyph_clip_polygons.json` 是运行时 label clipping geometry 的唯一来源。Rust kernel 不再在运行时按 `rect / ellipse / cut-corner / petal` 合成多边形。
-
-输出用于 attached-label layout、label anchor geometry、label-aware bond clipping 和 text edit preview geometry。
-
-## 固定裁剪规则
-
-当前裁剪方案是数据驱动且确定性的：
-
-1. Layout 仍从 `glyph_profiles.json` 中的归一化 ink box 开始。
-2. 实际裁剪多边形从 `glyph_clip_polygons.json` 读取。
-3. ASCII 大写字母使用预计算多边形，构成包括：
-   - 基准自然轮廓外扩：`10pt` 参考字号下为 `1.0pt`
-   - 内向锚点偏移：`0.22 * glyph height`
-   - 基准锚点圆半径：`10pt` 参考字号下为 `2.0pt`
-4. 非大写符号只使用自然轮廓外扩：
-   - 基准自然轮廓外扩：`10pt` 参考字号下为 `1.0pt`
-5. 运行时把轮廓外扩量重新映射到文档源 margin 的绝对 pt。CDXML 导入时，自然外扩等于
-   `MarginWidth`，锚点圆半径等于 `2 * MarginWidth`；二者都不随实际 label 字号缩放。
-6. 缺失于 clip manifest 的可见字符属于 manifest 生成失败；运行时不再即时合成替代形状。
-
-详细的大写字母锚点规则见：
-
-- [docs/glyph-clip-polygons.zh-CN.md](./glyph-clip-polygons.zh-CN.md)
-
-## Manifest 生成
-
-裁剪 manifest 由以下命令生成：
-
-```bash
-python scripts/generate-glyph-profiles.py
-python scripts/generate-glyph-clip-polygons.py
+```text
+q = min(m, 0.25 * s)
+natural = 真实字形轮廓 ⊕ 半径为 m 的欧氏圆盘
+feature = 凸包顶点向字形中心移动 0.5q 后，叠加半径 1.5q 的圆
+axial = 四个轴向 ±10° 内的接触扇区
+clip = natural ∪ feature ∪ axial
 ```
 
-当前 clip manifest 来自 `Arial` 轮廓几何，并固定为上面的基准 pt 值。运行时渲染器消费这些预计算的 petal/corner 规则，并把外扩量从基准源 margin 映射到文档源 margin。
+裁剪时使用有实际宽度的键体与 `clip` 求交。这是一条统一函数规则，不是逐字符查表，也不做 360 度拟合。
 
-## 消费链路
+## 数据职责
 
-同一套 glyph polygons 现在贯穿整个栈：
+- `glyphPolygons`：逐字符真实轮廓的凸包，用于编辑、命中和字符锚点。
+- `glyph_clip_polygons`：只在运行时存在的派生退让几何，不是 CCJS 权威字段，也不序列化。
+- 原来的 `shared/glyph_clip_polygons.json` 字符表及其生成器已经删除，不存在旧渲染 fallback。
+- 缺字时走明确的字体替换链，最终使用真实的 `□` 字形轮廓；替换轮廓同时提供 metrics 和退让几何，不存在即时合成的矩形退让 fallback。
 
-- `chemsema-engine` Rust kernel 构造 glyph polygons：
-  - [crates/chemsema-engine/src/glyph_kernel.rs](../crates/chemsema-engine/src/glyph_kernel.rs)
-- label-aware bond clipping 直接使用这些 polygons：
-  - [crates/chemsema-engine/src/render/labels.rs](../crates/chemsema-engine/src/render/labels.rs)
-- document knockouts 使用同一套 polygons：
-  - [crates/chemsema-engine/src/render_objects.rs](../crates/chemsema-engine/src/render_objects.rs)
-- Office / EMF preview 通过同一 glyph clipping algorithm 重放 engine polygons：
-  - [apps/chemsema-office/src/windows_office/emf_preview/renderer.rs](../apps/chemsema-office/src/windows_office/emf_preview/renderer.rs)
+## 重建时机
 
-这意味着 kernel clipping、SVG/document knockouts 和 EMF preview 共享同一个几何来源。
+文档加载、确认文字编辑、修改字体/style 或 MarginWidth 时，两层几何原子重建。用户在打开的文字编辑框中输入时，不改动文档几何；用户拖拽标签时，每次 pointer move 都同步平移两层几何，所以松开鼠标前键退让已经实时更新。
 
-## Web 状态
+## 生成与验证
 
-Web viewer 通过 WASM 消费 Rust engine state 和 render primitives：
-
-- [crates/chemsema-engine/src/wasm.rs](../crates/chemsema-engine/src/wasm.rs)
-- [viewer/app.js](../viewer/app.js)
-
-旧的 C++ glyph kernel 和 standalone glyph WASM path 已移除。当前验证应通过 Rust engine tests 和 viewer engine WASM build。
+运行 `python scripts/generate-glyph-outlines.py`。`.mjs` 入口只转调同一个生成器，避免出现两套 manifest schema。构建脚本会先用 gzip 压缩 manifest 再嵌入，内核首次使用时只解压一次。随后运行 Rust 内核测试和 viewer WASM 构建。

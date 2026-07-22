@@ -75,7 +75,10 @@ impl Default for CdxmlDefaults {
             chain_angle: 120.0,
             label_font: 3,
             caption_font: 3,
-            label_face: 96,
+            // ChemDraw omits a zero-valued LabelFace when it normalizes CDXML.
+            // Treat an entirely absent face as regular text; chemical/formula
+            // styling must come from an inherited or run-level face value.
+            label_face: 0,
             caption_face: 0,
             label_justification: CdxmlJustification::Auto,
             caption_justification: CdxmlJustification::Left,
@@ -585,6 +588,11 @@ fn scale_fragment_for_editing(fragment: &mut MoleculeFragment, factor: f64) {
                 *font_size = round2(*font_size * factor);
             }
             for polygon in &mut label.glyph_polygons {
+                for point in polygon {
+                    scale_point_array_for_editing(point, factor);
+                }
+            }
+            for polygon in &mut label.glyph_clip_polygons {
                 for point in polygon {
                     scale_point_array_for_editing(point, factor);
                 }
@@ -1541,6 +1549,12 @@ fn translate_node_label_geometry(label: &mut NodeLabel, delta_x: f64, delta_y: f
             point[1] = round2(point[1] + delta_y);
         }
     }
+    for polygon in &mut label.glyph_clip_polygons {
+        for point in polygon {
+            point[0] = round2(point[0] + delta_x);
+            point[1] = round2(point[1] + delta_y);
+        }
+    }
 }
 
 fn translate_bbox(bbox: &mut [f64; 4], delta_x: f64, delta_y: f64) {
@@ -1711,14 +1725,14 @@ fn node_label(
     }
     let bbox = parse_bbox(text_el.attr("BoundingBox"));
     let explicit_interpret_chemically = parse_cdxml_bool(text_el.attr("InterpretChemically"))
-        .or_else(|| parse_cdxml_bool(node.attr("InterpretChemically")))
-        .or(defaults.interpret_chemically);
+        .or_else(|| parse_cdxml_bool(node.attr("InterpretChemically")));
     let parent_face = parse_u32(text_el.attr("face")).unwrap_or(defaults.label_face);
-    let run_has_chemical_face = text_el
-        .direct_children("s")
-        .any(|run| parse_u32(run.attr("face")).unwrap_or(parent_face) & 96 == 96);
     let interpret_chemically = explicit_interpret_chemically
-        .unwrap_or_else(|| run_has_chemical_face || node.attr("Element").is_some());
+        .or(defaults.interpret_chemically)
+        // A text child of a node is an atom/fragment label by construction.
+        // Face controls its appearance; absent semantic settings still use
+        // ChemDraw's normal chemically interpreted node-label behavior.
+        .unwrap_or(true);
     let default_label_font = defaults.label_font.to_string();
     let parent_font = text_el
         .attr("font")
@@ -1766,13 +1780,6 @@ fn node_label(
             (text, source_runs)
         };
     source_runs = wrapped_source_runs;
-    for run in &mut source_runs {
-        match (interpret_chemically, run.script.as_deref()) {
-            (true, None | Some("normal")) => run.script = Some("chemical".to_string()),
-            (false, Some("chemical")) => run.script = Some("normal".to_string()),
-            _ => {}
-        }
-    }
     let runs = label_display_runs_from_source_runs(&source_runs);
     let line_runs = if text.contains('\n') {
         split_label_runs_by_line(&runs)
@@ -1830,6 +1837,7 @@ fn node_label(
         fill: Some(colors.resolve(Some(parent_color))),
         font_size: Some(parent_size),
         glyph_polygons: Vec::new(),
+        glyph_clip_polygons: Vec::new(),
         box_value: None,
         meta: json!({
             "import": {

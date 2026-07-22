@@ -128,8 +128,9 @@ struct GlyphClipInfo {
 }
 
 fn label_clip_polygons(label: &NodeLabel) -> Vec<Vec<Point>> {
-    let mut polygons = label.glyph_polygons();
-    let mut glyphs: Vec<GlyphClipInfo> = polygons
+    let mut polygons = label.glyph_clip_polygons();
+    let glyph_polygons = label.glyph_polygons();
+    let mut glyphs: Vec<GlyphClipInfo> = glyph_polygons
         .iter()
         .enumerate()
         .filter_map(|(index, polygon)| {

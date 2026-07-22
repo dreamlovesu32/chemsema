@@ -1,105 +1,30 @@
-# Glyph Kernel
+# Glyph kernel
 
-## Purpose
+ChemSema derives label layout and bond-retreat geometry in the Rust engine from real font outlines stored in [shared/glyph_outlines.json](../shared/glyph_outlines.json). The manifest contains multiple font families and regular, bold, italic, and bold-italic faces where available.
 
-`chemsema` needs host-independent text geometry for chemical labels.
+For a label margin `m` and glyph font size `s`, the retreat kernel uses:
 
-The Rust engine owns:
-
-- per-glyph label geometry used by bond clipping
-- glyph advance estimates
-- subscript / superscript scaling and baseline shifts
-- background padding used for knockout and label-aware bond retreat
-
-If hosts derive these details independently, web and desktop renderers will drift.
-
-## Current Model
-
-The active glyph geometry implementation lives in Rust:
-
-- [crates/chemsema-engine/src/glyph_kernel.rs](../crates/chemsema-engine/src/glyph_kernel.rs)
-
-The Rust engine now consumes two shared manifests:
-
-- [shared/glyph_profiles.json](../shared/glyph_profiles.json)
-- [shared/glyph_clip_polygons.json](../shared/glyph_clip_polygons.json)
-- [shared/text_symbols.json](../shared/text_symbols.json) lists the text-symbol
-  catalog used by the viewer palette and by the profile generation script
-
-`glyph_profiles.json` remains the source of normalized text layout metrics:
-
-- normalized glyph advances
-- normalized ink bounds
-- conservative background padding for label layout metrics
-- normal / subscript / superscript layout
-- conservative Unicode-category fallbacks for characters missing from the shared
-  profile manifest
-
-`glyph_clip_polygons.json` is now the only runtime source of label clipping geometry.
-The previous runtime `rect / ellipse / cut-corner / petal` polygon synthesis has
-been removed from the Rust kernel.
-
-The output is used by attached-label layout, label anchor geometry, label-aware bond clipping, and text edit preview geometry.
-
-## Fixed Clipping Rules
-
-The current clipping scheme is intentionally data-driven and deterministic:
-
-1. Layout still starts from the normalized ink box in `glyph_profiles.json`.
-2. The actual clipping polygon is loaded from `glyph_clip_polygons.json`.
-3. ASCII uppercase letters use precomputed polygons built from:
-   - canonical natural outline dilation: `1.0pt` at the `10pt` reference font size
-   - inward anchor offset: `0.22 * glyph height`
-   - canonical anchor circle radius: `2.0pt` at the `10pt` reference font size
-4. Non-uppercase symbols use natural-outline dilation only:
-   - canonical natural outline dilation: `1.0pt` at the `10pt` reference font size
-5. Runtime label clipping remaps the outside dilation to the document source
-   margin as an absolute pt value. For CDXML import, natural dilation equals
-   `MarginWidth` and anchor circle radius equals `2 * MarginWidth`; neither value
-   scales with the actual label font size.
-6. Unknown visible characters missing from the clip manifest are manifest
-   generation failures; runtime clipping does not synthesize replacement shapes.
-
-The detailed uppercase anchor rules are documented in:
-
-- [docs/glyph-clip-polygons.md](./glyph-clip-polygons.md)
-
-## Manifest Generation
-
-The clipping manifest is generated:
-
-```bash
-python scripts/generate-glyph-profiles.py
-python scripts/generate-glyph-clip-polygons.py
+```text
+q = min(m, 0.25 * s)
+natural = real outline dilated by a Euclidean disk of radius m
+feature = circles of radius 1.5q at hull vertices moved 0.5q toward the glyph center
+axial = contact sectors within 10 degrees of the four cardinal directions
+clip = natural union feature union axial
 ```
 
-The current clip manifest is generated from `Arial` outline geometry and locked to
-the canonical point values above. Runtime renderers consume these precomputed
-petal/corner rules and remap their outside dilation from the canonical source
-margin to the document source margin.
+Bond bodies, including their finite width, are clipped against `clip`. This is a direct rule, not a character lookup table or a 360-degree fit.
 
-## Consumer Chain
+## Data ownership
 
-The same glyph polygons now flow through the whole stack:
+- `glyphPolygons` contains per-character real-outline hulls for editing, hit testing, and character anchors.
+- `glyph_clip_polygons` is derived runtime-only retreat geometry. It is never CCJS authority and is not serialized.
+- The former `shared/glyph_clip_polygons.json` character table and its generator have been removed; there is no legacy renderer fallback.
+- Missing characters use an explicit font substitution chain, ending at the real `□` glyph outline. The substituted outline supplies both metrics and retreat geometry; there is no synthesized rectangular retreat fallback.
 
-- `chemsema-engine` Rust kernel builds glyph polygons:
-  - [crates/chemsema-engine/src/glyph_kernel.rs](../crates/chemsema-engine/src/glyph_kernel.rs)
-- label-aware bond clipping uses those polygons directly:
-  - [crates/chemsema-engine/src/render/labels.rs](../crates/chemsema-engine/src/render/labels.rs)
-- document knockouts use the same polygons:
-  - [crates/chemsema-engine/src/render_objects.rs](../crates/chemsema-engine/src/render_objects.rs)
-- Office / EMF preview replays the engine polygons through the same glyph
-  clipping algorithm:
-  - [apps/chemsema-office/src/windows_office/emf_preview/renderer.rs](../apps/chemsema-office/src/windows_office/emf_preview/renderer.rs)
+## Rebuild timing
 
-This means kernel clipping, SVG/document knockouts, and EMF preview now share one
-geometry source.
+The two geometry layers are rebuilt atomically on document load, text-edit confirmation, and font/style or MarginWidth changes. Typing inside an open text editor does not mutate document geometry. Label dragging translates both layers on every pointer move, so bond retreat stays live before pointer-up.
 
-## Web Status
+## Generation and verification
 
-The web viewer consumes Rust engine state and render primitives through WASM:
-
-- [crates/chemsema-engine/src/wasm.rs](../crates/chemsema-engine/src/wasm.rs)
-- [viewer/app.js](../viewer/app.js)
-
-The old C++ glyph kernel and standalone glyph WASM path have been removed. Current validation should go through the Rust engine tests and viewer engine WASM build.
+Run `python scripts/generate-glyph-outlines.py`. The `.mjs` entry point delegates to the same generator so there is only one schema implementation. The build script gzip-compresses the manifest before embedding it and the kernel expands it once on first use. Verify with the Rust engine test suite and the viewer WASM build.

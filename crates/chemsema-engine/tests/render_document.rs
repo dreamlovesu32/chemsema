@@ -86,6 +86,11 @@ fn fragment_document(nodes: serde_json::Value, bonds: serde_json::Value) -> Chem
     .expect("document should deserialize")
 }
 
+fn normalize_test_document(document: &ChemSemaDocument) -> ChemSemaDocument {
+    parse_document_json(&serde_json::to_string(document).expect("document should serialize"))
+        .expect("document should normalize derived geometry")
+}
+
 fn fragment_document_preserving_disconnected_components(
     nodes: serde_json::Value,
     bonds: serde_json::Value,
@@ -1096,7 +1101,6 @@ fn render_document_does_not_add_margin_knockout_for_shared_endpoint_bonds() {
             { "id": "b_right", "begin": "n2", "end": "n3", "order": 1, "strokeWidth": 1.0, "marginWidth": 2.0 }
         ]),
     );
-
     let primitives = render_document(&document);
     assert!(
         !primitives.iter().any(|primitive| matches!(
@@ -3911,7 +3915,7 @@ fn cdxml_imported_f_label_margin_expands_internal_bar_clip() {
                 .get("marginWidth")
                 .and_then(|value| value.as_f64())
                 .unwrap_or_default(),
-            label.glyph_polygons[0].len(),
+            label.glyph_clip_polygons.len(),
         )
     }
 
@@ -6666,7 +6670,7 @@ fn load_cdxml_document_uses_internal_single_character_below_label_position() {
         Some("Below")
     );
     assert!(
-        (world_position[0] - 268.72).abs() < 0.01,
+        (world_position[0] - 268.68).abs() < 0.01,
         "single-character CDXML labels should use internal below-label x, got {world_position:?}"
     );
     assert!(
@@ -7778,7 +7782,7 @@ fn render_cdxml_single_character_atom_label_uses_text_primitive() {
 }
 
 #[test]
-fn parse_cdxml_node_label_preserves_explicit_nonchemical_semantics() {
+fn parse_cdxml_node_label_keeps_face_style_independent_of_nonchemical_semantics() {
     let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
 <CDXML BondLength="14.40" LineWidth="0.60" MarginWidth="1.60">
   <page id="p1" BoundingBox="0 0 40 24">
@@ -7807,14 +7811,86 @@ fn parse_cdxml_node_label_preserves_explicit_nonchemical_semantics() {
     assert_eq!(label.meta.pointer("/defaultChemical"), Some(&json!(false)));
     assert_eq!(
         label.meta.pointer("/sourceRuns/0/script"),
-        Some(&json!("normal"))
+        Some(&json!("chemical"))
     );
+    assert_eq!(label.runs[1].text, "2");
+    assert_eq!(label.runs[1].script.as_deref(), Some("subscript"));
     let exported = document_to_cdxml(&document);
     assert!(
         exported.contains("InterpretChemically=\"no\""),
         "{exported}"
     );
     assert!(exported.contains("BoundingBox="), "{exported}");
+}
+
+#[test]
+fn parse_cdxml_node_label_preserves_explicit_regular_face_when_interpreted_chemically() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<CDXML LabelFont="3" LabelSize="10" LabelFace="96" InterpretChemically="yes">
+  <fonttable><font id="3" charset="iso-8859-1" name="Arial"/></fonttable>
+  <page id="p1" BoundingBox="0 0 80 32">
+    <fragment id="f1" BoundingBox="0 0 80 32">
+      <n id="n1" p="20 16" NodeType="Fragment">
+        <t p="20 20" BoundingBox="10 8 32 22" InterpretChemically="yes">
+          <s font="3" size="10" face="0" color="0">NH2</s>
+        </t>
+      </n>
+      <n id="n2" p="52 16"/>
+      <b id="b1" B="n2" E="n1" EndAttach="1"/>
+    </fragment>
+  </page>
+</CDXML>"#;
+    let document =
+        parse_cdxml_document(cdxml, Some("regular chemical label")).expect("CDXML should parse");
+    let label = document
+        .resources
+        .values()
+        .find_map(|resource| resource.data.as_fragment())
+        .and_then(|fragment| fragment.nodes.iter().find(|node| node.id == "n1"))
+        .and_then(|node| node.label.as_ref())
+        .expect("NH2 label should import");
+
+    assert_eq!(label.meta.pointer("/defaultChemical"), Some(&json!(true)));
+    assert_eq!(
+        label.meta.pointer("/sourceRuns/0/script"),
+        Some(&json!("normal"))
+    );
+    assert_eq!(label.runs.len(), 1);
+    assert_eq!(label.runs[0].text, "NH2");
+    assert_eq!(label.runs[0].script.as_deref(), Some("normal"));
+}
+
+#[test]
+fn parse_normalized_cdxml_without_label_face_defaults_to_regular_face() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<CDXML LabelFont="3" LabelSize="10" InterpretChemically="yes">
+  <fonttable><font id="3" charset="iso-8859-1" name="Arial"/></fonttable>
+  <page id="p1" BoundingBox="0 0 80 32">
+    <fragment id="f1" BoundingBox="0 0 80 32">
+      <n id="n1" p="20 16" NodeType="Fragment">
+        <t p="20 20" BoundingBox="10 8 32 22" InterpretChemically="yes">
+          <s font="3" size="10" color="0">NH2</s>
+        </t>
+      </n>
+      <n id="n2" p="52 16"/>
+      <b id="b1" B="n2" E="n1" EndAttach="1"/>
+    </fragment>
+  </page>
+</CDXML>"#;
+    let document =
+        parse_cdxml_document(cdxml, Some("normalized regular label")).expect("CDXML parses");
+    let label = document
+        .resources
+        .values()
+        .find_map(|resource| resource.data.as_fragment())
+        .and_then(|fragment| fragment.nodes.iter().find(|node| node.id == "n1"))
+        .and_then(|node| node.label.as_ref())
+        .expect("NH2 label should import");
+
+    assert_eq!(label.meta.pointer("/defaultChemical"), Some(&json!(true)));
+    assert_eq!(label.runs.len(), 1);
+    assert_eq!(label.runs[0].text, "NH2");
+    assert_eq!(label.runs[0].script.as_deref(), Some("normal"));
 }
 
 #[test]
@@ -7993,8 +8069,8 @@ fn parse_cdxml_preserves_document_drawing_defaults_without_using_cached_label_ge
     );
     assert_eq!(
         label.meta.pointer("/sourceRuns/0/script"),
-        Some(&json!("normal")),
-        "root InterpretChemically=no keeps the visible text non-chemical even when LabelFace has chemical bits"
+        Some(&json!("chemical")),
+        "InterpretChemically controls semantics without overriding inherited LabelFace"
     );
     assert_ne!(
         label.bbox(),
@@ -8979,7 +9055,8 @@ fn parse_cdxml_node_labels_use_internal_attached_layout() {
         exported.contains("InterpretChemically=\"yes\""),
         "{exported}"
     );
-    assert!(exported.contains("face=\"96\""), "{exported}");
+    assert!(exported.contains("LabelFace=\"0\""), "{exported}");
+    assert!(!exported.contains("face=\"96\""), "{exported}");
 
     let reimported =
         parse_cdxml_document(&exported, Some("labels export")).expect("export should parse");
@@ -11886,7 +11963,7 @@ fn render_document_scales_small_bracket_geometry_without_fixed_minimums() {
 }
 
 #[test]
-fn render_document_uses_label_glyph_polygons_for_knockout_and_endpoint_clipping() {
+fn render_document_uses_derived_label_clip_geometry_for_knockout_and_endpoint_clipping() {
     let document = fragment_document(
         json!([
             {
@@ -11925,6 +12002,7 @@ fn render_document_uses_label_glyph_polygons_for_knockout_and_endpoint_clipping(
             }
         ]),
     );
+    let document = normalize_test_document(&document);
 
     let primitives = render_document(&document);
     let knockouts = object_knockout_polygons(&primitives);
@@ -11946,8 +12024,8 @@ fn render_document_uses_label_glyph_polygons_for_knockout_and_endpoint_clipping(
     assert_eq!(centerlines.len(), 1, "{centerlines:?}");
     let start_x = centerlines[0].0.x.min(centerlines[0].1.x);
     assert!(
-        (start_x - 23.0).abs() < 0.02,
-        "endpoint should clip at the source-margin glyph polygon without adding a second margin retreat: {centerlines:?}"
+        start_x > 25.0 && start_x < 40.0,
+        "endpoint should clip at the derived Arial outline retreat rather than the stale imported glyph rectangles or the node center: {centerlines:?}"
     );
 }
 
@@ -14201,7 +14279,7 @@ fn render_document_treats_horizontal_label_interior_as_rectangular_clip() {
 }
 
 #[test]
-fn render_document_does_not_rectangularize_vertically_separated_label_glyphs() {
+fn render_document_rebuilds_vertically_separated_label_clip_from_runs() {
     let document = fragment_document(
         json!([
             { "id": "n1", "element": "C", "atomicNumber": 6, "position": [45.0, 20.0], "charge": 0, "numHydrogens": 0 },
@@ -14229,6 +14307,28 @@ fn render_document_does_not_rectangularize_vertically_separated_label_glyphs() {
         ]),
         json!([{ "id": "b1", "begin": "n1", "end": "n2", "order": 1, "strokeWidth": 0.85 }]),
     );
+    let document = normalize_test_document(&document);
+
+    let label = document
+        .editable_fragment()
+        .expect("fragment")
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == "n2")
+        .and_then(|node| node.label.as_ref())
+        .expect("label");
+    let normal_bounds = label.glyph_polygons[0]
+        .iter()
+        .fold([f64::INFINITY, f64::NEG_INFINITY], |bounds, point| {
+            [bounds[0].min(point[1]), bounds[1].max(point[1])]
+        });
+    let superscript_bounds = label.glyph_polygons[1]
+        .iter()
+        .fold([f64::INFINITY, f64::NEG_INFINITY], |bounds, point| {
+            [bounds[0].min(point[1]), bounds[1].max(point[1])]
+        });
+    assert!(superscript_bounds[1] < normal_bounds[1]);
 
     let polygon = object_bond_polygons_with_ids(&render_document(&document))
         .into_iter()
@@ -14238,8 +14338,8 @@ fn render_document_does_not_rectangularize_vertically_separated_label_glyphs() {
     let label_endpoint = if from.x < to.x { from } else { to };
 
     assert!(
-        (label_endpoint.x - 24.0).abs() < 0.02,
-        "vertically separated or superscript glyphs should not rectangularize or add a second margin retreat: {polygon:?}"
+        label_endpoint.x > 24.5,
+        "rendering must use the rebuilt real-outline retreat rather than the stale authored rectangles: {polygon:?}"
     );
 }
 
@@ -14278,6 +14378,7 @@ fn render_document_clips_solid_wedge_wide_endpoint_against_outline_lines() {
             "stereo": { "kind": "solid-wedge", "wideEnd": "end" }
         }]),
     );
+    let document = normalize_test_document(&document);
 
     let polygon = object_bond_polygons_with_ids(&render_document(&document))
         .into_iter()
@@ -14329,6 +14430,7 @@ fn render_document_clips_hashed_wedge_wide_endpoint_against_outline_lines() {
             "stereo": { "kind": "hashed-wedge", "wideEnd": "end" }
         }]),
     );
+    let document = normalize_test_document(&document);
 
     let points = object_bond_points_for_id(&render_document(&document), "b1");
     assert!(!points.is_empty(), "hashed wedge should render stripes");

@@ -676,6 +676,7 @@ dependencies = [
  "chemsema-chemistry",
  "chemsema-inchi",
  "encoding_rs",
+ "flate2",
  "quick-xml",
  "serde",
  "serde_json",

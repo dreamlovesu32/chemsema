@@ -704,6 +704,12 @@ fn translate_node_label_geometry(label: &mut NodeLabel, delta_x: f64, delta_y: f
             point[1] = round2(point[1] + delta_y);
         }
     }
+    for polygon in &mut label.glyph_clip_polygons {
+        for point in polygon {
+            point[0] = round2(point[0] + delta_x);
+            point[1] = round2(point[1] + delta_y);
+        }
+    }
 }
 
 fn translate_bbox(bbox: &mut [f64; 4], delta_x: f64, delta_y: f64) {
@@ -1211,6 +1217,20 @@ fn normalize_node_label_payload(
     if label.fill.is_none() {
         label.fill = Some("#000000".to_string());
     }
+    if label.runs.is_empty() && label.line_runs.is_empty() && label.has_visible_text() {
+        label.runs.push(LabelRun {
+            text: label.text.clone(),
+            font_family: label.font_family.clone(),
+            font_size: label.font_size,
+            fill: label.fill.clone(),
+            font_weight: Some(400),
+            font_style: Some("normal".to_string()),
+            underline: Some(false),
+            outline: Some(false),
+            shadow: Some(false),
+            script: Some("normal".to_string()),
+        });
+    }
     if label.box_value.is_none() && label.box_field.is_none() {
         let font_size = label
             .font_size
@@ -1218,9 +1238,7 @@ fn normalize_node_label_payload(
         let position = label.position.unwrap_or(node_position);
         label.box_field = Some(default_node_label_box(position, &label.text, font_size));
     }
-    if label.glyph_polygons.is_empty() {
-        rebuild_node_label_glyph_polygons(label, node_position, glyph_clip_profile);
-    }
+    rebuild_node_label_glyph_polygons(label, node_position, glyph_clip_profile);
 }
 
 fn rebuild_node_label_glyph_polygons(
@@ -1230,6 +1248,7 @@ fn rebuild_node_label_glyph_polygons(
 ) {
     if !label.has_visible_text() {
         label.glyph_polygons.clear();
+        label.glyph_clip_polygons.clear();
         return;
     }
 
@@ -1250,21 +1269,14 @@ fn rebuild_node_label_glyph_polygons(
         &[][..]
     };
 
-    label.glyph_polygons = if align == "center" {
+    let start_position = if align == "center" {
         let width = local_bbox
             .map(|bbox| (bbox[2] - bbox[0]).abs())
             .filter(|width| *width > EPSILON)
             .unwrap_or_else(|| {
                 (label.text.chars().count() as f64 * font_size * 0.55).max(font_size)
             });
-        crate::build_label_glyph_polygons_with_profile(
-            single_line_runs,
-            line_runs,
-            [round2(position[0] - width * 0.5), position[1]],
-            local_bbox,
-            font_size,
-            glyph_clip_profile,
-        )
+        [round2(position[0] - width * 0.5), position[1]]
     } else if align == "right" {
         let width = local_bbox
             .map(|bbox| (bbox[2] - bbox[0]).abs())
@@ -1272,24 +1284,21 @@ fn rebuild_node_label_glyph_polygons(
             .unwrap_or_else(|| {
                 (label.text.chars().count() as f64 * font_size * 0.55).max(font_size)
             });
-        crate::build_label_glyph_polygons_with_profile(
-            single_line_runs,
-            line_runs,
-            [round2(position[0] - width), position[1]],
-            local_bbox,
-            font_size,
-            glyph_clip_profile,
-        )
+        [round2(position[0] - width), position[1]]
     } else {
-        crate::build_label_glyph_polygons_with_profile(
-            single_line_runs,
-            line_runs,
-            position,
-            local_bbox,
-            font_size,
-            glyph_clip_profile,
-        )
+        position
     };
+    let geometry = crate::build_label_glyph_geometry_with_profile(
+        single_line_runs,
+        line_runs,
+        start_position,
+        local_bbox,
+        font_size,
+        node_position,
+        glyph_clip_profile,
+    );
+    label.glyph_polygons = geometry.glyph_polygons;
+    label.glyph_clip_polygons = geometry.clip_polygons;
 }
 
 fn default_node_label_box(position: [f64; 2], text: &str, font_size: f64) -> [f64; 4] {
@@ -1672,6 +1681,11 @@ pub struct NodeLabel {
     pub font_size: Option<f64>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub glyph_polygons: Vec<Vec<[f64; 2]>>,
+    /// Derived bond-retreat geometry. It is rebuilt from the styled runs and
+    /// current MarginWidth whenever a document is loaded or a label edit is
+    /// committed; it is deliberately not a CCJS persistence authority.
+    #[serde(skip)]
+    pub glyph_clip_polygons: Vec<Vec<[f64; 2]>>,
     #[serde(default, rename = "box", skip_serializing_if = "Option::is_none")]
     pub box_value: Option<[f64; 4]>,
     #[serde(default)]
@@ -1689,6 +1703,18 @@ impl NodeLabel {
 
     pub fn glyph_polygons(&self) -> Vec<Vec<Point>> {
         self.glyph_polygons
+            .iter()
+            .map(|polygon| {
+                polygon
+                    .iter()
+                    .map(|point| Point::new(point[0], point[1]))
+                    .collect()
+            })
+            .collect()
+    }
+
+    pub fn glyph_clip_polygons(&self) -> Vec<Vec<Point>> {
+        self.glyph_clip_polygons
             .iter()
             .map(|polygon| {
                 polygon
@@ -2231,6 +2257,7 @@ mod tests {
                                 [1.0, 1.0],
                                 [0.0, 1.0],
                             ]],
+                            glyph_clip_polygons: Vec::new(),
                             box_value: Some([10.0, 2.0, 17.2, 10.0]),
                             meta: json!({
                                 "import": {
@@ -2257,10 +2284,14 @@ mod tests {
 
         assert_eq!(label.text, "N");
         assert_eq!(label.glyph_polygons.len(), 1);
+        assert_ne!(
+            label.glyph_polygons[0],
+            vec![[10.0, 2.0], [17.2, 2.0], [17.2, 10.0], [10.0, 10.0]],
+            "stale glyph polygon must not remain authoritative"
+        );
         assert!(
-            label.glyph_polygons[0].len() > 4,
-            "stale glyph polygon should be rebuilt using current kernel geometry: {:?}",
-            label.glyph_polygons[0]
+            !label.glyph_clip_polygons.is_empty(),
+            "loading must rebuild the final retreat geometry"
         );
     }
 
@@ -2667,6 +2698,7 @@ mod tests {
                             fill: Some("#000000".to_string()),
                             font_size: Some(10.0),
                             glyph_polygons: Vec::new(),
+                            glyph_clip_polygons: Vec::new(),
                             box_value: None,
                             meta: json!({
                                 "import": {

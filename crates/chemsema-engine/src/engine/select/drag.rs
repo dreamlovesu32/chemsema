@@ -850,6 +850,12 @@ fn translate_node_label_geometry(label: &mut crate::NodeLabel, delta_x: f64, del
             point[1] = round2(point[1] + delta_y);
         }
     }
+    for polygon in &mut label.glyph_clip_polygons {
+        for point in polygon {
+            point[0] = round2(point[0] + delta_x);
+            point[1] = round2(point[1] + delta_y);
+        }
+    }
 }
 
 fn translate_box(bounds: &mut [f64; 4], delta_x: f64, delta_y: f64) {

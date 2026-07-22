@@ -11,25 +11,100 @@ from fontTools.ttLib import TTFont
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_FONT = Path(r"C:\Windows\Fonts\arial.ttf")
 DEFAULT_GLYPH_PROFILES = ROOT / "shared" / "glyph_profiles.json"
 DEFAULT_OUTPUT = ROOT / "shared" / "glyph_outlines.json"
+
+FONT_FACES = {
+    "Arial": {
+        "regular": r"C:\Windows\Fonts\arial.ttf",
+        "bold": r"C:\Windows\Fonts\arialbd.ttf",
+        "italic": r"C:\Windows\Fonts\ariali.ttf",
+        "boldItalic": r"C:\Windows\Fonts\arialbi.ttf",
+    },
+    "Arial Narrow": {
+        "regular": r"C:\Windows\Fonts\ARIALN.TTF",
+        "bold": r"C:\Windows\Fonts\ARIALNB.TTF",
+        "italic": r"C:\Windows\Fonts\ARIALNI.TTF",
+        "boldItalic": r"C:\Windows\Fonts\ARIALNBI.TTF",
+    },
+    "Arial Black": {"regular": r"C:\Windows\Fonts\ariblk.ttf"},
+    "Times New Roman": {
+        "regular": r"C:\Windows\Fonts\times.ttf",
+        "bold": r"C:\Windows\Fonts\timesbd.ttf",
+        "italic": r"C:\Windows\Fonts\timesi.ttf",
+        "boldItalic": r"C:\Windows\Fonts\timesbi.ttf",
+    },
+    "Georgia": {
+        "regular": r"C:\Windows\Fonts\georgia.ttf",
+        "bold": r"C:\Windows\Fonts\georgiab.ttf",
+        "italic": r"C:\Windows\Fonts\georgiai.ttf",
+        "boldItalic": r"C:\Windows\Fonts\georgiaz.ttf",
+    },
+    "Cambria": {
+        "regular": r"C:\Windows\Fonts\cambria.ttc",
+        "bold": r"C:\Windows\Fonts\cambriab.ttf",
+        "italic": r"C:\Windows\Fonts\cambriai.ttf",
+        "boldItalic": r"C:\Windows\Fonts\cambriaz.ttf",
+    },
+    "Calibri": {
+        "regular": r"C:\Windows\Fonts\calibri.ttf",
+        "bold": r"C:\Windows\Fonts\calibrib.ttf",
+        "italic": r"C:\Windows\Fonts\calibrii.ttf",
+        "boldItalic": r"C:\Windows\Fonts\calibriz.ttf",
+    },
+    "Courier New": {
+        "regular": r"C:\Windows\Fonts\cour.ttf",
+        "bold": r"C:\Windows\Fonts\courbd.ttf",
+        "italic": r"C:\Windows\Fonts\couri.ttf",
+        "boldItalic": r"C:\Windows\Fonts\courbi.ttf",
+    },
+    "Consolas": {
+        "regular": r"C:\Windows\Fonts\consola.ttf",
+        "bold": r"C:\Windows\Fonts\consolab.ttf",
+        "italic": r"C:\Windows\Fonts\consolai.ttf",
+        "boldItalic": r"C:\Windows\Fonts\consolaz.ttf",
+    },
+    "Verdana": {
+        "regular": r"C:\Windows\Fonts\verdana.ttf",
+        "bold": r"C:\Windows\Fonts\verdanab.ttf",
+        "italic": r"C:\Windows\Fonts\verdanai.ttf",
+        "boldItalic": r"C:\Windows\Fonts\verdanaz.ttf",
+    },
+    "Tahoma": {
+        "regular": r"C:\Windows\Fonts\tahoma.ttf",
+        "bold": r"C:\Windows\Fonts\tahomabd.ttf",
+    },
+    "Trebuchet MS": {
+        "regular": r"C:\Windows\Fonts\trebuc.ttf",
+        "bold": r"C:\Windows\Fonts\trebucbd.ttf",
+        "italic": r"C:\Windows\Fonts\trebucit.ttf",
+        "boldItalic": r"C:\Windows\Fonts\trebucbi.ttf",
+    },
+    "Symbol": {"regular": r"C:\Windows\Fonts\symbol.ttf"},
+    "Segoe UI Symbol": {"regular": r"C:\Windows\Fonts\seguisym.ttf"},
+    "SimSun": {"regular": r"C:\Windows\Fonts\simsun.ttc"},
+}
+
+FONT_ALIASES = {
+    "Helvetica": "Arial",
+    "TeX Gyre Heros": "Arial",
+    "Noto Sans SC": "SimSun",
+    "Noto Serif SC": "SimSun",
+}
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--font", default=str(DEFAULT_FONT))
     parser.add_argument("--glyph-profiles", default=str(DEFAULT_GLYPH_PROFILES))
     parser.add_argument("--output", default=str(DEFAULT_OUTPUT))
     return parser.parse_args()
 
 
 def point_em(point: tuple[float, float], units_per_em: int) -> list[float]:
-    x, y = point
-    return [round(x / units_per_em, 8), round(-y / units_per_em, 8)]
+    return [round(point[0] / units_per_em, 7), round(-point[1] / units_per_em, 7)]
 
 
-def command_payload(op: str, points: tuple[tuple[float, float], ...], units_per_em: int) -> dict:
+def command_payload(op: str, points, units_per_em: int) -> dict:
     return {
         "op": op,
         "points": [point_em(point, units_per_em) for point in points if point is not None],
@@ -81,22 +156,41 @@ def main() -> None:
         for ch, profile in glyph_profiles["specials"].items()
         if profile.get("visible", True)
     ]
-    ttfont = TTFont(str(args.font))
-    glyphs = {}
-    for ch in chars:
-        try:
-            glyphs[ch] = glyph_outline(ttfont, ch)
-        except Exception as error:  # noqa: BLE001
-            print(f"skip {ch!r}: {error}")
+    # Final explicit character substitution when supported families do not
+    # contain a requested codepoint.
+    chars.append("□")
+    families = {}
+    for family, faces in FONT_FACES.items():
+        generated_faces = {}
+        for face, source in faces.items():
+            path = Path(source)
+            if not path.exists():
+                print(f"skip missing font face {family}/{face}: {path}")
+                continue
+            ttfont = TTFont(str(path), fontNumber=0)
+            if ttfont.getBestCmap() is None:
+                print(f"skip unsupported font face {family}/{face}: no Unicode cmap")
+                continue
+            glyphs = {}
+            missing = 0
+            for ch in chars:
+                try:
+                    glyphs[ch] = glyph_outline(ttfont, ch)
+                except Exception:  # noqa: BLE001
+                    missing += 1
+            if missing:
+                print(f"{family}/{face}: {missing} glyphs use runtime substitution")
+            generated_faces[face] = {"sourceFont": path.name, "glyphs": glyphs}
+        if generated_faces:
+            families[family] = {"faces": generated_faces}
 
     payload = {
-        "version": 1,
-        "sourceFont": str(args.font),
-        "unitsPerEm": ttfont["head"].unitsPerEm,
-        "glyphs": glyphs,
+        "version": 2,
+        "aliases": FONT_ALIASES,
+        "families": families,
     }
     Path(args.output).write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2),
+        json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
         encoding="utf-8",
     )
 

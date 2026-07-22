@@ -4,7 +4,7 @@ use super::{
     TextEditCommandTarget, TextEditLayoutRequest,
 };
 use crate::{
-    build_label_glyph_polygons_with_profile, decide_label_layout, layout_label_text, round2,
+    build_label_glyph_geometry_with_profile, decide_label_layout, layout_label_text, round2,
     round6, EndpointHit, GlyphClipProfile, LabelFlow, LabelRun, Point, WorldPoint, WorldPt,
 };
 use serde::{Deserialize, Serialize};
@@ -1050,7 +1050,9 @@ impl Engine {
         let font_size_world_pt = WorldPt(font_size.unwrap_or(DEFAULT_TEXT_FONT_SIZE));
         let line_height = Some((font_size_world_pt.value() * 1.05).max(font_size_world_pt.value()));
         let default_chemical = label
-            .map(|_| source_runs_are_chemical(&source_runs))
+            .and_then(|label| label.meta.get("defaultChemical"))
+            .and_then(Value::as_bool)
+            .or_else(|| label.map(|_| source_runs_are_chemical(&source_runs)))
             .unwrap_or(true);
         Some(TextEditSession {
             target: TextEditTarget::EndpointLabel {
@@ -1535,9 +1537,6 @@ fn apply_text_command_content(
     }
     if content.text_position.is_some() {
         session.text_position = content.text_position;
-    }
-    if !content.glyph_polygons.is_empty() {
-        session.glyph_polygons = content.glyph_polygons;
     }
     session.default_chemical = content.default_chemical;
     if content.display_mode.is_some() {

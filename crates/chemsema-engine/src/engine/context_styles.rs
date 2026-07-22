@@ -464,6 +464,8 @@ impl Engine {
             return false;
         }
         let stroke_width = self.options.bond_stroke_world_pt().value();
+        let glyph_clip_profile =
+            super::text_edit::glyph_clip_profile_for_margin_width(self.options.margin_width);
         let Some(mut entry) = self.state.document.editable_fragment_mut() else {
             return false;
         };
@@ -478,10 +480,11 @@ impl Engine {
             }
         }
         if changed {
-            refresh_attached_node_label_geometry_for_all_nodes(
+            refresh_attached_node_label_geometry_for_all_nodes_with_profile(
                 entry.fragment,
                 object_translate,
                 stroke_width,
+                Some(glyph_clip_profile),
             );
             entry.update_bounds();
         }
@@ -1037,6 +1040,7 @@ fn expansion_atom_to_node(atom: &JsonValue, id: String, position: Point) -> Node
                 fill: None,
                 font_size: None,
                 glyph_polygons: Vec::new(),
+                glyph_clip_polygons: Vec::new(),
                 box_value: None,
                 meta: JsonValue::Null,
             }),
@@ -1870,34 +1874,6 @@ fn set_node_label_interpret_chemically(node: &mut Node, enabled: bool) -> bool {
     };
     let mut changed = false;
     changed |= set_json_object_field(&mut label.meta, "defaultChemical", Some(json!(enabled)));
-    let mut source_runs = label
-        .meta
-        .get("sourceRuns")
-        .cloned()
-        .and_then(|value| serde_json::from_value::<Vec<crate::LabelRun>>(value).ok())
-        .filter(|runs| !runs.is_empty())
-        .unwrap_or_else(|| {
-            let text = label
-                .source_text
-                .clone()
-                .unwrap_or_else(|| label.text.clone());
-            vec![crate::LabelRun {
-                text,
-                font_family: label.font_family.clone(),
-                font_size: label.font_size,
-                fill: label.fill.clone(),
-                font_weight: Some(400),
-                font_style: Some("normal".to_string()),
-                underline: Some(false),
-                outline: Some(false),
-                shadow: Some(false),
-                script: Some("normal".to_string()),
-            }]
-        });
-    for run in &mut source_runs {
-        run.script = Some(if enabled { "chemical" } else { "normal" }.to_string());
-    }
-    changed |= set_json_object_field(&mut label.meta, "sourceRuns", Some(json!(source_runs)));
     if !enabled {
         changed |= set_json_object_field(&mut label.meta, "labelRecognition", None);
         changed |= set_json_object_field(&mut node.meta, "labelRecognition", None);

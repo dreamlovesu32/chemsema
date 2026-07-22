@@ -76,6 +76,57 @@ fn label_glyph_bounds(label: &chemsema_engine::NodeLabel) -> [f64; 4] {
     [min_x, min_y, max_x, max_y]
 }
 
+fn label_clip_bounds(label: &chemsema_engine::NodeLabel) -> [f64; 4] {
+    let mut bounds = [
+        f64::INFINITY,
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+        f64::NEG_INFINITY,
+    ];
+    for polygon in &label.glyph_clip_polygons {
+        for [x, y] in polygon {
+            bounds[0] = bounds[0].min(*x);
+            bounds[1] = bounds[1].min(*y);
+            bounds[2] = bounds[2].max(*x);
+            bounds[3] = bounds[3].max(*y);
+        }
+    }
+    bounds
+}
+
+fn label_glyph_box(label: &chemsema_engine::NodeLabel, index: usize) -> [f64; 4] {
+    let polygon = label
+        .glyph_polygons
+        .get(index)
+        .expect("label should contain the requested glyph");
+    let mut bounds = [
+        f64::INFINITY,
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+        f64::NEG_INFINITY,
+    ];
+    for [x, y] in polygon {
+        bounds[0] = bounds[0].min(*x);
+        bounds[1] = bounds[1].min(*y);
+        bounds[2] = bounds[2].max(*x);
+        bounds[3] = bounds[3].max(*y);
+    }
+    bounds
+}
+
+fn label_glyph_anchor(label: &chemsema_engine::NodeLabel, index: usize) -> Point {
+    let bounds = label_glyph_box(label, index);
+    Point::new(
+        (bounds[0] + bounds[2]) * 0.5,
+        fixture_label_anchor_y(label.position.expect("label position")[1]),
+    )
+}
+
+fn label_glyph_hit_point(label: &chemsema_engine::NodeLabel, index: usize) -> Point {
+    let bounds = label_glyph_box(label, index);
+    Point::new((bounds[0] + bounds[2]) * 0.5, (bounds[1] + bounds[3]) * 0.5)
+}
+
 fn assert_point_close(left: Point, right: Point) {
     assert!(
         left.distance(right) < 1e-9,
@@ -109,7 +160,6 @@ fn rotate_point_around(point: Point, center: Point, degrees: f64) -> Point {
 
 const FIRST_START_X: f64 = px(300.0);
 const FIRST_START_Y: f64 = px(260.0);
-const FIRST_LABEL_POSITION_Y: f64 = px(260.0);
 const FIRST_END_X: f64 = 250.98;
 const FIRST_END_Y: f64 = 180.0;
 const FIRST_END_HOVER_X: f64 = FIRST_END_X + px(1.0);
@@ -2737,6 +2787,18 @@ fn acs_document_1996_preset_reflows_existing_endpoint_label_geometry() {
     hover(&mut engine, FIRST_END_HOVER_X, FIRST_END_HOVER_Y);
     assert!(engine.replace_hovered_endpoint_label("N"));
 
+    let before_clip = {
+        let entry = engine.state().document.editable_fragment().unwrap();
+        let label = entry
+            .fragment
+            .nodes
+            .iter()
+            .find(|node| node.element == "N")
+            .and_then(|node| node.label.as_ref())
+            .expect("N label before preset");
+        label_clip_bounds(label)
+    };
+
     engine.set_document_style_preset("acs-document-1996");
 
     let entry = engine.state().document.editable_fragment().unwrap();
@@ -2750,6 +2812,7 @@ fn acs_document_1996_preset_reflows_existing_endpoint_label_geometry() {
     let bounds = label_glyph_bounds(label);
     let glyph_width = bounds[2] - bounds[0];
     let box_width = label.bbox().map(|bbox| bbox[2] - bbox[0]).unwrap_or(0.0);
+    let after_clip = label_clip_bounds(label);
 
     assert_eq!(
         label.font_size,
@@ -2763,6 +2826,10 @@ fn acs_document_1996_preset_reflows_existing_endpoint_label_geometry() {
         box_width > 7.0,
         "label bbox should also be reflowed at the current font size: {:?}",
         label.bbox()
+    );
+    assert!(
+        (after_clip[2] - after_clip[0]) < (before_clip[2] - before_clip[0]),
+        "changing MarginWidth must synchronously rebuild the retreat region: {before_clip:?} -> {after_clip:?}"
     );
 }
 
@@ -3893,9 +3960,23 @@ fn template_tool_hover_shows_label_anchor_snap_target_before_drag() {
         .expect("document should load");
     engine.set_tool_state(templates_tool("ring-6"));
 
+    let hit_point = {
+        let label = engine
+            .state()
+            .document
+            .editable_fragment()
+            .unwrap()
+            .fragment
+            .nodes[0]
+            .label
+            .as_ref()
+            .unwrap();
+        label_glyph_hit_point(label, 1)
+    };
+
     engine.pointer_move(PointerEvent {
-        x: 107.0,
-        y: 60.0,
+        x: hit_point.x,
+        y: hit_point.y,
         button: None,
         alt_key: false,
     });
@@ -4880,7 +4961,15 @@ fn labeled_node_center_no_longer_focuses_plain_endpoint() {
     engine.set_tool_state(bond_tool());
 
     hover(&mut engine, px(300.0), px(260.0));
-    assert!(engine.state().overlay.hover_endpoint.is_none());
+    assert!(
+        engine
+            .state()
+            .overlay
+            .hover_endpoint
+            .as_ref()
+            .is_none_or(|hit| hit.label_anchor.is_some()),
+        "a labeled node center may hit its real glyph outline, but must never fall through to a plain endpoint"
+    );
 }
 
 #[test]
@@ -4924,26 +5013,40 @@ fn hover_focuses_label_glyph_anchor() {
         json!([]),
     );
 
+    let (hit_point, expected_anchor, expected_glyph_box) = {
+        let label = engine
+            .state()
+            .document
+            .editable_fragment()
+            .unwrap()
+            .fragment
+            .nodes
+            .iter()
+            .find(|node| node.id == "n1")
+            .unwrap()
+            .label
+            .as_ref()
+            .unwrap();
+        (
+            label_glyph_hit_point(label, 1),
+            label_glyph_anchor(label, 1),
+            label_glyph_box(label, 1),
+        )
+    };
     engine.pointer_move(PointerEvent {
-        x: px(305.0),
-        y: px(260.0),
+        x: hit_point.x,
+        y: hit_point.y,
         button: None,
         alt_key: false,
     });
 
     let hover = engine.state().overlay.hover_endpoint.as_ref().unwrap();
-    let expected_anchor_y = fixture_label_anchor_y(FIRST_LABEL_POSITION_Y);
     assert_eq!(hover.node_id, "n1");
-    assert!((hover.point.x - px(305.0)).abs() < 0.001, "{hover:?}");
-    assert!(
-        (hover.point.y - expected_anchor_y).abs() < 0.001,
-        "{hover:?}"
-    );
+    assert!(hover.point.distance(expected_anchor) < 0.001, "{hover:?}");
     let anchor = hover
         .label_anchor
         .as_ref()
         .expect("label anchor should exist");
-    let expected_glyph_box = [px(302.0), px(256.0), px(308.0), px(264.0)];
     for (actual, expected) in anchor.glyph_box.iter().zip(expected_glyph_box) {
         assert!((*actual - expected).abs() < 0.001, "{anchor:?}");
     }
@@ -4959,10 +5062,10 @@ fn hover_focuses_label_glyph_anchor() {
                 width,
                 height,
                 ..
-            } if (*x - px(302.0)).abs() < 0.001
-                && (*y - px(256.0)).abs() < 0.001
-                && (*width - px(6.0)).abs() < 0.001
-                && (*height - px(8.0)).abs() < 0.001
+            } if (*x - expected_glyph_box[0]).abs() < 0.001
+                && (*y - expected_glyph_box[1]).abs() < 0.001
+                && (*width - (expected_glyph_box[2] - expected_glyph_box[0])).abs() < 0.001
+                && (*height - (expected_glyph_box[3] - expected_glyph_box[1])).abs() < 0.001
         )
     }));
 }
@@ -4983,14 +5086,27 @@ fn click_on_label_glyph_uses_rightmost_group_anchor_for_default_bond() {
         json!([]),
     );
 
-    click(&mut engine, px(305.0), px(260.0));
+    let (hit_point, right_group_anchor) = {
+        let label = engine
+            .state()
+            .document
+            .editable_fragment()
+            .unwrap()
+            .fragment
+            .nodes[0]
+            .label
+            .as_ref()
+            .unwrap();
+        (
+            label_glyph_hit_point(label, 1),
+            label_glyph_anchor(label, 2),
+        )
+    };
+    click(&mut engine, hit_point.x, hit_point.y);
 
     let entry = engine.state().document.editable_fragment().unwrap();
     let last = entry.fragment.nodes.last().unwrap();
-    let expected = endpoint_from_anchor(
-        Point::new(px(313.0), fixture_label_anchor_y(FIRST_LABEL_POSITION_Y)),
-        0.0,
-    );
+    let expected = endpoint_from_anchor(right_group_anchor, 0.0);
     assert!(
         (last.position[0] - expected.x).abs() < 0.01,
         "{:?}",
@@ -5005,7 +5121,7 @@ fn click_on_label_glyph_uses_rightmost_group_anchor_for_default_bond() {
 
 #[test]
 fn single_group_label_right_anchor_uses_terminal_letter_but_not_digit() {
-    for (label, expected_anchor_x) in [("Ph", px(305.0)), ("N3", px(297.0))] {
+    for (label, expected_anchor_index) in [("Ph", 1), ("N3", 0)] {
         let mut engine = Engine::new();
         engine.set_tool_state(bond_tool());
         load_label_document(
@@ -5018,7 +5134,23 @@ fn single_group_label_right_anchor_uses_terminal_letter_but_not_digit() {
             json!([]),
         );
 
-        hover(&mut engine, px(305.0), px(260.0));
+        let (hit_point, expected_anchor) = {
+            let node_label = engine
+                .state()
+                .document
+                .editable_fragment()
+                .unwrap()
+                .fragment
+                .nodes[0]
+                .label
+                .as_ref()
+                .unwrap();
+            (
+                label_glyph_hit_point(node_label, 1),
+                label_glyph_anchor(node_label, expected_anchor_index),
+            )
+        };
+        hover(&mut engine, hit_point.x, hit_point.y);
 
         let anchor = engine
             .state()
@@ -5031,11 +5163,7 @@ fn single_group_label_right_anchor_uses_terminal_letter_but_not_digit() {
             .right_group_point
             .expect("right group anchor should exist");
         assert!(
-            (right_group_point.x - expected_anchor_x).abs() < 0.01,
-            "{label}: {right_group_point:?}"
-        );
-        assert!(
-            (right_group_point.y - fixture_label_anchor_y(FIRST_LABEL_POSITION_Y)).abs() < 0.01,
+            right_group_point.distance(expected_anchor) < 0.01,
             "{label}: {right_group_point:?}"
         );
     }
@@ -5057,21 +5185,37 @@ fn drag_from_label_glyph_uses_focused_glyph_for_vertical_bond() {
         json!([]),
     );
 
+    let (hit_point, clicked_anchor) = {
+        let label = engine
+            .state()
+            .document
+            .editable_fragment()
+            .unwrap()
+            .fragment
+            .nodes[0]
+            .label
+            .as_ref()
+            .unwrap();
+        (
+            label_glyph_hit_point(label, 1),
+            label_glyph_anchor(label, 1),
+        )
+    };
     engine.pointer_down(PointerEvent {
-        x: px(305.0),
-        y: px(260.0),
+        x: hit_point.x,
+        y: hit_point.y,
         button: Some(0),
         alt_key: false,
     });
     engine.pointer_move(PointerEvent {
-        x: px(305.0),
-        y: px(220.0),
+        x: hit_point.x,
+        y: hit_point.y - px(40.0),
         button: None,
         alt_key: false,
     });
     engine.pointer_up(PointerEvent {
-        x: px(305.0),
-        y: px(220.0),
+        x: hit_point.x,
+        y: hit_point.y - px(40.0),
         button: Some(0),
         alt_key: false,
     });
@@ -5079,8 +5223,8 @@ fn drag_from_label_glyph_uses_focused_glyph_for_vertical_bond() {
     let entry = engine.state().document.editable_fragment().unwrap();
     let last = entry.fragment.nodes.last().unwrap();
     let expected = endpoint_from_anchor_toward(
-        Point::new(px(305.0), fixture_label_anchor_y(FIRST_LABEL_POSITION_Y)),
-        px_point(305.0, 220.0),
+        clicked_anchor,
+        Point::new(hit_point.x, hit_point.y - px(40.0)),
     );
     assert!(
         (last.position[0] - expected.x).abs() < 0.01,
@@ -5116,34 +5260,46 @@ fn drag_from_connected_label_uses_rightmost_group_uppercase_anchor() {
         }]),
     );
 
+    let (hit_point, right_group_anchor) = {
+        let label = engine
+            .state()
+            .document
+            .editable_fragment()
+            .unwrap()
+            .fragment
+            .nodes[0]
+            .label
+            .as_ref()
+            .unwrap();
+        (
+            label_glyph_hit_point(label, 1),
+            label_glyph_anchor(label, 2),
+        )
+    };
     engine.pointer_down(PointerEvent {
-        x: px(305.0),
-        y: px(260.0),
+        x: hit_point.x,
+        y: hit_point.y,
         button: Some(0),
         alt_key: false,
     });
     engine.pointer_move(PointerEvent {
-        x: px(360.0),
-        y: px(260.0),
+        x: hit_point.x + px(55.0),
+        y: hit_point.y,
         button: None,
         alt_key: false,
     });
     engine.pointer_up(PointerEvent {
-        x: px(360.0),
-        y: px(260.0),
+        x: hit_point.x + px(55.0),
+        y: hit_point.y,
         button: Some(0),
         alt_key: false,
     });
 
     let entry = engine.state().document.editable_fragment().unwrap();
     let last = entry.fragment.nodes.last().unwrap();
+    let expected = endpoint_from_anchor(right_group_anchor, 0.0);
     assert!(
-        (last.position[0] - px(353.0)).abs() < 0.01,
-        "{:?}",
-        last.position
-    );
-    assert!(
-        (last.position[1] - fixture_label_anchor_y(FIRST_LABEL_POSITION_Y)).abs() < 0.01,
+        Point::new(last.position[0], last.position[1]).distance(expected) < 0.01,
         "{:?}",
         last.position
     );
@@ -5165,31 +5321,44 @@ fn drag_from_middle_label_glyph_uses_leftmost_anchor_for_leftward_bond() {
         json!([]),
     );
 
+    let (hit_point, left_anchor) = {
+        let label = engine
+            .state()
+            .document
+            .editable_fragment()
+            .unwrap()
+            .fragment
+            .nodes[0]
+            .label
+            .as_ref()
+            .unwrap();
+        (
+            label_glyph_hit_point(label, 1),
+            label_glyph_anchor(label, 0),
+        )
+    };
     engine.pointer_down(PointerEvent {
-        x: px(305.0),
-        y: px(260.0),
+        x: hit_point.x,
+        y: hit_point.y,
         button: Some(0),
         alt_key: false,
     });
     engine.pointer_move(PointerEvent {
-        x: px(250.0),
-        y: px(260.0),
+        x: hit_point.x - px(80.0),
+        y: hit_point.y,
         button: None,
         alt_key: false,
     });
     engine.pointer_up(PointerEvent {
-        x: px(250.0),
-        y: px(260.0),
+        x: hit_point.x - px(80.0),
+        y: hit_point.y,
         button: Some(0),
         alt_key: false,
     });
 
     let entry = engine.state().document.editable_fragment().unwrap();
     let last = entry.fragment.nodes.last().unwrap();
-    let expected = endpoint_from_anchor(
-        Point::new(px(297.0), fixture_label_anchor_y(FIRST_LABEL_POSITION_Y)),
-        180.0,
-    );
+    let expected = endpoint_from_anchor(left_anchor, 180.0);
     assert!(
         (last.position[0] - expected.x).abs() < 0.01,
         "{:?}",
@@ -5218,29 +5387,45 @@ fn drag_from_rightmost_label_glyph_keeps_clicked_glyph_for_rightward_bond() {
         json!([]),
     );
 
+    let (hit_point, clicked_anchor) = {
+        let label = engine
+            .state()
+            .document
+            .editable_fragment()
+            .unwrap()
+            .fragment
+            .nodes[0]
+            .label
+            .as_ref()
+            .unwrap();
+        (
+            label_glyph_hit_point(label, 3),
+            label_glyph_anchor(label, 3),
+        )
+    };
+    let target = Point::new(hit_point.x + px(39.0), hit_point.y);
     engine.pointer_down(PointerEvent {
-        x: px(321.0),
-        y: px(260.0),
+        x: hit_point.x,
+        y: hit_point.y,
         button: Some(0),
         alt_key: false,
     });
     engine.pointer_move(PointerEvent {
-        x: px(360.0),
-        y: px(260.0),
+        x: target.x,
+        y: target.y,
         button: None,
         alt_key: false,
     });
     engine.pointer_up(PointerEvent {
-        x: px(360.0),
-        y: px(260.0),
+        x: target.x,
+        y: target.y,
         button: Some(0),
         alt_key: false,
     });
 
     let entry = engine.state().document.editable_fragment().unwrap();
     let last = entry.fragment.nodes.last().unwrap();
-    let anchor = Point::new(px(321.0), fixture_label_anchor_y(FIRST_LABEL_POSITION_Y));
-    let expected = endpoint_from_anchor(anchor, 15.0);
+    let expected = endpoint_from_anchor(clicked_anchor, 0.0);
     assert!(
         (last.position[0] - expected.x).abs() < 0.01,
         "{:?}",
@@ -9595,9 +9780,32 @@ fn select_tool_dragging_selected_label_translates_label_geometry() {
     let before_label_position = before_label.position.unwrap();
     let before_label_box = before_label.bbox().unwrap();
     let before_glyph_bounds = label_glyph_bounds(&before_label);
+    let before_clip_polygons = before_label.glyph_clip_polygons.clone();
+    assert!(!before_clip_polygons.is_empty());
 
     assert!(engine.begin_selection_move_at_point(start, false, false));
     assert!(engine.update_selection_move(end, false));
+    let live_entry = engine.state().document.editable_fragment().unwrap();
+    let live_label = live_entry
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| node.id == "n1")
+        .and_then(|node| node.label.as_ref())
+        .unwrap();
+    assert_eq!(
+        live_label.glyph_clip_polygons.len(),
+        before_clip_polygons.len()
+    );
+    for (before_polygon, live_polygon) in before_clip_polygons
+        .iter()
+        .zip(&live_label.glyph_clip_polygons)
+    {
+        for (before, live) in before_polygon.iter().zip(live_polygon) {
+            assert!((live[0] - round_to_2(before[0] + delta.x)).abs() < 0.001);
+            assert!((live[1] - round_to_2(before[1] + delta.y)).abs() < 0.001);
+        }
+    }
     assert!(engine.finish_selection_move(end, false));
 
     let entry = engine.state().document.editable_fragment().unwrap();
@@ -11299,13 +11507,30 @@ fn symbol_tools_focus_endpoints_and_label_glyphs_but_not_bonds() {
         vec![rect_polygon(294.0, 256.0, 300.0, 264.0)],
         json!([]),
     );
+    let labeled_hit_point = {
+        let label = labeled_engine
+            .state()
+            .document
+            .editable_fragment()
+            .unwrap()
+            .fragment
+            .nodes[0]
+            .label
+            .as_ref()
+            .unwrap();
+        label_glyph_hit_point(label, 0)
+    };
     for symbol_kind in symbol_kinds {
         labeled_engine.set_tool_state(ToolState {
             active_tool: Tool::Symbol,
             symbol_kind,
             ..ToolState::default()
         });
-        hover(&mut labeled_engine, px(297.0), px(260.0));
+        hover(
+            &mut labeled_engine,
+            labeled_hit_point.x,
+            labeled_hit_point.y,
+        );
         let endpoint = labeled_engine
             .state()
             .overlay
@@ -12003,7 +12228,28 @@ fn bracket_symbol_drag_from_label_glyph_orbits_around_clicked_glyph() {
         ..ToolState::default()
     });
 
-    drag(&mut engine, Point::new(30.0, 27.0), Point::new(30.0, 14.0));
+    let (hit_point, glyph_anchor) = {
+        let label = engine
+            .state()
+            .document
+            .editable_fragment()
+            .unwrap()
+            .fragment
+            .nodes[0]
+            .label
+            .as_ref()
+            .unwrap();
+        (
+            label_glyph_hit_point(label, 0),
+            label_glyph_anchor(label, 0),
+        )
+    };
+
+    drag(
+        &mut engine,
+        hit_point,
+        Point::new(glyph_anchor.x, glyph_anchor.y - 13.0),
+    );
 
     let symbol = engine
         .state()
@@ -12020,8 +12266,19 @@ fn bracket_symbol_drag_from_label_glyph_orbits_around_clicked_glyph() {
             .and_then(|value| value.as_str()),
         Some("plus")
     );
-    assert_eq!(round_to_2(symbol.transform.translate[0]), 27.83);
-    assert_eq!(round_to_2(symbol.transform.translate[1]), 15.93);
+    let [_, _, width, height] = symbol.payload.bbox.expect("symbol bbox");
+    let symbol_center = Point::new(
+        symbol.transform.translate[0] + width * 0.5,
+        symbol.transform.translate[1] + height * 0.5,
+    );
+    assert!(
+        (symbol_center.x - glyph_anchor.x).abs() < 0.01,
+        "{symbol_center:?}"
+    );
+    assert!(
+        (symbol_center.y - (glyph_anchor.y - 8.0)).abs() < 0.01,
+        "{symbol_center:?}"
+    );
 }
 
 #[test]

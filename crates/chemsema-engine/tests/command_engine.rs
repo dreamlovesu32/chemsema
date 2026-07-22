@@ -830,7 +830,7 @@ fn interpret_chemically_selection_toggle_updates_label_semantics() {
     let node = find_node(&document, &node_id);
     let label = &node["label"];
     assert_eq!(label["meta"]["defaultChemical"], json!(false));
-    assert_eq!(label["meta"]["sourceRuns"][0]["script"], "normal");
+    assert_eq!(label["meta"]["sourceRuns"][0]["script"], "chemical");
     assert_eq!(label["meta"].get("labelRecognition"), None);
     assert_eq!(node["meta"].get("labelRecognition"), None);
     assert!(
@@ -949,12 +949,13 @@ fn direct_node_label_runs_can_preserve_measured_endpoint_box() {
     assert_eq!(node["label"]["text"], "Ph");
     assert_eq!(node["label"]["position"], json!([71.2, 104.0]));
     assert_eq!(node["label"]["box"], json!([72.0, 92.0, 96.0, 104.0]));
-    assert_eq!(
+    assert_ne!(
         node["label"]["glyphPolygons"],
         json!([
             [[72.0, 92.0], [84.0, 92.0], [84.0, 104.0], [72.0, 104.0]],
             [[86.0, 92.0], [96.0, 92.0], [96.0, 104.0], [86.0, 104.0]]
-        ])
+        ]),
+        "external rectangles must not override kernel glyph geometry"
     );
     assert_eq!(
         node["label"]["meta"]["measuredGeometry"]["box"],
@@ -968,10 +969,9 @@ fn direct_node_label_runs_can_preserve_measured_endpoint_box() {
         node["label"]["meta"].get("import").is_none(),
         "source-neutral command geometry must not be encoded as CDXML import metadata"
     );
-    assert_eq!(
-        node["label"]["meta"]["glyphPolygonsAuthoritative"],
-        json!(true)
-    );
+    assert!(node["label"]["meta"]
+        .get("glyphPolygonsAuthoritative")
+        .is_none());
     assert!(node["label"]["meta"]
         .get("ocrGlyphPolygonsAuthoritative")
         .is_none());
