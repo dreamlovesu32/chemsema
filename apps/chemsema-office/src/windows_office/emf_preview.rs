@@ -527,7 +527,7 @@ unsafe fn windows_metafile_for_payload(
     extent: SIZE,
 ) -> Result<*mut c_void, i32> {
     let enhanced_metafile =
-        enhanced_metafile_for_payload_with_options(payload, extent, false, false)?;
+        enhanced_metafile_for_payload_with_options(payload, extent, false, false, true)?;
     let reference_dc = GetDC(null_mut());
     let size = GetWinMetaFileBits(
         enhanced_metafile,
@@ -571,7 +571,14 @@ pub(super) fn enhanced_metafile_for_payload(
     payload: &OleObjectPayload,
     extent: SIZE,
 ) -> Result<*mut c_void, i32> {
-    enhanced_metafile_for_payload_with_options(payload, extent, true, true)
+    enhanced_metafile_for_payload_with_options(payload, extent, true, true, false)
+}
+
+pub(super) fn enhanced_metafile_for_office_payload(
+    payload: &OleObjectPayload,
+    extent: SIZE,
+) -> Result<*mut c_void, i32> {
+    enhanced_metafile_for_payload_with_options(payload, extent, true, true, true)
 }
 
 fn enhanced_metafile_for_payload_with_options(
@@ -579,6 +586,7 @@ fn enhanced_metafile_for_payload_with_options(
     extent: SIZE,
     allow_gdiplus_dual: bool,
     high_resolution_vectors: bool,
+    office_presentation: bool,
 ) -> Result<*mut c_void, i32> {
     unsafe {
         let (frame_bounds, draw_bounds, source_bounds, use_logical_preview_coords) =
@@ -623,6 +631,7 @@ fn enhanced_metafile_for_payload_with_options(
                 &draw_bounds,
                 payload,
                 source_bounds,
+                office_presentation,
             ) {
                 return Ok(metafile);
             }
@@ -1031,7 +1040,7 @@ pub(super) fn ole_presentation_stream_for_payload(
 ) -> Result<Vec<u8>, i32> {
     let data = match format {
         CF_METAFILEPICT => windows_metafile_bits_for_payload(payload, extent)?,
-        CF_ENHMETAFILE => enhanced_metafile_bits_for_payload(payload, extent)?,
+        CF_ENHMETAFILE => enhanced_metafile_bits_for_office_payload(payload, extent)?,
         _ => return Err(DV_E_FORMATETC),
     };
     Ok(ole_presentation_stream_bytes(format, extent, &data))
@@ -1087,8 +1096,27 @@ pub(super) fn enhanced_metafile_bits_for_payload(
     payload: &OleObjectPayload,
     extent: SIZE,
 ) -> Result<Vec<u8>, i32> {
+    enhanced_metafile_bits_for_payload_with_profile(payload, extent, false)
+}
+
+pub(super) fn enhanced_metafile_bits_for_office_payload(
+    payload: &OleObjectPayload,
+    extent: SIZE,
+) -> Result<Vec<u8>, i32> {
+    enhanced_metafile_bits_for_payload_with_profile(payload, extent, true)
+}
+
+fn enhanced_metafile_bits_for_payload_with_profile(
+    payload: &OleObjectPayload,
+    extent: SIZE,
+    office_presentation: bool,
+) -> Result<Vec<u8>, i32> {
     unsafe {
-        let metafile = enhanced_metafile_for_payload(payload, extent)?;
+        let metafile = if office_presentation {
+            enhanced_metafile_for_office_payload(payload, extent)?
+        } else {
+            enhanced_metafile_for_payload(payload, extent)?
+        };
         let size = GetEnhMetaFileBits(metafile, 0, null_mut());
         if size == 0 {
             DeleteEnhMetaFile(metafile);

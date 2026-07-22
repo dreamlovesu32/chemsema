@@ -7,14 +7,14 @@
 use super::*;
 use chemsema_engine::{
     Bond, BondLinePattern, BondLineWeight, ChemSemaDocument, DoubleBondPlacement, MoleculeFragment,
-    SceneObject,
+    SceneObject, DEFAULT_BOND_STROKE,
 };
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 use windows_sys::Win32::Graphics::Gdi::{CreateCompatibleDC, DeleteDC, HENHMETAFILE};
 use windows_sys::Win32::Graphics::GdiPlus::{
-    DashStyleDash, EmfTypeEmfPlusDual, FillModeAlternate, FontStyleBold, FontStyleItalic,
-    FontStyleRegular, FontStyleUnderline, GdipAddPathBezier, GdipAddPathLine,
+    DashCapRound, DashStyleDash, EmfTypeEmfPlusDual, FillModeAlternate, FontStyleBold,
+    FontStyleItalic, FontStyleRegular, FontStyleUnderline, GdipAddPathBezier, GdipAddPathLine,
     GdipCloneStringFormat, GdipClosePathFigure, GdipCreateFont, GdipCreateFontFamilyFromName,
     GdipCreateFromHDC, GdipCreatePath, GdipCreatePen1, GdipCreateSolidFill, GdipCreateStringFormat,
     GdipDeleteBrush, GdipDeleteFont, GdipDeleteFontFamily, GdipDeleteGraphics, GdipDeletePath,
@@ -23,15 +23,15 @@ use windows_sys::Win32::Graphics::GdiPlus::{
     GdipFillEllipse, GdipFillPath, GdipFillPolygon, GdipFillRectangle, GdipGetDC,
     GdipGetHemfFromMetafile, GdipGetImageGraphicsContext, GdipMeasureString, GdipRecordMetafile,
     GdipReleaseDC, GdipRestoreGraphics, GdipSaveGraphics, GdipSetPageScale, GdipSetPageUnit,
-    GdipSetPenDashArray, GdipSetPenDashStyle, GdipSetPenEndCap, GdipSetPenLineJoin,
-    GdipSetPenMiterLimit, GdipSetPenStartCap, GdipSetPixelOffsetMode, GdipSetSmoothingMode,
-    GdipSetStringFormatAlign, GdipSetStringFormatFlags, GdipSetStringFormatLineAlign,
-    GdipSetTextRenderingHint, GdipStartPathFigure, GdipStringFormatGetGenericTypographic,
-    GdiplusStartup, GdiplusStartupInput, GpBrush, GpFont, GpFontFamily, GpGraphics, GpImage,
-    GpMetafile, GpPath, GpPen, GpStringFormat, LineCapFlat, LineCapRound, LineCapSquare,
-    LineJoinBevel, LineJoinMiter, LineJoinRound, MetafileFrameUnitGdi, Ok as GDI_PLUS_OK,
-    PixelOffsetModeHighQuality, PointF, RectF, SmoothingModeAntiAlias, StringAlignmentNear,
-    StringFormatFlagsMeasureTrailingSpaces, StringFormatFlagsNoClip,
+    GdipSetPenDashArray, GdipSetPenDashCap197819, GdipSetPenDashStyle, GdipSetPenEndCap,
+    GdipSetPenLineJoin, GdipSetPenMiterLimit, GdipSetPenStartCap, GdipSetPixelOffsetMode,
+    GdipSetSmoothingMode, GdipSetStringFormatAlign, GdipSetStringFormatFlags,
+    GdipSetStringFormatLineAlign, GdipSetTextRenderingHint, GdipStartPathFigure,
+    GdipStringFormatGetGenericTypographic, GdiplusStartup, GdiplusStartupInput, GpBrush, GpFont,
+    GpFontFamily, GpGraphics, GpImage, GpMetafile, GpPath, GpPen, GpStringFormat, LineCapFlat,
+    LineCapRound, LineCapSquare, LineJoinBevel, LineJoinMiter, LineJoinRound, MetafileFrameUnitGdi,
+    Ok as GDI_PLUS_OK, PixelOffsetModeHighQuality, PointF, RectF, SmoothingModeAntiAlias,
+    StringAlignmentNear, StringFormatFlagsMeasureTrailingSpaces, StringFormatFlagsNoClip,
     StringFormatFlagsNoFitBlackBox, TextRenderingHintAntiAlias, TextRenderingHintAntiAliasGridFit,
     UnitPixel, UnitWorld,
 };
@@ -66,6 +66,7 @@ struct PreviewTransform {
     offset_y: f64,
     record_scale: f64,
     emf_recording: bool,
+    office_presentation: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -111,6 +112,7 @@ impl PreviewTransform {
             offset_y: bounds.top as f64 + (target_height - drawn_height) / 2.0,
             record_scale: 1.0,
             emf_recording: false,
+            office_presentation: false,
         })
     }
 
@@ -121,9 +123,10 @@ impl PreviewTransform {
         }
     }
 
-    fn for_emf_recording(self) -> Self {
+    fn for_emf_recording(self, office_presentation: bool) -> Self {
         Self {
             emf_recording: true,
+            office_presentation,
             ..self
         }
     }
@@ -213,6 +216,7 @@ pub(super) unsafe fn enhanced_metafile_gdiplus_dual_preview(
     draw_bounds: &RECT,
     payload: &OleObjectPayload,
     source_bounds: Option<[f64; 4]>,
+    office_presentation: bool,
 ) -> Option<HENHMETAFILE> {
     if !ensure_gdiplus_started() {
         return None;
@@ -237,7 +241,7 @@ pub(super) unsafe fn enhanced_metafile_gdiplus_dual_preview(
     else {
         return None;
     };
-    let transform = transform.for_emf_recording();
+    let transform = transform.for_emf_recording(office_presentation);
     let ref_dc = CreateCompatibleDC(null_mut());
     if ref_dc.is_null() {
         return None;
@@ -754,8 +758,34 @@ unsafe fn draw_preview_primitive(
             fill,
             clip_path_d,
             clip_rule,
+            role,
+            bond_id,
             ..
         } => {
+            if *role == RenderRole::DocumentBond {
+                let stroke_line = if transform.office_presentation {
+                    preview_office_hashed_wedge_stroke_line(
+                        points,
+                        bond_id.as_deref(),
+                        bond_context,
+                    )
+                } else {
+                    preview_hashed_wedge_stroke_line(points, bond_id.as_deref(), bond_context)
+                };
+                if let Some(stroke_line) = stroke_line {
+                    draw_preview_polyline(
+                        dc,
+                        &[stroke_line.start, stroke_line.end],
+                        fill,
+                        stroke_line.width,
+                        Some("round"),
+                        None,
+                        transform,
+                        &[],
+                    );
+                    return;
+                }
+            }
             let saved_clip =
                 begin_preview_clip(dc, clip_path_d.as_deref(), clip_rule.as_deref(), transform);
             if draw_preview_svg_path(
@@ -1088,12 +1118,43 @@ unsafe fn draw_gdiplus_primitive(
         ),
         RenderPrimitive::FilledPath {
             d,
+            points,
             fill,
             clip_path_d,
+            role,
+            bond_id,
             ..
         } => {
             if clip_path_d.is_some() {
                 return false;
+            }
+            if *role == RenderRole::DocumentBond {
+                let hashed_wedge =
+                    preview_hashed_wedge_stroke_line(points, bond_id.as_deref(), bond_context);
+                let stroke_line = if transform.office_presentation {
+                    preview_office_hashed_wedge_stroke_line(
+                        points,
+                        bond_id.as_deref(),
+                        bond_context,
+                    )
+                } else {
+                    hashed_wedge
+                };
+                if let Some(stroke_line) = stroke_line {
+                    return draw_gdiplus_polyline(
+                        graphics,
+                        &[stroke_line.start, stroke_line.end],
+                        fill,
+                        stroke_line.width,
+                        Some("round"),
+                        None,
+                        transform,
+                        &[],
+                    );
+                }
+                if transform.office_presentation && hashed_wedge.is_some() {
+                    return fill_gdiplus_polygon(graphics, points, fill, transform);
+                }
             }
             draw_gdiplus_path(
                 graphics,
@@ -1377,26 +1438,18 @@ unsafe fn draw_gdiplus_polygon(
         return true;
     }
     if role == RenderRole::DocumentBond {
-        if let Some(stroke_line) = preview_bond_stroke_line(points, bond_id, bond_context) {
-            let line_points = [stroke_line.start, stroke_line.end];
-            if transform.emf_recording {
-                let mut state = 0u32;
-                if GdipSaveGraphics(graphics, &mut state) != GDI_PLUS_OK {
-                    return false;
-                }
-                let ok = draw_gdiplus_polyline(
-                    graphics,
-                    &line_points,
-                    fill,
-                    stroke_line.width,
-                    Some("round"),
-                    Some("round"),
-                    transform,
-                    &[],
-                );
-                let _ = GdipRestoreGraphics(graphics, state);
-                return ok;
+        let hashed_wedge = preview_hashed_wedge_stroke_line(points, bond_id, bond_context);
+        let stroke_line = if hashed_wedge.is_some() {
+            if transform.office_presentation {
+                preview_office_hashed_wedge_stroke_line(points, bond_id, bond_context)
+            } else {
+                hashed_wedge
             }
+        } else {
+            preview_bond_stroke_line(points, bond_id, bond_context)
+        };
+        if let Some(stroke_line) = stroke_line {
+            let line_points = [stroke_line.start, stroke_line.end];
             return draw_gdiplus_polyline(
                 graphics,
                 &line_points,
@@ -1407,6 +1460,9 @@ unsafe fn draw_gdiplus_polygon(
                 transform,
                 &[],
             );
+        }
+        if transform.office_presentation && hashed_wedge.is_some() {
+            return fill_gdiplus_polygon(graphics, points, fill, transform);
         }
     }
     let mapped: Vec<PointF> = points
@@ -1438,6 +1494,33 @@ unsafe fn draw_gdiplus_polygon(
             GdipDeletePen(pen);
         }
     }
+    ok
+}
+
+unsafe fn fill_gdiplus_polygon(
+    graphics: *mut GpGraphics,
+    points: &[CorePoint],
+    fill: &str,
+    transform: &PreviewTransform,
+) -> bool {
+    if points.len() < 3 {
+        return true;
+    }
+    let mapped: Vec<PointF> = points
+        .iter()
+        .map(|point| transform.gdip_point(*point))
+        .collect();
+    let Some(brush) = create_gdiplus_solid_brush(fill) else {
+        return false;
+    };
+    let ok = GdipFillPolygon(
+        graphics,
+        brush,
+        mapped.as_ptr(),
+        mapped.len() as i32,
+        FillModeAlternate,
+    ) == GDI_PLUS_OK;
+    GdipDeleteBrush(brush);
     ok
 }
 
@@ -1647,6 +1730,9 @@ unsafe fn create_gdiplus_pen(
         GdipSetPenLineJoin(pen, gdiplus_line_join(line_join));
     }
     GdipSetPenMiterLimit(pen, PREVIEW_MITER_LIMIT);
+    if line_cap == Some("round") {
+        GdipSetPenDashCap197819(pen, DashCapRound);
+    }
     if !dash_array.is_empty() {
         let mut dash: Vec<f32> = dash_array
             .iter()
@@ -3431,7 +3517,7 @@ fn ansi_metafile_text_bytes(text: &str) -> Vec<u8> {
     }
 }
 
-const PREVIEW_MITER_LIMIT: f32 = 10.0;
+const PREVIEW_MITER_LIMIT: f32 = 2.0;
 const PREVIEW_BOND_STROKE_MAX_WIDTH: f64 = 4.25;
 const PREVIEW_BOND_STROKE_TOLERANCE_WIDTH_FACTOR: f64 = 0.45;
 const PREVIEW_BOND_STROKE_COLLINEAR_TOLERANCE_WIDTH_FACTOR: f64 = 0.18;
@@ -4378,7 +4464,17 @@ unsafe fn draw_preview_polygon(
         return;
     }
     if role == RenderRole::DocumentBond {
-        if let Some(stroke_line) = preview_bond_stroke_line(points, bond_id, bond_context) {
+        let hashed_wedge = preview_hashed_wedge_stroke_line(points, bond_id, bond_context);
+        let stroke_line = if hashed_wedge.is_some() {
+            if transform.office_presentation {
+                preview_office_hashed_wedge_stroke_line(points, bond_id, bond_context)
+            } else {
+                hashed_wedge
+            }
+        } else {
+            preview_bond_stroke_line(points, bond_id, bond_context)
+        };
+        if let Some(stroke_line) = stroke_line {
             let line_points = [stroke_line.start, stroke_line.end];
             draw_preview_polyline(
                 dc,
@@ -4386,10 +4482,22 @@ unsafe fn draw_preview_polygon(
                 fill,
                 stroke_line.width,
                 Some("round"),
-                Some("round"),
+                None,
                 transform,
                 &[],
             );
+            return;
+        }
+        if transform.office_presentation && hashed_wedge.is_some() {
+            let mapped: Vec<POINT> = points.iter().map(|point| transform.point(*point)).collect();
+            let brush = colorref_from_css(fill)
+                .map(|color| cache.solid_brush(color))
+                .unwrap_or_else(|| GetStockObject(NULL_BRUSH));
+            let old_brush = SelectObject(dc, brush as HGDIOBJ);
+            let old_pen = SelectObject(dc, GetStockObject(NULL_PEN));
+            Polygon(dc, mapped.as_ptr(), mapped.len() as i32);
+            SelectObject(dc, old_pen);
+            SelectObject(dc, old_brush);
             return;
         }
     }
@@ -4418,6 +4526,8 @@ unsafe fn draw_preview_polygon(
 #[derive(Debug, Clone, Copy)]
 struct PreviewBondInfo {
     axis: CorePoint,
+    line_width: f64,
+    hashed_wedge_wide_projection: Option<f64>,
     allow_pen: bool,
     order: u8,
     start_projection: f64,
@@ -4426,6 +4536,7 @@ struct PreviewBondInfo {
     both_junction: bool,
     side_double: bool,
     center_double: bool,
+    hashed_wedge: bool,
     start_has_label: bool,
     end_has_label: bool,
 }
@@ -4553,14 +4664,9 @@ fn preview_bond_context_from_document(document: &ChemSemaDocument) -> PreviewBon
             let Some(axis) = axis else {
                 continue;
             };
-            let begin_world = CorePoint {
-                x: begin.position[0] + object.transform.translate[0],
-                y: begin.position[1] + object.transform.translate[1],
-            };
-            let end_world = CorePoint {
-                x: end.position[0] + object.transform.translate[0],
-                y: end.position[1] + object.transform.translate[1],
-            };
+            let begin_world =
+                preview_transform_scene_point(object, begin.position[0], begin.position[1]);
+            let end_world = preview_transform_scene_point(object, end.position[0], end.position[1]);
             let allow_pen = preview_bond_is_pen_family(bond);
             let start_has_label = begin
                 .label
@@ -4574,6 +4680,26 @@ fn preview_bond_context_from_document(document: &ChemSemaDocument) -> PreviewBon
                 bond.id.clone(),
                 PreviewBondInfo {
                     axis,
+                    line_width: if bond.stroke_width > 0.0 {
+                        bond.stroke_width
+                    } else {
+                        document
+                            .style
+                            .defaults
+                            .get("lineWidth")
+                            .copied()
+                            .unwrap_or(DEFAULT_BOND_STROKE)
+                    },
+                    hashed_wedge_wide_projection: bond.stereo.as_ref().and_then(|stereo| {
+                        if stereo.kind != "hashed-wedge" {
+                            return None;
+                        }
+                        Some(if stereo.wide_end == bond.begin {
+                            begin_world.x * axis.x + begin_world.y * axis.y
+                        } else {
+                            end_world.x * axis.x + end_world.y * axis.y
+                        })
+                    }),
                     allow_pen,
                     order: bond.order as u8,
                     start_projection: begin_world.x * axis.x + begin_world.y * axis.y,
@@ -4587,6 +4713,10 @@ fn preview_bond_context_from_document(document: &ChemSemaDocument) -> PreviewBon
                             .is_some_and(|bonds| bonds.len() > 1),
                     side_double: preview_bond_is_side_double(bond),
                     center_double: bond.order == 2 && !preview_bond_is_side_double(bond),
+                    hashed_wedge: bond
+                        .stereo
+                        .as_ref()
+                        .is_some_and(|stereo| stereo.kind == "hashed-wedge"),
                     start_has_label,
                     end_has_label,
                 },
@@ -4737,14 +4867,8 @@ fn preview_bond_axis_from_nodes(
     begin: CorePoint,
     end: CorePoint,
 ) -> Option<CorePoint> {
-    let start = CorePoint {
-        x: begin.x + object.transform.translate[0],
-        y: begin.y + object.transform.translate[1],
-    };
-    let finish = CorePoint {
-        x: end.x + object.transform.translate[0],
-        y: end.y + object.transform.translate[1],
-    };
+    let start = preview_transform_scene_point(object, begin.x, begin.y);
+    let finish = preview_transform_scene_point(object, end.x, end.y);
     preview_normalize_axis(CorePoint {
         x: finish.x - start.x,
         y: finish.y - start.y,
@@ -4804,6 +4928,112 @@ struct PreviewBondStrokeLine {
 struct PreviewBondTerminalEdge {
     center: CorePoint,
     length: f64,
+}
+
+fn preview_hashed_wedge_stroke_line(
+    points: &[CorePoint],
+    bond_id: Option<&str>,
+    bond_context: Option<&PreviewBondContext>,
+) -> Option<PreviewBondStrokeLine> {
+    if points.len() != 4 {
+        return None;
+    }
+    let info = bond_id.and_then(|id| bond_context?.infos.get(id))?;
+    if !info.hashed_wedge {
+        return None;
+    }
+    let axis = info.axis;
+    let axis_projection = |point: CorePoint| point.x * axis.x + point.y * axis.y;
+    let projections: Vec<f64> = points.iter().copied().map(axis_projection).collect();
+    let min_projection = projections.iter().copied().fold(f64::INFINITY, f64::min);
+    let max_projection = projections
+        .iter()
+        .copied()
+        .fold(f64::NEG_INFINITY, f64::max);
+    let axial_width = max_projection - min_projection;
+    if !axial_width.is_finite() || axial_width <= 0.0 || axial_width > PREVIEW_BOND_STROKE_MAX_WIDTH
+    {
+        return None;
+    }
+    // With two or more hashes, each primitive is already one LineWidth long
+    // along the axis, so its midpoint is the sampled stripe center. When a
+    // short wedge has only one hash, the scene primitive is the entire
+    // trapezoid. ChemDraw's direct EMF replay samples that trapezoid half a
+    // LineWidth inward from the wide end instead of sampling its midpoint.
+    let center_projection = if axial_width > info.line_width + 1.0e-9 {
+        let wide_projection = info.hashed_wedge_wide_projection?;
+        let inward = info.line_width.min(axial_width) * 0.5;
+        if (wide_projection - max_projection).abs() <= (wide_projection - min_projection).abs() {
+            max_projection - inward
+        } else {
+            min_projection + inward
+        }
+    } else {
+        (min_projection + max_projection) * 0.5
+    };
+    let mut intersections = Vec::new();
+    for index in 0..points.len() {
+        let next = (index + 1) % points.len();
+        let from_delta = projections[index] - center_projection;
+        let to_delta = projections[next] - center_projection;
+        if from_delta.abs() <= 1.0e-9 {
+            intersections.push(points[index]);
+        }
+        if from_delta * to_delta < -1.0e-12 {
+            let t = from_delta / (from_delta - to_delta);
+            intersections.push(CorePoint {
+                x: points[index].x + (points[next].x - points[index].x) * t,
+                y: points[index].y + (points[next].y - points[index].y) * t,
+            });
+        }
+    }
+    intersections.sort_by(|left, right| {
+        let left_normal = left.x * -axis.y + left.y * axis.x;
+        let right_normal = right.x * -axis.y + right.y * axis.x;
+        left_normal.total_cmp(&right_normal)
+    });
+    intersections.dedup_by(|left, right| left.distance(*right) <= 1.0e-8);
+    if intersections.len() != 2 || intersections[0].distance(intersections[1]) <= 1.0e-9 {
+        return None;
+    }
+    Some(PreviewBondStrokeLine {
+        start: intersections[0],
+        end: intersections[1],
+        width: info.line_width,
+    })
+}
+
+fn preview_office_hashed_wedge_stroke_line(
+    points: &[CorePoint],
+    bond_id: Option<&str>,
+    bond_context: Option<&PreviewBondContext>,
+) -> Option<PreviewBondStrokeLine> {
+    let transverse = preview_hashed_wedge_stroke_line(points, bond_id, bond_context)?;
+    let info = bond_id.and_then(|id| bond_context?.infos.get(id))?;
+    let transverse_length = transverse.start.distance(transverse.end);
+    // ChemDraw's Office/OLE presentation path treats the near-square narrow
+    // stripe as a generic filled shaft and replays it along its axial major
+    // direction. Wider stripes remain filled transverse quadrilaterals. Direct
+    // SaveAs(EMF) instead replays every stripe transversely.
+    if transverse_length > info.line_width * 1.25 {
+        return None;
+    }
+    let center = CorePoint {
+        x: (transverse.start.x + transverse.end.x) * 0.5,
+        y: (transverse.start.y + transverse.end.y) * 0.5,
+    };
+    let half_length = info.line_width * 0.5;
+    Some(PreviewBondStrokeLine {
+        start: CorePoint {
+            x: center.x - info.axis.x * half_length,
+            y: center.y - info.axis.y * half_length,
+        },
+        end: CorePoint {
+            x: center.x + info.axis.x * half_length,
+            y: center.y + info.axis.y * half_length,
+        },
+        width: info.line_width,
+    })
 }
 
 fn preview_bond_stroke_line(
@@ -5350,6 +5580,7 @@ mod tests {
             offset_y: 0.0,
             record_scale: 1.0,
             emf_recording: true,
+            office_presentation: false,
         };
 
         let expected = (0.85_f64 * 2.0) as f32 / CHEMDRAW_EMF_PAGE_SCALE;
@@ -5390,6 +5621,8 @@ mod tests {
             bond_id.to_string(),
             PreviewBondInfo {
                 axis,
+                line_width: 1.0,
+                hashed_wedge_wide_projection: None,
                 allow_pen,
                 order: 1,
                 start_projection,
@@ -5398,6 +5631,7 @@ mod tests {
                 both_junction: false,
                 side_double: false,
                 center_double: false,
+                hashed_wedge: false,
                 start_has_label: false,
                 end_has_label: false,
             },
@@ -5423,6 +5657,96 @@ mod tests {
         assert!((stroke_line.end.x - 20.0).abs() < 1.0e-6);
         assert!((stroke_line.end.y - 1.32).abs() < 1.0e-6);
         assert!((stroke_line.width - 2.64).abs() < 1.0e-6);
+    }
+
+    #[test]
+    fn preview_hashed_wedge_polygon_becomes_a_perpendicular_round_pen_centerline() {
+        let axis = point(1.0, 0.0);
+        let mut context = context_with_bond("b1", axis, false, 0.0, 30.0);
+        context
+            .infos
+            .get_mut("b1")
+            .expect("bond context")
+            .hashed_wedge = true;
+        let stroke_line = preview_hashed_wedge_stroke_line(
+            &[
+                point(0.0, 0.5),
+                point(1.0, 0.583_333_333_3),
+                point(1.0, -0.583_333_333_3),
+                point(0.0, -0.5),
+            ],
+            Some("b1"),
+            Some(&context),
+        )
+        .expect("hashed wedge stripe should become a perpendicular pen stroke");
+        assert!((stroke_line.start.x - 0.5).abs() < 1.0e-9);
+        assert!((stroke_line.end.x - 0.5).abs() < 1.0e-9);
+        assert!((stroke_line.start.y + 0.541_666_666_65).abs() < 1.0e-9);
+        assert!((stroke_line.end.y - 0.541_666_666_65).abs() < 1.0e-9);
+        assert!((stroke_line.width - 1.0).abs() < 1.0e-9);
+    }
+
+    #[test]
+    fn preview_single_hash_samples_half_a_line_width_inside_the_wide_end() {
+        let axis = point(1.0, 0.0);
+        let mut context = context_with_bond("b1", axis, false, 0.0, 2.0);
+        let info = context.infos.get_mut("b1").expect("bond context");
+        info.hashed_wedge = true;
+        info.hashed_wedge_wide_projection = Some(2.0);
+        let stroke_line = preview_hashed_wedge_stroke_line(
+            &[
+                point(0.0, 0.5),
+                point(2.0, 3.0),
+                point(2.0, -3.0),
+                point(0.0, -0.5),
+            ],
+            Some("b1"),
+            Some(&context),
+        )
+        .expect("single-hash trapezoid should be sampled at its wide-end stripe center");
+        assert!((stroke_line.start.x - 1.5).abs() < 1.0e-9);
+        assert!((stroke_line.end.x - 1.5).abs() < 1.0e-9);
+        assert!((stroke_line.start.y + 2.375).abs() < 1.0e-9);
+        assert!((stroke_line.end.y - 2.375).abs() < 1.0e-9);
+        assert!((stroke_line.width - 1.0).abs() < 1.0e-9);
+    }
+
+    #[test]
+    fn preview_office_hashed_wedge_replays_only_the_narrow_stripe_axially() {
+        let axis = point(1.0, 0.0);
+        let mut context = context_with_bond("b1", axis, false, 0.0, 30.0);
+        context
+            .infos
+            .get_mut("b1")
+            .expect("bond context")
+            .hashed_wedge = true;
+        let narrow = preview_office_hashed_wedge_stroke_line(
+            &[
+                point(0.0, 0.5),
+                point(1.0, 0.583_333_333_3),
+                point(1.0, -0.583_333_333_3),
+                point(0.0, -0.5),
+            ],
+            Some("b1"),
+            Some(&context),
+        )
+        .expect("the near-square narrow stripe should become an axial Office pen");
+        assert!((narrow.start.x - 0.0).abs() < 1.0e-9);
+        assert!((narrow.end.x - 1.0).abs() < 1.0e-9);
+        assert!((narrow.start.y).abs() < 1.0e-9);
+        assert!((narrow.end.y).abs() < 1.0e-9);
+
+        assert!(preview_office_hashed_wedge_stroke_line(
+            &[
+                point(3.0, 1.5),
+                point(4.0, 1.7),
+                point(4.0, -1.7),
+                point(3.0, -1.5),
+            ],
+            Some("b1"),
+            Some(&context),
+        )
+        .is_none());
     }
 
     #[test]
@@ -5519,6 +5843,8 @@ mod tests {
             "b1".to_string(),
             PreviewBondInfo {
                 axis,
+                line_width: 1.0,
+                hashed_wedge_wide_projection: None,
                 allow_pen: true,
                 order: 1,
                 start_projection: -3.0,
@@ -5527,6 +5853,7 @@ mod tests {
                 both_junction: false,
                 side_double: false,
                 center_double: false,
+                hashed_wedge: false,
                 start_has_label: false,
                 end_has_label: false,
             },
@@ -5554,6 +5881,8 @@ mod tests {
             "b1".to_string(),
             PreviewBondInfo {
                 axis,
+                line_width: 1.0,
+                hashed_wedge_wide_projection: None,
                 allow_pen: true,
                 order: 2,
                 start_projection: 0.0,
@@ -5562,6 +5891,7 @@ mod tests {
                 both_junction: false,
                 side_double: false,
                 center_double: true,
+                hashed_wedge: false,
                 start_has_label: false,
                 end_has_label: false,
             },
@@ -5615,6 +5945,8 @@ mod tests {
             "b1".to_string(),
             PreviewBondInfo {
                 axis,
+                line_width: 1.0,
+                hashed_wedge_wide_projection: None,
                 allow_pen: true,
                 order: 2,
                 start_projection: 0.0,
@@ -5623,6 +5955,7 @@ mod tests {
                 both_junction: false,
                 side_double: true,
                 center_double: false,
+                hashed_wedge: false,
                 start_has_label: false,
                 end_has_label: false,
             },
@@ -5653,6 +5986,8 @@ mod tests {
             "b1".to_string(),
             PreviewBondInfo {
                 axis,
+                line_width: 1.0,
+                hashed_wedge_wide_projection: None,
                 allow_pen: true,
                 order: 2,
                 start_projection: 0.0,
@@ -5661,6 +5996,7 @@ mod tests {
                 both_junction: false,
                 side_double: false,
                 center_double: true,
+                hashed_wedge: false,
                 start_has_label: true,
                 end_has_label: true,
             },
@@ -5689,6 +6025,8 @@ mod tests {
             "b1".to_string(),
             PreviewBondInfo {
                 axis,
+                line_width: 1.0,
+                hashed_wedge_wide_projection: None,
                 allow_pen: true,
                 order: 1,
                 start_projection: 0.0,
@@ -5697,6 +6035,7 @@ mod tests {
                 both_junction: false,
                 side_double: false,
                 center_double: false,
+                hashed_wedge: false,
                 start_has_label: false,
                 end_has_label: true,
             },

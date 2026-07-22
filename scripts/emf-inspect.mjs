@@ -181,6 +181,134 @@ function readText(buffer, recordOffset, recordSize, emrTextOffset, wide) {
   };
 }
 
+function decodeEmfPlusPen(buffer, offset, size) {
+  if (offset + 20 > buffer.length || size < 20) return null;
+  const flags = u32(buffer, offset + 8) ?? 0;
+  let cursor = offset + 20;
+  const end = Math.min(buffer.length, offset + size);
+  const optional = {};
+  const readOptionalU32 = (flag, name) => {
+    if (!(flags & flag) || cursor + 4 > end) return;
+    optional[name] = u32(buffer, cursor);
+    cursor += 4;
+  };
+  const readOptionalF32 = (flag, name) => {
+    if (!(flags & flag) || cursor + 4 > end) return;
+    optional[name] = f32(buffer, cursor);
+    cursor += 4;
+  };
+  if (flags & 0x00000001) {
+    if (cursor + 24 > end) return null;
+    optional.transform = Array.from({ length: 6 }, (_, index) => f32(buffer, cursor + index * 4));
+    cursor += 24;
+  }
+  readOptionalU32(0x00000002, "startCap");
+  readOptionalU32(0x00000004, "endCap");
+  readOptionalU32(0x00000008, "join");
+  readOptionalF32(0x00000010, "miterLimit");
+  readOptionalU32(0x00000020, "lineStyle");
+  readOptionalU32(0x00000040, "dashedLineCap");
+  readOptionalF32(0x00000080, "dashOffset");
+  if (flags & 0x00000100) {
+    const count = u32(buffer, cursor) ?? 0;
+    cursor += 4;
+    if (count > 1024 || cursor + count * 4 > end) return null;
+    optional.dashedLine = Array.from({ length: count }, (_, index) => f32(buffer, cursor + index * 4));
+    cursor += count * 4;
+  }
+  readOptionalU32(0x00000200, "alignment");
+  if (flags & 0x00000400) {
+    const count = u32(buffer, cursor) ?? 0;
+    cursor += 4;
+    if (count > 1024 || cursor + count * 4 > end) return null;
+    optional.compoundLine = Array.from({ length: count }, (_, index) => f32(buffer, cursor + index * 4));
+    cursor += count * 4;
+  }
+  return {
+    penDataFlags: flags,
+    unit: u32(buffer, offset + 12),
+    width: f32(buffer, offset + 16),
+    ...optional,
+  };
+}
+
+function decodeEmfPlusDrawLines(buffer, offset, size, flags) {
+  if (offset + 16 > buffer.length || size < 16) return null;
+  const count = u32(buffer, offset + 12) ?? 0;
+  if (count < 2 || count > 65536) return null;
+  const dataBytes = size - 16;
+  let points;
+  let pointEncoding;
+  if (dataBytes >= count * 8) {
+    pointEncoding = "float32";
+    points = Array.from({ length: count }, (_, index) => ({
+      x: f32(buffer, offset + 16 + index * 8),
+      y: f32(buffer, offset + 20 + index * 8),
+    }));
+  } else if (dataBytes >= count * 4) {
+    pointEncoding = "int16";
+    points = Array.from({ length: count }, (_, index) => ({
+      x: buffer.readInt16LE(offset + 16 + index * 4),
+      y: buffer.readInt16LE(offset + 18 + index * 4),
+    }));
+  } else {
+    return null;
+  }
+  return { penId: flags & 0xff, count, pointEncoding, points };
+}
+
+function decodeEmfPlusFillPolygon(buffer, offset, size, flags) {
+  if (offset + 20 > buffer.length || size < 20) return null;
+  const count = u32(buffer, offset + 16) ?? 0;
+  if (count < 3 || count > 65536) return null;
+  const dataBytes = size - 20;
+  let points;
+  let pointEncoding;
+  if (dataBytes >= count * 8) {
+    pointEncoding = "float32";
+    points = Array.from({ length: count }, (_, index) => ({
+      x: f32(buffer, offset + 20 + index * 8),
+      y: f32(buffer, offset + 24 + index * 8),
+    }));
+  } else if (dataBytes >= count * 4) {
+    pointEncoding = "int16";
+    points = Array.from({ length: count }, (_, index) => ({
+      x: buffer.readInt16LE(offset + 20 + index * 4),
+      y: buffer.readInt16LE(offset + 22 + index * 4),
+    }));
+  } else {
+    return null;
+  }
+  return {
+    brushId: u32(buffer, offset + 12),
+    count,
+    pointEncoding,
+    points,
+  };
+}
+
+function decodeEmfPlusRecord(buffer, cursor, recordType, flags, size) {
+  if (recordType === 0x4008) {
+    const objectType = (flags >> 8) & 0x7f;
+    const object = {
+      objectId: flags & 0xff,
+      objectType,
+      continued: Boolean(flags & 0x8000),
+    };
+    if (objectType === 2 && !object.continued) {
+      object.pen = decodeEmfPlusPen(buffer, cursor + 12, size - 12);
+    }
+    return object;
+  }
+  if (recordType === 0x400d) {
+    return decodeEmfPlusDrawLines(buffer, cursor, size, flags);
+  }
+  if (recordType === 0x400c) {
+    return decodeEmfPlusFillPolygon(buffer, cursor, size, flags);
+  }
+  return null;
+}
+
 function decodeGdiComment(buffer, offset, size) {
   const dataSize = u32(buffer, offset + 8) ?? 0;
   const identifier = u32(buffer, offset + 12);
@@ -197,12 +325,14 @@ function decodeGdiComment(buffer, offset, size) {
       const emfPlusSize = u32(buffer, cursor + 4);
       const emfPlusDataSize = u32(buffer, cursor + 8);
       if (!emfPlusSize || emfPlusSize < 12 || cursor + emfPlusSize > end) break;
+      const decoded = decodeEmfPlusRecord(buffer, cursor, recordType, flags, emfPlusSize);
       emfPlusRecords.push({
         type: recordType,
         name: EMFPLUS_RECORD_NAMES.get(recordType) ?? `EmfPlus_0x${recordType.toString(16)}`,
         flags,
         size: emfPlusSize,
         dataSize: emfPlusDataSize,
+        ...(decoded ?? {}),
       });
       cursor += emfPlusSize;
     }

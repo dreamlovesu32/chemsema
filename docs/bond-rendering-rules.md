@@ -210,6 +210,54 @@ Hash bonds are a separate model: a bold solid body plus white cut segments.
   dashed-bond allocator or force a minimum of two stripes on short wedges.
 - If either endpoint meets a label, label clipping is identical to solid wedge label clipping: use the centerline-clipped endpoint and do not add an extra wide-cap or hash-family retreat.
 
+### EMF Bond Replay
+
+ChemDraw replays ordinary bonds in dual EMF as pens, rather than preserving the
+filled geometry used by the scene renderer. An ordinary bond uses `LineWidth`,
+round start/end caps, a miter join with miter limit `2`, and a round dash cap.
+The GDI compatibility record is a geometric pen with round end caps and a miter
+join (`EXTCREATEPEN` style `73728`). A round line join is not equivalent.
+
+A hashed wedge is also redrawn for EMF. Each black stripe becomes one
+independent, perpendicular pen stroke with the same pen properties as an
+ordinary bond; it is not emitted as a filled quadrilateral. For final wedge
+length `L`, line width `LW`, bold width `BW`, and the stripe count above:
+
+```text
+s_i = LW / 2 + i * (L - LW) / (count - 1)
+W(s) = LW + (1.5 * BW - LW) * s / L
+```
+
+`s_i` is the stripe-center position from the narrow endpoint and `W(s_i)` is
+the transverse centerline length. This explains why the first and last EMF
+centerlines are sampled half a `LineWidth` inward rather than using the literal
+endpoint widths. If `count = 1`, the scene renderer still supplies the complete
+short trapezoid, but direct EMF replay samples its only stroke at
+`s = L - min(L, LW) / 2`, half a stripe inward from the wide end. Object
+transform, rotation, and scale must be applied before recovering the bond axis
+used for this conversion.
+
+ChemDraw's Office/OLE presentation EMF is a separate output profile; it is not
+the same byte stream or replay strategy as `SaveAs(.emf)`, even in the same
+ChemDraw version. In the Office profile, a near-square narrow stripe (transverse
+centerline no greater than `1.25 * LineWidth`) is replayed as a round pen along
+the bond axis, with both pen width and centerline length equal to `LineWidth`.
+This is the short axial mark that appears vertical on a near-vertical wedge in
+PowerPoint. Wider stripes remain filled quadrilaterals. Standalone EMF export
+must use the direct profile above; clipboard/OLE presentations and Office
+preview media must use this Office profile.
+
+The reusable local probe covers three style profiles, nine lengths (including
+the one-stripe short-bond range), four directions, and both ordinary and
+hashed-wedge bonds (216 ChemDraw EMFs):
+
+```bash
+node scripts/chemdraw-emf-bond-probe.mjs --verify-chemsema
+```
+
+The probe checks record type/count, pen flags and caps, normalized geometry,
+and ChemDraw/ChemSema agreement without depending on the EMF frame size.
+
 ### Hashed Wedge Bonds And Ordinary Main Bonds
 
 - Keep the standard trapezoid and do not actively intersect to reshape the wide end.

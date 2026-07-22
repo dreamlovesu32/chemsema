@@ -54,9 +54,10 @@ static TEMP_SUFFIX_COUNTER: AtomicU64 = AtomicU64::new(1);
 mod emf_preview;
 
 use emf_preview::{
-    draw_payload_preview, draw_placeholder_preview, enhanced_metafile_bits_for_payload,
-    enhanced_metafile_for_payload, extent_himetric_for_payload, hglobal_for_metafile_pict,
-    ole_presentation_stream_for_payload, preview_bounds_debug_report,
+    draw_payload_preview, draw_placeholder_preview, enhanced_metafile_bits_for_office_payload,
+    enhanced_metafile_bits_for_payload, enhanced_metafile_for_office_payload,
+    extent_himetric_for_payload, hglobal_for_metafile_pict, ole_presentation_stream_for_payload,
+    preview_bounds_debug_report,
 };
 mod constants;
 
@@ -2773,7 +2774,7 @@ fn hglobal_for_word_rtf_object(payload: &OleObjectPayload) -> Result<HGLOBAL, i3
 fn word_rtf_object_for_payload(payload: &OleObjectPayload) -> Result<String, String> {
     let natural_extent = payload.extent_himetric();
     let display_extent = fit_extent_himetric_to_word_body(natural_extent);
-    let emf = enhanced_metafile_bits_for_payload(payload, natural_extent)
+    let emf = enhanced_metafile_bits_for_office_payload(payload, natural_extent)
         .map_err(|hr| format!("Failed to render Word RTF EMF preview: 0x{:08X}", hr as u32))?;
     let ole = ole_storage_file_bytes_for_payload(payload, natural_extent)?;
     let objdata = word_rtf_objdata_bytes(&ole, &emf)?;
@@ -2869,7 +2870,7 @@ fn rtf_hex_lines(bytes: &[u8]) -> String {
 fn word_docx_package_for_payload(payload: &OleObjectPayload) -> Result<Vec<u8>, String> {
     let natural_extent = payload.extent_himetric();
     let display_extent = fit_extent_himetric_to_word_body(natural_extent);
-    let emf = enhanced_metafile_bits_for_payload(payload, display_extent).map_err(|hr| {
+    let emf = enhanced_metafile_bits_for_office_payload(payload, display_extent).map_err(|hr| {
         format!(
             "Failed to render Word OOXML EMF preview: 0x{:08X}",
             hr as u32
@@ -3283,7 +3284,7 @@ unsafe fn write_clipboard_format_to_medium(
         if (format.tymed & TYMED_ENHMF as u32) == 0 {
             return DV_E_TYMED;
         }
-        return match enhanced_metafile_for_payload(payload, extent) {
+        return match enhanced_metafile_for_office_payload(payload, extent) {
             Ok(handle) => enhanced_metafile_medium(handle, medium),
             Err(hr) => hr,
         };
