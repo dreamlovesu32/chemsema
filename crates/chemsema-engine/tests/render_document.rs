@@ -4328,6 +4328,125 @@ fn parse_cdxml_preserves_arrow_geometry_modifiers() {
 }
 
 #[test]
+fn parse_cdxml_maps_legacy_and_modern_arrow_types_without_losing_endpoints() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<CDXML LineWidth="0.6" BondLength="14.4">
+  <page id="1" BoundingBox="0 0 180 220">
+    <graphic id="10" GraphicType="Line" ArrowType="FullHead" HeadSize="1000" BoundingBox="150 20 10 20"/>
+    <graphic id="11" GraphicType="Line" ArrowType="HalfHead" HeadSize="1000" BoundingBox="150 40 10 40"/>
+    <graphic id="12" GraphicType="Line" ArrowType="HalfHead" HeadSize="-1000" BoundingBox="150 60 10 60"/>
+    <graphic id="13" GraphicType="Line" ArrowType="Resonance" BoundingBox="150 80 10 80"/>
+    <graphic id="14" GraphicType="Line" ArrowType="Equilibrium" BoundingBox="150 100 10 100"/>
+    <graphic id="15" GraphicType="Line" ArrowType="Hollow" BoundingBox="150 120 10 120"/>
+    <graphic id="16" GraphicType="Line" ArrowType="RetroSynthetic" BoundingBox="150 140 10 140"/>
+    <graphic id="17" GraphicType="Line" ArrowType="FullHead NoGo Dipole" BoundingBox="150 160 10 160"/>
+    <arrow id="18" ArrowheadHead="Full" ArrowheadTail="HalfRight" ArrowheadType="Solid"
+      HeadSize="1250" ArrowheadCenterSize="1100" ArrowheadWidth="325"
+      AngularSize="90" CurveSpacing="450" NoGo="Hash" Dipole="yes" Closed="yes"
+      ArrowSource="12" ArrowTarget="34" Head3D="150 190 0" Tail3D="10 190 0"/>
+    <graphic id="19" GraphicType="Arc" ArrowType="FullHead" HeadSize="1000"
+      AngularSize="90" BoundingBox="129.5 290.5 80 340"/>
+    <arrow id="20" ArrowType="Equilibrium" ArrowheadHead="Full" ArrowheadType="Hollow"
+      Head3D="150 215 0" Tail3D="10 215 0"/>
+  </page>
+</CDXML>"#;
+    let document = parse_cdxml_document(cdxml, Some("arrow matrix")).expect("arrows should parse");
+    let arrows = document
+        .objects
+        .iter()
+        .filter_map(|object| object.payload.extra.get("arrowHead"))
+        .collect::<Vec<_>>();
+    assert_eq!(arrows.len(), 11);
+
+    let endpoint =
+        |index: usize, key: &str| arrows[index].get(key).and_then(|value| value.as_str());
+    let kind = |index: usize| endpoint(index, "kind");
+    assert_eq!(endpoint(0, "head"), Some("full"));
+    assert_eq!(endpoint(1, "head"), Some("half-left"));
+    assert_eq!(endpoint(2, "head"), Some("half-right"));
+    assert_eq!(
+        (endpoint(3, "head"), endpoint(3, "tail")),
+        (Some("full"), Some("full"))
+    );
+    assert_eq!(
+        (endpoint(4, "head"), endpoint(4, "tail")),
+        (Some("half-left"), Some("half-left"))
+    );
+    assert_eq!(kind(4), Some("equilibrium"));
+    assert_eq!(kind(5), Some("hollow"));
+    assert_eq!(kind(6), Some("open"));
+    assert_eq!(
+        arrows[7].get("noGo").and_then(|value| value.as_str()),
+        Some("cross")
+    );
+    assert_eq!(
+        arrows[7].get("dipole").and_then(|value| value.as_bool()),
+        Some(true)
+    );
+
+    assert_eq!(
+        (endpoint(8, "head"), endpoint(8, "tail")),
+        (Some("full"), Some("half-right"))
+    );
+    assert_eq!(
+        arrows[8].get("curve").and_then(|value| value.as_f64()),
+        Some(90.0)
+    );
+    assert_eq!(
+        arrows[8]
+            .get("curveSpacing")
+            .and_then(|value| value.as_f64()),
+        Some(4.5)
+    );
+    assert_eq!(
+        arrows[8].get("noGo").and_then(|value| value.as_str()),
+        Some("hash")
+    );
+    assert_eq!(
+        arrows[8].get("dipole").and_then(|value| value.as_bool()),
+        Some(true)
+    );
+    assert_eq!(
+        arrows[8].get("closed").and_then(|value| value.as_bool()),
+        Some(true)
+    );
+    assert_eq!(
+        arrows[8].get("source").and_then(|value| value.as_str()),
+        Some("12")
+    );
+    assert_eq!(
+        arrows[8].get("target").and_then(|value| value.as_str()),
+        Some("34")
+    );
+
+    let arc = document
+        .objects
+        .iter()
+        .find(|object| {
+            object
+                .meta
+                .pointer("/graphicId")
+                .and_then(|value| value.as_str())
+                == Some("19")
+        })
+        .expect("legacy arc should import");
+    assert_eq!(
+        arc.payload.extra.get("points"),
+        Some(&json!([[129.5, 389.5], [129.5, 290.5]]))
+    );
+    assert_eq!(
+        arc.payload
+            .extra
+            .get("arrowGeometry")
+            .and_then(|value| value.get("center")),
+        Some(&json!([80.0, 340.0]))
+    );
+    assert_eq!(endpoint(10, "head"), Some("full"));
+    assert_eq!(endpoint(10, "tail"), Some("none"));
+    assert_eq!(kind(10), Some("hollow"));
+}
+
+#[test]
 fn cdxml_arrow_head_dimensions_are_relative_to_line_width() {
     let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >
@@ -4407,6 +4526,33 @@ fn cdxml_arrow_head_dimensions_are_relative_to_line_width() {
     let left_control = head_points[2];
     assert!((left_control.x - notch.x).abs() <= 0.001);
     assert!((left_control.y - notch.y - 1.47675).abs() <= 0.001);
+}
+
+#[test]
+fn cdxml_dipole_arrow_renders_chemdraw_tail_bar_geometry() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<CDXML LineWidth="1" BondLength="14.4">
+  <page id="1" BoundingBox="0 0 180 60">
+    <arrow id="2" Tail3D="10 30 0" Head3D="150 30 0" ArrowheadHead="Full"
+      ArrowheadType="Solid" HeadSize="1000" ArrowheadCenterSize="875"
+      ArrowheadWidth="250" Dipole="yes"/>
+  </page>
+</CDXML>"#;
+    let document = parse_cdxml_document(cdxml, Some("dipole arrow")).expect("arrow should parse");
+    let primitives = render_document(&document);
+    assert!(
+        primitives.iter().any(|primitive| matches!(
+            primitive,
+            RenderPrimitive::Polyline { points, stroke_width, .. }
+                if points.len() == 2
+                    && (*stroke_width - 1.0).abs() <= 0.001
+                    && (points[0].x - 12.5).abs() <= 0.001
+                    && (points[1].x - 12.5).abs() <= 0.001
+                    && (points[0].y - 25.0).abs() <= 0.001
+                    && (points[1].y - 35.0).abs() <= 0.001
+        )),
+        "dipole bar should be offset by head width and span one head length: {primitives:?}"
+    );
 }
 
 #[test]
@@ -4773,7 +4919,12 @@ fn export_cdxml_writes_arrow_geometry_modifiers() {
                     "tail": "none",
                     "fillType": "none",
                     "bold": true,
-                    "noGo": "hash"
+                    "noGo": "hash",
+                    "curveSpacing": 4.5,
+                    "dipole": true,
+                    "closed": true,
+                    "source": "12",
+                    "target": 34
                 },
                 "arrowGeometry": {
                     "boundingBox": [10.0, 10.0, 120.0, 40.0],
@@ -4794,6 +4945,11 @@ fn export_cdxml_writes_arrow_geometry_modifiers() {
     assert!(cdxml.contains("ArrowheadHead=\"HalfLeft\""));
     assert!(cdxml.contains("AngularSize=\"-270\""));
     assert!(cdxml.contains("NoGo=\"Hash\""));
+    assert!(cdxml.contains("CurveSpacing=\"450\""));
+    assert!(cdxml.contains("Dipole=\"yes\""));
+    assert!(cdxml.contains("Closed=\"yes\""));
+    assert!(cdxml.contains("ArrowSource=\"12\""));
+    assert!(cdxml.contains("ArrowTarget=\"34\""));
     assert!(cdxml.contains("LineType=\"Bold Dashed\""));
     assert!(cdxml.contains("FillType=\"None\""));
     assert!(cdxml.contains("Center3D=\"65 20 0\""));

@@ -668,7 +668,11 @@ line 对象表示页面上的线性笔画几何。
 - `centerLength` 对应 CDXML `ArrowheadCenterSize / 100`，实际凹口位置为 `centerLength * strokeWidth`
 - `width` 对应 CDXML `ArrowheadWidth / 100`，实际宽端半宽参数为 `width * strokeWidth`。对实心箭头，ChemDraw 将该值作为宽端半宽参数，渲染轮廓使用约 `width * strokeWidth + 0.05` 的外侧半宽，并用该半宽的 `7/16` 作为内侧贝塞尔控制点偏移；对开放/空心箭头，该值作为头部相对箭杆半宽的额外宽度参数
 - `curve` 对应 CDXML `AngularSize`，负值和正值分别表示两种弯曲方向
+- `curveSpacing` 对应 CDXML `CurveSpacing / 100`
 - `noGo` 对应 CDXML `NoGo`，可取 `none | cross | hash`
+- `dipole` 表示尾端的偶极横杠，对应 CDXML `Dipole=yes`
+- `closed` 保留 CDXML 的闭合曲线标记
+- `source` 和 `target` 保留 CDXML `ArrowSource`、`ArrowTarget` 对象引用
 - `kind` 当前可取 `solid | hollow | open | equilibrium | unequal-equilibrium`
 - `bold` 表示箭头线条使用粗线样式
 - `shaftSpacing` 用于平衡箭头双箭杆间距
@@ -685,6 +689,14 @@ line 的外观主要放在样式里，包括：
 - line join
 
 因此，箭头在模型里应当被看作同一个 `line` 对象上的线端装饰。
+
+CDX 有两套箭头表示。旧式 `Graphic` 使用位字段 `ArrowType`（`NoHead`、
+`HalfHead`、`FullHead`、`Resonance`、`Equilibrium`、`Hollow`、
+`RetroSynthetic`，以及可组合的 `NoGo`/`Dipole` 修饰）；现代 `Arrow`
+使用相互独立的 `ArrowheadHead`、`ArrowheadTail` 和 `ArrowheadType`。
+两套字段同时存在时，导入以现代端点字段为准。旧式弧形图元的
+`BoundingBox` 依次存弧端点和圆心，另一个端点由带符号的 `AngularSize`
+旋转还原。
 
 ## Bracket 对象
 

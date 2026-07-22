@@ -847,9 +847,34 @@ fn normalize_arrow_head_payload(extra: &mut BTreeMap<String, Value>) {
         .unwrap_or("none");
     arrow_head.insert("noGo".to_string(), json!(no_go));
 
+    let curve_spacing = object_number(arrow_head, "curveSpacing")
+        .or_else(|| object_number(arrow_head, "curve_spacing"))
+        .filter(|value| *value >= 0.0);
+    if let Some(curve_spacing) = curve_spacing {
+        arrow_head.insert("curveSpacing".to_string(), json!(round2(curve_spacing)));
+    } else {
+        arrow_head.remove("curveSpacing");
+    }
+    arrow_head.remove("curve_spacing");
+
+    for key in ["dipole", "closed"] {
+        let enabled = arrow_head
+            .get(key)
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        if enabled {
+            arrow_head.insert(key.to_string(), json!(true));
+        } else {
+            arrow_head.remove(key);
+        }
+    }
+
+    let explicit_shaft_spacing = object_number(arrow_head, "shaftSpacing")
+        .or_else(|| object_number(arrow_head, "shaft_spacing"))
+        .filter(|value| *value >= 0.0);
+    arrow_head.remove("shaft_spacing");
     if matches!(kind, "equilibrium" | "unequal-equilibrium") {
-        let shaft_spacing = object_number(arrow_head, "shaftSpacing")
-            .or_else(|| object_number(arrow_head, "shaft_spacing"))
+        let shaft_spacing = explicit_shaft_spacing
             .filter(|value| *value > 0.0)
             .unwrap_or(3.0);
         arrow_head.insert("shaftSpacing".to_string(), json!(round2(shaft_spacing)));
@@ -863,6 +888,10 @@ fn normalize_arrow_head_payload(extra: &mut BTreeMap<String, Value>) {
             arrow_head.remove("equilibriumRatio");
             arrow_head.remove("equilibrium_ratio");
         }
+    } else if let Some(shaft_spacing) = explicit_shaft_spacing {
+        arrow_head.insert("shaftSpacing".to_string(), json!(round2(shaft_spacing)));
+    } else {
+        arrow_head.remove("shaftSpacing");
     }
 }
 

@@ -560,6 +560,7 @@ fn decode_property(
         // strokes of every multiple bond in documents that use values such as
         // 12.5%, and the error grows with the bond length.
         PropertyKind::BondSpacing => fmt_num(read_i16(data)? as f64 / 10.0),
+        PropertyKind::AngleTenths => fmt_num(read_i16(data)? as f64 / 10.0),
         PropertyKind::FontStyle => return None,
         PropertyKind::ObjectIdArray => decode_u32_array(data)?,
         PropertyKind::Int16ListWithCounts => decode_i16_counted_list(data)?,
@@ -597,6 +598,7 @@ enum PropertyKind {
     BooleanImplied,
     BondOrder,
     BondSpacing,
+    AngleTenths,
     FontStyle,
     ObjectIdArray,
     Int16ListWithCounts,
@@ -719,13 +721,14 @@ fn property_schema(tag: u16) -> Option<PropertySchema> {
         0x0902 => ("WindowSize", PropertyKind::Point2D),
         0x0A00 => ("GraphicType", PropertyKind::Enum(GRAPHIC_TYPE)),
         0x0A01 => ("LineType", PropertyKind::BitFlags(LINE_TYPE)),
-        0x0A02 => ("ArrowType", PropertyKind::Enum(ARROW_TYPE)),
+        0x0A02 => ("ArrowType", PropertyKind::BitFlags(ARROW_TYPE)),
         0x0A03 => ("RectangleType", PropertyKind::BitFlags(RECTANGLE_TYPE)),
         0x0A04 => ("OvalType", PropertyKind::BitFlags(OVAL_TYPE)),
         0x0A05 => ("OrbitalType", PropertyKind::Enum(ORBITAL_TYPE)),
         0x0A06 => ("BracketType", PropertyKind::Enum(BRACKET_TYPE)),
         0x0A07 => ("SymbolType", PropertyKind::Enum(SYMBOL_TYPE)),
         0x0A20 => ("HeadSize", PropertyKind::Int16),
+        0x0A21 => ("AngularSize", PropertyKind::AngleTenths),
         0x0A22 => ("LipSize", PropertyKind::Int16),
         0x0A27 => ("BracketedObjectIDs", PropertyKind::ObjectIdArray),
         0x0A28 => ("RepeatCount", PropertyKind::Float64),
@@ -738,9 +741,10 @@ fn property_schema(tag: u16) -> Option<PropertySchema> {
         0x0A35 => ("ArrowheadHead", PropertyKind::Enum(ARROW_HEAD_POSITION)),
         0x0A36 => ("ArrowheadTail", PropertyKind::Enum(ARROW_HEAD_POSITION)),
         0x0A37 => ("FillType", PropertyKind::Enum(FILL_TYPE)),
+        0x0A38 => ("CurveSpacing", PropertyKind::UInt16),
         0x0A39 => ("Closed", PropertyKind::BooleanImplied),
-        0x0A3A => ("Dipole", PropertyKind::Boolean),
-        0x0A3B => ("NoGo", PropertyKind::Int8),
+        0x0A3A => ("Dipole", PropertyKind::BooleanImplied),
+        0x0A3B => ("NoGo", PropertyKind::Enum8(NO_GO)),
         0x0A3C => ("CornerRadius", PropertyKind::Int16),
         0x0A3E => ("ArrowSource", PropertyKind::UInt16),
         0x0A3F => ("ArrowTarget", PropertyKind::UInt16),
@@ -859,6 +863,7 @@ fn property_tag(name: &str) -> Option<u16> {
         "BracketType" => 0x0A06,
         "SymbolType" => 0x0A07,
         "HeadSize" => 0x0A20,
+        "AngularSize" => 0x0A21,
         "LipSize" => 0x0A22,
         "BracketedObjectIDs" => 0x0A27,
         "GraphicID" => 0x0A2B,
@@ -870,6 +875,7 @@ fn property_tag(name: &str) -> Option<u16> {
         "ArrowheadHead" => 0x0A35,
         "ArrowheadTail" => 0x0A36,
         "FillType" => 0x0A37,
+        "CurveSpacing" => 0x0A38,
         "Closed" => 0x0A39,
         "Dipole" => 0x0A3A,
         "NoGo" => 0x0A3B,
@@ -919,6 +925,9 @@ fn encode_property(name: &str, value: &str) -> Option<(u16, Vec<u8>)> {
         }
         PropertyKind::BondOrder => encode_bond_order(value)?,
         PropertyKind::BondSpacing => ((value.parse::<f64>().ok()? * 10.0).round() as i16)
+            .to_le_bytes()
+            .to_vec(),
+        PropertyKind::AngleTenths => ((value.parse::<f64>().ok()? * 10.0).round() as i16)
             .to_le_bytes()
             .to_vec(),
         PropertyKind::FontStyle => return None,
@@ -1140,6 +1149,8 @@ const ARROW_TYPE: &[(i16, &str)] = &[
     (8, "Equilibrium"),
     (16, "Hollow"),
     (32, "RetroSynthetic"),
+    (64, "NoGo"),
+    (128, "Dipole"),
 ];
 const ARROW_HEAD_TYPE: &[(i16, &str)] = &[
     (0, "Unspecified"),
@@ -1147,8 +1158,16 @@ const ARROW_HEAD_TYPE: &[(i16, &str)] = &[
     (2, "Hollow"),
     (3, "Angle"),
 ];
-const ARROW_HEAD_POSITION: &[(i16, &str)] =
-    &[(0, "None"), (1, "Full"), (2, "HalfLeft"), (3, "HalfRight")];
+// Modern Arrow objects use a different enum from legacy Graphic/ArrowType.
+// Values 2..4 are confirmed by ChemDraw's own CDXML -> CDX round trip.
+const ARROW_HEAD_POSITION: &[(i16, &str)] = &[
+    (0, "None"),
+    (1, "Unspecified"),
+    (2, "Full"),
+    (3, "HalfLeft"),
+    (4, "HalfRight"),
+];
+const NO_GO: &[(i16, &str)] = &[(0, "None"), (1, "None"), (2, "Cross"), (3, "Hash")];
 const FILL_TYPE: &[(i16, &str)] = &[(0, "Unspecified"), (1, "None"), (2, "Solid"), (3, "Shaded")];
 const ORBITAL_TYPE: &[(i16, &str)] = &[
     (0, "s"),
@@ -2136,6 +2155,51 @@ mod tests {
         let (_, decoded) =
             decode_property(encoded.0, &encoded.1, None).expect("chain angle should decode");
         assert_eq!(decoded, "120");
+    }
+
+    #[test]
+    fn cdx_arrow_properties_follow_chemdraws_binary_enums_and_units() {
+        for (name, value, tag, bytes) in [
+            ("ArrowheadHead", "None", 0x0A35, vec![0, 0]),
+            ("ArrowheadHead", "Full", 0x0A35, vec![2, 0]),
+            ("ArrowheadHead", "HalfLeft", 0x0A35, vec![3, 0]),
+            ("ArrowheadHead", "HalfRight", 0x0A35, vec![4, 0]),
+            ("ArrowheadTail", "Full", 0x0A36, vec![2, 0]),
+            ("NoGo", "Cross", 0x0A3B, vec![2]),
+            ("NoGo", "Hash", 0x0A3B, vec![3]),
+            ("AngularSize", "90", 0x0A21, vec![0x84, 0x03]),
+            ("CurveSpacing", "777", 0x0A38, vec![0x09, 0x03]),
+        ] {
+            let encoded = encode_property(name, value).expect("arrow property should encode");
+            assert_eq!(encoded, (tag, bytes.clone()), "{name}={value}");
+            assert_eq!(
+                decode_property(tag, &bytes, None),
+                Some((name, value.to_string())),
+                "{name}={value}"
+            );
+        }
+
+        assert_eq!(encode_property("Dipole", "yes"), Some((0x0A3A, Vec::new())));
+        assert_eq!(
+            decode_property(0x0A3A, &[], None),
+            Some(("Dipole", "yes".to_string()))
+        );
+    }
+
+    #[test]
+    fn cdx_legacy_arrow_type_preserves_base_type_and_modifiers() {
+        let encoded = encode_property("ArrowType", "FullHead NoGo Dipole")
+            .expect("legacy arrow flags should encode");
+        assert_eq!(encoded, (0x0A02, vec![0xC2, 0x00]));
+        assert_eq!(
+            decode_property(encoded.0, &encoded.1, None),
+            Some(("ArrowType", "FullHead NoGo Dipole".to_string()))
+        );
+        assert_eq!(
+            decode_property(0x0A02, &[2], None),
+            Some(("ArrowType", "FullHead".to_string())),
+            "ChemDraw 8 wrote this INT16 property as a single byte"
+        );
     }
 
     #[test]

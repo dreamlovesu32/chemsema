@@ -18,7 +18,9 @@ pub(super) fn append_line_objects(
 ) {
     let mut index = 1;
     for node in descendants(root) {
-        if !(node.is("arrow") || (node.is("graphic") && node.attr("GraphicType") == Some("Line"))) {
+        if !(node.is("arrow")
+            || (node.is("graphic") && matches!(node.attr("GraphicType"), Some("Line" | "Arc"))))
+        {
             continue;
         }
         if node.attr("SupersededBy").is_some() {
@@ -28,19 +30,24 @@ pub(super) fn append_line_objects(
         // store their two endpoints only in BoundingBox. For these objects the
         // first pair is the head and the second pair is the tail; unlike a
         // rectangular extent, their authored order must be preserved.
+        let legacy_arc = cdxml_legacy_arc_geometry(node);
         let bbox_endpoints = cdxml_line_bbox_endpoints(node.attr("BoundingBox"));
-        let head =
-            parse_xyz2(node.attr("Head3D")).or_else(|| bbox_endpoints.map(|points| points.0));
-        let tail =
-            parse_xyz2(node.attr("Tail3D")).or_else(|| bbox_endpoints.map(|points| points.1));
+        let head = parse_xyz2(node.attr("Head3D"))
+            .or_else(|| legacy_arc.map(|geometry| geometry.head))
+            .or_else(|| bbox_endpoints.map(|points| points.0));
+        let tail = parse_xyz2(node.attr("Tail3D"))
+            .or_else(|| legacy_arc.map(|geometry| geometry.tail))
+            .or_else(|| bbox_endpoints.map(|points| points.1));
         let (Some(tail), Some(head)) = (tail, head) else {
             continue;
         };
         let is_arrow = node.is("arrow") || has_arrow_attrs(node);
         let line_type = node.attr("LineType").unwrap_or("");
         let bold = line_type.contains("Bold");
-        let head_enabled = cdxml_arrow_head_enabled(node);
-        let tail_enabled = arrow_endpoint_enabled(node.attr("ArrowheadTail"));
+        let head_endpoint = cdxml_arrow_endpoint(node, true);
+        let tail_endpoint = cdxml_arrow_endpoint(node, false);
+        let head_enabled = head_endpoint != "none";
+        let tail_enabled = tail_endpoint != "none";
         let mut extra = BTreeMap::new();
         extra.insert("kind".to_string(), json!("line"));
         extra.insert(
@@ -54,26 +61,8 @@ pub(super) fn append_line_objects(
             let mut arrow_head = BTreeMap::new();
             let cdxml_kind = cdxml_arrow_kind(node);
             arrow_head.insert("kind".to_string(), json!(cdxml_kind));
-            arrow_head.insert(
-                "head".to_string(),
-                json!(canonical_arrow_endpoint(
-                    node.attr("ArrowheadHead").unwrap_or(if head_enabled {
-                        "Full"
-                    } else {
-                        "None"
-                    }),
-                )),
-            );
-            arrow_head.insert(
-                "tail".to_string(),
-                json!(canonical_arrow_endpoint(
-                    node.attr("ArrowheadTail").unwrap_or(if tail_enabled {
-                        "Full"
-                    } else {
-                        "None"
-                    }),
-                )),
-            );
+            arrow_head.insert("head".to_string(), json!(head_endpoint));
+            arrow_head.insert("tail".to_string(), json!(tail_endpoint));
             if let Some(fill_type) = node.attr("FillType").map(canonical_arrow_fill_type) {
                 arrow_head.insert("fillType".to_string(), json!(fill_type));
             }
@@ -102,6 +91,11 @@ pub(super) fn append_line_objects(
                     crate::DEFAULT_ARROW_HEAD_LENGTH_RATIO * 0.25
                 )),
             );
+            if !matches!(cdxml_kind, "equilibrium" | "unequal-equilibrium") {
+                if let Some(shaft_spacing) = parse_scaled_100(node.attr("ArrowShaftSpacing")) {
+                    arrow_head.insert("shaftSpacing".to_string(), json!(shaft_spacing));
+                }
+            }
             if matches!(cdxml_kind, "equilibrium" | "unequal-equilibrium") {
                 arrow_head.insert(
                     "shaftSpacing".to_string(),
@@ -127,26 +121,66 @@ pub(super) fn append_line_objects(
                 .filter(|value| !value.is_empty() && !value.eq_ignore_ascii_case("None"))
             {
                 arrow_head.insert("noGo".to_string(), json!(no_go.to_ascii_lowercase()));
+            } else if legacy_arrow_type_has(node, "NoGo") {
+                arrow_head.insert("noGo".to_string(), json!("cross"));
+            }
+            if node.attr("Dipole").is_some_and(cdxml_boolean_enabled)
+                || legacy_arrow_type_has(node, "Dipole")
+            {
+                arrow_head.insert("dipole".to_string(), json!(true));
+            }
+            if let Some(curve_spacing) = parse_scaled_100(node.attr("CurveSpacing")) {
+                arrow_head.insert("curveSpacing".to_string(), json!(curve_spacing));
+            }
+            if node.attr("Closed").is_some_and(cdxml_boolean_enabled) {
+                arrow_head.insert("closed".to_string(), json!(true));
+            }
+            if let Some(source) = node.attr("ArrowSource") {
+                arrow_head.insert("source".to_string(), json!(source));
+            }
+            if let Some(target) = node.attr("ArrowTarget") {
+                arrow_head.insert("target".to_string(), json!(target));
             }
             if bold {
                 arrow_head.insert("bold".to_string(), json!(true));
             }
             let mut arrow_geometry = BTreeMap::new();
-            if let Some(bbox) = parse_bbox(node.attr("BoundingBox")) {
-                arrow_geometry.insert(
-                    "boundingBox".to_string(),
-                    json!([
-                        round2(bbox[0]),
-                        round2(bbox[1]),
-                        round2(bbox[2]),
-                        round2(bbox[3])
-                    ]),
-                );
+            if legacy_arc.is_none() {
+                if let Some(bbox) = parse_bbox(node.attr("BoundingBox")) {
+                    arrow_geometry.insert(
+                        "boundingBox".to_string(),
+                        json!([
+                            round2(bbox[0]),
+                            round2(bbox[1]),
+                            round2(bbox[2]),
+                            round2(bbox[3])
+                        ]),
+                    );
+                }
             }
             if let Some(center) = parse_xyz2(node.attr("Center3D")) {
                 arrow_geometry.insert(
                     "center".to_string(),
                     json!([round2(center[0]), round2(center[1])]),
+                );
+            } else if let Some(geometry) = legacy_arc {
+                arrow_geometry.insert(
+                    "center".to_string(),
+                    json!([round2(geometry.center[0]), round2(geometry.center[1])]),
+                );
+                arrow_geometry.insert(
+                    "majorAxisEnd".to_string(),
+                    json!([
+                        round2(geometry.center[0] + geometry.radius),
+                        round2(geometry.center[1])
+                    ]),
+                );
+                arrow_geometry.insert(
+                    "minorAxisEnd".to_string(),
+                    json!([
+                        round2(geometry.center[0]),
+                        round2(geometry.center[1] + geometry.radius)
+                    ]),
                 );
             }
             if let Some(major) = parse_xyz2(node.attr("MajorAxisEnd3D")) {
@@ -203,10 +237,62 @@ fn cdxml_line_bbox_endpoints(value: Option<&str>) -> Option<([f64; 2], [f64; 2])
     Some((head, tail))
 }
 
+#[derive(Clone, Copy)]
+struct LegacyArcGeometry {
+    head: [f64; 2],
+    tail: [f64; 2],
+    center: [f64; 2],
+    radius: f64,
+}
+
+fn cdxml_legacy_arc_geometry(node: &XmlNode) -> Option<LegacyArcGeometry> {
+    if !node.is("graphic") || node.attr("GraphicType") != Some("Arc") {
+        return None;
+    }
+    // For legacy Arc graphics ChemDraw stores the authored head followed by
+    // the circle center in BoundingBox. AngularSize is the signed sweep from
+    // the head to the tail (screen coordinates, positive clockwise).
+    let (head, center) = cdxml_line_bbox_endpoints(node.attr("BoundingBox"))?;
+    let sweep = parse_f64(node.attr("AngularSize"))?.to_radians();
+    let delta_x = head[0] - center[0];
+    let delta_y = head[1] - center[1];
+    let radius = delta_x.hypot(delta_y);
+    if radius <= crate::EPSILON {
+        return None;
+    }
+    let tail = [
+        center[0] + delta_x * sweep.cos() - delta_y * sweep.sin(),
+        center[1] + delta_x * sweep.sin() + delta_y * sweep.cos(),
+    ];
+    Some(LegacyArcGeometry {
+        head,
+        tail,
+        center,
+        radius,
+    })
+}
+
 fn cdxml_arrow_kind(node: &XmlNode) -> &'static str {
+    if !has_modern_arrow_fields(node) {
+        if legacy_arrow_type_has(node, "Equilibrium") {
+            return if parse_scaled_100(node.attr("ArrowEquilibriumRatio"))
+                .is_some_and(|value| value > 1.0)
+            {
+                "unequal-equilibrium"
+            } else {
+                "equilibrium"
+            };
+        }
+        if legacy_arrow_type_has(node, "Hollow") {
+            return "hollow";
+        }
+        if legacy_arrow_type_has(node, "RetroSynthetic") {
+            return "open";
+        }
+    }
     let explicit_kind = node
-        .attr("ArrowType")
-        .or_else(|| node.attr("ArrowheadType"))
+        .attr("ArrowheadType")
+        .or_else(|| node.attr("ArrowType"))
         .unwrap_or("Solid")
         .to_ascii_lowercase();
     if explicit_kind == "equilibrium" {
@@ -242,17 +328,63 @@ fn cdxml_arrow_kind(node: &XmlNode) -> &'static str {
     }
 }
 
-fn cdxml_arrow_head_enabled(node: &XmlNode) -> bool {
-    if let Some(value) = node.attr("ArrowheadHead") {
-        return arrow_endpoint_enabled(Some(value));
+fn legacy_arrow_type_has(node: &XmlNode, expected: &str) -> bool {
+    node.attr("ArrowType").is_some_and(|value| {
+        value
+            .split_whitespace()
+            .any(|token| token.eq_ignore_ascii_case(expected))
+    })
+}
+
+fn has_modern_arrow_fields(node: &XmlNode) -> bool {
+    ["ArrowheadHead", "ArrowheadTail", "ArrowheadType"]
+        .into_iter()
+        .any(|name| node.attr(name).is_some())
+}
+
+fn cdxml_boolean_enabled(value: &str) -> bool {
+    matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "yes" | "true" | "1"
+    )
+}
+
+fn cdxml_arrow_endpoint(node: &XmlNode, at_head: bool) -> &'static str {
+    let modern_name = if at_head {
+        "ArrowheadHead"
+    } else {
+        "ArrowheadTail"
+    };
+    if let Some(value) = node.attr(modern_name) {
+        return canonical_arrow_endpoint(value);
     }
-    if node
-        .attr("ArrowType")
-        .is_some_and(|value| value == "FullHead")
+    if has_modern_arrow_fields(node) {
+        return "none";
+    }
+
+    if legacy_arrow_type_has(node, "Equilibrium") {
+        return "half-left";
+    }
+    if legacy_arrow_type_has(node, "Resonance") {
+        return "full";
+    }
+    if !at_head {
+        return "none";
+    }
+    if legacy_arrow_type_has(node, "HalfHead") {
+        return if parse_f64(node.attr("HeadSize")).is_some_and(|value| value < 0.0) {
+            "half-right"
+        } else {
+            "half-left"
+        };
+    }
+    if ["FullHead", "Hollow", "RetroSynthetic", "Dipole"]
+        .into_iter()
+        .any(|kind| legacy_arrow_type_has(node, kind))
     {
-        return true;
+        return "full";
     }
-    false
+    "none"
 }
 
 fn canonical_arrow_endpoint(value: &str) -> &'static str {

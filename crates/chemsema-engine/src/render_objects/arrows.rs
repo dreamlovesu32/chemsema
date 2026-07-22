@@ -146,6 +146,13 @@ pub(crate) fn render_line_object(
     let object_id = Some(object.id.clone());
     let arrow_head = payload_arrow_head(&object.payload, "arrowHead", stroke_width);
     let arrow_arc = object_payload_arrow_arc_geometry_world(object, "arrowGeometry");
+    let dipole = object
+        .payload
+        .extra
+        .get("arrowHead")
+        .and_then(|value| value.get("dipole"))
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
     if let Some(arrow_head) = arrow_head.filter(|arrow_head| arrow_head.length > 0.0) {
         let head_style = payload_arrow_endpoint_style(&object.payload, "head", "end");
         let tail_style = payload_arrow_endpoint_style(&object.payload, "tail", "start");
@@ -161,8 +168,19 @@ pub(crate) fn render_line_object(
             head_style,
             tail_style,
             &dash_array,
-            object_id,
+            object_id.clone(),
         );
+        if dipole {
+            render_dipole_bar(
+                out,
+                &points,
+                &stroke,
+                rendered_arrow_stroke_width(stroke_width, arrow_head, 4.0),
+                arrow_head,
+                arrow_arc,
+                object_id,
+            );
+        }
         return;
     }
 
@@ -174,6 +192,45 @@ pub(crate) fn render_line_object(
         dash_array,
         Some(line_cap),
         Some(line_join),
+        RenderRole::DocumentGraphic,
+        object_id,
+    );
+}
+
+fn render_dipole_bar(
+    out: &mut Vec<RenderPrimitive>,
+    points: &[Point],
+    stroke: &str,
+    stroke_width: f64,
+    arrow_head: ArrowHeadGeometry,
+    arrow_arc: Option<ArrowArcGeometry>,
+    object_id: Option<String>,
+) {
+    let start = points[0];
+    let tangent_to = if arrow_head.curve.abs() > crate::EPSILON {
+        arrow_arc
+            .map(|geometry| curved_arrow_points(start, arrow_head.curve, geometry))
+            .and_then(|curve_points| curve_points.get(1).copied())
+            .unwrap_or(points[1])
+    } else {
+        points[1]
+    };
+    let Some((unit, normal, _)) = arrow_axis(start, tangent_to) else {
+        return;
+    };
+    let center = start.translated(unit.scaled(arrow_head.width.max(0.0)));
+    let half_length = arrow_head.length.max(0.0) * 0.5;
+    push_polyline(
+        out,
+        vec![
+            center.translated(normal.scaled(-half_length)),
+            center.translated(normal.scaled(half_length)),
+        ],
+        stroke,
+        stroke_width,
+        Vec::new(),
+        Some("butt".to_string()),
+        Some("miter".to_string()),
         RenderRole::DocumentGraphic,
         object_id,
     );

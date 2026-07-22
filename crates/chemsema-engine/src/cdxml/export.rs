@@ -953,9 +953,6 @@ impl<'a> CdxmlDocumentWriter<'a> {
             {
                 let value = cdxml_arrow_size_attribute(value);
                 attrs.push(("ArrowheadCenterSize", fmt_num(value)));
-                if matches!(arrow_kind, "Hollow" | "Angle") {
-                    attrs.push(("ArrowShaftSpacing", fmt_num(value)));
-                }
             }
             if arrow_kind == "Equilibrium" {
                 let value = arrow
@@ -971,6 +968,19 @@ impl<'a> CdxmlDocumentWriter<'a> {
                 if let Some(value) = cdxml_arrow_equilibrium_ratio(arrow) {
                     attrs.push(("ArrowEquilibriumRatio", fmt_num(value * 100.0)));
                 }
+            } else if let Some(value) = arrow
+                .and_then(|value| {
+                    value
+                        .get("shaftSpacing")
+                        .or_else(|| value.get("shaft_spacing"))
+                })
+                .and_then(Value::as_f64)
+                .filter(|value| value.is_finite() && *value >= 0.0)
+            {
+                attrs.push((
+                    "ArrowShaftSpacing",
+                    fmt_num(cdxml_arrow_size_attribute(value)),
+                ));
             }
             if let Some(value) = arrow
                 .and_then(|value| value.get("width"))
@@ -986,11 +996,48 @@ impl<'a> CdxmlDocumentWriter<'a> {
                 attrs.push(("AngularSize", fmt_num(value)));
             }
             if let Some(value) = arrow
+                .and_then(|value| {
+                    value
+                        .get("curveSpacing")
+                        .or_else(|| value.get("curve_spacing"))
+                })
+                .and_then(Value::as_f64)
+                .filter(|value| value.is_finite() && *value >= 0.0)
+            {
+                attrs.push(("CurveSpacing", fmt_num(cdxml_arrow_size_attribute(value))));
+            }
+            if let Some(value) = arrow
                 .and_then(|value| value.get("noGo").or_else(|| value.get("no_go")))
                 .and_then(Value::as_str)
                 .and_then(cdxml_arrow_no_go)
             {
                 attrs.push(("NoGo", value.to_string()));
+            }
+            if arrow
+                .and_then(|value| value.get("dipole"))
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
+            {
+                attrs.push(("Dipole", "yes".to_string()));
+            }
+            if arrow
+                .and_then(|value| value.get("closed"))
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
+            {
+                attrs.push(("Closed", "yes".to_string()));
+            }
+            if let Some(value) = arrow
+                .and_then(|value| value.get("source"))
+                .and_then(cdxml_arrow_object_reference)
+            {
+                attrs.push(("ArrowSource", value));
+            }
+            if let Some(value) = arrow
+                .and_then(|value| value.get("target"))
+                .and_then(cdxml_arrow_object_reference)
+            {
+                attrs.push(("ArrowTarget", value));
             }
             write_empty_tag(out, 4, "arrow", attrs);
         } else {
@@ -2355,6 +2402,14 @@ fn cdxml_arrow_no_go(value: &str) -> Option<&'static str> {
     match value.to_ascii_lowercase().as_str() {
         "cross" => Some("Cross"),
         "hash" => Some("Hash"),
+        _ => None,
+    }
+}
+
+fn cdxml_arrow_object_reference(value: &Value) -> Option<String> {
+    match value {
+        Value::String(value) if !value.trim().is_empty() => Some(value.trim().to_string()),
+        Value::Number(value) => Some(value.to_string()),
         _ => None,
     }
 }

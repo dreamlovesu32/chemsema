@@ -35,6 +35,7 @@
     "harmony:sync-viewer": "node scripts/sync-harmony-viewer.mjs",
     "emf:chemdraw-oracle": "node scripts/chemdraw-oracle.mjs",
     "emf:compare-oracle": "node scripts/compare-emf-oracle.mjs",
+    "probe:chemdraw-arrows": "node scripts/chemdraw-arrow-probe.mjs",
     "emf:inspect": "node scripts/emf-inspect.mjs",
     "emf:render-preview": "node scripts/render-emf-preview.mjs",
     "examples:agent": "powershell -ExecutionPolicy Bypass -File examples/agent/run-all.ps1",

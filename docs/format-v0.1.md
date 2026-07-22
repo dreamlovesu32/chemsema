@@ -693,7 +693,11 @@ Example:
 - `centerLength` maps to CDXML `ArrowheadCenterSize / 100`; the rendered notch position is `centerLength * strokeWidth`
 - `width` maps to CDXML `ArrowheadWidth / 100`; the rendered broad-end half-width parameter is `width * strokeWidth`. For solid arrowheads, ChemDraw treats this as the broad-end half-width parameter: the rendered outline uses an outer half-width of about `width * strokeWidth + 0.05` and an inner Bezier control offset of `7/16` of that half-width. For open and hollow arrowheads, this value is the extra head-width parameter relative to the shaft half-width
 - `curve` maps to CDXML `AngularSize`; negative and positive values represent opposite bend directions
+- `curveSpacing` maps to CDXML `CurveSpacing / 100`
 - `noGo` maps to CDXML `NoGo` and may be `none | cross | hash`
+- `dipole` adds the perpendicular dipole bar at the tail and maps to CDXML `Dipole=yes`
+- `closed` preserves CDXML's closed-curve flag when present
+- `source` and `target` preserve the CDXML `ArrowSource` and `ArrowTarget` object references
 - `kind` may be `solid | hollow | open | equilibrium | unequal-equilibrium`
 - `bold` marks a bold arrow stroke
 - `shaftSpacing` stores the spacing between equilibrium-arrow shafts
@@ -710,6 +714,15 @@ Line appearance belongs primarily in styles, including:
 
 Arrow semantics are therefore modeled as line-end decoration on the same `line`
 object type.
+
+CDX has two arrow representations. Legacy `Graphic` objects use the bit-field
+`ArrowType` (`NoHead`, `HalfHead`, `FullHead`, `Resonance`, `Equilibrium`,
+`Hollow`, `RetroSynthetic`, plus `NoGo`/`Dipole` modifiers). Modern `Arrow`
+objects use independent `ArrowheadHead`, `ArrowheadTail`, and `ArrowheadType`
+properties. Import gives the modern endpoint properties precedence when both
+representations are present. Legacy arc graphics store an authored arc endpoint
+followed by the circle center in `BoundingBox`; the other endpoint is recovered
+from the signed `AngularSize` sweep.
 
 ## Bracket Object
 
