@@ -1,17 +1,7 @@
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
-#[cfg(target_os = "windows")]
-mod windows_office;
-
-#[cfg(not(target_os = "windows"))]
-mod windows_office {
-    pub fn run() -> Result<(), String> {
-        Err("chemsema-office is currently only supported on Windows.".to_string())
-    }
-}
-
 fn main() {
-    if let Err(error) = windows_office::run() {
+    if let Err(error) = chemsema_office::run() {
         eprintln!("{error}");
         std::process::exit(1);
     }

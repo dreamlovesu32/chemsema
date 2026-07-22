@@ -20,6 +20,7 @@ tauri-build = { version = "2.6.0", features = [] }
 
 [dependencies]
 chemsema-desktop-service = { path = "../../../crates/chemsema-desktop-service" }
+chemsema-office = { path = "../../chemsema-office" }
 base64 = "0.22"
 rfd = "0.15"
 serde_json = "1.0"
@@ -34,3 +35,6 @@ windows-sys = { version = "0.60", features = [
   "Win32_System_DataExchange",
   "Win32_System_Memory",
 ] }
+
+[dev-dependencies]
+chemsema-engine = { path = "../../../crates/chemsema-engine" }

@@ -208,20 +208,21 @@ pub(crate) fn desktop_file_write_base64(
 #[tauri::command]
 pub(crate) fn desktop_file_export_emf(
     path: String,
-    render_list_json: String,
-    bounds_json: String,
+    payload: NativeClipboardWritePayload,
 ) -> Result<DesktopSavedDocument, String> {
     let path = normalize_output_path(path)?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
             .map_err(|error| format!("Failed to create directory {}: {error}", parent.display()))?;
     }
-    write_emf_preview(&path, &render_list_json, &bounds_json)?;
+    let payload_json = serde_json::to_string(&payload)
+        .map_err(|error| format!("Failed to serialize EMF payload: {error}"))?;
+    chemsema_office::write_emf_payload_json(&path, &payload_json)?;
     Ok(DesktopSavedDocument {
         file_name: path
             .file_name()
             .and_then(|name| name.to_str())
-            .unwrap_or("preview.emf")
+            .unwrap_or("document.emf")
             .to_string(),
         path: path.to_string_lossy().to_string(),
         format: "emf".to_string(),
@@ -258,4 +259,32 @@ pub(crate) fn desktop_take_startup_open_paths(
         .lock()
         .map_err(|error| error.to_string())?;
     Ok(std::mem::take(&mut *paths))
+}
+
+#[cfg(all(test, target_os = "windows"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn desktop_emf_export_writes_an_enhanced_metafile() {
+        let document_json = serde_json::to_string(&chemsema_engine::ChemSemaDocument::blank())
+            .expect("blank document should serialize");
+        let path = std::env::temp_dir()
+            .join(format!("chemsema-desktop-emf-{}.emf", std::process::id()));
+        let payload = NativeClipboardWritePayload {
+            chemsema_fragment_json: None,
+            chemsema_document_json: Some(document_json),
+            render_list_json: None,
+            cdxml: None,
+            svg: None,
+            text: None,
+        };
+        let saved = desktop_file_export_emf(path.to_string_lossy().to_string(), payload)
+            .expect("desktop EMF export should succeed");
+        let bytes = std::fs::read(&path).expect("desktop EMF should be readable");
+        let _ = std::fs::remove_file(path);
+        assert_eq!(saved.format, "emf");
+        assert!(bytes.len() >= 88, "EMF header should be present");
+        assert_eq!(&bytes[40..44], b" EMF", "EMF signature should match");
+    }
 }

@@ -418,7 +418,7 @@ export function createDocumentFlow(options) {
       return false;
     }
     await options.finishActiveTextEditor(true);
-    if (!options.state.editorEngine?.renderListJson || !options.state.editorEngine?.renderBoundsJson) {
+    if (!options.state.editorEngine?.renderListJson) {
       throw new Error("EMF export is unavailable.");
     }
     const suggestedName = emfFileNameForSave();
@@ -429,13 +429,7 @@ export function createDocumentFlow(options) {
     if (!path) {
       return false;
     }
-    const boundsJson = options.state.editorEngine.renderBoundsJson("document")
-      || options.state.editorEngine.renderBoundsJson("all");
-    await options.desktopFileHost.exportEmf(
-      path,
-      options.state.editorEngine.renderListJson(),
-      boundsJson,
-    );
+    await options.desktopFileHost.exportEmf(path, await currentOleEditPayloadForSave());
     return true;
   }
 

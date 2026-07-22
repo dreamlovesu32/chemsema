@@ -183,7 +183,7 @@ const COMMAND_SPECS: &[CommandSpec] = &[
     },
     CommandSpec {
         name: "convert",
-        summary: "Convert a whole editable document, or an editable target subset, between ChemSema, CDXML/CDX, SDF, SVG, and PNG export formats.",
+        summary: "Convert a whole editable document, or an editable target subset, between ChemSema, CDXML/CDX, SDF, SVG, PNG, and Windows EMF export formats.",
         usage: "chemsema-cli convert <input> <output> [--target <selector> ...|--targets <selector;selector>] [--selection-only] [--format <format>] [--scale <n>|--width <px>|--height <px>]",
         example: "chemsema-cli convert input.cdxml molecule-1.cdxml --target molecule:1",
     },
@@ -723,7 +723,7 @@ fn capabilities_value() -> Value {
         "commands": command_specs_json(),
         "formats": {
             "editableInput": ["ccjs", "ccjz", "cdxml", "cdx", "sdf"],
-            "documentOutput": ["json", "ccjs", "ccjz", "cdxml", "cdx", "sdf", "svg", "png"],
+            "documentOutput": ["json", "ccjs", "ccjz", "cdxml", "cdx", "sdf", "svg", "png", "emf"],
             "captureOutput": ["svg", "png"],
             "clipboardOutput": ["windows-office-ole", "chemsema-payload-json"]
         },
@@ -792,7 +792,7 @@ pub(crate) fn about_value() -> Value {
         "documentation": documentation_metadata(),
         "formats": {
             "editableInput": ["ccjs", "ccjz", "cdxml", "cdx", "sdf"],
-            "documentOutput": ["json", "ccjs", "ccjz", "cdxml", "cdx", "sdf", "svg", "png"],
+            "documentOutput": ["json", "ccjs", "ccjz", "cdxml", "cdx", "sdf", "svg", "png", "emf"],
             "captureOutput": ["svg", "png"],
             "clipboardOutput": ["windows-office-ole", "chemsema-payload-json"]
         },
@@ -1311,7 +1311,7 @@ pub(crate) fn doctor_command(args: &[String]) -> Result<(), String> {
             "documentation": documentation_metadata(),
             "formats": {
                 "editableInput": ["ccjs", "ccjz", "cdxml", "cdx", "sdf"],
-                "documentOutput": ["json", "ccjs", "ccjz", "cdxml", "cdx", "sdf", "svg", "png"],
+                "documentOutput": ["json", "ccjs", "ccjz", "cdxml", "cdx", "sdf", "svg", "png", "emf"],
                 "captureOutput": ["svg", "png"],
                 "clipboardOutput": ["windows-office-ole", "chemsema-payload-json"]
             }

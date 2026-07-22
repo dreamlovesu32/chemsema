@@ -2454,6 +2454,10 @@ fn write_engine_output_with_raster(
         return Ok(());
     }
 
+    if format == "emf" {
+        return write_engine_emf_output(engine, path);
+    }
+
     ensure_output_parent(path)?;
     let mut service = DesktopDocumentService::default();
     match format.as_str() {
@@ -2480,8 +2484,25 @@ fn write_engine_output_to_stdout(engine: &Engine, format: &str) -> Result<(), St
         "sdf" => write_stdout_text(&engine.document_sdf()?),
         "svg" => write_stdout_text(&engine.document_svg()),
         "png" => Err("Writing PNG to stdout is not supported.".to_string()),
+        "emf" => Err("Writing EMF to stdout is not supported.".to_string()),
         _ => Err(format!("Unsupported output format '{format}'.")),
     }
+}
+
+fn write_engine_emf_output(engine: &Engine, path: &str) -> Result<(), String> {
+    ensure_output_parent(path)?;
+    let payload = json!({
+        "chemsemaFragmentJson": null,
+        "chemsemaDocumentJson": document_json(engine)?,
+        "renderListJson": serde_json::to_string(&engine.render_list())
+            .map_err(|error| format!("Failed to serialize EMF render list: {error}"))?,
+        "cdxml": null,
+        "svg": null,
+        "text": null,
+    });
+    chemsema_office::write_emf_payload_json(path, &payload.to_string())?;
+    verify_file_written(Path::new(path), 1, "EMF output")?;
+    Ok(())
 }
 
 fn read_command_script_value(path: &str) -> Result<Value, String> {
@@ -2631,6 +2652,7 @@ fn normalize_format(value: &str) -> Result<String, String> {
         "sdf" | "sd" => "sdf",
         "svg" => "svg",
         "png" => "png",
+        "emf" => "emf",
         _ => return Err(format!("Unsupported format '{value}'.")),
     };
     Ok(normalized.to_string())
@@ -2710,12 +2732,14 @@ mod tests {
         assert_eq!(normalize_format(".cdxml").unwrap(), "cdxml");
         assert_eq!(normalize_format("sd").unwrap(), "sdf");
         assert_eq!(normalize_format("png").unwrap(), "png");
+        assert_eq!(normalize_format("emf").unwrap(), "emf");
     }
 
     #[test]
     fn infers_format_from_output_path() {
         assert_eq!(infer_format_from_path("out.svg").as_deref(), Some("svg"));
         assert_eq!(infer_format_from_path("out.png").as_deref(), Some("png"));
+        assert_eq!(infer_format_from_path("out.emf").as_deref(), Some("emf"));
         assert_eq!(infer_format_from_path("out.json").as_deref(), Some("json"));
         assert_eq!(infer_format_from_path("-"), None);
     }

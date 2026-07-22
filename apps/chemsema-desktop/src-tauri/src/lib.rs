@@ -140,13 +140,10 @@ use commands::engine::*;
 use commands::files::*;
 use commands::window::*;
 
-#[cfg(target_os = "windows")]
-mod desktop_emf;
 mod menus;
 mod paths;
 mod window_helpers;
 
-use desktop_emf::*;
 use menus::*;
 use paths::*;
 use window_helpers::*;

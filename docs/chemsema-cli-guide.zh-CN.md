@@ -116,6 +116,7 @@ npm run cli -- new commands.json --out output.cdxml --results results.json --pre
 npm run cli -- run input.cdxml commands.json --out output.cdxml --results results.json --document-json after.ccjs --pretty
 npm run cli -- convert input.cdxml output.svg
 npm run cli -- convert input.cdxml output.png --scale 6
+npm run cli -- convert input.cdxml output.emf
 npm run cli -- convert input.cdxml output.ccjs
 npm run cli -- bundle input.cdxml --target molecule:0 --out-dir molecule-0-bundle --context-radius 40 --capture-format png --subset-format ccjs --pretty
 npm run cli -- diff before.ccjs after.ccjs --out diff.json --pretty
@@ -210,6 +211,7 @@ npm run cli -- run input.cdxml commands.json --out - --save-format svg --quiet
 ```powershell
 npm run cli -- convert input.cdxml output --format svg
 npm run cli -- convert input.cdxml output --format png --width 1800
+npm run cli -- convert input.cdxml output --format emf
 ```
 
 支持格式：
@@ -224,6 +226,7 @@ npm run cli -- convert input.cdxml output --format png --width 1800
 | `sdf` | yes | yes | MDL SD file |
 | `svg` | no | yes | 矢量导出 |
 | `png` | no | yes | 位图导出，默认 `--scale 10`；可用 `--scale`、`--width` 或 `--height` 控制分辨率 |
+| `emf` | no | 仅 Windows | 直接导出 Enhanced Metafile 矢量文件；与 Office/OLE 预览共用同一绘制器 |
 
 ## 3. 命令脚本格式
 

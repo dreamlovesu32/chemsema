@@ -514,24 +514,32 @@ fn write_word_docx_payload(payload_path: PathBuf, output_path: PathBuf) -> Resul
 
 fn write_emf_payload(payload_path: PathBuf, output_path: PathBuf) -> Result<(), String> {
     let payload = read_ole_object_payload(&payload_path)?;
-    let extent = payload.extent_himetric();
-    let emf = enhanced_metafile_bits_for_payload(&payload, extent).map_err(|hr| {
-        format!(
-            "Failed to render EMF preview for {}: 0x{:08X}",
-            payload_path.display(),
-            hr as u32
-        )
-    })?;
-    std::fs::write(&output_path, emf).map_err(|error| {
-        format!(
-            "Failed to write EMF preview {}: {error}",
-            output_path.display()
-        )
-    })?;
+    write_emf_payload_object(&output_path, &payload)?;
     println!(
-        "{DOCUMENT_DISPLAY_NAME} EMF preview written to {}.",
+        "{DOCUMENT_DISPLAY_NAME} EMF written to {}.",
         output_path.display()
     );
+    Ok(())
+}
+
+pub(crate) fn write_emf_payload_json(
+    output_path: &std::path::Path,
+    payload_json: &str,
+) -> Result<(), String> {
+    let payload: ClipboardPayload = serde_json::from_str(payload_json)
+        .map_err(|error| format!("Invalid EMF payload JSON: {error}"))?;
+    write_emf_payload_object(output_path, &OleObjectPayload::from_clipboard(payload))
+}
+
+fn write_emf_payload_object(
+    output_path: &std::path::Path,
+    payload: &OleObjectPayload,
+) -> Result<(), String> {
+    let extent = payload.extent_himetric();
+    let emf = enhanced_metafile_bits_for_payload(&payload, extent)
+        .map_err(|hr| format!("Failed to render EMF: 0x{:08X}", hr as u32))?;
+    std::fs::write(&output_path, emf)
+        .map_err(|error| format!("Failed to write EMF {}: {error}", output_path.display()))?;
     Ok(())
 }
 

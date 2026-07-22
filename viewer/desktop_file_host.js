@@ -198,11 +198,10 @@ export class DesktopFileHost {
     return this.invoke("desktop_file_write_base64", { path: requireDesktopPath(path, "export"), contentBase64 });
   }
 
-  async exportEmf(path, renderListJson, boundsJson) {
+  async exportEmf(path, payload) {
     return this.invoke("desktop_file_export_emf", {
       path: requireDesktopPath(path, "export"),
-      renderListJson,
-      boundsJson,
+      payload,
     });
   }
 

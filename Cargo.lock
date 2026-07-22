@@ -632,6 +632,7 @@ version = "1.0.0-beta.1"
 dependencies = [
  "chemsema-desktop-service",
  "chemsema-engine",
+ "chemsema-office",
  "fontdb",
  "resvg",
  "serde_json",
@@ -646,6 +647,8 @@ version = "1.0.0-beta.1"
 dependencies = [
  "base64 0.22.1",
  "chemsema-desktop-service",
+ "chemsema-engine",
+ "chemsema-office",
  "log",
  "rfd",
  "serde",

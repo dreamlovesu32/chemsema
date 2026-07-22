@@ -132,6 +132,7 @@ npm run cli -- new commands.json --out output.cdxml --results results.json --pre
 npm run cli -- run input.cdxml commands.json --out output.cdxml --results results.json --document-json after.ccjs --pretty
 npm run cli -- convert input.cdxml output.svg
 npm run cli -- convert input.cdxml output.png --scale 6
+npm run cli -- convert input.cdxml output.emf
 npm run cli -- convert input.cdxml output.ccjs
 npm run cli -- bundle input.cdxml --target molecule:0 --out-dir molecule-0-bundle --context-radius 40 --capture-format png --subset-format ccjs --pretty
 npm run cli -- diff before.ccjs after.ccjs --out diff.json --pretty
@@ -234,6 +235,7 @@ npm run cli -- run input.cdxml commands.json --out - --save-format svg --quiet
 ```powershell
 npm run cli -- convert input.cdxml output --format svg
 npm run cli -- convert input.cdxml output --format png --width 1800
+npm run cli -- convert input.cdxml output --format emf
 ```
 
 Supported formats:
@@ -248,6 +250,7 @@ Supported formats:
 | `sdf` | yes | yes | MDL SD file |
 | `svg` | - | yes | vector export |
 | `png` | - | yes | raster export. Defaults to `--scale 10`; use `--scale`, `--width`, or `--height` |
+| `emf` | - | Windows only | direct Enhanced Metafile vector export; uses the same renderer as Office/OLE previews |
 
 ## 3. Command Script Format
 

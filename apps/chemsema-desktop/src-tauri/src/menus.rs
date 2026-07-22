@@ -23,7 +23,7 @@ pub(crate) fn build_native_menu(
     let export_pdf_item =
         MenuItemBuilder::with_id("desktop-file-export-pdf", "Export &PDF Preview...").build(app)?;
     let export_emf_item =
-        MenuItemBuilder::with_id("desktop-file-export-emf", "Export &EMF Preview...").build(app)?;
+        MenuItemBuilder::with_id("desktop-file-export-emf", "Export &EMF...").build(app)?;
     let clear_recent_item =
         MenuItemBuilder::with_id("desktop-recent-clear", "&Clear Recent Files").build(app)?;
     let quit_item = PredefinedMenuItem::quit(app, Some("E&xit"))?;
