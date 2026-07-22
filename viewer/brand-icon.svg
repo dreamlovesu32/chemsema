@@ -18,5 +18,5 @@
   <rect x="112" y="96" width="800" height="800" rx="176" fill="url(#edge)" filter="url(#softShadow)"/>
   <rect x="138" y="122" width="748" height="748" rx="154" fill="url(#bg)"/>
   <text x="512" y="476" text-anchor="middle" font-family="Arial Black, Arial, sans-serif" font-size="196" font-weight="900" letter-spacing="0" fill="#334155">Chem</text>
-  <text x="512" y="674" text-anchor="middle" font-family="Arial Black, Arial, sans-serif" font-size="196" font-weight="900" letter-spacing="0" fill="#2f6fed">Core</text>
+  <text x="512" y="674" text-anchor="middle" font-family="Arial Black, Arial, sans-serif" font-size="196" font-weight="900" letter-spacing="0" fill="#2f6fed">Sema</text>
 </svg>
