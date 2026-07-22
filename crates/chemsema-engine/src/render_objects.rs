@@ -80,6 +80,8 @@ fn fragment_label_runs_for_line(
         font_weight: None,
         font_style: None,
         underline: None,
+        outline: None,
+        shadow: None,
         script: None,
     }]
 }
@@ -472,6 +474,8 @@ fn render_fragment_atom_query_annotations(
             font_weight: Some(400),
             font_style: Some("normal".to_string()),
             underline: Some(false),
+            outline: Some(false),
+            shadow: Some(false),
             script: Some("normal".to_string()),
         }],
         object_id,

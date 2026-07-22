@@ -695,6 +695,8 @@ impl Engine {
             font_weight: label.runs.first().and_then(|run| run.font_weight),
             font_style: label.runs.first().and_then(|run| run.font_style.clone()),
             underline: None,
+            outline: None,
+            shadow: None,
             script: Some(source_run_script.to_string()),
         };
         set_meta_object_field(

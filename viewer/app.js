@@ -380,6 +380,8 @@ const editorState = {
   textBold: false,
   textItalic: false,
   textUnderline: false,
+  textOutline: false,
+  textShadow: false,
   textScript: "normal",
   arrowType: "solid",
   arrowIconSvgs: {},
@@ -2904,22 +2906,27 @@ function editorRootBaseStyle(root) {
     fontWeight: 400,
     fontStyle: "normal",
     underline: false,
+    outline: false,
+    shadow: false,
     script: root.dataset.defaultChemical === "true" ? "chemical" : "normal",
   };
 }
 
 function syncTextToolbarStateFromSession(session) {
-  editorState.textFontFamily = session.fontFamily || editorState.textFontFamily;
-  const fontSize = Number(session.fontSize);
+  const firstRun = Array.isArray(session.sourceRuns) ? session.sourceRuns[0] : null;
+  editorState.textFontFamily = firstRun?.fontFamily || session.fontFamily || editorState.textFontFamily;
+  const fontSize = Number(firstRun?.fontSize || session.fontSize);
   if (Number.isFinite(fontSize) && fontSize > 0) {
     editorState.textFontSize = fontSize;
   }
-  editorState.textColor = session.fill || editorState.textColor;
+  editorState.textColor = firstRun?.fill || session.fill || editorState.textColor;
   editorState.textAlign = session.align || "left";
-  editorState.textScript = session.defaultChemical ? "chemical" : "normal";
-  editorState.textBold = false;
-  editorState.textItalic = false;
-  editorState.textUnderline = false;
+  editorState.textScript = firstRun?.script || (session.defaultChemical ? "chemical" : "normal");
+  editorState.textBold = Number(firstRun?.fontWeight || 400) >= 600;
+  editorState.textItalic = firstRun?.fontStyle === "italic";
+  editorState.textUnderline = Boolean(firstRun?.underline);
+  editorState.textOutline = Boolean(firstRun?.outline);
+  editorState.textShadow = Boolean(firstRun?.shadow);
   renderSecondaryToolbar();
 }
 

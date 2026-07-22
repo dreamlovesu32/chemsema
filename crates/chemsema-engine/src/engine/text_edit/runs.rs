@@ -45,6 +45,8 @@ pub(super) fn payload_runs_or_text(payload: &crate::ObjectPayload) -> Vec<LabelR
             font_weight: Some(400),
             font_style: Some("normal".to_string()),
             underline: Some(false),
+            outline: Some(false),
+            shadow: Some(false),
             script: Some("normal".to_string()),
         }]
     }
@@ -68,6 +70,8 @@ pub(super) fn normalize_source_runs(session: &TextEditSession, text: &str) -> Ve
             font_weight: Some(400),
             font_style: Some("normal".to_string()),
             underline: Some(false),
+            outline: Some(false),
+            shadow: Some(false),
             script: Some(if session.default_chemical {
                 "chemical".to_string()
             } else {
@@ -198,6 +202,8 @@ fn display_run_base(
                 .unwrap_or_else(|| "normal".to_string()),
         ),
         underline: Some(run.underline.unwrap_or(false)),
+        outline: Some(run.outline.unwrap_or(false)),
+        shadow: Some(run.shadow.unwrap_or(false)),
         script: Some("normal".to_string()),
     }
 }
@@ -211,6 +217,9 @@ pub(super) fn merge_adjacent_runs(runs: Vec<LabelRun>) -> Vec<LabelRun> {
                 && previous.fill == run.fill
                 && previous.font_weight == run.font_weight
                 && previous.font_style == run.font_style
+                && previous.underline == run.underline
+                && previous.outline == run.outline
+                && previous.shadow == run.shadow
                 && previous.script == run.script
             {
                 previous.text.push_str(&run.text);

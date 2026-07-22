@@ -1230,6 +1230,8 @@ fn normalize_text_style_command(command: &str) -> String {
         "line-height" | "line-spacing" => "line-height",
         "italic" => "italic",
         "underline" => "underline",
+        "outline" => "outline",
+        "shadow" => "shadow",
         "superscript" => "superscript",
         "subscript" => "subscript",
         "formula" | "chemical" => "formula",
@@ -1538,6 +1540,10 @@ fn apply_text_object_style(object: &mut SceneObject, command: &str, value: &str)
             changed |=
                 apply_text_object_runs(object, |run| set_style_bool(run, "underline", enabled));
         }
+        "outline" | "shadow" => {
+            let enabled = parse_enabled_value(value);
+            changed |= apply_text_object_runs(object, |run| set_style_bool(run, command, enabled));
+        }
         "superscript" | "subscript" | "formula" => {
             let script = if parse_enabled_value(value) {
                 if command == "formula" {
@@ -1612,6 +1618,8 @@ fn ensure_text_object_runs(object: &mut SceneObject) {
         "fontWeight": 400,
         "fontStyle": "normal",
         "underline": false,
+        "outline": false,
+        "shadow": false,
         "script": "normal",
     });
     object
@@ -1664,6 +1672,16 @@ fn apply_node_label_style(label: &mut crate::NodeLabel, command: &str, value: &s
             for_label_runs(label, |run| set_label_run_bool(&mut run.underline, enabled));
             changed = true;
         }
+        "outline" => {
+            let enabled = parse_enabled_value(value);
+            for_label_runs(label, |run| set_label_run_bool(&mut run.outline, enabled));
+            changed = true;
+        }
+        "shadow" => {
+            let enabled = parse_enabled_value(value);
+            for_label_runs(label, |run| set_label_run_bool(&mut run.shadow, enabled));
+            changed = true;
+        }
         "superscript" | "subscript" | "formula" => {
             let script = if parse_enabled_value(value) {
                 if command == "formula" {
@@ -1701,6 +1719,8 @@ fn ensure_label_runs(label: &mut crate::NodeLabel) {
         font_weight: Some(400),
         font_style: Some("normal".to_string()),
         underline: Some(false),
+        outline: Some(false),
+        shadow: Some(false),
         script: Some("normal".to_string()),
     });
 }
@@ -1869,6 +1889,8 @@ fn set_node_label_interpret_chemically(node: &mut Node, enabled: bool) -> bool {
                 font_weight: Some(400),
                 font_style: Some("normal".to_string()),
                 underline: Some(false),
+                outline: Some(false),
+                shadow: Some(false),
                 script: Some("normal".to_string()),
             }]
         });

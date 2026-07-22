@@ -1384,6 +1384,8 @@ mod tests {
             font_weight: Some(400),
             font_style: Some("normal".to_string()),
             underline: None,
+            outline: None,
+            shadow: None,
             script: Some("normal".to_string()),
         }];
         let polygons = build_label_glyph_polygons_with_profile(

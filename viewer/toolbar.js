@@ -2,10 +2,24 @@ import { cssPxToPt } from "./units.js";
 
 export const TEXT_FONT_OPTIONS = [
   "Arial",
+  "Arial Narrow",
+  "Arial Black",
   "Helvetica",
   "TeX Gyre Heros",
   "Times New Roman",
+  "Georgia",
+  "Cambria",
+  "Calibri",
   "Courier New",
+  "Consolas",
+  "Verdana",
+  "Tahoma",
+  "Trebuchet MS",
+  "Symbol",
+  "Segoe UI Symbol",
+  "SimSun",
+  "Noto Sans SC",
+  "Noto Serif SC",
 ];
 
 export const TEXT_FONT_SIZE_OPTIONS = [5, 6, 7, 8, 9, 10, 12, 14, 16, 18, 24];
@@ -607,6 +621,8 @@ export const TEXT_FORMAT_ICON_TYPES = [
   "bold",
   "italic",
   "underline",
+  "outline",
+  "shadow",
   "chemical",
   "subscript",
   "superscript",
@@ -1479,7 +1495,7 @@ function arrowToolbarHtml(editorState) {
 
 function textToolbarHtml(editorState) {
   const fontOptions = TEXT_FONT_OPTIONS
-    .map((fontFamily) => `<option value="${fontFamily}"${editorState.textFontFamily === fontFamily ? " selected" : ""}>${fontFamily}</option>`)
+    .map((fontFamily) => `<option value="${escapeHtml(fontFamily)}"></option>`)
     .join("");
   const normalizedFontSize = normalizeToolbarFontSize(cssPxToPt(editorState.textFontSize));
   const knownFontSizes = new Set(TEXT_FONT_SIZE_OPTIONS);
@@ -1491,7 +1507,8 @@ function textToolbarHtml(editorState) {
     .map((fontSize) => `<option value="${fontSize}"${normalizedFontSize === fontSize ? " selected" : ""}>${formatToolbarFontSize(fontSize)}</option>`)
     .join("");
   return `
-    <select class="secondary-select" data-text-control="font" aria-label="Font family">${fontOptions}</select>
+    <input class="secondary-select" data-text-control="font" aria-label="Font family" list="text-font-options" value="${escapeHtml(editorState.textFontFamily)}">
+    <datalist id="text-font-options">${fontOptions}</datalist>
     <select class="secondary-select" data-text-control="size" aria-label="Font size">${fontSizeOptions}</select>
     ${secondaryDivider()}
     ${colorPickerControl("text-color", editorState.textColor, editorState.colorPalette)}
@@ -1504,6 +1521,8 @@ function textToolbarHtml(editorState) {
     ${toolbarButton("text-bold", "Bold", textFormatIconSvg("bold", editorState), editorState.textBold)}
     ${toolbarButton("text-italic", "Italic", textFormatIconSvg("italic", editorState), editorState.textItalic)}
     ${toolbarButton("text-underline", "Underline", textFormatIconSvg("underline", editorState), editorState.textUnderline)}
+    ${toolbarButton("text-outline", "Outline", textFormatIconSvg("outline", editorState), editorState.textOutline)}
+    ${toolbarButton("text-shadow", "Shadow", textFormatIconSvg("shadow", editorState), editorState.textShadow)}
     ${secondaryDivider()}
     ${toolbarButton("text-chemical", "Chemical", textFormatIconSvg("chemical", editorState), editorState.textScript === "chemical")}
     ${toolbarButton("text-subscript", "Subscript", textFormatIconSvg("subscript", editorState), editorState.textScript === "subscript")}

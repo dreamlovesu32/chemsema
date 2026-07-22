@@ -221,6 +221,12 @@ fn cdxml_face_for_document_text_style(style: &DocumentTextStyle) -> u32 {
     if style.underline {
         face |= 4;
     }
+    if style.outline {
+        face |= 8;
+    }
+    if style.shadow {
+        face |= 16;
+    }
     face |= match style.script.trim().to_ascii_lowercase().as_str() {
         "subscript" => 32,
         "superscript" => 64,
@@ -1651,6 +1657,12 @@ impl<'a> CdxmlDocumentWriter<'a> {
             }
             if run.underline.unwrap_or(false) {
                 face |= 4;
+            }
+            if run.outline.unwrap_or(false) {
+                face |= 8;
+            }
+            if run.shadow.unwrap_or(false) {
+                face |= 16;
             }
             match run.script.as_deref() {
                 Some("subscript") => face |= 32,

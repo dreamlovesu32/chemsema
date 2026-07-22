@@ -37,6 +37,16 @@ impl Engine {
                 "normal",
             )],
             "underline" => vec![text_icon_run("U", 16.0, Some(400), None, true, "normal")],
+            "outline" => {
+                let mut run = text_icon_run("O", 16.0, Some(400), None, false, "normal");
+                run.outline = Some(true);
+                vec![run]
+            }
+            "shadow" => {
+                let mut run = text_icon_run("S", 16.0, Some(400), None, false, "normal");
+                run.shadow = Some(true);
+                vec![run]
+            }
             "chemical" => vec![
                 text_icon_run("CH", 14.0, Some(400), None, false, "normal"),
                 text_icon_run("2", 14.0, Some(400), None, false, "subscript"),
@@ -507,6 +517,8 @@ fn text_icon_run(
         font_weight,
         font_style: font_style.map(ToString::to_string),
         underline: Some(underline),
+        outline: Some(false),
+        shadow: Some(false),
         script: Some(script.to_string()),
     }
 }

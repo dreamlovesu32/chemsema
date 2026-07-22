@@ -159,12 +159,13 @@ Examples include `CN`, `Ph`, `N3`, `t-Bu`, `HN`, or stacked hetero labels such a
 - optional multiline run data such as `lineRuns`, when a structure label is
   displayed as stacked lines but still needs per-token styling like the
   subscript `2` in `SO2`
-- normalized display runs should preserve chemistry-relevant inline formatting
-  such as subscript and superscript; source-format text styling like CDXML
-  `face` weight/style flags belongs in import metadata
+- normalized display runs should preserve semantic inline formatting such as
+  weight, italic, underline, outline, shadow, subscript, and superscript; a
+  source-format bitmask such as CDXML `face` must not be stored in native JSON
 - structure-label source runs may still be preserved for import fidelity in
-  `label.meta.sourceRuns`; raw source-format fields still belong under
-  `meta.import.<source>`
+  `label.meta.sourceRuns`; other raw source-format fields may live under
+  `meta.import.<source>`, but fields such as `face` that have an explicit native
+  semantic mapping must be discarded after decoding
 
 They should live inside molecule resources or molecule-specific payloads.
 
@@ -342,6 +343,7 @@ Version `0.1` text should be able to represent:
 - font family
 - font size
 - font weight / italic
+- underline / outline / shadow
 - superscript
 - subscript
 - symbols and special characters
@@ -357,6 +359,9 @@ Recommended inline model:
     "fill": "#000000",
     "fontWeight": 700,
     "fontStyle": "normal",
+    "underline": false,
+    "outline": false,
+    "shadow": false,
     "script": "normal"
   },
   {
@@ -366,14 +371,43 @@ Recommended inline model:
     "fill": "#000000",
     "fontWeight": 700,
     "fontStyle": "normal",
+    "underline": false,
+    "outline": false,
+    "shadow": false,
     "script": "subscript"
   }
 ]
 ```
 
-`script` is one of `normal | subscript | superscript`. CDXML `face`, `font`, and
-`color` should be decoded into these explicit fields during import. Raw source
-values may be kept only in `meta.import.cdxml` for debugging and round-trip work.
+`script` is one of `normal | subscript | superscript | chemical`. CDXML `face`
+is decoded into `fontWeight`, `fontStyle`, `underline`, `outline`, `shadow`, and
+`script`; `font` and `color` are decoded into `fontFamily` and `fill`. The native
+format never stores the source `face` bitmask. Export reconstructs it from the
+semantic fields.
+
+`fontFamily` is an open family-name string, not an enum. A UI may suggest common
+installed families, but imported or user-entered names must remain round-trippable.
+
+#### Text run fields
+
+| Field | Type | Required | Semantics |
+| --- | --- | --- | --- |
+| `text` | string | yes | Text owned by this run |
+| `fontFamily` | string | no | Open font-family name; inherit the enclosing text style when absent |
+| `fontSize` | number | no | Positive size in document units; inherit when absent |
+| `fill` | string | no | Text color; inherit when absent |
+| `fontWeight` | number | no | Semantic weight such as `400` or `700`; inherit when absent |
+| `fontStyle` | string | no | `normal` or `italic`; inherit when absent |
+| `underline` | boolean | no | Underline decoration; inherit when absent |
+| `outline` | boolean | no | Draw glyph outlines instead of solid glyph fills; inherit when absent |
+| `shadow` | boolean | no | Draw the text shadow effect; inherit when absent |
+| `script` | string | no | `normal`, `subscript`, `superscript`, or `chemical`; inherit when absent |
+
+`style.labelStyle` and `style.captionStyle` use the same fields without `text`.
+Their canonical values are explicit: `fontFamily`, `fontSize`, `fill`,
+`fontWeight`, `fontStyle`, `underline`, `outline`, `shadow`, and `script`.
+Readers of older CCJS documents must default missing `outline` and `shadow` to
+`false`. Writers must emit semantic fields and must not emit `face`.
 
 ## Molecule Fragment2D
 
@@ -547,7 +581,7 @@ CDXML/CDX root drawing defaults are preserved under
 length, chain angle in degrees, line widths, spacing, margins, font sizes, and
 print margins remain numbers. Source-format codes do not enter native JSON:
 font ids become `fontFamily`, face bitmasks become explicit `fontWeight`,
-`fontStyle`, `underline`, and `script` fields, and color-table ids become hex
+`fontStyle`, `underline`, `outline`, `shadow`, and `script` fields, and color-table ids become hex
 colors. Active text defaults live in `style.labelStyle` and
 `style.captionStyle`; numeric drawing defaults remain in `style.defaults`.
 CDX/CDXML export rebuilds font, face, and color-table ids from these semantic

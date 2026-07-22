@@ -1467,6 +1467,8 @@ pub(super) fn append_synthesized_enhanced_stereo_text_objects(
                 font_weight: Some(400),
                 font_style: Some("normal".to_string()),
                 underline: Some(false),
+                outline: Some(false),
+                shadow: Some(false),
                 script: Some("normal".to_string()),
             }]),
         );
@@ -1589,6 +1591,8 @@ pub(super) fn append_synthesized_bond_query_text_objects(
                 font_weight: Some(400),
                 font_style: Some("normal".to_string()),
                 underline: Some(false),
+                outline: Some(false),
+                shadow: Some(false),
                 script: Some("normal".to_string()),
             }]),
         );
@@ -1966,8 +1970,7 @@ fn text_object(
             }
         })
         .collect();
-    let (text, runs) = if node.attr("WordWrapWidth").is_some()
-        || (node.attr("LineStarts").is_some() && !text.contains(['\r', '\n']))
+    let (text, runs) = if node.attr("WordWrapWidth").is_some() || node.attr("LineStarts").is_some()
     {
         apply_cdxml_line_starts(&text, runs, node.attr("LineStarts"))
     } else {

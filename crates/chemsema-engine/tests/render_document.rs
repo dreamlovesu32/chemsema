@@ -6311,6 +6311,49 @@ fn parse_cdxml_decodes_face_bit_combinations() {
 }
 
 #[test]
+fn cdxml_outline_shadow_and_custom_font_use_native_semantic_fields() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML LabelFont="3" LabelSize="12" LabelFace="24">
+  <fonttable><font id="3" charset="iso-8859-1" name="Aptos Display"/></fonttable>
+  <page id="1">
+    <t id="2" p="10 20" BoundingBox="10 20 80 36" Justification="Left" UTF8Text="Effect">
+      <s font="3" size="12" face="24" color="0">Effect</s>
+    </t>
+  </page>
+</CDXML>"##;
+    let document = parse_cdxml_document(cdxml, Some("effects")).expect("text cdxml should parse");
+    assert_eq!(document.style.label_style.font_family, "Aptos Display");
+    assert!(document.style.label_style.outline);
+    assert!(document.style.label_style.shadow);
+
+    let text_object = document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "text")
+        .expect("text should import");
+    let run = text_object.payload.extra["runs"][0]
+        .as_object()
+        .expect("run should be an object");
+    assert_eq!(run.get("fontFamily"), Some(&json!("Aptos Display")));
+    assert_eq!(run.get("outline"), Some(&json!(true)));
+    assert_eq!(run.get("shadow"), Some(&json!(true)));
+    assert!(
+        !run.contains_key("face"),
+        "CDXML face must not enter CCJS runs"
+    );
+    let native_json = serde_json::to_string(&document).expect("document should serialize");
+    assert!(
+        !native_json.contains("\"face\""),
+        "CDXML face must not be stored anywhere in native JSON: {native_json}"
+    );
+
+    let exported = document_to_cdxml(&document);
+    assert!(exported.contains("LabelFace=\"24\""), "{exported}");
+    assert!(exported.contains("face=\"24\""), "{exported}");
+    assert!(exported.contains("name=\"Aptos Display\""), "{exported}");
+}
+
+#[test]
 fn parse_cdxml_imports_table_lines_and_text_boxes() {
     let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
 <CDXML BondLength="14.40" LineWidth="0.60" BoldWidth="2" HashSpacing="2.50">
@@ -9266,6 +9309,74 @@ fn parse_cdxml_applies_authored_line_starts_to_unbroken_caption_runs() {
         .and_then(|value| value.as_array())
         .expect("styled runs");
     assert_eq!(rendered_runs[0].get("text"), Some(&json!("alpha\nbeta")));
+}
+
+#[test]
+fn parse_cdxml_line_starts_count_existing_end_of_line_characters() {
+    let source = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML CaptionJustification="Center">
+  <page id="1">
+    <t id="2" p="50 20" BoundingBox="10 10 90 46"
+       CaptionJustification="Center" WordWrapWidth="80" LineStarts="4 7 10">
+      <s font="3" size="10">abc&#10;de&#10;fgh</s>
+    </t>
+  </page>
+</CDXML>"##;
+    let document = parse_cdxml_document(source, Some("line starts with EOLs")).expect("CDXML");
+    let text = document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "text")
+        .expect("text object");
+    assert_eq!(text.payload.extra.get("text"), Some(&json!("abc\nde\nfgh")));
+    let rendered_runs = text
+        .payload
+        .extra
+        .get("runs")
+        .and_then(|value| value.as_array())
+        .expect("styled runs");
+    assert_eq!(rendered_runs[0].get("text"), Some(&json!("abc\nde\nfgh")));
+}
+
+#[test]
+fn parse_cdxml_line_starts_are_utf8_byte_offsets() {
+    let source = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML CaptionJustification="Center">
+  <page id="1">
+    <t id="2" p="50 20" BoundingBox="10 10 90 34"
+       CaptionJustification="Center" WordWrapWidth="80" LineStarts="8 17">
+      <s font="3" size="10">alpha′betagamma</s>
+    </t>
+  </page>
+</CDXML>"##;
+    let document = parse_cdxml_document(source, Some("UTF-8 line starts")).expect("CDXML");
+    let text = document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "text")
+        .expect("text object");
+    assert_eq!(
+        text.payload.extra.get("text"),
+        Some(&json!("alpha′\nbetagamma"))
+    );
+}
+
+#[test]
+fn parse_cdxml_line_starts_preserve_authored_leading_blank_lines() {
+    let source = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML>
+  <page id="1">
+    <t id="2" p="50 20" BoundingBox="10 10 90 46"
+       LineStarts="2 3 9"><s font="3" size="10">&#9;&#10;&#10;serial</s></t>
+  </page>
+</CDXML>"##;
+    let document = parse_cdxml_document(source, Some("leading authored lines")).expect("CDXML");
+    let text = document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "text")
+        .expect("text object");
+    assert_eq!(text.payload.extra.get("text"), Some(&json!("\t\n\nserial")));
 }
 
 #[test]

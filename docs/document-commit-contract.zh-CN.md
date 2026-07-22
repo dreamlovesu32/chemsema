@@ -266,6 +266,10 @@ pointer up / finish
 }
 ```
 
+文本样式命令包括 `font-family`、`font-size`、`align`、`line-height`、`bold`、
+`italic`、`underline`、`outline`、`shadow`、`superscript`、`subscript` 和
+`formula`。字体族值是开放字符串。
+
 ### `apply-object-settings-to-selection`
 
 ```json

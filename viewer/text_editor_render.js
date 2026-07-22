@@ -29,6 +29,8 @@ export function editorSourceRunsFromSession(session, root, options) {
         fontWeight: 400,
         fontStyle: "normal",
         underline: false,
+        outline: false,
+        shadow: false,
         script: session.defaultChemical ? "chemical" : "normal",
       }]
       : [];
@@ -104,15 +106,20 @@ export function fillTextEditorContent(root, session, selectionOffsets, options) 
       const isSubOrSuper = isSub || isSuper;
       const scale = isSub ? scriptScale("subscript") : isSuper ? scriptScale("superscript") : 1;
       const fontWeight = fontWeightForRun(run);
+      const effectColor = run.fill ? normalizeDisplayColor(run.fill) : undefined;
       const tspan = makeSvgNode("tspan", {
         class: isSelected ? "text-editor-run is-selected" : "text-editor-run",
         "data-script": run.script || undefined,
-        fill: run.fill ? normalizeDisplayColor(run.fill) : undefined,
+        fill: run.outline ? "none" : effectColor,
         "font-size": isSubOrSuper ? Math.max(7, runFontSize * scale) : runFontSize,
         "font-family": run.fontFamily ? displayLabelFontFamily(run.fontFamily) : undefined,
         "font-weight": fontWeight,
         "font-style": fontStyleForRun(run),
         "text-decoration": run.underline ? "underline" : undefined,
+        stroke: run.outline ? (effectColor || "#000000") : undefined,
+        "stroke-width": run.outline ? Math.max(0.35, runFontSize * 0.045) : undefined,
+        "paint-order": run.outline ? "stroke" : undefined,
+        style: run.shadow ? `filter:drop-shadow(0.08em 0.08em 0 ${effectColor || "#000000"})` : undefined,
         "baseline-shift": isSubOrSuper
           ? editorSvgScriptBaselineShift(null, runFontSize, run.script, fontWeight)
           : undefined,

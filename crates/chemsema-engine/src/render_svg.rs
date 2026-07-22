@@ -597,12 +597,25 @@ fn write_text_run(out: &mut String, run: &LabelRun, fallback_font_size: f64) {
     } else {
         None
     };
+    let effect_color = run.fill.as_deref().unwrap_or("#000000");
+    let outline = run.outline.unwrap_or(false);
+    let shadow_style = run
+        .shadow
+        .unwrap_or(false)
+        .then(|| format!("filter:drop-shadow(0.08em 0.08em 0 {effect_color})"));
     write!(
         out,
-        r#"<tspan{}{}{}{}{}{}{}>{}</tspan>"#,
+        r#"<tspan{}{}{}{}{}{}{}{}{}{}{}>{}</tspan>"#,
         optional_num_attr("font-size", Some(font_size)),
         optional_str_attr("font-family", run.font_family.as_deref()),
-        optional_str_attr("fill", run.fill.as_deref()),
+        optional_str_attr(
+            "fill",
+            if outline {
+                Some("none")
+            } else {
+                run.fill.as_deref()
+            }
+        ),
         optional_u32_attr("font-weight", run.font_weight),
         optional_str_attr("font-style", run.font_style.as_deref()),
         optional_str_attr(
@@ -610,6 +623,13 @@ fn write_text_run(out: &mut String, run: &LabelRun, fallback_font_size: f64) {
             run.underline.filter(|value| *value).map(|_| "underline")
         ),
         optional_num_attr("baseline-shift", baseline_shift),
+        optional_str_attr("stroke", outline.then_some(effect_color)),
+        optional_num_attr(
+            "stroke-width",
+            outline.then_some((font_size * 0.045).max(0.35))
+        ),
+        optional_str_attr("paint-order", outline.then_some("stroke")),
+        optional_str_attr("style", shadow_style.as_deref()),
         escape_text(&run.text)
     )
     .expect("write text run");

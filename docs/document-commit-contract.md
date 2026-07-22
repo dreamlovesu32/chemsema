@@ -266,6 +266,10 @@ New fallback-style command names such as `mutation`, `pointer-up`, `toolbar-clic
 }
 ```
 
+Text style commands include `font-family`, `font-size`, `align`, `line-height`,
+`bold`, `italic`, `underline`, `outline`, `shadow`, `superscript`, `subscript`,
+and `formula`. Font-family values are free-form strings.
+
 ### `apply-object-settings-to-selection`
 
 ```json

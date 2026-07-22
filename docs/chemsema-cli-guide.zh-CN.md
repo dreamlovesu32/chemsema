@@ -903,6 +903,8 @@ line-height
 bold
 italic
 underline
+outline
+shadow
 superscript
 subscript
 formula
@@ -1043,6 +1045,8 @@ run 字段：
 | `fontWeight` | number | 可选，例如 `400`、`700` |
 | `fontStyle` | string | 可选，例如 `normal`、`italic` |
 | `underline` | boolean | 可选 |
+| `outline` | boolean | 可选 |
+| `shadow` | boolean | 可选 |
 | `script` | string | `normal`、`subscript`、`superscript`、`chemical` |
 
 ### 7.3 替换文本对象内容

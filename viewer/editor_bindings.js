@@ -846,6 +846,12 @@ async function handleSecondaryToolbarValue(value, options) {
   } else if (value === "text-underline") {
     editorState.textUnderline = !editorState.textUnderline;
     options.applyTextFormatCommand("underline");
+  } else if (value === "text-outline") {
+    editorState.textOutline = !editorState.textOutline;
+    options.applyTextFormatCommand("outline");
+  } else if (value === "text-shadow") {
+    editorState.textShadow = !editorState.textShadow;
+    options.applyTextFormatCommand("shadow");
   } else if (value === "text-chemical") {
     if (editorState.textScript === "chemical") {
       editorState.textScript = "normal";

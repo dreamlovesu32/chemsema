@@ -1388,6 +1388,10 @@ pub struct DocumentTextStyle {
     pub font_weight: u32,
     pub font_style: String,
     pub underline: bool,
+    #[serde(default)]
+    pub outline: bool,
+    #[serde(default)]
+    pub shadow: bool,
     pub script: String,
 }
 
@@ -1400,6 +1404,8 @@ impl DocumentTextStyle {
             font_weight: 400,
             font_style: "normal".to_string(),
             underline: false,
+            outline: false,
+            shadow: false,
             script: "chemical".to_string(),
         }
     }
@@ -1412,6 +1418,8 @@ impl DocumentTextStyle {
             font_weight: 400,
             font_style: "normal".to_string(),
             underline: false,
+            outline: false,
+            shadow: false,
             script: "normal".to_string(),
         }
     }
@@ -1709,6 +1717,10 @@ pub struct LabelRun {
     pub font_style: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub underline: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outline: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shadow: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub script: Option<String>,
 }
@@ -2200,6 +2212,8 @@ mod tests {
                                 font_weight: Some(400),
                                 font_style: Some("normal".to_string()),
                                 underline: None,
+                                outline: None,
+                                shadow: None,
                                 script: Some("normal".to_string()),
                             }],
                             line_runs: Vec::new(),
@@ -2639,6 +2653,8 @@ mod tests {
                                 font_weight: Some(400),
                                 font_style: Some("normal".to_string()),
                                 underline: None,
+                                outline: None,
+                                shadow: None,
                                 script: Some("chemical".to_string()),
                             }],
                             line_runs: Vec::new(),

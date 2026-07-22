@@ -254,6 +254,8 @@ pub(super) fn make_centered_node_label(text: &str, position: [f64; 2]) -> crate:
             font_weight: Some(700),
             font_style: Some("normal".to_string()),
             underline: Some(false),
+            outline: Some(false),
+            shadow: Some(false),
             script: Some("normal".to_string()),
         }],
         line_runs: Vec::new(),
@@ -702,6 +704,8 @@ fn preserve_styled_lines(display_runs: &[LabelRun]) -> Vec<Vec<StyledGlyph>> {
                         font_weight: run.font_weight,
                         font_style: run.font_style.clone(),
                         underline: run.underline,
+                        outline: run.outline,
+                        shadow: run.shadow,
                         script: run.script.clone(),
                     },
                 });
@@ -727,6 +731,8 @@ pub(super) fn split_styled_groups(
                     font_weight: run.font_weight,
                     font_style: run.font_style.clone(),
                     underline: run.underline,
+                    outline: run.outline,
+                    shadow: run.shadow,
                     script: run.script.clone(),
                 },
             });
@@ -901,6 +907,8 @@ pub(super) fn merge_styled_glyph_runs(line: &[StyledGlyph]) -> Vec<LabelRun> {
                 && previous.font_weight == glyph.run.font_weight
                 && previous.font_style == glyph.run.font_style
                 && previous.underline == glyph.run.underline
+                && previous.outline == glyph.run.outline
+                && previous.shadow == glyph.run.shadow
                 && previous.script == glyph.run.script
             {
                 previous.text.push(glyph.ch);
@@ -2324,6 +2332,8 @@ pub(super) fn source_runs_for_attached_label(
             font_weight: Some(400),
             font_style: Some("normal".to_string()),
             underline: Some(false),
+            outline: Some(false),
+            shadow: Some(false),
             script: Some("chemical".to_string()),
         });
     vec![LabelRun {
@@ -2334,6 +2344,8 @@ pub(super) fn source_runs_for_attached_label(
         font_weight: template.font_weight.or(Some(400)),
         font_style: template.font_style.or_else(|| Some("normal".to_string())),
         underline: template.underline.or(Some(false)),
+        outline: template.outline.or(Some(false)),
+        shadow: template.shadow.or(Some(false)),
         script: Some("chemical".to_string()),
     }]
 }
@@ -2361,6 +2373,8 @@ pub(super) fn source_runs_from_node_label(label: &crate::NodeLabel) -> Vec<Label
                     font_weight: Some(400),
                     font_style: Some("normal".to_string()),
                     underline: Some(false),
+                    outline: Some(false),
+                    shadow: Some(false),
                     script: Some("normal".to_string()),
                 }]
             }

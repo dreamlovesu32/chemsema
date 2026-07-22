@@ -357,13 +357,18 @@ function renderTextPrimitive(svgRoot, primitive, options) {
           ? editorScriptScale(options.sharedGlyphProfiles, "superscript")
           : 1;
       const fontWeight = fontWeightForRun(run);
+      const effectColor = run.fill ? normalizeDisplayColor(run.fill) : undefined;
       const tspan = makeSvgNode("tspan", {
-        fill: run.fill ? normalizeDisplayColor(run.fill) : undefined,
+        fill: run.outline ? "none" : effectColor,
         "font-size": isSubOrSuper ? Math.max(cssPxToPt(7), runFontSize * scriptScale) : runFontSize,
         "font-family": run.fontFamily ? displayLabelFontFamily(run.fontFamily) : undefined,
         "font-weight": fontWeight,
         "font-style": fontStyleForRun(run),
         "text-decoration": run.underline ? "underline" : undefined,
+        stroke: run.outline ? (effectColor || "#000000") : undefined,
+        "stroke-width": run.outline ? Math.max(0.35, runFontSize * 0.045) : undefined,
+        "paint-order": run.outline ? "stroke" : undefined,
+        style: run.shadow ? `filter:drop-shadow(0.08em 0.08em 0 ${effectColor || "#000000"})` : undefined,
         "baseline-shift": isSubOrSuper
           ? editorSvgScriptBaselineShift(options.sharedGlyphProfiles, runFontSize, run.script, fontWeight)
           : undefined,

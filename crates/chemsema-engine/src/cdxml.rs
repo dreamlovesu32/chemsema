@@ -181,6 +181,8 @@ fn imported_document_text_style(
         font_weight: run.font_weight.unwrap_or(400),
         font_style: run.font_style.unwrap_or_else(|| "normal".to_string()),
         underline: run.underline.unwrap_or(false),
+        outline: run.outline.unwrap_or(false),
+        shadow: run.shadow.unwrap_or(false),
         script: run.script.unwrap_or_else(|| "normal".to_string()),
     }
 }
@@ -1757,13 +1759,12 @@ fn node_label(
             })
         })
         .collect();
-    let (text, wrapped_source_runs) = if text_el.attr("WordWrapWidth").is_some()
-        || (text_el.attr("LineStarts").is_some() && !text.contains(['\r', '\n']))
-    {
-        apply_cdxml_line_starts(&text, source_runs, text_el.attr("LineStarts"))
-    } else {
-        (text, source_runs)
-    };
+    let (text, wrapped_source_runs) =
+        if text_el.attr("WordWrapWidth").is_some() || text_el.attr("LineStarts").is_some() {
+            apply_cdxml_line_starts(&text, source_runs, text_el.attr("LineStarts"))
+        } else {
+            (text, source_runs)
+        };
     source_runs = wrapped_source_runs;
     for run in &mut source_runs {
         match (interpret_chemically, run.script.as_deref()) {
@@ -1887,51 +1888,62 @@ fn apply_cdxml_line_starts(
     if line_starts.is_none() {
         return (text.to_string(), runs);
     }
-    // CDXML stores authored wrapping in LineStarts. Newlines found between
-    // styled runs are serialization whitespace and are not counted by those
-    // offsets; the final offset may be the end-of-text sentinel.
-    let text = text.replace(['\r', '\n'], "");
+    // CDXML stores zero-based offsets into the authored styled-text stream.
+    // End-of-line characters are part of that stream and therefore advance
+    // subsequent offsets even though they normalize to a single rendered LF.
+    // The final offset may be the end-of-text sentinel.
+    let raw_len = runs
+        .iter()
+        .map(|run| run.text.len())
+        .sum::<usize>()
+        .max(text.len());
     let starts: BTreeSet<usize> = line_starts
         .into_iter()
         .flat_map(str::split_whitespace)
         .filter_map(|value| value.parse::<usize>().ok())
-        .filter(|offset| *offset > 0 && *offset < text.chars().count())
+        .filter(|offset| *offset > 0 && *offset < raw_len)
         .collect();
-    if starts.is_empty() {
-        return (text, runs);
-    }
-
-    let insert_breaks = |value: &str| {
-        let mut output = String::with_capacity(value.len() + starts.len());
-        for (offset, character) in value.chars().enumerate() {
-            if starts.contains(&offset) && !output.ends_with('\n') && character != '\n' {
-                output.push('\n');
-            }
-            output.push(character);
-        }
-        output
+    let source_runs = if runs.is_empty() {
+        vec![LabelRun {
+            text: text.to_string(),
+            ..LabelRun::default()
+        }]
+    } else {
+        runs
     };
-    let text = insert_breaks(&text);
     let mut offset = 0usize;
-    let mut wrapped_runs = Vec::with_capacity(runs.len() + starts.len());
-    for run in runs {
+    let mut output_ends_with_newline = false;
+    let mut previous_was_carriage_return = false;
+    let mut wrapped_runs = Vec::with_capacity(source_runs.len() + starts.len());
+    for run in source_runs {
         let mut current = run.clone();
         current.text.clear();
-        for character in run
-            .text
-            .chars()
-            .filter(|character| !matches!(character, '\r' | '\n'))
-        {
-            if starts.contains(&offset) && !current.text.ends_with('\n') && character != '\n' {
+        for character in run.text.chars() {
+            let is_newline = matches!(character, '\r' | '\n');
+            if starts.contains(&offset) && !output_ends_with_newline && !is_newline {
                 current.text.push('\n');
             }
-            current.text.push(character);
-            offset += 1;
+            if is_newline {
+                if character != '\n' || !previous_was_carriage_return {
+                    current.text.push('\n');
+                }
+                output_ends_with_newline = true;
+            } else {
+                current.text.push(character);
+                output_ends_with_newline = false;
+            }
+            previous_was_carriage_return = character == '\r';
+            offset += character.len_utf8();
         }
         if !current.text.is_empty() {
             wrapped_runs.push(current);
         }
     }
+
+    let text = wrapped_runs
+        .iter()
+        .map(|run| run.text.as_str())
+        .collect::<String>();
     (text, wrapped_runs)
 }
 

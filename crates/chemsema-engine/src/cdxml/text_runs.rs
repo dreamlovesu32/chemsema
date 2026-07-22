@@ -35,6 +35,8 @@ pub(super) fn label_source_run(
             .to_string(),
         ),
         underline: Some(decoded_face.underline),
+        outline: Some(decoded_face.outline),
+        shadow: Some(decoded_face.shadow),
         script: Some(decoded_face.script.to_string()),
     }
 }
@@ -101,6 +103,8 @@ struct CdxmlFace {
     bold: bool,
     italic: bool,
     underline: bool,
+    outline: bool,
+    shadow: bool,
     script: &'static str,
 }
 
@@ -117,6 +121,8 @@ fn decode_cdxml_face(face: u32) -> CdxmlFace {
         bold: face & 1 != 0,
         italic: face & 2 != 0,
         underline: face & 4 != 0,
+        outline: face & 8 != 0,
+        shadow: face & 16 != 0,
         script,
     }
 }

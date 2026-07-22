@@ -19,6 +19,8 @@ export function mergeSerializedRuns(runs) {
       && previous.fontWeight === run.fontWeight
       && previous.fontStyle === run.fontStyle
       && previous.underline === run.underline
+      && previous.outline === run.outline
+      && previous.shadow === run.shadow
       && previous.script === run.script
     ) {
       previous.text += run.text;
@@ -40,6 +42,8 @@ export function normalizeEditorSourceRuns(runs, fallbackStyle, normalizeColor) {
       fontWeight: Number(run.fontWeight || fallbackStyle.fontWeight || 400),
       fontStyle: String(run.fontStyle || fallbackStyle.fontStyle || "normal"),
       underline: Boolean(run.underline ?? fallbackStyle.underline),
+      outline: Boolean(run.outline ?? fallbackStyle.outline),
+      shadow: Boolean(run.shadow ?? fallbackStyle.shadow),
       script: String(run.script || fallbackStyle.script || "normal"),
     })));
 }
@@ -110,6 +114,8 @@ export function styleAtEditorOffset(offset, runs, baseStyle, normalizeColor) {
         fontWeight: Number(run.fontWeight || baseStyle.fontWeight || 400),
         fontStyle: String(run.fontStyle || baseStyle.fontStyle || "normal"),
         underline: Boolean(run.underline ?? baseStyle.underline),
+        outline: Boolean(run.outline ?? baseStyle.outline),
+        shadow: Boolean(run.shadow ?? baseStyle.shadow),
         script: String(run.script || baseStyle.script || "normal"),
       };
     }

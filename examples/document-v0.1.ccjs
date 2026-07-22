@@ -30,6 +30,11 @@
       "fontFamily": "Helvetica",
       "fontSize": 12,
       "fontWeight": 400,
+      "fontStyle": "normal",
+      "underline": false,
+      "outline": false,
+      "shadow": false,
+      "script": "normal",
       "fill": "#111111",
       "stroke": null
     },
@@ -171,7 +176,21 @@
           18
         ],
         "align": "left",
-        "valign": "middle"
+        "valign": "middle",
+        "runs": [
+          {
+            "text": "PhB(OH)2 (1.0 equiv)",
+            "fontFamily": "Helvetica",
+            "fontSize": 12,
+            "fill": "#111111",
+            "fontWeight": 400,
+            "fontStyle": "normal",
+            "underline": false,
+            "outline": false,
+            "shadow": false,
+            "script": "normal"
+          }
+        ]
       }
     }
   ],

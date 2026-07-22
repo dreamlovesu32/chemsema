@@ -1023,6 +1023,8 @@ line-height
 bold
 italic
 underline
+outline
+shadow
 superscript
 subscript
 formula
@@ -1152,6 +1154,8 @@ Run fields:
 | `fontWeight` | number | optional, for example `400` or `700` |
 | `fontStyle` | string | optional, for example `normal` or `italic` |
 | `underline` | boolean | optional |
+| `outline` | boolean | optional |
+| `shadow` | boolean | optional |
 | `script` | string | `normal`, `subscript`, `superscript`, `chemical` |
 
 ### 7.3 Replace Text Object Content

@@ -31,6 +31,8 @@ fn run_summary(runs: &[LabelRun]) -> Vec<Value> {
                 "fontStyle": run.font_style,
                 "fill": run.fill,
                 "underline": run.underline,
+                "outline": run.outline,
+                "shadow": run.shadow,
             })
         })
         .collect()

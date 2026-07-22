@@ -9207,6 +9207,8 @@ fn context_style_commands_apply_to_graphic_text_and_bond_selections() {
 
     engine.select_at_point(Point::new(112.0, 34.0), false);
     assert!(engine.apply_text_style_to_selection("bold", "on"));
+    assert!(engine.apply_text_style_to_selection("outline", "on"));
+    assert!(engine.apply_text_style_to_selection("shadow", "on"));
     assert!(engine.apply_text_style_to_selection("align", "center"));
     let text = engine
         .state()
@@ -9215,6 +9217,9 @@ fn context_style_commands_apply_to_graphic_text_and_bond_selections() {
         .expect("text should exist");
     assert_eq!(text.payload.extra["align"], "center");
     assert_eq!(text.payload.extra["runs"][0]["fontWeight"], 700.0);
+    assert_eq!(text.payload.extra["runs"][0]["outline"], true);
+    assert_eq!(text.payload.extra["runs"][0]["shadow"], true);
+    assert!(text.payload.extra["runs"][0].get("face").is_none());
 
     engine.select_at_point(Point::new(20.0, 10.0), false);
     assert!(engine.apply_bond_style_to_selection("double-double-dashed"));
@@ -12636,6 +12641,13 @@ fn text_format_icons_are_rendered_with_kernel_text_runs() {
         "{underline}"
     );
     assert!(underline.contains(">U</tspan>"), "{underline}");
+
+    let outline = Engine::text_format_icon_svg("outline");
+    assert!(outline.contains(r#"fill="none""#), "{outline}");
+    assert!(outline.contains(r#"paint-order="stroke""#), "{outline}");
+
+    let shadow = Engine::text_format_icon_svg("shadow");
+    assert!(shadow.contains("drop-shadow"), "{shadow}");
 
     let chemical = Engine::text_format_icon_svg("chemical");
     assert!(

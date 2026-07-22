@@ -88,6 +88,8 @@ fn normal_source_run(text: &str) -> chemsema_engine::LabelRun {
         font_weight: Some(400),
         font_style: Some("normal".to_string()),
         underline: Some(false),
+        outline: Some(false),
+        shadow: Some(false),
         script: Some("normal".to_string()),
     }
 }
@@ -1928,6 +1930,8 @@ fn preview_text_runs_expands_chemical_source_runs_in_kernel() {
             font_weight: Some(400),
             font_style: Some("normal".to_string()),
             underline: Some(false),
+            outline: Some(false),
+            shadow: Some(false),
             script: Some("chemical".to_string()),
         }],
         font_family: Some("Arial".to_string()),

@@ -297,12 +297,18 @@ export function createTextEditorController(deps) {
     const desiredWeight = deps.editorState.textBold ? 700 : 400;
     const desiredStyle = deps.editorState.textItalic ? "italic" : "normal";
     const desiredUnderline = Boolean(deps.editorState.textUnderline);
+    const desiredOutline = Boolean(deps.editorState.textOutline);
+    const desiredShadow = Boolean(deps.editorState.textShadow);
     if (command === "bold") {
       mutateEditorSelectionRuns((run) => ({ ...run, fontWeight: desiredWeight }), (style) => ({ ...style, fontWeight: desiredWeight }));
     } else if (command === "italic") {
       mutateEditorSelectionRuns((run) => ({ ...run, fontStyle: desiredStyle }), (style) => ({ ...style, fontStyle: desiredStyle }));
     } else if (command === "underline") {
       mutateEditorSelectionRuns((run) => ({ ...run, underline: desiredUnderline }), (style) => ({ ...style, underline: desiredUnderline }));
+    } else if (command === "outline") {
+      mutateEditorSelectionRuns((run) => ({ ...run, outline: desiredOutline }), (style) => ({ ...style, outline: desiredOutline }));
+    } else if (command === "shadow") {
+      mutateEditorSelectionRuns((run) => ({ ...run, shadow: desiredShadow }), (style) => ({ ...style, shadow: desiredShadow }));
     }
   }
 

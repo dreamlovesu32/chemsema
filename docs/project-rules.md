@@ -84,7 +84,9 @@ This command runs Rust tests, rebuilds engine WASM, checks viewer syntax, and co
   `ChainAngle`, `LabelFont`, `LabelSize`, `LabelFace`, `CaptionFont`,
   `CaptionSize`, `CaptionFace`, justification defaults, display flags, and
   print margins, but source font ids, color ids, and face bitmasks must be
-  decoded into native semantic text-style fields. Export should re-encode the
+  decoded into native semantic text-style fields (`fontFamily`, `fill`,
+  `fontWeight`, `fontStyle`, `underline`, `outline`, `shadow`, and `script`).
+  Native JSON must never store the source `face` bitmask. Export should re-encode the
   current semantic defaults at the CDX/CDXML boundary. These parameters may
   guide ChemSema's own layout and rendering.
 - Attached molecule-label `BoundingBox`, `p`, and similar CDXML cached geometry

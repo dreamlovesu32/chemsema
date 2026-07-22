@@ -795,6 +795,8 @@ impl Engine {
         let mut bold = Vec::new();
         let mut italic = Vec::new();
         let mut underline = Vec::new();
+        let mut outline = Vec::new();
+        let mut shadow = Vec::new();
         let mut superscript = Vec::new();
         let mut subscript = Vec::new();
         let mut formula = Vec::new();
@@ -805,6 +807,8 @@ impl Engine {
                 &mut bold,
                 &mut italic,
                 &mut underline,
+                &mut outline,
+                &mut shadow,
                 &mut superscript,
                 &mut subscript,
                 &mut formula,
@@ -817,6 +821,8 @@ impl Engine {
                     &mut bold,
                     &mut italic,
                     &mut underline,
+                    &mut outline,
+                    &mut shadow,
                     &mut superscript,
                     &mut subscript,
                     &mut formula,
@@ -827,6 +833,8 @@ impl Engine {
             bold: uniform_value(bold),
             italic: uniform_value(italic),
             underline: uniform_value(underline),
+            outline: uniform_value(outline),
+            shadow: uniform_value(shadow),
             superscript: uniform_value(superscript),
             subscript: uniform_value(subscript),
             formula: uniform_value(formula),
@@ -1211,10 +1219,24 @@ fn text_font_menu(current: Option<&str>) -> JsonValue {
         "Font",
         [
             "Arial",
+            "Arial Narrow",
+            "Arial Black",
             "Helvetica",
             "TeX Gyre Heros",
             "Times New Roman",
+            "Georgia",
+            "Cambria",
+            "Calibri",
             "Courier New",
+            "Consolas",
+            "Verdana",
+            "Tahoma",
+            "Trebuchet MS",
+            "Symbol",
+            "Segoe UI Symbol",
+            "SimSun",
+            "Noto Sans SC",
+            "Noto Serif SC",
         ]
         .into_iter()
         .map(|font| {
@@ -1263,6 +1285,8 @@ fn text_style_menu(current: TextStyleState) -> JsonValue {
             toggle_style_item("Bold", "bold", current.bold),
             toggle_style_item("Italic", "italic", current.italic),
             toggle_style_item("Underline", "underline", current.underline),
+            toggle_style_item("Outline", "outline", current.outline),
+            toggle_style_item("Shadow", "shadow", current.shadow),
             toggle_style_item("Superscript", "superscript", current.superscript),
             toggle_style_item("Subscript", "subscript", current.subscript),
             toggle_style_item("Formula", "formula", current.formula),
@@ -1302,6 +1326,8 @@ struct TextStyleState {
     bold: Option<bool>,
     italic: Option<bool>,
     underline: Option<bool>,
+    outline: Option<bool>,
+    shadow: Option<bool>,
     superscript: Option<bool>,
     subscript: Option<bool>,
     formula: Option<bool>,
@@ -1554,6 +1580,8 @@ fn push_json_run_flags(
     bold: &mut Vec<bool>,
     italic: &mut Vec<bool>,
     underline: &mut Vec<bool>,
+    outline: &mut Vec<bool>,
+    shadow: &mut Vec<bool>,
     superscript: &mut Vec<bool>,
     subscript: &mut Vec<bool>,
     formula: &mut Vec<bool>,
@@ -1562,6 +1590,8 @@ fn push_json_run_flags(
         bold.push(false);
         italic.push(false);
         underline.push(false);
+        outline.push(false);
+        shadow.push(false);
         superscript.push(false);
         subscript.push(false);
         formula.push(false);
@@ -1581,6 +1611,8 @@ fn push_json_run_flags(
                 == "italic",
         );
         underline.push(run.get("underline").and_then(JsonValue::as_bool) == Some(true));
+        outline.push(run.get("outline").and_then(JsonValue::as_bool) == Some(true));
+        shadow.push(run.get("shadow").and_then(JsonValue::as_bool) == Some(true));
         let script = run
             .get("script")
             .and_then(JsonValue::as_str)
@@ -1597,6 +1629,8 @@ fn push_label_run_flags(
     bold: &mut Vec<bool>,
     italic: &mut Vec<bool>,
     underline: &mut Vec<bool>,
+    outline: &mut Vec<bool>,
+    shadow: &mut Vec<bool>,
     superscript: &mut Vec<bool>,
     subscript: &mut Vec<bool>,
     formula: &mut Vec<bool>,
@@ -1606,6 +1640,8 @@ fn push_label_run_flags(
         bold.push(false);
         italic.push(false);
         underline.push(false);
+        outline.push(false);
+        shadow.push(false);
         superscript.push(false);
         subscript.push(false);
         formula.push(false);
@@ -1615,6 +1651,8 @@ fn push_label_run_flags(
         bold.push(run.font_weight.unwrap_or(400) >= 600);
         italic.push(run.font_style.as_deref().unwrap_or("normal") == "italic");
         underline.push(run.underline.unwrap_or(false));
+        outline.push(run.outline.unwrap_or(false));
+        shadow.push(run.shadow.unwrap_or(false));
         let script = run.script.as_deref().unwrap_or("normal");
         superscript.push(script == "superscript");
         subscript.push(script == "subscript");
