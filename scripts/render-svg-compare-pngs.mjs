@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { chromium } from "playwright";
+import { launchBrowser } from "./playwright-browser.mjs";
 
 function parseArgs(argv) {
   const args = { scale: 3 };
@@ -138,7 +138,7 @@ async function main() {
   }
   const manifest = JSON.parse(await fs.readFile(args.manifest, "utf8"));
   const scale = Number.isFinite(args.scale) && args.scale > 0 ? args.scale : 3;
-  const browser = await chromium.launch();
+  const browser = await launchBrowser({ headless: true });
   const context = await browser.newContext({
     viewport: { width: 1200, height: 800 },
     deviceScaleFactor: scale,

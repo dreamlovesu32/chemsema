@@ -887,16 +887,8 @@ fn render_stereo_bond(
                 },
                 stroke_width,
             );
-            let preserve_recorded_pitch = [bond.begin.as_str(), bond.end.as_str()]
-                .into_iter()
-                .filter_map(|node_id| node_map.get(node_id))
-                .any(|node| node.is_external_connection_point || node.is_placeholder);
-            for stripe in compute_fragment_hashed_wedge_stripe_polygons(
-                &points,
-                stroke_width,
-                bond,
-                preserve_recorded_pitch,
-            ) {
+            for stripe in compute_fragment_hashed_wedge_stripe_polygons(&points, stroke_width, bond)
+            {
                 push_bond_filled_path(out, &bond.id, stripe, stroke, object_id.clone());
             }
         }
@@ -917,16 +909,8 @@ fn render_stereo_bond(
                 },
                 stroke_width,
             );
-            let preserve_recorded_pitch = [bond.begin.as_str(), bond.end.as_str()]
-                .into_iter()
-                .filter_map(|node_id| node_map.get(node_id))
-                .any(|node| node.is_external_connection_point || node.is_placeholder);
-            for stripe in compute_fragment_hashed_wedge_stripe_polygons(
-                &points,
-                stroke_width,
-                bond,
-                preserve_recorded_pitch,
-            ) {
+            for stripe in compute_fragment_hashed_wedge_stripe_polygons(&points, stroke_width, bond)
+            {
                 push_bond_filled_path(out, &bond.id, stripe, stroke, object_id.clone());
             }
         }
@@ -1352,7 +1336,6 @@ fn compute_fragment_hashed_wedge_stripe_polygons(
     polygon: &[Point],
     stroke_width: f64,
     bond: &Bond,
-    preserve_recorded_pitch: bool,
 ) -> Vec<Vec<Point>> {
     if polygon.len() != 4 {
         return Vec::new();
@@ -1371,9 +1354,7 @@ fn compute_fragment_hashed_wedge_stripe_polygons(
 
     let mut stripes = Vec::new();
     let mut cursor = 0.0;
-    for (gap_start, gap_end) in
-        hashed_wedge_gap_intervals(length, stroke_width, bond, preserve_recorded_pitch)
-    {
+    for (gap_start, gap_end) in hashed_wedge_gap_intervals(length, stroke_width, bond) {
         push_hashed_wedge_stripe(&mut stripes, polygon, cursor, gap_start, length);
         cursor = gap_end;
     }

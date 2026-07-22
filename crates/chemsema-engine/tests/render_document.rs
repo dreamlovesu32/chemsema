@@ -12504,6 +12504,54 @@ fn render_document_emits_primitives_for_wedge_and_hashed_wedge() {
 }
 
 #[test]
+fn render_document_matches_chemdraw_hashed_wedge_count_thresholds() {
+    let document = fragment_document(
+        json!([
+            { "id": "n1", "element": "C", "atomicNumber": 6, "position": [10.0, 20.0], "charge": 0, "numHydrogens": 0 },
+            { "id": "n2", "element": "C", "atomicNumber": 6, "position": [24.49, 20.0], "charge": 0, "numHydrogens": 0 },
+            { "id": "n3", "element": "C", "atomicNumber": 6, "position": [10.0, 40.0], "charge": 0, "numHydrogens": 0 },
+            { "id": "n4", "element": "C", "atomicNumber": 6, "position": [24.50, 40.0], "charge": 0, "numHydrogens": 0 }
+        ]),
+        json!([
+            {
+                "id": "b1",
+                "begin": "n1",
+                "end": "n2",
+                "order": 1,
+                "strokeWidth": 1.0,
+                "hashSpacing": 2.7,
+                "stereo": { "kind": "hashed-wedge", "wideEnd": "end" }
+            },
+            {
+                "id": "b2",
+                "begin": "n3",
+                "end": "n4",
+                "order": 1,
+                "strokeWidth": 1.0,
+                "hashSpacing": 2.7,
+                "stereo": { "kind": "hashed-wedge", "wideEnd": "end" }
+            }
+        ]),
+    );
+
+    let polygons = object_bond_polygons_with_ids(&render_document(&document));
+    assert_eq!(
+        polygons
+            .iter()
+            .filter(|(bond_id, _)| bond_id == "b1")
+            .count(),
+        5
+    );
+    assert_eq!(
+        polygons
+            .iter()
+            .filter(|(bond_id, _)| bond_id == "b2")
+            .count(),
+        6
+    );
+}
+
+#[test]
 fn render_document_emits_main_contact_patches_for_connected_single_and_solid_wedge() {
     let document = fragment_document(
         json!([

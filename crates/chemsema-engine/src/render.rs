@@ -1326,17 +1326,15 @@ mod tests {
     }
 
     #[test]
-    fn hashed_wedge_gap_intervals_respect_start_offset_and_end_inset() {
-        let gaps = hashed_wedge_gap_intervals(18.0, VIEWER_BOND_STROKE * 2.0, &test_bond(), false);
+    fn hashed_wedge_gap_intervals_keep_every_stripe_one_line_width_long() {
+        let gaps = hashed_wedge_gap_intervals(18.0, VIEWER_BOND_STROKE * 2.0, &test_bond());
         assert!(!gaps.is_empty());
         assert!(gaps[0].0 > 0.0);
         assert!(gaps.last().unwrap().1 < 18.0);
 
-        let start_offset = crate::HASH_WEDGE_GAP_START_OFFSET_PT.value() * 2.0;
-        let end_inset = crate::HASH_WEDGE_GAP_END_INSET_PT.value() * 2.0;
-        let black_lengths = black_segment_lengths(18.0, start_offset, end_inset, &gaps);
+        let black_lengths = black_segment_lengths(18.0, 0.0, 0.0, &gaps);
         for length in &black_lengths {
-            approx_eq(*length, black_lengths[0]);
+            approx_eq(*length, VIEWER_BOND_STROKE * 2.0);
         }
     }
 

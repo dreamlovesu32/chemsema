@@ -194,8 +194,20 @@ Hash bonds are a separate model: a bold solid body plus white cut segments.
 
 - The body is a standard trapezoid.
 - Black segments are arranged along the trapezoid main axis.
-- Black segment lengths remain equal.
-- White segment lengths may vary within range; the count changes only when out of range.
+- Every black segment is exactly one `LineWidth` long along the main axis.
+- The first and last black segments touch the two ends of the final trapezoid.
+- `HashSpacing` is the minimum center-to-center pitch. ChemDraw chooses the
+  greatest count that satisfies that minimum, then distributes the centers
+  evenly between the endpoints:
+
+  ```text
+  count = max(1, 1 + floor((finalLength - LineWidth) / HashSpacing))
+  pitch = (finalLength - LineWidth) / (count - 1)   when count > 1
+  ```
+
+- This rule is based on silent ChemDraw SVG measurements over Default, ACS,
+  changed line widths, and changed hash spacings. Do not reuse the ordinary
+  dashed-bond allocator or force a minimum of two stripes on short wedges.
 - If either endpoint meets a label, label clipping is identical to solid wedge label clipping: use the centerline-clipped endpoint and do not add an extra wide-cap or hash-family retreat.
 
 ### Hashed Wedge Bonds And Ordinary Main Bonds

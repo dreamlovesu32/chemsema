@@ -126,7 +126,7 @@
 12. 二进制 CDX 的 `SymbolType`（property `0x0A07`）是 `INT16` 枚举，不是可直接透传的普通整数。导入导出必须按官方值映射 `LonePair=0`、`Electron=1`、`RadicalCation=2`、`RadicalAnion=3`、`CirclePlus=4`、`CircleMinus=5`、`Dagger=6`、`DoubleDagger=7`、`Plus=8`、`Minus=9`、`Racemic=10`、`Absolute=11`、`Relative=12`。
 13. `objecttag@PositioningType` 缺省值是官方定义的 `auto`，不能一概把内部 `t@p` 或 `t@BoundingBox` 当成最终显示位置。桌面 ChemDraw 生成的增强立体标签以所附节点为锚点，用缓存文本框相对节点的方向选择象限，再按字号归一化显示半径；只有 `offset`、`absolute` 等显式定位模式继续使用记录坐标。公共文件同时证明 ChemDraw JS 2.0 具有相反的生产者约定：它也省略 `PositioningType`，但 ChemDraw 打开时保留缓存位置。因此这里只在字段语义确实矛盾时按根级 `CreationProgram="ChemDraw JS …"` 兼容该生产者，而不按案例或文件名分支。
 14. 键上的自动 `query` 标签以键中点为锚点，并用缓存文本框判断位于键的哪一侧。文字框必须完整落在该侧，水平/垂直留白由字号度量得到；这使不同方向的 `Rxn` 标签保持相同视觉间距，同时不改写显式 `PositioningType="offset"` 的标签。
-15. 普通楔形虚线的 `HashSpacing` 不是完整的短划线中心节距；中心节距还包含与 `LineWidth` 成比例的短划线补偿。若只把 `HashSpacing - 短划线长度` 当作空白并强制均分，普通 30 pt 立体键会比 ChemDraw 多画一条短划线。接触端退让不能复用这个补偿量，仍使用文件记录的原始 `HashSpacing`；楔键连到 `Nickname`/外部连接片段（例如 `Me`）时也保持记录节距，而普通元素标签（例如 `OH`）不触发这项片段兼容。短键仍按实际可用长度取整，不能统一减一。
+15. 虚锲形键中每条黑段沿键轴的长度严格等于 `LineWidth`，`HashSpacing` 是相邻黑段中心距的下限。ChemDraw 取 `max(1, 1 + floor((最终键长 - LineWidth) / HashSpacing))` 条，再让首尾黑段贴住两端并均分中心距。该结论由 Default、ACS、不同 `LineWidth` 与不同 `HashSpacing` 的 0.5 pt 全域扫描和阈值附近 0.01 pt 精扫共同验证；不应复用普通虚线键的段数分配器，也不需要对 `Nickname`、外部连接点或短键增加分支。
 16. CDX 二进制中的 `LineHeight`、`LabelLineHeight` 和 `CaptionLineHeight` 固定数值以 1/20 screen point 编码；解码到 CDXML/内核点值时除以 20，回写 CDX 时乘以 20。`0=variable`、`1=auto` 两个特殊值不参与缩放。真实 ChemDraw 将二进制 `160`/`165` 分别保存为 CDXML `8`/`8.25`，不能把原始整数直接当作点值。
 
 对应回归测试覆盖显式/隐藏对象标签、自动/显式对象标签定位、缺省增强立体标签、楔形虚线节距、`HDot`、`HDash`、未连接 `MultiAttachment`、显式括号附件及 CDX 符号枚举；公共图像门禁继续负责验证这些语义的最终像素位置和尺寸。
