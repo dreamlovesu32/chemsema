@@ -1966,6 +1966,13 @@ fn text_object(
             }
         })
         .collect();
+    let (text, runs) = if node.attr("WordWrapWidth").is_some()
+        || (node.attr("LineStarts").is_some() && !text.contains(['\r', '\n']))
+    {
+        apply_cdxml_line_starts(&text, runs, node.attr("LineStarts"))
+    } else {
+        (text, runs)
+    };
     let width = bbox
         .map(|bbox| (bbox[2] - bbox[0]).abs())
         .filter(|width| *width > crate::EPSILON)

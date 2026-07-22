@@ -9106,6 +9106,12 @@ fn parse_cdxml_label_fields_keep_their_official_layout_roles() {
       </n>
       <n id="ml_up" p="170 12"/><n id="ml_down" p="170 28"/>
       <b id="ml_b1" B="authored_lines" E="ml_up"/><b id="ml_b2" B="authored_lines" E="ml_down"/>
+
+      <n id="authored_offsets" p="154 64" NodeType="Fragment">
+        <t p="154 68" LineStarts="3 5"><s font="3" size="10" face="96">Cl2Zr</s></t>
+      </n>
+      <n id="mo_right" p="170 64"/>
+      <b id="mo_b1" B="authored_offsets" E="mo_right"/>
     </fragment>
   </page>
 </CDXML>"##;
@@ -9144,6 +9150,9 @@ fn parse_cdxml_label_fields_keep_their_official_layout_roles() {
             .collect::<String>(),
         "Zr"
     );
+    assert_eq!(label("authored_offsets").text, "Cl2\nZr");
+    assert_eq!(label("authored_offsets").lines, ["Cl2", "Zr"]);
+    assert_eq!(label("authored_offsets").line_runs.len(), 2);
 }
 
 #[test]
@@ -9230,6 +9239,33 @@ fn cdxml_caption_fields_override_obsolete_text_fields_and_roundtrip() {
         );
     }
     assert!(!exported.contains("LabelJustification=\"Center\""));
+}
+
+#[test]
+fn parse_cdxml_applies_authored_line_starts_to_unbroken_caption_runs() {
+    let source = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML CaptionJustification="Center">
+  <page id="1">
+    <t id="2" p="50 20" BoundingBox="10 10 90 34"
+       CaptionJustification="Center" WordWrapWidth="80" LineStarts="5">
+      <s font="3" size="10">alphabeta</s>
+    </t>
+  </page>
+</CDXML>"##;
+    let document = parse_cdxml_document(source, Some("authored line starts")).expect("CDXML");
+    let text = document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "text")
+        .expect("text object");
+    assert_eq!(text.payload.extra.get("text"), Some(&json!("alpha\nbeta")));
+    let rendered_runs = text
+        .payload
+        .extra
+        .get("runs")
+        .and_then(|value| value.as_array())
+        .expect("styled runs");
+    assert_eq!(rendered_runs[0].get("text"), Some(&json!("alpha\nbeta")));
 }
 
 #[test]

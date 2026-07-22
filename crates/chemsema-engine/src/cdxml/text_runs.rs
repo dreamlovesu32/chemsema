@@ -14,19 +14,20 @@ pub(super) fn label_source_run(
     fonts: &BTreeMap<String, String>,
 ) -> LabelRun {
     let decoded_face = decode_cdxml_face(face);
+    let source_family = fonts.get(font_id).map(String::as_str).unwrap_or("Arial");
+    let (font_family, family_bold, family_italic) = split_cdxml_font_family_style(source_family);
     LabelRun {
         text: text.to_string(),
-        font_family: Some(
-            fonts
-                .get(font_id)
-                .cloned()
-                .unwrap_or_else(|| "Arial".to_string()),
-        ),
+        font_family: Some(font_family),
         font_size: Some(round2(font_size)),
         fill: Some(colors.resolve(Some(color_id))),
-        font_weight: Some(if decoded_face.bold { 700 } else { 400 }),
+        font_weight: Some(if decoded_face.bold || family_bold {
+            700
+        } else {
+            400
+        }),
         font_style: Some(
-            if decoded_face.italic {
+            if decoded_face.italic || family_italic {
                 "italic"
             } else {
                 "normal"
@@ -36,6 +37,25 @@ pub(super) fn label_source_run(
         underline: Some(decoded_face.underline),
         script: Some(decoded_face.script.to_string()),
     }
+}
+
+fn split_cdxml_font_family_style(name: &str) -> (String, bool, bool) {
+    let lower = name.to_ascii_lowercase();
+    for (suffix, bold, italic) in [
+        (" bold italic", true, true),
+        (" bold oblique", true, true),
+        (" italic", false, true),
+        (" oblique", false, true),
+        (" bold", true, false),
+    ] {
+        if lower.ends_with(suffix) {
+            let family = name[..name.len() - suffix.len()].trim_end();
+            if !family.is_empty() {
+                return (family.to_string(), bold, italic);
+            }
+        }
+    }
+    (name.to_string(), false, false)
 }
 
 pub(super) fn label_display_runs(
@@ -314,6 +334,22 @@ mod tests {
                 .map(|run| (run.text.as_str(), run.script.as_deref()))
                 .collect::<Vec<_>>(),
             vec![("Fe", Some("normal")), ("10+", Some("superscript"))]
+        );
+    }
+
+    #[test]
+    fn legacy_font_style_suffixes_resolve_to_css_family_and_face() {
+        assert_eq!(
+            split_cdxml_font_family_style("Arial Bold"),
+            ("Arial".to_string(), true, false)
+        );
+        assert_eq!(
+            split_cdxml_font_family_style("Helvetica Bold Oblique"),
+            ("Helvetica".to_string(), true, true)
+        );
+        assert_eq!(
+            split_cdxml_font_family_style("Times New Roman"),
+            ("Times New Roman".to_string(), false, false)
         );
     }
 }

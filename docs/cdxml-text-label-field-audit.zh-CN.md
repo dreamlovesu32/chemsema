@@ -86,6 +86,21 @@
 - [WordWrapWidth](https://iupac.github.io/IUPAC-FAIRSpec/cdx_sdk/properties/WordWrapWidth.htm)
 - [LineStarts](https://iupac.github.io/IUPAC-FAIRSpec/cdx_sdk/properties/LineStarts.htm)
 
+## `LineStarts` 导入规则补充（2026-07-21）
+
+- `LineStarts` 是作者保存的各行起始字符索引，同时适用于自由文本 `Text` 和节点标签 `Node`；导入时必须把这些索引落实为实际行结构，不能只写入元数据。
+- 索引按去除 XML 序列化换行后的连续字符流计算。样式段边界之间出现的 CR/LF 不参与索引计数；否则会把第二行错误拆成第三行。
+- 列表最后一个值允许等于文本长度，它是行范围的结束哨兵，不产生空行，也不能在最后一个字符前插入换行。
+- 当源码已经包含显式换行且没有 `WordWrapWidth` 时，保留现有行结构，不再次套用 `LineStarts`，避免对旧文件重复分行。
+- 同一规则同时重建纯文本和样式 runs，保证换行前后的字体、字重、颜色、上下标不丢失；不得按文件名、案例编号或具体化学名称分支。
+
+## 旧式字体家族/字形拆分规则（2026-07-21）
+
+- 旧式 CDXML fonttable 会把字形写进字体名，例如 `Arial Bold`、`Arial Bold Italic`、`Helvetica Bold`、`Helvetica Bold Oblique`；同一文本 run 的 `face` 通常还会重复保存 bold/italic 位。
+- 导入 CSS/SVG 字体时，将末尾的 `Bold`、`Italic`、`Oblique`、`Bold Italic`、`Bold Oblique` 从家族名拆出，家族分别回到 `Arial` 或 `Helvetica`，字形合并进 `fontWeight`/`fontStyle`。
+- 字体名字形和 `face` 按逻辑“或”合并：任何一处声明粗体或斜体都必须保留，不能因规范化家族名丢失样式。
+- 该规则适用于节点标签、自由文本和文档默认文字样式，不按反应类型、化学名称或文件来源分支。
+
 ## 节点立体标记与对象标签补充规则
 
 本轮公共 CDXML/CDX 像素对照补充了以下导入与绘制规则。这些规则按字段语义执行，不依赖文件名、案例编号或分子结构特例。

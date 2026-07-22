@@ -1757,6 +1757,14 @@ fn node_label(
             })
         })
         .collect();
+    let (text, wrapped_source_runs) = if text_el.attr("WordWrapWidth").is_some()
+        || (text_el.attr("LineStarts").is_some() && !text.contains(['\r', '\n']))
+    {
+        apply_cdxml_line_starts(&text, source_runs, text_el.attr("LineStarts"))
+    } else {
+        (text, source_runs)
+    };
+    source_runs = wrapped_source_runs;
     for run in &mut source_runs {
         match (interpret_chemically, run.script.as_deref()) {
             (true, None | Some("normal")) => run.script = Some("chemical".to_string()),
@@ -1869,6 +1877,62 @@ fn split_label_runs_by_line(runs: &[LabelRun]) -> Vec<Vec<LabelRun>> {
         }
     }
     lines
+}
+
+fn apply_cdxml_line_starts(
+    text: &str,
+    runs: Vec<LabelRun>,
+    line_starts: Option<&str>,
+) -> (String, Vec<LabelRun>) {
+    if line_starts.is_none() {
+        return (text.to_string(), runs);
+    }
+    // CDXML stores authored wrapping in LineStarts. Newlines found between
+    // styled runs are serialization whitespace and are not counted by those
+    // offsets; the final offset may be the end-of-text sentinel.
+    let text = text.replace(['\r', '\n'], "");
+    let starts: BTreeSet<usize> = line_starts
+        .into_iter()
+        .flat_map(str::split_whitespace)
+        .filter_map(|value| value.parse::<usize>().ok())
+        .filter(|offset| *offset > 0 && *offset < text.chars().count())
+        .collect();
+    if starts.is_empty() {
+        return (text, runs);
+    }
+
+    let insert_breaks = |value: &str| {
+        let mut output = String::with_capacity(value.len() + starts.len());
+        for (offset, character) in value.chars().enumerate() {
+            if starts.contains(&offset) && !output.ends_with('\n') && character != '\n' {
+                output.push('\n');
+            }
+            output.push(character);
+        }
+        output
+    };
+    let text = insert_breaks(&text);
+    let mut offset = 0usize;
+    let mut wrapped_runs = Vec::with_capacity(runs.len() + starts.len());
+    for run in runs {
+        let mut current = run.clone();
+        current.text.clear();
+        for character in run
+            .text
+            .chars()
+            .filter(|character| !matches!(character, '\r' | '\n'))
+        {
+            if starts.contains(&offset) && !current.text.ends_with('\n') && character != '\n' {
+                current.text.push('\n');
+            }
+            current.text.push(character);
+            offset += 1;
+        }
+        if !current.text.is_empty() {
+            wrapped_runs.push(current);
+        }
+    }
+    (text, wrapped_runs)
 }
 
 fn attr_eq_ignore_ascii_case(value: Option<&str>, expected: &str) -> bool {
