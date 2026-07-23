@@ -64,6 +64,7 @@ pub(super) fn push_selection_box(
     bounds: AxisBounds,
     role: RenderRole,
 ) {
+    let bounds = bounds.with_minimum_size(SELECTION_NODE_BOX_SIZE);
     out.push(RenderPrimitive::Rect {
         role,
         object_id: None,

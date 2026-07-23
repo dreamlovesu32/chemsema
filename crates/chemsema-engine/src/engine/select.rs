@@ -132,6 +132,17 @@ impl AxisBounds {
         }
     }
 
+    fn with_minimum_size(self, minimum: f64) -> Self {
+        let expand_x = (minimum - self.width()).max(0.0) * 0.5;
+        let expand_y = (minimum - self.height()).max(0.0) * 0.5;
+        Self {
+            min_x: self.min_x - expand_x,
+            min_y: self.min_y - expand_y,
+            max_x: self.max_x + expand_x,
+            max_y: self.max_y + expand_y,
+        }
+    }
+
     fn width(self) -> f64 {
         (self.max_x - self.min_x).max(0.0)
     }

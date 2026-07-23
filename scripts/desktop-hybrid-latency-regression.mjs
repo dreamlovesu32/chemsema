@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import net from "node:net";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,6 +9,7 @@ const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const host = "127.0.0.1";
 const port = Number(process.env.CHEMSEMA_DESKTOP_DEV_PORT || 8767);
 const baseUrl = `http://${host}:${port}/viewer/`;
+const edgePath = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
 const nodeCount = Number(process.env.CHEMSEMA_HYBRID_LATENCY_NODE_COUNT || 5000);
 const nativeDelayMs = Number(process.env.CHEMSEMA_HYBRID_FAKE_NATIVE_DELAY_MS || 250);
 const documentJsonDelayMs = Number(process.env.CHEMSEMA_HYBRID_DOCUMENT_JSON_DELAY_MS || 140);
@@ -263,7 +265,10 @@ async function main() {
   const server = await ensureServer();
   let browser = null;
   try {
-    browser = await chromium.launch({ headless: true });
+    browser = await chromium.launch({
+      headless: true,
+      executablePath: existsSync(edgePath) ? edgePath : undefined,
+    });
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     const errors = [];
     page.on("console", (message) => {
@@ -310,6 +315,10 @@ async function main() {
       };
 
       const samples = [];
+      session.setTool("select", "");
+      session.selectAtPoint(40, 40, false);
+      const localSelectionSummary = JSON.parse(session.selectionChemistrySummaryJson() || "null");
+
       session.setTool("arrow", "single");
       session.pointerDown(300, 200, false);
       for (let index = 0; index < 60; index += 1) {
@@ -421,6 +430,7 @@ async function main() {
         beforeBracketLabel,
         afterBracketLabel,
         afterBracketLabelNativeCatchup,
+        localSelectionSummary,
         documentJsonCalls,
         counts,
         maxMs,
@@ -443,6 +453,10 @@ async function main() {
       assert(!sample.awaited, `${sample.name} returned a Promise and was awaited: ${JSON.stringify(sample)}`);
     }
     assert(result.beganMove === true, `Selection move did not begin: ${JSON.stringify(result)}`);
+    assert(
+      result.localSelectionSummary?.formula && result.localSelectionSummary?.formulaWeight > 0,
+      `Desktop hybrid selection summary did not read the immediate local selection state: ${JSON.stringify(result.localSelectionSummary)}`,
+    );
     assert(result.counts.desktop_engine_finish_selection_move >= 1, `Native selection finish was not queued: ${JSON.stringify(result.counts)}`);
     assert(result.counts.desktop_engine_pointer_up >= 1, `Native pointerUp was not queued: ${JSON.stringify(result.counts)}`);
     assert(

@@ -7832,6 +7832,9 @@ fn select_tool_click_on_bond_does_not_render_outer_region_box() {
 
     engine.select_at_point(Point::new(FIRST_CENTER_X, FIRST_CENTER_Y), false);
 
+    let (_, _, selection_width, selection_height) = selection_bond_rect(&engine);
+    assert!(selection_width >= px(3.0));
+    assert!(selection_height >= px(3.0));
     let render_list = engine.render_list();
     assert!(render_list.iter().any(|primitive| matches!(
         primitive,

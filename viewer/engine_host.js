@@ -455,6 +455,9 @@ class TauriEngineSession {
   }
 
   selectionChemistrySummaryJson() {
+    if (this.layoutEngine?.selectionChemistrySummaryJson) {
+      return this.layoutEngine.selectionChemistrySummaryJson();
+    }
     return this.cache.selectionChemistrySummaryJson || "null";
   }
 

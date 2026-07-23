@@ -12,7 +12,9 @@ const port = Number(process.env.CHEMSEMA_DESKTOP_DEV_PORT || 8767);
 const baseUrl = `http://${host}:${port}/viewer/`;
 const edgePath = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
 const tmpDir = join(rootDir, "tmp", "gui-regression");
-const exactTieOnly = process.env.CHEMSEMA_GUI_CASE === "exact-tie-double";
+const guiCase = process.env.CHEMSEMA_GUI_CASE || "";
+const exactTieOnly = guiCase === "exact-tie-double";
+const selectionSummaryOnly = guiCase === "selection-summary";
 
 function waitForPort(timeoutMs = 5000) {
   const deadline = Date.now() + timeoutMs;
@@ -296,13 +298,18 @@ async function firstBondScreenGeometry(page) {
 
 async function selectionOverlayRoles(page) {
   return page.evaluate(() => [...document.querySelectorAll('#viewer-svg [data-role^="selection-"]')]
-    .map((element) => ({
-      role: element.getAttribute("data-role"),
-      tag: element.tagName.toLowerCase(),
-      fill: element.getAttribute("fill"),
-      stroke: element.getAttribute("stroke"),
-      strokeWidth: element.getAttribute("stroke-width"),
-    })));
+    .map((element) => {
+      const bounds = element.getBoundingClientRect();
+      return {
+        role: element.getAttribute("data-role"),
+        tag: element.tagName.toLowerCase(),
+        fill: element.getAttribute("fill"),
+        stroke: element.getAttribute("stroke"),
+        strokeWidth: element.getAttribute("stroke-width"),
+        screenWidth: bounds.width,
+        screenHeight: bounds.height,
+      };
+    }));
 }
 
 function assertBondSelectionDot(roles, label) {
@@ -335,9 +342,21 @@ async function verifySelectionOverlayConsistency(page) {
   await page.waitForFunction(() => document.querySelector('[data-role="selection-box"]'));
   const boxRoles = await selectionOverlayRoles(page);
   assert(boxRoles.some((entry) => entry.role === "selection-box"), `Box-select did not render the component selection box: ${JSON.stringify(boxRoles)}`);
+  const componentBox = boxRoles.find((entry) => entry.role === "selection-box");
+  assert(
+    componentBox.screenWidth >= 2.9 && componentBox.screenHeight >= 2.9,
+    `Component selection box lost its endpoint-focus-diameter minimum size: ${JSON.stringify(componentBox)}`,
+  );
   assert(
     !boxRoles.some((entry) => entry.role === "selection-bond-dot"),
     `Box-selecting a complete molecule should suppress internal bond center dots: ${JSON.stringify(boxRoles)}`,
+  );
+  const chemistrySummary = (await page.locator("#selection-chemistry-summary").textContent()) || "";
+  assert(
+    chemistrySummary.includes("C2H6")
+      && chemistrySummary.includes("Formula Weight")
+      && chemistrySummary.includes("Exact Mass"),
+    `Selected molecule did not populate the chemistry summary bar: ${JSON.stringify(chemistrySummary)}`,
   );
 }
 
@@ -625,14 +644,20 @@ try {
   await installBrowserMocks(context);
   const errors = [];
 
-  const fixturePath = await createOpenFixture(context, errors);
-  await verifyOpenButton(context, errors, fixturePath);
+  if (!selectionSummaryOnly) {
+    const fixturePath = await createOpenFixture(context, errors);
+    await verifyOpenButton(context, errors, fixturePath);
 
-  const exactTiePage = await openViewer(context, errors);
-  await verifyExactTieDoubleBondIncrementalReplacement(exactTiePage);
-  await exactTiePage.close();
+    const exactTiePage = await openViewer(context, errors);
+    await verifyExactTieDoubleBondIncrementalReplacement(exactTiePage);
+    await exactTiePage.close();
+  }
 
-  if (!exactTieOnly) {
+  if (selectionSummaryOnly) {
+    const page = await openViewer(context, errors);
+    await verifySelectionOverlayConsistency(page);
+    await page.close();
+  } else if (!exactTieOnly) {
     const page = await openViewer(context, errors);
     await verifyToolbarAndCursor(page);
     await verifySelectionOverlayConsistency(page);
@@ -650,9 +675,11 @@ try {
   }
 
   assert.equal(errors.length, 0, `GUI regression saw console/page errors:\n${errors.join("\n")}`);
-  console.log(exactTieOnly
-    ? "[gui-regression] ok (exact-tie double bond)"
-    : "[gui-regression] ok (open, save-as ccjs/cdxml/svg, ctrl+s ccjz, copy/paste/cut, toolbar icons, cursors, selection overlay, delete tool, exact-tie double bond, zoom, style)");
+  console.log(selectionSummaryOnly
+    ? "[gui-regression] ok (selection summary and minimum selection box)"
+    : exactTieOnly
+      ? "[gui-regression] ok (exact-tie double bond)"
+      : "[gui-regression] ok (open, save-as ccjs/cdxml/svg, ctrl+s ccjz, copy/paste/cut, toolbar icons, cursors, selection overlay, delete tool, exact-tie double bond, zoom, style)");
 } finally {
   await browser?.close();
   if (server) {
