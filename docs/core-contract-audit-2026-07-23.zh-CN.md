@@ -1,0 +1,333 @@
+# ChemSema 核心契约自动审查
+
+生成时间：`2026-07-23T06:39:22.849Z`
+
+本报告只把可机械证明的问题列为 error；需要结合设计文档判断的候选项列为 review。
+文档规定的默认值不是 fallback；未知类型静默跳过、失败后改走另一套语义、吞异常才是禁止的 fallback。
+
+## 摘要
+
+- Error: 40
+- Warning: 75
+- Review: 60
+
+## 对象能力矩阵
+
+| Object | render | selection coverage | selectable | select all | clipboard completeness | rotation | transform policy | CDXML export |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| molecule | explicit | explicit | explicit | — | explicit | — | — | explicit |
+| text | explicit | explicit | explicit | explicit | explicit | explicit | explicit | explicit |
+| line | explicit | explicit | explicit | explicit | explicit | explicit | — | explicit |
+| curve | explicit | — | — | — | — | — | — | explicit |
+| bracket | explicit | explicit | explicit | explicit | explicit | explicit | explicit | explicit |
+| symbol | explicit | explicit | explicit | explicit | explicit | explicit | explicit | explicit |
+| shape | explicit | explicit | explicit | explicit | explicit | explicit | explicit | explicit |
+| image | explicit | explicit | explicit | explicit | explicit | explicit | explicit | explicit |
+| group | — | explicit | explicit | explicit | explicit | explicit | — | explicit |
+
+## ERROR (40)
+
+- `FALLBACK-SEMANTIC` crates/chemsema-engine/src/cdxml.rs:1322 — CDXML without authoritative coordinates is silently laid out by an invented topology algorithm.
+  - Evidence: `fallback_cdxml_topology_positions`
+- `FALLBACK-UNKNOWN-OBJECT` crates/chemsema-engine/src/cdxml/export.rs:537 — write_scene_object silently accepts an unknown object type.
+  - Evidence: `_ => {}`
+- `OBJECT-TYPE-DRIFT` crates/chemsema-engine/src/cdxml/import_objects.rs:338 — CDXML imports a first-class 'curve' object, but CCJS v0.1 does not define that object type.
+  - Evidence: `The native model defines curved strokes under line; import must normalize to line or the format must explicitly add curve.`
+- `OBJECT-TYPE-DRIFT` crates/chemsema-engine/src/cdxml/import_objects.rs:1522 — CDXML imports a first-class 'symbol' object, but CCJS v0.1 does not define that object type.
+  - Evidence: `The object must be documented as first-class or normalized to a documented bracket/shape/line semantic.`
+- `ARCH-LARGE-FILE` crates/chemsema-engine/src/engine.rs:1 — Source file has 4920 lines and mixes too many responsibilities.
+- `ARCH-LARGE-FUNCTION` crates/chemsema-engine/src/engine.rs:2066 — execute_command is 583 lines; split ownership and behavior into named rules.
+- `OBJECT-CURVE-PARTIAL` crates/chemsema-engine/src/engine/clipboard.rs:481 — The imported/rendered 'curve' object has no explicit 'clipboard completeness' rule.
+  - Evidence: `visible_root_object_is_selected_for_clipboard does not mention "curve".`
+- `FALLBACK-UNKNOWN-OBJECT` crates/chemsema-engine/src/engine/clipboard.rs:492 — visible_root_object_is_selected_for_clipboard silently accepts an unknown object type.
+  - Evidence: `_ => true`
+- `OBJECT-CURVE-PARTIAL` crates/chemsema-engine/src/engine/select.rs:1440 — The imported/rendered 'curve' object has no explicit 'select all' rule.
+  - Evidence: `select_all does not mention "curve".`
+- `OBJECT-CURVE-PARTIAL` crates/chemsema-engine/src/engine/select/drag.rs:248 — The imported/rendered 'curve' object has no explicit 'rotation' rule.
+  - Evidence: `rotated_scene_object does not mention "curve".`
+- `OBJECT-CURVE-GEOMETRY` crates/chemsema-engine/src/engine/select/drag.rs:248 — rotated_scene_object does not transform the CDXML curvePoints geometry.
+  - Evidence: `Curve rendering/export use curvePoints, so translation-only behavior cannot preserve rotation/resize semantics.`
+- `OBJECT-CURVE-GEOMETRY` crates/chemsema-engine/src/engine/select/drag.rs:636 — resized_scene_object does not transform the CDXML curvePoints geometry.
+  - Evidence: `Curve rendering/export use curvePoints, so translation-only behavior cannot preserve rotation/resize semantics.`
+- `OBJECT-CURVE-PARTIAL` crates/chemsema-engine/src/engine/select/drag.rs:872 — The imported/rendered 'curve' object has no explicit 'transform policy' rule.
+  - Evidence: `object_transform_participates_in_render does not mention "curve".`
+- `FALLBACK-UNKNOWN-OBJECT` crates/chemsema-engine/src/engine/select/drag.rs:874 — object_transform_participates_in_render silently accepts an unknown object type.
+  - Evidence: `_ => false`
+- `OBJECT-CURVE-PARTIAL` crates/chemsema-engine/src/engine/select/render.rs:89 — The imported/rendered 'curve' object has no explicit 'selection coverage' rule.
+  - Evidence: `scene_object_selection_coverage does not mention "curve".`
+- `OBJECT-CURVE-PARTIAL` crates/chemsema-engine/src/engine/select/render.rs:164 — The imported/rendered 'curve' object has no explicit 'selectable' rule.
+  - Evidence: `scene_object_is_selectable does not mention "curve".`
+- `FALLBACK-UNKNOWN-OBJECT` crates/chemsema-engine/src/render.rs:1078 — render_scene_object silently accepts an unknown object type.
+  - Evidence: `_ => {}`
+- `FALLBACK-SEMANTIC` crates/chemsema-engine/src/render/labels.rs:408 — Bond retreat falls back from authoritative glyph polygons to a label rectangle.
+  - Evidence: `clip_point_out_of_box`
+- `ARCH-LARGE-FUNCTION` viewer/app_window_lifecycle.js:8 — createAppWindowLifecycleHost is 461 lines; split ownership and behavior into named rules.
+- `ARCH-LARGE-FILE` viewer/app.js:1 — Source file has 4084 lines and mixes too many responsibilities.
+- `FALLBACK-EMPTY-ASYNC-ERROR` viewer/app.js:2443 — An asynchronous failure is discarded without an explicit state transition or error report.
+  - Evidence: `.catch(() => {});`
+- `ARCH-LARGE-FUNCTION` viewer/browser_document_tabs.js:19 — createBrowserDocumentTabs is 557 lines; split ownership and behavior into named rules.
+- `ARCH-LARGE-FUNCTION` viewer/document_flow.js:24 — createDocumentFlow is 702 lines; split ownership and behavior into named rules.
+- `ARCH-LARGE-FUNCTION` viewer/editor_context_menu.js:1 — createCanvasContextMenuHost is 588 lines; split ownership and behavior into named rules.
+- `ARCH-LARGE-FUNCTION` viewer/editor_overlay.js:19 — createEditorOverlayRenderer is 769 lines; split ownership and behavior into named rules.
+- `ARCH-LARGE-FUNCTION` viewer/editor_pointer_controller.js:15 — createEditorPointerController is 1582 lines; split ownership and behavior into named rules.
+- `ARCH-LARGE-FUNCTION` viewer/editor_pointer_controller.js:1161 — handleEditorPointerUp is 380 lines; split ownership and behavior into named rules.
+- `ARCH-LARGE-FUNCTION` viewer/editor_viewport_host.js:22 — createEditorViewportHost is 739 lines; split ownership and behavior into named rules.
+- `FALLBACK-EMPTY-ASYNC-ERROR` viewer/engine_host.js:136 — An asynchronous failure is discarded without an explicit state transition or error report.
+  - Evidence: `.catch(() => {});`
+- `FALLBACK-EMPTY-ASYNC-ERROR` viewer/engine_host.js:156 — An asynchronous failure is discarded without an explicit state transition or error report.
+  - Evidence: `.catch(() => {}).then(run);`
+- `FALLBACK-EMPTY-ASYNC-ERROR` viewer/engine_host.js:234 — An asynchronous failure is discarded without an explicit state transition or error report.
+  - Evidence: `.catch(() => {}).then(run);`
+- `FALLBACK-EMPTY-ASYNC-ERROR` viewer/engine_host.js:260 — An asynchronous failure is discarded without an explicit state transition or error report.
+  - Evidence: `.catch(() => {}).then(run);`
+- `FALLBACK-EMPTY-ASYNC-ERROR` viewer/engine_host.js:368 — An asynchronous failure is discarded without an explicit state transition or error report.
+  - Evidence: `.catch(() => {});`
+- `FRONTEND-HYBRID-READ-BARRIER` viewer/engine_host.js:1326 — hasClipboard can read native clipboard/selection state before queued local selection mutations reach native.
+  - Evidence: `The full GUI copy/paste/cut sequence reproduces this race.`
+- `FRONTEND-HYBRID-READ-BARRIER` viewer/engine_host.js:1331 — clipboardSelectionJson can read native clipboard/selection state before queued local selection mutations reach native.
+  - Evidence: `The full GUI copy/paste/cut sequence reproduces this race.`
+- `FRONTEND-HYBRID-READ-BARRIER` viewer/engine_host.js:1336 — clipboardDocumentJson can read native clipboard/selection state before queued local selection mutations reach native.
+  - Evidence: `The full GUI copy/paste/cut sequence reproduces this race.`
+- `FRONTEND-HYBRID-READ-BARRIER` viewer/engine_host.js:1341 — clipboardCdxml can read native clipboard/selection state before queued local selection mutations reach native.
+  - Evidence: `The full GUI copy/paste/cut sequence reproduces this race.`
+- `ARCH-LARGE-FUNCTION` viewer/text_editor_controller.js:3 — createTextEditorController is 678 lines; split ownership and behavior into named rules.
+- `FALLBACK-SEMANTIC` viewer/text_metrics.js:121 — The viewer invents glyph geometry when the shared kernel profile has no character rule.
+  - Evidence: `inferredGlyphProfile`
+- `FALLBACK-SEMANTIC` viewer/text_metrics.js:247 — The viewer owns a second text-width rule instead of consuming kernel layout geometry.
+  - Evidence: `estimatedEditorCharWidth`
+
+## WARNING (75)
+
+- `ARCH-LARGE-FUNCTION` crates/chemsema-cli/src/agent/capture.rs:3 — capture_command is 320 lines and needs a focused decomposition review.
+- `ARCH-LARGE-FUNCTION` crates/chemsema-cli/src/agent/context.rs:3 — context_command is 281 lines and needs a focused decomposition review.
+- `ARCH-LARGE-FILE` crates/chemsema-cli/src/main.rs:1 — Source file has 3749 lines and needs an ownership review.
+- `ARCH-LARGE-FUNCTION` crates/chemsema-cli/src/main.rs:1467 — run_command_script is 204 lines and needs a focused decomposition review.
+- `ARCH-LARGE-FILE` crates/chemsema-engine/src/cdx.rs:1 — Source file has 3389 lines and needs an ownership review.
+- `ARCH-EXACT-DUPLICATE` crates/chemsema-engine/src/cdx.rs:221 — Exact function body is duplicated across 2 files.
+  - Evidence: `crates/chemsema-engine/src/cdx.rs:decode_hex_bytes, crates/chemsema-engine/src/cdxml/import_objects.rs:decode_cdxml_hex_bytes`
+- `ARCH-LARGE-FILE` crates/chemsema-engine/src/cdxml.rs:1 — Source file has 2871 lines and needs an ownership review.
+- `ARCH-LARGE-FUNCTION` crates/chemsema-engine/src/cdxml.rs:264 — parse_cdxml_document is 221 lines and needs a focused decomposition review.
+- `ARCH-EXACT-DUPLICATE` crates/chemsema-engine/src/cdxml.rs:1701 — Exact function body is duplicated across 2 files.
+  - Evidence: `crates/chemsema-engine/src/cdxml.rs:fragment_connected_components, crates/chemsema-engine/src/document.rs:molecule_fragment_connected_components`
+- `ARCH-EXACT-DUPLICATE` crates/chemsema-engine/src/cdxml.rs:1771 — Exact function body is duplicated across 2 files.
+  - Evidence: `crates/chemsema-engine/src/cdxml.rs:component_local_bounds, crates/chemsema-engine/src/document.rs:molecule_component_bounds`
+- `ARCH-EXACT-DUPLICATE` crates/chemsema-engine/src/cdxml.rs:1822 — Exact function body is duplicated across 2 files.
+  - Evidence: `crates/chemsema-engine/src/cdxml.rs:translate_node_label_geometry, crates/chemsema-engine/src/document.rs:translate_node_label_geometry`
+- `ARCH-LARGE-FILE` crates/chemsema-engine/src/cdxml/export.rs:1 — Source file has 2974 lines and needs an ownership review.
+- `ARCH-LARGE-FUNCTION` crates/chemsema-engine/src/cdxml/export.rs:1107 — write_line_object is 219 lines and needs a focused decomposition review.
+- `ARCH-LARGE-FUNCTION` crates/chemsema-engine/src/cdxml/export.rs:1410 — write_shape_object is 260 lines and needs a focused decomposition review.
+- `ARCH-LARGE-FILE` crates/chemsema-engine/src/cdxml/import_objects.rs:1 — Source file has 2781 lines and needs an ownership review.
+- `ARCH-LARGE-FUNCTION` crates/chemsema-engine/src/cdxml/import_objects.rs:376 — append_line_objects is 214 lines and needs a focused decomposition review.
+- `ARCH-LARGE-FUNCTION` crates/chemsema-engine/src/cdxml/import_objects.rs:1439 — append_bracket_objects is 290 lines and needs a focused decomposition review.
+- `ARCH-LARGE-FILE` crates/chemsema-engine/src/document.rs:1 — Source file has 3114 lines and needs an ownership review.
+- `ARCH-EXACT-DUPLICATE` crates/chemsema-engine/src/editing/arrows.rs:265 — Exact function body is duplicated across 2 files.
+  - Evidence: `crates/chemsema-engine/src/editing/arrows.rs:point_at_distance_from_start, crates/chemsema-engine/src/render_objects/arrows.rs:point_at_distance_from_start`
+- `ARCH-EXACT-DUPLICATE` crates/chemsema-engine/src/editing/geometry.rs:154 — Exact function body is duplicated across 3 files.
+  - Evidence: `crates/chemsema-engine/src/editing/geometry.rs:polygon_bounds, crates/chemsema-engine/src/engine/text_edit/geometry.rs:polygon_bounds, crates/chemsema-engine/src/engine/text_edit/labels.rs:label_polygon_bounds`
+- `ARCH-EXACT-DUPLICATE` crates/chemsema-engine/src/editing/geometry.rs:171 — Exact function body is duplicated across 2 files.
+  - Evidence: `crates/chemsema-engine/src/editing/geometry.rs:polygon_anchor_point, crates/chemsema-engine/src/engine/text_edit/geometry.rs:polygon_anchor_point`
+- `ARCH-EXACT-DUPLICATE` crates/chemsema-engine/src/editing/geometry.rs:188 — Exact function body is duplicated across 2 files.
+  - Evidence: `crates/chemsema-engine/src/editing/geometry.rs:label_glyph_anchor_point, crates/chemsema-engine/src/engine/text_edit/geometry.rs:label_editor_anchor_point`
+- `ARCH-EXACT-DUPLICATE` crates/chemsema-engine/src/engine.rs:119 — Exact function body is duplicated across 3 files.
+  - Evidence: `crates/chemsema-engine/src/engine.rs:render_primitive_role, crates/chemsema-engine/src/render.rs:render_primitive_role, crates/chemsema-engine/src/render_svg.rs:render_primitive_role`
+- `ARCH-LARGE-FUNCTION` crates/chemsema-engine/src/engine/chemistry.rs:16 — insert_smiles_untracked is 207 lines and needs a focused decomposition review.
+- `ARCH-LARGE-FUNCTION` crates/chemsema-engine/src/engine/chemistry.rs:298 — chemical_molecule_for_targets is 227 lines and needs a focused decomposition review.
+- `ARCH-LARGE-FILE` crates/chemsema-engine/src/engine/context_menu.rs:1 — Source file has 2005 lines and needs an ownership review.
+- `ARCH-LARGE-FUNCTION` crates/chemsema-engine/src/engine/context_menu.rs:141 — context_menu_items is 201 lines and needs a focused decomposition review.
+- `ARCH-EXACT-DUPLICATE` crates/chemsema-engine/src/engine/context_menu.rs:759 — Exact function body is duplicated across 2 files.
+  - Evidence: `crates/chemsema-engine/src/engine/context_menu.rs:selected_bonds, crates/chemsema-engine/src/engine/presets.rs:selected_object_settings_bonds`
+- `ARCH-LARGE-FILE` crates/chemsema-engine/src/engine/context_styles.rs:1 — Source file has 2205 lines and needs an ownership review.
+- `ARCH-EXACT-DUPLICATE` crates/chemsema-engine/src/engine/links.rs:323 — Exact function body is duplicated across 2 files.
+  - Evidence: `crates/chemsema-engine/src/engine/links.rs:set_meta_object_field, crates/chemsema-engine/src/repeating_units.rs:set_meta_object_field`
+- `ARCH-LARGE-FILE` crates/chemsema-engine/src/engine/select.rs:1 — Source file has 2528 lines and needs an ownership review.
+- `ARCH-EXACT-DUPLICATE` crates/chemsema-engine/src/engine/select/drag.rs:616 — Exact function body is duplicated across 2 files.
+  - Evidence: `crates/chemsema-engine/src/engine/select/drag.rs:selection_resize_handle_point, crates/chemsema-engine/src/engine/select/geometry.rs:selection_resize_handle_center`
+- `ARCH-EXACT-DUPLICATE` crates/chemsema-engine/src/engine/select/geometry.rs:230 — Exact function body is duplicated across 2 files.
+  - Evidence: `crates/chemsema-engine/src/engine/select/geometry.rs:point_in_polygon, crates/chemsema-engine/src/engine.rs:point_in_polygon`
+- `ARCH-LARGE-FILE` crates/chemsema-engine/src/engine/text_edit/labels.rs:1 — Source file has 2522 lines and needs an ownership review.
+- `ARCH-LARGE-FUNCTION` crates/chemsema-engine/src/legacy_mol.rs:40 — parse_molblock is 254 lines and needs a focused decomposition review.
+- `ARCH-LARGE-FUNCTION` crates/chemsema-engine/src/render_objects.rs:283 — render_fragment_atom_properties is 243 lines and needs a focused decomposition review.
+- `ARCH-LARGE-FILE` crates/chemsema-engine/src/render_objects/arrows.rs:1 — Source file has 2051 lines and needs an ownership review.
+- `ARCH-LARGE-FILE` crates/chemsema-engine/src/render_objects/graphics.rs:1 — Source file has 2747 lines and needs an ownership review.
+- `ARCH-LARGE-FUNCTION` crates/chemsema-engine/src/render_objects/graphics.rs:188 — render_orbital_shape_object is 207 lines and needs a focused decomposition review.
+- `ARCH-EXACT-DUPLICATE` crates/chemsema-engine/src/render_objects/graphics.rs:2116 — Exact function body is duplicated across 2 files.
+  - Evidence: `crates/chemsema-engine/src/render_objects/graphics.rs:rotate_point_around, crates/chemsema-engine/src/render_svg.rs:rotate_point_around`
+- `ARCH-LARGE-FUNCTION` crates/chemsema-engine/src/render_svg.rs:361 — write_primitive_svg is 272 lines and needs a focused decomposition review.
+- `ARCH-EXACT-DUPLICATE` crates/chemsema-engine/src/render/bounds.rs:272 — Exact function body is duplicated across 2 files.
+  - Evidence: `crates/chemsema-engine/src/render/bounds.rs:estimate_text_width, crates/chemsema-engine/src/render_svg.rs:estimate_text_width`
+- `ARCH-LARGE-FUNCTION` crates/chemsema-engine/src/render/labels.rs:607 — render_fragment_line_with_profiles is 237 lines and needs a focused decomposition review.
+- `OBJECT-OPERATION-TEST-GAP` scripts — No regression test exercises select/move/rotate/resize/copy/cut/delete for first-class CDXML curve objects.
+- `FRONTEND-IMAGE-IMPORT-TEST-GAP` scripts — No browser regression covers image insertion by drop, paste, and blank-canvas context menu.
+- `FRONTEND-CROSS-TAB-CLIPBOARD-TEST-GAP` scripts — No browser regression covers structured copy/paste between tabs or browser/desktop surfaces.
+- `FRONTEND-DETACHED-TAB-TEST-GAP` scripts — No end-to-end regression covers dragging a desktop tab into a new window.
+- `FRONTEND-UNGUARDED-ASYNC-EVENT` viewer/app_window_lifecycle.js:54 — Async DOM event handler can reject without a user-visible error or controlled state recovery.
+  - Evidence: `addEventListener("click", async () => {`
+- `FRONTEND-UNGUARDED-ASYNC-EVENT` viewer/app_window_lifecycle.js:68 — Async DOM event handler can reject without a user-visible error or controlled state recovery.
+  - Evidence: `addEventListener("dblclick", async (event) => {`
+- `FRONTEND-UNGUARDED-ASYNC-EVENT` viewer/app_window_lifecycle.js:73 — Async DOM event handler can reject without a user-visible error or controlled state recovery.
+  - Evidence: `addEventListener("pointerdown", async (event) => {`
+- `FRONTEND-UNGUARDED-ASYNC-EVENT` viewer/app.js:301 — Async DOM event handler can reject without a user-visible error or controlled state recovery.
+  - Evidence: `addEventListener("change", async (event) => {`
+- `FRONTEND-UNGUARDED-ASYNC-EVENT` viewer/app.js:307 — Async DOM event handler can reject without a user-visible error or controlled state recovery.
+  - Evidence: `addEventListener("click", async () => {`
+- `FRONTEND-UNGUARDED-ASYNC-EVENT` viewer/app.js:895 — Async DOM event handler can reject without a user-visible error or controlled state recovery.
+  - Evidence: `addEventListener("click", async (event) => {`
+- `FRONTEND-UNGUARDED-ASYNC-EVENT` viewer/app.js:914 — Async DOM event handler can reject without a user-visible error or controlled state recovery.
+  - Evidence: `addEventListener("keydown", async (event) => {`
+- `FRONTEND-UNGUARDED-ASYNC-EVENT` viewer/app.js:963 — Async DOM event handler can reject without a user-visible error or controlled state recovery.
+  - Evidence: `addEventListener("pointerup", async (event) => {`
+- `FRONTEND-UNGUARDED-ASYNC-EVENT` viewer/app.js:3953 — Async DOM event handler can reject without a user-visible error or controlled state recovery.
+  - Evidence: `addEventListener("pointercancel", async () => {`
+- `ARCH-EXACT-DUPLICATE` viewer/color_host.js:340 — Exact function body is duplicated across 2 files.
+  - Evidence: `viewer/color_host.js:normalizeHexColor, viewer/editor_bindings.js:normalizeHexColor`
+- `FRONTEND-UNGUARDED-ASYNC-EVENT` viewer/editor_bindings.js:481 — Async DOM event handler can reject without a user-visible error or controlled state recovery.
+  - Evidence: `addEventListener("keydown", async (event) => {`
+- `FRONTEND-UNGUARDED-ASYNC-EVENT` viewer/editor_bindings.js:705 — Async DOM event handler can reject without a user-visible error or controlled state recovery.
+  - Evidence: `addEventListener("click", async () => {`
+- `FRONTEND-UNGUARDED-ASYNC-EVENT` viewer/editor_bindings.js:747 — Async DOM event handler can reject without a user-visible error or controlled state recovery.
+  - Evidence: `addEventListener("click", async (event) => {`
+- `FRONTEND-UNGUARDED-ASYNC-EVENT` viewer/editor_bindings.js:796 — Async DOM event handler can reject without a user-visible error or controlled state recovery.
+  - Evidence: `addEventListener("click", async (event) => {`
+- `ARCH-LARGE-FUNCTION` viewer/editor_command_controller.js:37 — createEditorCommandController is 218 lines and needs a focused decomposition review.
+- `ARCH-LARGE-FUNCTION` viewer/editor_context_menu.js:267 — runCanvasContextMenuCommand is 204 lines and needs a focused decomposition review.
+- `ARCH-LARGE-FILE` viewer/editor_document_renderer.js:1 — Source file has 2123 lines and needs an ownership review.
+- `ARCH-LARGE-FUNCTION` viewer/editor_overlay.js:549 — renderEditorOverlay is 228 lines and needs a focused decomposition review.
+- `ARCH-LARGE-FUNCTION` viewer/editor_pointer_controller.js:884 — handleEditorPointerDown is 276 lines and needs a focused decomposition review.
+- `ARCH-LARGE-FUNCTION` viewer/editor_toolbar_host.js:17 — createEditorToolbarHost is 220 lines and needs a focused decomposition review.
+- `FRONTEND-HYBRID-STALE-GETTER` viewer/engine_host.js:494 — documentColorsJson reads only the native cache even when the local layout engine is authoritative.
+  - Evidence: `{ return this.cache.documentColorsJson || "[]"; }`
+- `FRONTEND-HYBRID-STALE-GETTER` viewer/engine_host.js:620 — documentStylePreset reads only the native cache even when the local layout engine is authoritative.
+  - Evidence: `{ return this.cache.documentStylePreset || "default"; }`
+- `FRONTEND-HYBRID-STALE-GETTER` viewer/engine_host.js:1310 — canUndo reads only the native cache even when the local layout engine is authoritative.
+  - Evidence: `{ return this.cache.canUndo; }`
+- `FRONTEND-HYBRID-STALE-GETTER` viewer/engine_host.js:1314 — canRedo reads only the native cache even when the local layout engine is authoritative.
+  - Evidence: `{ return this.cache.canRedo; }`
+- `ARCH-LARGE-FUNCTION` viewer/primitive_dom_renderer.js:87 — renderCorePrimitive is 243 lines and needs a focused decomposition review.
+- `FRONTEND-UNGUARDED-ASYNC-EVENT` viewer/text_editor_controller.js:637 — Async DOM event handler can reject without a user-visible error or controlled state recovery.
+  - Evidence: `addEventListener("pointerdown", async (event) => {`
+- `ARCH-LARGE-FUNCTION` viewer/text_symbol_palette.js:1 — createTextSymbolPalette is 256 lines and needs a focused decomposition review.
+- `FRONTEND-UNGUARDED-ASYNC-EVENT` viewer/text_symbol_palette.js:136 — Async DOM event handler can reject without a user-visible error or controlled state recovery.
+  - Evidence: `addEventListener("click", async (event) => {`
+
+## REVIEW (60)
+
+- `FALLBACK-NAMED` crates/chemsema-cli/src/agent/output.rs:253 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback unresolved. Bind the generic families to a face that`
+- `FALLBACK-NAMED` crates/chemsema-cli/src/main.rs:385 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback = match connection_angles.len() {`
+- `FALLBACK-NAMED` crates/chemsema-engine/src/cdxml.rs:146 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback_font_size: f64) -> f64 {`
+- `FALLBACK-NAMED` crates/chemsema-engine/src/cdxml.rs:1022 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback = CdxmlDefaults::default();`
+- `FALLBACK-NAMED` crates/chemsema-engine/src/cdxml.rs:1322 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback_cdxml_topology_positions(`
+- `FALLBACK-NAMED` crates/chemsema-engine/src/cdxml/export.rs:2029 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback: &str,`
+- `FALLBACK-NAMED` crates/chemsema-engine/src/cdxml/export.rs:2030 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback_size: f64,`
+- `FALLBACK-NAMED` crates/chemsema-engine/src/cdxml/export.rs:2052 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback_color: &str,`
+- `FALLBACK-NAMED` crates/chemsema-engine/src/cdxml/export.rs:2053 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback_font_family: &str,`
+- `FALLBACK-NAMED` crates/chemsema-engine/src/cdxml/import_objects.rs:772 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback: f64) -> f64 {`
+- `FALLBACK-NAMED` crates/chemsema-engine/src/document.rs:1379 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback_font_size = label`
+- `FALLBACK-NAMED` crates/chemsema-engine/src/editing/arrows.rs:52 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback: f64) -> f64 {`
+- `FALLBACK-NAMED` crates/chemsema-engine/src/engine/bond_tools.rs:64 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback_font_size = runs`
+- `FALLBACK-NAMED` crates/chemsema-engine/src/engine/brackets.rs:389 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback = Point::new(endpoint.point.x + 6.0, endpoint.point.y - 6.0);`
+- `FALLBACK-NAMED` crates/chemsema-engine/src/engine/templates.rs:1238 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback_side_length: f64,`
+- `FALLBACK-NAMED` crates/chemsema-engine/src/engine/templates.rs:1616 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback = engine.options.bond_stroke_world_pt().value();`
+- `FALLBACK-NAMED` crates/chemsema-engine/src/engine/text_edit.rs:855 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback_font_family = session`
+- `FALLBACK-NAMED` crates/chemsema-engine/src/engine/text_edit.rs:859 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback_font_size = session`
+- `FALLBACK-NAMED` crates/chemsema-engine/src/engine/text_edit.rs:863 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback_fill = session.fill.as_deref().unwrap_or(DEFAULT_TEXT_FILL);`
+- `FALLBACK-NAMED` crates/chemsema-engine/src/engine/text_edit/labels.rs:372 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback_geometry = || {`
+- `FALLBACK-NAMED` crates/chemsema-engine/src/engine/text_edit/labels.rs:980 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback_index: usize) -> usize {`
+- `FALLBACK-NAMED` crates/chemsema-engine/src/engine/text_edit/labels.rs:1017 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback_font_size: f64) -> f64 {`
+- `FALLBACK-NAMED` crates/chemsema-engine/src/engine/text_edit/layout.rs:88 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback_font_size: f64) -> f64 {`
+- `FALLBACK-NAMED` crates/chemsema-engine/src/engine/text_edit/runs.rs:124 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback_font_family: &str,`
+- `FALLBACK-NAMED` crates/chemsema-engine/src/engine/text_edit/runs.rs:125 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback_font_size: f64,`
+- `FALLBACK-NAMED` crates/chemsema-engine/src/engine/text_edit/runs.rs:126 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback_fill: &str,`
+- `FALLBACK-NAMED` crates/chemsema-engine/src/glyph_kernel.rs:245 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback_font_size: f64) -> f64 {`
+- `FALLBACK-NAMED` crates/chemsema-engine/src/glyph_kernel.rs:947 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback:`
+- `FALLBACK-NAMED` crates/chemsema-engine/src/glyph_kernel.rs:1540 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback_rect_profile(1.0, -0.86, 1.0, 0.14);`
+- `FALLBACK-NAMED` crates/chemsema-engine/src/label_rules.rs:620 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback = decide_label_layout(&[90.0], true, true);`
+- `FALLBACK-NAMED` crates/chemsema-engine/src/render_objects/arrows.rs:1014 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback: RenderArrowEndpointStyle,`
+- `FALLBACK-NAMED` crates/chemsema-engine/src/render_primitives.rs:571 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback_font_size: f64,`
+- `FALLBACK-NAMED` crates/chemsema-engine/src/render_primitives.rs:573 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback_fill: Option<&str>,`
+- `FALLBACK-NAMED` crates/chemsema-engine/src/render_svg.rs:21 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback_size: Option<(f64, f64)>,`
+- `FALLBACK-NAMED` crates/chemsema-engine/src/render_svg.rs:634 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback_font_size: f64) {`
+- `FALLBACK-NAMED` crates/chemsema-engine/src/render/bond_geometry.rs:730 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback: f64) -> f64 {`
+- `FALLBACK-NAMED` crates/chemsema-engine/src/render/bounds.rs:272 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback_font_size: f64) -> f64 {`
+- `FALLBACK-NAMED` crates/chemsema-engine/src/render/labels.rs:455 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback for imported or legacy labels without glyph geometry.`
+- `FALLBACK-NAMED` viewer/app.js:3036 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallbackFontSize = editorState.textFontSize) {`
+- `FALLBACK-NAMED` viewer/app.js:3302 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallbackStyle) {`
+- `FALLBACK-NAMED` viewer/app.js:3574 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback = "") {`
+- `FALLBACK-NAMED` viewer/browser_document_tabs.js:219 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback: droppedFiles };`
+- `FALLBACK-NAMED` viewer/color_host.js:23 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback = fallbackColorDialogPalette(initialColor, customColors);`
+- `FALLBACK-NAMED` viewer/color_host.js:23 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallbackColorDialogPalette(initialColor, customColors);`
+- `FALLBACK-NAMED` viewer/document_flow.js:480 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallbackFormat = null) {`
+- `FALLBACK-NAMED` viewer/editor_context_menu.js:284 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallbackChanged = !!(await apply());`
+- `FALLBACK-NAMED` viewer/editor_pointer_controller.js:1493 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallbackAt = performance.now();`
+- `FALLBACK-NAMED` viewer/editor_pointer_controller.js:1512 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallbackMs: fallbackAt - executedAt,`
+- `FALLBACK-NAMED` viewer/engine_bridge.js:1 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback = null) {`
+- `FALLBACK-NAMED` viewer/engine_host.js:1516 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback = null) {`
+- `FALLBACK-NAMED` viewer/primitive_dom_renderer.js:20 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback = 0) {`
+- `FALLBACK-NAMED` viewer/primitive_dom_renderer.js:414 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallbackCenter = null) {`
+- `FALLBACK-NAMED` viewer/render_support.js:9 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback = CHEMDRAW_INK) {`
+- `FALLBACK-NAMED` viewer/text_editor_model.js:34 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallbackStyle, normalizeColor) {`
+- `FALLBACK-NAMED` viewer/text_editor_render.js:20 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallbackStyle = baseStyle(root);`
+- `FALLBACK-NAMED` viewer/text_metrics.js:55 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallbackRectGlyphProfile(advanceEm, inkTopEm, inkRightEm, inkBottomEm) {`
+- `FALLBACK-NAMED` viewer/text_metrics.js:263 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallbackFontSize, defaultFontSize) {`
+- `FALLBACK-NAMED` viewer/text_symbol_palette.js:287 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback = { symbol: "P", atomicNumber: 15, name: "Phosphorus", column: 15, row: 3, color: null };`
+- `FALLBACK-NAMED` viewer/toolbar.js:667 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallbackBondToolIconSvg(type = "single") {`
+- `FALLBACK-NAMED` viewer/toolbar.js:685 — A fallback-named path requires proof that it is a documented default or an explicit compatibility branch.
+  - Evidence: `fallback");`

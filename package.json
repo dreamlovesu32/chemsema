@@ -75,6 +75,7 @@
     "generate:cdx-cdxml-field-ledger": "node scripts/generate-cdx-cdxml-verification-ledger.mjs",
     "generate:chemdraw-field-evidence": "node scripts/generate-chemdraw-field-evidence.mjs",
     "audit:cdx-cdxml-schema": "node scripts/audit-cdx-cdxml-schema-coverage.mjs",
+    "audit:core-contracts": "node scripts/audit-core-contracts.mjs --fail-on-error",
     "stability": "node scripts/stability-report.mjs",
     "stability:fixtures": "node scripts/generate-stability-fixtures.mjs",
     "verify": "node scripts/verify.mjs",
