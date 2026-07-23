@@ -274,19 +274,14 @@ export function createCanvasContextMenuHost(options) {
     hideCanvasContextMenu();
     let changed = false;
     const executeDocumentCommand = async (chemsemaCommand, apply) => {
-      if (options.commandEngine?.executeEngineCommand) {
-        const result = await options.commandEngine.executeEngineCommand(chemsemaCommand, apply);
-        if (result.changed) {
-          options.renderDocumentChange?.(result) || options.renderDocument();
-        }
-        return !!result.changed;
+      if (!options.commandEngine?.executeEngineCommand) {
+        throw new Error("Canvas context-menu commands require the shared command engine.");
       }
-      const fallbackChanged = !!(await apply());
-      if (fallbackChanged) {
-        await options.syncDocumentFromEngine();
-        options.renderDocumentChange?.({ changed: true }) || options.renderDocument();
+      const result = await options.commandEngine.executeEngineCommand(chemsemaCommand, apply);
+      if (result.changed) {
+        options.renderDocumentChange?.(result) || options.renderDocument();
       }
-      return fallbackChanged;
+      return !!result.changed;
     };
     if (["cut", "copy", "paste", "delete", "select-all"].includes(command)) {
       changed = await options.runEditorCommand(command);

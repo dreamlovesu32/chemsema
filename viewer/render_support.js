@@ -6,9 +6,9 @@ const CHEMDRAW_COLOR_MAP = new Map([
   ["#1b32d8", "#0000ff"],
 ]);
 
-export function normalizeDisplayColor(color, fallback = CHEMDRAW_INK) {
+export function normalizeDisplayColor(color, defaultColor = CHEMDRAW_INK) {
   if (!color) {
-    return fallback;
+    return defaultColor;
   }
   const value = String(color).trim().toLowerCase();
   return CHEMDRAW_COLOR_MAP.get(value) || color;

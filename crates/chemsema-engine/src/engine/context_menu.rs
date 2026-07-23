@@ -769,7 +769,7 @@ impl Engine {
             .collect()
     }
 
-    fn selected_bonds(&self) -> Vec<&Bond> {
+    pub(crate) fn selected_bonds(&self) -> Vec<&Bond> {
         let selected: BTreeSet<&str> = self
             .state
             .selection

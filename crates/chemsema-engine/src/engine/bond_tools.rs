@@ -61,7 +61,7 @@ impl Engine {
             ],
             _ => return String::new(),
         };
-        let fallback_font_size = runs
+        let default_font_size = runs
             .first()
             .and_then(|run| run.font_size)
             .unwrap_or(crate::DEFAULT_TEXT_FONT_SIZE_PT);
@@ -72,10 +72,10 @@ impl Engine {
             node_id: None,
             x: 12.0,
             y,
-            baseline_offset: Some(fallback_font_size * 0.82),
+            baseline_offset: Some(default_font_size * 0.82),
             dominant_baseline: None,
             text: String::new(),
-            font_size: fallback_font_size,
+            font_size: default_font_size,
             font_family: Some("Times New Roman".to_string()),
             fill: Some("#000000".to_string()),
             text_anchor: Some("middle".to_string()),

@@ -617,7 +617,7 @@ mod tests {
         let reverse = decide_label_layout(&[90.0], true, false);
         assert_eq!(reverse.flow, LabelFlow::Reverse);
 
-        let fallback = decide_label_layout(&[90.0], true, true);
-        assert_eq!(fallback.flow, LabelFlow::Forward);
+        let default_layout = decide_label_layout(&[90.0], true, true);
+        assert_eq!(default_layout.flow, LabelFlow::Forward);
     }
 }

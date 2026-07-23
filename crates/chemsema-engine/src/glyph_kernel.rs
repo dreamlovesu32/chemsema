@@ -242,13 +242,13 @@ pub(crate) struct SharedGlyphMetrics {
     pub bottom: f64,
 }
 
-pub(crate) fn molecule_label_line_advance(fallback_font_size: f64) -> f64 {
-    (fallback_font_size * crate::MOLECULE_LABEL_LINE_ADVANCE_RATIO).max(0.1)
+pub(crate) fn molecule_label_line_advance(default_font_size: f64) -> f64 {
+    (default_font_size * crate::MOLECULE_LABEL_LINE_ADVANCE_RATIO).max(0.1)
 }
 
 pub(crate) fn variable_text_line_advances(
     lines: &[Vec<LabelRun>],
-    fallback_font_size: f64,
+    default_font_size: f64,
 ) -> Vec<f64> {
     if lines.len() < 2 {
         return Vec::new();
@@ -258,17 +258,17 @@ pub(crate) fn variable_text_line_advances(
         .map(|line| {
             let mut top = f64::INFINITY;
             let mut bottom = f64::NEG_INFINITY;
-            let mut max_size = fallback_font_size;
+            let mut max_size = default_font_size;
             for run in line {
-                max_size = max_size.max(run.font_size.unwrap_or(fallback_font_size));
+                max_size = max_size.max(run.font_size.unwrap_or(default_font_size));
             }
-            for placement in glyph_placements_for_runs(line, 0.0, 0.0, fallback_font_size) {
+            for placement in glyph_placements_for_runs(line, 0.0, 0.0, default_font_size) {
                 top = top.min(placement.ink_box_px[1]);
                 bottom = bottom.max(placement.ink_box_px[3]);
             }
             if !top.is_finite() || !bottom.is_finite() {
-                top = -fallback_font_size * 0.73;
-                bottom = fallback_font_size * 0.16;
+                top = -default_font_size * 0.73;
+                bottom = default_font_size * 0.16;
             }
             (top, bottom, max_size)
         })
@@ -297,7 +297,7 @@ pub fn build_label_glyph_geometry_with_profile(
     line_runs: &[Vec<LabelRun>],
     position: [f64; 2],
     box_value: Option<[f64; 4]>,
-    fallback_font_size: f64,
+    default_font_size: f64,
     line_height: f64,
     line_advances: &[f64],
     retreat_origin: [f64; 2],
@@ -320,7 +320,7 @@ pub fn build_label_glyph_geometry_with_profile(
     let box_top = box_value
         .filter(|_| lines.len() > 1)
         .map(|value| value[1])
-        .unwrap_or(position[1] - fallback_font_size * 0.82);
+        .unwrap_or(position[1] - default_font_size * 0.82);
 
     let mut geometry = LabelGlyphGeometry::default();
     let mut outline_bounds: Option<[f64; 4]> = None;
@@ -330,10 +330,9 @@ pub fn build_label_glyph_geometry_with_profile(
         } else {
             box_top
                 + line_baseline_offset(line_index, line_height, line_advances)
-                + fallback_font_size * 0.82
+                + default_font_size * 0.82
         };
-        for placement in
-            glyph_placements_for_runs(line, position[0], baseline_y, fallback_font_size)
+        for placement in glyph_placements_for_runs(line, position[0], baseline_y, default_font_size)
         {
             let Some(glyph_geometry) = glyph_geometry_with_profile(&placement, profile) else {
                 continue;
@@ -479,7 +478,7 @@ fn glyph_placements_for_runs(
     runs: &[LabelRun],
     start_x: f64,
     baseline_y: f64,
-    fallback_font_size: f64,
+    default_font_size: f64,
 ) -> Vec<GlyphPlacement> {
     let mut placements = Vec::new();
     let mut cursor_x = start_x;
@@ -487,7 +486,7 @@ fn glyph_placements_for_runs(
     for run in runs {
         let font_size = run
             .font_size
-            .unwrap_or(fallback_font_size)
+            .unwrap_or(default_font_size)
             .max(crate::css_px(1.0).to_world_pt().value());
         let mut config = LayoutConfig {
             font_size_px: font_size,
@@ -944,7 +943,7 @@ fn lookup_glyph_outline(
             .or_else(|| {
                 // This is the same explicit glyph-substitution chain used by the
                 // label renderer for characters absent from the selected family.
-                // It is character resolution, not a retreat-geometry fallback:
+                // This is character resolution, not retreat geometry:
                 // whichever outline wins also supplies advance, bounds and clip.
                 ["Segoe UI Symbol", "SimSun", "Arial"]
                     .into_iter()
@@ -1446,6 +1445,68 @@ pub(crate) fn shared_estimated_char_width(character: char, font_size: f64) -> f6
     lookup_glyph_profile(character).advance_em * font_size
 }
 
+pub(crate) fn shared_estimated_text_width(
+    text: &str,
+    runs: &[crate::LabelRun],
+    default_font_size: f64,
+) -> f64 {
+    if !runs.is_empty() {
+        let mut max_width = 0.0;
+        let mut line_width = 0.0;
+        for run in runs {
+            let font_size = run.font_size.unwrap_or(default_font_size)
+                * shared_script_scale_factor(run.script.as_deref());
+            for character in run.text.chars() {
+                match character {
+                    '\n' => {
+                        max_width = f64::max(max_width, line_width);
+                        line_width = 0.0;
+                    }
+                    '\r' => {}
+                    _ => line_width += shared_estimated_char_width(character, font_size),
+                }
+            }
+        }
+        return f64::max(max_width, line_width);
+    }
+    text.lines()
+        .map(|line| {
+            line.chars()
+                .filter(|character| *character != '\r')
+                .map(|character| shared_estimated_char_width(character, default_font_size))
+                .sum()
+        })
+        .fold(0.0, f64::max)
+}
+
+pub(crate) fn shared_estimated_text_line_count(text: &str, runs: &[crate::LabelRun]) -> usize {
+    if !runs.is_empty() {
+        return runs
+            .iter()
+            .map(|run| {
+                run.text
+                    .chars()
+                    .filter(|character| *character == '\n')
+                    .count()
+            })
+            .sum::<usize>()
+            + 1;
+    }
+    text.lines().count().max(1)
+}
+
+pub(crate) fn shared_estimated_text_max_font_size(
+    default_font_size: f64,
+    runs: &[crate::LabelRun],
+) -> f64 {
+    runs.iter()
+        .map(|run| {
+            run.font_size.unwrap_or(default_font_size)
+                * shared_script_scale_factor(run.script.as_deref())
+        })
+        .fold(default_font_size, f64::max)
+}
+
 pub(crate) fn shared_glyph_metrics(
     character: char,
     font_size: f64,
@@ -1537,13 +1598,13 @@ fn lookup_glyph_profile(character: char) -> GlyphProfile {
         };
     }
     if is_cjk_or_fullwidth(character) {
-        return fallback_rect_profile(1.0, -0.86, 1.0, 0.14);
+        return replacement_rect_profile(1.0, -0.86, 1.0, 0.14);
     }
     if is_math_or_arrow_symbol(character) {
-        return fallback_rect_profile(0.84, -0.74, 0.84, 0.06);
+        return replacement_rect_profile(0.84, -0.74, 0.84, 0.06);
     }
     if matches!(character, '\u{2030}' | '\u{2031}') {
-        return fallback_rect_profile(1.34, -0.74, 1.34, 0.06);
+        return replacement_rect_profile(1.34, -0.74, 1.34, 0.06);
     }
     if character.is_ascii_uppercase() {
         return shared.defaults.upper;
@@ -1556,17 +1617,17 @@ fn lookup_glyph_profile(character: char) -> GlyphProfile {
     }
     if character.is_alphabetic() {
         if character.is_uppercase() {
-            return fallback_rect_profile(0.72, -0.74, 0.72, 0.04);
+            return replacement_rect_profile(0.72, -0.74, 0.72, 0.04);
         }
-        return fallback_rect_profile(0.62, -0.62, 0.62, 0.08);
+        return replacement_rect_profile(0.62, -0.62, 0.62, 0.08);
     }
     if character.is_ascii_punctuation() {
         return default_punctuation_profile();
     }
-    fallback_rect_profile(0.62, -0.74, 0.62, 0.08)
+    replacement_rect_profile(0.62, -0.74, 0.62, 0.08)
 }
 
-fn fallback_rect_profile(
+fn replacement_rect_profile(
     advance_em: f64,
     ink_top_em: f64,
     ink_right_em: f64,
@@ -1680,7 +1741,7 @@ mod tests {
             let profile = lookup_glyph_profile(character);
             assert!(
                 profile.advance_em >= min_width,
-                "{character} should not use narrow punctuation fallback: {profile:?}"
+                "{character} should not use the narrow punctuation replacement profile: {profile:?}"
             );
             assert!(profile.visible, "{character} should be visible");
             assert!(

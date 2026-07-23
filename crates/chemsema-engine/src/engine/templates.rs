@@ -1235,11 +1235,11 @@ fn fused_bond_ring_plan(
     begin: Point,
     end: Point,
     side_sign: f64,
-    fallback_side_length: f64,
+    default_side_length: f64,
     first_double_edge_index: usize,
     aromatic_cycle_relayout: Option<Vec<String>>,
 ) -> RingPlan {
-    let side = begin.distance(end).max(fallback_side_length);
+    let side = begin.distance(end).max(default_side_length);
     let apothem = side / (2.0 * (std::f64::consts::PI / ring_size as f64).tan());
     let unit = crate::Vector::new((end.x - begin.x) / side, (end.y - begin.y) / side);
     let normal = crate::Vector::new(-unit.y, unit.x).scaled(side_sign);
@@ -1613,9 +1613,9 @@ fn insert_ring_plan_into_document(
 }
 
 fn template_stroke_width(document: &ChemSemaDocument, plan: &RingPlan, engine: &Engine) -> f64 {
-    let fallback = engine.options.bond_stroke_world_pt().value();
+    let default_stroke_width = engine.options.bond_stroke_world_pt().value();
     let Some(entry) = document.editable_fragment() else {
-        return fallback;
+        return default_stroke_width;
     };
     let style_width = entry
         .object
@@ -1628,7 +1628,7 @@ fn template_stroke_width(document: &ChemSemaDocument, plan: &RingPlan, engine: &
                 .or_else(|| style.get("stroke_width"))
                 .and_then(|value| value.as_f64())
         })
-        .unwrap_or(fallback);
+        .unwrap_or(default_stroke_width);
 
     let existing_node_ids = plan
         .vertices

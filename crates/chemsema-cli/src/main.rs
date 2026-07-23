@@ -382,12 +382,12 @@ fn label_query_command(args: &[String]) -> Result<(), String> {
         );
     }
     while connection_angles.len() < connection_count {
-        let fallback = match connection_angles.len() {
+        let default_angle = match connection_angles.len() {
             0 => 0.0,
             1 => 180.0,
             index => 360.0 * index as f64 / connection_count.max(1) as f64,
         };
-        connection_angles.push(fallback);
+        connection_angles.push(default_angle);
     }
 
     let report = if reverse_mode {

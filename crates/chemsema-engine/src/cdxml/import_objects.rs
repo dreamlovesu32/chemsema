@@ -28,7 +28,7 @@ pub(super) fn append_embedded_image_objects(
         ]
         .into_iter()
         .find_map(|(attribute, mime_type)| {
-            let bytes = decode_cdxml_hex_bytes(node.attr(attribute)?)?;
+            let bytes = crate::decode_hex_bytes(node.attr(attribute)?)?;
             let (pixel_width, pixel_height) = raster_pixel_dimensions(mime_type, &bytes)?;
             if bytes.is_empty()
                 || bytes.len() > MAX_EMBEDDED_IMAGE_BYTES
@@ -58,7 +58,7 @@ pub(super) fn append_embedded_image_objects(
                 ]
                 .into_iter()
                 .find_map(|attribute| {
-                    decode_cdxml_hex_bytes(node.attr(attribute)?)
+                    crate::decode_hex_bytes(node.attr(attribute)?)
                         .filter(|bytes| !bytes.is_empty())
                         .map(|bytes| (attribute, bytes))
                 })
@@ -144,20 +144,6 @@ pub(super) fn append_embedded_image_objects(
         });
         index += 1;
     }
-}
-
-fn decode_cdxml_hex_bytes(value: &str) -> Option<Vec<u8>> {
-    let compact: String = value
-        .chars()
-        .filter(|character| !character.is_ascii_whitespace())
-        .collect();
-    if compact.len() % 2 != 0 {
-        return None;
-    }
-    (0..compact.len())
-        .step_by(2)
-        .map(|offset| u8::from_str_radix(&compact[offset..offset + 2], 16).ok())
-        .collect()
 }
 
 fn raster_pixel_dimensions(mime_type: &str, bytes: &[u8]) -> Option<(u32, u32)> {
@@ -769,8 +755,8 @@ fn canonical_arrow_fill_type(value: &str) -> &'static str {
     }
 }
 
-fn cdxml_arrow_size_for_render_scale(value: Option<f64>, fallback: f64) -> f64 {
-    value.unwrap_or(fallback)
+fn cdxml_arrow_size_for_render_scale(value: Option<f64>, default_value: f64) -> f64 {
+    value.unwrap_or(default_value)
 }
 
 fn cdxml_line_style_ref(

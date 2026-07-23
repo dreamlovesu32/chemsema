@@ -250,7 +250,7 @@ pub(super) fn capture_font_database() -> Arc<fontdb::Database> {
             // fontdb's built-in generic defaults name Microsoft fonts. A
             // minimal Linux environment can have usable fonts but no
             // fontconfig aliases, leaving both `sans-serif` and usvg's serif
-            // fallback unresolved. Bind the generic families to a face that
+            // alias unresolved. Bind the generic families to a face that
             // is actually present so headless CLI PNG capture still renders
             // text without requiring a desktop font package.
             configure_capture_generic_families(&mut database);

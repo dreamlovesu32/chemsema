@@ -77,7 +77,7 @@ impl Engine {
         let mut changed = false;
         if let Some(bracket) = self.state.document.find_scene_object_mut(bracket_id) {
             if scene_object_is_bracket_like(bracket) {
-                changed |= set_meta_object_field(
+                changed |= crate::set_meta_object_field(
                     &mut bracket.meta,
                     "linkedTextObjectId",
                     Some(json!(text_id)),
@@ -86,15 +86,18 @@ impl Engine {
         }
         if let Some(text) = self.state.document.find_scene_object_mut(text_id) {
             if text.object_type == "text" {
-                changed |=
-                    set_meta_object_field(&mut text.meta, "linkKind", Some(json!("bracket-label")));
-                changed |= set_meta_object_field(
+                changed |= crate::set_meta_object_field(
+                    &mut text.meta,
+                    "linkKind",
+                    Some(json!("bracket-label")),
+                );
+                changed |= crate::set_meta_object_field(
                     &mut text.meta,
                     "linkedBracketObjectId",
                     Some(json!(bracket_id)),
                 );
-                changed |= set_meta_object_field(&mut text.meta, "repeatUnitDetached", None);
-                changed |= set_meta_object_field(&mut text.meta, "bracketObjectId", None);
+                changed |= crate::set_meta_object_field(&mut text.meta, "repeatUnitDetached", None);
+                changed |= crate::set_meta_object_field(&mut text.meta, "bracketObjectId", None);
             }
         }
         changed |= refresh_repeating_units(&mut self.state.document);
@@ -109,17 +112,22 @@ impl Engine {
         let mut changed = false;
         if let Some(bracket) = self.state.document.find_scene_object_mut(bracket_id) {
             if scene_object_is_bracket_like(bracket) {
-                changed |= set_meta_object_field(&mut bracket.meta, "linkedTextObjectId", None);
                 changed |=
-                    set_meta_object_field(&mut bracket.meta, "bracketLabelTextObjectId", None);
+                    crate::set_meta_object_field(&mut bracket.meta, "linkedTextObjectId", None);
+                changed |= crate::set_meta_object_field(
+                    &mut bracket.meta,
+                    "bracketLabelTextObjectId",
+                    None,
+                );
             }
         }
         if let Some(text) = self.state.document.find_scene_object_mut(text_id) {
             if text.object_type == "text" {
-                changed |= set_meta_object_field(&mut text.meta, "linkKind", None);
-                changed |= set_meta_object_field(&mut text.meta, "linkedBracketObjectId", None);
-                changed |= set_meta_object_field(&mut text.meta, "bracketObjectId", None);
-                changed |= set_meta_object_field(&mut text.meta, "repeatUnitDetached", None);
+                changed |= crate::set_meta_object_field(&mut text.meta, "linkKind", None);
+                changed |=
+                    crate::set_meta_object_field(&mut text.meta, "linkedBracketObjectId", None);
+                changed |= crate::set_meta_object_field(&mut text.meta, "bracketObjectId", None);
+                changed |= crate::set_meta_object_field(&mut text.meta, "repeatUnitDetached", None);
             }
         }
         changed |= refresh_repeating_units(&mut self.state.document);
@@ -318,32 +326,4 @@ fn payload_string(object: &SceneObject, key: &str) -> Option<String> {
 
 fn bounds_center(bounds: [f64; 4]) -> Point {
     Point::new((bounds[0] + bounds[2]) * 0.5, (bounds[1] + bounds[3]) * 0.5)
-}
-
-fn set_meta_object_field(meta_value: &mut Value, key: &str, value: Option<Value>) -> bool {
-    if !meta_value.is_object() {
-        if value.is_none() {
-            return false;
-        }
-        *meta_value = Value::Object(serde_json::Map::new());
-    }
-    let Some(object) = meta_value.as_object_mut() else {
-        return false;
-    };
-    match value {
-        Some(next) => {
-            if object.get(key) == Some(&next) {
-                return false;
-            }
-            object.insert(key.to_string(), next);
-            true
-        }
-        None => {
-            let changed = object.remove(key).is_some();
-            if object.is_empty() {
-                *meta_value = Value::Null;
-            }
-            changed
-        }
-    }
 }

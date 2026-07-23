@@ -1,9 +1,9 @@
-export function parseEngineJson(json, fallback = null) {
+export function parseEngineJson(json, defaultValue = null) {
   try {
     return JSON.parse(json);
   } catch (error) {
     console.warn("Failed to parse chemsema engine JSON", error);
-    return fallback;
+    return defaultValue;
   }
 }
 

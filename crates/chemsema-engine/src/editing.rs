@@ -1,8 +1,8 @@
 use crate::{
     angle_between, angle_in_clockwise_arc, angular_distance, css_px, direction_from_angle,
-    fragment_bond_visual_bounds, largest_angular_gap, normalize_angle, split_label_groups,
-    world_pt, Bond, ChemSemaDocument, EditableFragment, Node, Point, SceneObject, Vector,
-    WorldPoint, WorldPt, DEFAULT_BOND_LENGTH,
+    fragment_bond_visual_bounds, largest_angular_gap, normalize_angle, polygon_anchor_point,
+    polygon_bounds, split_label_groups, world_pt, Bond, ChemSemaDocument, EditableFragment, Node,
+    Point, SceneObject, Vector, WorldPoint, WorldPt, DEFAULT_BOND_LENGTH,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{HashSet, VecDeque};
@@ -28,6 +28,7 @@ pub use self::arrows::{
     polyline_length,
 };
 pub use self::geometry::bond_center_focus_length;
+pub(crate) use self::geometry::node_label_glyph_anchor_point_with_anchor_y;
 use self::geometry::*;
 pub use self::hit_testing::{
     hit_test_arrow_center, hit_test_bond, hit_test_bond_center, hit_test_endpoint,

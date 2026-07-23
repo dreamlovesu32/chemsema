@@ -248,10 +248,10 @@ pub fn render_primitive_bounds(primitive: &RenderPrimitive) -> Option<[f64; 4]> 
             dominant_baseline,
             ..
         } => {
-            let measured_width = estimate_text_width(text, runs, *font_size);
+            let measured_width = crate::shared_estimated_text_width(text, runs, *font_size);
             let width = box_width.unwrap_or(0.0).max(measured_width);
-            let max_font_size = estimate_text_max_font_size(*font_size, runs);
-            let line_count = estimate_text_line_count(text, runs) as f64;
+            let max_font_size = crate::shared_estimated_text_max_font_size(*font_size, runs);
+            let line_count = crate::shared_estimated_text_line_count(text, runs) as f64;
             let line_height = line_height
                 .unwrap_or(max_font_size * TEXT_GDI_LINE_BOX_EM)
                 .max(max_font_size);
@@ -276,63 +276,6 @@ pub fn render_primitive_bounds(primitive: &RenderPrimitive) -> Option<[f64; 4]> 
             Some([min_x - left_pad, min_y, min_x + width + right_pad, max_y])
         }
     }
-}
-
-fn estimate_text_width(text: &str, runs: &[LabelRun], fallback_font_size: f64) -> f64 {
-    if !runs.is_empty() {
-        let mut max_width = 0.0;
-        let mut line_width = 0.0;
-        for run in runs {
-            let font_size = run.font_size.unwrap_or(fallback_font_size)
-                * crate::shared_script_scale_factor(run.script.as_deref());
-            for character in run.text.chars() {
-                match character {
-                    '\n' => {
-                        max_width = f64::max(max_width, line_width);
-                        line_width = 0.0;
-                    }
-                    '\r' => {}
-                    _ => line_width += crate::shared_estimated_char_width(character, font_size),
-                }
-            }
-        }
-        return f64::max(max_width, line_width);
-    }
-    text.lines()
-        .map(|line| estimate_text_line_width(line, fallback_font_size))
-        .fold(0.0, f64::max)
-}
-
-fn estimate_text_line_width(text: &str, font_size: f64) -> f64 {
-    text.chars()
-        .filter(|character| *character != '\r')
-        .map(|character| crate::shared_estimated_char_width(character, font_size))
-        .sum()
-}
-
-fn estimate_text_line_count(text: &str, runs: &[LabelRun]) -> usize {
-    if !runs.is_empty() {
-        return runs
-            .iter()
-            .map(|run| {
-                run.text
-                    .chars()
-                    .filter(|character| *character == '\n')
-                    .count()
-            })
-            .sum::<usize>()
-            + 1;
-    }
-    text.lines().count().max(1)
-}
-
-fn estimate_text_max_font_size(fallback_font_size: f64, runs: &[LabelRun]) -> f64 {
-    runs.iter()
-        .map(|run| {
-            run.font_size.unwrap_or(fallback_font_size)
-                * crate::shared_script_scale_factor(run.script.as_deref())
-        })
-        .fold(fallback_font_size, f64::max)
 }
 
 fn point_list_bounds(points: &[Point], margin: f64) -> Option<[f64; 4]> {

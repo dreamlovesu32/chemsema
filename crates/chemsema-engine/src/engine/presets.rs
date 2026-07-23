@@ -130,7 +130,7 @@ impl Engine {
 
     fn object_settings_fields(&self, unit: &str) -> Vec<JsonValue> {
         let mut fields = Vec::new();
-        let selected_bonds = self.selected_object_settings_bonds();
+        let selected_bonds = self.selected_bonds();
         let selected_graphics = self.selected_object_settings_graphics();
 
         let bond_lengths = selected_bonds
@@ -324,28 +324,6 @@ impl Engine {
             changed |= set_payload_number(object, "strokeWidth", line_width);
         }
         changed
-    }
-
-    fn selected_object_settings_bonds(&self) -> Vec<&Bond> {
-        let selected: BTreeSet<&str> = self
-            .state
-            .selection
-            .bonds
-            .iter()
-            .map(String::as_str)
-            .collect();
-        self.state
-            .document
-            .editable_fragment()
-            .map(|entry| {
-                entry
-                    .fragment
-                    .bonds
-                    .iter()
-                    .filter(|bond| selected.contains(bond.id.as_str()))
-                    .collect()
-            })
-            .unwrap_or_default()
     }
 
     fn selected_object_settings_graphics(&self) -> Vec<&SceneObject> {

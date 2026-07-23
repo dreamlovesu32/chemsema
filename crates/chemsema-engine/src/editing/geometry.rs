@@ -41,7 +41,14 @@ pub(super) fn label_anchor_geometries(
     let glyph_points: Vec<Point> = glyph_polygons
         .iter()
         .enumerate()
-        .filter_map(|(index, polygon)| label_glyph_anchor_point(label, index, polygon))
+        .filter_map(|(index, polygon)| {
+            node_label_glyph_anchor_point_with_anchor_y(
+                label,
+                index,
+                polygon,
+                label_line_anchor_y(label),
+            )
+        })
         .map(|point| {
             Point::new(
                 point.x + entry.object.transform.translate[0],
@@ -151,46 +158,12 @@ fn glyph_center_distance_to_x(bbox: [f64; 4], x: f64) -> f64 {
     }
 }
 
-fn polygon_bounds(polygon: &[Point]) -> Option<[f64; 4]> {
-    if polygon.is_empty() {
-        return None;
-    }
-    let mut min_x = f64::INFINITY;
-    let mut min_y = f64::INFINITY;
-    let mut max_x = f64::NEG_INFINITY;
-    let mut max_y = f64::NEG_INFINITY;
-    for point in polygon {
-        min_x = min_x.min(point.x);
-        min_y = min_y.min(point.y);
-        max_x = max_x.max(point.x);
-        max_y = max_y.max(point.y);
-    }
-    Some([min_x, min_y, max_x, max_y])
-}
-
-pub(super) fn polygon_anchor_point(polygon: &[Point]) -> Option<Point> {
-    if polygon.is_empty() {
-        return None;
-    }
-    let mut min_x = f64::INFINITY;
-    let mut min_y = f64::INFINITY;
-    let mut max_x = f64::NEG_INFINITY;
-    let mut max_y = f64::NEG_INFINITY;
-    for point in polygon {
-        min_x = min_x.min(point.x);
-        min_y = min_y.min(point.y);
-        max_x = max_x.max(point.x);
-        max_y = max_y.max(point.y);
-    }
-    Some(Point::new((min_x + max_x) * 0.5, (min_y + max_y) * 0.5))
-}
-
-fn label_glyph_anchor_point(
+pub(crate) fn node_label_glyph_anchor_point_with_anchor_y(
     label: &crate::NodeLabel,
     glyph_index: usize,
     polygon: &[Point],
+    anchor_y: Option<f64>,
 ) -> Option<Point> {
-    let anchor_y = label_line_anchor_y(label);
     let chars = label_visible_chars(label);
     if chars.len() == label.glyph_polygons.len()
         && chars

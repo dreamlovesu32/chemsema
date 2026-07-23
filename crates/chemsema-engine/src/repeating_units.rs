@@ -549,7 +549,11 @@ fn stable_id_fragment(id: &str) -> String {
         .collect()
 }
 
-fn set_meta_object_field(meta_value: &mut Value, key: &str, value: Option<Value>) -> bool {
+pub(crate) fn set_meta_object_field(
+    meta_value: &mut Value,
+    key: &str,
+    value: Option<Value>,
+) -> bool {
     if !meta_value.is_object() {
         if value.is_none() {
             return false;

@@ -2027,8 +2027,8 @@ impl<'a> CdxmlDocumentWriter<'a> {
         out: &mut String,
         indent: usize,
         label: &NodeLabel,
-        fallback: &str,
-        fallback_size: f64,
+        default_text: &str,
+        default_size: f64,
     ) {
         let source_runs = label_source_runs_for_export(label);
         let runs = source_runs.as_deref().unwrap_or(&label.runs);
@@ -2036,8 +2036,8 @@ impl<'a> CdxmlDocumentWriter<'a> {
             out,
             indent,
             runs,
-            fallback,
-            fallback_size,
+            default_text,
+            default_size,
             label.fill.as_deref().unwrap_or("#000000"),
             label.font_family.as_deref().unwrap_or("Arial"),
         );
@@ -2048,18 +2048,18 @@ impl<'a> CdxmlDocumentWriter<'a> {
         out: &mut String,
         indent: usize,
         runs: &[LabelRun],
-        fallback: &str,
-        fallback_size: f64,
-        fallback_color: &str,
-        fallback_font_family: &str,
+        default_text: &str,
+        default_size: f64,
+        default_color: &str,
+        default_font_family: &str,
     ) {
         if runs.is_empty() {
             let attrs = vec![
-                ("font", self.fonts.id_for(fallback_font_family)),
-                ("size", fmt_num(fallback_size)),
-                ("color", self.colors.id_for(fallback_color)),
+                ("font", self.fonts.id_for(default_font_family)),
+                ("size", fmt_num(default_size)),
+                ("color", self.colors.id_for(default_color)),
             ];
-            write_text_tag(out, indent, "s", attrs, fallback);
+            write_text_tag(out, indent, "s", attrs, default_text);
             return;
         }
         for run in runs {
@@ -2092,9 +2092,9 @@ impl<'a> CdxmlDocumentWriter<'a> {
                 (
                     "font",
                     self.fonts
-                        .id_for(run.font_family.as_deref().unwrap_or(fallback_font_family)),
+                        .id_for(run.font_family.as_deref().unwrap_or(default_font_family)),
                 ),
-                ("size", fmt_num(run.font_size.unwrap_or(fallback_size))),
+                ("size", fmt_num(run.font_size.unwrap_or(default_size))),
                 (
                     "color",
                     self.colors.id_for(run.fill.as_deref().unwrap_or("#000000")),

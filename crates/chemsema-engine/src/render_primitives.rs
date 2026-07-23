@@ -284,6 +284,42 @@ pub enum RenderPrimitive {
     },
 }
 
+impl RenderPrimitive {
+    pub fn role(&self) -> RenderRole {
+        *self.role_ref()
+    }
+
+    pub fn role_mut(&mut self) -> &mut RenderRole {
+        match self {
+            Self::Line { role, .. }
+            | Self::Circle { role, .. }
+            | Self::Polygon { role, .. }
+            | Self::Rect { role, .. }
+            | Self::Ellipse { role, .. }
+            | Self::Polyline { role, .. }
+            | Self::Path { role, .. }
+            | Self::FilledPath { role, .. }
+            | Self::Image { role, .. }
+            | Self::Text { role, .. } => role,
+        }
+    }
+
+    fn role_ref(&self) -> &RenderRole {
+        match self {
+            Self::Line { role, .. }
+            | Self::Circle { role, .. }
+            | Self::Polygon { role, .. }
+            | Self::Rect { role, .. }
+            | Self::Ellipse { role, .. }
+            | Self::Polyline { role, .. }
+            | Self::Path { role, .. }
+            | Self::FilledPath { role, .. }
+            | Self::Image { role, .. }
+            | Self::Text { role, .. } => role,
+        }
+    }
+}
+
 fn is_zero(value: &f64) -> bool {
     value.abs() <= crate::EPSILON
 }
@@ -568,9 +604,9 @@ pub(super) fn push_text_rotated(
 fn chemdraw_text_underline_segments(
     x: f64,
     y: f64,
-    fallback_font_size: f64,
+    default_font_size: f64,
     text_anchor: Option<&str>,
-    fallback_fill: Option<&str>,
+    default_fill: Option<&str>,
     runs: &[crate::LabelRun],
     rotate: f64,
     rotate_center: Option<Point>,
@@ -581,7 +617,7 @@ fn chemdraw_text_underline_segments(
     let widths = runs
         .iter()
         .map(|run| {
-            let font_size = run.font_size.unwrap_or(fallback_font_size)
+            let font_size = run.font_size.unwrap_or(default_font_size)
                 * crate::shared_script_scale_factor(run.script.as_deref());
             run.text
                 .chars()
@@ -612,7 +648,7 @@ fn chemdraw_text_underline_segments(
     let mut segments = Vec::new();
     for (run, width) in runs.iter().zip(widths) {
         if run.underline == Some(true) && width > crate::EPSILON {
-            let base_font_size = run.font_size.unwrap_or(fallback_font_size);
+            let base_font_size = run.font_size.unwrap_or(default_font_size);
             let baseline_shift = crate::shared_script_baseline_shift_em_for_face(
                 run.script.as_deref(),
                 run.font_weight,
@@ -625,7 +661,7 @@ fn chemdraw_text_underline_segments(
                 rotate_point(Point::new(cursor + width, underline_y)),
                 run.fill
                     .as_deref()
-                    .or(fallback_fill)
+                    .or(default_fill)
                     .unwrap_or("#000000")
                     .to_string(),
             ));

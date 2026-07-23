@@ -68,15 +68,15 @@ use crate::{
     can_focus_bond_center, can_focus_endpoint, default_angle_for_anchor_for_variant,
     direction_from_angle, endpoint_from_angle_for_document, endpoint_hover_radius_for_node,
     hit_test_arrow_center, hit_test_bond_center, hit_test_endpoint, hit_test_endpoint_excluding,
-    largest_angular_gap, nearest_angle, normalize_angle, px_to_pt, refresh_repeating_units,
-    render_document, render_document_targets, render_primitives_bounds, round2,
-    snapped_angle_for_anchor, ArrowCurve, ArrowEndpointStyle, ArrowHeadSize, ArrowNoGo,
-    ArrowVariant, Bond, BondAnchor, BondLinePattern, BondLineStyles, BondLineWeight,
-    BondLineWeights, BondPreview, BondStereo, BondVariant, ChemSemaDocument, DoubleBond,
-    DoubleBondPlacement, DragState, EditableFragment, EditableFragmentMut, EditorOptions,
-    EndpointHit, HoverShape, HoverTextBox, Node, OrbitalPhase, OrbitalStyle, OrbitalTemplate,
-    OverlayState, Point, PointerEvent, RenderPrimitive, RenderRole, ResourceData, SceneObject,
-    SelectionState, ShapeKind, ShapeStyle, Tool, ToolState, Vector, ARROW_HIT_RADIUS,
+    largest_angular_gap, nearest_angle, normalize_angle, point_in_polygon, px_to_pt,
+    refresh_repeating_units, render_document, render_document_targets, render_primitives_bounds,
+    rotate_point_around, round2, snapped_angle_for_anchor, ArrowCurve, ArrowEndpointStyle,
+    ArrowHeadSize, ArrowNoGo, ArrowVariant, Bond, BondAnchor, BondLinePattern, BondLineStyles,
+    BondLineWeight, BondLineWeights, BondPreview, BondStereo, BondVariant, ChemSemaDocument,
+    DoubleBond, DoubleBondPlacement, DragState, EditableFragment, EditableFragmentMut,
+    EditorOptions, EndpointHit, HoverShape, HoverTextBox, Node, OrbitalPhase, OrbitalStyle,
+    OrbitalTemplate, OverlayState, Point, PointerEvent, RenderPrimitive, RenderRole, ResourceData,
+    SceneObject, SelectionState, ShapeKind, ShapeStyle, Tool, ToolState, Vector, ARROW_HIT_RADIUS,
     BOND_CENTER_HIT_RADIUS, DRAG_START_THRESHOLD, ENDPOINT_FOCUS_RADIUS, ENDPOINT_HIT_RADIUS,
     GLOBAL_SNAP_ANGLES, GRAPHIC_EDGE_HIT_RADIUS,
 };
@@ -103,31 +103,14 @@ fn render_bounds_scope_accepts(scope: RenderBoundsScope, primitive: &RenderPrimi
     match scope {
         RenderBoundsScope::All => true,
         RenderBoundsScope::Document => {
-            let role = render_primitive_role(primitive);
+            let role = primitive.role();
             role != RenderRole::DocumentKnockout
                 && role != RenderRole::DocumentDiagnostic
                 && !render_role_is_selection(role)
                 && !render_role_is_hover(role)
                 && !render_role_is_preview(role)
         }
-        RenderBoundsScope::Selection => {
-            render_role_is_selection_bounds(render_primitive_role(primitive))
-        }
-    }
-}
-
-fn render_primitive_role(primitive: &RenderPrimitive) -> RenderRole {
-    match primitive {
-        RenderPrimitive::Line { role, .. }
-        | RenderPrimitive::Circle { role, .. }
-        | RenderPrimitive::Polygon { role, .. }
-        | RenderPrimitive::Rect { role, .. }
-        | RenderPrimitive::Ellipse { role, .. }
-        | RenderPrimitive::Polyline { role, .. }
-        | RenderPrimitive::Path { role, .. }
-        | RenderPrimitive::FilledPath { role, .. }
-        | RenderPrimitive::Image { role, .. }
-        | RenderPrimitive::Text { role, .. } => *role,
+        RenderBoundsScope::Selection => render_role_is_selection_bounds(primitive.role()),
     }
 }
 
@@ -169,21 +152,6 @@ fn render_role_is_hover(role: RenderRole) -> bool {
 
 fn render_role_is_preview(role: RenderRole) -> bool {
     matches!(role, RenderRole::PreviewBond | RenderRole::PreviewEnd)
-}
-
-fn render_primitive_role_mut(primitive: &mut RenderPrimitive) -> &mut RenderRole {
-    match primitive {
-        RenderPrimitive::Line { role, .. }
-        | RenderPrimitive::Circle { role, .. }
-        | RenderPrimitive::Polygon { role, .. }
-        | RenderPrimitive::Rect { role, .. }
-        | RenderPrimitive::Ellipse { role, .. }
-        | RenderPrimitive::Polyline { role, .. }
-        | RenderPrimitive::Path { role, .. }
-        | RenderPrimitive::FilledPath { role, .. }
-        | RenderPrimitive::Image { role, .. }
-        | RenderPrimitive::Text { role, .. } => role,
-    }
 }
 
 fn preview_primitive_ids(
@@ -232,15 +200,15 @@ fn is_preview_id(id: Option<&str>) -> bool {
 
 fn mark_preview_primitives(primitives: &mut [RenderPrimitive]) {
     for primitive in primitives {
-        let role = render_primitive_role(primitive);
+        let role = primitive.role();
         if render_role_is_preview(role) {
             continue;
         }
         let (object_id, node_id, bond_id) = preview_primitive_ids(primitive);
         if is_preview_id(bond_id) {
-            *render_primitive_role_mut(primitive) = RenderRole::PreviewBond;
+            *primitive.role_mut() = RenderRole::PreviewBond;
         } else if is_preview_id(object_id) || is_preview_id(node_id) {
-            *render_primitive_role_mut(primitive) = RenderRole::PreviewBond;
+            *primitive.role_mut() = RenderRole::PreviewBond;
         }
     }
 }
@@ -962,7 +930,7 @@ impl Engine {
         let mut out = if let Some(preview_document) = self.preview_overlay_document() {
             let mut primitives = render_document(&preview_document);
             mark_preview_primitives(&mut primitives);
-            primitives.retain(|primitive| render_role_is_preview(render_primitive_role(primitive)));
+            primitives.retain(|primitive| render_role_is_preview(primitive.role()));
             primitives
         } else if let Some(object_id) = self.object_edit_preview_object_id() {
             let object_ids = BTreeSet::from([object_id.to_string()]);
@@ -2063,62 +2031,47 @@ impl Engine {
         serde_json::to_string(&result).map_err(|error| error.to_string())
     }
 
-    pub fn execute_command(&mut self, command: EditorCommand) -> Result<CommandResult, String> {
-        self.last_command_result = None;
-        let changed = match command.clone() {
-            EditorCommand::Undo => self.undo(),
-            EditorCommand::Redo => self.redo(),
+    fn execute_immediate_command(
+        &mut self,
+        command: EditorCommand,
+    ) -> Result<CommandResult, String> {
+        match command.clone() {
             EditorCommand::LoadDocument {
                 format,
                 content,
                 bytes,
-            } => return self.execute_load_document_command(command, format, &content, &bytes),
+            } => self.execute_load_document_command(command, format, &content, &bytes),
             EditorCommand::ExportDocument { format } => {
-                return self.execute_export_document_command(command, format);
+                self.execute_export_document_command(command, format)
             }
             EditorCommand::ConvertDocument {
                 from,
                 to,
                 content,
                 bytes,
-            } => return self.execute_convert_document_command(command, from, to, &content, &bytes),
+            } => self.execute_convert_document_command(command, from, to, &content, &bytes),
             EditorCommand::InspectDocument { include } => {
-                return Ok(self.readonly_command_result(
-                    Some(command),
-                    self.inspect_document_output(&include),
-                ));
-            }
-            EditorCommand::InsertSmiles { smiles, x, y } => {
-                let molecule =
-                    chemsema_chemistry::parse_smiles(&smiles).map_err(|error| error.to_string())?;
-                self.with_command(command.clone(), |engine| {
-                    engine.insert_smiles_untracked(&molecule, &smiles, Point::new(x, y))
-                })
+                Ok(self
+                    .readonly_command_result(Some(command), self.inspect_document_output(&include)))
             }
             EditorCommand::ChemicalAnalysis { format, targets } => {
                 let output = self.chemical_analysis_output(format, &targets)?;
-                return Ok(self.readonly_command_result(Some(command), output));
+                Ok(self.readonly_command_result(Some(command), output))
             }
             EditorCommand::SelectTargets { targets } => {
-                let selection_changed = self.select_targets_direct(&targets);
-                return Ok(self.readonly_command_result(
-                    Some(command),
-                    self.selection_command_output(selection_changed),
-                ));
+                let changed = self.select_targets_direct(&targets);
+                Ok(self
+                    .readonly_command_result(Some(command), self.selection_command_output(changed)))
             }
             EditorCommand::SelectAll => {
-                let selection_changed = self.select_all();
-                return Ok(self.readonly_command_result(
-                    Some(command),
-                    self.selection_command_output(selection_changed),
-                ));
+                let changed = self.select_all();
+                Ok(self
+                    .readonly_command_result(Some(command), self.selection_command_output(changed)))
             }
             EditorCommand::ClearSelection => {
-                let selection_changed = self.clear_selection();
-                return Ok(self.readonly_command_result(
-                    Some(command),
-                    self.selection_command_output(selection_changed),
-                ));
+                let changed = self.clear_selection();
+                Ok(self
+                    .readonly_command_result(Some(command), self.selection_command_output(changed)))
             }
             EditorCommand::PlanBond {
                 begin,
@@ -2136,7 +2089,7 @@ impl Engine {
                     order,
                     variant,
                 );
-                return Ok(self.readonly_command_result(Some(command), output));
+                Ok(self.readonly_command_result(Some(command), output))
             }
             EditorCommand::PlanTemplate {
                 template,
@@ -2160,7 +2113,20 @@ impl Engine {
                     bond_length,
                     side,
                 )?;
-                return Ok(self.readonly_command_result(Some(command), output));
+                Ok(self.readonly_command_result(Some(command), output))
+            }
+            _ => unreachable!("immediate commands are classified before dispatch"),
+        }
+    }
+
+    fn execute_creation_command(&mut self, command: EditorCommand) -> Result<bool, String> {
+        let changed = match command.clone() {
+            EditorCommand::InsertSmiles { smiles, x, y } => {
+                let molecule =
+                    chemsema_chemistry::parse_smiles(&smiles).map_err(|error| error.to_string())?;
+                self.with_command(command, |engine| {
+                    engine.insert_smiles_untracked(&molecule, &smiles, Point::new(x, y))
+                })
             }
             EditorCommand::AddBond {
                 begin,
@@ -2224,7 +2190,7 @@ impl Engine {
                 color,
                 begin,
                 end,
-            } => self.with_command(command.clone(), |engine| {
+            } => self.with_command(command, |engine| {
                 let previous_tool = engine.state.tool.clone();
                 engine.state.tool.shape_kind = kind;
                 engine.state.tool.shape_style = style;
@@ -2247,7 +2213,7 @@ impl Engine {
                 changed
             }),
             EditorCommand::AddBracket { kind, begin, end } => {
-                self.with_command(command.clone(), |engine| {
+                self.with_command(command, |engine| {
                     let previous_tool = engine.state.tool.clone();
                     engine.state.tool.bracket_kind = kind;
                     let drag = BracketDragState {
@@ -2261,20 +2227,18 @@ impl Engine {
                     changed
                 })
             }
-            EditorCommand::AddSymbol { kind, center } => {
-                self.with_command(command.clone(), |engine| {
-                    let previous_tool = engine.state.tool.clone();
-                    engine.state.tool.symbol_kind = kind;
-                    let changed = engine.insert_bracket_symbol(point_from_command(&center));
-                    engine.state.tool = previous_tool;
-                    changed
-                })
-            }
+            EditorCommand::AddSymbol { kind, center } => self.with_command(command, |engine| {
+                let previous_tool = engine.state.tool.clone();
+                engine.state.tool.symbol_kind = kind;
+                let changed = engine.insert_bracket_symbol(point_from_command(&center));
+                engine.state.tool = previous_tool;
+                changed
+            }),
             EditorCommand::AddElement {
                 symbol,
                 atomic_number,
                 center,
-            } => self.with_command(command.clone(), |engine| {
+            } => self.with_command(command, |engine| {
                 let previous_tool = engine.state.tool.clone();
                 engine.state.tool.element_symbol = symbol;
                 engine.state.tool.element_atomic_number = atomic_number;
@@ -2282,10 +2246,9 @@ impl Engine {
                 engine.state.tool = previous_tool;
                 changed
             }),
-            EditorCommand::AddText { position, content } => self
-                .with_command(command.clone(), |engine| {
-                    engine.add_text_direct(position, content)
-                }),
+            EditorCommand::AddText { position, content } => {
+                self.with_command(command, |engine| engine.add_text_direct(position, content))
+            }
             EditorCommand::AddImage {
                 mime_type,
                 data_base64,
@@ -2295,7 +2258,7 @@ impl Engine {
                 width,
                 height,
                 source_name,
-            } => self.with_command(command.clone(), |engine| {
+            } => self.with_command(command, |engine| {
                 engine.add_image_direct(
                     &mime_type,
                     &data_base64,
@@ -2307,6 +2270,78 @@ impl Engine {
                     source_name.as_deref(),
                 )
             }),
+            EditorCommand::AddOrbital {
+                template,
+                style,
+                phase,
+                color,
+                center,
+                end,
+            } => self.with_command(command, |engine| {
+                let previous_tool = engine.state.tool.clone();
+                engine.state.tool.orbital_template = template;
+                engine.state.tool.orbital_style = style;
+                engine.state.tool.orbital_phase = phase;
+                engine.state.tool.orbital_color = color;
+                let drag = OrbitalDragState {
+                    anchor: point_from_command(&center),
+                    current: point_from_command(&end),
+                    has_dragged: true,
+                };
+                let changed = engine.insert_orbital_from_drag(&drag);
+                engine.state.tool = previous_tool;
+                changed
+            }),
+            _ => unreachable!("creation commands are classified before dispatch"),
+        };
+        Ok(changed)
+    }
+
+    fn completed_command_result(&mut self, changed: bool) -> CommandResult {
+        if !changed && self.last_command_result.is_none() {
+            self.last_command_result = Some(self.unchanged_command_result());
+        }
+        self.last_command_result
+            .clone()
+            .unwrap_or_else(|| self.unchanged_command_result())
+    }
+
+    pub fn execute_command(&mut self, command: EditorCommand) -> Result<CommandResult, String> {
+        self.last_command_result = None;
+        if editor_command_is_immediate(&command) {
+            return self.execute_immediate_command(command);
+        }
+        if editor_command_is_creation(&command) {
+            let changed = self.execute_creation_command(command)?;
+            return Ok(self.completed_command_result(changed));
+        }
+        let changed = match command.clone() {
+            EditorCommand::LoadDocument { .. }
+            | EditorCommand::ExportDocument { .. }
+            | EditorCommand::ConvertDocument { .. }
+            | EditorCommand::InspectDocument { .. }
+            | EditorCommand::ChemicalAnalysis { .. }
+            | EditorCommand::SelectTargets { .. }
+            | EditorCommand::SelectAll
+            | EditorCommand::ClearSelection
+            | EditorCommand::PlanBond { .. }
+            | EditorCommand::PlanTemplate { .. } => {
+                unreachable!("immediate commands are dispatched before the main command match")
+            }
+            EditorCommand::InsertSmiles { .. }
+            | EditorCommand::AddBond { .. }
+            | EditorCommand::AddArrow { .. }
+            | EditorCommand::AddShape { .. }
+            | EditorCommand::AddBracket { .. }
+            | EditorCommand::AddSymbol { .. }
+            | EditorCommand::AddElement { .. }
+            | EditorCommand::AddText { .. }
+            | EditorCommand::AddImage { .. }
+            | EditorCommand::AddOrbital { .. } => {
+                unreachable!("creation commands are dispatched before the main command match")
+            }
+            EditorCommand::Undo => self.undo(),
+            EditorCommand::Redo => self.redo(),
             EditorCommand::SetTextRuns { object_id, content } => self
                 .with_command(command.clone(), |engine| {
                     engine.set_text_runs_direct(&object_id, content)
@@ -2335,28 +2370,6 @@ impl Engine {
                     editor_command_type_name(&command)
                 ));
             }
-            EditorCommand::AddOrbital {
-                template,
-                style,
-                phase,
-                color,
-                center,
-                end,
-            } => self.with_command(command.clone(), |engine| {
-                let previous_tool = engine.state.tool.clone();
-                engine.state.tool.orbital_template = template;
-                engine.state.tool.orbital_style = style;
-                engine.state.tool.orbital_phase = phase;
-                engine.state.tool.orbital_color = color;
-                let drag = OrbitalDragState {
-                    anchor: point_from_command(&center),
-                    current: point_from_command(&end),
-                    has_dragged: true,
-                };
-                let changed = engine.insert_orbital_from_drag(&drag);
-                engine.state.tool = previous_tool;
-                changed
-            }),
             EditorCommand::ApplyArrowStyle {
                 object_ids,
                 variant,
@@ -2638,13 +2651,7 @@ impl Engine {
                 self.replace_hovered_endpoint_label(&label)
             }
         };
-        if !changed && self.last_command_result.is_none() {
-            self.last_command_result = Some(self.unchanged_command_result());
-        }
-        Ok(self
-            .last_command_result
-            .clone()
-            .unwrap_or_else(|| self.unchanged_command_result()))
+        Ok(self.completed_command_result(changed))
     }
 
     fn execute_load_document_command(
@@ -4610,6 +4617,38 @@ fn scene_object_selection_from_ids(
     selection
 }
 
+fn editor_command_is_creation(command: &EditorCommand) -> bool {
+    matches!(
+        command,
+        EditorCommand::InsertSmiles { .. }
+            | EditorCommand::AddBond { .. }
+            | EditorCommand::AddArrow { .. }
+            | EditorCommand::AddShape { .. }
+            | EditorCommand::AddBracket { .. }
+            | EditorCommand::AddSymbol { .. }
+            | EditorCommand::AddElement { .. }
+            | EditorCommand::AddText { .. }
+            | EditorCommand::AddImage { .. }
+            | EditorCommand::AddOrbital { .. }
+    )
+}
+
+fn editor_command_is_immediate(command: &EditorCommand) -> bool {
+    matches!(
+        command,
+        EditorCommand::LoadDocument { .. }
+            | EditorCommand::ExportDocument { .. }
+            | EditorCommand::ConvertDocument { .. }
+            | EditorCommand::InspectDocument { .. }
+            | EditorCommand::ChemicalAnalysis { .. }
+            | EditorCommand::SelectTargets { .. }
+            | EditorCommand::SelectAll
+            | EditorCommand::ClearSelection
+            | EditorCommand::PlanBond { .. }
+            | EditorCommand::PlanTemplate { .. }
+    )
+}
+
 fn editor_command_type_name(command: &EditorCommand) -> &'static str {
     match command {
         EditorCommand::Undo => "undo",
@@ -4809,23 +4848,6 @@ fn rotate_point(point: Point, center: Point, degrees: f64) -> Point {
         center.x + dx * radians.cos() - dy * radians.sin(),
         center.y + dx * radians.sin() + dy * radians.cos(),
     )
-}
-
-fn point_in_polygon(point: Point, polygon: &[Point]) -> bool {
-    let mut inside = false;
-    let mut previous = *polygon.last().unwrap_or(&point);
-    for current in polygon {
-        let intersects = ((current.y > point.y) != (previous.y > point.y))
-            && (point.x
-                < (previous.x - current.x) * (point.y - current.y)
-                    / (previous.y - current.y + 1.0e-12)
-                    + current.x);
-        if intersects {
-            inside = !inside;
-        }
-        previous = *current;
-    }
-    inside
 }
 
 fn collect_document_colors(document: &ChemSemaDocument) -> Vec<String> {

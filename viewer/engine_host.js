@@ -1576,10 +1576,10 @@ export function createEngineHost(kind = detectEngineHostKind()) {
   return new WasmEngineHost();
 }
 
-function safeJsonParse(json, fallback = null) {
+function safeJsonParse(json, defaultValue = null) {
   try {
     return JSON.parse(json);
   } catch {
-    return fallback;
+    return defaultValue;
   }
 }

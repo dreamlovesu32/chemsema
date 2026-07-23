@@ -852,21 +852,21 @@ impl Engine {
         } else {
             session.text.clone()
         };
-        let fallback_font_family = session
+        let default_font_family = session
             .font_family
             .as_deref()
             .unwrap_or(DEFAULT_TEXT_FONT_FAMILY);
-        let fallback_font_size = session
+        let default_font_size = session
             .font_size_world_pt()
             .unwrap_or(WorldPt(DEFAULT_TEXT_FONT_SIZE))
             .value();
-        let fallback_fill = session.fill.as_deref().unwrap_or(DEFAULT_TEXT_FILL);
+        let default_fill = session.fill.as_deref().unwrap_or(DEFAULT_TEXT_FILL);
         let source_runs = merge_adjacent_runs(normalize_source_runs(session, &text));
         let display_runs = display_runs_from_source_runs(
             &source_runs,
-            fallback_font_family,
-            fallback_font_size,
-            fallback_fill,
+            default_font_family,
+            default_font_size,
+            default_fill,
         );
         (source_runs, display_runs)
     }
@@ -885,15 +885,15 @@ impl Engine {
                 .replace('\n', " "),
             TextEditTarget::TextObject { .. } => raw_text,
         };
-        let fallback_font_family = session
+        let default_font_family = session
             .font_family
             .as_deref()
             .unwrap_or(DEFAULT_TEXT_FONT_FAMILY);
-        let fallback_font_size = session
+        let default_font_size = session
             .font_size_world_pt()
             .unwrap_or(WorldPt(DEFAULT_TEXT_FONT_SIZE))
             .value();
-        let fallback_fill = session.fill.as_deref().unwrap_or(DEFAULT_TEXT_FILL);
+        let default_fill = session.fill.as_deref().unwrap_or(DEFAULT_TEXT_FILL);
         let line_height = session
             .line_height_world_pt()
             .unwrap_or(WorldPt(DEFAULT_TEXT_LINE_HEIGHT))
@@ -901,9 +901,9 @@ impl Engine {
         let source_runs = merge_adjacent_runs(normalize_source_runs(session, &text));
         let display_runs = display_runs_from_source_runs(
             &source_runs,
-            fallback_font_family,
-            fallback_font_size,
-            fallback_fill,
+            default_font_family,
+            default_font_size,
+            default_fill,
         );
         let selection = normalize_text_edit_selection(&text, request.selection.as_ref());
         match &session.target {
@@ -913,9 +913,9 @@ impl Engine {
                 text,
                 source_runs,
                 display_runs,
-                fallback_font_family,
-                fallback_font_size,
-                fallback_fill,
+                default_font_family,
+                default_font_size,
+                default_fill,
                 line_height,
                 selection,
             ),
@@ -1165,9 +1165,9 @@ impl Engine {
         text: String,
         source_runs: Vec<LabelRun>,
         display_runs: Vec<LabelRun>,
-        fallback_font_family: &str,
-        fallback_font_size: f64,
-        fallback_fill: &str,
+        default_font_family: &str,
+        default_font_size: f64,
+        default_fill: &str,
         line_height: f64,
         selection: Option<TextEditSelectionState>,
     ) -> TextEditLayout {
@@ -1208,9 +1208,9 @@ impl Engine {
             local_anchor,
             source_runs.clone(),
             display_runs.clone(),
-            fallback_font_family,
-            fallback_font_size,
-            fallback_fill,
+            default_font_family,
+            default_font_size,
+            default_fill,
             preview_connection_angles,
             &editing_session,
             false,

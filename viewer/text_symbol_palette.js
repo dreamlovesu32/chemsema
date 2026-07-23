@@ -292,11 +292,11 @@ function normalizeElementPalette(palette, currentSymbol = "P") {
       color: element?.color || null,
     }))
     .filter((element) => element.symbol && element.atomicNumber);
-  const fallback = { symbol: "P", atomicNumber: 15, name: "Phosphorus", column: 15, row: 3, color: null };
+  const defaultElement = { symbol: "P", atomicNumber: 15, name: "Phosphorus", column: 15, row: 3, color: null };
   const current = elements.find((element) => element.symbol === payload?.current?.symbol)
     || elements.find((element) => element.symbol === currentSymbol)
     || elements.find((element) => element.symbol === "P")
-    || fallback;
+    || defaultElement;
   return {
     title: String(payload?.title || "Periodic Table"),
     toggleLabel: String(payload?.toggleLabel || "Element"),
@@ -304,14 +304,14 @@ function normalizeElementPalette(palette, currentSymbol = "P") {
     current,
     columns: Number(payload?.columns || 18),
     rows: Number(payload?.rows || 9) + 1,
-    elements: elements.length ? elements : [fallback],
+    elements: elements.length ? elements : [defaultElement],
   };
 }
 
-function safeJsonParse(text, fallback) {
+function safeJsonParse(text, defaultValue) {
   try {
     return JSON.parse(text);
   } catch {
-    return fallback;
+    return defaultValue;
   }
 }

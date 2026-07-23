@@ -727,11 +727,11 @@ pub(super) fn is_joinable_main_line_render(
     allow_bold_contacts && line_weight == BondLineWeight::Normal && has_joinable_main_line(bond)
 }
 
-pub(super) fn neighbor_bond_stroke_width(bond: &Bond, fallback: f64) -> f64 {
+pub(super) fn neighbor_bond_stroke_width(bond: &Bond, default_width: f64) -> f64 {
     if bond.stroke_width > 0.0 {
         bond.stroke_width
     } else {
-        fallback
+        default_width
     }
 }
 

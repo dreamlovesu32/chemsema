@@ -3,6 +3,7 @@ import {
   SHAPE_TOOL_STYLE_KINDS,
   arrowTypeSupportsHeadSize,
 } from "./toolbar.js";
+import { normalizeHexColor } from "./color_utils.js";
 
 const HOVER_ENDPOINT_SHORTCUT_LABELS = {
   h: "H",
@@ -1253,21 +1254,6 @@ export function openColorDialog(currentColor, onPick, options) {
 function colorDialogCustomColors(options) {
   const colors = (options.getDocumentColors?.() || []).map(normalizeHexColor).filter(Boolean);
   return colors.filter((color, index) => colors.indexOf(color) === index).slice(0, 16);
-}
-
-function normalizeHexColor(value) {
-  const raw = String(value || "").trim().toLowerCase();
-  if (/^#[0-9a-f]{6}$/.test(raw)) {
-    return raw;
-  }
-  if (/^#[0-9a-f]{3}$/.test(raw)) {
-    return `#${raw[1]}${raw[1]}${raw[2]}${raw[2]}${raw[3]}${raw[3]}`;
-  }
-  const match = raw.match(/^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/);
-  if (match) {
-    return rgbToHex(match[1], match[2], match[3]);
-  }
-  return null;
 }
 
 function rgbToHex(r, g, b) {

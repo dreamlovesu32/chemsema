@@ -17,13 +17,13 @@ export function editorSourceRunsFromSession(session, root, options) {
     normalizeRuns,
     baseStyle,
   } = options;
-  const fallbackStyle = baseStyle(root);
+  const defaultStyle = baseStyle(root);
   const rawRuns = Array.isArray(session.sourceRuns) && session.sourceRuns.length
     ? session.sourceRuns.map((run) => ({ ...run }))
     : session.text
       ? [{
         text: String(session.text || ""),
-        fontFamily: session.fontFamily || fallbackStyle.fontFamily || defaultFontFamily,
+        fontFamily: session.fontFamily || defaultStyle.fontFamily || defaultFontFamily,
         fontSize: Number(session.fontSize || root.dataset.baseFontSize || defaultFontSize),
         fill: session.fill || root.style.color || defaultTextColor,
         fontWeight: 400,
@@ -34,7 +34,7 @@ export function editorSourceRunsFromSession(session, root, options) {
         script: session.defaultChemical ? "chemical" : "normal",
       }]
       : [];
-  return normalizeRuns(rawRuns, fallbackStyle);
+  return normalizeRuns(rawRuns, defaultStyle);
 }
 
 function normalizedSelectionRange(selectionOffsets) {

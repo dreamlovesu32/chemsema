@@ -631,6 +631,47 @@ async function verifyImageDropAndPaste(page) {
     JSON.parse(window.__chemsemaDebug.state.editorEngine.documentJson())
       .objects.filter((object) => object.type === "image").length > count
   ), afterDrop);
+
+  const afterPaste = await page.evaluate(() => (
+    JSON.parse(window.__chemsemaDebug.state.editorEngine.documentJson())
+      .objects.filter((object) => object.type === "image").length
+  ));
+  const canvas = await page.locator("#viewer-container").boundingBox();
+  assert(canvas, "Viewer container is not visible for context-menu image insertion.");
+  await page.mouse.click(canvas.x + canvas.width * 0.72, canvas.y + canvas.height * 0.68, {
+    button: "right",
+  });
+  const insertImage = page.locator(
+    '.canvas-context-menu-item[data-canvas-context-command="insert-image"]',
+  );
+  await insertImage.waitFor();
+  const chooserPromise = page.waitForEvent("filechooser");
+  await insertImage.click();
+  const chooser = await chooserPromise;
+  const pngBase64 = await page.evaluate(async () => {
+    const imageCanvas = document.createElement("canvas");
+    imageCanvas.width = 2;
+    imageCanvas.height = 2;
+    const context = imageCanvas.getContext("2d");
+    context.fillStyle = "#8e44ad";
+    context.fillRect(0, 0, 2, 2);
+    const blob = await new Promise((resolve) => imageCanvas.toBlob(resolve, "image/png"));
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    let binary = "";
+    for (const value of bytes) {
+      binary += String.fromCharCode(value);
+    }
+    return btoa(binary);
+  });
+  await chooser.setFiles({
+    name: "context-menu-regression.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(pngBase64, "base64"),
+  });
+  await page.waitForFunction((count) => (
+    JSON.parse(window.__chemsemaDebug.state.editorEngine.documentJson())
+      .objects.filter((object) => object.type === "image").length > count
+  ), afterPaste);
 }
 
 async function verifyStructuredClipboardAcrossTabs(context, page, errors) {
@@ -656,6 +697,66 @@ async function verifyStructuredClipboardAcrossTabs(context, page, errors) {
   await nextPage.locator('button[data-command="paste"]').click();
   await nextPage.waitForFunction(() => document.querySelectorAll("[data-bond-id]").length > 0);
   await nextPage.close();
+}
+
+async function verifyDesktopTabDetach(page) {
+  const result = await page.evaluate(async () => {
+    const [{ createDocumentTabInteractions }, { createUiActionRunner }] = await Promise.all([
+      import("./document_tab_interactions.js"),
+      import("./ui_action_runner.js"),
+    ]);
+    const fixture = document.createElement("div");
+    fixture.innerHTML = `
+      <div data-test-titlebar style="position:fixed;left:0;top:0;width:500px;height:42px"></div>
+      <div data-test-tabs>
+        <div data-document-tab-id="tab-1" style="width:160px;height:30px">Example</div>
+      </div>
+    `;
+    document.body.appendChild(fixture);
+    const root = fixture.querySelector("[data-test-tabs]");
+    const titlebar = fixture.querySelector("[data-test-titlebar]");
+    const tab = fixture.querySelector("[data-document-tab-id]");
+    tab.setPointerCapture = () => {};
+    const detached = [];
+    const failures = [];
+    const interactions = createDocumentTabInteractions({
+      root,
+      titlebar,
+      detachEnabled: () => true,
+      uiActions: createUiActionRunner({
+        onFailure: (failure) => failures.push(failure.message),
+      }),
+      closeDocumentTab: async () => {},
+      activateDocumentTab: async () => {},
+      detachDocumentTab: async (...args) => detached.push(args),
+    });
+    interactions.bind();
+    const dispatch = (type, clientX, clientY) => tab.dispatchEvent(new PointerEvent(type, {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+      pointerId: 7,
+      clientX,
+      clientY,
+      screenX: clientX + 100,
+      screenY: clientY + 100,
+    }));
+    dispatch("pointerdown", 40, 20);
+    dispatch("pointermove", 65, 90);
+    dispatch("pointerup", 65, 90);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const outcome = {
+      detached,
+      failures,
+      dragging: interactions.isDetaching("tab-1"),
+    };
+    fixture.remove();
+    return outcome;
+  });
+  assert.deepEqual(result.failures, []);
+  assert.equal(result.dragging, false, "Detached-tab drag state was not cleared.");
+  assert.equal(result.detached.length, 1, "Desktop tab drag did not request a detached window.");
+  assert.equal(result.detached[0][0], "tab-1");
 }
 
 async function verifySaveAsFormats(page) {
@@ -780,6 +881,10 @@ try {
     await verifyStructuredClipboardAcrossTabs(context, crossTabPage, errors);
     await crossTabPage.close();
 
+    const detachedTabPage = await openViewer(context, errors);
+    await verifyDesktopTabDetach(detachedTabPage);
+    await detachedTabPage.close();
+
     const savePage = await openViewer(context, errors);
     await verifySaveAsFormats(savePage);
     await verifyZoomAndStyleMenu(savePage);
@@ -791,7 +896,7 @@ try {
     ? "[gui-regression] ok (selection summary and minimum selection box)"
     : exactTieOnly
       ? "[gui-regression] ok (exact-tie double bond)"
-      : "[gui-regression] ok (open, save-as ccjs/cdxml/svg, ctrl+s ccjz, copy/paste/cut, image drop/paste, cross-tab structured clipboard, toolbar icons, cursors, selection overlay, delete tool, exact-tie double bond, zoom, style)");
+      : "[gui-regression] ok (open, save-as ccjs/cdxml/svg, ctrl+s ccjz, copy/paste/cut, image drop/paste/context-menu, cross-tab structured clipboard, detached desktop tab, toolbar icons, cursors, selection overlay, delete tool, exact-tie double bond, zoom, style)");
 } finally {
   await browser?.close();
   if (server) {

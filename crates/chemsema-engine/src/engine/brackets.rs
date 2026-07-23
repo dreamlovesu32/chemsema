@@ -386,15 +386,15 @@ impl Engine {
         &self,
         endpoint: &EndpointHit,
     ) -> Point {
-        let fallback = Point::new(endpoint.point.x + 6.0, endpoint.point.y - 6.0);
+        let default_label_point = Point::new(endpoint.point.x + 6.0, endpoint.point.y - 6.0);
         let Some(entry) = self.state.document.editable_fragment() else {
-            return fallback;
+            return default_label_point;
         };
         let directions = adjacent_directions(&entry, &endpoint.node_id);
         let angle = match directions.len() {
             1 => normalize_angle(directions[0] + 180.0),
             2 => largest_angular_gap(&directions).center,
-            _ => return fallback,
+            _ => return default_label_point,
         };
         endpoint.point.translated(
             direction_from_angle(angle).scaled(self.bracket_symbol_click_center_distance()),
@@ -1349,16 +1349,4 @@ fn bracket_side_object_from_handles(
     object.transform.rotate = round2(rotate);
     object.payload.bbox = Some([0.0, 0.0, round2(width), round2(height)]);
     Some(object)
-}
-
-fn rotate_point_around(point: Point, center: Point, degrees: f64) -> Point {
-    let radians = degrees.to_radians();
-    let cos = radians.cos();
-    let sin = radians.sin();
-    let dx = point.x - center.x;
-    let dy = point.y - center.y;
-    Point::new(
-        center.x + dx * cos - dy * sin,
-        center.y + dx * sin + dy * cos,
-    )
 }

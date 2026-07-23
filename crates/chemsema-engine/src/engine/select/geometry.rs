@@ -183,7 +183,10 @@ fn push_selection_resize_handles_for_bounds(out: &mut Vec<RenderPrimitive>, boun
     }
 }
 
-fn selection_resize_handle_center(handle: SelectionResizeHandle, bounds: AxisBounds) -> Point {
+pub(super) fn selection_resize_handle_center(
+    handle: SelectionResizeHandle,
+    bounds: AxisBounds,
+) -> Point {
     match handle {
         SelectionResizeHandle::North => Point::new(bounds.center_x(), bounds.min_y),
         SelectionResizeHandle::South => Point::new(bounds.center_x(), bounds.max_y),
@@ -225,23 +228,6 @@ pub(super) fn polygon_bounds(points: &[Point]) -> AxisBounds {
         bounds.include_point(*point);
     }
     bounds
-}
-
-pub(super) fn point_in_polygon(point: Point, polygon: &[Point]) -> bool {
-    let mut inside = false;
-    let mut previous = *polygon.last().unwrap_or(&point);
-    for current in polygon {
-        let intersects = ((current.y > point.y) != (previous.y > point.y))
-            && (point.x
-                < (previous.x - current.x) * (point.y - current.y)
-                    / (previous.y - current.y + 1.0e-12)
-                    + current.x);
-        if intersects {
-            inside = !inside;
-        }
-        previous = *current;
-    }
-    inside
 }
 
 pub(super) fn segment_intersects_bounds(start: Point, end: Point, bounds: AxisBounds) -> bool {

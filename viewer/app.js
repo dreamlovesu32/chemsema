@@ -19,6 +19,7 @@ import { createEngineHost } from "./engine_host.js?v=20260723-native-images";
 import { bindEditorControls, openColorDialog } from "./editor_bindings.js?v=20260627-browser-drop-tabs";
 import { createDocumentFlow } from "./document_flow.js";
 import { createBrowserDocumentTabs } from "./browser_document_tabs.js";
+import { createDocumentTabInteractions } from "./document_tab_interactions.js";
 import { createAppWindowLifecycleHost } from "./app_window_lifecycle.js";
 import { pointDistance } from "./geometry.js";
 import {
@@ -328,9 +329,7 @@ const documentTabs = [];
 let activeDocumentTabId = null;
 let activeTextEditor = null;
 let pendingImageInsertWorldPoint = null;
-let activeTitlebarTabDrag = null;
-let detachingDocumentTabId = null;
-let suppressNextDocumentTabClick = false;
+let documentTabInteractions = null;
 const editorEngineReadCache = {
   engine: null,
   revision: null,
@@ -805,7 +804,7 @@ function renderDocumentTabs() {
     const active = tab.id === activeDocumentTabId;
     const baseTitle = tab.title || "Untitled";
     const title = escapeHtml(documentTitleWithDirtyMarker(baseTitle, documentTabIsDirty(tab)));
-    const dragging = tab.id === detachingDocumentTabId;
+    const dragging = documentTabInteractions?.isDetaching(tab.id);
     return `
       <div class="document-tab${active ? " is-active" : ""}${dragging ? " is-dragging" : ""}" role="tab" tabindex="0" aria-selected="${active ? "true" : "false"}" data-document-tab-id="${tab.id}" title="${title}">
         <span class="document-tab-title">${title}</span>
@@ -815,27 +814,6 @@ function renderDocumentTabs() {
       </div>
     `;
   }).join("");
-}
-
-function documentTabElement(tabId) {
-  if (!documentTabsRoot || !tabId) {
-    return null;
-  }
-  return Array.from(documentTabsRoot.querySelectorAll("[data-document-tab-id]"))
-    .find((element) => element.dataset.documentTabId === tabId) || null;
-}
-
-function setDetachingDocumentTabId(tabId) {
-  if (detachingDocumentTabId === tabId) {
-    return;
-  }
-  if (detachingDocumentTabId) {
-    documentTabElement(detachingDocumentTabId)?.classList.remove("is-dragging");
-  }
-  detachingDocumentTabId = tabId;
-  if (detachingDocumentTabId) {
-    documentTabElement(detachingDocumentTabId)?.classList.add("is-dragging");
-  }
 }
 
 async function activateDocumentTab(tabId) {
@@ -900,99 +878,16 @@ async function closeDocumentTab(tabId, options = {}) {
   return true;
 }
 
-documentTabsRoot?.addEventListener("click", uiActions.listener("document-tab.click", async (event) => {
-  if (suppressNextDocumentTabClick) {
-    suppressNextDocumentTabClick = false;
-    event.preventDefault();
-    event.stopPropagation();
-    return;
-  }
-  const close = event.target.closest("[data-document-tab-close]");
-  if (close) {
-    event.stopPropagation();
-    await closeDocumentTab(close.dataset.documentTabClose);
-    return;
-  }
-  const tab = event.target.closest("[data-document-tab-id]");
-  if (tab) {
-    await activateDocumentTab(tab.dataset.documentTabId);
-  }
-}));
-
-documentTabsRoot?.addEventListener("keydown", uiActions.listener("document-tab.keyboard", async (event) => {
-  if (event.key !== "Enter" && event.key !== " ") {
-    return;
-  }
-  const tab = event.target.closest("[data-document-tab-id]");
-  if (!tab) {
-    return;
-  }
-  event.preventDefault();
-  await activateDocumentTab(tab.dataset.documentTabId);
-}));
-
-documentTabsRoot?.addEventListener("pointerdown", (event) => {
-  if (!isDesktopShell || event.button !== 0 || event.target.closest("[data-document-tab-close]")) {
-    return;
-  }
-  const tab = event.target.closest("[data-document-tab-id]");
-  if (!tab) {
-    return;
-  }
-  activeTitlebarTabDrag = {
-    tabId: tab.dataset.documentTabId,
-    pointerId: event.pointerId,
-    startX: event.clientX,
-    startY: event.clientY,
-    screenX: event.screenX,
-    screenY: event.screenY,
-    dragging: false,
-  };
-  tab.setPointerCapture?.(event.pointerId);
+documentTabInteractions = createDocumentTabInteractions({
+  root: documentTabsRoot,
+  titlebar: desktopTitlebar,
+  detachEnabled: () => isDesktopShell,
+  uiActions,
+  closeDocumentTab,
+  activateDocumentTab,
+  detachDocumentTab: (...args) => detachDocumentTab(...args),
 });
-
-documentTabsRoot?.addEventListener("pointermove", (event) => {
-  const drag = activeTitlebarTabDrag;
-  if (!drag || drag.pointerId !== event.pointerId) {
-    return;
-  }
-  drag.screenX = event.screenX;
-  drag.screenY = event.screenY;
-  const dx = event.clientX - drag.startX;
-  const dy = event.clientY - drag.startY;
-  if (!drag.dragging && Math.hypot(dx, dy) >= 8) {
-    drag.dragging = true;
-  }
-  const titlebarBottom = desktopTitlebar?.getBoundingClientRect().bottom || 42;
-  const shouldDetach = drag.dragging && event.clientY > titlebarBottom + 18;
-  setDetachingDocumentTabId(shouldDetach ? drag.tabId : null);
-});
-
-documentTabsRoot?.addEventListener("pointerup", uiActions.listener("document-tab.detach", async (event) => {
-  const drag = activeTitlebarTabDrag;
-  if (!drag || drag.pointerId !== event.pointerId) {
-    return;
-  }
-  activeTitlebarTabDrag = null;
-  const shouldDetach = detachingDocumentTabId === drag.tabId;
-  setDetachingDocumentTabId(null);
-  if (shouldDetach) {
-    suppressNextDocumentTabClick = true;
-    event.preventDefault();
-    event.stopPropagation();
-    await detachDocumentTab(drag.tabId, drag.screenX, drag.screenY);
-  }
-}, {
-  recover: () => {
-    activeTitlebarTabDrag = null;
-    setDetachingDocumentTabId(null);
-  },
-}));
-
-documentTabsRoot?.addEventListener("pointercancel", () => {
-  activeTitlebarTabDrag = null;
-  setDetachingDocumentTabId(null);
-});
+documentTabInteractions.bind();
 
 const appWindowLifecycleHost = createAppWindowLifecycleHost({
   state,
@@ -3306,8 +3201,8 @@ function buildCommittedTextSession(session, root) {
   };
 }
 
-function normalizeEditorSourceRuns(runs, fallbackStyle) {
-  return normalizeEditorSourceRunsModel(runs, fallbackStyle, cssColorToHex);
+function normalizeEditorSourceRuns(runs, defaultStyle) {
+  return normalizeEditorSourceRunsModel(runs, defaultStyle, cssColorToHex);
 }
 
 function cssColorToHex(color) {
@@ -3578,8 +3473,8 @@ function openDroppedDocumentFilesInTabs(...args) { return browserDocumentTabs.op
 function chooseAndOpenDocumentTab(...args) { return browserDocumentTabs.chooseAndOpenDocumentTab(...args); }
 function confirmApplyDocumentStylePreset(...args) { return browserDocumentTabs.confirmApplyDocumentStylePreset(...args); }
 
-function imageMimeTypeFromName(name, fallback = "") {
-  const normalized = String(fallback || "").toLowerCase();
+function imageMimeTypeFromName(name, declaredMimeType = "") {
+  const normalized = String(declaredMimeType || "").toLowerCase();
   if (["image/png", "image/jpeg", "image/gif", "image/bmp"].includes(normalized)) {
     return normalized;
   }

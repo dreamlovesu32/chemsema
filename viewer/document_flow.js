@@ -477,8 +477,8 @@ export function createDocumentFlow(options) {
     return saveCurrentDocumentNative();
   }
 
-  function desktopFormatForPath(path, fallbackFormat = null) {
-    return fallbackFormat || saveFormatFromFileName(path);
+  function desktopFormatForPath(path, declaredFormat = null) {
+    return declaredFormat || saveFormatFromFileName(path);
   }
 
   function isOleEditPath(path) {

@@ -218,7 +218,7 @@ fn encode_hex_bytes(data: &[u8]) -> String {
     out
 }
 
-fn decode_hex_bytes(value: &str) -> Option<Vec<u8>> {
+pub(crate) fn decode_hex_bytes(value: &str) -> Option<Vec<u8>> {
     let compact: String = value
         .chars()
         .filter(|character| !character.is_ascii_whitespace())

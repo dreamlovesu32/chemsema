@@ -49,14 +49,18 @@ pub fn line_object_endpoint_style(
         .unwrap_or(ArrowEndpointStyle::None)
 }
 
-pub fn line_object_arrow_dimension(object: &crate::SceneObject, key: &str, fallback: f64) -> f64 {
+pub fn line_object_arrow_dimension(
+    object: &crate::SceneObject,
+    key: &str,
+    default_value: f64,
+) -> f64 {
     object
         .payload
         .extra
         .get("arrowHead")
         .and_then(|value| value.get(key))
         .and_then(serde_json::Value::as_f64)
-        .unwrap_or(fallback)
+        .unwrap_or(default_value)
 }
 
 pub fn line_object_graphic_stroke_width(

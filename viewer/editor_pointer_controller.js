@@ -1158,6 +1158,165 @@ export function createEditorPointerController(options) {
     options.renderEditorOverlay(currentInteractionRenderList());
   }
 
+  async function commitArrowGeometryGesture(point, event, gesture) {
+    options.setActiveSelectionGesture(null);
+    const commitStarted = performance.now();
+    const result = await executeDocumentCommand(
+      {
+        type: "set-arrow-geometry",
+        payload: {
+          action: gesture.kind === "arrow-curve" ? "curve" : "endpoint",
+          x: point.x,
+          y: point.y,
+          altKey: event.altKey,
+        },
+      },
+      async () => !!(await options.state().editorEngine.finishHoverArrowEdit?.(
+        point.x,
+        point.y,
+        event.altKey,
+      )),
+      { syncRenderList: false },
+    );
+    const executedAt = performance.now();
+    const changed = !!result.changed;
+    if (!changed && !gesture.dragged && options.editorState().activeTool === "select") {
+      await options.selectClickTarget(point, gesture.additive);
+      options.clearDocumentObjectPreviewTransform();
+      await options.renderSelectionOnlyUpdate(point, options.syncArrowAwareCursorForPoint);
+    } else if (changed) {
+      options.renderDocumentChange?.(result) || options.renderDocument();
+      await refreshHoverOverlayAtPoint(point, event);
+    } else {
+      options.clearDocumentObjectPreviewTransform();
+      await options.renderSelectionOnlyUpdate(point, options.syncArrowAwareCursorForPoint);
+    }
+    recordInteractionCommitTiming({
+      kind: gesture.kind,
+      commandType: result.commandType || "set-arrow-geometry",
+      changed,
+      executeMs: executedAt - commitStarted,
+      totalMs: performance.now() - commitStarted,
+      targets: result.targets || null,
+    });
+  }
+
+  async function commitShapeGeometryGesture(point, event, gesture) {
+    options.setActiveSelectionGesture(null);
+    const commitStarted = performance.now();
+    const result = await executeDocumentCommand(
+      {
+        type: "set-shape-geometry",
+        payload: {
+          action: gesture.action || "resize",
+          x: point.x,
+          y: point.y,
+          altKey: event.altKey,
+        },
+      },
+      async () => !!(await options.state().editorEngine.finishHoverShapeEdit?.(
+        point.x,
+        point.y,
+        event.altKey,
+      )),
+      { sync: false, deferDocumentSync: true },
+    );
+    const executedAt = performance.now();
+    const changed = !!result.changed;
+    if (!changed && !gesture.dragged && options.editorState().activeTool === "select") {
+      await options.selectClickTarget(point, gesture.additive);
+      options.clearDocumentObjectPreviewTransform();
+      await options.renderSelectionOnlyUpdate(point, options.syncArrowAwareCursorForPoint);
+    } else if (changed) {
+      options.renderDocumentChange?.(result) || options.renderDocument();
+      await refreshHoverOverlayAtPoint(point, event);
+    } else {
+      options.clearDocumentObjectPreviewTransform();
+      await options.renderSelectionOnlyUpdate(point, options.syncArrowAwareCursorForPoint);
+    }
+    recordInteractionCommitTiming({
+      kind: gesture.kind,
+      commandType: result.commandType || "set-shape-geometry",
+      changed,
+      executeMs: executedAt - commitStarted,
+      totalMs: performance.now() - commitStarted,
+      targets: result.targets || null,
+    });
+  }
+
+  async function commitMoveGesture(point, event, gesture) {
+    options.setActiveSelectionGesture(null);
+    if (!gesture.dragged) {
+      if (options.editorState().activeTool === "select") {
+        await options.selectClickTarget(gesture.start || point, gesture.additive);
+        options.clearDocumentObjectPreviewTransform();
+        await options.renderSelectionOnlyUpdate(gesture.start || point);
+      } else {
+        options.clearDocumentObjectPreviewTransform();
+        await options.syncArrowAwareCursorForPoint(point);
+        options.renderEditorOverlay(options.currentEditorOverlayRenderList());
+      }
+      return;
+    }
+    const commitPoint = gesture.current || point;
+    const commitPreviewDom = !!gesture.localDocumentPreviewActive
+      && !!options.canCommitDocumentObjectPreviewTransform?.()
+      && typeof options.commitDocumentObjectPreviewTransform === "function";
+    const commitBackendPreview = !!gesture.backendDocumentPreviewActive
+      && typeof options.renderDocumentPrimitiveChange === "function";
+    const commitStarted = performance.now();
+    const result = await executeDocumentCommand(
+      {
+        type: "move-selection",
+        payload: {
+          start: gesture.start,
+          end: commitPoint,
+          altKey: event.altKey,
+        },
+      },
+      () => options.state().editorEngine.finishSelectionMove(
+        commitPoint.x,
+        commitPoint.y,
+        event.altKey,
+      ),
+      (commitPreviewDom || commitBackendPreview) ? { sync: false, deferDocumentSync: true } : {},
+    );
+    const executedAt = performance.now();
+    suppressHoverUntilPointerLeavesPoint(commitPoint);
+    if (commitBackendPreview && result.changed) {
+      options.renderDocumentPrimitiveChange(result);
+    } else if (commitPreviewDom && result.changed) {
+      options.commitDocumentObjectPreviewTransform();
+    }
+    options.clearDocumentObjectPreviewTransform();
+    if ((commitPreviewDom || commitBackendPreview) && result.changed) {
+      clearEditorOverlayRoot();
+    } else {
+      await clearEngineHoverOverlay();
+    }
+    options.syncCanvasCursor?.();
+    if ((commitPreviewDom || commitBackendPreview) && result.changed) {
+      await syncDeferredDocumentModelAfterCommit();
+      await options.renderSelectionOnlyUpdate(commitPoint, null, {
+        deferEngineReads: true,
+        useInteractionList: false,
+      });
+    } else {
+      options.renderDocumentChange?.(result) || options.renderDocument();
+    }
+    clearEditorOverlayRoot();
+    recordInteractionCommitTiming({
+      kind: gesture.kind,
+      commandType: result.commandType || "move-selection",
+      changed: !!result.changed,
+      previewDom: commitPreviewDom,
+      backendPreview: commitBackendPreview,
+      executeMs: executedAt - commitStarted,
+      totalMs: performance.now() - commitStarted,
+      targets: result.targets || null,
+    });
+  }
+
   async function handleEditorPointerUp(event) {
     options.noteEditorPointerActivity?.();
     if (options.editorState().activeTool === "text" && !options.activeSelectionGesture()) {
@@ -1208,55 +1367,7 @@ export function createEditorPointerController(options) {
     }
     if ((options.editorState().activeTool === "select" || options.editorState().activeTool === "arrow")
       && (gesture?.kind === "arrow-endpoint" || gesture?.kind === "arrow-curve")) {
-      options.setActiveSelectionGesture(null);
-      const commitStarted = performance.now();
-      const result = await executeDocumentCommand(
-        {
-          type: "set-arrow-geometry",
-          payload: {
-            action: gesture.kind === "arrow-curve" ? "curve" : "endpoint",
-            x: point.x,
-            y: point.y,
-            altKey: event.altKey,
-          },
-        },
-        async () => {
-          const changed = !!(await options.state().editorEngine.finishHoverArrowEdit?.(point.x, point.y, event.altKey));
-          return changed;
-        },
-        { syncRenderList: false },
-      );
-      const executedAt = performance.now();
-      const changed = !!result.changed;
-      if (!changed && !gesture.dragged && options.editorState().activeTool === "select") {
-        await options.selectClickTarget(point, gesture.additive);
-        options.clearDocumentObjectPreviewTransform();
-        await options.renderSelectionOnlyUpdate(point, options.syncArrowAwareCursorForPoint);
-        recordInteractionCommitTiming({
-          kind: gesture.kind,
-          commandType: result.commandType || "set-arrow-geometry",
-          changed,
-          executeMs: executedAt - commitStarted,
-          totalMs: performance.now() - commitStarted,
-          targets: result.targets || null,
-        });
-        return;
-      }
-      if (changed) {
-        options.renderDocumentChange?.(result) || options.renderDocument();
-        await refreshHoverOverlayAtPoint(point, event);
-      } else {
-        options.clearDocumentObjectPreviewTransform();
-        await options.renderSelectionOnlyUpdate(point, options.syncArrowAwareCursorForPoint);
-      }
-      recordInteractionCommitTiming({
-        kind: gesture.kind,
-        commandType: result.commandType || "set-arrow-geometry",
-        changed,
-        executeMs: executedAt - commitStarted,
-        totalMs: performance.now() - commitStarted,
-        targets: result.targets || null,
-      });
+      await commitArrowGeometryGesture(point, event, gesture);
       return;
     }
     if ((options.editorState().activeTool === "select"
@@ -1265,125 +1376,11 @@ export function createEditorPointerController(options) {
       || options.editorState().activeTool === "tlc-plate"
       || options.editorState().activeTool === "orbital")
       && gesture?.kind === "shape-resize") {
-      options.setActiveSelectionGesture(null);
-      const commitStarted = performance.now();
-      const result = await executeDocumentCommand(
-        {
-          type: "set-shape-geometry",
-          payload: {
-            action: gesture.action || "resize",
-            x: point.x,
-            y: point.y,
-            altKey: event.altKey,
-          },
-        },
-        async () => {
-          const changed = !!(await options.state().editorEngine.finishHoverShapeEdit?.(point.x, point.y, event.altKey));
-          return changed;
-        },
-        { sync: false, deferDocumentSync: true },
-      );
-      const executedAt = performance.now();
-      const changed = !!result.changed;
-      if (!changed && !gesture.dragged && options.editorState().activeTool === "select") {
-        await options.selectClickTarget(point, gesture.additive);
-        options.clearDocumentObjectPreviewTransform();
-        await options.renderSelectionOnlyUpdate(point, options.syncArrowAwareCursorForPoint);
-        recordInteractionCommitTiming({
-          kind: gesture.kind,
-          commandType: result.commandType || "set-shape-geometry",
-          changed,
-          executeMs: executedAt - commitStarted,
-          totalMs: performance.now() - commitStarted,
-          targets: result.targets || null,
-        });
-        return;
-      }
-      if (changed) {
-        options.renderDocumentChange?.(result) || options.renderDocument();
-        await refreshHoverOverlayAtPoint(point, event);
-      } else {
-        options.clearDocumentObjectPreviewTransform();
-        await options.renderSelectionOnlyUpdate(point, options.syncArrowAwareCursorForPoint);
-      }
-      recordInteractionCommitTiming({
-        kind: gesture.kind,
-        commandType: result.commandType || "set-shape-geometry",
-        changed,
-        executeMs: executedAt - commitStarted,
-        totalMs: performance.now() - commitStarted,
-        targets: result.targets || null,
-      });
+      await commitShapeGeometryGesture(point, event, gesture);
       return;
     }
     if (gesture?.kind === "move") {
-      options.setActiveSelectionGesture(null);
-      if (gesture.dragged) {
-        const commitPoint = gesture.current || point;
-        const commitPreviewDom = !!gesture.localDocumentPreviewActive
-          && !!options.canCommitDocumentObjectPreviewTransform?.()
-          && typeof options.commitDocumentObjectPreviewTransform === "function";
-        const commitBackendPreview = !!gesture.backendDocumentPreviewActive
-          && typeof options.renderDocumentPrimitiveChange === "function";
-        const commitStarted = performance.now();
-        const result = await executeDocumentCommand(
-          {
-            type: "move-selection",
-            payload: {
-              start: gesture.start,
-              end: commitPoint,
-              altKey: event.altKey,
-            },
-          },
-          () => options.state().editorEngine.finishSelectionMove(commitPoint.x, commitPoint.y, event.altKey),
-          (commitPreviewDom || commitBackendPreview) ? { sync: false, deferDocumentSync: true } : {},
-        );
-        const executedAt = performance.now();
-        suppressHoverUntilPointerLeavesPoint(commitPoint);
-        if (commitBackendPreview && result.changed) {
-          options.renderDocumentPrimitiveChange(result);
-          options.clearDocumentObjectPreviewTransform();
-        } else if (commitPreviewDom && result.changed) {
-          options.commitDocumentObjectPreviewTransform();
-          options.clearDocumentObjectPreviewTransform();
-        } else {
-          options.clearDocumentObjectPreviewTransform();
-        }
-        if ((commitPreviewDom || commitBackendPreview) && result.changed) {
-          clearEditorOverlayRoot();
-        } else {
-          await clearEngineHoverOverlay();
-        }
-        options.syncCanvasCursor?.();
-        if ((commitPreviewDom || commitBackendPreview) && result.changed) {
-          await syncDeferredDocumentModelAfterCommit();
-          await options.renderSelectionOnlyUpdate(commitPoint, null, {
-            deferEngineReads: true,
-            useInteractionList: false,
-          });
-        } else {
-          options.renderDocumentChange?.(result) || options.renderDocument();
-        }
-        clearEditorOverlayRoot();
-        recordInteractionCommitTiming({
-          kind: gesture.kind,
-          commandType: result.commandType || "move-selection",
-          changed: !!result.changed,
-          previewDom: commitPreviewDom,
-          backendPreview: commitBackendPreview,
-          executeMs: executedAt - commitStarted,
-          totalMs: performance.now() - commitStarted,
-          targets: result.targets || null,
-        });
-      } else if (options.editorState().activeTool === "select") {
-        await options.selectClickTarget(gesture.start || point, gesture.additive);
-        options.clearDocumentObjectPreviewTransform();
-        await options.renderSelectionOnlyUpdate(gesture.start || point);
-      } else {
-        options.clearDocumentObjectPreviewTransform();
-        await options.syncArrowAwareCursorForPoint(point);
-        options.renderEditorOverlay(options.currentEditorOverlayRenderList());
-      }
+      await commitMoveGesture(point, event, gesture);
       return;
     }
     if (options.editorState().activeTool === "select") {
@@ -1490,7 +1487,7 @@ export function createEditorPointerController(options) {
         creationCommandForDrag(engineCreationDrag.tool, engineCreationDrag.start, point),
       ) || commitResult;
     }
-    const fallbackAt = performance.now();
+    const creationCommandAt = performance.now();
     const pendingGraphicObjectId = await Promise.resolve(
       options.state().editorEngine.pendingGraphicObjectId?.() || "",
     ) || commitResult?.targets?.objects?.[0] || commitResult?.created?.objects?.[0] || "";
@@ -1509,14 +1506,14 @@ export function createEditorPointerController(options) {
       changed: !!commitResult?.changed,
       commandType: commitResult?.commandType || pointerCommitCommandType(),
       executeMs: executedAt - commitStarted,
-      fallbackMs: fallbackAt - executedAt,
-      renderMs: renderedAt - fallbackAt,
+      creationCommandMs: creationCommandAt - executedAt,
+      renderMs: renderedAt - creationCommandAt,
       ensureDomMs: ensuredAt - renderedAt,
       clearMs: clearedAt - ensuredAt,
       totalMs: clearedAt - commitStarted,
       commitStartedAt: commitStarted,
       executedAt,
-      fallbackAt,
+      creationCommandAt,
       renderedAt,
       ensuredAt,
       clearedAt,

@@ -100,6 +100,63 @@ pub fn direction_from_angle(degrees: f64) -> Vector {
     }
 }
 
+pub fn rotate_point_around(point: Point, center: Point, degrees: f64) -> Point {
+    if degrees.abs() <= EPSILON {
+        return point;
+    }
+    let radians = degrees.to_radians();
+    let cos = radians.cos();
+    let sin = radians.sin();
+    let dx = point.x - center.x;
+    let dy = point.y - center.y;
+    Point::new(
+        center.x + dx * cos - dy * sin,
+        center.y + dx * sin + dy * cos,
+    )
+}
+
+pub fn point_in_polygon(point: Point, polygon: &[Point]) -> bool {
+    let mut inside = false;
+    let mut previous = *polygon.last().unwrap_or(&point);
+    for current in polygon {
+        let intersects = ((current.y > point.y) != (previous.y > point.y))
+            && (point.x
+                < (previous.x - current.x) * (point.y - current.y)
+                    / (previous.y - current.y + 1.0e-12)
+                    + current.x);
+        if intersects {
+            inside = !inside;
+        }
+        previous = *current;
+    }
+    inside
+}
+
+pub fn polygon_bounds(polygon: &[Point]) -> Option<[f64; 4]> {
+    if polygon.is_empty() {
+        return None;
+    }
+    let mut min_x = f64::INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+    for point in polygon {
+        min_x = min_x.min(point.x);
+        min_y = min_y.min(point.y);
+        max_x = max_x.max(point.x);
+        max_y = max_y.max(point.y);
+    }
+    Some([min_x, min_y, max_x, max_y])
+}
+
+pub fn polygon_anchor_point(polygon: &[Point]) -> Option<Point> {
+    let bounds = polygon_bounds(polygon)?;
+    Some(Point::new(
+        (bounds[0] + bounds[2]) * 0.5,
+        (bounds[1] + bounds[3]) * 0.5,
+    ))
+}
+
 pub fn angular_distance(a: f64, b: f64) -> f64 {
     let diff = (normalize_angle(a) - normalize_angle(b)).abs();
     diff.min(360.0 - diff)

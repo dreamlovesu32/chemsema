@@ -1,3 +1,5 @@
+import { normalizeHexColor } from "./color_utils.js";
+
 class ChemSemaColorHost {
   constructor({ root = document.body, getPalette } = {}) {
     this.kind = "chemsema";
@@ -20,16 +22,14 @@ class ChemSemaColorHost {
   }
 
   async palette(initialColor, customColors) {
-    const fallback = fallbackColorDialogPalette(initialColor, customColors);
     if (typeof this.getPalette !== "function") {
-      return fallback;
+      throw new Error("The color dialog requires a kernel palette provider.");
     }
-    try {
-      return normalizeColorDialogPalette(await this.getPalette(initialColor, customColors), fallback);
-    } catch (error) {
-      console.warn("[chemsema] failed to load engine color palette", error);
-      return fallback;
+    const payload = await this.getPalette(initialColor, customColors);
+    if (!payload) {
+      throw new Error("The kernel did not provide a color-dialog palette.");
     }
+    return normalizeColorDialogPalette(payload, defaultColorDialogPalette(initialColor, customColors));
   }
 }
 
@@ -260,7 +260,7 @@ function colorChipHtml(color, selected) {
   return `<button class="color-dialog-chip${normalizeHexColor(color) === normalizeHexColor(selected) ? " is-selected" : ""}" type="button" data-color-dialog-value="${color}" style="--swatch:${color}" aria-label="${color}"></button>`;
 }
 
-function normalizeColorDialogPalette(payload, fallback = fallbackColorDialogPalette("#000000", [])) {
+function normalizeColorDialogPalette(payload, defaults = defaultColorDialogPalette("#000000", [])) {
   const parsed = typeof payload === "string" ? safeJsonParse(payload, null) : payload;
   const labels = {
     basic: "Basic colors:",
@@ -273,16 +273,16 @@ function normalizeColorDialogPalette(payload, fallback = fallbackColorDialogPale
     ...(parsed?.labels || {}),
   };
   return {
-    title: String(parsed?.title || fallback.title || "Color"),
-    selected: normalizeHexColor(parsed?.selected) || normalizeHexColor(fallback.selected) || "#000000",
+    title: String(parsed?.title || defaults.title || "Color"),
+    selected: normalizeHexColor(parsed?.selected) || normalizeHexColor(defaults.selected) || "#000000",
     labels,
-    fields: normalizeColorFields(parsed?.fields || fallback.fields),
-    basicColors: normalizeColorList(parsed?.basicColors || fallback.basicColors),
-    customColors: normalizeColorList(parsed?.customColors || fallback.customColors).slice(0, 16),
+    fields: normalizeColorFields(parsed?.fields || defaults.fields),
+    basicColors: normalizeColorList(parsed?.basicColors || defaults.basicColors),
+    customColors: normalizeColorList(parsed?.customColors || defaults.customColors).slice(0, 16),
   };
 }
 
-function fallbackColorDialogPalette(initialColor, customColors = []) {
+function defaultColorDialogPalette(initialColor, customColors = []) {
   return {
     title: "Color",
     selected: normalizeHexColor(initialColor) || "#000000",
@@ -335,21 +335,6 @@ function colorFieldHtml(field) {
   const max = field.max == null ? "" : ` max="${field.max}"`;
   const extraClass = field.kind === "hex" ? " color-dialog-hex-field" : "";
   return `<label class="color-dialog-field${extraClass}"><span>${escapeHtml(field.label)}:</span><input ${attr} type="${type}"${min}${max}></label>`;
-}
-
-function normalizeHexColor(value) {
-  const raw = String(value || "").trim().toLowerCase();
-  if (/^#[0-9a-f]{6}$/.test(raw)) {
-    return raw;
-  }
-  if (/^#[0-9a-f]{3}$/.test(raw)) {
-    return `#${raw[1]}${raw[1]}${raw[2]}${raw[2]}${raw[3]}${raw[3]}`;
-  }
-  const match = raw.match(/^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/);
-  if (match) {
-    return rgbToHex(match[1], match[2], match[3]);
-  }
-  return null;
 }
 
 function hexToRgb(color) {
@@ -436,11 +421,11 @@ function clampPercent(value) {
   return Math.max(0, Math.min(100, Number.isFinite(percent) ? percent : 0));
 }
 
-function safeJsonParse(text, fallback) {
+function safeJsonParse(text, defaultValue) {
   try {
     return JSON.parse(text);
   } catch {
-    return fallback;
+    return defaultValue;
   }
 }
 

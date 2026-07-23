@@ -1,8 +1,8 @@
 use crate::{
     legacy_mol::{parse_molblock, LegacyAtom, LegacyBond as LegacyMolBond, LegacyMol},
-    px_to_pt, Bond, BondLinePattern, BondLineWeight, ChemSemaDocument, DoubleBondPlacement,
-    LabelRun, MoleculeFragment, Node, ObjectPayload, Point, ResourceData, SceneObject, Vector,
-    DEFAULT_BOND_STROKE, EPSILON,
+    point_at_distance_from_start, px_to_pt, rotate_point_around, Bond, BondLinePattern,
+    BondLineWeight, ChemSemaDocument, DoubleBondPlacement, LabelRun, MoleculeFragment, Node,
+    ObjectPayload, Point, ResourceData, SceneObject, Vector, DEFAULT_BOND_STROKE, EPSILON,
 };
 use serde_json::Value as JsonValue;
 use std::collections::{BTreeMap, BTreeSet};
@@ -180,7 +180,7 @@ fn insert_bond_margin_silhouettes(
     let mut prepared_bond_keys = BTreeSet::new();
     let mut with_silhouettes = Vec::with_capacity(primitives.len() * 2);
     for primitive in primitives {
-        if render_primitive_role(&primitive) == RenderRole::DocumentBond {
+        if primitive.role() == RenderRole::DocumentBond {
             if let (Some(object_id), Some(bond_id)) = (
                 primitive_object_id(&primitive),
                 primitive_bond_id(&primitive),
@@ -1265,21 +1265,6 @@ fn primitive_object_id(primitive: &RenderPrimitive) -> Option<&str> {
         | RenderPrimitive::FilledPath { object_id, .. }
         | RenderPrimitive::Image { object_id, .. }
         | RenderPrimitive::Text { object_id, .. } => object_id.as_deref(),
-    }
-}
-
-fn render_primitive_role(primitive: &RenderPrimitive) -> RenderRole {
-    match primitive {
-        RenderPrimitive::Line { role, .. }
-        | RenderPrimitive::Circle { role, .. }
-        | RenderPrimitive::Polygon { role, .. }
-        | RenderPrimitive::Rect { role, .. }
-        | RenderPrimitive::Ellipse { role, .. }
-        | RenderPrimitive::Polyline { role, .. }
-        | RenderPrimitive::Path { role, .. }
-        | RenderPrimitive::FilledPath { role, .. }
-        | RenderPrimitive::Image { role, .. }
-        | RenderPrimitive::Text { role, .. } => *role,
     }
 }
 

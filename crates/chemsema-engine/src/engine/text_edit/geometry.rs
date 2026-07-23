@@ -40,10 +40,14 @@ pub(super) fn endpoint_label_editor_anchor_world(
             display_runs_from_source_runs(&source_runs, &font_family, font_size, &fill);
         let (_, line_runs) = layout_display_runs(&display_runs, &decision);
         let anchor_index = label_anchor_index_for_layout(&line_runs, &layout);
-        if let Some(anchor) = glyph_polygons
-            .get(anchor_index)
-            .and_then(|polygon| label_editor_anchor_point(label, anchor_index, polygon))
-        {
+        if let Some(anchor) = glyph_polygons.get(anchor_index).and_then(|polygon| {
+            crate::node_label_glyph_anchor_point_with_anchor_y(
+                label,
+                anchor_index,
+                polygon,
+                label_line_anchor_y(label),
+            )
+        }) {
             return Some(Point::new(
                 anchor.x + object_translate[0],
                 anchor.y + object_translate[1],
@@ -86,7 +90,7 @@ fn centered_label_glyph_box(
     glyph_polygons
         .iter()
         .enumerate()
-        .filter_map(|(index, polygon)| polygon_bounds(polygon).map(|bbox| (index, bbox)))
+        .filter_map(|(index, polygon)| crate::polygon_bounds(polygon).map(|bbox| (index, bbox)))
         .min_by(|(_, left), (_, right)| {
             glyph_center_distance_to_x(*left, center_x)
                 .total_cmp(&glyph_center_distance_to_x(*right, center_x))
@@ -99,86 +103,6 @@ fn glyph_center_distance_to_x(bbox: [f64; 4], x: f64) -> f64 {
     } else {
         (((bbox[0] + bbox[2]) * 0.5) - x).abs()
     }
-}
-
-fn polygon_bounds(polygon: &[Point]) -> Option<[f64; 4]> {
-    if polygon.is_empty() {
-        return None;
-    }
-    let mut min_x = f64::INFINITY;
-    let mut min_y = f64::INFINITY;
-    let mut max_x = f64::NEG_INFINITY;
-    let mut max_y = f64::NEG_INFINITY;
-    for point in polygon {
-        min_x = min_x.min(point.x);
-        min_y = min_y.min(point.y);
-        max_x = max_x.max(point.x);
-        max_y = max_y.max(point.y);
-    }
-    Some([min_x, min_y, max_x, max_y])
-}
-
-pub(super) fn polygon_anchor_point(polygon: &[Point]) -> Option<Point> {
-    if polygon.is_empty() {
-        return None;
-    }
-    let mut min_x = f64::INFINITY;
-    let mut min_y = f64::INFINITY;
-    let mut max_x = f64::NEG_INFINITY;
-    let mut max_y = f64::NEG_INFINITY;
-    for point in polygon {
-        min_x = min_x.min(point.x);
-        min_y = min_y.min(point.y);
-        max_x = max_x.max(point.x);
-        max_y = max_y.max(point.y);
-    }
-    Some(Point::new((min_x + max_x) * 0.5, (min_y + max_y) * 0.5))
-}
-
-fn label_editor_anchor_point(
-    label: &crate::NodeLabel,
-    glyph_index: usize,
-    polygon: &[Point],
-) -> Option<Point> {
-    let anchor_y = label_line_anchor_y(label);
-    let chars = label_visible_chars(label);
-    if chars.len() == label.glyph_polygons.len()
-        && chars
-            .get(glyph_index)
-            .copied()
-            .is_some_and(crate::is_prime_anchor_suffix)
-    {
-        if let (Some(bounds), Some(natural_outset)) =
-            (polygon_bounds(polygon), label_natural_outset_pt(label))
-        {
-            return Some(Point::new(
-                bounds[2] - natural_outset,
-                anchor_y.unwrap_or((bounds[1] + bounds[3]) * 0.5),
-            ));
-        }
-    }
-    polygon_anchor_point(polygon).map(|point| Point::new(point.x, anchor_y.unwrap_or(point.y)))
-}
-
-fn label_visible_chars(label: &crate::NodeLabel) -> Vec<char> {
-    label
-        .source_text
-        .as_deref()
-        .unwrap_or(label.text.as_str())
-        .chars()
-        .filter(|character| !character.is_whitespace())
-        .collect()
-}
-
-fn label_natural_outset_pt(label: &crate::NodeLabel) -> Option<f64> {
-    [
-        "/import/cdxml/naturalOutsetPt",
-        "/import/cdxml/marginWidth",
-        "/glyphClipProfile/naturalOutsetPt",
-    ]
-    .into_iter()
-    .find_map(|path| label.meta.pointer(path).and_then(serde_json::Value::as_f64))
-    .filter(|value| value.is_finite() && *value >= 0.0)
 }
 
 fn label_line_anchor_y(label: &crate::NodeLabel) -> Option<f64> {

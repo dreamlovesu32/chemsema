@@ -369,7 +369,7 @@ pub(super) fn make_centered_node_label_from_runs(
         .anchor_offset_world_pt()
         .map(|value| (value[0].value(), value[1].value()));
     let measured_box_size = endpoint_session_box_size(session);
-    let fallback_geometry = || {
+    let computed_geometry = || {
         let x1 = round2(position[0] - anchor_center_x);
         let y1 = round2(position[1] - font_size * 0.42 - layout.anchor_line as f64 * line_height);
         let baseline_y = round2(y1 + layout.anchor_line as f64 * line_height + font_size * 0.82);
@@ -410,13 +410,13 @@ pub(super) fn make_centered_node_label_from_runs(
                 let baseline_y = round2(y1 + font_size * 0.82);
                 (width, height, x1, y1, baseline_y)
             } else {
-                fallback_geometry()
+                computed_geometry()
             }
         } else {
-            fallback_geometry()
+            computed_geometry()
         }
     } else {
-        fallback_geometry()
+        computed_geometry()
     };
     let mut x2 = round2(x1 + width);
     let mut y2 = round2(y1 + height);
@@ -577,7 +577,7 @@ fn label_anchor_point_for_layout(
     font_size: f64,
     polygon: &[Point],
 ) -> Option<Point> {
-    let bounds = label_polygon_bounds(polygon)?;
+    let bounds = crate::polygon_bounds(polygon)?;
     let anchor_y = baseline_y - font_size * crate::MOLECULE_LABEL_ANCHOR_BASELINE_RATIO;
     if label_char_at(line_runs, anchor_line, anchor_char).is_some_and(crate::is_prime_anchor_suffix)
     {
@@ -586,24 +586,7 @@ fn label_anchor_point_for_layout(
             anchor_y,
         ));
     }
-    polygon_anchor_point(polygon).map(|point| Point::new(point.x, anchor_y))
-}
-
-fn label_polygon_bounds(polygon: &[Point]) -> Option<[f64; 4]> {
-    if polygon.is_empty() {
-        return None;
-    }
-    let mut min_x = f64::INFINITY;
-    let mut min_y = f64::INFINITY;
-    let mut max_x = f64::NEG_INFINITY;
-    let mut max_y = f64::NEG_INFINITY;
-    for point in polygon {
-        min_x = min_x.min(point.x);
-        min_y = min_y.min(point.y);
-        max_x = max_x.max(point.x);
-        max_y = max_y.max(point.y);
-    }
-    Some([min_x, min_y, max_x, max_y])
+    crate::polygon_anchor_point(polygon).map(|point| Point::new(point.x, anchor_y))
 }
 
 fn label_char_at(
@@ -977,7 +960,7 @@ fn label_anchor_char_for_layout(line_runs: &[Vec<LabelRun>], layout: &crate::Lab
         .unwrap_or(layout.anchor_char)
 }
 
-fn label_anchor_char_for_runs(runs: &[LabelRun], fallback_index: usize) -> usize {
+fn label_anchor_char_for_runs(runs: &[LabelRun], default_index: usize) -> usize {
     let mut shifted = Vec::new();
     let mut chars = Vec::new();
     for run in runs {
@@ -988,7 +971,7 @@ fn label_anchor_char_for_runs(runs: &[LabelRun], fallback_index: usize) -> usize
         }
     }
     if chars.is_empty() {
-        return fallback_index;
+        return default_index;
     }
 
     let nonspace_indices = chars
@@ -997,26 +980,26 @@ fn label_anchor_char_for_runs(runs: &[LabelRun], fallback_index: usize) -> usize
         .filter_map(|(index, ch)| (!ch.is_whitespace()).then_some(index))
         .collect::<Vec<_>>();
     if nonspace_indices.is_empty() {
-        return fallback_index.min(chars.len() - 1);
+        return default_index.min(chars.len() - 1);
     }
 
-    let fallback_index = nonspace_indices[fallback_index.min(nonspace_indices.len() - 1)];
-    if !shifted[fallback_index] {
-        return fallback_index;
+    let default_index = nonspace_indices[default_index.min(nonspace_indices.len() - 1)];
+    if !shifted[default_index] {
+        return default_index;
     }
-    (0..=fallback_index)
+    (0..=default_index)
         .rev()
         .find(|index| !shifted[*index] && !chars[*index].is_whitespace())
         .or_else(|| {
-            (fallback_index + 1..shifted.len())
+            (default_index + 1..shifted.len())
                 .find(|index| !shifted[*index] && !chars[*index].is_whitespace())
         })
-        .unwrap_or(fallback_index)
+        .unwrap_or(default_index)
 }
 
-pub(super) fn estimate_line_runs_width(runs: &[LabelRun], fallback_font_size: f64) -> f64 {
+pub(super) fn estimate_line_runs_width(runs: &[LabelRun], default_font_size: f64) -> f64 {
     runs.iter().fold(0.0, |width, run| {
-        let run_font_size = run.font_size.unwrap_or(fallback_font_size)
+        let run_font_size = run.font_size.unwrap_or(default_font_size)
             * crate::glyph_kernel::shared_script_scale_factor(run.script.as_deref());
         width
             + run
@@ -1030,7 +1013,7 @@ pub(super) fn estimate_line_runs_width(runs: &[LabelRun], fallback_font_size: f6
 pub(super) fn estimate_prefix_width(
     runs: &[LabelRun],
     char_count: usize,
-    fallback_font_size: f64,
+    default_font_size: f64,
 ) -> f64 {
     let mut remaining = char_count;
     let mut width = 0.0;
@@ -1038,7 +1021,7 @@ pub(super) fn estimate_prefix_width(
         if remaining == 0 {
             break;
         }
-        let run_font_size = run.font_size.unwrap_or(fallback_font_size)
+        let run_font_size = run.font_size.unwrap_or(default_font_size)
             * crate::glyph_kernel::shared_script_scale_factor(run.script.as_deref());
         for ch in run.text.chars() {
             if remaining == 0 {
@@ -1054,11 +1037,11 @@ pub(super) fn estimate_prefix_width(
 pub(super) fn estimate_anchor_char_width(
     runs: &[LabelRun],
     char_index: usize,
-    fallback_font_size: f64,
+    default_font_size: f64,
 ) -> Option<f64> {
     let mut current_index = 0usize;
     for run in runs {
-        let run_font_size = run.font_size.unwrap_or(fallback_font_size)
+        let run_font_size = run.font_size.unwrap_or(default_font_size)
             * crate::glyph_kernel::shared_script_scale_factor(run.script.as_deref());
         for ch in run.text.chars() {
             if current_index == char_index {

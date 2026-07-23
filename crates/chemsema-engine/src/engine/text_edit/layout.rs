@@ -85,9 +85,9 @@ pub(super) fn text_object_box_for_align(align: &str, width: f64, height: f64) ->
     [-anchor_x_for_align(align, width), 0.0, width, height]
 }
 
-pub(super) fn measure_text_edit_line_width(runs: &[LabelRun], fallback_font_size: f64) -> f64 {
+pub(super) fn measure_text_edit_line_width(runs: &[LabelRun], default_font_size: f64) -> f64 {
     runs.iter().fold(0.0, |width, run| {
-        let run_font_size = run.font_size.unwrap_or(fallback_font_size);
+        let run_font_size = run.font_size.unwrap_or(default_font_size);
         width
             + run
                 .text
@@ -110,7 +110,7 @@ pub(super) fn build_text_edit_layout_geometry(
     line_height: f64,
     anchor_offset: [f64; 2],
     selection: Option<TextEditSelectionState>,
-    fallback_font_size: f64,
+    default_font_size: f64,
 ) -> TextEditLayout {
     let mut layout_lines = Vec::new();
     let mut caret_positions = Vec::new();
@@ -120,7 +120,7 @@ pub(super) fn build_text_edit_layout_geometry(
     for (line_index, line) in lines.iter().enumerate() {
         let mut caret_offsets = Vec::new();
         let line_start = offset;
-        let line_width = measure_text_edit_line_width(&line.runs, fallback_font_size);
+        let line_width = measure_text_edit_line_width(&line.runs, default_font_size);
         let visual_line_x = match line.text_anchor.as_str() {
             "end" => line.x - line_width,
             "middle" => line.x - line_width * 0.5,
@@ -143,7 +143,7 @@ pub(super) fn build_text_edit_layout_geometry(
         caret_positions.push(start_caret);
 
         for run in &line.runs {
-            let run_font_size = run.font_size.unwrap_or(fallback_font_size);
+            let run_font_size = run.font_size.unwrap_or(default_font_size);
             for character in run.text.chars() {
                 let metrics =
                     crate::shared_glyph_metrics(character, run_font_size, run.script.as_deref());
@@ -262,7 +262,7 @@ pub(super) fn build_text_object_edit_layout(
     line_height: f64,
     selection: Option<TextEditSelectionState>,
 ) -> TextEditLayout {
-    let fallback_font_size = session
+    let default_font_size = session
         .font_size_world_pt()
         .unwrap_or(WorldPt(DEFAULT_TEXT_FONT_SIZE))
         .value();
@@ -270,7 +270,7 @@ pub(super) fn build_text_object_edit_layout(
     let line_runs = split_runs_by_line_preserving_empty(&display_runs);
     let line_widths: Vec<f64> = line_runs
         .iter()
-        .map(|runs| measure_text_edit_line_width(runs, fallback_font_size))
+        .map(|runs| measure_text_edit_line_width(runs, default_font_size))
         .collect();
     let session_box = session.box_value;
     let box_width = session_box.map(|bbox| bbox[2].max(0.0)).unwrap_or(0.0);
@@ -296,7 +296,7 @@ pub(super) fn build_text_object_edit_layout(
             ResolvedTextEditLine {
                 x: anchor_x_for_align(align, width),
                 y,
-                baseline_y: y + fallback_font_size * 0.82,
+                baseline_y: y + default_font_size * 0.82,
                 height: line_height,
                 text_anchor: text_anchor.clone(),
                 runs,
@@ -313,7 +313,7 @@ pub(super) fn build_text_object_edit_layout(
         line_height,
         [-local_box[0], -local_box[1]],
         selection,
-        fallback_font_size,
+        default_font_size,
     )
 }
 
@@ -326,18 +326,18 @@ pub(super) fn build_endpoint_label_edit_layout_from_label(
     line_height: f64,
     selection: Option<TextEditSelectionState>,
 ) -> TextEditLayout {
-    let fallback_font_size = label.font_size.unwrap_or(DEFAULT_TEXT_FONT_SIZE);
+    let default_font_size = label.font_size.unwrap_or(DEFAULT_TEXT_FONT_SIZE);
     let box_value = label.bbox().unwrap_or([
         local_anchor[0],
-        local_anchor[1] - fallback_font_size * 0.42,
+        local_anchor[1] - default_font_size * 0.42,
         local_anchor[0] + TEXT_EDIT_BOX_WIDTH,
-        local_anchor[1] - fallback_font_size * 0.42 + line_height,
+        local_anchor[1] - default_font_size * 0.42 + line_height,
     ]);
     let baseline_x = label.position.map(|value| value[0]).unwrap_or(box_value[0]);
     let first_baseline_y = label
         .position
         .map(|value| value[1])
-        .unwrap_or(box_value[1] + fallback_font_size * 0.82);
+        .unwrap_or(box_value[1] + default_font_size * 0.82);
     let editor_origin_x = baseline_x;
     let editor_origin_y = box_value[1];
     let width = round2((box_value[2] - editor_origin_x).max(TEXT_EDIT_BOX_WIDTH));
@@ -384,7 +384,7 @@ pub(super) fn build_endpoint_label_edit_layout_from_label(
             local_anchor[1] - editor_origin_y,
         ],
         selection,
-        fallback_font_size,
+        default_font_size,
     )
 }
 

@@ -17,10 +17,10 @@ const CHEMDRAW_INK = "#000000";
 
 let renderClipPathId = 0;
 
-export function primitiveStrokeWidthValue(primitive, fallback = 0) {
+export function primitiveStrokeWidthValue(primitive, defaultValue = 0) {
   const strokeWidth = primitive?.strokeWidth ?? primitive?.stroke_width;
   const numeric = Number(strokeWidth);
-  return Number.isFinite(numeric) ? numeric : fallback;
+  return Number.isFinite(numeric) ? numeric : defaultValue;
 }
 
 function primitiveIdentityAttrs(primitive, options = {}) {
@@ -411,12 +411,12 @@ function renderTextPrimitive(svgRoot, primitive, options) {
   svgRoot.appendChild(textNode);
 }
 
-function primitiveRotateTransform(primitive, fallbackCenter = null) {
+function primitiveRotateTransform(primitive, defaultCenter = null) {
   const rotate = Number(primitive.rotate || 0);
   if (Math.abs(rotate) <= 0.0001) {
     return "";
   }
-  const center = primitive.rotateCenter || primitive.rotate_center || fallbackCenter;
+  const center = primitive.rotateCenter || primitive.rotate_center || defaultCenter;
   if (!center) {
     return "";
   }

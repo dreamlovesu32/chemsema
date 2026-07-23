@@ -121,9 +121,9 @@ pub(super) fn source_runs_are_chemical(source_runs: &[LabelRun]) -> bool {
 
 pub(super) fn display_runs_from_source_runs(
     source_runs: &[LabelRun],
-    fallback_font_family: &str,
-    fallback_font_size: f64,
-    fallback_fill: &str,
+    default_font_family: &str,
+    default_font_size: f64,
+    default_fill: &str,
 ) -> Vec<LabelRun> {
     let chars: Vec<char> = source_runs
         .iter()
@@ -137,7 +137,7 @@ pub(super) fn display_runs_from_source_runs(
             continue;
         }
         let authored_script = run.script.as_deref().unwrap_or("normal");
-        let base = display_run_base(run, fallback_font_family, fallback_font_size, fallback_fill);
+        let base = display_run_base(run, default_font_family, default_font_size, default_fill);
         let mut buffer = String::new();
         let mut active_script = authored_script;
         for character in run.text.chars() {
@@ -168,23 +168,19 @@ pub(super) fn display_runs_from_source_runs(
 
 fn display_run_base(
     run: &LabelRun,
-    fallback_font_family: &str,
-    fallback_font_size: f64,
-    fallback_fill: &str,
+    default_font_family: &str,
+    default_font_size: f64,
+    default_fill: &str,
 ) -> LabelRun {
     LabelRun {
         text: run.text.clone(),
         font_family: Some(
             run.font_family
                 .clone()
-                .unwrap_or_else(|| fallback_font_family.to_string()),
+                .unwrap_or_else(|| default_font_family.to_string()),
         ),
-        font_size: Some(run.font_size.unwrap_or(fallback_font_size)),
-        fill: Some(
-            run.fill
-                .clone()
-                .unwrap_or_else(|| fallback_fill.to_string()),
-        ),
+        font_size: Some(run.font_size.unwrap_or(default_font_size)),
+        fill: Some(run.fill.clone().unwrap_or_else(|| default_fill.to_string())),
         font_weight: Some(run.font_weight.unwrap_or(400)),
         font_style: Some(
             run.font_style

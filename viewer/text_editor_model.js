@@ -31,20 +31,20 @@ export function mergeSerializedRuns(runs) {
   return merged;
 }
 
-export function normalizeEditorSourceRuns(runs, fallbackStyle, normalizeColor) {
+export function normalizeEditorSourceRuns(runs, defaultStyle, normalizeColor) {
   return mergeSerializedRuns((runs || [])
     .filter((run) => typeof run?.text === "string" && textLength(run.text))
     .map((run) => ({
       text: run.text,
-      fontFamily: run.fontFamily || fallbackStyle.fontFamily,
-      fontSize: Number(run.fontSize || fallbackStyle.fontSize),
-      fill: normalizeColor(run.fill || fallbackStyle.fill),
-      fontWeight: Number(run.fontWeight || fallbackStyle.fontWeight || 400),
-      fontStyle: String(run.fontStyle || fallbackStyle.fontStyle || "normal"),
-      underline: Boolean(run.underline ?? fallbackStyle.underline),
-      outline: Boolean(run.outline ?? fallbackStyle.outline),
-      shadow: Boolean(run.shadow ?? fallbackStyle.shadow),
-      script: String(run.script || fallbackStyle.script || "normal"),
+      fontFamily: run.fontFamily || defaultStyle.fontFamily,
+      fontSize: Number(run.fontSize || defaultStyle.fontSize),
+      fill: normalizeColor(run.fill || defaultStyle.fill),
+      fontWeight: Number(run.fontWeight || defaultStyle.fontWeight || 400),
+      fontStyle: String(run.fontStyle || defaultStyle.fontStyle || "normal"),
+      underline: Boolean(run.underline ?? defaultStyle.underline),
+      outline: Boolean(run.outline ?? defaultStyle.outline),
+      shadow: Boolean(run.shadow ?? defaultStyle.shadow),
+      script: String(run.script || defaultStyle.script || "normal"),
     })));
 }
 

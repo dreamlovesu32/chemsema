@@ -772,32 +772,6 @@ fn polyline_length(points: &[Point]) -> f64 {
         .sum()
 }
 
-fn point_at_distance_from_start(points: &[Point], distance: f64) -> Option<Point> {
-    if points.len() < 2 {
-        return None;
-    }
-    if distance <= 0.0 {
-        return points.first().copied();
-    }
-    let mut remaining = distance;
-    for pair in points.windows(2) {
-        let segment = pair[0].distance(pair[1]);
-        if remaining <= segment {
-            let t = if segment <= crate::EPSILON {
-                0.0
-            } else {
-                remaining / segment
-            };
-            return Some(Point::new(
-                pair[0].x + (pair[1].x - pair[0].x) * t,
-                pair[0].y + (pair[1].y - pair[0].y) * t,
-            ));
-        }
-        remaining -= segment;
-    }
-    points.last().copied()
-}
-
 fn point_at_distance_from_end(points: &[Point], distance: f64) -> Option<Point> {
     if points.len() < 2 {
         return None;
@@ -1011,11 +985,11 @@ fn equilibrium_primary_offset_sign(
 
 fn equilibrium_half_style(
     style: RenderArrowEndpointStyle,
-    fallback: RenderArrowEndpointStyle,
+    inferred_half_style: RenderArrowEndpointStyle,
 ) -> RenderArrowEndpointStyle {
     match style {
         RenderArrowEndpointStyle::Left | RenderArrowEndpointStyle::Right => style,
-        RenderArrowEndpointStyle::Full | RenderArrowEndpointStyle::None => fallback,
+        RenderArrowEndpointStyle::Full | RenderArrowEndpointStyle::None => inferred_half_style,
     }
 }
 
@@ -1059,7 +1033,7 @@ fn render_equilibrium_arrow_line(
     let primary_offset =
         normal.scaled(equilibrium_primary_offset_sign(head_style, tail_style) * spacing * 0.5);
     let secondary_offset = primary_offset.scaled(-1.0);
-    let fallback = if primary_offset.x * normal.x + primary_offset.y * normal.y >= 0.0 {
+    let inferred_half_style = if primary_offset.x * normal.x + primary_offset.y * normal.y >= 0.0 {
         RenderArrowEndpointStyle::Right
     } else {
         RenderArrowEndpointStyle::Left
@@ -1082,7 +1056,7 @@ fn render_equilibrium_arrow_line(
                 kind: ArrowHeadKind::Solid,
                 ..branch_head
             },
-            equilibrium_half_style(head_style, fallback),
+            equilibrium_half_style(head_style, inferred_half_style),
             dash_array,
             object_id.clone(),
         );
@@ -1110,7 +1084,7 @@ fn render_equilibrium_arrow_line(
                 kind: ArrowHeadKind::Solid,
                 ..branch_head
             },
-            equilibrium_half_style(tail_style, fallback),
+            equilibrium_half_style(tail_style, inferred_half_style),
             dash_array,
             object_id,
         );
@@ -1137,7 +1111,7 @@ fn render_curved_equilibrium_arrow_line(
     let line_width = rendered_arrow_stroke_width(stroke_width, arrow_head, 4.0);
     let spacing = arrow_head.shaft_spacing.max(line_width);
     let primary_offset = equilibrium_primary_offset_sign(head_style, tail_style) * spacing * 0.5;
-    let fallback = if primary_offset >= 0.0 {
+    let inferred_half_style = if primary_offset >= 0.0 {
         RenderArrowEndpointStyle::Right
     } else {
         RenderArrowEndpointStyle::Left
@@ -1155,7 +1129,7 @@ fn render_curved_equilibrium_arrow_line(
                 kind: ArrowHeadKind::Solid,
                 ..branch_head
             },
-            equilibrium_half_style(head_style, fallback),
+            equilibrium_half_style(head_style, inferred_half_style),
             dash_array,
             object_id.clone(),
         );
@@ -1184,7 +1158,7 @@ fn render_curved_equilibrium_arrow_line(
                 kind: ArrowHeadKind::Solid,
                 ..branch_head
             },
-            equilibrium_half_style(tail_style, fallback),
+            equilibrium_half_style(tail_style, inferred_half_style),
             dash_array,
             object_id,
         );

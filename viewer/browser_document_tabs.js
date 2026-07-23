@@ -216,20 +216,20 @@ export function createBrowserDocumentTabs(options) {
   async function openBrowserDroppedFilesInNewTabs(files) {
     const droppedFiles = Array.from(files || []).filter(Boolean);
     if (!droppedFiles.length || !canUseBrowserTabs) {
-      return { opened: [], fallback: droppedFiles };
+      return { opened: [], remainingFiles: droppedFiles };
     }
     const opened = [];
-    const fallback = [];
+    const remainingFiles = [];
     for (const file of droppedFiles) {
       const reserved = reserveBrowserPendingDocumentTab();
       if (reserved) {
         opened.push({ id: reserved.id, file, opened: reserved.opened });
       } else {
-        fallback.push(file);
+        remainingFiles.push(file);
       }
     }
     if (!opened.length) {
-      return { opened, fallback };
+      return { opened, remainingFiles };
     }
     focusBrowserTab(opened[opened.length - 1]?.opened);
     const writes = await Promise.allSettled(
@@ -246,7 +246,7 @@ export function createBrowserDocumentTabs(options) {
     if (rejected) {
       throw rejected.reason;
     }
-    return { opened, fallback };
+    return { opened, remainingFiles };
   }
   
   function wait(ms) {
@@ -520,8 +520,8 @@ export function createBrowserDocumentTabs(options) {
     if (!droppedFiles.length) {
       return;
     }
-    const { fallback } = await openBrowserDroppedFilesInNewTabs(droppedFiles);
-    for (const file of fallback) {
+    const { remainingFiles } = await openBrowserDroppedFilesInNewTabs(droppedFiles);
+    for (const file of remainingFiles) {
       await openDroppedDocumentFileInTab(file);
     }
   }

@@ -188,18 +188,6 @@ pub(super) fn signed_angle_delta(start: f64, end: f64) -> f64 {
     delta
 }
 
-pub(super) fn rotate_point_around(point: Point, center: Point, degrees: f64) -> Point {
-    let radians = degrees.to_radians();
-    let cos = radians.cos();
-    let sin = radians.sin();
-    let dx = point.x - center.x;
-    let dy = point.y - center.y;
-    Point::new(
-        center.x + dx * cos - dy * sin,
-        center.y + dx * sin + dy * cos,
-    )
-}
-
 pub(super) fn apply_selection_rotation_to_document(
     engine: &mut Engine,
     drag: &SelectionRotateDrag,
@@ -484,7 +472,7 @@ pub(super) fn selection_resize_scale(drag: &SelectionResizeDrag, point: Point) -
     let bounds = drag.bounds;
     if drag.handle.is_corner() {
         let pivot = selection_resize_pivot(drag.handle, bounds);
-        let handle = selection_resize_handle_point(drag.handle, bounds);
+        let handle = selection_resize_handle_center(drag.handle, bounds);
         let original = Point::new(handle.x - pivot.x, handle.y - pivot.y);
         let current = Point::new(point.x - pivot.x, point.y - pivot.y);
         let denominator = original.x * original.x + original.y * original.y;
@@ -620,19 +608,6 @@ fn selection_resize_pivot(handle: SelectionResizeHandle, bounds: AxisBounds) -> 
         SelectionResizeHandle::NorthWest => Point::new(bounds.max_x, bounds.max_y),
         SelectionResizeHandle::SouthEast => Point::new(bounds.min_x, bounds.min_y),
         SelectionResizeHandle::SouthWest => Point::new(bounds.max_x, bounds.min_y),
-    }
-}
-
-fn selection_resize_handle_point(handle: SelectionResizeHandle, bounds: AxisBounds) -> Point {
-    match handle {
-        SelectionResizeHandle::North => Point::new(bounds.center_x(), bounds.min_y),
-        SelectionResizeHandle::South => Point::new(bounds.center_x(), bounds.max_y),
-        SelectionResizeHandle::East => Point::new(bounds.max_x, bounds.center_y()),
-        SelectionResizeHandle::West => Point::new(bounds.min_x, bounds.center_y()),
-        SelectionResizeHandle::NorthEast => Point::new(bounds.max_x, bounds.min_y),
-        SelectionResizeHandle::NorthWest => Point::new(bounds.min_x, bounds.min_y),
-        SelectionResizeHandle::SouthEast => Point::new(bounds.max_x, bounds.max_y),
-        SelectionResizeHandle::SouthWest => Point::new(bounds.min_x, bounds.max_y),
     }
 }
 

@@ -618,7 +618,9 @@ fn split_legacy_fragment_components(fragment: &MoleculeFragment) -> Vec<LegacyMo
         .collect()
 }
 
-fn molecule_fragment_connected_components(fragment: &MoleculeFragment) -> Vec<BTreeSet<String>> {
+pub(crate) fn molecule_fragment_connected_components(
+    fragment: &MoleculeFragment,
+) -> Vec<BTreeSet<String>> {
     let mut adjacency: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
     for node in &fragment.nodes {
         adjacency.entry(node.id.as_str()).or_default();
@@ -673,7 +675,7 @@ fn component_has_visible_molecule_content(nodes: &[Node], bonds: &[Bond]) -> boo
         })
 }
 
-fn molecule_component_bounds(nodes: &[Node]) -> Option<[f64; 4]> {
+pub(crate) fn molecule_component_bounds(nodes: &[Node]) -> Option<[f64; 4]> {
     let mut bounds = None;
     for node in nodes {
         include_point_in_bounds(&mut bounds, node.position);
@@ -831,7 +833,7 @@ fn ensure_object_meta(value: &mut Value) -> &mut Map<String, Value> {
     value.as_object_mut().expect("meta should be an object")
 }
 
-fn translate_node_label_geometry(label: &mut NodeLabel, delta_x: f64, delta_y: f64) {
+pub(crate) fn translate_node_label_geometry(label: &mut NodeLabel, delta_x: f64, delta_y: f64) {
     if delta_x.abs() <= EPSILON && delta_y.abs() <= EPSILON {
         return;
     }
@@ -1395,14 +1397,14 @@ fn normalize_node_label_payload(
     if label.font_size.is_none() {
         label.font_size = Some(DEFAULT_MOLECULE_LABEL_FONT_SIZE_PT);
     }
-    let fallback_font_size = label
+    let default_font_size = label
         .font_size
         .unwrap_or(DEFAULT_MOLECULE_LABEL_FONT_SIZE_PT);
     if label
         .line_height
         .is_none_or(|value| !value.is_finite() || value <= 0.0)
     {
-        label.line_height = Some(crate::molecule_label_line_advance(fallback_font_size));
+        label.line_height = Some(crate::molecule_label_line_advance(default_font_size));
     }
     if !matches!(
         label.line_height_mode.as_str(),

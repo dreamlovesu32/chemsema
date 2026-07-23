@@ -2113,21 +2113,6 @@ fn rotated_rect_path_d(x: f64, y: f64, width: f64, height: f64, rotate: f64) -> 
     )
 }
 
-fn rotate_point_around(point: Point, center: Point, degrees: f64) -> Point {
-    if degrees.abs() <= crate::EPSILON {
-        return point;
-    }
-    let radians = degrees.to_radians();
-    let cos = radians.cos();
-    let sin = radians.sin();
-    let dx = point.x - center.x;
-    let dy = point.y - center.y;
-    Point::new(
-        center.x + dx * cos - dy * sin,
-        center.y + dx * sin + dy * cos,
-    )
-}
-
 fn oval_path_d(center: Point, rx: f64, ry: f64, rotate: f64, use_cubic: bool) -> String {
     if use_cubic {
         return ellipse_cubic_path_d(center, rx, ry, rotate);

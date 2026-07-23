@@ -664,7 +664,7 @@ const BOND_TOOL_ICON_SPECS = {
   },
 };
 
-function fallbackBondToolIconSvg(type = "single") {
+function staticBondToolIconSvg(type = "single") {
   const bondLine = (y, className = "cc-stroke", extra = "") => `<path class="${className}" d="M4.5 ${y}h15"${extra}/>`;
   const slashes = `<path class="cc-stroke" d="M7.2 8.2 5.5 15.8"/><path class="cc-stroke" d="M12 8.2l-1.7 7.6"/><path class="cc-stroke" d="M16.8 8.2l-1.7 7.6"/>`;
   const wedge = polygon([point(5, 16.2), point(19.4, 7.2), point(18.4, 16.2)], "cc-fill");
@@ -682,7 +682,7 @@ function fallbackBondToolIconSvg(type = "single") {
     "hollow-wedge": hollowWedge,
     wavy: `<path class="cc-stroke" d="M4.5 12c2.2-4 4.4 4 6.6 0s4.4-4 6.6 0 1.4 2.1 1.8 1.8"/>`,
   };
-  return iconSvg(variants[type] || variants.single, "cc-bond-icon cc-bond-icon-fallback");
+  return iconSvg(variants[type] || variants.single, "cc-bond-icon cc-bond-icon-static");
 }
 
 function bondToolIconSpec(type = "single", editorState = null) {
@@ -690,7 +690,7 @@ function bondToolIconSpec(type = "single", editorState = null) {
   const spec = BOND_TOOL_ICON_SPECS[normalizedType] || BOND_TOOL_ICON_SPECS.single;
   return {
     ...spec,
-    svg: editorState?.bondIconSvgs?.[normalizedType] || fallbackBondToolIconSvg(normalizedType),
+    svg: editorState?.bondIconSvgs?.[normalizedType] || staticBondToolIconSvg(normalizedType),
   };
 }
 
@@ -1681,11 +1681,11 @@ function symbolToolbarHtml(editorState) {
   ].join("");
 }
 
-function safeJsonParse(text, fallback) {
+function safeJsonParse(text, defaultValue) {
   try {
     return JSON.parse(text);
   } catch {
-    return fallback;
+    return defaultValue;
   }
 }
 

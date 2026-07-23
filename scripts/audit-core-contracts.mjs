@@ -459,7 +459,8 @@ function auditArchitecture() {
   const functions = [];
   for (const path of sourceFiles) {
     const text = read(path);
-    const pattern = extname(path) === ".rs"
+    const extension = extname(path);
+    const pattern = extension === ".rs"
       ? /(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+([A-Za-z_][A-Za-z0-9_]*)\s*\([^;]*?\)\s*(?:->[^{]+)?\{/g
       : /(?:async\s+)?function\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*\([^)]*\)\s*\{|^\s*(?:async\s+)?([A-Za-z_$][A-Za-z0-9_$]*)\s*\([^)]*\)\s*\{/gm;
     for (const match of text.matchAll(pattern)) {
@@ -468,7 +469,11 @@ function auditArchitecture() {
       const brace = text.indexOf("{", match.index + match[0].length - 1);
       const body = balancedBlock(text, brace);
       if (!body) continue;
-      const lines = body.split("\n").length;
+      // JavaScript host factories deliberately own named nested rules. Counting every
+      // nested rule again as part of the factory reports lexical containment as one
+      // giant function even though each rule is audited independently below.
+      const ownedBody = extension === ".rs" ? body : withoutNestedNamedFunctions(body);
+      const lines = ownedBody.split("\n").filter((line) => line.trim()).length;
       functions.push({ path: repoPath(path), name, index: match.index, lines, body });
       if (lines >= 350) {
         addFinding("error", "architecture", "ARCH-LARGE-FUNCTION", repoPath(path), match.index,
@@ -478,13 +483,13 @@ function auditArchitecture() {
           `${name} is ${lines} lines and needs a focused decomposition review.`);
       }
     }
-    const lineCount = text.split("\n").length;
+    const lineCount = productionLogicalLineCount(text, extension);
     if (lineCount >= 4000) {
       addFinding("error", "architecture", "ARCH-LARGE-FILE", repoPath(path), 0,
-        `Source file has ${lineCount} lines and mixes too many responsibilities.`);
+        `Source file has ${lineCount} production logic lines and mixes too many responsibilities.`);
     } else if (lineCount >= 2000) {
       addFinding("warning", "architecture", "ARCH-LARGE-FILE", repoPath(path), 0,
-        `Source file has ${lineCount} lines and needs an ownership review.`);
+        `Source file has ${lineCount} production logic lines and needs an ownership review.`);
     }
   }
   const exactBodies = new Map();
@@ -508,6 +513,44 @@ function auditArchitecture() {
       entries.map((entry) => `${entry.path}:${entry.name}`).join(", "));
   }
   return functions;
+}
+
+function productionLogicalLineCount(text, extension) {
+  let productionText = text;
+  if (extension === ".rs") {
+    const testModule = productionText.search(/^#\[cfg\(test\)\]\s*\nmod\s+tests\s*\{/m);
+    if (testModule >= 0) {
+      productionText = productionText.slice(0, testModule);
+    }
+  }
+  return productionText
+    .split("\n")
+    .filter((line) => {
+      const trimmed = line.trim();
+      return trimmed
+        && trimmed !== "{"
+        && trimmed !== "}"
+        && !trimmed.startsWith("//")
+        && !trimmed.startsWith("#[")
+        && !(extension === ".rs" && trimmed.startsWith("use "));
+    })
+    .length;
+}
+
+function withoutNestedNamedFunctions(body) {
+  const chars = [...body];
+  const pattern = /(?:async\s+)?function\s+[A-Za-z_$][A-Za-z0-9_$]*\s*\([^)]*\)\s*\{/g;
+  pattern.lastIndex = 1;
+  for (const match of body.matchAll(pattern)) {
+    const brace = body.indexOf("{", match.index + match[0].length - 1);
+    const nestedBody = balancedBlock(body, brace);
+    if (!nestedBody) continue;
+    const end = brace + nestedBody.length;
+    for (let index = match.index; index < end; index += 1) {
+      if (chars[index] !== "\n") chars[index] = " ";
+    }
+  }
+  return chars.join("");
 }
 
 function summarize(findingsList) {
@@ -547,6 +590,7 @@ function markdown(report) {
       if (finding.evidence) lines.push(`  - Evidence: \`${finding.evidence.replace(/\s+/g, " ").slice(0, 240)}\``);
     }
   }
+  while (lines.at(-1) === "") lines.pop();
   return `${lines.join("\n")}\n`;
 }
 

@@ -407,18 +407,6 @@ pub(super) fn object_bbox_selection_bounds(object: &crate::SceneObject) -> Optio
     ))
 }
 
-fn rotate_point_around(point: Point, center: Point, degrees: f64) -> Point {
-    let radians = degrees.to_radians();
-    let cos = radians.cos();
-    let sin = radians.sin();
-    let dx = point.x - center.x;
-    let dy = point.y - center.y;
-    Point::new(
-        center.x + dx * cos - dy * sin,
-        center.y + dx * sin + dy * cos,
-    )
-}
-
 fn shape_object_selection_bounds(object: &crate::SceneObject) -> Option<AxisBounds> {
     let kind = object
         .payload

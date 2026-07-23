@@ -12,11 +12,11 @@ use crate::{
     curve_object_visual_bounds, direction_from_angle, fragment_bond_visual_bounds,
     hit_test_arrow_center, hit_test_bond_center, hit_test_endpoint, line_object_arrow_dimension,
     line_object_endpoint_style, line_object_graphic_stroke_width, line_object_points,
-    line_object_visual_bounds, nearest_angle, point_at_distance_from_start, polyline_length,
-    round2, shape_object_visual_bounds, ArrowEndpointStyle, HoverTextBox, Point, RenderPrimitive,
-    RenderRole, SceneObject, SelectionState, ARROW_HIT_RADIUS, BOND_CENTER_HIT_RADIUS,
-    DEFAULT_BOND_LENGTH, DRAG_START_THRESHOLD, ENDPOINT_FOCUS_RADIUS, ENDPOINT_HIT_RADIUS,
-    GLOBAL_SNAP_ANGLES,
+    line_object_visual_bounds, nearest_angle, point_at_distance_from_start, point_in_polygon,
+    polyline_length, rotate_point_around, round2, shape_object_visual_bounds, ArrowEndpointStyle,
+    HoverTextBox, Point, RenderPrimitive, RenderRole, SceneObject, SelectionState,
+    ARROW_HIT_RADIUS, BOND_CENTER_HIT_RADIUS, DEFAULT_BOND_LENGTH, DRAG_START_THRESHOLD,
+    ENDPOINT_FOCUS_RADIUS, ENDPOINT_HIT_RADIUS, GLOBAL_SNAP_ANGLES,
 };
 use serde_json::{json, Value as JsonValue};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};

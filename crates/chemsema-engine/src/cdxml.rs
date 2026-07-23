@@ -143,11 +143,11 @@ struct ResolvedCdxmlLineSpacing {
     mode: &'static str,
 }
 
-fn chemdraw_auto_run_line_height(run: &LabelRun, fallback_font_size: f64) -> f64 {
+fn chemdraw_auto_run_line_height(run: &LabelRun, default_font_size: f64) -> f64 {
     let size = run
         .font_size
         .filter(|value| value.is_finite() && *value > 0.0)
-        .unwrap_or(fallback_font_size);
+        .unwrap_or(default_font_size);
     let family = run.font_family.as_deref().unwrap_or("Arial");
     let mut ratio = match family.to_ascii_lowercase().as_str() {
         // Measured from independent ChemDraw SVG baselines. These are font
@@ -171,10 +171,10 @@ fn chemdraw_auto_run_line_height(run: &LabelRun, fallback_font_size: f64) -> f64
     size * ratio
 }
 
-fn chemdraw_auto_text_line_height(fallback_font_size: f64, runs: &[LabelRun]) -> f64 {
+fn chemdraw_auto_text_line_height(default_font_size: f64, runs: &[LabelRun]) -> f64 {
     runs.iter()
-        .map(|run| chemdraw_auto_run_line_height(run, fallback_font_size))
-        .fold(fallback_font_size * 1.15, f64::max)
+        .map(|run| chemdraw_auto_run_line_height(run, default_font_size))
+        .fold(default_font_size * 1.15, f64::max)
 }
 
 fn resolved_cdxml_label_line_spacing(
@@ -561,7 +561,7 @@ fn restore_authored_multiline_character_attachment_geometry(document: &mut ChemS
                     round2(authored[0] - origin[0]),
                     round2(authored[1] - origin[1]),
                 ];
-                translate_node_label_geometry(
+                crate::translate_node_label_geometry(
                     label,
                     target[0] - current[0],
                     target[1] - current[1],
@@ -1024,7 +1024,7 @@ fn scale_json_key_as_length_array(key: &str) -> bool {
 }
 
 fn cdxml_defaults(root: &XmlNode) -> CdxmlDefaults {
-    let fallback = CdxmlDefaults::default();
+    let defaults = CdxmlDefaults::default();
     CdxmlDefaults {
         bond_length: parse_f64(root.attr("BondLength")).unwrap_or(crate::DEFAULT_BOND_LENGTH),
         line_width: parse_f64(root.attr("LineWidth")).unwrap_or(crate::DEFAULT_BOND_STROKE),
@@ -1039,45 +1039,45 @@ fn cdxml_defaults(root: &XmlNode) -> CdxmlDefaults {
             .unwrap_or(crate::DEFAULT_MOLECULE_LABEL_FONT_SIZE_PT),
         caption_size: parse_f64(root.attr("CaptionSize"))
             .unwrap_or(crate::DEFAULT_TEXT_FONT_SIZE_PT),
-        chain_angle: parse_f64(root.attr("ChainAngle")).unwrap_or(fallback.chain_angle),
-        label_font: parse_u32(root.attr("LabelFont")).unwrap_or(fallback.label_font),
-        caption_font: parse_u32(root.attr("CaptionFont")).unwrap_or(fallback.caption_font),
-        label_face: parse_u32(root.attr("LabelFace")).unwrap_or(fallback.label_face),
-        caption_face: parse_u32(root.attr("CaptionFace")).unwrap_or(fallback.caption_face),
+        chain_angle: parse_f64(root.attr("ChainAngle")).unwrap_or(defaults.chain_angle),
+        label_font: parse_u32(root.attr("LabelFont")).unwrap_or(defaults.label_font),
+        caption_font: parse_u32(root.attr("CaptionFont")).unwrap_or(defaults.caption_font),
+        label_face: parse_u32(root.attr("LabelFace")).unwrap_or(defaults.label_face),
+        caption_face: parse_u32(root.attr("CaptionFace")).unwrap_or(defaults.caption_face),
         label_justification: parse_cdxml_justification(root.attr("LabelJustification"))
-            .unwrap_or(fallback.label_justification),
+            .unwrap_or(defaults.label_justification),
         caption_justification: parse_cdxml_justification(root.attr("CaptionJustification"))
-            .unwrap_or(fallback.caption_justification),
+            .unwrap_or(defaults.caption_justification),
         line_height: parse_cdxml_line_height(root.attr("LineHeight")),
         label_line_height: parse_cdxml_line_height(root.attr("LabelLineHeight")),
         caption_line_height: parse_cdxml_line_height(root.attr("CaptionLineHeight")),
         fractional_widths: parse_cdxml_bool(root.attr("FractionalWidths"))
-            .unwrap_or(fallback.fractional_widths),
+            .unwrap_or(defaults.fractional_widths),
         interpret_chemically: parse_cdxml_bool(root.attr("InterpretChemically")),
         show_atom_query: parse_cdxml_bool(root.attr("ShowAtomQuery"))
-            .unwrap_or(fallback.show_atom_query),
+            .unwrap_or(defaults.show_atom_query),
         show_atom_stereo: parse_cdxml_bool(root.attr("ShowAtomStereo"))
-            .unwrap_or(fallback.show_atom_stereo),
+            .unwrap_or(defaults.show_atom_stereo),
         show_atom_enhanced_stereo: parse_cdxml_bool(root.attr("ShowAtomEnhancedStereo"))
-            .unwrap_or(fallback.show_atom_enhanced_stereo),
+            .unwrap_or(defaults.show_atom_enhanced_stereo),
         show_atom_number: parse_cdxml_bool(root.attr("ShowAtomNumber"))
-            .unwrap_or(fallback.show_atom_number),
+            .unwrap_or(defaults.show_atom_number),
         show_residue_id: parse_cdxml_bool(root.attr("ShowResidueID"))
-            .unwrap_or(fallback.show_residue_id),
+            .unwrap_or(defaults.show_residue_id),
         show_bond_query: parse_cdxml_bool(root.attr("ShowBondQuery"))
-            .unwrap_or(fallback.show_bond_query),
-        show_bond_rxn: parse_cdxml_bool(root.attr("ShowBondRxn")).unwrap_or(fallback.show_bond_rxn),
+            .unwrap_or(defaults.show_bond_query),
+        show_bond_rxn: parse_cdxml_bool(root.attr("ShowBondRxn")).unwrap_or(defaults.show_bond_rxn),
         show_bond_stereo: parse_cdxml_bool(root.attr("ShowBondStereo"))
-            .unwrap_or(fallback.show_bond_stereo),
+            .unwrap_or(defaults.show_bond_stereo),
         show_terminal_carbon_labels: parse_cdxml_bool(root.attr("ShowTerminalCarbonLabels"))
-            .unwrap_or(fallback.show_terminal_carbon_labels),
+            .unwrap_or(defaults.show_terminal_carbon_labels),
         show_non_terminal_carbon_labels: parse_cdxml_bool(root.attr("ShowNonTerminalCarbonLabels"))
-            .unwrap_or(fallback.show_non_terminal_carbon_labels),
+            .unwrap_or(defaults.show_non_terminal_carbon_labels),
         hide_implicit_hydrogens: parse_cdxml_bool(root.attr("HideImplicitHydrogens"))
-            .unwrap_or(fallback.hide_implicit_hydrogens),
+            .unwrap_or(defaults.hide_implicit_hydrogens),
         print_margins: parse_cdxml_margins(root.attr("PrintMargins"))
-            .unwrap_or(fallback.print_margins),
-        color: parse_u32(root.attr("color")).unwrap_or(fallback.color),
+            .unwrap_or(defaults.print_margins),
+        color: parse_u32(root.attr("color")).unwrap_or(defaults.color),
     }
 }
 
@@ -1671,7 +1671,7 @@ fn split_cdxml_fragment_components(
     fragment: MoleculeFragment,
     source_bbox_abs: [f64; 4],
 ) -> Vec<CdxmlFragmentComponent> {
-    let components = fragment_connected_components(&fragment);
+    let components = crate::molecule_fragment_connected_components(&fragment);
     if components.len() <= 1 {
         return vec![CdxmlFragmentComponent {
             fragment,
@@ -1702,7 +1702,7 @@ fn split_cdxml_fragment_components(
                 return None;
             }
 
-            let local_bounds = component_local_bounds(&nodes).unwrap_or([
+            let local_bounds = crate::molecule_component_bounds(&nodes).unwrap_or([
                 0.0,
                 0.0,
                 fragment.bbox[2].max(1.0),
@@ -1714,7 +1714,7 @@ fn split_cdxml_fragment_components(
                 node.position[0] = round2(node.position[0] + delta_x);
                 node.position[1] = round2(node.position[1] + delta_y);
                 if let Some(label) = &mut node.label {
-                    translate_node_label_geometry(label, delta_x, delta_y);
+                    crate::translate_node_label_geometry(label, delta_x, delta_y);
                 }
             }
 
@@ -1753,50 +1753,6 @@ fn split_cdxml_fragment_components(
         .collect()
 }
 
-fn fragment_connected_components(fragment: &MoleculeFragment) -> Vec<BTreeSet<String>> {
-    let mut adjacency: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
-    for node in &fragment.nodes {
-        adjacency.entry(node.id.as_str()).or_default();
-    }
-    for bond in &fragment.bonds {
-        adjacency
-            .entry(bond.begin.as_str())
-            .or_default()
-            .push(bond.end.as_str());
-        adjacency
-            .entry(bond.end.as_str())
-            .or_default()
-            .push(bond.begin.as_str());
-    }
-
-    let mut visited = BTreeSet::new();
-    let mut components = Vec::new();
-    for node in &fragment.nodes {
-        if visited.contains(node.id.as_str()) {
-            continue;
-        }
-        let mut queue = VecDeque::from([node.id.as_str()]);
-        let mut component = BTreeSet::new();
-        while let Some(id) = queue.pop_front() {
-            if !visited.insert(id) {
-                continue;
-            }
-            component.insert(id.to_string());
-            if let Some(neighbors) = adjacency.get(id) {
-                for neighbor in neighbors {
-                    if !visited.contains(neighbor) {
-                        queue.push_back(neighbor);
-                    }
-                }
-            }
-        }
-        if !component.is_empty() {
-            components.push(component);
-        }
-    }
-    components
-}
-
 fn cdxml_component_has_visible_molecule_content(nodes: &[Node], bonds: &[Bond]) -> bool {
     !bonds.is_empty()
         || nodes.iter().any(|node| {
@@ -1821,92 +1777,6 @@ fn cdxml_component_has_visible_molecule_content(nodes: &[Node], bonds: &[Bond]) 
                     .as_ref()
                     .is_some_and(|label| label.has_visible_text())
         })
-}
-
-fn component_local_bounds(nodes: &[Node]) -> Option<[f64; 4]> {
-    let mut bounds = None;
-    for node in nodes {
-        include_point_in_bounds(&mut bounds, node.position);
-        if let Some(label) = &node.label {
-            if let Some(label_bounds) = label.bbox() {
-                include_box_in_bounds(&mut bounds, label_bounds);
-            }
-            for polygon in &label.glyph_polygons {
-                for point in polygon {
-                    include_point_in_bounds(&mut bounds, *point);
-                }
-            }
-        }
-    }
-    bounds.map(|mut bounds| {
-        if (bounds[2] - bounds[0]).abs() < 1.0 {
-            let center = (bounds[0] + bounds[2]) * 0.5;
-            bounds[0] = center - 0.5;
-            bounds[2] = center + 0.5;
-        }
-        if (bounds[3] - bounds[1]).abs() < 1.0 {
-            let center = (bounds[1] + bounds[3]) * 0.5;
-            bounds[1] = center - 0.5;
-            bounds[3] = center + 0.5;
-        }
-        [
-            round2(bounds[0]),
-            round2(bounds[1]),
-            round2(bounds[2]),
-            round2(bounds[3]),
-        ]
-    })
-}
-
-fn include_point_in_bounds(bounds: &mut Option<[f64; 4]>, point: [f64; 2]) {
-    if let Some(bounds) = bounds {
-        bounds[0] = bounds[0].min(point[0]);
-        bounds[1] = bounds[1].min(point[1]);
-        bounds[2] = bounds[2].max(point[0]);
-        bounds[3] = bounds[3].max(point[1]);
-    } else {
-        *bounds = Some([point[0], point[1], point[0], point[1]]);
-    }
-}
-
-fn include_box_in_bounds(bounds: &mut Option<[f64; 4]>, bbox: [f64; 4]) {
-    include_point_in_bounds(bounds, [bbox[0], bbox[1]]);
-    include_point_in_bounds(bounds, [bbox[2], bbox[3]]);
-}
-
-fn translate_node_label_geometry(label: &mut NodeLabel, delta_x: f64, delta_y: f64) {
-    if delta_x.abs() <= EPSILON && delta_y.abs() <= EPSILON {
-        return;
-    }
-    if let Some(position) = &mut label.position {
-        position[0] = round2(position[0] + delta_x);
-        position[1] = round2(position[1] + delta_y);
-    }
-    if let Some(bbox) = &mut label.box_field {
-        translate_bbox(bbox, delta_x, delta_y);
-    }
-    if let Some(bbox) = &mut label.box_value {
-        translate_bbox(bbox, delta_x, delta_y);
-    }
-    for polygon in &mut label.glyph_polygons {
-        for point in polygon {
-            point[0] = round2(point[0] + delta_x);
-            point[1] = round2(point[1] + delta_y);
-        }
-    }
-    for polygon in &mut label.glyph_clip_polygons {
-        for point in polygon {
-            point[0] = round2(point[0] + delta_x);
-            point[1] = round2(point[1] + delta_y);
-        }
-    }
-}
-
-fn translate_bbox(bbox: &mut [f64; 4], delta_x: f64, delta_y: f64) {
-    bbox[0] = round2(bbox[0] + delta_x);
-    bbox[1] = round2(bbox[1] + delta_y);
-    bbox[2] = round2(bbox[2] + delta_x);
-    bbox[3] = round2(bbox[3] + delta_y);
 }
 
 fn annotate_cdxml_component_fragment_meta(
