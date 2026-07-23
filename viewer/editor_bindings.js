@@ -123,19 +123,9 @@ function bindCommandButtons(options) {
   });
 
   async function runSafe(action, alertPrefix, logMessage) {
-    try {
-      await action();
-    } catch (error) {
-      if (!options.isAbortError(error)) {
-        console.error(logMessage, error);
-        void options.desktopFileHost?.traceEvent?.("editorBindings.runSafe.error", {
-          alertPrefix,
-          logMessage,
-          error,
-        });
-        window.alert?.(`${alertPrefix}: ${error.message || error}`);
-      }
-    }
+    return options.uiActions.start(`file-command.${alertPrefix}`, action, {
+      metadata: { logMessage },
+    });
   }
 }
 
@@ -144,19 +134,9 @@ function bindDesktopCommands(options) {
     return;
   }
   const runSafe = async (action, alertPrefix, logMessage) => {
-    try {
-      await action();
-    } catch (error) {
-      if (!options.isAbortError(error)) {
-        console.error(logMessage, error);
-        await options.desktopFileHost?.traceEvent?.("editorBindings.desktopRunSafe.error", {
-          alertPrefix,
-          logMessage,
-          error,
-        });
-        window.alert?.(`${alertPrefix}: ${error.message || error}`);
-      }
-    }
+    return options.uiActions.start(`desktop-command.${alertPrefix}`, action, {
+      metadata: { logMessage },
+    });
   };
   const runCommand = async (command) => {
     if (!command) {
@@ -478,7 +458,7 @@ function bindZoomInput(options) {
 }
 
 function bindKeyboard(options) {
-  document.addEventListener("keydown", async (event) => {
+  document.addEventListener("keydown", options.uiActions.listener("keyboard.command", async (event) => {
     const target = event.target;
     if (options.getActiveTextEditor()?.root?.contains?.(target)) {
       if (event.key === "Escape") {
@@ -520,7 +500,7 @@ function bindKeyboard(options) {
     if (await runEditorToolShortcut(event, options)) {
       event.preventDefault();
     }
-  });
+  }));
 }
 
 async function runGlobalFileShortcut(event, options) {
@@ -702,9 +682,9 @@ async function runEditorToolShortcut(event, options) {
 
 function bindToolButtons(options) {
   document.querySelectorAll("[data-tool]").forEach((button) => {
-    button.addEventListener("click", async () => {
+    button.addEventListener("click", options.uiActions.listener("toolbar.select-tool", async () => {
       await setActiveTool(button, options);
-    });
+    }));
   });
 }
 
@@ -744,7 +724,7 @@ function bindDocumentStylePreset(options) {
     toggleMenu();
   });
 
-  menu.addEventListener("click", async (event) => {
+  menu.addEventListener("click", options.uiActions.listener("document-style.apply", async (event) => {
     const item = event.target.closest("[data-document-style-preset]");
     if (!item) {
       return;
@@ -774,7 +754,7 @@ function bindDocumentStylePreset(options) {
     if (options.isEditingRustDocument() && result.changed !== false) {
       options.renderDocument();
     }
-  });
+  }));
 
   document.addEventListener("pointerdown", (event) => {
     if (menu.hidden || button.contains(event.target) || menu.contains(event.target)) {
@@ -793,7 +773,7 @@ function bindDocumentStylePreset(options) {
 function bindSecondaryToolbar(options) {
   bindToolbarColorPickers(options);
 
-  options.secondaryToolbar?.addEventListener("click", async (event) => {
+  options.secondaryToolbar?.addEventListener("click", options.uiActions.listener("secondary-toolbar.command", async (event) => {
     if (await handleColorPickerClick(event, options)) {
       return;
     }
@@ -802,7 +782,7 @@ function bindSecondaryToolbar(options) {
       return;
     }
     await handleSecondaryToolbarValue(button.dataset.secondaryValue, options);
-  });
+  }));
 
   options.secondaryToolbar?.addEventListener("change", (event) => {
     const target = event.target;

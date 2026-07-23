@@ -445,6 +445,8 @@ function auditOperationTests() {
       "No browser regression covers structured copy/paste between tabs or browser/desktop surfaces."],
     ["FRONTEND-DETACHED-TAB-TEST-GAP", /detach.*tab|tab.*detach|new window.*tab/i,
       "No end-to-end regression covers dragging a desktop tab into a new window."],
+    ["FRONTEND-UI-ACTION-RUNNER-TEST-GAP", /ui-action-runner-regression|createUiActionRunner/i,
+      "No regression verifies UI action error reporting, recovery, cancellation, and event-boundary settlement."],
   ];
   for (const [rule, pattern, message] of frontendScenarios) {
     if (!pattern.test(regressionText)) {

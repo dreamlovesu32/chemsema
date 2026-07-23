@@ -12,6 +12,7 @@ import { createNumericDialogHost } from "./numeric_dialog_host.js";
 import { createAtomPropertyDialogHost } from "./atom_property_dialog_host.js";
 import { createSmilesDialogHost } from "./smiles_dialog_host.js";
 import { createTransientNotificationHost } from "./transient_notification_host.js";
+import { createUiActionRunner } from "./ui_action_runner.js";
 import { createInchiHost } from "./inchi_host.js";
 import { createDesktopFileHost, normalizeDesktopPath } from "./desktop_file_host.js";
 import { createEngineHost } from "./engine_host.js?v=20260723-native-images";
@@ -145,6 +146,14 @@ const smilesDialogHost = createSmilesDialogHost({
 });
 const transientNotificationHost = createTransientNotificationHost({
   root: document.body,
+});
+const uiActions = createUiActionRunner({
+  isAbortError: (error) => isAbortError(error),
+  notify: (message) => transientNotificationHost.show(message, {
+    error: true,
+    duration: 3600,
+  }),
+  trace: (scope, detail) => desktopFileHost?.traceEvent?.(scope, detail),
 });
 const inchiHost = createInchiHost();
 const isDesktopShell = !!desktopFileHost?.usesCustomWindowChrome;
@@ -297,15 +306,15 @@ if (sampleSelect) {
   }
 
   sampleSelect.value = state.currentPath;
-  sampleSelect.addEventListener("change", async (event) => {
+  sampleSelect.addEventListener("change", uiActions.listener("sample.change", async (event) => {
     state.currentPath = event.target.value;
     await loadAndRender();
-  });
+  }));
 }
 
-reloadButton?.addEventListener("click", async () => {
+reloadButton?.addEventListener("click", uiActions.listener("document.reload", async () => {
   await loadAndRender();
-});
+}));
 
 fitButton?.addEventListener("click", () => {
   fitView();
@@ -891,7 +900,7 @@ async function closeDocumentTab(tabId, options = {}) {
   return true;
 }
 
-documentTabsRoot?.addEventListener("click", async (event) => {
+documentTabsRoot?.addEventListener("click", uiActions.listener("document-tab.click", async (event) => {
   if (suppressNextDocumentTabClick) {
     suppressNextDocumentTabClick = false;
     event.preventDefault();
@@ -908,9 +917,9 @@ documentTabsRoot?.addEventListener("click", async (event) => {
   if (tab) {
     await activateDocumentTab(tab.dataset.documentTabId);
   }
-});
+}));
 
-documentTabsRoot?.addEventListener("keydown", async (event) => {
+documentTabsRoot?.addEventListener("keydown", uiActions.listener("document-tab.keyboard", async (event) => {
   if (event.key !== "Enter" && event.key !== " ") {
     return;
   }
@@ -920,7 +929,7 @@ documentTabsRoot?.addEventListener("keydown", async (event) => {
   }
   event.preventDefault();
   await activateDocumentTab(tab.dataset.documentTabId);
-});
+}));
 
 documentTabsRoot?.addEventListener("pointerdown", (event) => {
   if (!isDesktopShell || event.button !== 0 || event.target.closest("[data-document-tab-close]")) {
@@ -959,7 +968,7 @@ documentTabsRoot?.addEventListener("pointermove", (event) => {
   setDetachingDocumentTabId(shouldDetach ? drag.tabId : null);
 });
 
-documentTabsRoot?.addEventListener("pointerup", async (event) => {
+documentTabsRoot?.addEventListener("pointerup", uiActions.listener("document-tab.detach", async (event) => {
   const drag = activeTitlebarTabDrag;
   if (!drag || drag.pointerId !== event.pointerId) {
     return;
@@ -973,7 +982,12 @@ documentTabsRoot?.addEventListener("pointerup", async (event) => {
     event.stopPropagation();
     await detachDocumentTab(drag.tabId, drag.screenX, drag.screenY);
   }
-});
+}, {
+  recover: () => {
+    activeTitlebarTabDrag = null;
+    setDetachingDocumentTabId(null);
+  },
+}));
 
 documentTabsRoot?.addEventListener("pointercancel", () => {
   activeTitlebarTabDrag = null;
@@ -1001,6 +1015,7 @@ const appWindowLifecycleHost = createAppWindowLifecycleHost({
   saveCurrentDocument: (...args) => saveCurrentDocument(...args),
   isAbortError: (...args) => isAbortError(...args),
   autoSaveAllOleEditDocumentTabs,
+  uiActions,
 });
 
 function bindDesktopWindowChrome(...args) { return appWindowLifecycleHost.bindDesktopWindowChrome(...args); }
@@ -2698,6 +2713,7 @@ const editorToolbarHost = createEditorToolbarHost({
   insertTextSymbol,
   selectElementFromQuickPalette,
   handleQuickPaletteModeChange,
+  uiActions,
 });
 
 function renderSecondaryToolbar(...args) { return editorToolbarHost.renderSecondaryToolbar(...args); }
@@ -2749,6 +2765,7 @@ const textEditorController = createTextEditorController({
   editorLineIndexForOffset,
   measureEditorCaretRect,
   nearestOffsetOnLine,
+  uiActions,
 });
 
 function focusActiveTextEditor() {
@@ -3776,6 +3793,7 @@ bindEditorControls({
   applyArrowOptionsToSelection,
   applySelectionColor,
   getDocumentColors: currentDocumentColors,
+  uiActions,
 });
 
 renderSecondaryToolbar();
@@ -3940,9 +3958,9 @@ canvasPointerShield.addEventListener("pointermove", editorPointerController.hand
 canvasPointerShield.addEventListener("pointerup", editorPointerController.handleEditorPointerUp);
 canvasPointerShield.addEventListener("pointercancel", editorPointerController.handleEditorPointerCancel);
 viewerSvg?.addEventListener("dblclick", editorPointerController.handleEditorDoubleClick);
-viewerSvg?.addEventListener("pointercancel", async () => {
+viewerSvg?.addEventListener("pointercancel", uiActions.listener("editor.pointer-cancel", async () => {
   await editorPointerController.handleEditorPointerCancel();
-});
+}));
 window.addEventListener("pointerup", () => {
   queueMicrotask(() => {
     if (!activeSelectionGesture) {

@@ -327,6 +327,7 @@ export function createEditorToolbarHost(options) {
       onSelect: insertTextSymbol,
       onElementSelect: selectElementFromQuickPalette,
       onModeChange: handleQuickPaletteModeChange,
+      uiActions: options.uiActions,
     });
   }
 

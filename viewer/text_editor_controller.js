@@ -634,9 +634,9 @@ export function createTextEditorController(deps) {
     input.addEventListener("keydown", (event) => {
       handleTextEditorKeyDown(event);
     });
-    root.addEventListener("pointerdown", async (event) => {
+    root.addEventListener("pointerdown", deps.uiActions.listener("text-editor.pointer-down", async (event) => {
       await handleTextEditorPointerDown(event);
-    });
+    }));
     root.addEventListener("pointermove", (event) => {
       handleTextEditorPointerMove(event);
     });

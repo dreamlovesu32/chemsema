@@ -1,4 +1,12 @@
-export function createTextSymbolPalette({ mount, payload, elementPayload, onSelect, onElementSelect, onModeChange }) {
+export function createTextSymbolPalette({
+  mount,
+  payload,
+  elementPayload,
+  onSelect,
+  onElementSelect,
+  onModeChange,
+  uiActions,
+}) {
   if (!mount) {
     return null;
   }
@@ -133,7 +141,7 @@ export function createTextSymbolPalette({ mount, payload, elementPayload, onSele
       button.style.setProperty("--element-fg", element.color.foreground);
     }
     button.textContent = element.symbol;
-    button.addEventListener("click", async (event) => {
+    button.addEventListener("click", uiActions.listener("element-palette.select", async (event) => {
       event.preventDefault();
       const changed = await onElementSelect?.(element.symbol, element.atomicNumber);
       elementCatalog = {
@@ -143,7 +151,7 @@ export function createTextSymbolPalette({ mount, payload, elementPayload, onSele
       renderElementContent();
       closeAfterPick("element");
       return changed;
-    });
+    }));
     return button;
   }
 

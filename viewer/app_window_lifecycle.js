@@ -34,6 +34,7 @@ export function createAppWindowLifecycleHost(options) {
   const saveCurrentDocument = (...args) => options.saveCurrentDocument(...args);
   const isAbortError = (...args) => options.isAbortError(...args);
   const autoSaveAllOleEditDocumentTabs = (...args) => options.autoSaveAllOleEditDocumentTabs(...args);
+  const uiActions = options.uiActions;
   let activeUnsavedChangesDialog = null;
   let activeRepeatUnitUngroupDialog = null;
   let windowCloseGuardInProgress = false;
@@ -43,15 +44,15 @@ export function createAppWindowLifecycleHost(options) {
     if (!isDesktopShell || !desktopFileHost?.available) {
       return;
     }
-    void desktopFileHost.listenWindowCloseRequested?.(async (event) => {
+    void desktopFileHost.listenWindowCloseRequested?.(uiActions.listener("window.close-requested", async (event) => {
       if (forceWindowClose) {
         return;
       }
       event?.preventDefault?.();
       await requestCloseWindow();
-    });
+    }));
     desktopTitlebar?.querySelectorAll("[data-window-command]").forEach((button) => {
-      button.addEventListener("click", async () => {
+      button.addEventListener("click", uiActions.listener("window.command", async () => {
         const command = button.dataset.windowCommand;
         if (command === "minimize") {
           await desktopFileHost.minimizeWindow?.();
@@ -61,26 +62,32 @@ export function createAppWindowLifecycleHost(options) {
         } else if (command === "close") {
           await requestCloseWindow();
         }
-      });
+      }));
     });
-    document.addEventListener("pointerdown", handleDesktopWindowDragPointerDown, true);
+    document.addEventListener(
+      "pointerdown",
+      uiActions.listener("window.drag-region", handleDesktopWindowDragPointerDown),
+      true,
+    );
     desktopTitlebar?.querySelectorAll("[data-titlebar-drag-region]").forEach((region) => {
-      region.addEventListener("dblclick", async (event) => {
+      region.addEventListener("dblclick", uiActions.listener("window.toggle-maximize", async (event) => {
         event.preventDefault();
         await desktopFileHost.toggleMaximizeWindow?.();
         await syncDesktopMaximizedState();
-      });
-      region.addEventListener("pointerdown", async (event) => {
+      }));
+      region.addEventListener("pointerdown", uiActions.listener("window.start-drag", async (event) => {
         if (event.button !== 0 || event.detail > 1) {
           return;
         }
         await desktopFileHost.startWindowDrag?.();
-      });
+      }));
     });
-    window.addEventListener("resize", () => {
-      syncDesktopMaximizedState();
-    }, { passive: true });
-    syncDesktopMaximizedState();
+    window.addEventListener(
+      "resize",
+      uiActions.listener("window.sync-maximized", syncDesktopMaximizedState),
+      { passive: true },
+    );
+    void uiActions.start("window.sync-maximized", syncDesktopMaximizedState);
   }
 
   function desktopWindowDragRegionFromEvent(event) {
