@@ -36,6 +36,78 @@ impl Engine {
         payload.to_string()
     }
 
+    pub fn atom_property_dialog_json(&self, property: &str) -> String {
+        let payload = match property {
+            "isotope" => {
+                let value = self
+                    .selected_uniform_atom_isotope()
+                    .flatten()
+                    .map(|value| value.to_string())
+                    .unwrap_or_default();
+                json!({
+                    "kind": "atom-property",
+                    "property": "isotope",
+                    "title": if value.is_empty() { "Set Isotope" } else { "Edit Isotope" },
+                    "field": {
+                        "key": "value",
+                        "label": "Mass number",
+                        "value": value,
+                        "inputMode": "numeric",
+                        "valueKind": "integer",
+                        "minimum": 1,
+                        "maximum": i16::MAX,
+                        "allowEmpty": true
+                    }
+                })
+            }
+            "atom-number" => {
+                let value = self
+                    .selected_uniform_atom_number()
+                    .flatten()
+                    .unwrap_or_default();
+                json!({
+                    "kind": "atom-property",
+                    "property": "atom-number",
+                    "title": if value.is_empty() { "Set Atom Number" } else { "Edit Atom Number" },
+                    "field": {
+                        "key": "value",
+                        "label": "Atom number",
+                        "value": value,
+                        "inputMode": "text",
+                        "valueKind": "text",
+                        "allowEmpty": true
+                    }
+                })
+            }
+            "stereo" => {
+                let value = self
+                    .selected_uniform_atom_stereo()
+                    .flatten()
+                    .unwrap_or_default();
+                json!({
+                    "kind": "atom-property",
+                    "property": "stereo",
+                    "title": if value.is_empty() { "Set Stereo Descriptor" } else { "Edit Stereo Descriptor" },
+                    "field": {
+                        "key": "value",
+                        "label": "CIP descriptor",
+                        "value": value,
+                        "inputMode": "text",
+                        "valueKind": "text",
+                        "allowEmpty": true
+                    }
+                })
+            }
+            _ => json!({
+                "kind": "",
+                "property": "",
+                "title": "",
+                "field": null
+            }),
+        };
+        payload.to_string()
+    }
+
     pub fn apply_selection_numeric_dialog_json(
         &mut self,
         payload_json: &str,
@@ -163,6 +235,7 @@ impl Engine {
                 separator(),
                 json!({"label": "Interpret Chemically", "command": "interpret-chemically", "value": if self.selected_interpret_chemically_enabled() { "off" } else { "on" }, "checked": self.selected_interpret_chemically_enabled()}),
                 self.implicit_hydrogen_menu(),
+                self.atom_properties_menu(),
                 separator(),
                 self.color_menu(),
                 self.object_settings_item(),
@@ -502,7 +575,7 @@ impl Engine {
         let override_count = self.selected_implicit_hydrogen_override().flatten();
         json!({
             "label": "Implicit Hydrogens",
-            "items": [
+            "submenu": [
                 {
                     "label": "Automatic",
                     "command": "implicit-hydrogen-count",
@@ -516,6 +589,145 @@ impl Engine {
                     "checked": override_count == Some(0)
                 }
             ]
+        })
+    }
+
+    fn atom_properties_menu(&self) -> JsonValue {
+        let isotope = self.selected_uniform_atom_isotope();
+        let abundance = self.selected_uniform_isotopic_abundance();
+        let radical = self.selected_uniform_atom_radical();
+        let number = self.selected_uniform_atom_number();
+        let show_number = self.selected_uniform_show_atom_number().unwrap_or(false);
+        let stereo = self.selected_uniform_atom_stereo();
+        let stereo_value = stereo.as_ref().and_then(|value| value.as_deref());
+        let show_stereo = self.selected_uniform_show_atom_stereo().unwrap_or(false);
+        json!({
+            "label": "Atom Properties",
+            "submenu": [
+                {
+                    "label": "Isotope",
+                    "submenu": [
+                        atom_property_item("Natural (unset)", "isotope", "", isotope == Some(None)),
+                        atom_property_item("²H / 2", "isotope", "2", isotope == Some(Some(2))),
+                        atom_property_item("³H / 3", "isotope", "3", isotope == Some(Some(3))),
+                        atom_property_item("¹³C / 13", "isotope", "13", isotope == Some(Some(13))),
+                        atom_property_item("¹⁴C / 14", "isotope", "14", isotope == Some(Some(14))),
+                        atom_property_item("¹⁵N / 15", "isotope", "15", isotope == Some(Some(15))),
+                        atom_property_item("¹⁸O / 18", "isotope", "18", isotope == Some(Some(18))),
+                        separator(),
+                        atom_property_item("Other…", "isotope", "__prompt__", false)
+                    ]
+                },
+                {
+                    "label": "Isotopic Abundance",
+                    "submenu": [
+                        atom_property_item("Unspecified", "isotopic-abundance", "unspecified", abundance.as_deref() == Some("unspecified")),
+                        atom_property_item("Any", "isotopic-abundance", "any", abundance.as_deref() == Some("any")),
+                        atom_property_item("Natural", "isotopic-abundance", "natural", abundance.as_deref() == Some("natural")),
+                        atom_property_item("Enriched", "isotopic-abundance", "enriched", abundance.as_deref() == Some("enriched")),
+                        atom_property_item("Deficient", "isotopic-abundance", "deficient", abundance.as_deref() == Some("deficient")),
+                        atom_property_item("Nonnatural", "isotopic-abundance", "nonnatural", abundance.as_deref() == Some("nonnatural"))
+                    ]
+                },
+                {
+                    "label": "Radical",
+                    "submenu": [
+                        atom_property_item("None", "radical", "none", radical.as_deref() == Some("none")),
+                        atom_property_item("Singlet", "radical", "singlet", radical.as_deref() == Some("singlet")),
+                        atom_property_item("Doublet", "radical", "doublet", radical.as_deref() == Some("doublet")),
+                        atom_property_item("Triplet", "radical", "triplet", radical.as_deref() == Some("triplet"))
+                    ]
+                },
+                separator(),
+                json!({
+                    "label": "Show Atom Number",
+                    "command": "atom-property",
+                    "value": format!("show-atom-number:{}", !show_number),
+                    "checked": show_number
+                }),
+                json!({
+                    "label": if number.as_ref().and_then(|value| value.as_ref()).is_some() { "Edit Atom Number…" } else { "Set Atom Number…" },
+                    "command": "atom-property",
+                    "value": "atom-number:__prompt__"
+                }),
+                atom_property_item("Clear Atom Number", "atom-number", "", false),
+                separator(),
+                json!({
+                    "label": "Show Stereochemistry",
+                    "command": "atom-property",
+                    "value": format!("show-stereo:{}", !show_stereo),
+                    "checked": show_stereo
+                }),
+                {
+                    "label": "Stereo Descriptor",
+                    "submenu": [
+                        atom_property_item("Calculated / unset", "stereo", "", stereo == Some(None)),
+                        atom_property_item("R", "stereo", "R", stereo_value == Some("R")),
+                        atom_property_item("S", "stereo", "S", stereo_value == Some("S")),
+                        atom_property_item("r", "stereo", "r", stereo_value == Some("r")),
+                        atom_property_item("s", "stereo", "s", stereo_value == Some("s")),
+                        atom_property_item("Other…", "stereo", "__prompt__", false)
+                    ]
+                }
+            ]
+        })
+    }
+
+    fn selected_uniform_atom_isotope(&self) -> Option<Option<i16>> {
+        uniform_node_value(self.selected_label_nodes(), |node| {
+            node.atom_properties.isotope_mass
+        })
+    }
+
+    fn selected_uniform_isotopic_abundance(&self) -> Option<String> {
+        uniform_node_value(self.selected_label_nodes(), |node| {
+            format!("{:?}", node.atom_properties.isotopic_abundance).to_ascii_lowercase()
+        })
+    }
+
+    fn selected_uniform_atom_radical(&self) -> Option<String> {
+        uniform_node_value(self.selected_label_nodes(), |node| {
+            format!("{:?}", node.atom_properties.radical).to_ascii_lowercase()
+        })
+    }
+
+    fn selected_uniform_atom_number(&self) -> Option<Option<String>> {
+        uniform_node_value(self.selected_label_nodes(), |node| {
+            node.atom_properties.atom_number.clone()
+        })
+    }
+
+    fn selected_uniform_show_atom_number(&self) -> Option<bool> {
+        let default = self
+            .state
+            .document
+            .document
+            .meta
+            .pointer("/import/cdxml/defaults/showAtomNumber")
+            .and_then(JsonValue::as_bool)
+            .unwrap_or(false);
+        uniform_node_value(self.selected_label_nodes(), |node| {
+            node.atom_properties.show_atom_number.unwrap_or(default)
+        })
+    }
+
+    fn selected_uniform_atom_stereo(&self) -> Option<Option<String>> {
+        uniform_node_value(self.selected_label_nodes(), |node| {
+            node.atom_properties.cip_stereo.clone()
+        })
+    }
+
+    fn selected_uniform_show_atom_stereo(&self) -> Option<bool> {
+        let default = self
+            .state
+            .document
+            .document
+            .meta
+            .pointer("/import/cdxml/defaults/showAtomStereo")
+            .and_then(JsonValue::as_bool)
+            .unwrap_or(false);
+        uniform_node_value(self.selected_label_nodes(), |node| {
+            node.atom_properties.show_atom_stereo.unwrap_or(default)
         })
     }
 
@@ -892,6 +1104,25 @@ fn item(label: &str, command: &str, value: &str) -> JsonValue {
     } else {
         json!({ "label": label, "command": command, "value": value })
     }
+}
+
+fn atom_property_item(label: &str, property: &str, value: &str, checked: bool) -> JsonValue {
+    json!({
+        "label": label,
+        "command": "atom-property",
+        "value": format!("{property}:{value}"),
+        "checked": checked
+    })
+}
+
+fn uniform_node_value<T, F>(nodes: Vec<&Node>, mut value: F) -> Option<T>
+where
+    T: Clone + PartialEq,
+    F: FnMut(&Node) -> T,
+{
+    let mut nodes = nodes.into_iter();
+    let first = value(nodes.next()?);
+    nodes.all(|node| value(node) == first).then_some(first)
 }
 
 fn checked_item(label: &str, command: &str, value: &str, checked: bool) -> JsonValue {

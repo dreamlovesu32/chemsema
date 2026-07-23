@@ -155,6 +155,7 @@ pub(super) fn render_molecule_object(
 
             for node in &fragment.nodes {
                 render_fragment_label(out, document, object, node, object_id.clone());
+                render_fragment_atom_properties(out, document, object, node, object_id.clone());
                 render_fragment_cdxml_node_markers(
                     out,
                     document,
@@ -263,6 +264,7 @@ pub(super) fn render_molecule_object_targets(
     for node in &fragment.nodes {
         if label_render_node_ids.contains(&node.id) {
             render_fragment_label(out, document, object, node, object_id.clone());
+            render_fragment_atom_properties(out, document, object, node, object_id.clone());
             render_fragment_cdxml_node_markers(
                 out,
                 document,
@@ -276,6 +278,389 @@ pub(super) fn render_molecule_object_targets(
             render_fragment_node_invalid_marker(out, object, node, object_id.clone());
         }
     }
+}
+
+fn render_fragment_atom_properties(
+    out: &mut Vec<RenderPrimitive>,
+    document: &ChemSemaDocument,
+    object: &SceneObject,
+    node: &Node,
+    object_id: Option<String>,
+) {
+    let properties = &node.atom_properties;
+    if properties.is_default() {
+        return;
+    }
+    let center = world_point(object, node);
+    let font_size = node
+        .label
+        .as_ref()
+        .map(fragment_label_font_size)
+        .unwrap_or(DEFAULT_MOLECULE_LABEL_FONT_SIZE_PT);
+    let annotation_size = font_size * 0.75;
+    let fill = node
+        .label
+        .as_ref()
+        .and_then(|label| label.fill.clone())
+        .or_else(|| {
+            object
+                .style_ref
+                .as_ref()
+                .and_then(|style_ref| document.styles.get(style_ref))
+                .and_then(|style| style_string(style, "fill"))
+        })
+        .unwrap_or_else(|| "#000000".to_string());
+    let font_family = node
+        .label
+        .as_ref()
+        .and_then(|label| label.font_family.clone())
+        .or_else(|| {
+            object
+                .style_ref
+                .as_ref()
+                .and_then(|style_ref| document.styles.get(style_ref))
+                .and_then(|style| style_string(style, "fontFamily"))
+        });
+
+    let mut bounds = label_box_world(node, object).unwrap_or(RectBox {
+        x1: center.x - font_size * 0.3,
+        y1: center.y - font_size * 0.45,
+        x2: center.x + font_size * 0.3,
+        y2: center.y + font_size * 0.45,
+    });
+    if properties.isotope_mass.is_some()
+        && node
+            .label
+            .as_ref()
+            .is_none_or(|label| !label.has_visible_text())
+    {
+        let element = if node.element.trim().is_empty() {
+            "C"
+        } else {
+            node.element.as_str()
+        };
+        push_atom_property_text(
+            out,
+            document,
+            center.x,
+            center.y - font_size * 0.42,
+            element,
+            font_size,
+            font_family.clone(),
+            &fill,
+            "middle",
+            false,
+            object_id.clone(),
+            &node.id,
+        );
+        bounds = RectBox {
+            x1: center.x - font_size * 0.35,
+            y1: center.y - font_size * 0.55,
+            x2: center.x + font_size * 0.35,
+            y2: center.y + font_size * 0.55,
+        };
+    }
+
+    if let Some(mass) = properties.isotope_mass {
+        let annotation_top = (bounds.y1 + bounds.y2 - annotation_size) * 0.5;
+        push_atom_property_text(
+            out,
+            document,
+            bounds.x1 - font_size * 0.1875,
+            annotation_top,
+            &mass.to_string(),
+            annotation_size,
+            font_family.clone(),
+            &fill,
+            "end",
+            false,
+            object_id.clone(),
+            &node.id,
+        );
+    }
+
+    let default_show_query = document
+        .document
+        .meta
+        .pointer("/import/cdxml/defaults/showAtomQuery")
+        .and_then(JsonValue::as_bool)
+        .unwrap_or(true);
+    if !has_linked_isotopic_abundance_annotation(document, &node.id)
+        && default_show_query
+        && properties.isotopic_abundance != crate::IsotopicAbundance::Unspecified
+    {
+        let mass_width = properties
+            .isotope_mass
+            .map(|mass| annotation_text_width(&mass.to_string(), annotation_size))
+            .unwrap_or(0.0);
+        push_atom_property_text(
+            out,
+            document,
+            bounds.x1 - font_size * 0.1875 - mass_width,
+            (bounds.y1 + bounds.y2 - annotation_size) * 0.5,
+            "I",
+            annotation_size,
+            font_family.clone(),
+            &fill,
+            "end",
+            false,
+            object_id.clone(),
+            &node.id,
+        );
+    }
+
+    let has_attached_radical_symbol =
+        crate::node_attached_electron_symbols(node)
+            .iter()
+            .any(|symbol| {
+                symbol
+                    .get("radicalDelta")
+                    .and_then(JsonValue::as_i64)
+                    .unwrap_or(0)
+                    > 0
+            });
+    if !has_attached_radical_symbol {
+        let radical_text = match properties.radical {
+            crate::AtomRadical::None => None,
+            crate::AtomRadical::Singlet => Some("••"),
+            crate::AtomRadical::Doublet => Some("•"),
+            crate::AtomRadical::Triplet => Some("• •"),
+        };
+        if let Some(radical_text) = radical_text {
+            push_atom_property_text(
+                out,
+                document,
+                bounds.x2 + annotation_size * 0.15,
+                bounds.y1 - annotation_size * 0.15,
+                radical_text,
+                annotation_size,
+                font_family.clone(),
+                &fill,
+                "start",
+                false,
+                object_id.clone(),
+                &node.id,
+            );
+        }
+    }
+
+    let default_show_number = document
+        .document
+        .meta
+        .pointer("/import/cdxml/defaults/showAtomNumber")
+        .and_then(JsonValue::as_bool)
+        .unwrap_or(false);
+    let has_linked_atom_number = has_linked_atom_annotation(document, &node.id, &["atom_number"]);
+    let stereo_is_visible = properties.show_atom_stereo.unwrap_or_else(|| {
+        document
+            .document
+            .meta
+            .pointer("/import/cdxml/defaults/showAtomStereo")
+            .and_then(JsonValue::as_bool)
+            .unwrap_or(false)
+    }) && properties.cip_stereo.is_some();
+    if !has_linked_atom_number && properties.show_atom_number.unwrap_or(default_show_number) {
+        if let Some(number) = properties.atom_number.as_deref() {
+            let number_on_left = stereo_is_visible
+                || properties.radical != crate::AtomRadical::None
+                || has_attached_radical_symbol;
+            let (x, y) = indicator_position(
+                properties.atom_number_position.as_ref(),
+                if number_on_left {
+                    bounds.x1 - font_size * 0.1875
+                } else {
+                    bounds.x2 + font_size * 0.1875
+                },
+                (bounds.y1 + bounds.y2 - annotation_size) * 0.5,
+                center,
+            );
+            push_atom_property_text(
+                out,
+                document,
+                x,
+                y,
+                number,
+                annotation_size,
+                font_family.clone(),
+                &fill,
+                if number_on_left { "end" } else { "start" },
+                false,
+                object_id.clone(),
+                &node.id,
+            );
+        }
+    }
+
+    let default_show_stereo = document
+        .document
+        .meta
+        .pointer("/import/cdxml/defaults/showAtomStereo")
+        .and_then(JsonValue::as_bool)
+        .unwrap_or(false);
+    let has_linked_stereo =
+        has_linked_atom_annotation(document, &node.id, &["stereo", "enhanced_stereo"]);
+    if !has_linked_stereo && properties.show_atom_stereo.unwrap_or(default_show_stereo) {
+        if let Some(stereo) = properties.cip_stereo.as_deref() {
+            let (x, y) = indicator_position(
+                properties.stereo_position.as_ref(),
+                bounds.x2 + font_size * 0.1875,
+                (bounds.y1 + bounds.y2 - annotation_size) * 0.5,
+                center,
+            );
+            let stereo_text = if stereo.starts_with('(') && stereo.ends_with(')') {
+                stereo.to_string()
+            } else {
+                format!("({stereo})")
+            };
+            push_atom_property_text(
+                out,
+                document,
+                x,
+                y,
+                &stereo_text,
+                annotation_size,
+                font_family,
+                &fill,
+                "start",
+                true,
+                object_id,
+                &node.id,
+            );
+        }
+    }
+}
+
+fn has_linked_atom_annotation(document: &ChemSemaDocument, node_id: &str, roles: &[&str]) -> bool {
+    document.scene_objects().into_iter().any(|object| {
+        object
+            .meta
+            .get("attachedNodeId")
+            .and_then(JsonValue::as_str)
+            == Some(node_id)
+            && object
+                .meta
+                .get("role")
+                .and_then(JsonValue::as_str)
+                .is_some_and(|role| roles.contains(&role))
+    })
+}
+
+fn has_linked_isotopic_abundance_annotation(document: &ChemSemaDocument, node_id: &str) -> bool {
+    document.scene_objects().into_iter().any(|object| {
+        object
+            .meta
+            .get("attachedNodeId")
+            .and_then(JsonValue::as_str)
+            == Some(node_id)
+            && object.meta.get("role").and_then(JsonValue::as_str) == Some("query")
+            && object.payload.extra.get("text").and_then(JsonValue::as_str) == Some("I")
+    })
+}
+
+fn indicator_position(
+    position: Option<&crate::IndicatorPosition>,
+    default_x: f64,
+    default_y: f64,
+    center: Point,
+) -> (f64, f64) {
+    let Some(position) = position else {
+        return (default_x, default_y);
+    };
+    if let Some([x, y]) = position.absolute {
+        return (x, y);
+    }
+    if let Some([x, y]) = position.offset {
+        return (center.x + x, center.y + y);
+    }
+    if let Some(angle) = position.angle.filter(|angle| angle.is_finite()) {
+        let radius = position
+            .offset
+            .map(|offset| offset[0].hypot(offset[1]))
+            .unwrap_or(DEFAULT_MOLECULE_LABEL_FONT_SIZE_PT);
+        let radians = angle.to_radians();
+        return (
+            center.x + radians.cos() * radius,
+            center.y + radians.sin() * radius,
+        );
+    }
+    (default_x, default_y)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn push_atom_property_text(
+    out: &mut Vec<RenderPrimitive>,
+    document: &ChemSemaDocument,
+    x: f64,
+    y: f64,
+    text: &str,
+    font_size: f64,
+    font_family: Option<String>,
+    fill: &str,
+    anchor: &str,
+    italic: bool,
+    object_id: Option<String>,
+    node_id: &str,
+) {
+    let width = annotation_text_width(text, font_size);
+    let left = if anchor == "end" {
+        x - width
+    } else if anchor == "middle" {
+        x - width * 0.5
+    } else {
+        x
+    };
+    out.push(RenderPrimitive::Rect {
+        role: RenderRole::DocumentKnockout,
+        object_id: object_id.clone(),
+        node_id: Some(node_id.to_string()),
+        x: left - 0.35,
+        y: y - font_size * 0.18,
+        width: width + 0.7,
+        height: font_size + 0.35,
+        fill: Some(document.document.page.background.clone()),
+        stroke: None,
+        stroke_width: 0.0,
+        rx: None,
+        ry: None,
+        dash_array: Vec::new(),
+        fill_gradient: None,
+    });
+    let runs = italic
+        .then(|| {
+            vec![LabelRun {
+                text: text.to_string(),
+                font_family: font_family.clone(),
+                font_size: Some(font_size),
+                fill: Some(fill.to_string()),
+                font_weight: None,
+                font_style: Some("italic".to_string()),
+                underline: None,
+                outline: None,
+                shadow: None,
+                script: Some("normal".to_string()),
+            }]
+        })
+        .unwrap_or_default();
+    push_text_for_node(
+        out,
+        x,
+        y,
+        Some(font_size * 0.82),
+        text.to_string(),
+        font_size,
+        font_family,
+        Some(fill.to_string()),
+        Some(anchor.to_string()),
+        runs,
+        object_id,
+        Some(node_id.to_string()),
+    );
+}
+
+fn annotation_text_width(text: &str, font_size: f64) -> f64 {
+    text.chars()
+        .map(|character| crate::glyph_kernel::shared_estimated_char_width(character, font_size))
+        .sum()
 }
 
 fn render_fragment_cdxml_node_markers(

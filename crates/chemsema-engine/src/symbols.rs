@@ -1,4 +1,4 @@
-use crate::{ChemSemaDocument, Node, Point, SceneObject};
+use crate::{AtomRadical, ChemSemaDocument, Node, Point, SceneObject};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
@@ -106,7 +106,8 @@ pub fn node_radical_count(node: &Node) -> i32 {
     node.meta
         .get(RADICAL_COUNT_META)
         .and_then(Value::as_i64)
-        .unwrap_or(0) as i32
+        .map(|value| value as i32)
+        .unwrap_or_else(|| node.atom_properties.radical.electron_count())
 }
 
 pub fn node_attached_electron_symbols(node: &Node) -> Vec<Value> {
@@ -352,6 +353,24 @@ fn refresh_node_attached_electron_symbols(
         changed |= set_node_meta_value(node, SYMBOL_BASE_CHARGE_META, Some(json!(base_charge)));
         changed |= set_node_meta_value(node, SYMBOL_BASE_RADICAL_META, Some(json!(base_radical)));
         let next_radical = base_radical + radical_delta;
+        let next_radical_kind = match next_radical {
+            i32::MIN..=0 => AtomRadical::None,
+            1 => AtomRadical::Doublet,
+            _ if base_radical == 2 && node.atom_properties.radical != AtomRadical::None => {
+                node.atom_properties.radical
+            }
+            _ if node_attachments
+                .iter()
+                .any(|attachment| attachment.kind == "lone-pair") =>
+            {
+                AtomRadical::Singlet
+            }
+            _ => AtomRadical::Triplet,
+        };
+        if node.atom_properties.radical != next_radical_kind {
+            node.atom_properties.radical = next_radical_kind;
+            changed = true;
+        }
         changed |= set_node_meta_value(
             node,
             RADICAL_COUNT_META,

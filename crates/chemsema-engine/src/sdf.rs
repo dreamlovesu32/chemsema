@@ -389,6 +389,7 @@ fn molfile_to_fragment(molfile: &Molfile, record: &SdfRecord) -> (MoleculeFragme
             is_external_connection_point: false,
             is_placeholder: atomic_number == 0,
             label: None,
+            atom_properties: crate::AtomProperties::default(),
             meta: json!({
                 "import": {
                     "sdf": {

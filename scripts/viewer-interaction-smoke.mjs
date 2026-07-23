@@ -71,7 +71,11 @@ async function openViewer(browser) {
   const errors = [];
   capturePageErrors(page, errors);
   await page.goto(`${baseUrl}?v=${Date.now()}`, { waitUntil: "domcontentloaded" });
-  await page.waitForFunction(() => !!window.__chemsemaDebug, null, { timeout: 20000 });
+  await page.waitForFunction(
+    () => !!window.__chemsemaDebug?.state?.editorEngine,
+    null,
+    { timeout: 20000 },
+  );
   return { page, errors };
 }
 

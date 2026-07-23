@@ -1876,6 +1876,8 @@ pub struct Node {
     pub is_placeholder: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<NodeLabel>,
+    #[serde(default, skip_serializing_if = "AtomProperties::is_default")]
+    pub atom_properties: AtomProperties,
     #[serde(default)]
     pub meta: Value,
 }
@@ -1892,6 +1894,7 @@ impl Node {
             is_external_connection_point: false,
             is_placeholder: false,
             label: None,
+            atom_properties: AtomProperties::default(),
             meta: Value::Null,
         }
     }
@@ -1899,6 +1902,103 @@ impl Node {
     pub fn point(&self) -> Point {
         Point::new(self.position[0], self.position[1])
     }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AtomRadical {
+    #[default]
+    None,
+    Singlet,
+    Doublet,
+    Triplet,
+}
+
+impl AtomRadical {
+    pub fn electron_count(self) -> i32 {
+        match self {
+            Self::None => 0,
+            Self::Doublet => 1,
+            Self::Singlet | Self::Triplet => 2,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum IsotopicAbundance {
+    #[default]
+    Unspecified,
+    Any,
+    Natural,
+    Enriched,
+    Deficient,
+    Nonnatural,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IndicatorPosition {
+    #[serde(default = "default_indicator_position_mode")]
+    pub mode: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub angle: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub offset: Option<[f64; 2]>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub absolute: Option<[f64; 2]>,
+}
+
+impl Default for IndicatorPosition {
+    fn default() -> Self {
+        Self {
+            mode: default_indicator_position_mode(),
+            angle: None,
+            offset: None,
+            absolute: None,
+        }
+    }
+}
+
+fn default_indicator_position_mode() -> String {
+    "auto".to_string()
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AtomProperties {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub isotope_mass: Option<i16>,
+    #[serde(default, skip_serializing_if = "is_default_isotopic_abundance")]
+    pub isotopic_abundance: IsotopicAbundance,
+    #[serde(default, skip_serializing_if = "is_default_atom_radical")]
+    pub radical: AtomRadical,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub atom_number: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub show_atom_number: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cip_stereo: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub show_atom_stereo: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub atom_number_position: Option<IndicatorPosition>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stereo_position: Option<IndicatorPosition>,
+}
+
+impl AtomProperties {
+    pub fn is_default(&self) -> bool {
+        self == &Self::default()
+    }
+}
+
+fn is_default_isotopic_abundance(value: &IsotopicAbundance) -> bool {
+    *value == IsotopicAbundance::Unspecified
+}
+
+fn is_default_atom_radical(value: &AtomRadical) -> bool {
+    *value == AtomRadical::None
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -2491,6 +2591,7 @@ mod tests {
                         atomic_number: 7,
                         position: [10.0, 10.0],
                         charge: 0,
+                        atom_properties: AtomProperties::default(),
                         num_hydrogens: 0,
                         is_external_connection_point: false,
                         is_placeholder: false,
@@ -2940,6 +3041,7 @@ mod tests {
                         atomic_number: 7,
                         position: [30.0, 30.0],
                         charge: 0,
+                        atom_properties: AtomProperties::default(),
                         num_hydrogens: 0,
                         is_external_connection_point: false,
                         is_placeholder: false,

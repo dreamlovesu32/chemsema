@@ -495,6 +495,15 @@ Example node label:
   "position": [47.4, 29.96],
   "charge": 0,
   "numHydrogens": 0,
+  "atomProperties": {
+    "isotopeMass": 15,
+    "isotopicAbundance": "enriched",
+    "radical": "doublet",
+    "atomNumber": "7",
+    "showAtomNumber": true,
+    "cipStereo": "R",
+    "showAtomStereo": true
+  },
   "label": {
     "text": "N",
     "sourceText": "N",
@@ -518,6 +527,26 @@ Example node label:
   }
 }
 ```
+
+`atomProperties` is the source-independent home for editable atom decorations.
+It must not store CDXML object tags or cached text boxes as its meaning.
+
+| Field | Type | Semantics |
+| --- | --- | --- |
+| `isotopeMass` | positive integer | Absolute isotope mass number |
+| `isotopicAbundance` | string | `unspecified`, `any`, `natural`, `enriched`, `deficient`, or `nonnatural` |
+| `radical` | string | `none`, `singlet`, `doublet`, or `triplet` |
+| `atomNumber` | string | User-visible atom number; distinct from reaction atom mapping |
+| `showAtomNumber` | boolean | Per-atom override for the atom-number indicator |
+| `cipStereo` | string | Absolute CIP descriptor such as `R`, `S`, `r`, or `s` |
+| `showAtomStereo` | boolean | Per-atom override for the stereochemistry indicator |
+| `atomNumberPosition` | object | Optional `auto`, angle, offset, or absolute placement intent |
+| `stereoPosition` | object | Optional `auto`, angle, offset, or absolute placement intent |
+
+Missing fields use the document/style defaults. `isotopicAbundance` and
+`radical` default to `unspecified` and `none`; the remaining fields default to
+absent. Attached electron-symbol objects remain independently selectable, but
+their attachment contributes to the atom's effective radical chemistry.
 
 Abbreviation labels keep the original drawing data and add machine-readable
 semantics under `meta.labelRecognition`. Readers that only need visual

@@ -1965,7 +1965,8 @@ fn normalize_node(
         && label
             .as_ref()
             .is_some_and(imported_cdxml_bullet_carbon_node_label);
-    let radical_count = cdxml_radical_count(node.attr("Radical"));
+    let radical = cdxml_atom_radical(node.attr("Radical"));
+    let radical_count = radical.electron_count();
     let explicit_num_hydrogens = parse_u8(node.attr("NumHydrogens"));
     let mut meta = json!({
         "import": {
@@ -2004,16 +2005,43 @@ fn normalize_node(
             "Fragment" | "Nickname" | "GenericNickname" | "Unspecified"
         ) && !is_bullet_carbon,
         label,
+        atom_properties: crate::AtomProperties {
+            isotope_mass: parse_i16(node.attr("Isotope")),
+            isotopic_abundance: cdxml_isotopic_abundance(node.attr("IsotopicAbundance")),
+            radical,
+            atom_number: nonempty_string(node.attr("AtomNumber")),
+            show_atom_number: node
+                .attr("ShowAtomNumber")
+                .and_then(|value| parse_cdxml_bool(Some(value))),
+            cip_stereo: nonempty_string(node.attr("AS"))
+                .filter(|value| !matches!(value.as_str(), "N" | "U")),
+            show_atom_stereo: node
+                .attr("ShowAtomStereo")
+                .and_then(|value| parse_cdxml_bool(Some(value))),
+            atom_number_position: None,
+            stereo_position: None,
+        },
         meta,
     })
 }
 
-fn cdxml_radical_count(value: Option<&str>) -> i32 {
+fn cdxml_atom_radical(value: Option<&str>) -> crate::AtomRadical {
     match value.unwrap_or("").trim().to_ascii_lowercase().as_str() {
-        "" | "none" => 0,
-        "doublet" | "monovalent" | "radical" => 1,
-        "singlet" | "triplet" | "divalent" | "divalentsinglet" | "divalenttriplet" => 2,
-        other => other.parse::<i32>().unwrap_or(0).clamp(0, 9),
+        "singlet" | "divalentsinglet" => crate::AtomRadical::Singlet,
+        "doublet" | "monovalent" | "radical" => crate::AtomRadical::Doublet,
+        "triplet" | "divalent" | "divalenttriplet" => crate::AtomRadical::Triplet,
+        _ => crate::AtomRadical::None,
+    }
+}
+
+fn cdxml_isotopic_abundance(value: Option<&str>) -> crate::IsotopicAbundance {
+    match value.unwrap_or("").trim().to_ascii_lowercase().as_str() {
+        "any" => crate::IsotopicAbundance::Any,
+        "natural" => crate::IsotopicAbundance::Natural,
+        "enriched" => crate::IsotopicAbundance::Enriched,
+        "deficient" => crate::IsotopicAbundance::Deficient,
+        "nonnatural" | "non-natural" => crate::IsotopicAbundance::Nonnatural,
+        _ => crate::IsotopicAbundance::Unspecified,
     }
 }
 
@@ -2748,6 +2776,10 @@ fn parse_i32(value: Option<&str>) -> Option<i32> {
     value?.parse().ok()
 }
 
+fn parse_i16(value: Option<&str>) -> Option<i16> {
+    value?.parse().ok()
+}
+
 fn parse_u8(value: Option<&str>) -> Option<u8> {
     value?.parse().ok()
 }
@@ -2787,6 +2819,13 @@ fn empty_as_null(value: Option<&str>) -> Value {
         Some(value) => json!(value),
         None => Value::Null,
     }
+}
+
+fn nonempty_string(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
 }
 
 fn element_symbol(atomic_number: u8) -> &'static str {

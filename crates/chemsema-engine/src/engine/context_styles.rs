@@ -1,7 +1,99 @@
 use super::*;
-use crate::{round2, MoleculeFragment, Node, ObjectPayload, Vector};
+use crate::{
+    round2, AtomRadical, IsotopicAbundance, MoleculeFragment, Node, ObjectPayload, Vector,
+};
 use serde_json::Map;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
+
+fn replace_if_different<T: PartialEq>(target: &mut T, value: T) -> bool {
+    if *target == value {
+        false
+    } else {
+        *target = value;
+        true
+    }
+}
+
+fn parse_optional_bool(value: Option<&str>) -> Option<bool> {
+    match value {
+        Some("true" | "yes" | "on" | "1") => Some(true),
+        Some("false" | "no" | "off" | "0") => Some(false),
+        _ => None,
+    }
+}
+
+enum AtomPropertyUpdate {
+    Isotope(Option<i16>),
+    Abundance(IsotopicAbundance),
+    Radical(AtomRadical),
+    AtomNumber(Option<String>),
+    ShowAtomNumber(Option<bool>),
+    Stereo(Option<String>),
+    ShowStereo(Option<bool>),
+}
+
+fn sync_linked_atom_annotation_objects(
+    objects: &mut [crate::SceneObject],
+    selected: &BTreeSet<String>,
+    update: &AtomPropertyUpdate,
+) -> bool {
+    let mut changed = false;
+    for object in objects {
+        let attached_node_id = object
+            .meta
+            .get("attachedNodeId")
+            .and_then(serde_json::Value::as_str);
+        let role = object.meta.get("role").and_then(serde_json::Value::as_str);
+        if attached_node_id.is_some_and(|node_id| selected.contains(node_id)) {
+            match (role, update) {
+                (Some("atom_number"), AtomPropertyUpdate::AtomNumber(value)) => {
+                    if let Some(value) = value {
+                        changed |= replace_if_different(
+                            object.payload.extra.entry("text".to_string()).or_default(),
+                            serde_json::Value::String(value.clone()),
+                        );
+                    }
+                    changed |= replace_if_different(&mut object.visible, value.is_some());
+                }
+                (Some("atom_number"), AtomPropertyUpdate::ShowAtomNumber(value)) => {
+                    if let Some(value) = value {
+                        changed |= replace_if_different(&mut object.visible, *value);
+                    }
+                }
+                (Some("stereo" | "enhanced_stereo"), AtomPropertyUpdate::Stereo(value)) => {
+                    if let Some(value) = value {
+                        changed |= replace_if_different(
+                            object.payload.extra.entry("text".to_string()).or_default(),
+                            serde_json::Value::String(value.clone()),
+                        );
+                    }
+                    changed |= replace_if_different(&mut object.visible, value.is_some());
+                }
+                (Some("stereo" | "enhanced_stereo"), AtomPropertyUpdate::ShowStereo(value)) => {
+                    if let Some(value) = value {
+                        changed |= replace_if_different(&mut object.visible, *value);
+                    }
+                }
+                (Some("query"), AtomPropertyUpdate::Abundance(value))
+                    if object
+                        .payload
+                        .extra
+                        .get("text")
+                        .and_then(serde_json::Value::as_str)
+                        == Some("I") =>
+                {
+                    changed |= replace_if_different(
+                        &mut object.visible,
+                        *value != IsotopicAbundance::Unspecified,
+                    );
+                }
+                _ => {}
+            }
+        }
+        changed |= sync_linked_atom_annotation_objects(&mut object.children, selected, update);
+    }
+    changed
+}
 
 impl Engine {
     pub fn apply_shape_style_to_selection(&mut self, style: &str) -> bool {
@@ -567,6 +659,164 @@ impl Engine {
         )
     }
 
+    pub fn set_atom_property_for_selection(&mut self, property: &str, value: Option<&str>) -> bool {
+        self.with_command(
+            EditorCommand::SetAtomPropertyForSelection {
+                property: property.to_string(),
+                value: value.map(ToString::to_string),
+            },
+            |engine| engine.set_atom_property_for_selection_untracked(property, value),
+        )
+    }
+
+    fn set_atom_property_for_selection_untracked(
+        &mut self,
+        property: &str,
+        value: Option<&str>,
+    ) -> bool {
+        let selected: BTreeSet<String> = self
+            .state
+            .selection
+            .nodes
+            .iter()
+            .chain(self.state.selection.label_nodes.iter())
+            .cloned()
+            .collect();
+        if selected.is_empty() {
+            return false;
+        }
+
+        let normalized = value.map(str::trim).filter(|value| !value.is_empty());
+        let update = match property {
+            "isotope" => AtomPropertyUpdate::Isotope(match normalized {
+                Some(value) => match value.parse::<i16>() {
+                    Ok(value) if value > 0 => Some(value),
+                    _ => return false,
+                },
+                None => None,
+            }),
+            "isotopic-abundance" => {
+                AtomPropertyUpdate::Abundance(match normalized.unwrap_or("unspecified") {
+                    "unspecified" => IsotopicAbundance::Unspecified,
+                    "any" => IsotopicAbundance::Any,
+                    "natural" => IsotopicAbundance::Natural,
+                    "enriched" => IsotopicAbundance::Enriched,
+                    "deficient" => IsotopicAbundance::Deficient,
+                    "nonnatural" => IsotopicAbundance::Nonnatural,
+                    _ => return false,
+                })
+            }
+            "radical" => AtomPropertyUpdate::Radical(match normalized.unwrap_or("none") {
+                "none" => AtomRadical::None,
+                "singlet" => AtomRadical::Singlet,
+                "doublet" => AtomRadical::Doublet,
+                "triplet" => AtomRadical::Triplet,
+                _ => return false,
+            }),
+            "atom-number" => AtomPropertyUpdate::AtomNumber(normalized.map(ToString::to_string)),
+            "show-atom-number" => {
+                let parsed = parse_optional_bool(normalized);
+                if normalized.is_some() && parsed.is_none() {
+                    return false;
+                }
+                AtomPropertyUpdate::ShowAtomNumber(parsed)
+            }
+            "stereo" => AtomPropertyUpdate::Stereo(normalized.map(ToString::to_string)),
+            "show-stereo" => {
+                let parsed = parse_optional_bool(normalized);
+                if normalized.is_some() && parsed.is_none() {
+                    return false;
+                }
+                AtomPropertyUpdate::ShowStereo(parsed)
+            }
+            _ => return false,
+        };
+
+        self.push_undo_snapshot();
+        let Some(entry) = self.state.document.editable_fragment_mut() else {
+            self.undo_stack.pop();
+            return false;
+        };
+        let mut changed = false;
+        for node in &mut entry.fragment.nodes {
+            if !selected.contains(&node.id) {
+                continue;
+            }
+            changed |= match &update {
+                AtomPropertyUpdate::Isotope(next) => {
+                    replace_if_different(&mut node.atom_properties.isotope_mass, *next)
+                }
+                AtomPropertyUpdate::Abundance(next) => {
+                    replace_if_different(&mut node.atom_properties.isotopic_abundance, next.clone())
+                }
+                AtomPropertyUpdate::Radical(next) => {
+                    let mut node_changed =
+                        replace_if_different(&mut node.atom_properties.radical, next.clone());
+                    if !crate::node_attached_electron_symbols(node).is_empty() {
+                        let meta = node.meta.as_object_mut().expect("node meta is an object");
+                        node_changed |= replace_if_different(
+                            meta.entry("symbolBaseRadicalCount".to_string())
+                                .or_insert(serde_json::Value::Null),
+                            serde_json::json!(next.electron_count()),
+                        );
+                    }
+                    node_changed
+                }
+                AtomPropertyUpdate::AtomNumber(next) => {
+                    replace_if_different(&mut node.atom_properties.atom_number, next.clone())
+                        | replace_if_different(
+                            &mut node.atom_properties.show_atom_number,
+                            Some(next.is_some()),
+                        )
+                }
+                AtomPropertyUpdate::ShowAtomNumber(next) => {
+                    replace_if_different(&mut node.atom_properties.show_atom_number, *next)
+                }
+                AtomPropertyUpdate::Stereo(next) => {
+                    replace_if_different(&mut node.atom_properties.cip_stereo, next.clone())
+                        | replace_if_different(
+                            &mut node.atom_properties.show_atom_stereo,
+                            Some(next.is_some()),
+                        )
+                }
+                AtomPropertyUpdate::ShowStereo(next) => {
+                    replace_if_different(&mut node.atom_properties.show_atom_stereo, *next)
+                }
+            };
+        }
+        drop(entry);
+        changed |= sync_linked_atom_annotation_objects(
+            &mut self.state.document.objects,
+            &selected,
+            &update,
+        );
+        if matches!(update, AtomPropertyUpdate::Radical(_)) {
+            changed |= self.refresh_symbol_chemistry();
+            let stroke_width = self.options.bond_stroke_world_pt().value();
+            if let Some(mut entry) = self.state.document.editable_fragment_mut() {
+                let object_translate = entry.object.transform.translate;
+                refresh_implicit_hydrogens(entry.fragment);
+                refresh_element_valence_recognition_for_all_nodes(entry.fragment);
+                refresh_attached_node_label_geometry_for_all_nodes(
+                    entry.fragment,
+                    object_translate,
+                    stroke_width,
+                );
+                entry.update_bounds();
+            }
+        }
+        if !changed {
+            self.undo_stack.pop();
+            return false;
+        }
+        if let Some(mut entry) = self.state.document.editable_fragment_mut() {
+            entry.update_bounds();
+        }
+        self.state.overlay.hover_endpoint = None;
+        self.state.overlay.hover_text_box = None;
+        true
+    }
+
     fn set_implicit_hydrogen_count_for_selection_untracked(&mut self, count: Option<u8>) -> bool {
         let selected_labels: BTreeSet<String> =
             self.state.selection.label_nodes.iter().cloned().collect();
@@ -1047,6 +1297,7 @@ fn expansion_atom_to_node(atom: &JsonValue, id: String, position: Point) -> Node
                 box_value: None,
                 meta: JsonValue::Null,
             }),
+        atom_properties: crate::AtomProperties::default(),
         meta: json!({"source": "label-expansion"}),
     }
 }

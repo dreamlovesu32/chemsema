@@ -1198,6 +1198,11 @@ class TauriEngineSession {
     return this.invoke("desktop_engine_selection_numeric_dialog_json", { sessionId: this.sessionId, kind });
   }
 
+  async atomPropertyDialogJson(property) {
+    await this.ready();
+    return this.invoke("desktop_engine_atom_property_dialog_json", { sessionId: this.sessionId, property });
+  }
+
   applySelectionNumericDialogJson(payloadJson) {
     return this.invokeMutation("desktop_engine_apply_selection_numeric_dialog_json", { payloadJson });
   }

@@ -508,6 +508,11 @@ pub enum EditorCommand {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         count: Option<u8>,
     },
+    SetAtomPropertyForSelection {
+        property: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        value: Option<String>,
+    },
     SetChemicalCheckForSelection {
         enabled: bool,
     },

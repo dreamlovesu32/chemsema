@@ -508,6 +508,24 @@ impl<'a> CdxmlDocumentWriter<'a> {
     }
 
     fn write_scene_object(&mut self, out: &mut String, object: &SceneObject) {
+        let attached_node_id = object.meta.get("attachedNodeId").and_then(Value::as_str);
+        let annotation_role = object.meta.get("role").and_then(Value::as_str);
+        if object.object_type == "text"
+            && attached_node_id.is_some()
+            && (annotation_role.is_some_and(|role| matches!(role, "atom_number" | "stereo"))
+                || (annotation_role == Some("query")
+                    && attached_node_id.is_some_and(|node_id| {
+                        object.payload.extra.get("text").and_then(Value::as_str) == Some("I")
+                            && document_node(self.document, node_id).is_some_and(|node| {
+                                node.atom_properties.isotopic_abundance
+                                    != crate::IsotopicAbundance::Unspecified
+                            })
+                    })))
+        {
+            // These are cached displays of node semantics. The node attributes
+            // below are authoritative and ChemDraw regenerates the object tags.
+            return;
+        }
         match object.object_type.as_str() {
             "molecule" => self.write_molecule_object(out, object),
             "line" => self.write_line_object(out, object),
@@ -831,6 +849,54 @@ impl<'a> CdxmlDocumentWriter<'a> {
         if node.charge != 0 {
             attrs.push(("Charge", node.charge.to_string()));
         }
+        if let Some(isotope_mass) = node.atom_properties.isotope_mass {
+            attrs.push(("Isotope", isotope_mass.to_string()));
+        }
+        let abundance = match node.atom_properties.isotopic_abundance {
+            crate::IsotopicAbundance::Unspecified => None,
+            crate::IsotopicAbundance::Any => Some("Any"),
+            crate::IsotopicAbundance::Natural => Some("Natural"),
+            crate::IsotopicAbundance::Enriched => Some("Enriched"),
+            crate::IsotopicAbundance::Deficient => Some("Deficient"),
+            crate::IsotopicAbundance::Nonnatural => Some("Nonnatural"),
+        };
+        if let Some(abundance) = abundance {
+            attrs.push(("IsotopicAbundance", abundance.to_string()));
+        }
+        let effective_radical_count = crate::node_radical_count(node);
+        let radical = match (effective_radical_count, &node.atom_properties.radical) {
+            (0, _) => None,
+            (2, crate::AtomRadical::Singlet)
+                if crate::node_attached_electron_symbols(node).is_empty() =>
+            {
+                Some("Singlet")
+            }
+            (1, _) => Some("Doublet"),
+            (_, _) => Some("Triplet"),
+        };
+        if let Some(radical) = radical {
+            attrs.push(("Radical", radical.to_string()));
+        }
+        if let Some(atom_number) = node
+            .atom_properties
+            .atom_number
+            .as_deref()
+            .filter(|value| !value.is_empty())
+        {
+            attrs.push(("AtomNumber", atom_number.to_string()));
+        }
+        if let Some(show) = node.atom_properties.show_atom_number {
+            attrs.push((
+                "ShowAtomNumber",
+                if show { "yes" } else { "no" }.to_string(),
+            ));
+        }
+        if let Some(show) = node.atom_properties.show_atom_stereo {
+            attrs.push((
+                "ShowAtomStereo",
+                if show { "yes" } else { "no" }.to_string(),
+            ));
+        }
         if let Some(num_hydrogens) = cdxml_node_num_hydrogens_for_export(node) {
             attrs.push(("NumHydrogens", num_hydrogens.to_string()));
         }
@@ -842,7 +908,13 @@ impl<'a> CdxmlDocumentWriter<'a> {
         {
             attrs.push(("ImplicitHydrogens", implicit_hydrogens.to_string()));
         }
-        attrs.push(("AS", "N".to_string()));
+        attrs.push((
+            "AS",
+            node.atom_properties
+                .cip_stereo
+                .clone()
+                .unwrap_or_else(|| "N".to_string()),
+        ));
         if let Some(label) = node.label.as_ref().filter(|label| label.has_visible_text()) {
             write_open_tag(out, 6, "n", attrs);
             self.write_node_label(out, object, node, label);
@@ -2049,6 +2121,15 @@ impl<'a> CdxmlDocumentWriter<'a> {
         }
         (extent / self.editing_scale.max(crate::EPSILON) * 65536.0).round()
     }
+}
+
+fn document_node<'a>(document: &'a ChemSemaDocument, node_id: &str) -> Option<&'a Node> {
+    document.resources.values().find_map(|resource| {
+        resource
+            .data
+            .as_fragment()
+            .and_then(|fragment| fragment.nodes.iter().find(|node| node.id == node_id))
+    })
 }
 
 fn preserved_cdxml_bond_order(bond: &Bond) -> Option<String> {

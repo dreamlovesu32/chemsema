@@ -507,6 +507,15 @@ text 对象表示带定位信息的富文本内容。
   "position": [47.4, 29.96],
   "charge": 0,
   "numHydrogens": 0,
+  "atomProperties": {
+    "isotopeMass": 15,
+    "isotopicAbundance": "enriched",
+    "radical": "doublet",
+    "atomNumber": "7",
+    "showAtomNumber": true,
+    "cipStereo": "R",
+    "showAtomStereo": true
+  },
   "label": {
     "text": "N",
     "sourceText": "N",
@@ -530,6 +539,25 @@ text 对象表示带定位信息的富文本内容。
   }
 }
 ```
+
+`atomProperties` 是可编辑原子装饰的来源无关语义层，不得把 CDXML
+`objecttag` 或缓存文本框当作其语义。
+
+| 字段 | 类型 | 语义 |
+| --- | --- | --- |
+| `isotopeMass` | 正整数 | 绝对同位素质量数 |
+| `isotopicAbundance` | 字符串 | `unspecified`、`any`、`natural`、`enriched`、`deficient` 或 `nonnatural` |
+| `radical` | 字符串 | `none`、`singlet`、`doublet` 或 `triplet` |
+| `atomNumber` | 字符串 | 用户可见的原子编号；与反应原子映射号严格区分 |
+| `showAtomNumber` | 布尔 | 逐原子覆盖原子编号标记的显隐 |
+| `cipStereo` | 字符串 | `R`、`S`、`r`、`s` 等绝对 CIP 描述符 |
+| `showAtomStereo` | 布尔 | 逐原子覆盖立体化学标记的显隐 |
+| `atomNumberPosition` | 对象 | 可选的 `auto`、角度、偏移或绝对定位意图 |
+| `stereoPosition` | 对象 | 可选的 `auto`、角度、偏移或绝对定位意图 |
+
+缺失字段继承文档或样式默认值；`isotopicAbundance` 与 `radical`
+分别默认为 `unspecified` 和 `none`，其余字段默认为不存在。附着的电子符号仍是
+可独立选择的对象，但其附着关系会参与原子的有效自由基化学语义。
 
 带缩写识别的节点仍保留原始绘制信息；机器可读的解释附加在
 `meta.labelRecognition` 上。读取方如果只想还原画面，可以忽略 `meta`；

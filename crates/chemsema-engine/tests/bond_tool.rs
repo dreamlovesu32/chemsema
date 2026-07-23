@@ -3641,10 +3641,35 @@ fn engine_provides_context_menu_and_numeric_dialog_schemas() {
     assert!(labels.contains(&"Object Settings..."));
     assert!(!labels.contains(&"Insert Image..."));
 
+    let atom_hit = engine.context_hit_test_json(Point::new(FIRST_START_X, FIRST_START_Y));
+    let atom_menu: serde_json::Value =
+        serde_json::from_str(&engine.context_menu_json(&atom_hit, false)).unwrap();
+    let atom_properties = atom_menu
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| {
+            item.get("label").and_then(serde_json::Value::as_str) == Some("Atom Properties")
+        })
+        .expect("atom menu exposes atom properties");
+    assert!(atom_properties
+        .get("submenu")
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|items| items.iter().any(|item| {
+            item.get("label").and_then(serde_json::Value::as_str) == Some("Radical")
+        })));
+
     let scale: serde_json::Value =
         serde_json::from_str(&engine.selection_numeric_dialog_json("scale")).unwrap();
     assert_eq!(scale["kind"], "scale");
     assert_eq!(scale["field"]["unit"], "%");
+    let isotope: serde_json::Value =
+        serde_json::from_str(&engine.atom_property_dialog_json("isotope")).unwrap();
+    assert_eq!(isotope["kind"], "atom-property");
+    assert_eq!(isotope["property"], "isotope");
+    assert_eq!(isotope["field"]["valueKind"], "integer");
+    assert_eq!(isotope["field"]["minimum"], 1);
+    assert_eq!(isotope["field"]["maximum"], i16::MAX);
     assert!(engine.select_all());
     let molecule_menu: serde_json::Value =
         serde_json::from_str(&engine.context_menu_json(&hit, false)).unwrap();
@@ -11530,6 +11555,45 @@ fn bracket_symbol_click_creates_selectable_symbol_object() {
     });
     engine.select_at_point(Point::new(150.0, 160.0), false);
     assert_eq!(engine.state().selection.arrow_objects, vec![symbol_id]);
+}
+
+#[test]
+fn electron_symbol_click_on_atom_sets_radical_semantics_and_exports_it() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, FIRST_START_X, FIRST_START_Y);
+    engine.set_tool_state(ToolState {
+        active_tool: Tool::Symbol,
+        symbol_kind: BracketKind::Electron,
+        ..ToolState::default()
+    });
+
+    click(&mut engine, FIRST_START_X, FIRST_START_Y);
+
+    let entry = engine
+        .state()
+        .document
+        .editable_fragment()
+        .expect("editable molecule");
+    let node = entry
+        .fragment
+        .nodes
+        .iter()
+        .find(|node| {
+            Point::new(node.position[0], node.position[1])
+                .distance(Point::new(FIRST_START_X, FIRST_START_Y))
+                < 0.1
+        })
+        .expect("clicked atom");
+    assert_eq!(chemsema_engine::node_radical_count(node), 1);
+    assert_eq!(
+        node.atom_properties.radical,
+        chemsema_engine::AtomRadical::Doublet
+    );
+    assert!(chemsema_engine::node_attached_electron_symbols(node)
+        .iter()
+        .any(|symbol| symbol["radicalDelta"] == 1));
+    assert!(engine.document_cdxml().contains("Radical=\"Doublet\""));
 }
 
 #[test]

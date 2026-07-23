@@ -780,6 +780,16 @@ pub(crate) fn desktop_engine_selection_numeric_dialog_json(
 }
 
 #[tauri::command]
+pub(crate) fn desktop_engine_atom_property_dialog_json(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    property: String,
+) -> Result<String, String> {
+    let service = state.service.lock().map_err(|error| error.to_string())?;
+    service.atom_property_dialog_json(session_id, &property)
+}
+
+#[tauri::command]
 pub(crate) fn desktop_engine_apply_selection_numeric_dialog_json(
     state: tauri::State<'_, DesktopState>,
     session_id: SessionId,

@@ -1571,6 +1571,109 @@ fn load_document_command_imports_cdxml_and_resets_session_history() {
 }
 
 #[test]
+fn atom_properties_command_round_trips_through_ccjs_cdxml_and_cdx() {
+    let mut engine = Engine::new();
+    let add = execute(
+        &mut engine,
+        json!({
+            "type": "add-bond",
+            "begin": { "x": 100.0, "y": 100.0 },
+            "end": { "x": 148.0, "y": 100.0 },
+            "order": 1,
+            "variant": "single"
+        }),
+    );
+    let node_id = created_node_id(&add, 0);
+    execute(
+        &mut engine,
+        json!({
+            "type": "select-targets",
+            "targets": { "nodes": [node_id] }
+        }),
+    );
+    for (property, value) in [
+        ("isotope", "13"),
+        ("isotopic-abundance", "enriched"),
+        ("radical", "doublet"),
+        ("atom-number", "42"),
+        ("stereo", "R"),
+    ] {
+        let result = execute(
+            &mut engine,
+            json!({
+                "type": "set-atom-property-for-selection",
+                "property": property,
+                "value": value
+            }),
+        );
+        assert_eq!(result["changed"], true, "{property}");
+    }
+
+    let document = document_value(&engine);
+    let node = find_node(&document, &node_id);
+    assert_eq!(node["atomProperties"]["isotopeMass"], 13);
+    assert_eq!(node["atomProperties"]["isotopicAbundance"], "enriched");
+    assert_eq!(node["atomProperties"]["radical"], "doublet");
+    assert_eq!(node["atomProperties"]["atomNumber"], "42");
+    assert_eq!(node["atomProperties"]["showAtomNumber"], true);
+    assert_eq!(node["atomProperties"]["cipStereo"], "R");
+    assert_eq!(node["atomProperties"]["showAtomStereo"], true);
+    let rendered_text = engine
+        .render_list()
+        .iter()
+        .filter_map(|primitive| match primitive {
+            RenderPrimitive::Text { text, runs, .. } => {
+                if text.is_empty() {
+                    Some(runs.iter().map(|run| run.text.as_str()).collect::<String>())
+                } else {
+                    Some(text.clone())
+                }
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    for expected in ["13", "I", "•", "42", "(R)"] {
+        assert!(
+            rendered_text.iter().any(|text| text == expected),
+            "missing rendered atom decoration {expected}: {rendered_text:?}"
+        );
+    }
+
+    let cdxml = engine.document_cdxml();
+    for attribute in [
+        "Isotope=\"13\"",
+        "IsotopicAbundance=\"Enriched\"",
+        "Radical=\"Doublet\"",
+        "AtomNumber=\"42\"",
+        "ShowAtomNumber=\"yes\"",
+        "ShowAtomStereo=\"yes\"",
+        "AS=\"R\"",
+    ] {
+        assert!(cdxml.contains(attribute), "missing {attribute}\n{cdxml}");
+    }
+
+    let cdx = engine.document_cdx().expect("CDX export");
+    let reopened = chemsema_engine::parse_cdx_document(&cdx, None).expect("CDX import");
+    let reopened_json = serde_json::to_value(reopened).expect("document JSON");
+    let reopened_node = reopened_json["resources"]
+        .as_object()
+        .expect("resources")
+        .values()
+        .find_map(|resource| resource["data"]["nodes"].as_array())
+        .and_then(|nodes| nodes.first())
+        .cloned()
+        .expect("reopened node");
+    assert_eq!(reopened_node["atomProperties"]["isotopeMass"], 13);
+    assert_eq!(
+        reopened_node["atomProperties"]["isotopicAbundance"],
+        "enriched"
+    );
+    assert_eq!(reopened_node["atomProperties"]["radical"], "doublet");
+    assert_eq!(reopened_node["atomProperties"]["atomNumber"], "42");
+    assert_eq!(reopened_node["atomProperties"]["cipStereo"], "R");
+}
+
+#[test]
 fn convert_document_command_returns_output_without_replacing_current_document() {
     let mut source = Engine::new();
     execute(

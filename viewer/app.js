@@ -9,6 +9,7 @@ import { registerChemSemaDebug } from "./app_debug.js";
 import { createColorHost } from "./color_host.js";
 import { createObjectSettingsHost } from "./object_settings_host.js";
 import { createNumericDialogHost } from "./numeric_dialog_host.js";
+import { createAtomPropertyDialogHost } from "./atom_property_dialog_host.js";
 import { createSmilesDialogHost } from "./smiles_dialog_host.js";
 import { createTransientNotificationHost } from "./transient_notification_host.js";
 import { createInchiHost } from "./inchi_host.js";
@@ -35,7 +36,7 @@ import { createEditorDocumentRenderer } from "./editor_document_renderer.js";
 import { createEditorToolbarHost } from "./editor_toolbar_host.js";
 import { createEditorViewportHost } from "./editor_viewport_host.js";
 import { createEditorPointerController } from "./editor_pointer_controller.js?v=20260629-deep-stability";
-import { createCanvasContextMenuHost } from "./editor_context_menu.js";
+import { createCanvasContextMenuHost } from "./editor_context_menu.js?v=20260723-atom-properties";
 import { createEditorCommandController } from "./editor_command_controller.js";
 import { createEditorCommandEngine } from "./editor_command_engine.js?v=20260626-interaction-feedback";
 import {
@@ -131,6 +132,10 @@ const numericDialogHost = createNumericDialogHost({
   onApply: async (result) => {
     renderDocumentChange(result);
   },
+});
+const atomPropertyDialogHost = createAtomPropertyDialogHost({
+  root: document.body,
+  engine: () => state.editorEngine,
 });
 const smilesDialogHost = createSmilesDialogHost({
   root: document.body,
@@ -2068,6 +2073,7 @@ canvasContextMenuHost = createCanvasContextMenuHost({
   colorHost,
   objectSettingsHost,
   numericDialogHost,
+  atomPropertyDialogHost,
   smilesDialogHost,
   transientNotificationHost,
   inchiHost,

@@ -25,6 +25,7 @@ export class WasmEngine {
     applyTextEdit(session_json: string): boolean;
     applyTextStyleToSelection(command: string, value: string): boolean;
     arrowToolIconSvg(kind: string): string;
+    atomPropertyDialogJson(property: string): string;
     beginHoverArrowEdit(x: number, y: number): string;
     beginHoverShapeEdit(x: number, y: number): string;
     beginSelectionMove(x: number, y: number, additive: boolean, alt_key: boolean): boolean;
@@ -168,6 +169,7 @@ export interface InitOutput {
     readonly wasmengine_applyTextEdit: (a: number, b: number, c: number) => [number, number, number];
     readonly wasmengine_applyTextStyleToSelection: (a: number, b: number, c: number, d: number, e: number) => number;
     readonly wasmengine_arrowToolIconSvg: (a: number, b: number, c: number) => [number, number];
+    readonly wasmengine_atomPropertyDialogJson: (a: number, b: number, c: number) => [number, number];
     readonly wasmengine_beginHoverArrowEdit: (a: number, b: number, c: number) => [number, number];
     readonly wasmengine_beginHoverShapeEdit: (a: number, b: number, c: number) => [number, number];
     readonly wasmengine_beginSelectionMove: (a: number, b: number, c: number, d: number, e: number) => number;

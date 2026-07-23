@@ -2526,6 +2526,9 @@ impl Engine {
             EditorCommand::SetImplicitHydrogenCountForSelection { count } => {
                 self.set_implicit_hydrogen_count_for_selection(count)
             }
+            EditorCommand::SetAtomPropertyForSelection { property, value } => {
+                self.set_atom_property_for_selection(&property, value.as_deref())
+            }
             EditorCommand::SetChemicalCheckForSelection { enabled } => {
                 self.set_chemical_check_for_selection(enabled)
             }
@@ -3147,6 +3150,7 @@ impl Engine {
             is_external_connection_point: false,
             is_placeholder: false,
             label,
+            atom_properties: crate::AtomProperties::default(),
             meta: serde_json::Value::Null,
         };
         mark_shortcut_implicit_hydrogen_label(&mut node, &label_text);
@@ -4659,6 +4663,7 @@ fn editor_command_type_name(command: &EditorCommand) -> &'static str {
         EditorCommand::SetImplicitHydrogenCountForSelection { .. } => {
             "set-implicit-hydrogen-count-for-selection"
         }
+        EditorCommand::SetAtomPropertyForSelection { .. } => "set-atom-property-for-selection",
         EditorCommand::SetChemicalCheckForSelection { .. } => "set-chemical-check-for-selection",
         EditorCommand::ExpandLabelsInSelection => "expand-labels-in-selection",
         EditorCommand::CenterSelectionOnPage => "center-selection-on-page",

@@ -991,6 +991,16 @@ impl DesktopDocumentService {
             .selection_numeric_dialog_json(kind))
     }
 
+    pub fn atom_property_dialog_json(
+        &self,
+        session_id: SessionId,
+        property: &str,
+    ) -> Result<String, String> {
+        Ok(self
+            .session(session_id)?
+            .atom_property_dialog_json(property))
+    }
+
     pub fn apply_selection_numeric_dialog_json(
         &mut self,
         session_id: SessionId,
@@ -1418,6 +1428,24 @@ mod tests {
             .document_colors_json(session_id)
             .unwrap()
             .contains("#336699"));
+    }
+
+    #[test]
+    fn native_session_exposes_atom_property_dialog_schema() {
+        let mut service = DesktopDocumentService::new();
+        let session_id = service.create_session();
+
+        let isotope: Value = serde_json::from_str(
+            &service
+                .atom_property_dialog_json(session_id, "isotope")
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(isotope["kind"], "atom-property");
+        assert_eq!(isotope["property"], "isotope");
+        assert_eq!(isotope["field"]["valueKind"], "integer");
+        assert_eq!(isotope["field"]["minimum"], 1);
+        assert_eq!(isotope["field"]["maximum"], i16::MAX);
     }
 
     #[test]

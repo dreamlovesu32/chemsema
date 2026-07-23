@@ -1908,6 +1908,7 @@ pub(super) fn append_text_objects(
         None,
         CdxmlTextObjectRole::FreeText,
         None,
+        None,
         false,
         auto_position_enhanced_stereo,
         &node_positions,
@@ -2248,6 +2249,7 @@ pub(super) fn append_text_objects_recursive(
     inherited_z: Option<i32>,
     text_role: CdxmlTextObjectRole,
     containing_node_position: Option<[f64; 2]>,
+    containing_node_id: Option<String>,
     automatic_object_tag: bool,
     auto_position_enhanced_stereo: bool,
     node_positions: &BTreeMap<String, [f64; 2]>,
@@ -2320,6 +2322,13 @@ pub(super) fn append_text_objects_recursive(
     } else {
         containing_node_position
     };
+    let next_containing_node_id = if node.is("n") {
+        node.attr("id")
+            .map(ToString::to_string)
+            .or(containing_node_id)
+    } else {
+        containing_node_id
+    };
     let next_automatic_object_tag = if object_tag_role.is_some() {
         uses_automatic_object_tag_positioning(node)
     } else {
@@ -2353,6 +2362,7 @@ pub(super) fn append_text_objects_recursive(
             *index,
             current_z.unwrap_or(30),
             next_text_role,
+            next_containing_node_id.as_deref(),
             visible,
             auto_bracket_label_right_x,
             (next_text_role == CdxmlTextObjectRole::EnhancedStereo
@@ -2389,6 +2399,7 @@ pub(super) fn append_text_objects_recursive(
             current_z,
             next_text_role,
             next_containing_node_position,
+            next_containing_node_id.clone(),
             next_automatic_object_tag,
             auto_position_enhanced_stereo,
             node_positions,
@@ -2456,6 +2467,7 @@ fn text_object(
     index: usize,
     z_index: i32,
     role: CdxmlTextObjectRole,
+    containing_node_id: Option<&str>,
     visible: bool,
     auto_bracket_label_right_x: Option<f64>,
     auto_enhanced_stereo_anchor: Option<[f64; 2]>,
@@ -2631,6 +2643,7 @@ fn text_object(
         meta: json!({
             "source": "cdxml",
             "role": role.as_str(),
+            "attachedNodeId": containing_node_id,
             "textId": node.attr("id"),
             "import": {
                 "cdxml": {

@@ -79,6 +79,15 @@
 
 **验收**：元素标签在四个方向、不同字体/字号、带电荷/氢/映射号的组合均与 ChemDraw 对齐；自由基的单点、双点和不同状态不互相覆盖。
 
+**2026-07-23 进展**：
+
+- CCJS 已新增来源无关的 `node.atomProperties`，CDX/CDXML 的七组字段可解析、编辑并稳定往返；
+- 原子右键菜单已接入同位素、丰度、自由基、编号和 CIP 标记的统一可撤销命令；
+- 点工具点击原子会生成可拖动电子点并同步有效自由基、隐式氢和价态；CDX/CDXML 导出写出有效自由基语义；
+- GUI、SVG、PNG 与 EMF 共用原子装饰渲染器；ChemDraw 后台组合探针确认了 `0.75` 字号、查询标记 `I`、`0.1875em` 水平间隙、编号换侧和斜体括号 CIP 标记规则；
+- 导入的 `number/query/stereo` object tag 现在保留承载原子 ID，避免与原生装饰重复绘制，语义编辑会同步已有显示对象；
+- 详细规则与验证入口见 [原子属性编辑与装饰规则](atom-property-editing-rules.zh-CN.md)。
+
 ### [ ] NR-003 原子查询与碳标签显示规则
 
 **范围**：`ElementList`、`GenericList`、`FreeSites`、`RingBondCount`、`UnsaturatedBonds`、`SubstituentsUpTo`、`SubstituentsExactly`、`Translation`、`AbnormalValence`、`ShowTerminalCarbonLabels`、`ShowNonTerminalCarbonLabels`。

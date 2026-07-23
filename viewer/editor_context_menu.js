@@ -395,6 +395,29 @@ export function createCanvasContextMenuHost(options) {
           count,
         })),
       );
+    } else if (command === "atom-property") {
+      const separatorIndex = value.indexOf(":");
+      const property = separatorIndex >= 0 ? value.slice(0, separatorIndex) : value;
+      let propertyValue = separatorIndex >= 0 ? value.slice(separatorIndex + 1) : "";
+      if (propertyValue === "__prompt__") {
+        const entered = await options.atomPropertyDialogHost?.choose(property);
+        if (entered == null) {
+          await finishTemporaryContextSelection();
+          return;
+        }
+        propertyValue = entered;
+      }
+      changed = await executeDocumentCommand(
+        {
+          type: "set-atom-property-for-selection",
+          payload: { property, value: propertyValue || null },
+        },
+        () => options.state().editorEngine?.executeCommandJson?.(JSON.stringify({
+          type: "set-atom-property-for-selection",
+          property,
+          value: propertyValue || null,
+        })),
+      );
     } else if (command === "expand-label") {
       changed = await executeDocumentCommand("expand-labels", () => options.state().editorEngine?.expandLabelsInSelection?.());
     } else if (command === "center-page") {

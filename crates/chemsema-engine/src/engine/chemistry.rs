@@ -91,6 +91,7 @@ impl Engine {
                 is_external_connection_point: atom.atomic_number == 0,
                 is_placeholder: atom.atomic_number == 0,
                 label: None,
+                atom_properties: crate::AtomProperties::default(),
                 meta: json!({
                     "chemistry": {
                         "smiles": {
