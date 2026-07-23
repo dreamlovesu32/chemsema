@@ -9,6 +9,10 @@ const reportArg = args.indexOf("--report");
 const reportPath = reportArg >= 0 ? resolve(rootDir, args[reportArg + 1]) : null;
 const failOnError = args.includes("--fail-on-error");
 const findings = [];
+const architectureReviewLedger = JSON.parse(
+  readFileSync(join(rootDir, "docs", "architecture-review-ledger.json"), "utf8"),
+);
+const verifiedArchitectureReviews = [];
 
 const SOURCE_ROOTS = [
   "crates/chemsema-engine/src",
@@ -455,6 +459,21 @@ function auditOperationTests() {
   }
 }
 
+function architectureReviewMatches(path, name, lines) {
+  const key = `${repoPath(path)}:${name}`;
+  const review = architectureReviewLedger.entries?.[key];
+  if (!review || review.lines !== lines || !review.owner || !review.reason) {
+    return false;
+  }
+  verifiedArchitectureReviews.push({
+    key,
+    lines,
+    owner: review.owner,
+    reason: review.reason,
+  });
+  return true;
+}
+
 function auditArchitecture() {
   const functions = [];
   for (const path of sourceFiles) {
@@ -478,7 +497,7 @@ function auditArchitecture() {
       if (lines >= 350) {
         addFinding("error", "architecture", "ARCH-LARGE-FUNCTION", repoPath(path), match.index,
           `${name} is ${lines} lines; split ownership and behavior into named rules.`);
-      } else if (lines >= 200) {
+      } else if (lines >= 200 && !architectureReviewMatches(path, name, lines)) {
         addFinding("warning", "architecture", "ARCH-LARGE-FUNCTION", repoPath(path), match.index,
           `${name} is ${lines} lines and needs a focused decomposition review.`);
       }
@@ -487,7 +506,10 @@ function auditArchitecture() {
     if (lineCount >= 4000) {
       addFinding("error", "architecture", "ARCH-LARGE-FILE", repoPath(path), 0,
         `Source file has ${lineCount} production logic lines and mixes too many responsibilities.`);
-    } else if (lineCount >= 2000) {
+    } else if (
+      lineCount >= 2000
+      && !architectureReviewMatches(path, "$file", lineCount)
+    ) {
       addFinding("warning", "architecture", "ARCH-LARGE-FILE", repoPath(path), 0,
         `Source file has ${lineCount} production logic lines and needs an ownership review.`);
     }
@@ -511,6 +533,19 @@ function auditArchitecture() {
     addFinding("warning", "architecture", "ARCH-EXACT-DUPLICATE", first.path, first.index,
       `Exact function body is duplicated across ${files.size} files.`,
       entries.map((entry) => `${entry.path}:${entry.name}`).join(", "));
+  }
+  const verifiedKeys = new Set(verifiedArchitectureReviews.map((review) => review.key));
+  for (const key of Object.keys(architectureReviewLedger.entries || {})) {
+    if (!verifiedKeys.has(key)) {
+      addFinding(
+        "warning",
+        "architecture review ledger",
+        "ARCH-REVIEW-STALE",
+        "docs/architecture-review-ledger.json",
+        null,
+        `Reviewed architecture fingerprint no longer matches source: ${key}`,
+      );
+    }
   }
   return functions;
 }
@@ -573,6 +608,7 @@ function markdown(report) {
     `- Error: ${report.summary.error}`,
     `- Warning: ${report.summary.warning}`,
     `- Review: ${report.summary.review}`,
+    `- Verified architecture reviews: ${report.architecture.verifiedReviews}`,
     "",
     "## 对象能力矩阵",
     "",
@@ -618,6 +654,7 @@ const report = {
   architecture: {
     sourceFiles: sourceFiles.length,
     functions: functions.length,
+    verifiedReviews: verifiedArchitectureReviews.length,
   },
   findings,
 };

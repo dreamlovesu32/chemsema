@@ -1,0 +1,155 @@
+{
+  "schemaVersion": 1,
+  "entries": {
+    "crates/chemsema-cli/src/agent/capture.rs:capture_command": {
+      "lines": 319,
+      "owner": "CLI capture protocol",
+      "reason": "One exhaustive command boundary validates capture options, chooses the requested encoder, and emits one protocol response. Splitting the branches would duplicate output and error semantics."
+    },
+    "crates/chemsema-cli/src/agent/context.rs:context_command": {
+      "lines": 279,
+      "owner": "CLI context protocol",
+      "reason": "One exhaustive context-query boundary keeps selector validation and response shaping atomic."
+    },
+    "crates/chemsema-cli/src/main.rs:$file": {
+      "lines": 2293,
+      "owner": "CLI entry and protocol routing",
+      "reason": "The file is the composition root for the independently implemented agent modules; production logic is reviewed separately by function."
+    },
+    "crates/chemsema-cli/src/main.rs:run_command_script": {
+      "lines": 201,
+      "owner": "CLI command transaction runner",
+      "reason": "The function owns one transaction lifecycle: load, execute, scope-check, report, and persist."
+    },
+    "crates/chemsema-engine/src/cdx.rs:$file": {
+      "lines": 2060,
+      "owner": "CDX binary codec",
+      "reason": "The module is a single binary-format boundary and shares one official tag/type registry."
+    },
+    "crates/chemsema-engine/src/cdxml.rs:$file": {
+      "lines": 2343,
+      "owner": "CDXML document normalization",
+      "reason": "The module composes dedicated import/export submodules while retaining document-level normalization and compatibility rules."
+    },
+    "crates/chemsema-engine/src/cdxml.rs:parse_cdxml_document": {
+      "lines": 225,
+      "owner": "CDXML document parser",
+      "reason": "One ordered document parse pipeline preserves table, page, object, normalization, and verification precedence."
+    },
+    "crates/chemsema-engine/src/cdxml/export.rs:$file": {
+      "lines": 2415,
+      "owner": "CDXML serializer",
+      "reason": "One serializer module owns shared ID tables, source ordering, and official field emission."
+    },
+    "crates/chemsema-engine/src/cdxml/export.rs:write_line_object": {
+      "lines": 219,
+      "owner": "CDXML line/arrow serialization",
+      "reason": "The exhaustive line-object writer keeps mutually dependent ArrowType and endpoint fields in one precedence table."
+    },
+    "crates/chemsema-engine/src/cdxml/export.rs:write_shape_object": {
+      "lines": 260,
+      "owner": "CDXML graphic serialization",
+      "reason": "The exhaustive graphic writer maps one normalized shape payload to the official Graphic attributes."
+    },
+    "crates/chemsema-engine/src/cdxml/import_objects.rs:$file": {
+      "lines": 2458,
+      "owner": "CDXML object importer",
+      "reason": "One object-import boundary shares source-order, ID remapping, and unmodeled-field preservation."
+    },
+    "crates/chemsema-engine/src/cdxml/import_objects.rs:append_line_objects": {
+      "lines": 214,
+      "owner": "CDXML line/arrow import",
+      "reason": "The function resolves the interdependent ArrowType, endpoint, curve, and style fields as one official-field rule."
+    },
+    "crates/chemsema-engine/src/cdxml/import_objects.rs:append_bracket_objects": {
+      "lines": 286,
+      "owner": "CDXML bracket import",
+      "reason": "Bracket geometry, attachments, repeat semantics, and linked labels are one source-order-sensitive import transaction."
+    },
+    "crates/chemsema-engine/src/engine.rs:$file": {
+      "lines": 3638,
+      "owner": "Engine composition root",
+      "reason": "The file owns Engine state and delegates domain behavior to twenty focused engine submodules; tests and imports are excluded from this fingerprint."
+    },
+    "crates/chemsema-engine/src/engine.rs:execute_command": {
+      "lines": 347,
+      "owner": "Exhaustive editor command dispatcher",
+      "reason": "Immediate and creation command families are already separated; the remaining body is an exhaustive variant-to-domain dispatch with shared completion semantics."
+    },
+    "crates/chemsema-engine/src/engine/chemistry.rs:insert_smiles_untracked": {
+      "lines": 204,
+      "owner": "SMILES insertion transaction",
+      "reason": "Sanitization, layout, stereochemical projection, object creation, and selection form one undoable insertion transaction."
+    },
+    "crates/chemsema-engine/src/engine/chemistry.rs:chemical_molecule_for_targets": {
+      "lines": 227,
+      "owner": "Chemical target projection",
+      "reason": "The function creates one chemistry graph while preserving target filtering, stereochemistry, and source authority."
+    },
+    "crates/chemsema-engine/src/engine/context_menu.rs:context_menu_items": {
+      "lines": 209,
+      "owner": "Kernel context-menu schema",
+      "reason": "One ordered schema builder applies selection precedence and exposes mutually exclusive semantic commands."
+    },
+    "crates/chemsema-engine/src/engine/text_edit/labels.rs:$file": {
+      "lines": 2047,
+      "owner": "Chemical label layout",
+      "reason": "The module is the single authority for label recognition, layout, glyph geometry, and attachment refresh."
+    },
+    "crates/chemsema-engine/src/legacy_mol.rs:parse_molblock": {
+      "lines": 241,
+      "owner": "Legacy molfile parser",
+      "reason": "One record parser preserves V2000 atom, bond, property, charge, isotope, and alias ordering."
+    },
+    "crates/chemsema-engine/src/render_objects.rs:render_fragment_atom_properties": {
+      "lines": 237,
+      "owner": "Atom property rendering",
+      "reason": "The function renders one ordered atom-property layer so charge, radical, query, map, and diagnostic placement share the same anchor."
+    },
+    "crates/chemsema-engine/src/render_objects/graphics.rs:$file": {
+      "lines": 2399,
+      "owner": "Non-molecule graphic rendering",
+      "reason": "The module is the single normalized renderer for shape, curve, bracket, orbital, and TLC graphics."
+    },
+    "crates/chemsema-engine/src/render_objects/graphics.rs:render_orbital_shape_object": {
+      "lines": 205,
+      "owner": "Orbital renderer",
+      "reason": "Orbital template, phase, fill, outline, and rotation are one geometry rule with shared axes."
+    },
+    "crates/chemsema-engine/src/render_svg.rs:write_primitive_svg": {
+      "lines": 272,
+      "owner": "SVG primitive serializer",
+      "reason": "One exhaustive RenderPrimitive serializer guarantees identical role, identity, transform, and style emission."
+    },
+    "crates/chemsema-engine/src/render/labels.rs:render_fragment_line_with_profiles": {
+      "lines": 237,
+      "owner": "Bond contact and label retreat",
+      "reason": "The function applies one ordered geometry pipeline for endpoint retreat, contact joins, crossings, and primitive emission."
+    },
+    "viewer/app.js:$file": {
+      "lines": 3226,
+      "owner": "Viewer composition root",
+      "reason": "The file wires focused lifecycle, document, viewport, toolbar, pointer, overlay, text, and tab hosts; host implementations live in separate modules."
+    },
+    "viewer/editor_overlay.js:renderEditorOverlay": {
+      "lines": 228,
+      "owner": "Editor overlay renderer",
+      "reason": "One ordered overlay layer prevents selection, focus, hover, preview, and text affordances from changing z-order."
+    },
+    "viewer/editor_pointer_controller.js:handleEditorPointerDown": {
+      "lines": 276,
+      "owner": "Pointer-down state transition",
+      "reason": "One gesture state-machine entry preserves capture and precedence across selection, arrow, shape, text, and creation tools."
+    },
+    "viewer/editor_pointer_controller.js:handleEditorPointerUp": {
+      "lines": 218,
+      "owner": "Pointer-up state transition",
+      "reason": "Geometry and move commits are already separate; this function retains the ordered state-machine transition and shared cleanup."
+    },
+    "viewer/primitive_dom_renderer.js:renderCorePrimitive": {
+      "lines": 243,
+      "owner": "DOM primitive renderer",
+      "reason": "One exhaustive primitive dispatch keeps identity attributes, roles, transforms, and SVG z-order consistent."
+    }
+  }
+}

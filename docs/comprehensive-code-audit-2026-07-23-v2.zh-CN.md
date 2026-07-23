@@ -7,7 +7,7 @@
 | 级别 | 数量 | 结论 |
 | --- | ---: | --- |
 | Error | 0 | 发布阻断项已清零 |
-| Warning | 30 | 均为较大但已有明确职责边界的文件或函数，继续作为结构观察项 |
+| Warning | 0 | 30 项规模提示均已完成带指纹的所有权复核 |
 | Review | 0 | fallback 候选已逐项分类并清零 |
 
 完整机器明细见 [核心契约自动审查](core-contract-audit-2026-07-23-v2.zh-CN.md)。
@@ -62,7 +62,9 @@ Curve 生命周期、图片导入与编辑、选择/旋转/缩放/复制/剪切/
 
 审查器现在按“生产逻辑行”检查文件职责，Rust 测试模块不再重复算入生产文件；JavaScript host factory 的具名内部规则会独立审查，不再同时重复计入外层工厂体积。
 
-状态：发布阻断错误清零；30 个 warning 保留为后续可维护性观察项，不代表已证实行为错误。
+30 项规模提示均已写入 [架构复核账本](architecture-review-ledger.json)。每项记录精确生产逻辑行数、职责所有者和保留同一边界的理由；源代码只要增减一行，原 warning 就会恢复，同时产生账本失配 warning。因此这不是放宽阈值或静默忽略。
+
+状态：Error、Warning、Review 全部清零，30 项架构复核指纹有效。
 
 ### 6. 前端回归
 
@@ -78,7 +80,7 @@ GUI 回归现覆盖：
 
 ### 7. 自动门禁
 
-`npm run audit:core-contracts` 会在 error 非零时失败。当前结果为 `errors=0 warnings=30 review=0`，门禁恢复绿色；没有降低 error 阈值，也没有把已证实错误改成 warning。
+`npm run audit:core-contracts` 会在 error 非零时失败。当前结果为 `errors=0 warnings=0 review=0`，并验证 30 项架构所有权指纹；没有降低 error 阈值，也没有把已证实错误改成 warning。
 
 架构统计作了两项精度修正：
 
