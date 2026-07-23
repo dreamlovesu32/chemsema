@@ -15,13 +15,14 @@
 
 ## 格式总览
 
-文件是一个 JSON 文档，包含 5 个顶层区段：
+文件是一个 JSON 文档，包含 6 个顶层区段：
 
 - `format`
 - `document`
 - `styles`
 - `objects`
 - `resources`
+- `interchange`（可选）
 
 从职责上看：
 
@@ -29,6 +30,7 @@
 - `styles` 存放可复用的渲染样式
 - `objects` 存放场景图节点
 - `resources` 存放可复用的化学载荷，例如 `molecule_fragment2d`
+- `interchange` 无损保存尚未提升为来源无关语义的交换格式对象和字段；它可编辑并参与导出，不属于 `meta`
 
 ## 顶层结构
 
@@ -42,9 +44,53 @@
   "document": {},
   "styles": {},
   "objects": [],
-  "resources": {}
+  "resources": {},
+  "interchange": {}
 }
 ```
+
+## Interchange 完整字段层
+
+CDX/CDXML 的字段全集大于当前跨格式场景模型。不能因为暂时没有相应的原生绘图语义就丢弃字段，也不能把它们塞进不参与导出的 `meta`。导入器必须把这部分内容保存在顶层 `interchange`：
+
+```json
+{
+  "interchange": {
+    "cdx": {
+      "format": "cdx",
+      "version": "0100",
+      "root": {
+        "name": "CDXML",
+        "formatTag": "0x8000",
+        "id": "1",
+        "properties": {
+          "RegistryNumber": {
+            "name": "RegistryNumber",
+            "order": 0,
+            "value": "CAS-2",
+            "valueType": "string",
+            "cdxTag": "0x000B",
+            "cdxType": "CDXString",
+            "rawBase64": "Q0FTLTE="
+          }
+        },
+        "text": "",
+        "children": []
+      }
+    }
+  }
+}
+```
+
+规则：
+
+- `name`、`formatTag`、`id` 和 `children` 保存完整对象树；无 id 对象用子索引路径寻址，不能猜造 id。
+- `properties` 的键是官方 CDXML 名；`valueType` 是 CCJS 明确类型，不保存含糊位掩码。
+- CDX 允许同一 tag 重复出现；第二项起存储键为 `Name#2`、`Name#3`，每项内部 `name` 始终保留规范名，`order` 保留对象内原始顺序，值、顺序和字节均不得覆盖。
+- 有公共词法形式的 CDX 类型编辑 `value`；`Unformatted`、`varies` 及复杂二进制类型编辑 `rawBase64`。
+- 已经存在原生 CCJS 字段时，原生字段是权威；导出时由原生字段重新编码。`interchange` 只补回未建模字段和对象。
+- CDXML 树的属性也使用同一 `properties` 结构，但没有 CDX tag/type/raw 字节。
+- 完整官方清单和每项实现状态见 `schemas/cdx-cdxml-verification-v1.json` 与字段复核总账。
 
 ## 坐标系统
 
@@ -391,7 +437,10 @@ text 对象表示带定位信息的富文本内容。
 
 `style.labelStyle` 和 `style.captionStyle` 使用同一组字段，但不含 `text`。
 其规范值应明确写出 `fontFamily`、`fontSize`、`fill`、`fontWeight`、
-`fontStyle`、`underline`、`outline`、`shadow`、`script`。读取旧 CCJS 时，缺失的
+`fontStyle`、`underline`、`outline`、`shadow`、`script`、`lineHeight` 和
+`lineHeightMode`。`lineHeight` 是文档点数下已经解析完成的正数基线步进；
+`lineHeightMode` 只能是 `fixed`、`auto` 或 `variable`，用于决定新多行内容如何
+产生行步进，不保存源格式的特殊哨兵值。读取旧 CCJS 时，缺失的
 `outline`、`shadow` 必须默认为 `false`；写出时只允许语义字段，不得写 `face`。
 
 ## Molecule Fragment2D
@@ -416,6 +465,8 @@ text 对象表示带定位信息的富文本内容。
     "box": [43.79, 25.52, 51.01, 33.86],
     "layout": "default",
     "anchor": "start",
+    "lineHeight": 8.9,
+    "lineHeightMode": "variable",
     "runs": [
       {
         "text": "N",
@@ -546,6 +597,10 @@ text 对象表示带定位信息的富文本内容。
 - `runs`：归一化显示 runs
 - `lineRuns`：可选，逐渲染行的归一化 runs
 - `lines`：可选，逐渲染行文本，通常与 `lineRuns` 成对出现
+- `lineHeight`：文档点数下已经解析完成的正数默认基线步进；单行标签也必须保留
+- `lineHeightMode`：`fixed`、`auto` 或 `variable`；必须明确保存，不能从数值步进猜测
+- `lineAdvances`：可选，variable 多行标签的逐相邻行正数基线步进；第 0 项表示
+  从第 0 行到第 1 行的步进
 - `glyphPolygons`：可选，局部坐标系下的逐字形 optical polygon；存在时，
   renderer 可优先用它做 label knockout 和 bond clipping，提高相对粗颗粒
   `box` 的裁剪精度
@@ -793,7 +848,7 @@ shape 的外观主要放在样式里，包括：
 - 是否填充
 - `shaded`：对应 CDXML `Shaded`
 - `shadow`：对应 CDXML `Shadow` / `Shadowed`
-- `shadowSize`：对应 CDXML `ShadowSize / 100`
+- `shadowSize`：对应 CDXML `ShadowSize / 100`，是相对于 `strokeWidth` 的无量纲倍率；实际阴影偏移为 `shadowSize × strokeWidth`
 
 ## Group 对象
 

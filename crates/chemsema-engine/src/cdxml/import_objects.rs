@@ -9,6 +9,157 @@ fn non_bond_dash_array(defaults: CdxmlDefaults) -> Value {
         .max(crate::DEFAULT_HASH_SPACING_PT.value() * 0.25)])
 }
 
+pub(super) fn append_curve_objects(
+    root: &XmlNode,
+    objects: &mut Vec<SceneObject>,
+    styles: &mut BTreeMap<String, Value>,
+    defaults: CdxmlDefaults,
+    colors: &CdxmlColorTable,
+) {
+    let mut index = 1;
+    for node in descendants(root) {
+        if !node.is("curve") || node.attr("SupersededBy").is_some() {
+            continue;
+        }
+        let Some(points) = parse_cdxml_curve_points(node.attr("CurvePoints")) else {
+            continue;
+        };
+        let curve_type = parse_i32(node.attr("CurveType")).unwrap_or(0);
+        let dashed = curve_type & 0x0002 != 0
+            || node
+                .attr("LineType")
+                .is_some_and(|value| value.contains("Dashed"));
+        let bold = curve_type & 0x0004 != 0
+            || node
+                .attr("LineType")
+                .is_some_and(|value| value.contains("Bold"));
+        let stroke = colors.resolve(node.attr("color"));
+        let stroke_width = parse_f64(node.attr("LineWidth")).unwrap_or(if bold {
+            defaults.bold_width
+        } else {
+            defaults.line_width
+        });
+        let style_id = format!("style_curve_{index:03}");
+        styles.insert(
+            style_id.clone(),
+            json!({
+                "kind": "stroke",
+                "stroke": stroke,
+                "strokeWidth": stroke_width,
+                "lineCap": "butt",
+                "lineJoin": "round",
+                "dashArray": if dashed { non_bond_dash_array(defaults) } else { json!([]) },
+            }),
+        );
+
+        let mut extra = BTreeMap::new();
+        extra.insert("kind".to_string(), json!("bezier-curve"));
+        extra.insert("curvePoints".to_string(), json!(points));
+        extra.insert("curveType".to_string(), json!(curve_type));
+        extra.insert("closed".to_string(), json!(curve_type & 0x0001 != 0));
+        let explicit_head = node.attr("ArrowheadHead").map(canonical_arrow_endpoint);
+        let explicit_tail = node.attr("ArrowheadTail").map(canonical_arrow_endpoint);
+        extra.insert(
+            "head".to_string(),
+            json!(explicit_head.unwrap_or(if curve_type & 0x0008 != 0 {
+                "full"
+            } else if curve_type & 0x0020 != 0 {
+                "half"
+            } else {
+                "none"
+            })),
+        );
+        extra.insert(
+            "tail".to_string(),
+            json!(explicit_tail.unwrap_or(if curve_type & 0x0010 != 0 {
+                "full"
+            } else if curve_type & 0x0040 != 0 {
+                "half"
+            } else {
+                "none"
+            })),
+        );
+        extra.insert(
+            "arrowheadType".to_string(),
+            json!(node.attr("ArrowheadType").unwrap_or("Solid")),
+        );
+        extra.insert(
+            "headLength".to_string(),
+            json!(cdxml_arrow_size_for_render_scale(
+                parse_scaled_100(node.attr("HeadSize")),
+                crate::DEFAULT_ARROW_HEAD_LENGTH_RATIO,
+            )),
+        );
+        extra.insert(
+            "headCenterLength".to_string(),
+            json!(cdxml_arrow_size_for_render_scale(
+                parse_scaled_100(node.attr("ArrowheadCenterSize")),
+                crate::DEFAULT_ARROW_HEAD_LENGTH_RATIO * 0.875,
+            )),
+        );
+        extra.insert(
+            "headWidth".to_string(),
+            json!(cdxml_arrow_size_for_render_scale(
+                parse_scaled_100(node.attr("ArrowheadWidth")),
+                crate::DEFAULT_ARROW_HEAD_LENGTH_RATIO * 0.25,
+            )),
+        );
+        let (min_x, min_y, max_x, max_y) = points.iter().fold(
+            (
+                f64::INFINITY,
+                f64::INFINITY,
+                f64::NEG_INFINITY,
+                f64::NEG_INFINITY,
+            ),
+            |(min_x, min_y, max_x, max_y), point| {
+                (
+                    min_x.min(point[0]),
+                    min_y.min(point[1]),
+                    max_x.max(point[0]),
+                    max_y.max(point[1]),
+                )
+            },
+        );
+        objects.push(SceneObject {
+            id: format!("obj_curve_{index:03}"),
+            object_type: "curve".to_string(),
+            name: format!("curve {index}"),
+            visible: true,
+            locked: false,
+            z_index: parse_i32(node.attr("Z")).unwrap_or(18),
+            transform: Transform::identity(),
+            style_ref: Some(style_id),
+            meta: json!({"source": "cdxml", "curveId": node.attr("id")}),
+            payload: ObjectPayload {
+                resource_ref: None,
+                bbox: Some([min_x, min_y, max_x - min_x, max_y - min_y]),
+                extra,
+            },
+            children: Vec::new(),
+        });
+        index += 1;
+    }
+}
+
+fn parse_cdxml_curve_points(value: Option<&str>) -> Option<Vec<[f64; 2]>> {
+    let values: Vec<_> = value?
+        .split_whitespace()
+        .filter_map(|value| value.parse::<f64>().ok())
+        .collect();
+    if values.len() < 12 || values.len() % 2 != 0 {
+        return None;
+    }
+    let points: Vec<_> = values
+        .chunks_exact(2)
+        .map(|pair| [pair[0], pair[1]])
+        .collect();
+    // ChemDraw stores one endpoint guide on each side of the drawable
+    // spline.  The body is points[1..len-1]: P0 followed by C1, C2, P for
+    // every cubic segment.  The two outer guides determine endpoint tangent
+    // and arrow geometry but are not part of the stroked path.
+    ((points.len() - 3) % 3 == 0).then_some(points)
+}
+
 pub(super) fn append_line_objects(
     root: &XmlNode,
     objects: &mut Vec<SceneObject>,
@@ -451,8 +602,12 @@ fn cdxml_line_style_ref(
         }
     );
     styles.entry(style_id.clone()).or_insert_with(|| {
-        let line_cap = if dashed || is_arrow { "butt" } else { "round" };
-        let line_join = if dashed || is_arrow { "miter" } else { "round" };
+        // ChemDraw emits CDXML GraphicType="Line" shafts as square-ended
+        // geometry, just like arrow shafts.  This is independent of whether
+        // LineType contains Dashed or Bold; round caps are a native editor
+        // default and must not be introduced at the CDXML import boundary.
+        let line_cap = "butt";
+        let line_join = "miter";
         json!({
             "kind": "stroke",
             "stroke": color,
@@ -1083,7 +1238,7 @@ pub(super) fn append_bracket_objects(
         }
         match node.attr("GraphicType").unwrap_or("") {
             "Bracket" => {
-                let Some(bbox) = parse_bbox(node.attr("BoundingBox")) else {
+                let Some(bbox) = parse_ordered_bbox(node.attr("BoundingBox")) else {
                     continue;
                 };
                 let graphic_id = node.attr("id").map(ToString::to_string);
@@ -1303,6 +1458,62 @@ pub(super) fn append_bracket_objects(
                 extra: BTreeMap::new(),
             },
             children: vec![left_child, right_child],
+        });
+        object_index += 1;
+    }
+
+    // A single CDXML bracket is a complete authored graphic, not necessarily
+    // one side of a polymer pair.  Horizontal curly braces used as scheme
+    // annotations are commonly stored as two ordered points with identical
+    // y coordinates; retain that orientation and render one rotated side.
+    for (index, bracket) in brackets.iter().enumerate() {
+        if used[index] {
+            continue;
+        }
+        let dx = bracket.bbox[2] - bracket.bbox[0];
+        let dy = bracket.bbox[3] - bracket.bbox[1];
+        if dx.abs() <= dy.abs() || dx.abs() <= crate::EPSILON {
+            continue;
+        }
+        let length = dx.abs();
+        let depth =
+            cdxml_bracket_side_width(&bracket.kind, length, length).max(bracket.stroke_width);
+        let min_x = bracket.bbox[0].min(bracket.bbox[2]);
+        let y = bracket.bbox[1];
+        let mut extra = BTreeMap::new();
+        extra.insert("kind".to_string(), json!(bracket.kind.clone()));
+        extra.insert("side".to_string(), json!("left"));
+        extra.insert("stroke".to_string(), json!(bracket.stroke.clone()));
+        extra.insert("strokeWidth".to_string(), json!(bracket.stroke_width));
+        extra.insert("lipSize".to_string(), json!(bracket.lip_size));
+        extra.insert("orientation".to_string(), json!("horizontal"));
+        objects.push(SceneObject {
+            id: format!("obj_bracket_{object_index:03}"),
+            object_type: "bracket".to_string(),
+            name: "standalone horizontal bracket".to_string(),
+            visible: true,
+            locked: false,
+            z_index: bracket.z_index,
+            transform: Transform {
+                translate: [
+                    round2(min_x + (length - depth) * 0.5),
+                    round2(y - (length - depth) * 0.5),
+                ],
+                rotate: -90.0,
+                scale: [1.0, 1.0],
+            },
+            style_ref: None,
+            meta: json!({
+                "source": "cdxml",
+                "graphicId": bracket.graphic_id.clone(),
+                "standalone": true,
+            }),
+            payload: ObjectPayload {
+                resource_ref: None,
+                bbox: Some([0.0, 0.0, round2(depth), round2(length)]),
+                extra,
+            },
+            children: Vec::new(),
         });
         object_index += 1;
     }
@@ -2156,12 +2367,23 @@ fn text_object(
     );
     extra.insert("align".to_string(), json!(align));
     extra.insert("valign".to_string(), json!("top"));
+    let line_spacing = cdxml_text_line_spacing(node, defaults, font_size, &runs);
     extra.insert(
         "lineHeight".to_string(),
-        json!(round2(cdxml_text_line_height(
-            node, defaults, font_size, &runs,
-        ))),
+        json!(round2(line_spacing.line_height)),
     );
+    extra.insert("lineHeightMode".to_string(), json!(line_spacing.mode));
+    if !line_spacing.line_advances.is_empty() {
+        extra.insert(
+            "lineAdvances".to_string(),
+            json!(line_spacing
+                .line_advances
+                .iter()
+                .copied()
+                .map(round2)
+                .collect::<Vec<_>>()),
+        );
+    }
     extra.insert("fontSize".to_string(), json!(round2(font_size)));
     if let Some((_, baseline_offset)) = automatic_placement {
         extra.insert("anchorOffsetX".to_string(), json!(0.0));
@@ -2294,65 +2516,39 @@ fn automatic_query_bond_text_placement(
     Some(([round2(translate[0]), round2(translate[1])], height))
 }
 
-fn cdxml_text_line_height(
+fn cdxml_text_line_spacing(
     node: &XmlNode,
     defaults: CdxmlDefaults,
     font_size: f64,
     runs: &[LabelRun],
-) -> f64 {
+) -> super::ResolvedCdxmlLineSpacing {
     let value = parse_cdxml_line_height(node.attr("CaptionLineHeight"))
         .or_else(|| parse_cdxml_line_height(node.attr("LineHeight")))
         .or(defaults.caption_line_height)
         .or(defaults.line_height)
         .unwrap_or(CdxmlLineHeight::Auto);
     match value {
-        CdxmlLineHeight::Fixed(value) if value > 1.0 => value,
-        _ => cdxml_auto_text_line_height(node, font_size, runs),
+        CdxmlLineHeight::Fixed(value) if value > 1.0 => super::ResolvedCdxmlLineSpacing {
+            line_height: value,
+            line_advances: Vec::new(),
+            mode: "fixed",
+        },
+        CdxmlLineHeight::Variable => {
+            let line_runs = super::split_label_runs_by_line(runs);
+            let line_advances = crate::variable_text_line_advances(&line_runs, font_size);
+            super::ResolvedCdxmlLineSpacing {
+                line_height: line_advances
+                    .first()
+                    .copied()
+                    .unwrap_or_else(|| crate::molecule_label_line_advance(font_size)),
+                line_advances,
+                mode: "variable",
+            }
+        }
+        _ => super::ResolvedCdxmlLineSpacing {
+            line_height: super::chemdraw_auto_text_line_height(font_size, runs),
+            line_advances: Vec::new(),
+            mode: "auto",
+        },
     }
-}
-
-fn cdxml_auto_text_line_height(node: &XmlNode, font_size: f64, runs: &[LabelRun]) -> f64 {
-    let mut has_bold = false;
-    let mut has_manual_subscript = false;
-    let mut has_manual_superscript = false;
-
-    for run in node.direct_children("s") {
-        let face = parse_u32(run.attr("face")).unwrap_or(0);
-        has_bold |= face & 1 != 0;
-        let has_subscript = face & 32 != 0;
-        let has_superscript = face & 64 != 0;
-        if has_subscript && !has_superscript {
-            has_manual_subscript = true;
-        }
-        if has_superscript && !has_subscript {
-            has_manual_superscript = true;
-        }
-    }
-    for run in runs {
-        has_bold |= run.font_weight.unwrap_or(400) >= 600;
-        match run.script.as_deref() {
-            Some("subscript") => has_manual_subscript = true,
-            Some("superscript") => has_manual_superscript = true,
-            _ => {}
-        }
-    }
-
-    let ratio = if has_manual_superscript {
-        if has_bold {
-            1.445
-        } else {
-            1.415
-        }
-    } else if has_manual_subscript {
-        if has_bold {
-            1.345
-        } else {
-            1.315
-        }
-    } else if has_bold {
-        1.175
-    } else {
-        1.15
-    };
-    font_size * ratio
 }

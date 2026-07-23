@@ -883,6 +883,66 @@ fn positioned_cdxml_aromatic_dash_remains_visibly_dashed() {
 }
 
 #[test]
+fn positioned_solid_order_one_point_five_is_not_drawn_as_a_double_bond() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<CDXML><page><fragment>
+  <n id="1" p="10 10"/><n id="2" p="40 10"/>
+  <b id="3" B="1" E="2" Order="1.5"/>
+</fragment></page></CDXML>"#;
+    let document = parse_cdxml_document(cdxml, Some("solid delocalized bond"))
+        .expect("solid order-1.5 bond should import");
+    let fragment = document
+        .resources
+        .values()
+        .find_map(|resource| resource.data.as_fragment())
+        .expect("fragment should survive");
+    let bond = fragment.bonds.first().expect("bond should survive");
+    assert_eq!(bond.order, 1);
+    assert_eq!(
+        bond.meta
+            .pointer("/import/cdxml/aromatic")
+            .and_then(serde_json::Value::as_bool),
+        Some(true)
+    );
+    assert_eq!(
+        document_bond_polygon_count_for_object(&render_document(&document), "obj_mol_001"),
+        1
+    );
+    assert!(document_to_cdxml(&document).contains("Order=\"1.5\""));
+}
+
+#[test]
+fn positioned_order_one_point_five_uses_explicit_display2_as_second_lane() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<CDXML><page><fragment>
+  <n id="1" p="10 10"/><n id="2" p="40 10"/>
+  <b id="3" B="1" E="2" Order="1.5" Display="Dash" Display2="Dash"/>
+</fragment></page></CDXML>"#;
+    let document = parse_cdxml_document(cdxml, Some("two-lane delocalized bond"))
+        .expect("explicit second display lane should import");
+    let fragment = document
+        .resources
+        .values()
+        .find_map(|resource| resource.data.as_fragment())
+        .expect("fragment should survive");
+    let bond = fragment.bonds.first().expect("bond should survive");
+    assert_eq!(bond.order, 2);
+    assert_eq!(
+        bond.line_styles.main,
+        chemsema_engine::BondLinePattern::Dashed
+    );
+    assert_eq!(
+        bond.line_styles.right,
+        chemsema_engine::BondLinePattern::Dashed
+    );
+    assert!(document_bond_polygon_count_for_object(&render_document(&document), "obj_mol_001") > 2);
+
+    let exported = document_to_cdxml(&document);
+    assert!(exported.contains("Order=\"1.5\""), "{exported}");
+    assert!(exported.contains("Display2=\"Dash\""), "{exported}");
+}
+
+#[test]
 fn positioned_unlabeled_hetero_atom_gets_its_element_label() {
     let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
 <CDXML LabelFont="3" LabelSize="10"><fonttable>
@@ -3621,6 +3681,94 @@ fn parse_cdxml_skips_cached_fragments_inside_placeholder_nodes() {
 }
 
 #[test]
+fn parse_cdxml_skips_embedded_fragments_for_every_node_type() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<CDXML BondLength="18" LineWidth="0.6" LabelSize="10">
+  <page id="1" BoundingBox="0 0 140 60">
+    <fragment id="visible" BoundingBox="0 0 120 50">
+      <n id="n1" p="20 25" NodeType="AnonymousAlternativeGroup">
+        <t p="20 29" BoundingBox="18 18 24 30"><s font="3" size="10">F,</s></t>
+        <fragment id="alternative-definition">
+          <n id="a1" p="20 45" Element="9"/>
+          <n id="a2" NodeType="ExternalConnectionPoint"/>
+          <b id="ab1" B="a2" E="a1"/>
+        </fragment>
+      </n>
+      <n id="n2" p="55 25" NodeType="ElementListNickname">
+        <t p="55 29" BoundingBox="53 18 65 30"><s font="3" size="10">Hal</s></t>
+        <fragment id="element-list-definition">
+          <n id="e1" p="55 45" Element="17"/>
+          <n id="e2" NodeType="ExternalConnectionPoint"/>
+          <b id="eb1" B="e2" E="e1"/>
+        </fragment>
+      </n>
+      <b id="b1" B="n1" E="n2"/>
+    </fragment>
+  </page>
+</CDXML>"#;
+    let document =
+        parse_cdxml_document(cdxml, Some("embedded node fragments")).expect("cdxml should parse");
+    let fragments: Vec<_> = document
+        .resources
+        .values()
+        .filter_map(|resource| resource.data.as_fragment())
+        .collect();
+    assert_eq!(fragments.len(), 1);
+    assert_eq!(fragments[0].nodes.len(), 2);
+    assert_eq!(fragments[0].bonds.len(), 1);
+    assert!(!fragments[0]
+        .nodes
+        .iter()
+        .any(|node| matches!(node.atomic_number, 9 | 17)));
+}
+
+#[test]
+fn parse_cdxml_preserves_authored_geometry_for_multiline_character_attachments() {
+    let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<CDXML BondLength="18" LineWidth="0.5" LabelSize="7">
+  <page id="1" BoundingBox="100 50 200 110">
+    <fragment id="f1" BoundingBox="100 50 200 110">
+      <n id="label" p="150 80" NodeType="Unspecified" LabelDisplay="Right">
+        <t p="162 70" BoundingBox="140 60 162 84" LineStarts="3 8 10"
+           LabelJustification="Right" LabelLineHeight="8">
+          <s font="3" size="7">R5&#10;COOC&#10;R7</s>
+        </t>
+      </n>
+      <n id="left" p="120 80"/><n id="right" p="180 80"/>
+      <b id="b1" B="label" E="left" BeginAttach="3"/>
+      <b id="b2" B="label" E="right" BeginAttach="6"/>
+    </fragment>
+  </page>
+</CDXML>"#;
+    let document = parse_cdxml_document(cdxml, Some("multiline character attachment"))
+        .expect("cdxml should parse");
+    let label = document
+        .resources
+        .values()
+        .filter_map(|resource| resource.data.as_fragment())
+        .flat_map(|fragment| fragment.nodes.iter())
+        .find(|node| node.id == "label")
+        .and_then(|node| node.label.as_ref())
+        .expect("attached label");
+    let molecule = document
+        .objects
+        .iter()
+        .find(|object| object.payload.resource_ref.is_some())
+        .expect("molecule object");
+    assert_eq!(molecule.transform.translate, [100.0, 50.0]);
+    assert_eq!(label.position, Some([62.0, 20.0]));
+    assert_eq!(label.box_field, Some([40.0, 10.0, 62.0, 34.0]));
+    assert_eq!(
+        [
+            molecule.transform.translate[0] + label.position.unwrap()[0],
+            molecule.transform.translate[1] + label.position.unwrap()[1],
+        ],
+        [162.0, 70.0]
+    );
+    assert_eq!(label.lines, ["R5", "COOC", "R7"]);
+}
+
+#[test]
 fn load_cdxml_document_preserves_imported_acs_drawing_options() {
     let Some(cdxml) = read_optional_cdxml_fixture("db-acs.cdxml") else {
         return;
@@ -5255,6 +5403,238 @@ H</s><s font="3" size="10" face="33" color="0">2</s><s font="3" size="10" face="
 }
 
 #[test]
+fn parse_cdxml_auto_line_height_uses_the_tallest_styled_run() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML>
+  <page id="1">
+    <t id="mixed" p="10 20" BoundingBox="10 10 100 70" CaptionLineHeight="auto">
+      <s font="3" size="8" face="0" color="0">small
+</s><s font="3" size="18" face="0" color="0">large
+</s><s font="3" size="12" face="0" color="0">medium</s>
+    </t>
+  </page>
+</CDXML>"##;
+    let document = parse_cdxml_document(cdxml, Some("mixed auto line height"))
+        .expect("text cdxml should parse");
+    let text = document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "text")
+        .expect("text object should import");
+    assert_eq!(
+        text.payload
+            .extra
+            .get("lineHeight")
+            .and_then(|value| value.as_f64()),
+        Some(20.7),
+        "ChemDraw Auto uses the tallest styled run anywhere in the object"
+    );
+    assert_eq!(
+        text.payload
+            .extra
+            .get("lineHeightMode")
+            .and_then(|value| value.as_str()),
+        Some("auto")
+    );
+
+    let baselines = render_document(&document)
+        .into_iter()
+        .filter_map(|primitive| match primitive {
+            RenderPrimitive::Text {
+                object_id: Some(object_id),
+                y,
+                ..
+            } if object_id == text.id => Some(y),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(baselines.len(), 3);
+    assert!((baselines[1] - baselines[0] - 20.7).abs() < 0.01);
+    assert!((baselines[2] - baselines[1] - 20.7).abs() < 0.01);
+    assert!(document_to_cdxml(&document).contains("CaptionLineHeight=\"auto\""));
+}
+
+#[test]
+fn parse_cdxml_variable_line_height_keeps_per_transition_advances() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML>
+  <page id="1">
+    <t id="variable" p="10 20" BoundingBox="10 10 100 70" CaptionLineHeight="variable">
+      <s font="3" size="10" face="0" color="0">g
+A
+Q</s>
+    </t>
+  </page>
+</CDXML>"##;
+    let document =
+        parse_cdxml_document(cdxml, Some("variable line height")).expect("text cdxml should parse");
+    let text = document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "text")
+        .expect("text object should import");
+    let advances = text
+        .payload
+        .extra
+        .get("lineAdvances")
+        .and_then(|value| value.as_array())
+        .expect("variable line height should retain each transition")
+        .iter()
+        .filter_map(|value| value.as_f64())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        text.payload
+            .extra
+            .get("lineHeightMode")
+            .and_then(|value| value.as_str()),
+        Some("variable")
+    );
+    assert_eq!(advances.len(), 2);
+    assert_ne!(advances[0], advances[1]);
+
+    let baselines = render_document(&document)
+        .into_iter()
+        .filter_map(|primitive| match primitive {
+            RenderPrimitive::Text {
+                object_id: Some(object_id),
+                y,
+                ..
+            } if object_id == text.id => Some(y),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(baselines.len(), 3);
+    assert!((baselines[1] - baselines[0] - advances[0]).abs() < 0.01);
+    assert!((baselines[2] - baselines[1] - advances[1]).abs() < 0.01);
+    assert!(document_to_cdxml(&document).contains("CaptionLineHeight=\"variable\""));
+}
+
+#[test]
+fn parse_cdxml_root_text_styles_keep_resolved_line_height_semantics() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML LabelFont="3" LabelSize="7" LabelLineHeight="6"
+       CaptionFont="3" CaptionSize="7" CaptionLineHeight="7.1">
+  <fonttable><font id="3" charset="iso-8859-1" name="Times New Roman"/></fonttable>
+  <page id="1"/>
+</CDXML>"##;
+    let document = parse_cdxml_document(cdxml, Some("fixed style line height"))
+        .expect("style sheet cdxml should parse");
+    assert_eq!(document.style.label_style.line_height, 6.0);
+    assert_eq!(document.style.label_style.line_height_mode, "fixed");
+    assert_eq!(document.style.caption_style.line_height, 7.1);
+    assert_eq!(document.style.caption_style.line_height_mode, "fixed");
+}
+
+#[test]
+fn parse_cdxml_node_label_fixed_line_height_controls_rendered_baselines() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML LabelSize="10">
+  <page id="1">
+    <fragment id="fragment">
+      <n id="label-node" p="30 30" NodeType="GenericNickname" GenericNickname="A B C">
+        <t p="30 30" BoundingBox="20 10 50 55" LabelLineHeight="14" InterpretChemically="no">
+          <s font="3" size="10" face="0" color="0">A
+B
+C</s>
+        </t>
+      </n>
+      <n id="carbon" p="60 30"/>
+      <b id="bond" B="label-node" E="carbon"/>
+    </fragment>
+  </page>
+</CDXML>"##;
+    let document = parse_cdxml_document(cdxml, Some("fixed node label line height"))
+        .expect("node label cdxml should parse");
+    let label = document
+        .resources
+        .values()
+        .filter_map(|resource| resource.data.as_fragment())
+        .flat_map(|fragment| fragment.nodes.iter())
+        .find(|node| node.id == "label-node")
+        .and_then(|node| node.label.as_ref())
+        .expect("node label should import");
+    assert_eq!(label.line_height, Some(14.0));
+    assert_eq!(label.line_height_mode, "fixed");
+    assert!(label.line_advances.is_empty());
+
+    let baselines = render_document(&document)
+        .into_iter()
+        .filter_map(|primitive| match primitive {
+            RenderPrimitive::Text {
+                node_id: Some(node_id),
+                y,
+                ..
+            } if node_id == "label-node" => Some(y),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(baselines.len(), 3);
+    assert!((baselines[1] - baselines[0] - 14.0).abs() < 0.01);
+    assert!((baselines[2] - baselines[1] - 14.0).abs() < 0.01);
+    assert!(document_to_cdxml(&document).contains("LabelLineHeight=\"14\""));
+}
+
+#[test]
+fn generated_atom_label_recomputes_variable_spacing_after_hydrogen_stacking() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML LabelFont="3" LabelSize="10">
+  <fonttable><font id="3" charset="iso-8859-1" name="Arial"/></fonttable>
+  <page id="1">
+    <fragment id="fragment">
+      <n id="left" p="20 45"/>
+      <n id="nitrogen" p="40 20" Element="7" NumHydrogens="1"/>
+      <n id="right" p="60 45"/>
+      <b id="left-bond" B="left" E="nitrogen"/>
+      <b id="right-bond" B="nitrogen" E="right"/>
+    </fragment>
+  </page>
+</CDXML>"##;
+    let document = parse_cdxml_document(cdxml, Some("generated stacked atom label"))
+        .expect("stacked atom label should parse");
+    let label = document
+        .resources
+        .values()
+        .filter_map(|resource| resource.data.as_fragment())
+        .flat_map(|fragment| fragment.nodes.iter())
+        .find(|node| node.id == "nitrogen")
+        .and_then(|node| node.label.as_ref())
+        .expect("nitrogen label should be generated");
+
+    assert_eq!(label.text, "H\nN");
+    assert_eq!(label.line_height_mode, "variable");
+    assert_eq!(label.line_advances.len(), 1);
+    assert!((label.line_height.unwrap_or_default() - label.line_advances[0]).abs() < 0.01);
+    assert!(label.line_advances[0] < 9.0);
+}
+
+#[test]
+fn generated_atom_labels_include_cdxml_charge_in_chemical_text() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML LabelFont="3" LabelSize="10">
+  <page id="1">
+    <fragment id="fragment">
+      <n id="oxide" p="20 20" Element="8" NumHydrogens="0" Charge="-1"/>
+      <n id="cesium" p="60 20" Element="55" NumHydrogens="0" Charge="1"/>
+    </fragment>
+  </page>
+</CDXML>"##;
+    let document = parse_cdxml_document(cdxml, Some("generated charged atom labels"))
+        .expect("charged atom labels should parse");
+    let label_text = |id: &str| {
+        document
+            .resources
+            .values()
+            .filter_map(|resource| resource.data.as_fragment())
+            .flat_map(|fragment| fragment.nodes.iter())
+            .find(|node| node.id == id)
+            .and_then(|node| node.label.as_ref())
+            .map(|label| label.text.as_str())
+    };
+    assert_eq!(label_text("oxide"), Some("O-"));
+    assert_eq!(label_text("cesium"), Some("Cs+"));
+}
+
+#[test]
 fn parse_cdxml_unescapes_text_entities() {
     let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
 <CDXML BondLength="14.40" LineWidth="0.60" BoldWidth="2" HashSpacing="2.50">
@@ -6582,8 +6962,92 @@ fn parse_cdxml_imports_line_endpoints_from_bounding_box() {
         primitive,
         RenderPrimitive::Polyline {
             role: RenderRole::DocumentGraphic,
+            line_cap: Some(line_cap),
+            line_join: Some(line_join),
             ..
-        }
+        } if line_cap == "butt" && line_join == "miter"
+    )));
+}
+
+#[test]
+fn parse_cdxml_imports_bezier_curve_flags_and_arrowheads() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML BondLength="14.40" LineWidth="0.60" HashSpacing="2.50">
+  <colortable><color r="1" g="1" b="1"/><color r="1" g="0" b="0"/></colortable>
+  <page id="1">
+    <curve id="2" Z="7" color="3" CurveType="26" ArrowheadType="Solid"
+      CurvePoints="5 30 10 30 20 10 40 10 50 30 60 50 80 50 90 30 95 30"/>
+  </page>
+</CDXML>"##;
+    let document = parse_cdxml_document(cdxml, Some("bezier curve")).expect("parse cdxml");
+    let curve = document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "curve")
+        .expect("curve should import");
+    assert_eq!(curve.payload.extra["curveType"], json!(26));
+    assert_eq!(curve.payload.extra["head"], json!("full"));
+    assert_eq!(curve.payload.extra["tail"], json!("full"));
+    assert_eq!(curve.payload.extra["closed"], json!(false));
+    let style = document
+        .styles
+        .get(curve.style_ref.as_deref().expect("curve style"))
+        .expect("curve style should exist");
+    assert_eq!(style["dashArray"], json!([2.5]));
+    let primitives = render_document(&document);
+    assert!(primitives.iter().any(|primitive| matches!(
+        primitive,
+        RenderPrimitive::Path {
+            role: RenderRole::DocumentGraphic,
+            d,
+            dash_array,
+            ..
+        } if d.contains(" C ") && !dash_array.is_empty()
+    )));
+    assert_eq!(
+        primitives
+            .iter()
+            .filter(|primitive| matches!(primitive, RenderPrimitive::FilledPath { .. }))
+            .count(),
+        2
+    );
+    let exported = document_to_cdxml(&document);
+    assert!(exported.contains("<curve "), "{exported}");
+    assert!(exported.contains("CurveType=\"26\""), "{exported}");
+    assert!(exported.contains("ArrowheadHead=\"Full\""), "{exported}");
+    assert!(exported.contains("ArrowheadTail=\"Full\""), "{exported}");
+    let reparsed = parse_cdxml_document(&exported, Some("curve roundtrip"))
+        .expect("exported curve should parse");
+    assert!(reparsed
+        .objects
+        .iter()
+        .any(|object| object.object_type == "curve"));
+}
+
+#[test]
+fn parse_cdxml_keeps_standalone_horizontal_curly_bracket() {
+    let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<CDXML LineWidth="0.6">
+  <page id="1">
+    <graphic id="2" BoundingBox="140 60 20 60" GraphicType="Bracket"
+      BracketType="Curly" LipSize="60"/>
+  </page>
+</CDXML>"##;
+    let document = parse_cdxml_document(cdxml, Some("standalone bracket")).expect("parse cdxml");
+    let bracket = document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "bracket")
+        .expect("standalone bracket should import");
+    assert_eq!(bracket.payload.extra["orientation"], json!("horizontal"));
+    assert_eq!(bracket.transform.rotate, -90.0);
+    assert!(render_document(&document).iter().any(|primitive| matches!(
+        primitive,
+        RenderPrimitive::Path {
+            role: RenderRole::DocumentGraphic,
+            rotate,
+            ..
+        } if (*rotate + 90.0).abs() <= f64::EPSILON
     )));
 }
 

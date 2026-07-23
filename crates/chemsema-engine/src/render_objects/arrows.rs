@@ -1546,6 +1546,40 @@ fn render_solid_arrow_head(
     }
 }
 
+pub(super) fn render_curve_solid_arrow_head(
+    out: &mut Vec<RenderPrimitive>,
+    from: Point,
+    to: Point,
+    length: f64,
+    center_length: f64,
+    width: f64,
+    half: bool,
+    line_width: f64,
+    fill: &str,
+    object_id: Option<String>,
+) {
+    let geometry = ArrowHeadGeometry {
+        length,
+        center_length,
+        width,
+        ..ArrowHeadGeometry::default()
+    };
+    render_solid_arrow_head(
+        out,
+        from,
+        to,
+        geometry,
+        if half {
+            RenderArrowEndpointStyle::Left
+        } else {
+            RenderArrowEndpointStyle::Full
+        },
+        line_width,
+        fill,
+        object_id,
+    );
+}
+
 struct SolidArrowHeadPath {
     d: String,
     points: Vec<Point>,

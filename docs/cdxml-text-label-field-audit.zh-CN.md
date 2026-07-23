@@ -2,6 +2,8 @@
 
 本文记录 ChemSema 对 CDXML/CDX 文本与原子标签字段的系统审计。审计依据 CambridgeSoft CDX SDK 的公开镜像、真实 ChemDraw 的受控对照输出，以及公开语料的连续三代往返结果。
 
+字段当前是否已经达到完整复核标准，以 [CDX/CDXML 导入字段复核总账](./cdx-cdxml-field-verification.zh-CN.md) 为准；专项文档中的历史结论若发现新反例，应先在总账降级，再完成修复和新门禁。
+
 ## 审计结论
 
 - 413 个公开文件中，407 个可导入案例完成连续三代保存与重开；404 个完全一致，1 个为预期安全清洗，2 个为预期无损归一化。
@@ -128,5 +130,10 @@
 14. 键上的自动 `query` 标签以键中点为锚点，并用缓存文本框判断位于键的哪一侧。文字框必须完整落在该侧，水平/垂直留白由字号度量得到；这使不同方向的 `Rxn` 标签保持相同视觉间距，同时不改写显式 `PositioningType="offset"` 的标签。
 15. 虚锲形键中每条黑段沿键轴的长度严格等于 `LineWidth`，`HashSpacing` 是相邻黑段中心距的下限。ChemDraw 取 `max(1, 1 + floor((最终键长 - LineWidth) / HashSpacing))` 条，再让首尾黑段贴住两端并均分中心距。该结论由 Default、ACS、不同 `LineWidth` 与不同 `HashSpacing` 的 0.5 pt 全域扫描和阈值附近 0.01 pt 精扫共同验证；不应复用普通虚线键的段数分配器，也不需要对 `Nickname`、外部连接点或短键增加分支。
 16. CDX 二进制中的 `LineHeight`、`LabelLineHeight` 和 `CaptionLineHeight` 固定数值以 1/20 screen point 编码；解码到 CDXML/内核点值时除以 20，回写 CDX 时乘以 20。`0=variable`、`1=auto` 两个特殊值不参与缩放。真实 ChemDraw 将二进制 `160`/`165` 分别保存为 CDXML `8`/`8.25`，不能把原始整数直接当作点值。
+17. 官方定义区分三种行距语义：`0/variable` 使用每一行实际最高字符分别决定相邻基线，`1/auto` 使用整个文本对象中的最高字符统一决定所有基线，其他正数是固定 screen-point 行距。Node 优先读取 `LabelLineHeight`，Text 优先读取 `CaptionLineHeight`，再回退旧 `LineHeight`；没有任何字段时，标签缺省为 variable，自由文本缺省为 auto。
+18. ChemDraw SVG 保存连续的逻辑基线，比例为每 pt 对应 `2.6667` 个 SVG 用户单位。EMF 没有另一套行距规则，而是把同一组逻辑基线逐行独立量化成整数设备像素，因此相同逻辑行距在 EMF 记录中可交替相差 1 个设备像素；门禁应比较各基线量化后的坐标，不能要求每个相邻 EMF 差值完全相等。
+19. Auto 行距必须查看对象内全部 styled runs，不能只取首个 run。10 pt 实测基线步进为 Arial regular `11.5` pt、Times New Roman regular `11.65` pt、Calibri regular `12.25` pt；Arial bold 为 `11.75` pt、italic 为 `11.45` pt、bold italic 为 `11.75` pt。8/18/12 pt 混合字号对象取 18 pt run，得到 `20.7` pt。上下标 face 还会提高对象的统一 auto 行距。
+20. Variable 不是一个可被单一 `lineHeight` 完整表达的标量。连续行的步进由上一行字形下界、下一行字形上界和约 `0.1 em` 的净空组成；因此 `A→g`、`g→A`、`Q→A` 等方向可以不同。CCJS 用 `lineHeightMode` 明确区分 `fixed/auto/variable`，用 `lineHeight` 保存可用的默认步进，并用 `lineAdvances[i]` 明确保存第 i 行到第 i+1 行的实际步进。单行标签也保留 mode 和正数 `lineHeight`，只是没有第二条基线时不会表现出来；不得从恰好相同的数值反猜模式。
+21. 对本机 ChemDraw 安装目录中的 19 份 `.cds` 样式表进行静默规范化后，多数样式未写行距字段，应按上述官方缺省继承；`J. Het. Chem` 明确写出 `LabelLineHeight=6`、`CaptionLineHeight=7.10`。样式表省略字段不是固定 `1.15×字号` 的同义写法。
 
-对应回归测试覆盖显式/隐藏对象标签、自动/显式对象标签定位、缺省增强立体标签、楔形虚线节距、`HDot`、`HDash`、未连接 `MultiAttachment`、显式括号附件及 CDX 符号枚举；公共图像门禁继续负责验证这些语义的最终像素位置和尺寸。
+对应回归测试覆盖显式/隐藏对象标签、自动/显式对象标签定位、缺省增强立体标签、楔形虚线节距、`HDot`、`HDash`、未连接 `MultiAttachment`、显式括号附件、CDX 符号枚举，以及 fixed/auto/variable 行距、混合字号和逐行基线步进；公共图像门禁继续负责验证这些语义的最终像素位置和尺寸。行距字段在总账中暂时保持 `in-review`，直到 ChemSema SVG/EMF 与 ChemDraw 探针报告进入自动门禁后再升级为 `verified`。

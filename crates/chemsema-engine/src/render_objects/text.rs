@@ -88,6 +88,24 @@ pub(crate) fn render_text_object(
     let Some(line_height) = payload_number(&object.payload, "lineHeight") else {
         return;
     };
+    let line_advances = object
+        .payload
+        .extra
+        .get("lineAdvances")
+        .and_then(|value| value.as_array())
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(|value| value.as_f64())
+                .filter(|value| value.is_finite() && *value > 0.0)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let baseline_advance = |line_index: usize| -> f64 {
+        (0..line_index)
+            .map(|index| line_advances.get(index).copied().unwrap_or(line_height))
+            .sum()
+    };
     let Some(align) = payload_string(&object.payload, "align") else {
         return;
     };
@@ -113,7 +131,7 @@ pub(crate) fn render_text_object(
                 push_text_rotated(
                     out,
                     tx,
-                    ty + baseline_offset + index as f64 * line_height,
+                    ty + baseline_offset + baseline_advance(index),
                     Some(baseline_offset),
                     String::new(),
                     font_size,
@@ -136,7 +154,7 @@ pub(crate) fn render_text_object(
             push_text_rotated(
                 out,
                 tx,
-                ty + baseline_offset + index as f64 * line_height,
+                ty + baseline_offset + baseline_advance(index),
                 Some(baseline_offset),
                 line,
                 font_size,
@@ -166,7 +184,7 @@ pub(crate) fn render_text_object(
         push_text_rotated(
             out,
             tx,
-            ty + font_size * 0.82 + index as f64 * line_height,
+            ty + font_size * 0.82 + baseline_advance(index),
             Some(font_size * 0.82),
             line,
             font_size,

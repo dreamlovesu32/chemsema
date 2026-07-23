@@ -296,6 +296,10 @@ fn make_text_payload(
                 .unwrap_or(DEFAULT_TEXT_BLOCK_LINE_HEIGHT)
         )),
     );
+    // The editor currently exposes an explicit numeric line-spacing value.
+    // Committing that value therefore creates fixed semantics; imported
+    // auto/variable semantics remain intact until the user edits the object.
+    extra.insert("lineHeightMode".to_string(), json!("fixed"));
     extra.insert(
         "box".to_string(),
         json!([

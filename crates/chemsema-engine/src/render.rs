@@ -37,7 +37,7 @@ use contact::{
 };
 use legacy_render::render_legacy_molecule_object;
 use object_render::{
-    render_bracket_object, render_line_object, render_molecule_object,
+    render_bracket_object, render_curve_object, render_line_object, render_molecule_object,
     render_molecule_object_targets, render_shape_object, render_text_object,
 };
 use primitives::{
@@ -1072,6 +1072,7 @@ fn render_scene_object(
     match object.object_type.as_str() {
         "molecule" => render_molecule_object(out, document, object),
         "line" => render_line_object(out, document, object),
+        "curve" => render_curve_object(out, document, object),
         "text" => render_text_object(out, document, object),
         "shape" => render_shape_object(out, document, object),
         "bracket" | "symbol" => render_bracket_object(out, document, object),

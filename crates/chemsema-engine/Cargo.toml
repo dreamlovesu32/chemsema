@@ -12,6 +12,7 @@ homepage.workspace = true
 crate-type = ["rlib", "cdylib"]
 
 [dependencies]
+base64 = "0.22"
 chemsema-chemistry = { path = "../chemsema-chemistry" }
 chemsema-inchi = { path = "../chemsema-inchi" }
 encoding_rs = "0.8"

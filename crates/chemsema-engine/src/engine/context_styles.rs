@@ -1039,6 +1039,9 @@ fn expansion_atom_to_node(atom: &JsonValue, id: String, position: Point) -> Node
                 font_family: None,
                 fill: None,
                 font_size: None,
+                line_height: None,
+                line_height_mode: "variable".to_string(),
+                line_advances: Vec::new(),
                 glyph_polygons: Vec::new(),
                 glyph_clip_polygons: Vec::new(),
                 box_value: None,
@@ -1532,6 +1535,7 @@ fn apply_text_object_style(object: &mut SceneObject, command: &str, value: &str)
                 return false;
             };
             changed |= set_payload_number(&mut object.payload.extra, "lineHeight", line_height);
+            changed |= set_payload_string(&mut object.payload.extra, "lineHeightMode", "fixed");
         }
         "italic" => {
             let enabled = parse_enabled_value(value);

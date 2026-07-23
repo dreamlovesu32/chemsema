@@ -186,7 +186,7 @@ fn is_cdxml_charge_marker(chars: &[char], index: usize) -> bool {
     ) {
         return false;
     }
-    next.is_none() || next == Some(&'\n')
+    next.is_none() || next.is_some_and(|character| character.is_whitespace())
 }
 
 #[cfg(test)]
@@ -234,6 +234,24 @@ mod tests {
                 ("H", Some("normal")),
                 ("+", Some("superscript")),
                 ("\nN", Some("normal"))
+            ]
+        );
+    }
+
+    #[test]
+    fn chemical_runs_treat_charge_before_species_separator_as_token_terminal() {
+        let runs = expand_cdxml_chemical_run(&chemical_run("Et3NH+ Cl-"));
+        assert_eq!(
+            runs.iter()
+                .map(|run| (run.text.as_str(), run.script.as_deref()))
+                .collect::<Vec<_>>(),
+            vec![
+                ("Et", Some("normal")),
+                ("3", Some("subscript")),
+                ("NH", Some("normal")),
+                ("+", Some("superscript")),
+                (" Cl", Some("normal")),
+                ("-", Some("superscript")),
             ]
         );
     }

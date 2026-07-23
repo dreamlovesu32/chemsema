@@ -1,14 +1,29 @@
-use crate::{document_to_cdxml, parse_cdxml_document, ChemSemaDocument};
+use crate::{
+    document_to_cdxml, parse_cdxml_document, ChemSemaDocument, InterchangeDocument,
+    InterchangeObject, InterchangeProperty,
+};
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use serde_json::json;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write;
+use std::sync::OnceLock;
 
 const CDX_HEADER: &[u8; 22] = b"VjCD0100\x04\x03\x02\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00";
 const CDX_COORD_FACTOR: f64 = 65_536.0;
 
 pub fn parse_cdx_document(bytes: &[u8], title: Option<&str>) -> Result<ChemSemaDocument, String> {
-    let cdxml = cdx_to_cdxml(bytes)?;
+    let tree = CdxReader::new(bytes).read()?;
+    let cdxml = CdxmlWriter::new().write(&tree);
+    let interchange = interchange_object_from_cdx(&tree);
     let mut document = parse_cdxml_document(&cdxml, title)?;
+    document.interchange.insert(
+        "cdx".to_string(),
+        InterchangeDocument {
+            format: "cdx".to_string(),
+            version: Some("0100".to_string()),
+            root: interchange,
+        },
+    );
     document.document.meta["sourceFormat"] = json!("cdx");
     if let Some(import) = document.document.meta.get_mut("import") {
         import["cdx"] = json!({ "nativeImport": true });
@@ -18,7 +33,12 @@ pub fn parse_cdx_document(bytes: &[u8], title: Option<&str>) -> Result<ChemSemaD
 
 pub fn document_to_cdx(document: &ChemSemaDocument) -> Result<Vec<u8>, String> {
     let cdxml = document_to_cdxml(document);
-    cdxml_to_cdx(&cdxml)
+    let mut root = crate::cdxml::parse_xml_tree(&cdxml)?;
+    let source = document.interchange.get("cdx").map(|source| &source.root);
+    if let Some(source) = source {
+        overlay_unmodeled_cdx_values(&mut root, source);
+    }
+    CdxWriter::new(source).write(&root)
 }
 
 pub fn cdx_to_cdxml(bytes: &[u8]) -> Result<String, String> {
@@ -28,16 +48,224 @@ pub fn cdx_to_cdxml(bytes: &[u8]) -> Result<String, String> {
 
 pub fn cdxml_to_cdx(cdxml: &str) -> Result<Vec<u8>, String> {
     let root = crate::cdxml::parse_xml_tree(cdxml)?;
-    CdxWriter::new().write(&root)
+    CdxWriter::new(None).write(&root)
 }
 
 #[derive(Debug, Clone)]
 struct CdxNode {
-    name: &'static str,
+    name: String,
+    tag: u16,
+    id: u32,
     attrs: BTreeMap<String, String>,
+    properties: Vec<CdxRawProperty>,
     text_runs: Vec<CdxTextRun>,
     text: Option<String>,
     children: Vec<CdxNode>,
+}
+
+#[derive(Debug, Clone)]
+struct CdxRawProperty {
+    tag: u16,
+    data: Vec<u8>,
+}
+
+fn interchange_object_from_cdx(node: &CdxNode) -> InterchangeObject {
+    let mut properties = BTreeMap::new();
+    for (order, property) in node.properties.iter().enumerate() {
+        let (official_name, cdx_type) = official_property_info(property.tag)
+            .unwrap_or_else(|| (format!("tag_{:04X}", property.tag), "unknown".to_string()));
+        let lexical = if property.tag == 0x0700 {
+            node.text.clone().unwrap_or_default()
+        } else {
+            decode_property(property.tag, &property.data, None)
+                .map(|(_, value)| value)
+                .or_else(|| decode_official_lexical(&cdx_type, &property.data))
+                .or_else(|| node.attrs.get(&official_name).cloned())
+                .unwrap_or_default()
+        };
+        let storage_name = unique_property_storage_name(&properties, &official_name);
+        properties.insert(
+            storage_name,
+            InterchangeProperty {
+                name: official_name,
+                order,
+                value_type: Some(cdx_value_type(&cdx_type).to_string()),
+                value: lexical,
+                cdx_tag: Some(format!("0x{:04X}", property.tag)),
+                cdx_type: Some(cdx_type),
+                raw_base64: Some(BASE64.encode(&property.data)),
+            },
+        );
+    }
+    InterchangeObject {
+        name: node.name.clone(),
+        format_tag: Some(format!("0x{:04X}", node.tag)),
+        id: Some(node.id.to_string()),
+        properties,
+        text: node.text.clone().unwrap_or_default(),
+        children: node
+            .children
+            .iter()
+            .map(interchange_object_from_cdx)
+            .collect(),
+    }
+}
+
+fn unique_property_storage_name(
+    properties: &BTreeMap<String, InterchangeProperty>,
+    name: &str,
+) -> String {
+    if !properties.contains_key(name) {
+        return name.to_string();
+    }
+    let mut occurrence = 2usize;
+    loop {
+        let candidate = format!("{name}#{occurrence}");
+        if !properties.contains_key(&candidate) {
+            return candidate;
+        }
+        occurrence += 1;
+    }
+}
+
+fn official_property_info(tag: u16) -> Option<(String, String)> {
+    static SCHEMA: OnceLock<serde_json::Value> = OnceLock::new();
+    let schema = SCHEMA.get_or_init(|| {
+        serde_json::from_str(include_str!("../schemas/cdx-cdxml-official-v1.json"))
+            .expect("embedded official CDX/CDXML schema must be valid JSON")
+    });
+    schema
+        .pointer("/cdx/properties")?
+        .as_array()?
+        .iter()
+        .find(|property| {
+            property
+                .get("tag")
+                .and_then(serde_json::Value::as_str)
+                .and_then(|value| u16::from_str_radix(value.trim_start_matches("0x"), 16).ok())
+                == Some(tag)
+        })
+        .map(|property| {
+            (
+                property
+                    .get("cdxmlName")
+                    .and_then(serde_json::Value::as_str)
+                    .or_else(|| property.get("sdkName").and_then(serde_json::Value::as_str))
+                    .unwrap_or("unknown")
+                    .trim_start_matches("kCDXProp_")
+                    .to_string(),
+                property
+                    .get("cdxType")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("unknown")
+                    .to_string(),
+            )
+        })
+}
+
+fn official_property_tag_and_type(name: &str) -> Option<(u16, String)> {
+    static SCHEMA: OnceLock<serde_json::Value> = OnceLock::new();
+    let schema = SCHEMA.get_or_init(|| {
+        serde_json::from_str(include_str!("../schemas/cdx-cdxml-official-v1.json"))
+            .expect("embedded official CDX/CDXML schema must be valid JSON")
+    });
+    let property = schema
+        .pointer("/cdx/properties")?
+        .as_array()?
+        .iter()
+        .find(|property| {
+            property
+                .get("cdxmlName")
+                .and_then(serde_json::Value::as_str)
+                == Some(name)
+        })?;
+    let tag = property
+        .get("tag")
+        .and_then(serde_json::Value::as_str)
+        .and_then(parse_hex_u16)?;
+    let cdx_type = property
+        .get("cdxType")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("unknown")
+        .to_string();
+    Some((tag, cdx_type))
+}
+
+fn cdx_value_type(cdx_type: &str) -> &'static str {
+    match cdx_type {
+        "CDXBoolean" | "CDXBooleanImplied" => "boolean",
+        "INT8" | "UINT8" | "INT16" | "UINT16" | "INT32" | "UINT32" | "FLOAT64"
+        | "CDXCoordinate" => "number",
+        "CDXPoint2D" | "CDXPoint3D" | "CDXRectangle" | "CDXCurvePoints" | "CDXCurvePoints3D" => {
+            "number-list"
+        }
+        "CDXDate" => "date-time-tuple",
+        "CDXElementList" => "element-list",
+        "CDXGenericList" => "string-list",
+        "CDXObjectID" => "object-reference",
+        "CDXObjectIDArray" | "CDXObjectIDArrayWithCounts" => "object-reference-list",
+        "CDXRepresentsProperty" => "object-property-reference",
+        "CDXString" => "string",
+        _ => "binary",
+    }
+}
+
+fn decode_official_lexical(cdx_type: &str, data: &[u8]) -> Option<String> {
+    Some(match cdx_type {
+        "CDXString" => parse_cdx_string(data, None).text,
+        "CDXBoolean" => bool_from_bytes(data),
+        "CDXBooleanImplied" => "yes".to_string(),
+        "INT8" => read_i8(data)?.to_string(),
+        "UINT8" => read_u8(data)?.to_string(),
+        "INT16" => read_i16(data)?.to_string(),
+        "UINT16" => read_u16(data)?.to_string(),
+        "INT32" => read_i32(data)?.to_string(),
+        "UINT32" | "CDXObjectID" => read_u32(data)?.to_string(),
+        "FLOAT64" => fmt_num(read_f64(data)?),
+        "CDXCoordinate" => decode_coordinate(data)?,
+        "CDXPoint2D" => decode_point2d(data)?,
+        "CDXPoint3D" => decode_point3d(data)?,
+        "CDXRectangle" => decode_rectangle(data)?,
+        "CDXObjectIDArray" => decode_u32_array(data)?,
+        "CDXObjectIDArrayWithCounts" => decode_u32_counted_array(data)?,
+        "INT16ListWithCounts" => decode_i16_counted_list(data)?,
+        "CDXElementList" => decode_element_list(data)?,
+        "CDXCurvePoints" => decode_curve_points(data, 2)?,
+        "CDXCurvePoints3D" => decode_curve_points(data, 3)?,
+        "CDXDate" => decode_cdx_date(data)?,
+        "CDXRepresentsProperty" => decode_represents_property(data)?,
+        "CDXGenericList" => decode_generic_list(data)?,
+        _ => return None,
+    })
+}
+
+fn encode_official_lexical(cdx_type: &str, value: &str) -> Option<Vec<u8>> {
+    Some(match cdx_type {
+        "CDXString" => encode_plain_cdx_string(value),
+        "CDXBoolean" => vec![if yes(value) { 1 } else { 0 }],
+        "CDXBooleanImplied" if yes(value) => Vec::new(),
+        "INT8" => vec![value.parse::<i8>().ok()? as u8],
+        "UINT8" => vec![value.parse::<u8>().ok()?],
+        "INT16" => value.parse::<i16>().ok()?.to_le_bytes().to_vec(),
+        "UINT16" => value.parse::<u16>().ok()?.to_le_bytes().to_vec(),
+        "INT32" => value.parse::<i32>().ok()?.to_le_bytes().to_vec(),
+        "UINT32" | "CDXObjectID" => value.parse::<u32>().ok()?.to_le_bytes().to_vec(),
+        "FLOAT64" => value.parse::<f64>().ok()?.to_le_bytes().to_vec(),
+        "CDXCoordinate" => encode_coordinate(value)?,
+        "CDXPoint2D" => encode_point2d(value)?,
+        "CDXPoint3D" => encode_point3d(value)?,
+        "CDXRectangle" => encode_rectangle(value)?,
+        "CDXObjectIDArray" => encode_u32_array(value)?,
+        "CDXObjectIDArrayWithCounts" => encode_u32_counted_array(value)?,
+        "INT16ListWithCounts" => encode_i16_counted_list(value)?,
+        "CDXElementList" => encode_element_list(value)?,
+        "CDXCurvePoints" => encode_curve_points(value, 2)?,
+        "CDXCurvePoints3D" => encode_curve_points(value, 3)?,
+        "CDXDate" => encode_cdx_date(value)?,
+        "CDXRepresentsProperty" => encode_represents_property(value)?,
+        "CDXGenericList" => encode_generic_list(value)?,
+        _ => return None,
+    })
 }
 
 #[derive(Debug, Clone)]
@@ -53,6 +281,7 @@ struct CdxReader<'a> {
     bytes: &'a [u8],
     offset: usize,
     font_table: Option<FontTable>,
+    legacy_chemsema_object_tags: bool,
 }
 
 impl<'a> CdxReader<'a> {
@@ -61,6 +290,11 @@ impl<'a> CdxReader<'a> {
             bytes,
             offset: 0,
             font_table: None,
+            // ChemDraw 12 and ChemDraw 21 both write the long-established
+            // 0x801B..0x802B object registry (Arrow=0x8021).  A previous
+            // ChemSema beta followed the shifted static SDK table instead;
+            // its explicit marker is handled as a compatibility dialect.
+            legacy_chemsema_object_tags: true,
         }
     }
 
@@ -77,10 +311,19 @@ impl<'a> CdxReader<'a> {
     fn read_object(&mut self) -> Result<CdxNode, String> {
         let tag = self.read_u16()?;
         let id = self.read_u32()?;
-        let name = object_name(tag).unwrap_or("unknown");
+        let name = if self.legacy_chemsema_object_tags {
+            legacy_chemsema_object_name(tag).or_else(|| object_name(tag))
+        } else {
+            object_name(tag)
+        }
+        .unwrap_or("unknown")
+        .to_string();
         let mut node = CdxNode {
             name,
+            tag,
+            id,
             attrs: BTreeMap::new(),
+            properties: Vec::new(),
             text_runs: Vec::new(),
             text: None,
             children: Vec::new(),
@@ -99,6 +342,10 @@ impl<'a> CdxReader<'a> {
             }
             let len = self.read_property_len()?;
             let data = self.read_bytes(len)?;
+            node.properties.push(CdxRawProperty {
+                tag,
+                data: data.to_vec(),
+            });
             self.apply_property(&mut node, tag, data)?;
         }
         Ok(node)
@@ -124,19 +371,68 @@ impl<'a> CdxReader<'a> {
             node.text_runs = text.runs;
             return Ok(());
         }
+        if tag == 0x000E {
+            if let Some(value) = decode_represents_property(data) {
+                let mut parts = value.split_whitespace();
+                if let (Some(object), Some(property_tag)) = (parts.next(), parts.next()) {
+                    let attribute = parse_hex_u16(property_tag)
+                        .and_then(official_property_info)
+                        .map(|(name, _)| name)
+                        .unwrap_or_else(|| property_tag.to_string());
+                    let mut attrs = BTreeMap::new();
+                    attrs.insert("object".to_string(), object.to_string());
+                    attrs.insert("attribute".to_string(), attribute);
+                    node.children.push(CdxNode {
+                        name: "represent".to_string(),
+                        tag,
+                        id: 0,
+                        attrs,
+                        properties: Vec::new(),
+                        text_runs: Vec::new(),
+                        text: None,
+                        children: Vec::new(),
+                    });
+                }
+            }
+            return Ok(());
+        }
         if tag == 0x080A || tag == 0x080B {
             if let Some((font, face, size, color)) = decode_font_style(data) {
                 let prefix = if tag == 0x080A { "Label" } else { "Caption" };
-                node.attrs.insert(format!("{prefix}Font"), font.to_string());
-                node.attrs.insert(format!("{prefix}Face"), face.to_string());
-                node.attrs.insert(format!("{prefix}Size"), fmt_num(size));
-                node.attrs
-                    .insert(format!("{prefix}Color"), color.to_string());
+                if font != u16::MAX {
+                    node.attrs.insert(format!("{prefix}Font"), font.to_string());
+                }
+                if face != u16::MAX {
+                    node.attrs.insert(format!("{prefix}Face"), face.to_string());
+                }
+                if size != u16::MAX as f64 / 20.0 {
+                    node.attrs.insert(format!("{prefix}Size"), fmt_num(size));
+                }
+                if color != u16::MAX {
+                    node.attrs
+                        .insert(format!("{prefix}Color"), color.to_string());
+                }
             }
             return Ok(());
         }
         if let Some((name, value)) = decode_property(tag, data, self.font_table.as_ref()) {
+            if tag == 0x0003 && value.trim() == "ChemSema" {
+                self.legacy_chemsema_object_tags = true;
+            }
+            if tag == 0x0006
+                && value.starts_with("ChemSema/")
+                && value.contains("cdx-tags=official")
+            {
+                self.legacy_chemsema_object_tags = false;
+            }
+            if tag == 0x0006 && value.contains("cdx-tags=chemdraw") {
+                self.legacy_chemsema_object_tags = true;
+            }
             node.attrs.insert(name.to_string(), value);
+        } else if let Some((name, cdx_type)) = official_property_info(tag) {
+            if let Some(value) = decode_official_lexical(&cdx_type, data) {
+                node.attrs.insert(name, value);
+            }
         }
         Ok(())
     }
@@ -195,7 +491,7 @@ impl CdxmlWriter {
     }
 
     fn write_node(&self, out: &mut String, node: &CdxNode, indent: usize) {
-        let tag_name = node.name;
+        let tag_name = node.name.as_str();
         if tag_name == "fonttable" || tag_name == "colortable" {
             self.write_table_node(out, node, indent);
             return;
@@ -257,16 +553,24 @@ impl CdxmlWriter {
                 .max(start);
             let slice: String = text.chars().skip(start).take(end - start).collect();
             self.write_indent(out, indent);
-            writeln!(
-                out,
-                "<s font=\"{}\" size=\"{}\" face=\"{}\" color=\"{}\">{}</s>",
-                run.font,
-                fmt_num(run.size),
-                run.face,
-                run.color,
-                escape_text(&slice)
-            )
-            .expect("write styled text");
+            out.push_str("<s");
+            // CDXString uses 0xFFFF as an inheritance sentinel for each
+            // style component. Emitting it as a literal face (65535) turns
+            // every style bit on; omitting the CDXML attribute preserves the
+            // containing text/document style, as ChemDraw does.
+            if run.font != u16::MAX {
+                write!(out, " font=\"{}\"", run.font).expect("write text font");
+            }
+            if run.size != u16::MAX as f64 / 20.0 {
+                write!(out, " size=\"{}\"", fmt_num(run.size)).expect("write text size");
+            }
+            if run.face != u16::MAX {
+                write!(out, " face=\"{}\"", run.face).expect("write text face");
+            }
+            if run.color != u16::MAX {
+                write!(out, " color=\"{}\"", run.color).expect("write text color");
+            }
+            writeln!(out, ">{}</s>", escape_text(&slice)).expect("write styled text");
         }
     }
 
@@ -277,19 +581,23 @@ impl CdxmlWriter {
     }
 }
 
-struct CdxWriter {
+struct CdxWriter<'a> {
     next_id: u32,
+    source: Option<&'a InterchangeObject>,
 }
 
-impl CdxWriter {
-    fn new() -> Self {
-        Self { next_id: 5000 }
+impl<'a> CdxWriter<'a> {
+    fn new(source: Option<&'a InterchangeObject>) -> Self {
+        Self {
+            next_id: 5000,
+            source,
+        }
     }
 
     fn write(mut self, root: &crate::cdxml::xml::XmlNode) -> Result<Vec<u8>, String> {
         let mut out = Vec::new();
         out.extend_from_slice(CDX_HEADER);
-        self.write_object(root, &mut out)?;
+        self.write_object(root, self.source, &mut out)?;
         out.extend_from_slice(&[0, 0, 0, 0]);
         Ok(out)
     }
@@ -297,6 +605,7 @@ impl CdxWriter {
     fn write_object(
         &mut self,
         node: &crate::cdxml::xml::XmlNode,
+        source: Option<&InterchangeObject>,
         out: &mut Vec<u8>,
     ) -> Result<(), String> {
         let Some(tag) = object_tag(&node.name) else {
@@ -304,6 +613,7 @@ impl CdxWriter {
         };
         write_u16(out, tag);
         write_u32(out, self.xml_id(node));
+        let mut written_properties = BTreeSet::new();
 
         for (key, value) in &node.attrs {
             if key == "id" {
@@ -311,30 +621,173 @@ impl CdxWriter {
             }
             if let Some((prop_tag, bytes)) = encode_property(key, value) {
                 write_property(out, prop_tag, &bytes);
+                written_properties.insert(prop_tag);
             }
         }
 
         if node.name == "CDXML" {
             if let Some(color_table) = node.direct_children("colortable").next() {
                 write_property(out, 0x0300, &encode_color_table(color_table));
+                written_properties.insert(0x0300);
             }
             if let Some(font_table) = node.direct_children("fonttable").next() {
                 write_property(out, 0x0100, &encode_font_table(font_table));
+                written_properties.insert(0x0100);
             }
         }
 
         if node.name == "t" {
             write_property(out, 0x0700, &encode_cdx_string(node));
+            written_properties.insert(0x0700);
+        }
+        for represent in node.direct_children("represent") {
+            let Some(object) = represent.attr("object") else {
+                continue;
+            };
+            let Some(attribute) = represent.attr("attribute") else {
+                continue;
+            };
+            let Some((property_tag, _)) = official_property_tag_and_type(attribute) else {
+                continue;
+            };
+            let lexical = format!("{object} 0x{property_tag:04X}");
+            if let Some(bytes) = encode_represents_property(&lexical) {
+                write_property(out, 0x000E, &bytes);
+                written_properties.insert(0x000E);
+            }
         }
 
-        for child in &node.children {
-            if matches!(
-                child.name.as_str(),
-                "s" | "font" | "color" | "fonttable" | "colortable"
-            ) {
-                continue;
+        if let Some(source) = source {
+            for property in ordered_interchange_properties(source) {
+                let Some(prop_tag) = property.cdx_tag.as_deref().and_then(parse_hex_u16) else {
+                    continue;
+                };
+                if written_properties.contains(&prop_tag) {
+                    continue;
+                }
+                let encoded = (!property.value.is_empty())
+                    .then(|| {
+                        property
+                            .cdx_type
+                            .as_deref()
+                            .and_then(|kind| encode_official_lexical(kind, &property.value))
+                    })
+                    .flatten();
+                if let Some(bytes) = encoded.or_else(|| {
+                    property
+                        .raw_base64
+                        .as_deref()
+                        .and_then(|value| BASE64.decode(value).ok())
+                }) {
+                    write_property(out, prop_tag, &bytes);
+                }
             }
-            self.write_object(child, out)?;
+        }
+
+        let generated_children: Vec<_> = node
+            .children
+            .iter()
+            .filter(|child| !is_cdx_helper_name(&child.name))
+            .collect();
+        let mut used_generated = BTreeSet::new();
+        if let Some(source) = source {
+            for source_child in source
+                .children
+                .iter()
+                .filter(|child| !is_cdx_helper_name(&child.name))
+            {
+                let generated_index = generated_children
+                    .iter()
+                    .enumerate()
+                    .find(|(index, child)| {
+                        !used_generated.contains(index)
+                            && interchange_matches_xml(source_child, child)
+                    })
+                    .map(|(index, _)| index)
+                    .or_else(|| {
+                        generated_children
+                            .iter()
+                            .enumerate()
+                            .find(|(index, child)| {
+                                !used_generated.contains(index) && source_child.name == child.name
+                            })
+                            .map(|(index, _)| index)
+                    });
+                if let Some(index) = generated_index
+                    .filter(|index| object_tag(&generated_children[*index].name).is_some())
+                {
+                    used_generated.insert(index);
+                    self.write_object(generated_children[index], Some(source_child), out)?;
+                } else {
+                    self.write_raw_interchange_object(source_child, out)?;
+                }
+            }
+        }
+        for (index, child) in generated_children.into_iter().enumerate() {
+            if !used_generated.contains(&index) {
+                self.write_object(child, None, out)?;
+            }
+        }
+        write_u16(out, 0);
+        Ok(())
+    }
+
+    fn write_raw_interchange_object(
+        &mut self,
+        object: &InterchangeObject,
+        out: &mut Vec<u8>,
+    ) -> Result<(), String> {
+        let tag = object
+            .format_tag
+            .as_deref()
+            .and_then(parse_hex_u16)
+            .or_else(|| object_tag(&object.name))
+            .ok_or_else(|| format!("CDX object '{}' has no writable object tag", object.name))?;
+        write_u16(out, tag);
+        let id = object
+            .id
+            .as_deref()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or_else(|| {
+                let id = self.next_id;
+                self.next_id += 1;
+                id
+            });
+        write_u32(out, id);
+        for property in ordered_interchange_properties(object) {
+            let Some(prop_tag) = property.cdx_tag.as_deref().and_then(parse_hex_u16) else {
+                continue;
+            };
+            let bytes = (!property.value.is_empty())
+                .then(|| {
+                    property
+                        .cdx_type
+                        .as_deref()
+                        .and_then(|kind| encode_official_lexical(kind, &property.value))
+                })
+                .flatten()
+                .or_else(|| {
+                    property
+                        .raw_base64
+                        .as_deref()
+                        .and_then(|value| BASE64.decode(value).ok())
+                })
+                .ok_or_else(|| {
+                    format!(
+                        "CDX property {} on object {} has no valid rawBase64 payload",
+                        property.cdx_tag.as_deref().unwrap_or("unknown"),
+                        object.name
+                    )
+                })?;
+            write_property(out, prop_tag, &bytes);
+        }
+        for child in &object.children {
+            if !matches!(
+                child.name.as_str(),
+                "s" | "font" | "color" | "fonttable" | "colortable" | "represent"
+            ) {
+                self.write_raw_interchange_object(child, out)?;
+            }
         }
         write_u16(out, 0);
         Ok(())
@@ -347,6 +800,82 @@ impl CdxWriter {
             let id = self.next_id;
             self.next_id += 1;
             id
+        }
+    }
+}
+
+fn is_cdx_helper_name(name: &str) -> bool {
+    matches!(
+        name,
+        "s" | "font" | "color" | "fonttable" | "colortable" | "represent"
+    )
+}
+
+fn parse_hex_u16(value: &str) -> Option<u16> {
+    u16::from_str_radix(value.trim().trim_start_matches("0x"), 16).ok()
+}
+
+fn ordered_interchange_properties(object: &InterchangeObject) -> Vec<&InterchangeProperty> {
+    let mut properties: Vec<_> = object.properties.iter().collect();
+    properties.sort_by(|(left_key, left), (right_key, right)| {
+        left.order
+            .cmp(&right.order)
+            .then_with(|| left_key.cmp(right_key))
+    });
+    properties
+        .into_iter()
+        .map(|(_, property)| property)
+        .collect()
+}
+
+fn interchange_matches_xml(
+    source: &InterchangeObject,
+    generated: &crate::cdxml::xml::XmlNode,
+) -> bool {
+    if source.name != generated.name {
+        return false;
+    }
+    match (&source.id, generated.attr("id")) {
+        (Some(source_id), Some(generated_id)) => source_id == generated_id,
+        (None, None) => true,
+        _ => false,
+    }
+}
+
+fn overlay_unmodeled_cdx_values(
+    generated: &mut crate::cdxml::xml::XmlNode,
+    source: &InterchangeObject,
+) {
+    for property in source.properties.values() {
+        if property_tag(&property.name).is_none() && !property.value.is_empty() {
+            generated
+                .attrs
+                .insert(property.name.clone(), property.value.clone());
+        }
+    }
+    let mut matched = BTreeSet::new();
+    for child in &mut generated.children {
+        let index = source
+            .children
+            .iter()
+            .enumerate()
+            .find(|(index, candidate)| {
+                !matched.contains(index) && interchange_matches_xml(candidate, child)
+            })
+            .map(|(index, _)| index)
+            .or_else(|| {
+                source
+                    .children
+                    .iter()
+                    .enumerate()
+                    .find(|(index, candidate)| {
+                        !matched.contains(index) && candidate.name == child.name
+                    })
+                    .map(|(index, _)| index)
+            });
+        if let Some(index) = index {
+            matched.insert(index);
+            overlay_unmodeled_cdx_values(child, &source.children[index]);
         }
     }
 }
@@ -377,8 +906,11 @@ impl FontTable {
                 );
                 attrs.insert("name".to_string(), font.name);
                 CdxNode {
-                    name: "font",
+                    name: "font".to_string(),
+                    tag: 0,
+                    id: font.id as u32,
                     attrs,
+                    properties: Vec::new(),
                     text_runs: Vec::new(),
                     text: None,
                     children: Vec::new(),
@@ -386,8 +918,11 @@ impl FontTable {
             })
             .collect();
         CdxNode {
-            name: "fonttable",
+            name: "fonttable".to_string(),
+            tag: 0x0100,
+            id: 0,
             attrs: BTreeMap::new(),
+            properties: Vec::new(),
             text_runs: Vec::new(),
             text: None,
             children,
@@ -410,8 +945,11 @@ impl ColorTable {
                 attrs.insert("g".to_string(), fmt_num(g as f64 / 65_535.0));
                 attrs.insert("b".to_string(), fmt_num(b as f64 / 65_535.0));
                 CdxNode {
-                    name: "color",
+                    name: "color".to_string(),
+                    tag: 0,
+                    id: 0,
                     attrs,
+                    properties: Vec::new(),
                     text_runs: Vec::new(),
                     text: None,
                     children: Vec::new(),
@@ -419,8 +957,11 @@ impl ColorTable {
             })
             .collect();
         CdxNode {
-            name: "colortable",
+            name: "colortable".to_string(),
+            tag: 0x0300,
+            id: 0,
             attrs: BTreeMap::new(),
+            properties: Vec::new(),
             text_runs: Vec::new(),
             text: None,
             children,
@@ -544,8 +1085,8 @@ fn decode_property(
         PropertyKind::Coordinate => decode_coordinate(data)?,
         PropertyKind::Int8 => read_i8(data)?.to_string(),
         PropertyKind::UInt8 => read_u8(data)?.to_string(),
-        PropertyKind::Int16 => read_i16(data)?.to_string(),
-        PropertyKind::UInt16 => read_u16(data)?.to_string(),
+        PropertyKind::Int16 => read_i16_lossy(data)?.to_string(),
+        PropertyKind::UInt16 => read_u16_lossy(data)?.to_string(),
         PropertyKind::LineHeightInt16 => decode_line_height(read_i16(data)? as i64),
         PropertyKind::LineHeightUInt16 => decode_line_height(read_u16(data)? as i64),
         PropertyKind::Int32 => read_i32(data)?.to_string(),
@@ -751,10 +1292,11 @@ fn property_schema(tag: u16) -> Option<PropertySchema> {
         0x0A70 => ("PNG", PropertyKind::String),
         0x0A71 => ("JPEG", PropertyKind::String),
         0x0AB1 => ("Tail", PropertyKind::Coordinate),
-        0x0AF0 => ("TextFrame", PropertyKind::Rectangle),
-        0x0B80 => ("ExternalConnectionID", PropertyKind::UInt32),
-        0x0B81 => ("BracketedObjects", PropertyKind::ObjectIdArray),
-        0x0B83 => ("RepeatPattern", PropertyKind::String),
+        0x0B00 => ("TextFrame", PropertyKind::Rectangle),
+        0x0B80 => ("GeometricFeature", PropertyKind::Int8),
+        0x0B81 => ("RelationValue", PropertyKind::Float64),
+        0x0B82 => ("BasisObjects", PropertyKind::ObjectIdArray),
+        0x0B83 => ("ConstraintType", PropertyKind::Int8),
         0x0D06 => ("PositioningType", PropertyKind::Enum8(POSITIONING_TYPE)),
         0x0D07 => ("PositioningAngle", PropertyKind::Fixed16_16),
         0x0D08 => ("PositioningOffset", PropertyKind::Point2D),
@@ -883,10 +1425,11 @@ fn property_tag(name: &str) -> Option<u16> {
         "ArrowSource" => 0x0A3E,
         "ArrowTarget" => 0x0A3F,
         "Tail" => 0x0AB1,
-        "TextFrame" => 0x0AF0,
-        "ExternalConnectionID" => 0x0B80,
-        "BracketedObjects" => 0x0B81,
-        "RepeatPattern" => 0x0B83,
+        "TextFrame" => 0x0B00,
+        "GeometricFeature" => 0x0B80,
+        "RelationValue" => 0x0B81,
+        "BasisObjects" => 0x0B82,
+        "ConstraintType" => 0x0B83,
         "PositioningType" => 0x0D06,
         "PositioningAngle" => 0x0D07,
         "PositioningOffset" => 0x0D08,
@@ -895,8 +1438,19 @@ fn property_tag(name: &str) -> Option<u16> {
 }
 
 fn encode_property(name: &str, value: &str) -> Option<(u16, Vec<u8>)> {
-    let tag = property_tag(name)?;
-    let schema = property_schema(tag)?;
+    let (tag, official_type) = match property_tag(name) {
+        Some(tag) => (tag, None),
+        None => {
+            let (tag, kind) = official_property_tag_and_type(name)?;
+            (tag, Some(kind))
+        }
+    };
+    let Some(schema) = property_schema(tag) else {
+        return Some((
+            tag,
+            encode_official_lexical(official_type.as_deref()?, value)?,
+        ));
+    };
     let bytes = match schema.kind {
         PropertyKind::String => encode_plain_cdx_string(value),
         PropertyKind::Point2D => encode_point2d(value)?,
@@ -954,12 +1508,32 @@ fn object_name(tag: u16) -> Option<&'static str> {
         0x8009 => "embeddedobject",
         0x800A => "altgroup",
         0x800B => "templategrid",
+        0x800C => "regnum",
         0x800D => "scheme",
         0x800E => "step",
+        0x8010 => "spectrum",
         0x8011 => "objecttag",
+        0x8013 => "sequence",
+        0x8014 => "crossreference",
+        0x8015 => "splitter",
         0x8016 => "table",
         0x8017 => "bracketedgroup",
         0x8018 => "bracketattachment",
+        0x8019 => "crossingbond",
+        0x8020 => "border",
+        0x8021 => "geometry",
+        0x8022 => "constraint",
+        0x8023 => "tlcplate",
+        0x8024 => "tlclane",
+        0x8025 => "tlcspot",
+        0x8026 => "chemicalproperty",
+        0x8027 => "arrow",
+        _ => return None,
+    })
+}
+
+fn legacy_chemsema_object_name(tag: u16) -> Option<&'static str> {
+    Some(match tag {
         0x801B => "geometry",
         0x801C => "constraint",
         0x801D => "tlcplate",
@@ -968,6 +1542,7 @@ fn object_name(tag: u16) -> Option<&'static str> {
         0x8020 => "chemicalproperty",
         0x8021 => "arrow",
         0x8025 => "bioshape",
+        0x802A => "border",
         0x802B => "annotation",
         _ => return None,
     })
@@ -987,12 +1562,18 @@ fn object_tag(name: &str) -> Option<u16> {
         "embeddedobject" => 0x8009,
         "altgroup" => 0x800A,
         "templategrid" => 0x800B,
+        "regnum" => 0x800C,
         "scheme" => 0x800D,
         "step" => 0x800E,
+        "spectrum" => 0x8010,
         "objecttag" => 0x8011,
+        "sequence" => 0x8013,
+        "crossreference" => 0x8014,
+        "splitter" => 0x8015,
         "table" => 0x8016,
         "bracketedgroup" => 0x8017,
         "bracketattachment" => 0x8018,
+        "crossingbond" => 0x8019,
         "geometry" => 0x801B,
         "constraint" => 0x801C,
         "tlcplate" => 0x801D,
@@ -1000,8 +1581,7 @@ fn object_tag(name: &str) -> Option<u16> {
         "tlcspot" => 0x801F,
         "chemicalproperty" => 0x8020,
         "arrow" => 0x8021,
-        "bioshape" => 0x8025,
-        "annotation" => 0x802B,
+        "border" => 0x802A,
         _ => return None,
     })
 }
@@ -1279,6 +1859,14 @@ fn read_i16_lossy(data: &[u8]) -> Option<i16> {
     }
 }
 
+fn read_u16_lossy(data: &[u8]) -> Option<u16> {
+    if data.len() == 1 {
+        Some(data[0] as u16)
+    } else {
+        read_u16(data)
+    }
+}
+
 fn decode_coordinate(data: &[u8]) -> Option<String> {
     Some(fmt_num(read_i32(data)? as f64 / CDX_COORD_FACTOR))
 }
@@ -1381,6 +1969,94 @@ fn decode_u32_array(data: &[u8]) -> Option<String> {
             .collect::<Vec<_>>()
             .join(" "),
     )
+}
+
+fn decode_u32_counted_array(data: &[u8]) -> Option<String> {
+    let count = read_u16(data)? as usize;
+    let body = data.get(2..2 + count * 4)?;
+    decode_u32_array(body)
+}
+
+fn decode_element_list(data: &[u8]) -> Option<String> {
+    let signed_count = read_i16(data)?;
+    let count = signed_count.unsigned_abs() as usize;
+    let body = data.get(2..2 + count * 2)?;
+    let values = body
+        .chunks_exact(2)
+        .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]).to_string())
+        .collect::<Vec<_>>()
+        .join(" ");
+    Some(if signed_count < 0 {
+        format!("NOT {values}")
+    } else {
+        values
+    })
+}
+
+fn decode_curve_points(data: &[u8], dimensions: usize) -> Option<String> {
+    let count = read_u16(data)? as usize;
+    let body = data.get(2..2 + count * dimensions * 4)?;
+    let mut values = Vec::with_capacity(count * dimensions);
+    for point in body.chunks_exact(dimensions * 4) {
+        if dimensions == 2 {
+            values.extend(
+                decode_point2d(point)?
+                    .split_whitespace()
+                    .map(ToString::to_string),
+            );
+        } else {
+            values.extend(
+                decode_point3d(point)?
+                    .split_whitespace()
+                    .map(ToString::to_string),
+            );
+        }
+    }
+    Some(values.join(" "))
+}
+
+fn decode_cdx_date(data: &[u8]) -> Option<String> {
+    if data.len() < 14 {
+        return None;
+    }
+    Some(
+        data[..14]
+            .chunks_exact(2)
+            .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]).to_string())
+            .collect::<Vec<_>>()
+            .join(" "),
+    )
+}
+
+fn decode_represents_property(data: &[u8]) -> Option<String> {
+    if data.len() < 6 {
+        return None;
+    }
+    Some(format!(
+        "{} 0x{:04X}",
+        read_u32(data)?,
+        u16::from_le_bytes([data[4], data[5]])
+    ))
+}
+
+fn decode_generic_list(data: &[u8]) -> Option<String> {
+    let signed_count = read_i16(data)?;
+    let count = signed_count.unsigned_abs() as usize;
+    let mut offset = 2usize;
+    let mut values = Vec::with_capacity(count);
+    for _ in 0..count {
+        let len = read_u16(data.get(offset..)?)? as usize;
+        offset += 2;
+        let item = data.get(offset..offset + len)?;
+        offset += len;
+        values.push(parse_cdx_string(item, None).text);
+    }
+    let joined = values.join(" ");
+    Some(if signed_count < 0 {
+        format!("NOT {joined}")
+    } else {
+        joined
+    })
 }
 
 fn decode_i16_counted_list(data: &[u8]) -> Option<String> {
@@ -1520,6 +2196,104 @@ fn encode_u32_array(value: &str) -> Option<Vec<u8>> {
     let mut out = Vec::new();
     for part in value.split_whitespace() {
         write_u32(&mut out, part.parse().ok()?);
+    }
+    Some(out)
+}
+
+fn encode_u32_counted_array(value: &str) -> Option<Vec<u8>> {
+    let body = encode_u32_array(value)?;
+    let count = u16::try_from(body.len() / 4).ok()?;
+    let mut out = count.to_le_bytes().to_vec();
+    out.extend_from_slice(&body);
+    Some(out)
+}
+
+fn encode_element_list(value: &str) -> Option<Vec<u8>> {
+    let mut tokens = value.split_whitespace();
+    let excluded = tokens
+        .clone()
+        .next()
+        .is_some_and(|token| token.eq_ignore_ascii_case("NOT"));
+    if excluded {
+        tokens.next();
+    }
+    let values: Option<Vec<u16>> = tokens.map(|token| token.parse().ok()).collect();
+    let values = values?;
+    let count = i16::try_from(values.len()).ok()?;
+    let signed_count = if excluded { -count } else { count };
+    let mut out = signed_count.to_le_bytes().to_vec();
+    for value in values {
+        out.extend_from_slice(&value.to_le_bytes());
+    }
+    Some(out)
+}
+
+fn encode_curve_points(value: &str, dimensions: usize) -> Option<Vec<u8>> {
+    let values = parse_numbers(value)?;
+    if values.len() % dimensions != 0 {
+        return None;
+    }
+    let count = u16::try_from(values.len() / dimensions).ok()?;
+    let mut out = count.to_le_bytes().to_vec();
+    for point in values.chunks_exact(dimensions) {
+        let lexical = point
+            .iter()
+            .map(|value| fmt_num(*value))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let encoded = if dimensions == 2 {
+            encode_point2d(&lexical)?
+        } else {
+            encode_point3d(&lexical)?
+        };
+        out.extend_from_slice(&encoded);
+    }
+    Some(out)
+}
+
+fn encode_cdx_date(value: &str) -> Option<Vec<u8>> {
+    let values: Option<Vec<i16>> = value
+        .split_whitespace()
+        .map(|part| part.parse().ok())
+        .collect();
+    let values = values?;
+    if values.len() != 7 {
+        return None;
+    }
+    let mut out = Vec::with_capacity(14);
+    for value in values {
+        out.extend_from_slice(&value.to_le_bytes());
+    }
+    Some(out)
+}
+
+fn encode_represents_property(value: &str) -> Option<Vec<u8>> {
+    let mut parts = value.split_whitespace();
+    let object_id = parts.next()?.parse::<u32>().ok()?;
+    let property_tag = parse_hex_u16(parts.next()?)?;
+    let mut out = object_id.to_le_bytes().to_vec();
+    out.extend_from_slice(&property_tag.to_le_bytes());
+    Some(out)
+}
+
+fn encode_generic_list(value: &str) -> Option<Vec<u8>> {
+    let mut tokens = value.split_whitespace();
+    let excluded = tokens
+        .clone()
+        .next()
+        .is_some_and(|token| token.eq_ignore_ascii_case("NOT"));
+    if excluded {
+        tokens.next();
+    }
+    let values: Vec<&str> = tokens.collect();
+    let count = i16::try_from(values.len()).ok()?;
+    let mut out = (if excluded { -count } else { count })
+        .to_le_bytes()
+        .to_vec();
+    for value in values {
+        let encoded = encode_plain_cdx_string(value);
+        write_u16(&mut out, u16::try_from(encoded.len()).ok()?);
+        out.extend_from_slice(&encoded);
     }
     Some(out)
 }
@@ -1673,6 +2447,72 @@ fn charset_id(name: &str) -> u16 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cdx_string_ffff_style_components_remain_inherited() {
+        let text = CdxNode {
+            name: "t".to_string(),
+            tag: 0x8006,
+            id: 2,
+            attrs: BTreeMap::from([("id".to_string(), "2".to_string())]),
+            properties: Vec::new(),
+            text_runs: vec![CdxTextRun {
+                start: 0,
+                font: u16::MAX,
+                face: u16::MAX,
+                size: 20.0,
+                color: u16::MAX,
+            }],
+            text: Some("BINAP".to_string()),
+            children: Vec::new(),
+        };
+        let root = CdxNode {
+            name: "CDXML".to_string(),
+            tag: 0x8000,
+            id: 1,
+            attrs: BTreeMap::from([("id".to_string(), "1".to_string())]),
+            properties: Vec::new(),
+            text_runs: Vec::new(),
+            text: None,
+            children: vec![text],
+        };
+        let decoded = CdxmlWriter::new().write(&root);
+        assert!(decoded.contains("<s size=\"20\">BINAP</s>"));
+        assert!(!decoded.contains("65535"));
+    }
+
+    #[test]
+    fn cdx_font_style_ffff_components_remain_inherited() {
+        let mut cdx = CDX_HEADER.to_vec();
+        write_u16(&mut cdx, 0x8000);
+        write_u32(&mut cdx, 1);
+        write_property(
+            &mut cdx,
+            0x080B,
+            &[0xff, 0xff, 0xff, 0xff, 0xc8, 0x00, 0xff, 0xff],
+        );
+        write_u16(&mut cdx, 0);
+        write_u16(&mut cdx, 0);
+
+        let decoded = cdx_to_cdxml(&cdx).expect("font style should decode");
+        assert!(decoded.contains("CaptionSize=\"10\""));
+        assert!(!decoded.contains("CaptionFont="));
+        assert!(!decoded.contains("CaptionFace="));
+        assert!(!decoded.contains("CaptionColor="));
+        assert!(!decoded.contains("65535"));
+    }
+
+    #[test]
+    fn cdx_int16_properties_accept_legacy_single_byte_storage() {
+        assert_eq!(
+            decode_property(0x0402, &[7], None),
+            Some(("Element", "7".to_string()))
+        );
+        assert_eq!(
+            encode_property("Element", "7"),
+            Some((0x0402, 7_i16.to_le_bytes().to_vec()))
+        );
+    }
 
     #[test]
     fn cdx_roundtrip_imports_basic_molecule() {
@@ -2158,6 +2998,38 @@ mod tests {
     }
 
     #[test]
+    fn cdx_geometry_and_constraint_properties_use_the_official_tags_and_types() {
+        for (name, value, tag, bytes) in [
+            ("GeometricFeature", "3", 0x0B80, vec![3]),
+            (
+                "RelationValue",
+                "12.5",
+                0x0B81,
+                12.5_f64.to_le_bytes().to_vec(),
+            ),
+            (
+                "BasisObjects",
+                "17 23",
+                0x0B82,
+                [17_u32.to_le_bytes(), 23_u32.to_le_bytes()].concat(),
+            ),
+            ("ConstraintType", "2", 0x0B83, vec![2]),
+        ] {
+            let encoded = encode_property(name, value).expect("property should encode");
+            assert_eq!(encoded, (tag, bytes.clone()), "{name}={value}");
+            assert_eq!(
+                decode_property(tag, &bytes, None),
+                Some((name, value.to_string())),
+                "{name}={value}"
+            );
+        }
+
+        assert_eq!(property_tag("ExternalConnectionID"), None);
+        assert_eq!(property_tag("BracketedObjects"), None);
+        assert_eq!(property_tag("RepeatPattern"), None);
+    }
+
+    #[test]
     fn cdx_arrow_properties_follow_chemdraws_binary_enums_and_units() {
         for (name, value, tag, bytes) in [
             ("ArrowheadHead", "None", 0x0A35, vec![0, 0]),
@@ -2282,5 +3154,181 @@ mod tests {
     fn cdx_text_uses_utf8_when_valid_and_windows_1252_for_legacy_bytes() {
         assert_eq!(decode_text("11 °F".as_bytes(), None, None), "11 °F");
         assert_eq!(decode_text(b"11 \xB0F", None, None), "11 °F");
+    }
+
+    #[test]
+    fn chemdraw_object_tags_override_the_shifted_static_registry() {
+        assert_eq!(object_tag("geometry"), Some(0x801B));
+        assert_eq!(object_tag("constraint"), Some(0x801C));
+        assert_eq!(object_tag("tlcplate"), Some(0x801D));
+        assert_eq!(object_tag("tlclane"), Some(0x801E));
+        assert_eq!(object_tag("tlcspot"), Some(0x801F));
+        assert_eq!(object_tag("chemicalproperty"), Some(0x8020));
+        assert_eq!(object_tag("arrow"), Some(0x8021));
+        assert_eq!(object_tag("border"), Some(0x802A));
+        assert_eq!(legacy_chemsema_object_name(0x8021), Some("arrow"));
+
+        let chemdraw = r#"<CDXML CreationProgram="ChemSema" ModificationProgram="ChemSema/1.0.0-beta.1;cdx-tags=chemdraw"><geometry id="2" /></CDXML>"#;
+        let chemdraw_tree = CdxReader::new(&cdxml_to_cdx(chemdraw).unwrap())
+            .read()
+            .unwrap();
+        assert_eq!(chemdraw_tree.children[0].name, "geometry");
+
+        let mut shifted_beta = CDX_HEADER.to_vec();
+        write_u16(&mut shifted_beta, 0x8000);
+        write_u32(&mut shifted_beta, 1);
+        write_property(
+            &mut shifted_beta,
+            0x0006,
+            &encode_plain_cdx_string("ChemSema/1.0.0-beta.1;cdx-tags=official"),
+        );
+        write_u16(&mut shifted_beta, 0x8027);
+        write_u32(&mut shifted_beta, 2);
+        write_u16(&mut shifted_beta, 0);
+        write_u16(&mut shifted_beta, 0);
+        write_u16(&mut shifted_beta, 0);
+        assert_eq!(
+            CdxReader::new(&shifted_beta).read().unwrap().children[0].name,
+            "arrow"
+        );
+    }
+
+    #[test]
+    fn public_complex_cdx_types_follow_the_official_binary_layouts() {
+        for (kind, lexical) in [
+            ("CDXDate", "2026 7 23 9 30 45 125"),
+            ("CDXElementList", "9 17 35"),
+            ("CDXElementList", "NOT 9 17 35"),
+            ("CDXObjectIDArrayWithCounts", "1 2 3 4"),
+            ("CDXCurvePoints", "1 2 3 4"),
+            ("CDXCurvePoints3D", "1 2 3 4 5 6"),
+            ("CDXRepresentsProperty", "6 0x0421"),
+            ("CDXGenericList", "R X A"),
+            ("CDXGenericList", "NOT R X A"),
+        ] {
+            let bytes = encode_official_lexical(kind, lexical).expect("complex type encodes");
+            assert_eq!(
+                decode_official_lexical(kind, &bytes).as_deref(),
+                Some(lexical),
+                "{kind}"
+            );
+        }
+        assert_eq!(
+            encode_official_lexical("CDXElementList", "NOT 9 17 35").unwrap(),
+            vec![0xFD, 0xFF, 9, 0, 17, 0, 35, 0]
+        );
+        assert_eq!(
+            encode_official_lexical("CDXObjectIDArrayWithCounts", "1 2 3 4").unwrap()[..2],
+            [4, 0]
+        );
+        assert_eq!(
+            encode_official_lexical("CDXGenericList", "R X A").unwrap(),
+            vec![3, 0, 3, 0, 0, 0, b'R', 3, 0, 0, 0, b'X', 3, 0, 0, 0, b'A']
+        );
+    }
+
+    #[test]
+    fn repeated_cdx_properties_keep_order_values_and_distinct_json_keys() {
+        let mut cdx = CDX_HEADER.to_vec();
+        write_u16(&mut cdx, 0x8000);
+        write_u32(&mut cdx, 1);
+        write_property(&mut cdx, 0x0A86, &1.25_f64.to_le_bytes());
+        write_property(&mut cdx, 0x0A86, &2.5_f64.to_le_bytes());
+        write_u16(&mut cdx, 0);
+        write_u16(&mut cdx, 0);
+
+        let document = parse_cdx_document(&cdx, Some("repeated")).unwrap();
+        let properties = &document.interchange["cdx"].root.properties;
+        assert_eq!(properties["Spectrum_DataPoint"].value, "1.25");
+        assert_eq!(properties["Spectrum_DataPoint#2"].value, "2.5");
+        assert_eq!(
+            properties["Spectrum_DataPoint#2"].name,
+            "Spectrum_DataPoint"
+        );
+
+        let saved = document_to_cdx(&document).unwrap();
+        let reopened = parse_cdx_document(&saved, Some("repeated")).unwrap();
+        let properties = &reopened.interchange["cdx"].root.properties;
+        assert_eq!(properties["Spectrum_DataPoint"].value, "1.25");
+        assert_eq!(properties["Spectrum_DataPoint#2"].value, "2.5");
+    }
+
+    #[test]
+    fn unknown_cdx_objects_keep_their_position_tag_and_payload() {
+        let mut cdx = CDX_HEADER.to_vec();
+        write_u16(&mut cdx, 0x8000);
+        write_u32(&mut cdx, 1);
+        for (tag, id) in [(0x8002, 2), (0xC001, 3), (0x8001, 4)] {
+            write_u16(&mut cdx, tag);
+            write_u32(&mut cdx, id);
+            if tag == 0xC001 {
+                write_property(&mut cdx, 0x4001, &[1, 2, 3, 4]);
+            }
+            write_u16(&mut cdx, 0);
+        }
+        write_u16(&mut cdx, 0);
+        write_u16(&mut cdx, 0);
+
+        let document = parse_cdx_document(&cdx, Some("unknown object")).unwrap();
+        let saved = document_to_cdx(&document).unwrap();
+        let reopened = parse_cdx_document(&saved, Some("unknown object")).unwrap();
+        let children: Vec<_> = reopened.interchange["cdx"]
+            .root
+            .children
+            .iter()
+            .filter(|child| {
+                child
+                    .format_tag
+                    .as_deref()
+                    .and_then(parse_hex_u16)
+                    .is_some_and(is_object_tag)
+            })
+            .collect();
+        assert_eq!(
+            children
+                .iter()
+                .map(|child| child.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["group", "unknown", "page"]
+        );
+        assert_eq!(children[1].format_tag.as_deref(), Some("0xC001"));
+        assert_eq!(
+            children[1].properties["tag_4001"].raw_base64.as_deref(),
+            Some("AQIDBA==")
+        );
+    }
+
+    #[test]
+    fn cdx_official_properties_and_objects_are_editable_and_lossless_in_ccjs() {
+        let mut cdx = CDX_HEADER.to_vec();
+        write_u16(&mut cdx, 0x8000);
+        write_u32(&mut cdx, 1);
+        write_property(&mut cdx, 0x000B, b"CAS-1");
+        write_u16(&mut cdx, 0x800C);
+        write_u32(&mut cdx, 2);
+        write_property(&mut cdx, 0x000C, b"CAS");
+        write_u16(&mut cdx, 0);
+        write_u16(&mut cdx, 0);
+        write_u16(&mut cdx, 0);
+
+        let mut document = parse_cdx_document(&cdx, Some("registry")).expect("CDX parses");
+        let source = document.interchange.get("cdx").expect("CDX tree");
+        assert_eq!(source.root.properties["RegistryNumber"].value, "CAS-1");
+        assert_eq!(source.root.children[0].name, "regnum");
+        assert_eq!(
+            source.root.children[0].properties["RegistryAuthority"].value,
+            "CAS"
+        );
+        document
+            .set_interchange_property("cdx", &[], "RegistryNumber", "CAS-2")
+            .expect("public interchange edit API updates a CDX field");
+
+        let saved = document_to_cdx(&document).expect("edited CDX saves");
+        let reopened = CdxReader::new(&saved).read().expect("saved CDX reopens");
+        assert_eq!(
+            reopened.attrs.get("RegistryNumber").map(String::as_str),
+            Some("CAS-2")
+        );
+        assert!(reopened.children.iter().any(|child| child.name == "regnum"));
     }
 }

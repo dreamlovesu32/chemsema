@@ -269,8 +269,8 @@ mod tests {
     fn desktop_emf_export_writes_an_enhanced_metafile() {
         let document_json = serde_json::to_string(&chemsema_engine::ChemSemaDocument::blank())
             .expect("blank document should serialize");
-        let path = std::env::temp_dir()
-            .join(format!("chemsema-desktop-emf-{}.emf", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("chemsema-desktop-emf-{}.emf", std::process::id()));
         let payload = NativeClipboardWritePayload {
             chemsema_fragment_json: None,
             chemsema_document_json: Some(document_json),

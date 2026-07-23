@@ -479,14 +479,29 @@ pub(super) fn push_text_rotated(
     font_family: Option<String>,
     fill: Option<String>,
     text_anchor: Option<String>,
-    runs: Vec<crate::LabelRun>,
+    mut runs: Vec<crate::LabelRun>,
     object_id: Option<String>,
     rotate: f64,
     rotate_center: Option<Point>,
 ) {
+    let underline_segments = chemdraw_text_underline_segments(
+        x,
+        y,
+        font_size,
+        text_anchor.as_deref(),
+        fill.as_deref(),
+        &runs,
+        rotate,
+        rotate_center,
+    );
+    for run in &mut runs {
+        if run.underline == Some(true) {
+            run.underline = Some(false);
+        }
+    }
     out.push(RenderPrimitive::Text {
         role: RenderRole::DocumentText,
-        object_id,
+        object_id: object_id.clone(),
         node_id: None,
         x,
         y,
@@ -504,6 +519,89 @@ pub(super) fn push_text_rotated(
         rotate,
         rotate_center,
     });
+    for (from, to, stroke) in underline_segments {
+        out.push(RenderPrimitive::Line {
+            role: RenderRole::DocumentText,
+            object_id: object_id.clone(),
+            bond_id: None,
+            from,
+            to,
+            stroke,
+            stroke_width: 0.4,
+            dash_array: Vec::new(),
+        });
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn chemdraw_text_underline_segments(
+    x: f64,
+    y: f64,
+    fallback_font_size: f64,
+    text_anchor: Option<&str>,
+    fallback_fill: Option<&str>,
+    runs: &[crate::LabelRun],
+    rotate: f64,
+    rotate_center: Option<Point>,
+) -> Vec<(Point, Point, String)> {
+    if !runs.iter().any(|run| run.underline == Some(true)) {
+        return Vec::new();
+    }
+    let widths = runs
+        .iter()
+        .map(|run| {
+            let font_size = run.font_size.unwrap_or(fallback_font_size)
+                * crate::shared_script_scale_factor(run.script.as_deref());
+            run.text
+                .chars()
+                .filter(|character| !matches!(character, '\r' | '\n'))
+                .map(|character| crate::shared_estimated_char_width(character, font_size))
+                .sum::<f64>()
+        })
+        .collect::<Vec<_>>();
+    let total_width = widths.iter().sum::<f64>();
+    let mut cursor = match text_anchor {
+        Some("middle") => x - total_width * 0.5,
+        Some("end") => x - total_width,
+        _ => x,
+    };
+    let center = rotate_center.unwrap_or(Point::new(x, y));
+    let rotate_point = |point: Point| {
+        if rotate.abs() <= crate::EPSILON {
+            return point;
+        }
+        let radians = rotate.to_radians();
+        let dx = point.x - center.x;
+        let dy = point.y - center.y;
+        Point::new(
+            center.x + dx * radians.cos() - dy * radians.sin(),
+            center.y + dx * radians.sin() + dy * radians.cos(),
+        )
+    };
+    let mut segments = Vec::new();
+    for (run, width) in runs.iter().zip(widths) {
+        if run.underline == Some(true) && width > crate::EPSILON {
+            let base_font_size = run.font_size.unwrap_or(fallback_font_size);
+            let baseline_shift = crate::shared_script_baseline_shift_em_for_face(
+                run.script.as_deref(),
+                run.font_weight,
+                run.font_family.as_deref(),
+                base_font_size,
+            ) * base_font_size;
+            let underline_y = y + baseline_shift + 0.8;
+            segments.push((
+                rotate_point(Point::new(cursor, underline_y)),
+                rotate_point(Point::new(cursor + width, underline_y)),
+                run.fill
+                    .as_deref()
+                    .or(fallback_fill)
+                    .unwrap_or("#000000")
+                    .to_string(),
+            ));
+        }
+        cursor += width;
+    }
+    segments
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -541,4 +639,98 @@ pub(super) fn push_text_for_node(
         rotate: 0.0,
         rotate_center: None,
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn assert_close(actual: f64, expected: f64) {
+        assert!(
+            (actual - expected).abs() < 1.0e-9,
+            "expected {expected}, got {actual}"
+        );
+    }
+
+    #[test]
+    fn chemdraw_underlines_use_fixed_geometry_and_run_advance() {
+        let runs = vec![
+            crate::LabelRun {
+                text: "A".to_string(),
+                font_size: Some(10.0),
+                ..Default::default()
+            },
+            crate::LabelRun {
+                text: "NH".to_string(),
+                font_size: Some(10.0),
+                fill: Some("#123456".to_string()),
+                underline: Some(true),
+                ..Default::default()
+            },
+        ];
+        let prefix_width = crate::shared_estimated_char_width('A', 10.0);
+        let underlined_width = crate::shared_estimated_char_width('N', 10.0)
+            + crate::shared_estimated_char_width('H', 10.0);
+        let total_width = prefix_width + underlined_width;
+
+        let segments = chemdraw_text_underline_segments(
+            50.0,
+            20.0,
+            12.0,
+            Some("middle"),
+            Some("#000000"),
+            &runs,
+            0.0,
+            None,
+        );
+
+        assert_eq!(segments.len(), 1);
+        let (from, to, stroke) = &segments[0];
+        assert_close(from.x, 50.0 - total_width * 0.5 + prefix_width);
+        assert_close(to.x, from.x + underlined_width);
+        assert_close(from.y, 20.8);
+        assert_close(to.y, 20.8);
+        assert_eq!(stroke, "#123456");
+    }
+
+    #[test]
+    fn push_text_emits_underlines_as_lines_and_clears_text_decoration() {
+        let mut primitives = Vec::new();
+        push_text(
+            &mut primitives,
+            5.0,
+            10.0,
+            None,
+            "N".to_string(),
+            10.0,
+            None,
+            Some("#000000".to_string()),
+            None,
+            vec![crate::LabelRun {
+                text: "N".to_string(),
+                underline: Some(true),
+                ..Default::default()
+            }],
+            Some("text-1".to_string()),
+        );
+
+        assert_eq!(primitives.len(), 2);
+        match &primitives[0] {
+            RenderPrimitive::Text { runs, .. } => assert_eq!(runs[0].underline, Some(false)),
+            other => panic!("expected text primitive, got {other:?}"),
+        }
+        match &primitives[1] {
+            RenderPrimitive::Line {
+                stroke_width,
+                from,
+                to,
+                ..
+            } => {
+                assert_close(*stroke_width, 0.4);
+                assert_close(from.y, 10.8);
+                assert_close(to.y, 10.8);
+            }
+            other => panic!("expected underline line primitive, got {other:?}"),
+        }
+    }
 }

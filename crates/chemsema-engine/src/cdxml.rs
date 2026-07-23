@@ -1,7 +1,8 @@
 use crate::{
     Bond, BondLineStyles, BondLineWeights, BondStereo, ChemSemaDocument, DocumentInfo,
-    DocumentStyleInfo, DocumentTextStyle, DoubleBond, FormatInfo, LabelRun, MoleculeFragment, Node,
-    NodeLabel, ObjectPayload, Page, Resource, ResourceData, SceneObject, Transform, EPSILON,
+    DocumentStyleInfo, DocumentTextStyle, DoubleBond, FormatInfo, InterchangeDocument,
+    InterchangeObject, InterchangeProperty, LabelRun, MoleculeFragment, Node, NodeLabel,
+    ObjectPayload, Page, Resource, ResourceData, SceneObject, Transform, EPSILON,
 };
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -15,8 +16,8 @@ pub(crate) mod xml;
 use self::colors::CdxmlColorTable;
 pub use self::export::document_to_cdxml;
 use self::import_objects::{
-    append_bracket_objects, append_line_objects, append_orbital_shape_objects,
-    append_shape_objects, append_synthesized_bond_query_text_objects,
+    append_bracket_objects, append_curve_objects, append_line_objects,
+    append_orbital_shape_objects, append_shape_objects, append_synthesized_bond_query_text_objects,
     append_synthesized_enhanced_stereo_text_objects, append_table_shape_objects,
     append_text_objects, append_tlc_plate_shape_objects,
 };
@@ -135,19 +136,81 @@ fn parse_cdxml_line_height(value: Option<&str>) -> Option<CdxmlLineHeight> {
     }
 }
 
-fn resolved_cdxml_label_line_height(
+#[derive(Debug, Clone, PartialEq)]
+struct ResolvedCdxmlLineSpacing {
+    line_height: f64,
+    line_advances: Vec<f64>,
+    mode: &'static str,
+}
+
+fn chemdraw_auto_run_line_height(run: &LabelRun, fallback_font_size: f64) -> f64 {
+    let size = run
+        .font_size
+        .filter(|value| value.is_finite() && *value > 0.0)
+        .unwrap_or(fallback_font_size);
+    let family = run.font_family.as_deref().unwrap_or("Arial");
+    let mut ratio = match family.to_ascii_lowercase().as_str() {
+        // Measured from independent ChemDraw SVG baselines. These are font
+        // metrics, not document- or molecule-specific exceptions.
+        "times new roman" => 1.165,
+        "calibri" => 1.225,
+        _ => 1.15,
+    };
+    let bold = run.font_weight.unwrap_or(400) >= 600;
+    let italic = run.font_style.as_deref() == Some("italic");
+    if bold {
+        ratio += 0.025;
+    } else if italic {
+        ratio -= 0.005;
+    }
+    match run.script.as_deref() {
+        Some("superscript") => ratio += if bold { 0.27 } else { 0.265 },
+        Some("subscript") => ratio += if bold { 0.17 } else { 0.165 },
+        _ => {}
+    }
+    size * ratio
+}
+
+fn chemdraw_auto_text_line_height(fallback_font_size: f64, runs: &[LabelRun]) -> f64 {
+    runs.iter()
+        .map(|run| chemdraw_auto_run_line_height(run, fallback_font_size))
+        .fold(fallback_font_size * 1.15, f64::max)
+}
+
+fn resolved_cdxml_label_line_spacing(
     text: &XmlNode,
     defaults: CdxmlDefaults,
     font_size: f64,
-) -> f64 {
+    runs: &[LabelRun],
+    line_runs: &[Vec<LabelRun>],
+) -> ResolvedCdxmlLineSpacing {
     let value = parse_cdxml_line_height(text.attr("LabelLineHeight"))
         .or_else(|| parse_cdxml_line_height(text.attr("LineHeight")))
         .or(defaults.label_line_height)
         .or(defaults.line_height)
         .unwrap_or(CdxmlLineHeight::Variable);
     match value {
-        CdxmlLineHeight::Fixed(value) if value > 1.0 => value,
-        _ => crate::molecule_label_line_advance(font_size),
+        CdxmlLineHeight::Fixed(value) if value > 1.0 => ResolvedCdxmlLineSpacing {
+            line_height: value,
+            line_advances: Vec::new(),
+            mode: "fixed",
+        },
+        CdxmlLineHeight::Auto => ResolvedCdxmlLineSpacing {
+            line_height: chemdraw_auto_text_line_height(font_size, runs),
+            line_advances: Vec::new(),
+            mode: "auto",
+        },
+        _ => {
+            let line_advances = crate::variable_text_line_advances(line_runs, font_size);
+            ResolvedCdxmlLineSpacing {
+                line_height: line_advances
+                    .first()
+                    .copied()
+                    .unwrap_or_else(|| crate::molecule_label_line_advance(font_size)),
+                line_advances,
+                mode: "variable",
+            }
+        }
     }
 }
 
@@ -173,10 +236,16 @@ fn imported_document_text_style(
     color: u32,
     colors: &CdxmlColorTable,
     fonts: &BTreeMap<String, String>,
+    line_height: CdxmlLineHeight,
 ) -> DocumentTextStyle {
     let font = font.to_string();
     let color = color.to_string();
     let run = label_source_run("", face, &font, &color, size, colors, fonts);
+    let (line_height, line_height_mode) = match line_height {
+        CdxmlLineHeight::Fixed(value) if value > 1.0 => (value, "fixed"),
+        CdxmlLineHeight::Variable => (crate::molecule_label_line_advance(size), "variable"),
+        _ => (chemdraw_auto_run_line_height(&run, size), "auto"),
+    };
     DocumentTextStyle {
         font_family: run.font_family.unwrap_or_else(|| "Arial".to_string()),
         font_size: run.font_size.unwrap_or(size),
@@ -187,11 +256,14 @@ fn imported_document_text_style(
         outline: run.outline.unwrap_or(false),
         shadow: run.shadow.unwrap_or(false),
         script: run.script.unwrap_or_else(|| "normal".to_string()),
+        line_height: round2(line_height),
+        line_height_mode: line_height_mode.to_string(),
     }
 }
 
 pub fn parse_cdxml_document(cdxml: &str, title: Option<&str>) -> Result<ChemSemaDocument, String> {
     let root = parse_xml_tree(cdxml)?;
+    let source_tree = interchange_object_from_xml(&root);
     let defaults = cdxml_defaults(&root);
     let colors = CdxmlColorTable::from_cdxml(&root);
     let fonts = cdxml_font_table(&root);
@@ -263,6 +335,7 @@ pub fn parse_cdxml_document(cdxml: &str, title: Option<&str>) -> Result<ChemSema
         }
     }
     append_line_objects(&root, &mut objects, &mut styles, defaults, &colors);
+    append_curve_objects(&root, &mut objects, &mut styles, defaults, &colors);
     append_shape_objects(&root, &mut objects, &mut styles, defaults, &colors);
     append_orbital_shape_objects(&root, &mut objects, &mut styles, defaults, &colors);
     append_table_shape_objects(&root, &mut objects, &mut styles, defaults, &colors);
@@ -302,6 +375,10 @@ pub fn parse_cdxml_document(cdxml: &str, title: Option<&str>) -> Result<ChemSema
         defaults.color,
         &colors,
         &fonts,
+        defaults
+            .label_line_height
+            .or(defaults.line_height)
+            .unwrap_or(CdxmlLineHeight::Variable),
     );
     let caption_style = imported_document_text_style(
         defaults.caption_font,
@@ -310,6 +387,10 @@ pub fn parse_cdxml_document(cdxml: &str, title: Option<&str>) -> Result<ChemSema
         defaults.color,
         &colors,
         &fonts,
+        defaults
+            .caption_line_height
+            .or(defaults.line_height)
+            .unwrap_or(CdxmlLineHeight::Auto),
     );
     let mut document = ChemSemaDocument {
         format: FormatInfo {
@@ -384,12 +465,218 @@ pub fn parse_cdxml_document(cdxml: &str, title: Option<&str>) -> Result<ChemSema
         styles,
         objects,
         resources,
+        interchange: BTreeMap::from([(
+            "cdxml".to_string(),
+            InterchangeDocument {
+                format: "cdxml".to_string(),
+                version: root.attr("ChemDrawVersion").map(ToString::to_string),
+                root: source_tree,
+            },
+        )]),
     };
     crate::normalize_text_object_payloads(&mut document);
     crate::normalize_shape_object_payloads(&mut document);
     crate::normalize_arrow_object_payloads(&mut document);
     crate::normalize_fragment_label_payloads(&mut document);
+    restore_authored_multiline_character_attachment_geometry(&mut document);
     Ok(document)
+}
+
+fn restore_authored_multiline_character_attachment_geometry(document: &mut ChemSemaDocument) {
+    fn collect_resource_origins(
+        objects: &[SceneObject],
+        parent: [f64; 2],
+        origins: &mut BTreeMap<String, [f64; 2]>,
+    ) {
+        for object in objects {
+            let origin = [
+                parent[0] + object.transform.translate[0],
+                parent[1] + object.transform.translate[1],
+            ];
+            if let Some(resource_ref) = object.payload.resource_ref.as_ref() {
+                origins.insert(resource_ref.clone(), origin);
+            }
+            collect_resource_origins(&object.children, origin, origins);
+        }
+    }
+
+    let mut origins = BTreeMap::new();
+    collect_resource_origins(&document.objects, [0.0, 0.0], &mut origins);
+    for (resource_id, resource) in &mut document.resources {
+        let Some(origin) = origins.get(resource_id).copied() else {
+            continue;
+        };
+        let Some(fragment) = resource.data.as_fragment_mut() else {
+            continue;
+        };
+        for node in &mut fragment.nodes {
+            let has_character_attachment = fragment.bonds.iter().any(|bond| {
+                (bond.begin == node.id
+                    && bond
+                        .meta
+                        .pointer("/endpointAttachments/begin/characterIndex")
+                        .is_some())
+                    || (bond.end == node.id
+                        && bond
+                            .meta
+                            .pointer("/endpointAttachments/end/characterIndex")
+                            .is_some())
+            });
+            let Some(label) = node.label.as_mut().filter(|label| {
+                has_character_attachment
+                    && label
+                        .source_text
+                        .as_deref()
+                        .unwrap_or(&label.text)
+                        .contains('\n')
+            }) else {
+                continue;
+            };
+            let imported = label.meta.pointer("/import/cdxml");
+            let text_position = imported
+                .and_then(|value| value.get("textPosition"))
+                .and_then(Value::as_array)
+                .filter(|values| values.len() >= 2)
+                .and_then(|values| Some([values[0].as_f64()?, values[1].as_f64()?]));
+            let imported_bbox = imported
+                .and_then(|value| value.get("boundingBox"))
+                .and_then(Value::as_array)
+                .filter(|values| values.len() >= 4)
+                .and_then(|values| {
+                    Some([
+                        values[0].as_f64()?,
+                        values[1].as_f64()?,
+                        values[2].as_f64()?,
+                        values[3].as_f64()?,
+                    ])
+                });
+            if let (Some(current), Some(authored)) = (label.position, text_position) {
+                let target = [
+                    round2(authored[0] - origin[0]),
+                    round2(authored[1] - origin[1]),
+                ];
+                translate_node_label_geometry(
+                    label,
+                    target[0] - current[0],
+                    target[1] - current[1],
+                );
+                label.position = Some(target);
+            }
+            if let Some([x1, y1, x2, y2]) = imported_bbox {
+                let bbox = [
+                    round2(x1 - origin[0]),
+                    round2(y1 - origin[1]),
+                    round2(x2 - origin[0]),
+                    round2(y2 - origin[1]),
+                ];
+                label.box_field = Some(bbox);
+                label.box_value = Some(bbox);
+            }
+            let font_size = label
+                .font_size
+                .unwrap_or(crate::DEFAULT_MOLECULE_LABEL_FONT_SIZE_PT);
+            let margin_width = label
+                .meta
+                .pointer("/import/cdxml/marginWidth")
+                .and_then(Value::as_f64)
+                .unwrap_or(crate::DEFAULT_BOND_MARGIN_WIDTH_PT.value());
+            let mut glyph_start = label.position.unwrap_or(node.position);
+            if matches!(label.align.as_deref(), Some("right" | "center")) {
+                if let Some(bbox) = label.bbox() {
+                    glyph_start[0] = bbox[0];
+                }
+            }
+            let geometry = crate::glyph_kernel::build_label_glyph_geometry_with_profile(
+                if label.line_runs.is_empty() {
+                    &label.runs
+                } else {
+                    &[]
+                },
+                &label.line_runs,
+                glyph_start,
+                label.bbox(),
+                font_size,
+                label
+                    .line_height
+                    .unwrap_or_else(|| crate::molecule_label_line_advance(font_size)),
+                &label.line_advances,
+                node.position,
+                crate::GlyphClipProfile::from_margin_width(margin_width),
+            );
+            label.glyph_polygons = geometry.glyph_polygons;
+            label.glyph_clip_polygons = geometry.clip_polygons;
+        }
+    }
+}
+
+fn interchange_object_from_xml(node: &XmlNode) -> InterchangeObject {
+    InterchangeObject {
+        name: node.name.clone(),
+        format_tag: None,
+        id: node.attr("id").map(ToString::to_string),
+        properties: node
+            .attrs
+            .iter()
+            .filter(|(name, _)| retain_cdxml_interchange_property(node, name))
+            .enumerate()
+            .map(|(order, (name, value))| {
+                (
+                    name.clone(),
+                    InterchangeProperty {
+                        name: name.clone(),
+                        order,
+                        value: value.clone(),
+                        value_type: Some(cdxml_lexical_type(value).to_string()),
+                        cdx_tag: None,
+                        cdx_type: None,
+                        raw_base64: None,
+                    },
+                )
+            })
+            .collect(),
+        text: node.text.clone(),
+        children: node
+            .children
+            .iter()
+            .map(interchange_object_from_xml)
+            .collect(),
+    }
+}
+
+fn retain_cdxml_interchange_property(node: &XmlNode, name: &str) -> bool {
+    // CDX/CDXML face is a transport bitmask.  CCJS persists its independent
+    // style meanings (weight, italic, underline, outline, shadow, script) and
+    // reconstructs face on export; retaining the mask would create a second,
+    // conflicting authority.
+    if matches!(name, "face" | "LabelFace" | "CaptionFace") {
+        return false;
+    }
+    // CaptionJustification supersedes the obsolete LabelJustification field on
+    // text objects.  Once the authoritative caption field is present the old
+    // value must not be resurrected during a save.
+    if node.name == "t"
+        && name == "LabelJustification"
+        && node.attr("CaptionJustification").is_some()
+    {
+        return false;
+    }
+    true
+}
+
+fn cdxml_lexical_type(value: &str) -> &'static str {
+    let value = value.trim();
+    if value.eq_ignore_ascii_case("yes") || value.eq_ignore_ascii_case("no") {
+        return "boolean";
+    }
+    let tokens: Vec<&str> = value.split_whitespace().collect();
+    if !tokens.is_empty() && tokens.iter().all(|token| token.parse::<f64>().is_ok()) {
+        return if tokens.len() == 1 {
+            "number"
+        } else {
+            "number-list"
+        };
+    }
+    "string"
 }
 
 fn apply_cdxml_groups(root: &XmlNode, objects: &mut Vec<SceneObject>) {
@@ -725,6 +1012,7 @@ fn scale_json_key_as_length_array(key: &str) -> bool {
             | "axisEnd"
             | "anchorOffset"
             | "glyphPolygons"
+            | "lineAdvances"
             | "dashArray"
     )
 }
@@ -858,8 +1146,8 @@ fn default_cdxml_styles(defaults: CdxmlDefaults) -> BTreeMap<String, Value> {
                 "kind": "stroke",
                 "stroke": "#000000",
                 "strokeWidth": defaults.line_width,
-                "lineCap": "round",
-                "lineJoin": "round",
+                "lineCap": "butt",
+                "lineJoin": "miter",
                 "dashArray": [],
             }),
         ),
@@ -900,7 +1188,8 @@ fn collect_display_fragments<'a>(
     {
         fragments.push(node);
     }
-    let next_inside_placeholder = inside_placeholder_node || cdxml_node_has_cached_fragment(node);
+    let next_inside_placeholder =
+        inside_placeholder_node || cdxml_node_owns_embedded_fragment(node);
     for child in &node.children {
         collect_display_fragments(
             child,
@@ -1237,12 +1526,12 @@ fn topology_walk_order<'a>(
     ordered
 }
 
-fn cdxml_node_has_cached_fragment(node: &XmlNode) -> bool {
-    node.is("n")
-        && matches!(
-            node.attr("NodeType").unwrap_or(""),
-            "Fragment" | "Nickname" | "GenericNickname" | "Unspecified"
-        )
+fn cdxml_node_owns_embedded_fragment(node: &XmlNode) -> bool {
+    // A fragment nested directly inside a node is that node's connection table
+    // or expansion definition.  It is not an independently displayed fragment.
+    // The rule is structural: CDXML permits these children on more node kinds
+    // than the common Fragment/Nickname cases (notably alternative groups).
+    node.is("n") && node.direct_children("fragment").next().is_some()
 }
 
 fn cdxml_bonded_node_ids(root: &XmlNode) -> BTreeSet<String> {
@@ -1618,6 +1907,7 @@ fn normalize_node(
         round2(position[1] - origin[1]),
     ];
     let atomic_number = parse_u8(node.attr("Element")).unwrap_or(6);
+    let charge = parse_i32(node.attr("Charge")).unwrap_or(0);
     let node_type = node.attr("NodeType").unwrap_or("");
     let mut label = node_label(node, origin, colors, fonts, defaults);
     if let Some(label) = &mut label {
@@ -1626,10 +1916,16 @@ fn normalize_node(
         }
     }
     if label.is_none() && atomic_number != 6 {
-        let mut generated = crate::engine::make_periodic_element_node_label(
-            element_symbol(atomic_number),
-            local_position,
-        );
+        let element = element_symbol(atomic_number);
+        let generated_text = match charge {
+            0 => element.to_string(),
+            1 => format!("{element}+"),
+            -1 => format!("{element}-"),
+            value if value > 1 => format!("{element}{value}+"),
+            value => format!("{element}{}-", value.unsigned_abs()),
+        };
+        let mut generated =
+            crate::engine::make_periodic_element_node_label(&generated_text, local_position);
         generated.font_size = Some(defaults.label_size);
         generated.font_family = Some(
             fonts
@@ -1641,6 +1937,27 @@ fn normalize_node(
             run.font_size = Some(defaults.label_size);
             run.font_family = generated.font_family.clone();
         }
+        let inherited_spacing = imported_document_text_style(
+            defaults.label_font,
+            defaults.label_face,
+            defaults.label_size,
+            defaults.color,
+            colors,
+            fonts,
+            defaults
+                .label_line_height
+                .or(defaults.line_height)
+                .unwrap_or(CdxmlLineHeight::Variable),
+        );
+        generated.line_height = Some(inherited_spacing.line_height);
+        generated.line_height_mode = inherited_spacing.line_height_mode;
+        generated.line_advances.clear();
+        generated.meta = json!({
+            "implicitHydrogenLabel": {
+                "source": "cdxml-generated",
+                "userEdited": false,
+            }
+        });
         label = Some(generated);
     }
     let is_bullet_carbon = atomic_number == 6
@@ -1678,7 +1995,7 @@ fn normalize_node(
         element: element_symbol(atomic_number).to_string(),
         atomic_number,
         position: local_position,
-        charge: parse_i32(node.attr("Charge")).unwrap_or(0),
+        charge,
         num_hydrogens: explicit_num_hydrogens.unwrap_or(0),
         is_external_connection_point: node_type == "ExternalConnectionPoint",
         is_placeholder: matches!(
@@ -1801,6 +2118,8 @@ fn node_label(
     );
     let is_centered = inferred_align == "center";
     let layout = is_centered.then(|| "attached-group-center".to_string());
+    let line_spacing =
+        resolved_cdxml_label_line_spacing(text_el, defaults, parent_size, &runs, &line_runs);
     Some(NodeLabel {
         text: text.clone(),
         source_text: Some(text.clone()),
@@ -1836,6 +2155,14 @@ fn node_label(
         ),
         fill: Some(colors.resolve(Some(parent_color))),
         font_size: Some(parent_size),
+        line_height: Some(round2(line_spacing.line_height)),
+        line_height_mode: line_spacing.mode.to_string(),
+        line_advances: line_spacing
+            .line_advances
+            .iter()
+            .copied()
+            .map(round2)
+            .collect(),
         glyph_polygons: Vec::new(),
         glyph_clip_polygons: Vec::new(),
         box_value: None,
@@ -1852,7 +2179,7 @@ fn node_label(
                     "labelLineHeight": empty_as_null(text_el.attr("LabelLineHeight")),
                     "wordWrapWidth": empty_as_null(text_el.attr("WordWrapWidth")),
                     "lineStarts": empty_as_null(text_el.attr("LineStarts")),
-                    "resolvedLineHeight": resolved_cdxml_label_line_height(text_el, defaults, parent_size),
+                    "resolvedLineHeight": round2(line_spacing.line_height),
                     "interpretChemically": interpret_chemically,
                     "interpretChemicallyExplicit": explicit_interpret_chemically.is_some(),
                     "marginWidth": defaults.margin_width,
@@ -2001,10 +2328,9 @@ fn normalize_bond(
     let display = bond.attr("Display").unwrap_or("");
     let display2 = bond.attr("Display2").unwrap_or("");
     let source_order = bond.attr("Order").unwrap_or("");
-    let is_aromatic_dash = parse_f64(Some(source_order))
-        .is_some_and(|order| (order - 1.5).abs() <= EPSILON)
-        && display == "Dash"
-        && display2.is_empty();
+    let is_aromatic =
+        parse_f64(Some(source_order)).is_some_and(|order| (order - 1.5).abs() <= EPSILON);
+    let is_aromatic_dash = is_aromatic && display == "Dash" && display2.is_empty();
     let is_topology_only_aromatic_dash = is_aromatic_dash
         && [&begin, &end].iter().all(|node_id| {
             nodes.iter().any(|node| {
@@ -2061,8 +2387,12 @@ fn normalize_bond(
         }),
         _ => None,
     };
-    let order = if is_aromatic_dash {
-        1
+    let order = if is_aromatic {
+        if display2.is_empty() {
+            1
+        } else {
+            2
+        }
     } else {
         cdxml_bond_order(bond.attr("Order"))
     };
@@ -2109,7 +2439,7 @@ fn normalize_bond(
         "order": empty_as_null(bond.attr("Order")),
         "sourceId": source_id,
         "generatedId": source_id.is_none(),
-        "aromatic": is_aromatic_dash,
+        "aromatic": is_aromatic,
         "bondSpacingAbs": bond_spacing_abs,
     }}});
     if let Some(value) = bond.attr("CrossingBonds") {
@@ -2470,4 +2800,31 @@ fn element_symbol(atomic_number: u8) -> &'static str {
         "Bh", "Hs", "Mt", "Ds", "Rg", "Cn", "Nh", "Fl", "Mc", "Lv", "Ts", "Og",
     ];
     SYMBOLS.get(atomic_number as usize).copied().unwrap_or("C")
+}
+
+#[cfg(test)]
+mod interchange_tests {
+    use super::*;
+
+    #[test]
+    fn cdxml_unmodeled_official_fields_and_objects_roundtrip_through_ccjs() {
+        let source = r#"<CDXML CreationProgram="ChemDraw 23" CreationDate="20260723090000" BoundingBox="0 0 120 80">
+  <page id="1" BoundingBox="0 0 120 80" Width="120" Height="80">
+    <annotation id="2" Keyword="source" Content="confidential" />
+  </page>
+</CDXML>"#;
+        let mut document = parse_cdxml_document(source, Some("fields")).expect("CDXML parses");
+        let tree = document
+            .interchange
+            .get_mut("cdxml")
+            .expect("source tree is stored");
+        assert_eq!(tree.root.properties["CreationDate"].value, "20260723090000");
+        tree.root.properties.get_mut("CreationDate").unwrap().value = "20260723100000".to_string();
+
+        let saved = document_to_cdxml(&document);
+        assert!(saved.contains("CreationDate=\"20260723100000\""));
+        assert!(saved.contains("<annotation"));
+        assert!(saved.contains("Keyword=\"source\""));
+        assert!(saved.contains("Content=\"confidential\""));
+    }
 }

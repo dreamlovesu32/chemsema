@@ -263,6 +263,8 @@ pub(super) fn make_centered_node_label(
         [label_box[0], label_position[1]],
         Some(label_box),
         font_size,
+        crate::molecule_label_line_advance(font_size),
+        &[],
         position,
         glyph_clip_profile,
     );
@@ -281,6 +283,9 @@ pub(super) fn make_centered_node_label(
         font_family: Some("Arial".to_string()),
         fill: Some("#000000".to_string()),
         font_size: Some(font_size),
+        line_height: Some(crate::molecule_label_line_advance(font_size)),
+        line_height_mode: "variable".to_string(),
+        line_advances: Vec::new(),
         glyph_polygons: geometry.glyph_polygons,
         glyph_clip_polygons: geometry.clip_polygons,
         box_value: Some(label_box),
@@ -434,6 +439,8 @@ pub(super) fn make_centered_node_label_from_runs(
         glyph_position,
         Some([x1, y1, x2, y2]),
         font_size,
+        line_height,
+        &[],
         position,
         glyph_clip_profile,
     );
@@ -520,6 +527,9 @@ pub(super) fn make_centered_node_label_from_runs(
         font_family: Some(font_family.to_string()),
         fill: Some(fill.to_string()),
         font_size: Some(font_size),
+        line_height: Some(line_height),
+        line_height_mode: "fixed".to_string(),
+        line_advances: Vec::new(),
         glyph_polygons: glyph_geometry.glyph_polygons,
         glyph_clip_polygons: glyph_geometry.clip_polygons,
         box_value: Some([x1, y1, x2, y2]),
@@ -1902,6 +1912,10 @@ pub(super) fn refreshed_attached_node_label(
             start,
             next_label.bbox(),
             font_size,
+            next_label
+                .line_height
+                .unwrap_or_else(|| crate::molecule_label_line_advance(font_size)),
+            &next_label.line_advances,
             node.position,
             glyph_clip_profile.unwrap_or_else(|| glyph_clip_profile_for_label(label)),
         );
@@ -1945,6 +1959,18 @@ pub(super) fn refreshed_attached_node_label(
         &connection_angles,
         layout_as_grouped_attached_label,
     );
+    let has_authored_endpoint_attachment = fragment.bonds.iter().any(|bond| {
+        (bond.begin == node_id
+            && bond
+                .meta
+                .pointer("/endpointAttachments/begin/characterIndex")
+                .is_some())
+            || (bond.end == node_id
+                && bond
+                    .meta
+                    .pointer("/endpointAttachments/end/characterIndex")
+                    .is_some())
+    });
     // With no bond to establish a left/right attachment direction, ChemDraw
     // writes chalcogen and halogen hydrides in element-first source order but
     // displays their conventional formula order (H2O, HCl, and so on). Group
@@ -1973,18 +1999,7 @@ pub(super) fn refreshed_attached_node_label(
             override_decision.anchor = crate::LabelAnchorPolicy::WholeLabel;
         }
         decision = override_decision;
-    } else if fragment.bonds.iter().any(|bond| {
-        (bond.begin == node_id
-            && bond
-                .meta
-                .pointer("/endpointAttachments/begin/characterIndex")
-                .is_some())
-            || (bond.end == node_id
-                && bond
-                    .meta
-                    .pointer("/endpointAttachments/end/characterIndex")
-                    .is_some())
-    }) {
+    } else if has_authored_endpoint_attachment {
         // BeginAttach/EndAttach character indices address the authored text.
         // Reordering that text would move the explicit connection to another
         // glyph even though the numeric index still round-trips unchanged.
@@ -2015,9 +2030,13 @@ pub(super) fn refreshed_attached_node_label(
         fill: Some(fill.clone()),
         align: Some("left".to_string()),
         line_height: label
-            .meta
-            .pointer("/import/cdxml/resolvedLineHeight")
-            .and_then(Value::as_f64)
+            .line_height
+            .or_else(|| {
+                label
+                    .meta
+                    .pointer("/import/cdxml/resolvedLineHeight")
+                    .and_then(Value::as_f64)
+            })
             .or_else(|| Some(crate::molecule_label_line_advance(font_size))),
         box_value,
         anchor_offset,
@@ -2043,6 +2062,17 @@ pub(super) fn refreshed_attached_node_label(
         Some(decision.clone()),
         glyph_clip_profile.unwrap_or_else(|| glyph_clip_profile_for_label(label)),
     );
+    next_label.line_height = label.line_height.or(next_label.line_height);
+    next_label.line_height_mode = label.line_height_mode.clone();
+    next_label.line_advances =
+        if label.line_height_mode == "variable" && next_label.line_runs.len() > 1 {
+            crate::variable_text_line_advances(&next_label.line_runs, font_size)
+        } else {
+            label.line_advances.clone()
+        };
+    if let Some(first_advance) = next_label.line_advances.first().copied() {
+        next_label.line_height = Some(round2(first_advance));
+    }
     if is_cdxml_imported_centered_attached_label(label) {
         if let Some(mut bbox) = next_label.bbox() {
             let delta_x = round2(local_anchor[0] - (bbox[0] + bbox[2]) * 0.5);
@@ -2110,6 +2140,32 @@ pub(super) fn refreshed_attached_node_label(
         &mut next_label,
         implicit_hydrogen_label_meta(label).cloned(),
     );
+    // `make_centered_node_label_from_runs` lays out an edited label from the
+    // session's scalar spacing. A geometry-only refresh must instead retain
+    // imported variable per-line advances, so rebuild after the final anchor
+    // and alignment adjustments rather than leaving stale uniform polygons.
+    if !next_label.line_advances.is_empty() {
+        let start = next_label.position.unwrap_or(node.position);
+        let geometry = build_label_glyph_geometry_with_profile(
+            if next_label.line_runs.is_empty() {
+                &next_label.runs
+            } else {
+                &[]
+            },
+            &next_label.line_runs,
+            start,
+            next_label.bbox(),
+            font_size,
+            next_label
+                .line_height
+                .unwrap_or_else(|| crate::molecule_label_line_advance(font_size)),
+            &next_label.line_advances,
+            node.position,
+            glyph_clip_profile.unwrap_or_else(|| glyph_clip_profile_for_label(label)),
+        );
+        next_label.glyph_polygons = geometry.glyph_polygons;
+        next_label.glyph_clip_polygons = geometry.clip_polygons;
+    }
     Some(next_label)
 }
 
@@ -2343,7 +2399,24 @@ pub(super) fn implicit_hydrogen_label_text(node: &crate::Node, current_text: &st
     if !label_text_matches_node_element(current_text, node) {
         return current_text.to_string();
     }
-    implicit_hydrogen_label_text_for_count(&node.element, node.num_hydrogens)
+    let charge_suffix = node_charge_label_suffix(node.charge);
+    let preserve_charge =
+        !charge_suffix.is_empty() && current_text.trim().ends_with(&charge_suffix);
+    let mut text = implicit_hydrogen_label_text_for_count(&node.element, node.num_hydrogens);
+    if preserve_charge {
+        text.push_str(&charge_suffix);
+    }
+    text
+}
+
+fn node_charge_label_suffix(charge: i32) -> String {
+    match charge {
+        0 => String::new(),
+        1 => "+".to_string(),
+        -1 => "-".to_string(),
+        value if value > 1 => format!("{value}+"),
+        value => format!("{}-", value.unsigned_abs()),
+    }
 }
 
 pub(crate) fn implicit_hydrogen_label_text_for_count(element: &str, num_hydrogens: u8) -> String {
@@ -2362,7 +2435,12 @@ pub(super) fn label_text_matches_node_element(text: &str, node: &crate::Node) ->
     if trimmed == node.element {
         return true;
     }
-    parse_element_hydrogen_label(trimmed).is_some_and(|parsed| parsed.element == node.element)
+    let without_charge = node_charge_label_suffix(node.charge);
+    let formula = (!without_charge.is_empty())
+        .then(|| trimmed.strip_suffix(&without_charge))
+        .flatten()
+        .unwrap_or(trimmed);
+    parse_element_hydrogen_label(formula).is_some_and(|parsed| parsed.element == node.element)
 }
 
 pub(super) fn source_runs_for_attached_label(

@@ -1940,6 +1940,7 @@ impl Engine {
             styles: self.state.document.styles.clone(),
             objects: Vec::new(),
             resources: BTreeMap::new(),
+            interchange: BTreeMap::new(),
         }
     }
 
@@ -4441,6 +4442,7 @@ mod tests {
                 molecule_object("obj_mol_b", "mol_b"),
             ],
             resources,
+            interchange: BTreeMap::new(),
         }
     }
 

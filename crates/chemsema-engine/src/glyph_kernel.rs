@@ -246,12 +246,60 @@ pub(crate) fn molecule_label_line_advance(fallback_font_size: f64) -> f64 {
     (fallback_font_size * crate::MOLECULE_LABEL_LINE_ADVANCE_RATIO).max(0.1)
 }
 
+pub(crate) fn variable_text_line_advances(
+    lines: &[Vec<LabelRun>],
+    fallback_font_size: f64,
+) -> Vec<f64> {
+    if lines.len() < 2 {
+        return Vec::new();
+    }
+    let bounds = lines
+        .iter()
+        .map(|line| {
+            let mut top = f64::INFINITY;
+            let mut bottom = f64::NEG_INFINITY;
+            let mut max_size = fallback_font_size;
+            for run in line {
+                max_size = max_size.max(run.font_size.unwrap_or(fallback_font_size));
+            }
+            for placement in glyph_placements_for_runs(line, 0.0, 0.0, fallback_font_size) {
+                top = top.min(placement.ink_box_px[1]);
+                bottom = bottom.max(placement.ink_box_px[3]);
+            }
+            if !top.is_finite() || !bottom.is_finite() {
+                top = -fallback_font_size * 0.73;
+                bottom = fallback_font_size * 0.16;
+            }
+            (top, bottom, max_size)
+        })
+        .collect::<Vec<_>>();
+    bounds
+        .windows(2)
+        .map(|pair| {
+            let (_, previous_bottom, previous_size) = pair[0];
+            let (next_top, _, next_size) = pair[1];
+            // ChemDraw's Variable mode packs consecutive glyph ink boxes and
+            // leaves about one tenth of an em between them. The glyph bounds
+            // already include face, size and script baseline shifts.
+            (previous_bottom - next_top + previous_size.max(next_size) * 0.1).max(0.1)
+        })
+        .collect()
+}
+
+fn line_baseline_offset(line_index: usize, line_height: f64, line_advances: &[f64]) -> f64 {
+    (0..line_index)
+        .map(|index| line_advances.get(index).copied().unwrap_or(line_height))
+        .sum()
+}
+
 pub fn build_label_glyph_geometry_with_profile(
     runs: &[LabelRun],
     line_runs: &[Vec<LabelRun>],
     position: [f64; 2],
     box_value: Option<[f64; 4]>,
     fallback_font_size: f64,
+    line_height: f64,
+    line_advances: &[f64],
     retreat_origin: [f64; 2],
     profile: GlyphClipProfile,
 ) -> LabelGlyphGeometry {
@@ -269,11 +317,10 @@ pub fn build_label_glyph_geometry_with_profile(
         return LabelGlyphGeometry::default();
     }
 
-    let line_height = molecule_label_line_advance(fallback_font_size);
     let box_top = box_value
         .filter(|_| lines.len() > 1)
         .map(|value| value[1])
-        .unwrap_or(position[1] - line_height * 0.82);
+        .unwrap_or(position[1] - fallback_font_size * 0.82);
 
     let mut geometry = LabelGlyphGeometry::default();
     let mut outline_bounds: Option<[f64; 4]> = None;
@@ -281,7 +328,9 @@ pub fn build_label_glyph_geometry_with_profile(
         let baseline_y = if lines.len() == 1 {
             position[1]
         } else {
-            box_top + line_height * line_index as f64 + line_height * 0.82
+            box_top
+                + line_baseline_offset(line_index, line_height, line_advances)
+                + fallback_font_size * 0.82
         };
         for placement in
             glyph_placements_for_runs(line, position[0], baseline_y, fallback_font_size)
@@ -440,13 +489,25 @@ fn glyph_placements_for_runs(
             .font_size
             .unwrap_or(fallback_font_size)
             .max(crate::css_px(1.0).to_world_pt().value());
-        let config = LayoutConfig {
+        let mut config = LayoutConfig {
             font_size_px: font_size,
             ..LayoutConfig::default()
         };
         let script = script_kind(run.script.as_deref());
         let font_family = run.font_family.as_deref().unwrap_or("Arial");
         let font_weight = run.font_weight.unwrap_or(400);
+        config.subscript_shift_down_em = shared_script_baseline_shift_em_for_face(
+            Some("subscript"),
+            Some(font_weight),
+            Some(font_family),
+            font_size,
+        );
+        config.superscript_shift_up_em = -shared_script_baseline_shift_em_for_face(
+            Some("superscript"),
+            Some(font_weight),
+            Some(font_family),
+            font_size,
+        );
         let italic = run.font_style.as_deref() == Some("italic");
         for character in run.text.chars() {
             let placement = layout_glyph(
@@ -1345,11 +1406,40 @@ pub(crate) fn shared_script_baseline_shift_em(
     }
 }
 
-pub(crate) fn shared_svg_script_baseline_shift_em(
+pub(crate) fn shared_script_baseline_shift_em_for_face(
     script: Option<&str>,
     font_weight: Option<u32>,
+    font_family: Option<&str>,
+    font_size: f64,
 ) -> f64 {
-    -shared_script_baseline_shift_em(script, font_weight)
+    let family = font_family.unwrap_or("Arial").to_ascii_lowercase();
+    let bold = font_weight.unwrap_or(400) >= 600;
+    if family.contains("times new roman") && font_size <= 8.0 {
+        return match script {
+            Some("subscript") if bold => 0.214_286_25,
+            Some("subscript") => 0.243_214_894,
+            Some("superscript") if bold => -0.392_679_553,
+            Some("superscript") => -0.378_750_947,
+            _ => 0.0,
+        };
+    }
+    if family.contains("calibri") {
+        return match script {
+            Some("subscript") => 0.27,
+            Some("superscript") => -0.365,
+            _ => 0.0,
+        };
+    }
+    shared_script_baseline_shift_em(script, font_weight)
+}
+
+pub(crate) fn shared_svg_script_baseline_shift_em_for_face(
+    script: Option<&str>,
+    font_weight: Option<u32>,
+    font_family: Option<&str>,
+    font_size: f64,
+) -> f64 {
+    -shared_script_baseline_shift_em_for_face(script, font_weight, font_family, font_size)
 }
 
 pub(crate) fn shared_estimated_char_width(character: char, font_size: f64) -> f64 {
@@ -1518,6 +1608,64 @@ mod tests {
     use super::*;
 
     #[test]
+    fn script_baseline_shifts_follow_measured_chemdraw_face_rules() {
+        assert!((shared_script_scale_factor(Some("subscript")) - 0.75).abs() < 1e-12);
+        assert!((shared_script_scale_factor(Some("superscript")) - 0.75).abs() < 1e-12);
+
+        assert!(
+            (shared_script_baseline_shift_em_for_face(
+                Some("subscript"),
+                Some(400),
+                Some("Times New Roman"),
+                7.0,
+            ) - 0.243_214_894)
+                .abs()
+                < 1e-12
+        );
+        assert!(
+            (shared_script_baseline_shift_em_for_face(
+                Some("superscript"),
+                Some(700),
+                Some("Times New Roman"),
+                7.0,
+            ) + 0.392_679_553)
+                .abs()
+                < 1e-12
+        );
+        assert!(
+            (shared_script_baseline_shift_em_for_face(
+                Some("subscript"),
+                Some(400),
+                Some("Calibri"),
+                14.45,
+            ) - 0.27)
+                .abs()
+                < 1e-12
+        );
+        assert!(
+            (shared_script_baseline_shift_em_for_face(
+                Some("superscript"),
+                Some(400),
+                Some("Calibri"),
+                18.0,
+            ) + 0.365)
+                .abs()
+                < 1e-12
+        );
+
+        let generic = shared_script_baseline_shift_em(Some("subscript"), Some(400));
+        assert_eq!(
+            shared_script_baseline_shift_em_for_face(
+                Some("subscript"),
+                Some(400),
+                Some("Arial"),
+                10.0,
+            ),
+            generic
+        );
+    }
+
+    #[test]
     fn generated_text_symbols_have_non_punctuation_metrics() {
         let expected_min_widths = [
             ('%', 0.90),
@@ -1577,6 +1725,8 @@ mod tests {
             [0.0, 0.0],
             None,
             10.0,
+            crate::molecule_label_line_advance(10.0),
+            &[],
             [0.0, 0.0],
             GlyphClipProfile::from_margin_width(crate::DEFAULT_BOND_MARGIN_WIDTH_PT.value()),
         );
@@ -1746,6 +1896,8 @@ mod tests {
             [0.0, 0.0],
             None,
             10.0,
+            crate::molecule_label_line_advance(10.0),
+            &[],
             [0.0, 0.0],
             GlyphClipProfile::from_margin_width(1.0),
         );

@@ -9,7 +9,7 @@ mod graphics;
 mod text;
 
 pub(super) use arrows::render_line_object;
-pub(super) use graphics::{render_bracket_object, render_shape_object};
+pub(super) use graphics::{render_bracket_object, render_curve_object, render_shape_object};
 pub(super) use text::render_text_object;
 
 fn text_anchor(align: &str) -> String {
@@ -760,6 +760,10 @@ pub(super) fn render_fragment_label(
         return;
     }
     let world_position = fragment_label_position_world(label, object);
+    let line_height = label
+        .line_height
+        .filter(|value| value.is_finite() && *value > 0.0)
+        .unwrap_or_else(|| crate::molecule_label_line_advance(font_size));
     if lines.len() == 1 {
         let primitive = RenderPrimitive::Text {
             role: RenderRole::DocumentText,
@@ -774,7 +778,7 @@ pub(super) fn render_fragment_label(
             font_family,
             fill,
             text_anchor: Some(text_anchor),
-            line_height: None,
+            line_height: Some(line_height),
             preserve_lines: false,
             box_width: None,
             runs: fragment_label_runs_for_line(label, 0, &lines[0]),
@@ -786,12 +790,19 @@ pub(super) fn render_fragment_label(
     }
 
     let label_box = label_box_world(node, object);
-    let line_height = crate::molecule_label_line_advance(font_size);
     let box_top = label_box
         .map(|box_value| box_value.y1)
-        .unwrap_or(world_position.y - line_height * 0.82);
+        .unwrap_or(world_position.y - font_size * 0.82);
+    let mut baseline_advance = 0.0;
     for (index, line) in lines.iter().enumerate() {
-        let baseline_y = box_top + line_height * index as f64 + font_size * 0.82;
+        if index > 0 {
+            baseline_advance += label
+                .line_advances
+                .get(index - 1)
+                .copied()
+                .unwrap_or(line_height);
+        }
+        let baseline_y = box_top + baseline_advance + font_size * 0.82;
         push_text_for_node(
             out,
             world_position.x,

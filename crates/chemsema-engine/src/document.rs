@@ -29,6 +29,64 @@ pub struct ChemSemaDocument {
     pub objects: Vec<SceneObject>,
     #[serde(default)]
     pub resources: BTreeMap<String, Resource>,
+    /// Lossless, editable trees for interchange-format information that does
+    /// not yet have a source-independent CCJS field.  This is deliberately a
+    /// first-class field rather than import metadata: changing a value here is
+    /// reflected by the corresponding exporter.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub interchange: BTreeMap<String, InterchangeDocument>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InterchangeDocument {
+    pub format: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    pub root: InterchangeObject,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InterchangeObject {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub format_tag: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub properties: BTreeMap<String, InterchangeProperty>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub text: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub children: Vec<InterchangeObject>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InterchangeProperty {
+    /// Canonical property name. It is explicit because CDX permits repeated
+    /// properties; their storage keys use `Name#2`, `Name#3`, ... while this
+    /// field remains `Name`.
+    pub name: String,
+    /// Zero-based order within the containing interchange object. CDX allows
+    /// repeated tags and some consumers attach meaning to their sequence.
+    #[serde(default)]
+    pub order: usize,
+    /// CDXML lexical value.  It remains authoritative for exact round trips
+    /// and for properties whose public CDX specification calls the type
+    /// "Unformatted" or "varies".
+    pub value: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cdx_tag: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cdx_type: Option<String>,
+    /// Exact CDX bytes are retained whenever a property cannot be losslessly
+    /// reconstructed from its public lexical representation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw_base64: Option<String>,
 }
 
 impl ChemSemaDocument {
@@ -102,7 +160,77 @@ impl ChemSemaDocument {
                 children: Vec::new(),
             }],
             resources,
+            interchange: BTreeMap::new(),
         }
+    }
+
+    /// Returns an interchange object by its child-index path.  An empty path
+    /// addresses the format root; `[0, 2]` addresses the third child of the
+    /// root's first child.  Index paths remain unambiguous even for CDXML
+    /// elements that legitimately omit or duplicate ids.
+    pub fn interchange_object(&self, format: &str, path: &[usize]) -> Option<&InterchangeObject> {
+        let mut object = &self.interchange.get(format)?.root;
+        for index in path {
+            object = object.children.get(*index)?;
+        }
+        Some(object)
+    }
+
+    pub fn interchange_object_mut(
+        &mut self,
+        format: &str,
+        path: &[usize],
+    ) -> Option<&mut InterchangeObject> {
+        let mut object = &mut self.interchange.get_mut(format)?.root;
+        for index in path {
+            object = object.children.get_mut(*index)?;
+        }
+        Some(object)
+    }
+
+    /// Edits a named CDX/CDXML property without routing it through `meta`.
+    /// The property must already exist so misspellings cannot silently create
+    /// a format-invalid field.  CDX exporters use the official type recorded
+    /// beside the value; CDXML exporters use its lexical representation.
+    pub fn set_interchange_property(
+        &mut self,
+        format: &str,
+        path: &[usize],
+        property: &str,
+        value: impl Into<String>,
+    ) -> Result<(), String> {
+        let object = self
+            .interchange_object_mut(format, path)
+            .ok_or_else(|| format!("interchange object {format}:{path:?} does not exist"))?;
+        let field = object.properties.get_mut(property).ok_or_else(|| {
+            format!(
+                "interchange property {property} does not exist on {format}:{path:?} ({})",
+                object.name
+            )
+        })?;
+        field.value = value.into();
+        Ok(())
+    }
+
+    /// Replaces the exact CDX payload for public types whose lexical form is
+    /// unspecified.  This is intentionally separate from value editing.
+    pub fn set_interchange_property_raw_base64(
+        &mut self,
+        path: &[usize],
+        property: &str,
+        raw_base64: impl Into<String>,
+    ) -> Result<(), String> {
+        let object = self
+            .interchange_object_mut("cdx", path)
+            .ok_or_else(|| format!("interchange object cdx:{path:?} does not exist"))?;
+        let field = object.properties.get_mut(property).ok_or_else(|| {
+            format!(
+                "interchange property {property} does not exist on cdx:{path:?} ({})",
+                object.name
+            )
+        })?;
+        field.raw_base64 = Some(raw_base64.into());
+        Ok(())
     }
 
     pub fn editable_fragment_mut(&mut self) -> Option<EditableFragmentMut<'_>> {
@@ -1053,6 +1181,17 @@ fn normalize_text_object_payload_defaults(
         .payload
         .extra
         .insert("lineHeight".to_string(), json!(round2(line_height)));
+    let line_height_mode = object
+        .payload
+        .extra
+        .get("lineHeightMode")
+        .and_then(Value::as_str)
+        .filter(|mode| matches!(*mode, "fixed" | "auto" | "variable"))
+        .unwrap_or("auto");
+    object
+        .payload
+        .extra
+        .insert("lineHeightMode".to_string(), json!(line_height_mode));
 
     object
         .payload
@@ -1237,6 +1376,24 @@ fn normalize_node_label_payload(
     if label.font_size.is_none() {
         label.font_size = Some(DEFAULT_MOLECULE_LABEL_FONT_SIZE_PT);
     }
+    let fallback_font_size = label
+        .font_size
+        .unwrap_or(DEFAULT_MOLECULE_LABEL_FONT_SIZE_PT);
+    if label
+        .line_height
+        .is_none_or(|value| !value.is_finite() || value <= 0.0)
+    {
+        label.line_height = Some(crate::molecule_label_line_advance(fallback_font_size));
+    }
+    if !matches!(
+        label.line_height_mode.as_str(),
+        "fixed" | "auto" | "variable"
+    ) {
+        label.line_height_mode = "variable".to_string();
+    }
+    label
+        .line_advances
+        .retain(|value| value.is_finite() && *value > 0.0);
     if label.align.is_none() {
         label.align = Some("left".to_string());
     }
@@ -1323,6 +1480,10 @@ fn rebuild_node_label_glyph_polygons(
         start_position,
         local_bbox,
         font_size,
+        label
+            .line_height
+            .unwrap_or_else(|| crate::molecule_label_line_advance(font_size)),
+        &label.line_advances,
         node_position,
         glyph_clip_profile,
     );
@@ -1431,6 +1592,20 @@ pub struct DocumentTextStyle {
     #[serde(default)]
     pub shadow: bool,
     pub script: String,
+    /// Resolved default baseline advance in document points.
+    #[serde(default = "default_document_text_line_height")]
+    pub line_height: f64,
+    /// Source-independent behavior used when new multi-line text is created.
+    #[serde(default = "default_document_text_line_height_mode")]
+    pub line_height_mode: String,
+}
+
+fn default_document_text_line_height() -> f64 {
+    DEFAULT_TEXT_FONT_SIZE_PT * 1.15
+}
+
+fn default_document_text_line_height_mode() -> String {
+    "auto".to_string()
 }
 
 impl DocumentTextStyle {
@@ -1445,6 +1620,8 @@ impl DocumentTextStyle {
             outline: false,
             shadow: false,
             script: "chemical".to_string(),
+            line_height: crate::molecule_label_line_advance(DEFAULT_MOLECULE_LABEL_FONT_SIZE_PT),
+            line_height_mode: "variable".to_string(),
         }
     }
 
@@ -1459,6 +1636,8 @@ impl DocumentTextStyle {
             outline: false,
             shadow: false,
             script: "normal".to_string(),
+            line_height: DEFAULT_TEXT_FONT_SIZE_PT * 1.15,
+            line_height_mode: "auto".to_string(),
         }
     }
 }
@@ -1708,6 +1887,19 @@ pub struct NodeLabel {
     pub fill: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub font_size: Option<f64>,
+    /// Default baseline-to-baseline advance in document points. It is present
+    /// for single-line labels too, even though another baseline is required
+    /// before the spacing becomes visible.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub line_height: Option<f64>,
+    /// Resolved behavior, kept separately so equal numeric advances do not
+    /// collapse fixed, automatic, and variable source semantics.
+    #[serde(default = "default_node_label_line_height_mode")]
+    pub line_height_mode: String,
+    /// Optional per-transition baseline advances for source formats with
+    /// variable line height. Entry 0 is the advance from line 0 to line 1.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub line_advances: Vec<f64>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub glyph_polygons: Vec<Vec<[f64; 2]>>,
     /// Derived bond-retreat geometry. It is rebuilt from the styled runs and
@@ -1719,6 +1911,10 @@ pub struct NodeLabel {
     pub box_value: Option<[f64; 4]>,
     #[serde(default)]
     pub meta: Value,
+}
+
+fn default_node_label_line_height_mode() -> String {
+    "variable".to_string()
 }
 
 impl NodeLabel {
@@ -2280,6 +2476,9 @@ mod tests {
                             font_family: Some("Arial".to_string()),
                             fill: Some("#000000".to_string()),
                             font_size: Some(10.0),
+                            line_height: Some(crate::molecule_label_line_advance(10.0)),
+                            line_height_mode: "variable".to_string(),
+                            line_advances: Vec::new(),
                             glyph_polygons: vec![vec![
                                 [0.0, 0.0],
                                 [1.0, 0.0],
@@ -2726,6 +2925,9 @@ mod tests {
                             font_family: Some("Arial".to_string()),
                             fill: Some("#000000".to_string()),
                             font_size: Some(10.0),
+                            line_height: Some(crate::molecule_label_line_advance(10.0)),
+                            line_height_mode: "variable".to_string(),
+                            line_advances: Vec::new(),
                             glyph_polygons: Vec::new(),
                             glyph_clip_polygons: Vec::new(),
                             box_value: None,

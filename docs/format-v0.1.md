@@ -16,13 +16,14 @@ Its immediate purpose is:
 
 ## Format Overview
 
-The file is a JSON document with five top-level sections:
+The file is a JSON document with six top-level sections:
 
 - `format`
 - `document`
 - `styles`
 - `objects`
 - `resources`
+- `interchange` (optional)
 
 At a high level:
 
@@ -30,6 +31,7 @@ At a high level:
 - `styles` stores reusable rendering styles
 - `objects` stores the scene graph nodes
 - `resources` stores reusable chemistry payloads such as `molecule_fragment2d`
+- `interchange` losslessly stores exchange-format objects and fields that do not yet have source-independent semantics; it is editable and participates in export, so it is not metadata
 
 ## Top-Level Structure
 
@@ -43,9 +45,18 @@ At a high level:
   "document": {},
   "styles": {},
   "objects": [],
-  "resources": {}
+  "resources": {},
+  "interchange": {}
 }
 ```
+
+## Complete Interchange Field Layer
+
+The complete CDX/CDXML field universe is larger than the current cross-format scene model. Fields without native drawing semantics must not be discarded or hidden in non-exported `meta`. Importers retain them in top-level `interchange` as an object tree with named properties.
+
+Each object records `name`, optional `formatTag`, optional `id`, and `children`. Each property records its canonical `name`, zero-based `order`, editable lexical `value`, and explicit `valueType`; CDX properties additionally record `cdxTag`, `cdxType`, and exact `rawBase64`. Repeated CDX properties use stable storage keys such as `Name#2` while retaining the canonical internal `name` and source order. Public lexical CDX types are edited through `value`; `Unformatted`, `varies`, and structurally complex binary types are edited through `rawBase64`.
+
+When a source-independent CCJS field exists, that native field remains authoritative and the exporter re-encodes it. The interchange tree only restores objects and properties that are not otherwise modeled. The exhaustive machine-readable contract is `schemas/cdx-cdxml-verification-v1.json`.
 
 ## Coordinate System
 
@@ -405,7 +416,11 @@ installed families, but imported or user-entered names must remain round-trippab
 
 `style.labelStyle` and `style.captionStyle` use the same fields without `text`.
 Their canonical values are explicit: `fontFamily`, `fontSize`, `fill`,
-`fontWeight`, `fontStyle`, `underline`, `outline`, `shadow`, and `script`.
+`fontWeight`, `fontStyle`, `underline`, `outline`, `shadow`, `script`,
+`lineHeight`, and `lineHeightMode`. `lineHeight` is the resolved positive
+baseline advance in document points. `lineHeightMode` is `fixed`, `auto`, or
+`variable`; it records how new multiline content derives its advances without
+storing a source-format sentinel.
 Readers of older CCJS documents must default missing `outline` and `shadow` to
 `false`. Writers must emit semantic fields and must not emit `face`.
 
@@ -431,6 +446,8 @@ Example node label:
     "box": [43.79, 25.52, 51.01, 33.86],
     "layout": "default",
     "anchor": "start",
+    "lineHeight": 8.9,
+    "lineHeightMode": "variable",
     "runs": [
       {
         "text": "N",
@@ -564,6 +581,12 @@ Molecule label fields:
 - `runs`: normalized display runs
 - `lineRuns`: optional normalized runs per rendered line
 - `lines`: optional rendered-line text, usually paired with `lineRuns`
+- `lineHeight`: resolved positive default baseline advance in document points;
+  it is present for single-line labels too
+- `lineHeightMode`: `fixed`, `auto`, or `variable`; this is explicit and must
+  not be inferred from the numeric advance
+- `lineAdvances`: optional positive per-transition baseline advances for
+  variable-height multiline labels; entry 0 advances line 0 to line 1
 - `glyphPolygons`: optional per-glyph optical polygons in local coordinates; when
   present, renderers may use them for label knockout and bond clipping with
   finer precision than the coarse label `box`
@@ -821,7 +844,7 @@ Shape appearance belongs primarily in styles, including:
 - filled vs unfilled
 - `shaded`, mapped from CDXML `Shaded`
 - `shadow`, mapped from CDXML `Shadow` / `Shadowed`
-- `shadowSize`, mapped from CDXML `ShadowSize / 100`
+- `shadowSize`, mapped from CDXML `ShadowSize / 100`; it is a dimensionless multiplier of `strokeWidth`, so the rendered shadow offset is `shadowSize × strokeWidth`
 
 ## Group Object
 

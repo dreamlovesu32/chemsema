@@ -591,18 +591,23 @@ fn write_text_run(out: &mut String, run: &LabelRun, fallback_font_size: f64) {
         };
     let baseline_shift = if is_sub || is_super {
         let base_font_size = run.font_size.unwrap_or(fallback_font_size);
-        let shift =
-            crate::shared_svg_script_baseline_shift_em(run.script.as_deref(), run.font_weight);
+        let shift = crate::shared_svg_script_baseline_shift_em_for_face(
+            run.script.as_deref(),
+            run.font_weight,
+            run.font_family.as_deref(),
+            base_font_size,
+        );
         Some(base_font_size * shift)
     } else {
         None
     };
     let effect_color = run.fill.as_deref().unwrap_or("#000000");
     let outline = run.outline.unwrap_or(false);
-    let shadow_style = run
-        .shadow
-        .unwrap_or(false)
-        .then(|| format!("filter:drop-shadow(0.08em 0.08em 0 {effect_color})"));
+    let effect_style = text_effect_style(
+        run.underline.unwrap_or(false),
+        run.shadow.unwrap_or(false),
+        effect_color,
+    );
     write!(
         out,
         r#"<tspan{}{}{}{}{}{}{}{}{}{}{}>{}</tspan>"#,
@@ -629,10 +634,27 @@ fn write_text_run(out: &mut String, run: &LabelRun, fallback_font_size: f64) {
             outline.then_some((font_size * 0.045).max(0.35))
         ),
         optional_str_attr("paint-order", outline.then_some("stroke")),
-        optional_str_attr("style", shadow_style.as_deref()),
+        optional_str_attr("style", effect_style.as_deref()),
         escape_text(&run.text)
     )
     .expect("write text run");
+}
+
+fn text_effect_style(underline: bool, shadow: bool, effect_color: &str) -> Option<String> {
+    let mut declarations = Vec::new();
+    // Document underlines are emitted as explicit geometry before SVG
+    // serialization. Keep this branch for non-document callers that construct
+    // a text primitive directly.
+    if underline {
+        declarations.push("text-decoration-thickness:0.4px".to_string());
+        declarations.push("text-underline-offset:0.6px".to_string());
+    }
+    if shadow {
+        declarations.push(format!(
+            "filter:drop-shadow(0.08em 0.08em 0 {effect_color})"
+        ));
+    }
+    (!declarations.is_empty()).then(|| declarations.join(";"))
 }
 
 fn clip_path_attr(
@@ -846,4 +868,23 @@ fn escape_text(value: &str) -> String {
         .replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::text_effect_style;
+
+    #[test]
+    fn underline_style_uses_chemdraw_fixed_rule_geometry() {
+        assert_eq!(
+            text_effect_style(true, false, "#000000").as_deref(),
+            Some("text-decoration-thickness:0.4px;text-underline-offset:0.6px")
+        );
+        assert_eq!(
+            text_effect_style(true, true, "#123456").as_deref(),
+            Some(
+                "text-decoration-thickness:0.4px;text-underline-offset:0.6px;filter:drop-shadow(0.08em 0.08em 0 #123456)"
+            )
+        );
+    }
 }

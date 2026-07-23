@@ -12,7 +12,117 @@ use super::{
 };
 
 pub fn document_to_cdxml(document: &ChemSemaDocument) -> String {
-    CdxmlDocumentWriter::new(document).write()
+    let generated = CdxmlDocumentWriter::new(document).write();
+    let Some(source) = document.interchange.get("cdxml") else {
+        return generated;
+    };
+    let Ok(mut root) = super::parse_xml_tree(&generated) else {
+        return generated;
+    };
+    merge_interchange_tree(&mut root, &source.root);
+    serialize_cdxml_tree(&root)
+}
+
+fn merge_interchange_tree(generated: &mut super::xml::XmlNode, source: &crate::InterchangeObject) {
+    for property in source.properties.values() {
+        generated
+            .attrs
+            .entry(property.name.clone())
+            .or_insert_with(|| property.value.clone());
+    }
+    if generated.text.is_empty() && !source.text.is_empty() {
+        generated.text = source.text.clone();
+    }
+
+    let mut remaining = std::mem::take(&mut generated.children);
+    let mut ordered = Vec::with_capacity(remaining.len().max(source.children.len()));
+    for source_child in &source.children {
+        let exact = remaining
+            .iter()
+            .position(|child| interchange_xml_exact_match(source_child, child));
+        let match_index = exact.or_else(|| {
+            remaining
+                .iter()
+                .position(|child| source_child.name == child.name)
+        });
+        if let Some(index) = match_index {
+            let mut child = remaining.remove(index);
+            merge_interchange_tree(&mut child, source_child);
+            ordered.push(child);
+        } else if !is_regenerated_table(&source_child.name) {
+            ordered.push(xml_from_interchange(source_child));
+        }
+    }
+    ordered.append(&mut remaining);
+    generated.children = ordered;
+}
+
+fn interchange_xml_exact_match(
+    source: &crate::InterchangeObject,
+    generated: &super::xml::XmlNode,
+) -> bool {
+    source.name == generated.name
+        && match (&source.id, generated.attr("id")) {
+            (Some(source_id), Some(generated_id)) => source_id == generated_id,
+            (None, None) => true,
+            _ => false,
+        }
+}
+
+fn is_regenerated_table(name: &str) -> bool {
+    matches!(name, "fonttable" | "colortable")
+}
+
+fn xml_from_interchange(source: &crate::InterchangeObject) -> super::xml::XmlNode {
+    super::xml::XmlNode {
+        name: source.name.clone(),
+        attrs: source
+            .properties
+            .iter()
+            .map(|(_, property)| (property.name.clone(), property.value.clone()))
+            .collect(),
+        text: source.text.clone(),
+        children: source.children.iter().map(xml_from_interchange).collect(),
+    }
+}
+
+fn serialize_cdxml_tree(root: &super::xml::XmlNode) -> String {
+    let mut out = String::from(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>\n<!DOCTYPE CDXML SYSTEM \"https://static.chemistry.revvitycloud.com/cdxml/CDXML.dtd\" >\n",
+    );
+    write_xml_node(root, &mut out, 0);
+    out.push('\n');
+    out
+}
+
+fn write_xml_node(node: &super::xml::XmlNode, out: &mut String, indent: usize) {
+    for _ in 0..indent {
+        out.push(' ');
+    }
+    out.push('<');
+    out.push_str(&node.name);
+    for (name, value) in &node.attrs {
+        write!(out, " {}=\"{}\"", name, xml_escape_attr(value)).expect("write XML attribute");
+    }
+    if node.children.is_empty() && node.text.is_empty() {
+        out.push_str(" />");
+        return;
+    }
+    out.push('>');
+    if !node.text.is_empty() {
+        out.push_str(&xml_escape_text(&node.text));
+    }
+    if !node.children.is_empty() {
+        out.push('\n');
+        for child in &node.children {
+            write_xml_node(child, out, indent + 2);
+            out.push('\n');
+        }
+        for _ in 0..indent {
+            out.push(' ');
+        }
+    }
+    write!(out, "</{}>", node.name).expect("write XML end tag");
 }
 
 fn cdxml_editing_scale(document: &ChemSemaDocument) -> f64 {
@@ -316,7 +426,8 @@ impl<'a> CdxmlDocumentWriter<'a> {
         out.push_str("<!DOCTYPE CDXML SYSTEM \"http://www.cambridgesoft.com/xml/cdxml.dtd\" >\n");
         write!(
             out,
-            "<CDXML CreationProgram=\"ChemSema\" Name=\"{}\" BoundingBox=\"{}\" WindowPosition=\"0 0\" WindowSize=\"-32768 -32768\" WindowIsZoomed=\"yes\" FractionalWidths=\"{}\" InterpretChemically=\"{}\" ShowAtomQuery=\"{}\" ShowAtomStereo=\"{}\" ShowAtomEnhancedStereo=\"{}\" ShowAtomNumber=\"{}\" ShowResidueID=\"{}\" ShowBondQuery=\"{}\" ShowBondRxn=\"{}\" ShowBondStereo=\"{}\" ShowTerminalCarbonLabels=\"{}\" ShowNonTerminalCarbonLabels=\"{}\" HideImplicitHydrogens=\"{}\" LabelFont=\"{}\" LabelSize=\"{}\" LabelFace=\"{}\" CaptionFont=\"{}\" CaptionSize=\"{}\" CaptionFace=\"{}\" LineWidth=\"{}\" BoldWidth=\"{}\" BondLength=\"{}\" BondSpacing=\"{}\" HashSpacing=\"{}\" MarginWidth=\"{}\" ChainAngle=\"{}\" LabelJustification=\"{}\" CaptionJustification=\"{}\" PrintMargins=\"{}\" color=\"{}\" bgcolor=\"{}\"",
+            "<CDXML CreationProgram=\"ChemSema\" ModificationProgram=\"{}\" Name=\"{}\" BoundingBox=\"{}\" WindowPosition=\"0 0\" WindowSize=\"-32768 -32768\" WindowIsZoomed=\"yes\" FractionalWidths=\"{}\" InterpretChemically=\"{}\" ShowAtomQuery=\"{}\" ShowAtomStereo=\"{}\" ShowAtomEnhancedStereo=\"{}\" ShowAtomNumber=\"{}\" ShowResidueID=\"{}\" ShowBondQuery=\"{}\" ShowBondRxn=\"{}\" ShowBondStereo=\"{}\" ShowTerminalCarbonLabels=\"{}\" ShowNonTerminalCarbonLabels=\"{}\" HideImplicitHydrogens=\"{}\" LabelFont=\"{}\" LabelSize=\"{}\" LabelFace=\"{}\" CaptionFont=\"{}\" CaptionSize=\"{}\" CaptionFace=\"{}\" LineWidth=\"{}\" BoldWidth=\"{}\" BondLength=\"{}\" BondSpacing=\"{}\" HashSpacing=\"{}\" MarginWidth=\"{}\" ChainAngle=\"{}\" LabelJustification=\"{}\" CaptionJustification=\"{}\" PrintMargins=\"{}\" color=\"{}\" bgcolor=\"{}\"",
+            concat!("ChemSema/", env!("CARGO_PKG_VERSION"), ";cdx-tags=chemdraw"),
             xml_escape_attr(&self.document.document.title),
             root_bbox,
             fmt_cdxml_bool(self.defaults.fractional_widths),
@@ -399,6 +510,7 @@ impl<'a> CdxmlDocumentWriter<'a> {
         match object.object_type.as_str() {
             "molecule" => self.write_molecule_object(out, object),
             "line" => self.write_line_object(out, object),
+            "curve" => self.write_curve_object(out, object),
             "shape" => self.write_shape_object(out, object),
             "bracket" | "symbol" => self.write_bracket_object(out, object),
             "text" => self.write_text_object(out, object),
@@ -716,6 +828,22 @@ impl<'a> CdxmlDocumentWriter<'a> {
         ] {
             if let Some(value) = imported_cdxml_label_attr(label, name) {
                 attrs.push((xml_name, value.to_string()));
+            }
+        }
+        if imported_cdxml_label_attr(label, "labelLineHeight").is_none()
+            && imported_cdxml_label_attr(label, "lineHeight").is_none()
+        {
+            match label.line_height_mode.as_str() {
+                "variable" => attrs.push(("LabelLineHeight", "variable".to_string())),
+                "auto" => attrs.push(("LabelLineHeight", "auto".to_string())),
+                _ => {
+                    if let Some(line_height) = label
+                        .line_height
+                        .filter(|value| value.is_finite() && *value > 1.0)
+                    {
+                        attrs.push(("LabelLineHeight", fmt_num(line_height)));
+                    }
+                }
             }
         }
         if let Some(line_starts) = imported_cdxml_label_attr(label, "lineStarts") {
@@ -1047,6 +1175,89 @@ impl<'a> CdxmlDocumentWriter<'a> {
             attrs.push(("GraphicType", "Line".to_string()));
             write_empty_tag(out, 4, "graphic", attrs);
         }
+    }
+
+    fn write_curve_object(&mut self, out: &mut String, object: &SceneObject) {
+        let points = payload_points_cdxml(&object.payload, "curvePoints");
+        if points.len() < 6 || (points.len() - 3) % 3 != 0 {
+            return;
+        }
+        let translated = points
+            .iter()
+            .map(|point| {
+                point.translated(crate::Vector::new(
+                    object.transform.translate[0],
+                    object.transform.translate[1],
+                ))
+            })
+            .collect::<Vec<_>>();
+        let curve_points = translated
+            .iter()
+            .flat_map(|point| [fmt_num(point.x), fmt_num(point.y)])
+            .collect::<Vec<_>>()
+            .join(" ");
+        let style = object_style(self.document, object);
+        let stroke = style
+            .and_then(|style| style_string_value(style, "stroke"))
+            .unwrap_or_else(|| "#000000".to_string());
+        let stroke_width = style
+            .and_then(|style| style_number_value(style, "strokeWidth"))
+            .unwrap_or(crate::DEFAULT_BOND_STROKE);
+        let mut attrs = vec![
+            ("id", self.alloc_id()),
+            ("CurvePoints", curve_points),
+            (
+                "CurveType",
+                object
+                    .payload
+                    .extra
+                    .get("curveType")
+                    .and_then(Value::as_i64)
+                    .unwrap_or(0)
+                    .to_string(),
+            ),
+            ("LineWidth", fmt_num(stroke_width)),
+            ("color", self.colors.id_for(&stroke)),
+            ("Z", object.z_index.to_string()),
+        ];
+        let head =
+            payload_string_cdxml(&object.payload, "head").unwrap_or_else(|| "none".to_string());
+        let tail =
+            payload_string_cdxml(&object.payload, "tail").unwrap_or_else(|| "none".to_string());
+        if head != "none" {
+            attrs.push((
+                "ArrowheadHead",
+                cdxml_curve_endpoint_name(&head).to_string(),
+            ));
+        }
+        if tail != "none" {
+            attrs.push((
+                "ArrowheadTail",
+                cdxml_curve_endpoint_name(&tail).to_string(),
+            ));
+        }
+        if head != "none" || tail != "none" {
+            attrs.push((
+                "ArrowheadType",
+                payload_string_cdxml(&object.payload, "arrowheadType")
+                    .unwrap_or_else(|| "Solid".to_string()),
+            ));
+        }
+        for (payload_key, attribute) in [
+            ("headLength", "HeadSize"),
+            ("headCenterLength", "ArrowheadCenterSize"),
+            ("headWidth", "ArrowheadWidth"),
+        ] {
+            if let Some(value) = object
+                .payload
+                .extra
+                .get(payload_key)
+                .and_then(Value::as_f64)
+            {
+                attrs.push((attribute, fmt_num(value * 100.0)));
+            }
+        }
+        write_empty_tag(out, 4, "curve", attrs);
     }
 
     fn write_shape_object(&mut self, out: &mut String, object: &SceneObject) {
@@ -1627,16 +1838,28 @@ impl<'a> CdxmlDocumentWriter<'a> {
         if imported_cdxml_object_attr(object, "captionLineHeight").is_none()
             && should_materialize_caption_line_height
         {
-            if let Some(line_height) = object
+            match object
                 .payload
                 .extra
-                .get("lineHeight")
-                .and_then(Value::as_f64)
+                .get("lineHeightMode")
+                .and_then(Value::as_str)
+                .unwrap_or("fixed")
             {
-                attrs.push((
-                    "CaptionLineHeight",
-                    line_height.round().clamp(0.0, i16::MAX as f64).to_string(),
-                ));
+                "variable" => attrs.push(("CaptionLineHeight", "variable".to_string())),
+                "auto" => attrs.push(("CaptionLineHeight", "auto".to_string())),
+                _ => {
+                    if let Some(line_height) = object
+                        .payload
+                        .extra
+                        .get("lineHeight")
+                        .and_then(Value::as_f64)
+                    {
+                        attrs.push((
+                            "CaptionLineHeight",
+                            fmt_num(line_height.clamp(0.0, i16::MAX as f64)),
+                        ));
+                    }
+                }
             }
         }
         write_open_tag(out, 4, "t", attrs);
@@ -2367,6 +2590,15 @@ fn cdxml_arrow_endpoint_style(value: &str) -> Option<&'static str> {
         "half-right" | "halfright" | "right" | "bottom" => Some("HalfRight"),
         "none" => Some("None"),
         _ => None,
+    }
+}
+
+fn cdxml_curve_endpoint_name(value: &str) -> &'static str {
+    match value.to_ascii_lowercase().as_str() {
+        "half" | "half-left" | "halfleft" | "left" | "top" => "HalfLeft",
+        "half-right" | "halfright" | "right" | "bottom" => "HalfRight",
+        "full" => "Full",
+        _ => "None",
     }
 }
 
