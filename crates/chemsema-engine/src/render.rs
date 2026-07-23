@@ -49,8 +49,8 @@ pub use primitives::{RenderPrimitive, RenderRole};
 use bond_geometry::*;
 use bond_metrics::*;
 pub(crate) use bounds::{
-    bracket_object_visual_bounds, fragment_bond_visual_bounds, line_object_visual_bounds,
-    shape_object_visual_bounds,
+    bracket_object_visual_bounds, curve_object_visual_bounds, fragment_bond_visual_bounds,
+    line_object_visual_bounds, shape_object_visual_bounds,
 };
 use labels::{
     attached_label_glyph_anchor_world, body_segment_label_retreats,
@@ -85,20 +85,7 @@ pub(crate) struct RectBox {
     y2: f64,
 }
 
-impl RectBox {
-    fn expanded(self, margin: f64) -> Self {
-        Self {
-            x1: self.x1 - margin,
-            y1: self.y1 - margin,
-            x2: self.x2 + margin,
-            y2: self.y2 + margin,
-        }
-    }
-
-    fn contains(self, point: Point) -> bool {
-        point.x >= self.x1 && point.x <= self.x2 && point.y >= self.y1 && point.y <= self.y2
-    }
-}
+impl RectBox {}
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct LineGeometry {
@@ -1069,15 +1056,17 @@ fn render_scene_object(
     document: &ChemSemaDocument,
     object: &SceneObject,
 ) {
-    match object.object_type.as_str() {
-        "molecule" => render_molecule_object(out, document, object),
-        "line" => render_line_object(out, document, object),
-        "curve" => render_curve_object(out, document, object),
-        "text" => render_text_object(out, document, object),
-        "shape" => render_shape_object(out, document, object),
-        "image" => render_image_object(out, document, object),
-        "bracket" | "symbol" => render_bracket_object(out, document, object),
-        _ => {}
+    match object.kind() {
+        crate::SceneObjectKind::Molecule => render_molecule_object(out, document, object),
+        crate::SceneObjectKind::Line => render_line_object(out, document, object),
+        crate::SceneObjectKind::Curve => render_curve_object(out, document, object),
+        crate::SceneObjectKind::Text => render_text_object(out, document, object),
+        crate::SceneObjectKind::Shape => render_shape_object(out, document, object),
+        crate::SceneObjectKind::Image => render_image_object(out, document, object),
+        crate::SceneObjectKind::Bracket | crate::SceneObjectKind::Symbol => {
+            render_bracket_object(out, document, object)
+        }
+        crate::SceneObjectKind::Group => {}
     }
 }
 

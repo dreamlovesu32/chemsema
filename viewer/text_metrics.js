@@ -12,14 +12,6 @@ function normalizeSharedGlyphProfile(profile) {
   };
 }
 
-function isAsciiGlyphCode(character, lowerBound, upperBound) {
-  if (!character || Array.from(character).length !== 1) {
-    return false;
-  }
-  const code = character.codePointAt(0);
-  return Number.isFinite(code) && code >= lowerBound && code <= upperBound;
-}
-
 const DEFAULT_GLYPH_LAYOUT = {
   trackingEm: 0,
   subscriptScale: 0.75,
@@ -34,112 +26,6 @@ function editorGlyphLayoutConfig(sharedGlyphProfiles) {
     return DEFAULT_GLYPH_LAYOUT;
   }
   return sharedGlyphProfiles.layout;
-}
-
-function defaultUpperGlyphProfile(sharedGlyphProfiles) {
-  return sharedGlyphProfiles.defaults.upper;
-}
-
-function defaultLowerGlyphProfile(sharedGlyphProfiles) {
-  return sharedGlyphProfiles.defaults.lower;
-}
-
-function defaultDigitGlyphProfile(sharedGlyphProfiles) {
-  return sharedGlyphProfiles.defaults.digit;
-}
-
-function defaultPunctuationGlyphProfile(sharedGlyphProfiles) {
-  return sharedGlyphProfiles.defaults.punctuation;
-}
-
-function fallbackRectGlyphProfile(advanceEm, inkTopEm, inkRightEm, inkBottomEm) {
-  return {
-    shape: "rect",
-    advanceEm,
-    inkLeftEm: 0,
-    inkTopEm,
-    inkRightEm,
-    inkBottomEm,
-    padXEm: 0.09,
-    padYEm: 0.09,
-    visible: true,
-  };
-}
-
-function invisibleWhitespaceGlyphProfile() {
-  return {
-    shape: "rect",
-    advanceEm: 0.28,
-    inkLeftEm: 0,
-    inkTopEm: 0,
-    inkRightEm: 0,
-    inkBottomEm: 0,
-    padXEm: 0,
-    padYEm: 0,
-    visible: false,
-  };
-}
-
-function isSingleCodePoint(character) {
-  return !!character && Array.from(character).length === 1;
-}
-
-function characterCodePoint(character) {
-  return isSingleCodePoint(character) ? character.codePointAt(0) : NaN;
-}
-
-function isCjkOrFullwidth(character) {
-  const code = characterCodePoint(character);
-  return Number.isFinite(code) && (
-    (code >= 0x1100 && code <= 0x11ff)
-    || (code >= 0x2e80 && code <= 0xa4cf)
-    || (code >= 0xac00 && code <= 0xd7af)
-    || (code >= 0xf900 && code <= 0xfaff)
-    || (code >= 0xfe10 && code <= 0xfe6f)
-    || (code >= 0xff00 && code <= 0xffef)
-    || (code >= 0x20000 && code <= 0x2fa1f)
-  );
-}
-
-function isMathOrArrowSymbol(character) {
-  const code = characterCodePoint(character);
-  return Number.isFinite(code) && (
-    (code >= 0x2190 && code <= 0x21ff)
-    || (code >= 0x2200 && code <= 0x22ff)
-    || (code >= 0x27f0 && code <= 0x27ff)
-  );
-}
-
-function isGreekOrExtendedLetter(character) {
-  return isSingleCodePoint(character) && /^\p{L}$/u.test(character);
-}
-
-function isUppercaseLetter(character) {
-  return isSingleCodePoint(character) && character.toLocaleUpperCase() === character && character.toLocaleLowerCase() !== character;
-}
-
-function inferredGlyphProfile(character) {
-  if (!character) {
-    return null;
-  }
-  if (/\s/u.test(character)) {
-    return invisibleWhitespaceGlyphProfile();
-  }
-  if (isCjkOrFullwidth(character)) {
-    return fallbackRectGlyphProfile(1.0, -0.86, 1.0, 0.14);
-  }
-  if (isMathOrArrowSymbol(character)) {
-    return fallbackRectGlyphProfile(0.84, -0.74, 0.84, 0.06);
-  }
-  if (character === "‰" || character === "‱") {
-    return fallbackRectGlyphProfile(1.34, -0.74, 1.34, 0.06);
-  }
-  if (isGreekOrExtendedLetter(character)) {
-    return isUppercaseLetter(character)
-      ? fallbackRectGlyphProfile(0.72, -0.74, 0.72, 0.04)
-      : fallbackRectGlyphProfile(0.62, -0.62, 0.62, 0.08);
-  }
-  return fallbackRectGlyphProfile(0.62, -0.74, 0.62, 0.08);
 }
 
 export function textCodePoints(text) {
@@ -180,28 +66,6 @@ export function normalizeSharedGlyphProfiles(manifest) {
   };
 }
 
-export function lookupEditorGlyphProfile(sharedGlyphProfiles, character) {
-  if (!sharedGlyphProfiles) {
-    throw new Error("Shared glyph profiles have not loaded yet");
-  }
-  if (character && Object.hasOwn(sharedGlyphProfiles.specials, character)) {
-    return sharedGlyphProfiles.specials[character];
-  }
-  if (isAsciiGlyphCode(character, 65, 90)) {
-    return defaultUpperGlyphProfile(sharedGlyphProfiles);
-  }
-  if (isAsciiGlyphCode(character, 97, 122)) {
-    return defaultLowerGlyphProfile(sharedGlyphProfiles);
-  }
-  if (isAsciiGlyphCode(character, 48, 57)) {
-    return defaultDigitGlyphProfile(sharedGlyphProfiles);
-  }
-  if (!isAsciiGlyphCode(character, 0x21, 0x7e)) {
-    return inferredGlyphProfile(character);
-  }
-  return defaultPunctuationGlyphProfile(sharedGlyphProfiles);
-}
-
 export function editorScriptScale(sharedGlyphProfiles, script) {
   const layout = editorGlyphLayoutConfig(sharedGlyphProfiles);
   if (script === "subscript") {
@@ -232,48 +96,4 @@ export function editorScriptBaselineShiftEm(sharedGlyphProfiles, script, fontWei
 
 export function editorSvgScriptBaselineShift(sharedGlyphProfiles, runFontSize, script, fontWeight = 400) {
   return -editorScriptBaselineShiftEm(sharedGlyphProfiles, script, fontWeight) * runFontSize;
-}
-
-export function editorChargeSignBaselineAdjustment(sharedGlyphProfiles, profile, baseFontSize, script) {
-  if (script !== "subscript" && script !== "superscript") {
-    return 0;
-  }
-  const digit = defaultDigitGlyphProfile(sharedGlyphProfiles);
-  const digitCenter = (digit.inkTopEm + digit.inkBottomEm) * 0.5;
-  const signCenter = (profile.inkTopEm + profile.inkBottomEm) * 0.5;
-  return (digitCenter - signCenter) * baseFontSize * editorScriptScale(sharedGlyphProfiles, script);
-}
-
-export function estimatedEditorCharWidth(sharedGlyphProfiles, character, fontSize) {
-  if (!character) {
-    return sharedGlyphProfiles ? fontSize * defaultUpperGlyphProfile(sharedGlyphProfiles).advanceEm : fontSize * 0.72;
-  }
-  if (!sharedGlyphProfiles) {
-    if (/\s/.test(character)) {
-      return fontSize * 0.34;
-    }
-    if (/[.,;:!?()[\]/+-]/.test(character)) {
-      return fontSize * 0.42;
-    }
-    return fontSize * 0.62;
-  }
-  return lookupEditorGlyphProfile(sharedGlyphProfiles, character).advanceEm * fontSize;
-}
-
-export function estimateTextRunsWidth(sharedGlyphProfiles, runs, fallbackFontSize, defaultFontSize) {
-  let width = 0;
-  let lineWidth = 0;
-  for (const run of runs || []) {
-    const baseFontSize = Number(run.fontSize || fallbackFontSize || defaultFontSize);
-    const runFontSize = Math.max(7, baseFontSize * editorScriptScale(sharedGlyphProfiles, run.script));
-    for (const ch of String(run.text || "")) {
-      if (ch === "\n") {
-        width = Math.max(width, lineWidth);
-        lineWidth = 0;
-        continue;
-      }
-      lineWidth += estimatedEditorCharWidth(sharedGlyphProfiles, ch, runFontSize);
-    }
-  }
-  return Math.max(width, lineWidth);
 }

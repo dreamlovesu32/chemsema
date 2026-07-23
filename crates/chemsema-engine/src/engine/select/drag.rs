@@ -247,7 +247,7 @@ pub(super) fn apply_selection_rotation_to_document(
 
 fn rotated_scene_object(original: &SceneObject, center: Point, degrees: f64) -> SceneObject {
     let mut object = original.clone();
-    if original.object_type == "group" {
+    if original.kind() == crate::SceneObjectKind::Group {
         object.children = original
             .children
             .iter()
@@ -261,15 +261,17 @@ fn rotated_scene_object(original: &SceneObject, center: Point, degrees: f64) -> 
         original.transform.translate[1],
     );
 
-    match original.object_type.as_str() {
-        "line" => rotate_payload_points_to_next_local(
-            &mut object,
-            original_translate,
-            original_translate,
-            center,
-            degrees,
-        ),
-        "shape" if shape_uses_absolute_points(original) => {
+    match original.kind() {
+        crate::SceneObjectKind::Line | crate::SceneObjectKind::Curve => {
+            rotate_payload_points_to_next_local(
+                &mut object,
+                original_translate,
+                original_translate,
+                center,
+                degrees,
+            )
+        }
+        crate::SceneObjectKind::Shape if shape_uses_absolute_points(original) => {
             rotate_payload_points_to_next_local(
                 &mut object,
                 Point::new(0.0, 0.0),
@@ -279,18 +281,18 @@ fn rotated_scene_object(original: &SceneObject, center: Point, degrees: f64) -> 
             );
             object.transform = crate::Transform::identity();
         }
-        "shape" | "bracket" | "symbol" | "image" => {
+        crate::SceneObjectKind::Shape
+        | crate::SceneObjectKind::Bracket
+        | crate::SceneObjectKind::Symbol
+        | crate::SceneObjectKind::Image => {
             rotate_bbox_based_object(&mut object, original, center, degrees);
         }
-        "text" => {
+        crate::SceneObjectKind::Text => {
             let next_translate = rotate_point_around(original_translate, center, degrees);
             object.transform.translate = [round2(next_translate.x), round2(next_translate.y)];
             object.transform.rotate = round2(object.transform.rotate + degrees);
         }
-        _ => {
-            let next_translate = rotate_point_around(original_translate, center, degrees);
-            object.transform.translate = [round2(next_translate.x), round2(next_translate.y)];
-        }
+        crate::SceneObjectKind::Molecule | crate::SceneObjectKind::Group => {}
     }
     object
 }
@@ -348,6 +350,14 @@ fn rotate_payload_points_to_next_local(
     rotate_extra_point_array(
         &mut object.payload.extra,
         "points",
+        original_translate,
+        next_translate,
+        center,
+        degrees,
+    );
+    rotate_extra_point_array(
+        &mut object.payload.extra,
+        "curvePoints",
         original_translate,
         next_translate,
         center,
@@ -691,7 +701,7 @@ fn resized_scene_object(
     );
     resize_text_dimensions(&mut object, scale_x, scale_y);
     resize_graphic_dimensions(&mut object, scale_x, scale_y);
-    if original.object_type == "group" {
+    if original.kind() == crate::SceneObjectKind::Group {
         object.children = original
             .children
             .iter()
@@ -710,25 +720,37 @@ pub(in crate::engine) fn translated_scene_object(
     delta_y: f64,
 ) -> SceneObject {
     let mut object = original.clone();
-    if original.object_type == "line" {
-        translate_line_payload_points(&mut object, delta_x, delta_y);
-        return object;
-    }
-    if shape_uses_absolute_points(&object) {
-        translate_absolute_shape_points(&mut object, delta_x, delta_y);
-        object.transform = crate::Transform::identity();
-        return object;
-    }
-    object.transform.translate = [
-        round2(original.transform.translate[0] + delta_x),
-        round2(original.transform.translate[1] + delta_y),
-    ];
-    if original.object_type == "group" {
-        object.children = original
-            .children
-            .iter()
-            .map(|child| translated_scene_object(child, delta_x, delta_y))
-            .collect();
+    match original.kind() {
+        crate::SceneObjectKind::Line => {
+            translate_line_payload_points(&mut object, delta_x, delta_y);
+        }
+        crate::SceneObjectKind::Shape if shape_uses_absolute_points(&object) => {
+            translate_absolute_shape_points(&mut object, delta_x, delta_y);
+            object.transform = crate::Transform::identity();
+        }
+        crate::SceneObjectKind::Group => {
+            object.transform.translate = [
+                round2(original.transform.translate[0] + delta_x),
+                round2(original.transform.translate[1] + delta_y),
+            ];
+            object.children = original
+                .children
+                .iter()
+                .map(|child| translated_scene_object(child, delta_x, delta_y))
+                .collect();
+        }
+        crate::SceneObjectKind::Molecule
+        | crate::SceneObjectKind::Text
+        | crate::SceneObjectKind::Curve
+        | crate::SceneObjectKind::Bracket
+        | crate::SceneObjectKind::Symbol
+        | crate::SceneObjectKind::Shape
+        | crate::SceneObjectKind::Image => {
+            object.transform.translate = [
+                round2(original.transform.translate[0] + delta_x),
+                round2(original.transform.translate[1] + delta_y),
+            ];
+        }
     }
     object
 }
@@ -870,10 +892,16 @@ fn translate_box(bounds: &mut [f64; 4], delta_x: f64, delta_y: f64) {
 }
 
 fn object_transform_participates_in_render(object: &SceneObject) -> bool {
-    match object.object_type.as_str() {
-        "text" | "bracket" | "symbol" | "image" => true,
-        "shape" => !shape_uses_absolute_points(object),
-        _ => false,
+    match object.kind() {
+        crate::SceneObjectKind::Text
+        | crate::SceneObjectKind::Bracket
+        | crate::SceneObjectKind::Symbol
+        | crate::SceneObjectKind::Image => true,
+        crate::SceneObjectKind::Shape => !shape_uses_absolute_points(object),
+        crate::SceneObjectKind::Molecule
+        | crate::SceneObjectKind::Line
+        | crate::SceneObjectKind::Curve
+        | crate::SceneObjectKind::Group => false,
     }
 }
 
@@ -975,7 +1003,7 @@ fn resize_payload_points(
     scale_x: f64,
     scale_y: f64,
 ) {
-    let keys = ["points"];
+    let keys = ["points", "curvePoints"];
     for key in keys {
         let Some(points) = object.payload.extra.get(key).and_then(JsonValue::as_array) else {
             continue;

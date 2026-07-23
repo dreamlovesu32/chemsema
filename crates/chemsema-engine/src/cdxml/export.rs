@@ -526,16 +526,17 @@ impl<'a> CdxmlDocumentWriter<'a> {
             // below are authoritative and ChemDraw regenerates the object tags.
             return;
         }
-        match object.object_type.as_str() {
-            "molecule" => self.write_molecule_object(out, object),
-            "line" => self.write_line_object(out, object),
-            "curve" => self.write_curve_object(out, object),
-            "shape" => self.write_shape_object(out, object),
-            "image" => self.write_image_object(out, object),
-            "bracket" | "symbol" => self.write_bracket_object(out, object),
-            "text" => self.write_text_object(out, object),
-            "group" => self.write_group_object(out, object),
-            _ => {}
+        match object.kind() {
+            crate::SceneObjectKind::Molecule => self.write_molecule_object(out, object),
+            crate::SceneObjectKind::Line => self.write_line_object(out, object),
+            crate::SceneObjectKind::Curve => self.write_curve_object(out, object),
+            crate::SceneObjectKind::Shape => self.write_shape_object(out, object),
+            crate::SceneObjectKind::Image => self.write_image_object(out, object),
+            crate::SceneObjectKind::Bracket | crate::SceneObjectKind::Symbol => {
+                self.write_bracket_object(out, object)
+            }
+            crate::SceneObjectKind::Text => self.write_text_object(out, object),
+            crate::SceneObjectKind::Group => self.write_group_object(out, object),
         }
     }
 

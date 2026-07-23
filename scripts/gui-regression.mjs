@@ -547,7 +547,20 @@ async function verifyCopyPasteCut(page) {
 
   await page.keyboard.press("Control+A");
   await page.locator('button[data-command="cut"]').click();
-  await page.waitForFunction(() => document.querySelectorAll("[data-bond-id]").length === 0);
+  try {
+    await page.waitForFunction(() => document.querySelectorAll("[data-bond-id]").length === 0);
+  } catch (error) {
+    const diagnostic = await page.evaluate(() => {
+      const engine = window.__chemsemaDebug.state.editorEngine;
+      return {
+        document: JSON.parse(engine.documentJson()),
+        selectionBounds: JSON.parse(engine.selectionBoundsJson() || "null"),
+        lastCommandResult: JSON.parse(engine.lastCommandResultJson?.() || "null"),
+        renderedBonds: document.querySelectorAll("[data-bond-id]").length,
+      };
+    });
+    throw new Error(`Cut did not clear the selected document: ${JSON.stringify(diagnostic)}`, { cause: error });
+  }
   const cut = await documentSummary(page);
   assert.equal(cut.renderedBonds, 0, `Cut did not remove selected content: ${JSON.stringify(cut)}`);
 
@@ -555,6 +568,94 @@ async function verifyCopyPasteCut(page) {
   await page.waitForFunction(() => document.querySelectorAll("[data-bond-id]").length > 0);
   const restored = await documentSummary(page);
   assert(restored.renderedBonds > 0, `Paste after cut did not restore content: ${JSON.stringify(restored)}`);
+}
+
+async function dispatchImageTransfer(page, eventType) {
+  await page.evaluate(async (type) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 2;
+    canvas.height = 2;
+    const context = canvas.getContext("2d");
+    context.fillStyle = "#2574a9";
+    context.fillRect(0, 0, 2, 2);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+    const file = new File([blob], "regression.png", { type: "image/png" });
+    const transfer = new DataTransfer();
+    transfer.items.add(file);
+    const target = type === "drop" ? document.querySelector("#viewer-container") : document;
+    const event = type === "drop"
+      ? new DragEvent("drop", {
+        bubbles: true,
+        cancelable: true,
+        dataTransfer: transfer,
+        clientX: 500,
+        clientY: 400,
+      })
+      : new ClipboardEvent("paste", {
+        bubbles: true,
+        cancelable: true,
+        clipboardData: transfer,
+      });
+    target.dispatchEvent(event);
+  }, eventType);
+}
+
+async function verifyImageDropAndPaste(page) {
+  await dispatchImageTransfer(page, "drop");
+  try {
+    await page.waitForFunction(() => {
+      const engine = window.__chemsemaDebug.state.editorEngine;
+      const documentValue = JSON.parse(engine.documentJson());
+      return documentValue.objects?.some((object) => object.type === "image")
+        && window.__chemsemaDebug.editorState?.activeTool === "select"
+        && JSON.parse(engine.selectionBoundsJson() || "null");
+    });
+  } catch (error) {
+    const diagnostic = await page.evaluate(() => ({
+      drop: window.__chemsemaDebug.lastFileDrop || null,
+      activeTool: window.__chemsemaDebug.editorState?.activeTool || null,
+      document: JSON.parse(window.__chemsemaDebug.state.editorEngine.documentJson()),
+      selectionBounds: JSON.parse(
+        window.__chemsemaDebug.state.editorEngine.selectionBoundsJson() || "null",
+      ),
+    }));
+    throw new Error(`Dropped image did not become the selected object: ${JSON.stringify(diagnostic)}`, { cause: error });
+  }
+
+  const afterDrop = await page.evaluate(() => (
+    JSON.parse(window.__chemsemaDebug.state.editorEngine.documentJson())
+      .objects.filter((object) => object.type === "image").length
+  ));
+  await dispatchImageTransfer(page, "paste");
+  await page.waitForFunction((count) => (
+    JSON.parse(window.__chemsemaDebug.state.editorEngine.documentJson())
+      .objects.filter((object) => object.type === "image").length > count
+  ), afterDrop);
+}
+
+async function verifyStructuredClipboardAcrossTabs(context, page, errors) {
+  await drawBondWithMouse(page);
+  await page.keyboard.press("Control+A");
+  await page.locator('button[data-command="copy"]').click();
+  await page.waitForFunction(async () => (
+    (await navigator.clipboard.readText()).includes("<CDXML")
+  ));
+
+  const nextPagePromise = context.waitForEvent("page");
+  await page.locator('button.icon-button[data-command="new"]').click();
+  const nextPage = await nextPagePromise;
+  nextPage.setDefaultTimeout(12000);
+  capturePageErrors(nextPage, errors);
+  await waitForReady(nextPage);
+  assert.equal(
+    await nextPage.locator("[data-bond-id]").count(),
+    0,
+    "A new tab unexpectedly inherited the previous tab document.",
+  );
+
+  await nextPage.locator('button[data-command="paste"]').click();
+  await nextPage.waitForFunction(() => document.querySelectorAll("[data-bond-id]").length > 0);
+  await nextPage.close();
 }
 
 async function verifySaveAsFormats(page) {
@@ -641,6 +742,9 @@ try {
     executablePath: existsSync(edgePath) ? edgePath : undefined,
   });
   const context = await browser.newContext({ acceptDownloads: true });
+  await context.grantPermissions(["clipboard-read", "clipboard-write"], {
+    origin: new URL(baseUrl).origin,
+  });
   await installBrowserMocks(context);
   const errors = [];
 
@@ -668,6 +772,14 @@ try {
     await verifyCopyPasteCut(editPage);
     await editPage.close();
 
+    const imagePage = await openViewer(context, errors);
+    await verifyImageDropAndPaste(imagePage);
+    await imagePage.close();
+
+    const crossTabPage = await openViewer(context, errors);
+    await verifyStructuredClipboardAcrossTabs(context, crossTabPage, errors);
+    await crossTabPage.close();
+
     const savePage = await openViewer(context, errors);
     await verifySaveAsFormats(savePage);
     await verifyZoomAndStyleMenu(savePage);
@@ -679,7 +791,7 @@ try {
     ? "[gui-regression] ok (selection summary and minimum selection box)"
     : exactTieOnly
       ? "[gui-regression] ok (exact-tie double bond)"
-      : "[gui-regression] ok (open, save-as ccjs/cdxml/svg, ctrl+s ccjz, copy/paste/cut, toolbar icons, cursors, selection overlay, delete tool, exact-tie double bond, zoom, style)");
+      : "[gui-regression] ok (open, save-as ccjs/cdxml/svg, ctrl+s ccjz, copy/paste/cut, image drop/paste, cross-tab structured clipboard, toolbar icons, cursors, selection overlay, delete tool, exact-tie double bond, zoom, style)");
 } finally {
   await browser?.close();
   if (server) {

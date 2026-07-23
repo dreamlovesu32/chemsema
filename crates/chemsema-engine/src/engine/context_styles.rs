@@ -384,7 +384,13 @@ impl Engine {
             .document
             .scene_objects()
             .into_iter()
-            .filter(|object| selected.contains(&object.id) && object.object_type == "line")
+            .filter(|object| {
+                selected.contains(&object.id)
+                    && matches!(
+                        object.kind(),
+                        crate::SceneObjectKind::Line | crate::SceneObjectKind::Curve
+                    )
+            })
             .map(|object| {
                 let color = selected_object_style_color(&self.state.document, object);
                 (
@@ -414,7 +420,9 @@ impl Engine {
                     object.style_ref = Some(style_id);
                     changed = true;
                 }
-                changed |= set_line_arrow_bold(object, style == "bold");
+                if object.kind() == crate::SceneObjectKind::Line {
+                    changed |= set_line_arrow_bold(object, style == "bold");
+                }
             }
         }
         if !changed {

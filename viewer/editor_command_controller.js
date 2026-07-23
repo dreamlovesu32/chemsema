@@ -35,6 +35,17 @@ async function writeBrowserClipboard(payload) {
 }
 
 export function createEditorCommandController(options) {
+  let commandOperation = Promise.resolve();
+
+  function reportCommandFailure(command, error) {
+    const normalized = error instanceof Error ? error : new Error(String(error));
+    console.error(`[chemsema] editor command '${command}' failed`, normalized);
+    options.transientNotificationHost?.show?.(
+      `Command failed: ${normalized.message}`,
+      { error: true, duration: 3600 },
+    );
+  }
+
   async function writeClipboardFromSelection(fragmentJson = null, documentJson = undefined) {
     const state = options.state();
     if (!state.editorEngine) {
@@ -171,7 +182,16 @@ export function createEditorCommandController(options) {
     return { changed };
   }
 
-  async function runEditorCommand(command, commandPayload = null) {
+  function runEditorCommand(command, commandPayload = null) {
+    const task = commandOperation.then(() => executeEditorCommand(command, commandPayload));
+    commandOperation = task.then(
+      () => undefined,
+      (error) => reportCommandFailure(command, error),
+    );
+    return task;
+  }
+
+  async function executeEditorCommand(command, commandPayload = null) {
     const state = options.state();
     if (!options.isEditingRustDocument()) {
       return false;

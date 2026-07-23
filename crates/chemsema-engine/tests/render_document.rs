@@ -14394,7 +14394,7 @@ fn render_document_keeps_center_double_original_for_angles_over_162_degrees() {
 
 #[test]
 fn render_document_uses_larger_individual_label_retreat_for_both_center_double_lines() {
-    let document = fragment_document(
+    let document = normalize_test_document(&fragment_document(
         json!([
             {
                 "id": "n1",
@@ -14428,7 +14428,7 @@ fn render_document_uses_larger_individual_label_retreat_for_both_center_double_l
                 "double": { "placement": "center" }
             }
         ]),
-    );
+    ));
 
     let polygons: Vec<_> = object_bond_polygons_with_ids(&render_document(&document))
         .into_iter()

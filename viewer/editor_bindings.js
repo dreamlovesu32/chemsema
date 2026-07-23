@@ -479,9 +479,6 @@ function bindZoomInput(options) {
 
 function bindKeyboard(options) {
   document.addEventListener("keydown", async (event) => {
-    if (await runGlobalFileShortcut(event, options)) {
-      return;
-    }
     const target = event.target;
     if (options.getActiveTextEditor()?.root?.contains?.(target)) {
       if (event.key === "Escape") {
@@ -503,6 +500,9 @@ function bindKeyboard(options) {
       }
       event.preventDefault();
       await options.runEditorCommand(command);
+      return;
+    }
+    if (await runGlobalFileShortcut(event, options)) {
       return;
     }
     if (shouldSuppressBrowserShortcut(event)) {

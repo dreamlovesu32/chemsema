@@ -9,13 +9,14 @@ use super::{
 use crate::{
     angle_between, arrow_endpoint_style_handle_points, arrow_object_focus_points,
     arrow_object_handle_points, arrow_object_has_curve_handle, bracket_object_visual_bounds,
-    direction_from_angle, fragment_bond_visual_bounds, hit_test_arrow_center, hit_test_bond_center,
-    hit_test_endpoint, line_object_arrow_dimension, line_object_endpoint_style,
-    line_object_graphic_stroke_width, line_object_points, line_object_visual_bounds, nearest_angle,
-    point_at_distance_from_start, polyline_length, round2, shape_object_visual_bounds,
-    ArrowEndpointStyle, HoverTextBox, Point, RenderPrimitive, RenderRole, SceneObject,
-    SelectionState, ARROW_HIT_RADIUS, BOND_CENTER_HIT_RADIUS, DEFAULT_BOND_LENGTH,
-    DRAG_START_THRESHOLD, ENDPOINT_FOCUS_RADIUS, ENDPOINT_HIT_RADIUS, GLOBAL_SNAP_ANGLES,
+    curve_object_visual_bounds, direction_from_angle, fragment_bond_visual_bounds,
+    hit_test_arrow_center, hit_test_bond_center, hit_test_endpoint, line_object_arrow_dimension,
+    line_object_endpoint_style, line_object_graphic_stroke_width, line_object_points,
+    line_object_visual_bounds, nearest_angle, point_at_distance_from_start, polyline_length,
+    round2, shape_object_visual_bounds, ArrowEndpointStyle, HoverTextBox, Point, RenderPrimitive,
+    RenderRole, SceneObject, SelectionState, ARROW_HIT_RADIUS, BOND_CENTER_HIT_RADIUS,
+    DEFAULT_BOND_LENGTH, DRAG_START_THRESHOLD, ENDPOINT_FOCUS_RADIUS, ENDPOINT_HIT_RADIUS,
+    GLOBAL_SNAP_ANGLES,
 };
 use serde_json::{json, Value as JsonValue};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -1443,12 +1444,16 @@ impl Engine {
             if !object.visible {
                 continue;
             }
-            match object.object_type.as_str() {
-                "text" => selection.text_objects.push(object.id.clone()),
-                "line" | "bracket" | "symbol" | "shape" | "image" | "group" => {
-                    selection.arrow_objects.push(object.id.clone())
-                }
-                _ => {}
+            match object.kind() {
+                crate::SceneObjectKind::Text => selection.text_objects.push(object.id.clone()),
+                crate::SceneObjectKind::Line
+                | crate::SceneObjectKind::Curve
+                | crate::SceneObjectKind::Bracket
+                | crate::SceneObjectKind::Symbol
+                | crate::SceneObjectKind::Shape
+                | crate::SceneObjectKind::Image
+                | crate::SceneObjectKind::Group => selection.arrow_objects.push(object.id.clone()),
+                crate::SceneObjectKind::Molecule => {}
             }
         }
         for entry in self.state.document.editable_fragments() {
@@ -1707,12 +1712,23 @@ impl Engine {
         for object in objects {
             if !matches!(
                 object.object_type.as_str(),
-                "bracket" | "symbol" | "shape" | "image"
+                "curve" | "bracket" | "symbol" | "shape" | "image"
             ) || !object.visible
             {
                 continue;
             }
-            if object.object_type == "shape" {
+            if object.object_type == "curve" {
+                if curve_object_visual_bounds(&self.state.document, object)
+                    .map(AxisBounds::from_array)
+                    .is_some_and(|bounds| {
+                        point_in_bounds(point, bounds.expanded(crate::px_to_pt(3.0)))
+                    })
+                {
+                    return Some(SelectHit::ArrowObject {
+                        object_id: object.id.clone(),
+                    });
+                }
+            } else if object.object_type == "shape" {
                 if self.shape_select_hit_at_point(point, object) {
                     return Some(SelectHit::ArrowObject {
                         object_id: object.id.clone(),
@@ -1784,7 +1800,7 @@ impl Engine {
         for object in self.state.document.scene_objects() {
             if !matches!(
                 object.object_type.as_str(),
-                "bracket" | "symbol" | "shape" | "image"
+                "curve" | "bracket" | "symbol" | "shape" | "image"
             ) || !object.visible
             {
                 continue;

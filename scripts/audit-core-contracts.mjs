@@ -34,6 +34,10 @@ const OBJECT_TYPES = [
   "image",
   "group",
 ];
+const OBJECT_VARIANTS = Object.fromEntries(OBJECT_TYPES.map((type) => [
+  type,
+  type[0].toUpperCase() + type.slice(1),
+]));
 
 function normalizePath(path) {
   return path.replaceAll("\\", "/");
@@ -157,10 +161,21 @@ function findFunction(path, name) {
 }
 
 function hasType(body, type) {
-  return new RegExp(`["']${type}["']`).test(body);
+  return new RegExp(`["']${type}["']`).test(body)
+    || body.includes(`SceneObjectKind::${OBJECT_VARIANTS[type]}`)
+    || body.includes("SceneObjectKind::ALL");
 }
 
 function auditObjectCapabilities() {
+  const registryPath = "crates/chemsema-engine/src/object_kind.rs";
+  const registryText = read(registryPath);
+  for (const type of OBJECT_TYPES) {
+    const variant = OBJECT_VARIANTS[type];
+    if (!registryText.includes(`Self::${variant}`)) {
+      addFinding("error", "object model", "OBJECT-REGISTRY-INCOMPLETE", registryPath, 0,
+        `Scene object registry does not include '${type}'.`);
+    }
+  }
   const surfaces = [
     ["render", "crates/chemsema-engine/src/render.rs", "render_scene_object"],
     ["selection coverage", "crates/chemsema-engine/src/engine/select/render.rs", "scene_object_selection_coverage"],
@@ -390,7 +405,8 @@ function auditHybridGetters() {
     "clipboardCdxml",
   ]) {
     const fn = findFunction(path, name);
-    if (fn && !fn.body.includes("nativeBackgroundOperation")) {
+    if (fn && !fn.body.includes("awaitNativeReadBarrier")
+      && !fn.body.includes("nativeBackgroundOperation")) {
       addFinding("error", "frontend state", "FRONTEND-HYBRID-READ-BARRIER", path, fn.index,
         `${name} can read native clipboard/selection state before queued local selection mutations reach native.`,
         "The full GUI copy/paste/cut sequence reproduces this race.");
@@ -423,7 +439,7 @@ function auditOperationTests() {
 
   const regressionText = regressionFiles.map((path) => read(path)).join("\n");
   const frontendScenarios = [
-    ["FRONTEND-IMAGE-IMPORT-TEST-GAP", /insertDroppedImage|openImageFilePicker|paste image/i,
+    ["FRONTEND-IMAGE-IMPORT-TEST-GAP", /insertDroppedImage|openImageFilePicker|paste image|verifyImageDropAndPaste/i,
       "No browser regression covers image insertion by drop, paste, and blank-canvas context menu."],
     ["FRONTEND-CROSS-TAB-CLIPBOARD-TEST-GAP", /cross.?tab|another tab|between tabs/i,
       "No browser regression covers structured copy/paste between tabs or browser/desktop surfaces."],

@@ -135,7 +135,9 @@ Each scene object shares a common envelope:
 - `molecule`
 - `text`
 - `line`
+- `curve`
 - `bracket`
+- `symbol`
 - `shape`
 - `image`
 - `group`
@@ -150,7 +152,9 @@ types:
 - `molecule`: chemistry-bearing 2D structure
 - `text`: positioned rich text
 - `line`: straight/curved stroke objects, including arrows
+- `curve`: CDXML/CDX cubic Bezier curve objects with their native control points
 - `bracket`: bracket-like graphical objects
+- `symbol`: independently selectable ChemDraw symbol objects
 - `shape`: simple filled or stroked regions
 - `image`: placed raster image backed by an explicit image resource
 - `group`: logical grouping and shared transform

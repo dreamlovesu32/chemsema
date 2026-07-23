@@ -40,10 +40,14 @@ impl Engine {
         for object_id in &selection.text_objects {
             changed |= self.remove_text_object(Some(object_id.as_str()));
         }
-        if !selection.arrow_objects.is_empty() {
+        if !selection.arrow_objects.is_empty() || !selection.molecule_objects.is_empty() {
             self.push_undo_snapshot();
-            let selected_graphics: BTreeSet<&str> =
-                selection.arrow_objects.iter().map(String::as_str).collect();
+            let selected_graphics: BTreeSet<&str> = selection
+                .arrow_objects
+                .iter()
+                .chain(selection.molecule_objects.iter())
+                .map(String::as_str)
+                .collect();
             let removed = self
                 .state
                 .document

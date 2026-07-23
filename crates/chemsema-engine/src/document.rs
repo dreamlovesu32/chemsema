@@ -291,7 +291,16 @@ impl ChemSemaDocument {
         &mut self,
         object_ids: &std::collections::BTreeSet<&str>,
     ) -> usize {
-        remove_scene_objects_by_id(&mut self.objects, object_ids)
+        let removed = remove_scene_objects_by_id(&mut self.objects, object_ids);
+        if removed > 0 {
+            let referenced: BTreeSet<String> = self
+                .scene_objects()
+                .into_iter()
+                .filter_map(|object| object.payload.resource_ref.clone())
+                .collect();
+            self.resources.retain(|id, _| referenced.contains(id));
+        }
+        removed
     }
 }
 
@@ -412,6 +421,7 @@ pub fn parse_document_json(json: &str) -> Result<ChemSemaDocument, String> {
     ensure_document_json_pt_unit(&mut value)?;
     let mut document: ChemSemaDocument =
         serde_json::from_value(value).map_err(|error| error.to_string())?;
+    validate_scene_object_types(&document.objects)?;
     validate_molecule_fragment_resources(&document)?;
     split_disconnected_molecule_objects(&mut document);
     normalize_text_object_payloads(&mut document);
@@ -419,6 +429,15 @@ pub fn parse_document_json(json: &str) -> Result<ChemSemaDocument, String> {
     normalize_arrow_object_payloads(&mut document);
     normalize_fragment_label_payloads(&mut document);
     Ok(document)
+}
+
+fn validate_scene_object_types(objects: &[SceneObject]) -> Result<(), String> {
+    for object in objects {
+        crate::SceneObjectKind::parse(&object.object_type)
+            .map_err(|error| format!("{error} on object '{}'", object.id))?;
+        validate_scene_object_types(&object.children)?;
+    }
+    Ok(())
 }
 
 fn validate_molecule_fragment_resources(document: &ChemSemaDocument) -> Result<(), String> {
@@ -1705,6 +1724,13 @@ pub struct SceneObject {
     pub payload: ObjectPayload,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub children: Vec<SceneObject>,
+}
+
+impl SceneObject {
+    pub fn kind(&self) -> crate::SceneObjectKind {
+        crate::SceneObjectKind::parse(&self.object_type)
+            .unwrap_or_else(|error| panic!("{error} on validated object '{}'", self.id))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

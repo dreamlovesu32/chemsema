@@ -94,14 +94,22 @@ fn scene_object_selection_coverage(
     if !object.visible {
         return ObjectSelectionCoverage::None;
     }
-    match object.object_type.as_str() {
-        "text" => selected_coverage(selection.text_objects.iter(), &object.id),
-        "line" | "bracket" | "symbol" | "shape" | "image" => {
+    match object.kind() {
+        crate::SceneObjectKind::Text => {
+            selected_coverage(selection.text_objects.iter(), &object.id)
+        }
+        crate::SceneObjectKind::Line
+        | crate::SceneObjectKind::Curve
+        | crate::SceneObjectKind::Bracket
+        | crate::SceneObjectKind::Symbol
+        | crate::SceneObjectKind::Shape
+        | crate::SceneObjectKind::Image => {
             selected_coverage(selection.arrow_objects.iter(), &object.id)
         }
-        "molecule" => molecule_selection_coverage(document, selection, object),
-        "group" => group_selection_coverage(document, selection, object),
-        _ => ObjectSelectionCoverage::None,
+        crate::SceneObjectKind::Molecule => {
+            molecule_selection_coverage(document, selection, object)
+        }
+        crate::SceneObjectKind::Group => group_selection_coverage(document, selection, object),
     }
 }
 
@@ -162,10 +170,7 @@ fn group_selection_coverage(
 }
 
 fn scene_object_is_selectable(object: &crate::SceneObject) -> bool {
-    matches!(
-        object.object_type.as_str(),
-        "text" | "line" | "bracket" | "symbol" | "shape" | "image" | "molecule" | "group"
-    )
+    crate::SceneObjectKind::ALL.contains(&object.kind())
 }
 
 fn molecule_selection_coverage(
@@ -292,6 +297,9 @@ pub(super) fn scene_object_selection_bounds(
             .map(AxisBounds::from_array)
             .or_else(|| arrow_object_selection_bounds(document, object))
             .or_else(|| object_bbox_selection_bounds(object));
+    }
+    if object.object_type == "curve" {
+        return crate::curve_object_visual_bounds(document, object).map(AxisBounds::from_array);
     }
     if matches!(object.object_type.as_str(), "bracket" | "symbol") {
         return bracket_object_visual_bounds(document, object)

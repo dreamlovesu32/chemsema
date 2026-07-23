@@ -92,6 +92,15 @@ pub(crate) fn line_object_visual_bounds(
     render_primitives_bounds(out.iter())
 }
 
+pub(crate) fn curve_object_visual_bounds(
+    document: &ChemSemaDocument,
+    object: &SceneObject,
+) -> Option<[f64; 4]> {
+    let mut out = Vec::new();
+    render_curve_object(&mut out, document, object);
+    render_primitives_bounds(out.iter())
+}
+
 pub(crate) fn bracket_object_visual_bounds(
     document: &ChemSemaDocument,
     object: &SceneObject,

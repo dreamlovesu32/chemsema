@@ -487,13 +487,16 @@ fn visible_root_object_is_selected_for_clipboard(
     if !object.visible {
         return true;
     }
-    match object.object_type.as_str() {
-        "text" => selected_text.contains(object.id.as_str()),
-        "line" | "bracket" | "symbol" | "shape" | "image" | "group" => {
-            selected_graphics.contains(object.id.as_str())
-        }
-        "molecule" => selected_molecules.contains(object.id.as_str()),
-        _ => true,
+    match object.kind() {
+        crate::SceneObjectKind::Text => selected_text.contains(object.id.as_str()),
+        crate::SceneObjectKind::Line
+        | crate::SceneObjectKind::Curve
+        | crate::SceneObjectKind::Bracket
+        | crate::SceneObjectKind::Symbol
+        | crate::SceneObjectKind::Shape
+        | crate::SceneObjectKind::Image
+        | crate::SceneObjectKind::Group => selected_graphics.contains(object.id.as_str()),
+        crate::SceneObjectKind::Molecule => selected_molecules.contains(object.id.as_str()),
     }
 }
 

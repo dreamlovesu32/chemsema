@@ -7601,6 +7601,35 @@ fn select_cut_stores_bond_then_deletes_and_allows_paste() {
 }
 
 #[test]
+fn select_all_after_whole_document_paste_cuts_every_molecule_object() {
+    let mut engine = Engine::new();
+    engine.set_tool_state(bond_tool());
+    click(&mut engine, px(300.0), px(260.0));
+    assert!(engine.select_all());
+    let clipboard_json = engine
+        .clipboard_selection_json()
+        .expect("clipboard JSON")
+        .expect("selected document clipboard");
+    assert!(engine
+        .paste_clipboard_json(&clipboard_json)
+        .expect("clipboard paste"));
+    assert!(engine.select_all());
+    assert_eq!(engine.state().selection.molecule_objects.len(), 2);
+
+    assert!(engine.cut_selection());
+    assert_eq!(
+        engine
+            .state()
+            .document
+            .editable_fragments()
+            .iter()
+            .map(|entry| entry.fragment.bonds.len())
+            .sum::<usize>(),
+        0
+    );
+}
+
+#[test]
 fn select_cut_undo_redo_is_one_command() {
     let mut engine = Engine::new();
     engine.set_tool_state(bond_tool());

@@ -259,6 +259,19 @@ impl Engine {
                     self.object_settings_item(),
                 ]);
             }
+            Some("curve") => {
+                items.extend([
+                    separator(),
+                    self.line_style_menu(),
+                    separator(),
+                    order_subitems_flat(),
+                    separator(),
+                    transform_subitems_flat(true),
+                    separator(),
+                    self.color_menu(),
+                    self.object_settings_item(),
+                ]);
+            }
             Some("shape") => {
                 let is_orbital = self
                     .selected_scene_objects()
@@ -867,7 +880,12 @@ impl Engine {
         uniform_value(
             self.selected_scene_objects()
                 .into_iter()
-                .filter(|object| object.object_type == "line")
+                .filter(|object| {
+                    matches!(
+                        object.kind(),
+                        crate::SceneObjectKind::Line | crate::SceneObjectKind::Curve
+                    )
+                })
                 .map(|object| line_object_style(&self.state.document, object))
                 .collect(),
         )

@@ -41,7 +41,6 @@ import { createEditorCommandController } from "./editor_command_controller.js";
 import { createEditorCommandEngine } from "./editor_command_engine.js?v=20260626-interaction-feedback";
 import {
   editorScriptScale as computeEditorScriptScale,
-  estimateTextRunsWidth as computeEstimateTextRunsWidth,
   normalizeSharedGlyphProfiles,
   textLength,
 } from "./text_metrics.js";
@@ -2440,7 +2439,7 @@ function uniformValue(values) {
 
 async function activateEditorTool(nextTool) {
   const activation = activateEditorToolNow(nextTool);
-  activeToolActivationPromise = activation.catch(() => {});
+  activeToolActivationPromise = activation;
   return activation;
 }
 
@@ -3031,15 +3030,6 @@ function editorGlyphLayoutConfig() {
 
 function buildEditorTextLayout() {
   return activeTextEditor?.layout || null;
-}
-
-function estimateTextRunsWidth(runs, fallbackFontSize = editorState.textFontSize) {
-  return computeEstimateTextRunsWidth(
-    sharedGlyphProfiles,
-    runs,
-    fallbackFontSize,
-    editorState.textFontSize,
-  );
 }
 
 function placeCaretAtEnd(element) {
@@ -3665,7 +3655,7 @@ async function insertImagePayload(image, clientPoint, index = 0, source = "image
   if (!blob.size || blob.size > 64 * 1024 * 1024) {
     throw new Error(`${image.fileName || "Image"} exceeds the 64 MiB image limit.`);
   }
-  const dimensions = await decodedImageDimensions(blob).catch(() => null);
+  const dimensions = await decodedImageDimensions(blob);
   if (!dimensions?.width || !dimensions?.height) {
     throw new Error(`${image.fileName || "Image"} cannot be decoded by the current renderer.`);
   }

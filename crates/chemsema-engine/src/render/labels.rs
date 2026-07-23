@@ -128,8 +128,17 @@ struct GlyphClipInfo {
 }
 
 fn label_clip_polygons(label: &NodeLabel) -> Vec<Vec<Point>> {
-    let mut polygons = label.glyph_clip_polygons();
     let glyph_polygons = label.glyph_polygons();
+    let authored_clip_polygons = label.glyph_clip_polygons();
+    // The glyph outline is itself authoritative retreat geometry.  Some import
+    // paths store a separately expanded clip outline, while native labels only
+    // carry the glyph outline.  An empty expanded set therefore selects the
+    // glyph outline; it must never fall through to an inferred text box.
+    let mut polygons = if authored_clip_polygons.is_empty() {
+        glyph_polygons.clone()
+    } else {
+        authored_clip_polygons
+    };
     let mut glyphs: Vec<GlyphClipInfo> = glyph_polygons
         .iter()
         .enumerate()
@@ -405,57 +414,13 @@ pub(super) fn clip_point_out_of_polygons(
     })
 }
 
-pub(super) fn clip_point_out_of_box(
-    start: Point,
-    end: Point,
-    rect: Option<RectBox>,
-    margin: f64,
-) -> Point {
-    let Some(expanded) = rect.map(|box_value| box_value.expanded(margin)) else {
-        return start;
-    };
-    if !expanded.contains(start) {
-        return start;
-    }
-    let dx = end.x - start.x;
-    let dy = end.y - start.y;
-    let mut candidates = Vec::new();
-    if dx.abs() > EPSILON {
-        for x in [expanded.x1, expanded.x2] {
-            let t = (x - start.x) / dx;
-            let y = start.y + dy * t;
-            if (0.0..=1.0).contains(&t) && y >= expanded.y1 && y <= expanded.y2 {
-                candidates.push((t, Point::new(x, y)));
-            }
-        }
-    }
-    if dy.abs() > EPSILON {
-        for y in [expanded.y1, expanded.y2] {
-            let t = (y - start.y) / dy;
-            let x = start.x + dx * t;
-            if (0.0..=1.0).contains(&t) && x >= expanded.x1 && x <= expanded.x2 {
-                candidates.push((t, Point::new(x, y)));
-            }
-        }
-    }
-    candidates
-        .into_iter()
-        .min_by(|a, b| a.0.total_cmp(&b.0))
-        .map(|(_, point)| point)
-        .unwrap_or(start)
-}
-
 pub(super) fn clip_point_out_of_label_geometry(
     start: Point,
     end: Point,
-    rect: Option<RectBox>,
     polygons: &[Vec<Point>],
 ) -> Point {
-    // Prefer per-glyph polygons when they exist; bounding boxes are only a
-    // fallback for imported or legacy labels without glyph geometry.
-    if polygons.is_empty() {
-        return clip_point_out_of_box(start, end, rect, 0.0);
-    }
+    // Missing glyph geometry has one explicit meaning: no glyph-based retreat.
+    // A label rectangle is layout metadata, not an equivalent ink contour.
     clip_point_out_of_polygons(start, end, polygons).unwrap_or(start)
 }
 
@@ -532,7 +497,7 @@ fn wedge_endpoint_label_retreat(
     opposite: Point,
     axis_from_endpoint: Vector,
     normal: Vector,
-    rect: Option<RectBox>,
+    _rect: Option<RectBox>,
     polygons: &[Vec<Point>],
     endpoint_half_width: f64,
     axis_length: f64,
@@ -548,7 +513,7 @@ fn wedge_endpoint_label_retreat(
             opposite.x + normal.x * endpoint_offset,
             opposite.y + normal.y * endpoint_offset,
         );
-        let clipped = clip_point_out_of_label_geometry(ray_start, ray_end, rect, polygons);
+        let clipped = clip_point_out_of_label_geometry(ray_start, ray_end, polygons);
         let projected = (clipped.x - ray_start.x) * axis_from_endpoint.x
             + (clipped.y - ray_start.y) * axis_from_endpoint.y;
         retreat = retreat.max(projected.clamp(0.0, axis_length));

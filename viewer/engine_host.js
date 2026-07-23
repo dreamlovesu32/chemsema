@@ -91,6 +91,7 @@ class TauriEngineSession {
     this.exportDirty = true;
     this.operation = Promise.resolve();
     this.nativeBackgroundOperation = Promise.resolve();
+    this.nativeBackgroundFailure = null;
     this.coalescedNativeMutations = new Map();
     this.pendingSelectionMoveBegin = null;
     this.localSelectionMoveActive = false;
@@ -118,6 +119,58 @@ class TauriEngineSession {
     return this.readyPromise;
   }
 
+  reportAsyncFailure(scope, error) {
+    const normalized = error instanceof Error ? error : new Error(String(error));
+    console.error(`[chemsema] ${scope} failed`, normalized);
+    if (typeof globalThis.dispatchEvent === "function" && typeof globalThis.CustomEvent === "function") {
+      globalThis.dispatchEvent(new globalThis.CustomEvent("chemsema-async-error", {
+        detail: { scope, message: normalized.message },
+      }));
+    }
+    return normalized;
+  }
+
+  queueOperation(run, scope) {
+    const task = this.operation.then(run);
+    this.operation = task.then(
+      () => undefined,
+      (error) => {
+        this.reportAsyncFailure(scope, error);
+      },
+    );
+    return task;
+  }
+
+  queueNativeBackgroundOperation(run, scope) {
+    const task = this.nativeBackgroundOperation.then(() => {
+      if (this.nativeBackgroundFailure) {
+        throw new Error("Native mutation is blocked because an earlier synchronization failed.", {
+          cause: this.nativeBackgroundFailure,
+        });
+      }
+      return run();
+    });
+    this.nativeBackgroundOperation = task.then(
+      () => undefined,
+      (error) => {
+        if (!this.nativeBackgroundFailure) {
+          this.nativeBackgroundFailure = this.reportAsyncFailure(scope, error);
+        }
+      },
+    );
+    return task;
+  }
+
+  async awaitNativeReadBarrier() {
+    await this.ready();
+    await this.nativeBackgroundOperation;
+    if (this.nativeBackgroundFailure) {
+      throw new Error("Native state is unavailable because its preceding synchronization failed.", {
+        cause: this.nativeBackgroundFailure,
+      });
+    }
+  }
+
   async free() {
     try {
       await this.ready();
@@ -133,7 +186,7 @@ class TauriEngineSession {
     const dirtyExports = options.dirtyExports ?? (refresh === "all" || refresh === "document");
     const run = async () => {
       await this.ready();
-      await this.nativeBackgroundOperation.catch(() => {});
+      await this.awaitNativeReadBarrier();
       const result = await this.invoke(command, { sessionId: this.sessionId, ...args });
       if (dirtyExports) {
         this.markExportsDirty();
@@ -153,9 +206,7 @@ class TauriEngineSession {
       }
       return result;
     };
-    const next = this.operation.catch(() => {}).then(run);
-    this.operation = next;
-    return next;
+    return this.queueOperation(run, command);
   }
 
   markExportsDirty() {
@@ -206,7 +257,7 @@ class TauriEngineSession {
     const dirtyExports = options.dirtyExports ?? (refresh === "all" || refresh === "document" || refresh === "documentState");
     const waitFor = options.waitFor || null;
     if (waitFor) {
-      await waitFor.catch(() => false);
+      await waitFor;
     }
     await this.ready();
     const result = await this.invoke(command, { sessionId: this.sessionId, ...args });
@@ -231,11 +282,7 @@ class TauriEngineSession {
 
   runNativeMutationInBackground(command, args = {}, options = {}) {
     const run = () => this.executeNativeMutation(command, args, options);
-    this.nativeBackgroundOperation = this.nativeBackgroundOperation.catch(() => {}).then(run);
-    void this.nativeBackgroundOperation.catch((error) => {
-      console.warn("[chemsema] background native mutation failed", command, error);
-    });
-    return this.nativeBackgroundOperation;
+    return this.queueNativeBackgroundOperation(run, command);
   }
 
   runCoalescedNativeMutationInBackground(key, command, args = {}, options = {}) {
@@ -257,12 +304,8 @@ class TauriEngineSession {
       this.coalescedNativeMutations.delete(key);
       return this.executeNativeMutation(latest.command, latest.args, latest.options);
     };
-    entry.promise = this.nativeBackgroundOperation.catch(() => {}).then(run);
+    entry.promise = this.queueNativeBackgroundOperation(run, command);
     this.coalescedNativeMutations.set(key, entry);
-    this.nativeBackgroundOperation = entry.promise;
-    void entry.promise.catch((error) => {
-      console.warn("[chemsema] coalesced background native mutation failed", command, error);
-    });
     return entry.promise;
   }
 
@@ -365,7 +408,7 @@ class TauriEngineSession {
       return this;
     }
     await this.ready();
-    await this.nativeBackgroundOperation.catch(() => {});
+    await this.awaitNativeReadBarrier();
     const [documentCdxml, documentSvg] = await Promise.all([
       this.invoke("desktop_engine_document_cdxml", { sessionId: this.sessionId }),
       this.invoke("desktop_engine_document_svg", { sessionId: this.sessionId }),
@@ -493,6 +536,11 @@ class TauriEngineSession {
   }
 
   documentColorsJson() {
+    if (this.layoutEngine?.documentColorsJson) {
+      const value = this.layoutEngine.documentColorsJson();
+      this.cache.documentColorsJson = value;
+      return value;
+    }
     return this.cache.documentColorsJson || "[]";
   }
 
@@ -619,6 +667,11 @@ class TauriEngineSession {
   }
 
   documentStylePreset() {
+    if (this.layoutEngine?.documentStylePreset) {
+      const value = this.layoutEngine.documentStylePreset();
+      this.cache.documentStylePreset = value;
+      return value;
+    }
     return this.cache.documentStylePreset || "default";
   }
 
@@ -1309,10 +1362,20 @@ class TauriEngineSession {
   }
 
   canUndo() {
+    if (this.layoutEngine?.canUndo) {
+      const value = Boolean(this.layoutEngine.canUndo());
+      this.cache.canUndo = value;
+      return value;
+    }
     return this.cache.canUndo;
   }
 
   canRedo() {
+    if (this.layoutEngine?.canRedo) {
+      const value = Boolean(this.layoutEngine.canRedo());
+      this.cache.canRedo = value;
+      return value;
+    }
     return this.cache.canRedo;
   }
 
@@ -1325,22 +1388,22 @@ class TauriEngineSession {
   }
 
   async hasClipboard() {
-    await this.ready();
+    await this.awaitNativeReadBarrier();
     return this.invoke("desktop_engine_has_clipboard", { sessionId: this.sessionId });
   }
 
   async clipboardSelectionJson() {
-    await this.ready();
+    await this.awaitNativeReadBarrier();
     return this.invoke("desktop_engine_clipboard_selection_json", { sessionId: this.sessionId });
   }
 
   async clipboardDocumentJson() {
-    await this.ready();
+    await this.awaitNativeReadBarrier();
     return this.invoke("desktop_engine_clipboard_document_json", { sessionId: this.sessionId });
   }
 
   async clipboardCdxml() {
-    await this.ready();
+    await this.awaitNativeReadBarrier();
     return this.invoke("desktop_engine_clipboard_cdxml", { sessionId: this.sessionId });
   }
 

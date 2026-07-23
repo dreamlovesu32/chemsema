@@ -277,9 +277,14 @@ pub fn parse_cdxml_document(cdxml: &str, title: Option<&str>) -> Result<ChemSema
         .filter_map(|fragment| fragment.attr("id").map(ToString::to_string))
         .collect();
     let bonded_node_ids = cdxml_bonded_node_ids(&root);
+    let topology_only_cdxmlwriter = root.attr("CreationProgram") == Some("CDXMLWriter");
     let mut molecule_index = 1usize;
     for fragment in &fragments {
-        let node_positions = cdxml_fragment_node_positions(fragment, defaults.bond_length);
+        let node_positions = cdxml_fragment_node_positions(
+            fragment,
+            defaults.bond_length,
+            topology_only_cdxmlwriter,
+        )?;
         let Some(bbox) = cdxml_fragment_bbox(fragment, defaults.bond_length, &node_positions)
         else {
             continue;
@@ -1272,7 +1277,8 @@ fn cdxml_fragment_bbox(
 fn cdxml_fragment_node_positions(
     fragment: &XmlNode,
     bond_length: f64,
-) -> BTreeMap<String, [f64; 2]> {
+    topology_only_cdxmlwriter: bool,
+) -> Result<BTreeMap<String, [f64; 2]>, String> {
     let nodes: Vec<_> = fragment
         .direct_children("n")
         .filter_map(|node| node.attr("id").map(|id| (id.to_string(), node)))
@@ -1281,52 +1287,101 @@ fn cdxml_fragment_node_positions(
         .iter()
         .filter_map(|(id, node)| parse_xy(node.attr("p")).map(|point| (id.clone(), point)))
         .collect();
+    for (id, node) in &nodes {
+        if explicit.contains_key(id) {
+            continue;
+        }
+        if let Some(point) = cdxml_embedded_fragment_connection_position(node, bond_length) {
+            explicit.insert(id.clone(), point);
+        }
+    }
     let bonds: Vec<_> = fragment
         .direct_children("b")
         .filter_map(|bond| Some((bond.attr("B")?.to_string(), bond.attr("E")?.to_string())))
         .collect();
-    let inferable_node_ids: BTreeSet<_> = nodes
-        .iter()
-        .filter(|(_, node)| {
-            node.attr("p").is_none() && node.attr("NodeType") != Some("ExternalConnectionPoint")
-        })
-        .map(|(id, _)| id.clone())
-        .collect();
-    loop {
-        let mut inferred = Vec::new();
-        for (begin, end) in &bonds {
-            match (explicit.get(begin).copied(), explicit.get(end).copied()) {
-                (Some(point), None) if inferable_node_ids.contains(end) => inferred.push((
-                    end.clone(),
-                    [round2(point[0] + bond_length.max(1.0)), point[1]],
-                )),
-                (None, Some(point)) if inferable_node_ids.contains(begin) => inferred.push((
-                    begin.clone(),
-                    [round2(point[0] - bond_length.max(1.0)), point[1]],
-                )),
-                _ => {}
-            }
-        }
-        inferred.retain(|(id, _)| !explicit.contains_key(id));
-        if inferred.is_empty() {
-            break;
-        }
-        for (id, point) in inferred {
-            explicit.entry(id).or_insert(point);
-        }
-    }
     if !explicit.is_empty() || nodes.is_empty() {
-        return explicit;
+        return Ok(explicit);
     }
-
-    fallback_cdxml_topology_positions(
+    if !topology_only_cdxmlwriter {
+        return Err(format!(
+            "CDXML fragment '{}' has nodes but no authoritative p coordinates",
+            fragment.attr("id").unwrap_or("<unnamed>")
+        ));
+    }
+    Ok(layout_topology_only_cdxmlwriter_fragment(
         &nodes.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>(),
         &bonds,
         bond_length.max(1.0),
-    )
+    ))
 }
 
-fn fallback_cdxml_topology_positions(
+/// Resolve the position of a parent node from its embedded connection table.
+/// CDXML permits nodes that own an embedded fragment to omit `p`: their
+/// attachment position is then the external connection point of that fragment.
+/// When that point also omits `p`, its incident bond continues the direction of
+/// the adjacent, positioned bond by one document bond length.
+fn cdxml_embedded_fragment_connection_position(
+    node: &XmlNode,
+    bond_length: f64,
+) -> Option<[f64; 2]> {
+    let fragment = node.direct_children("fragment").next()?;
+    let nested_nodes: BTreeMap<_, _> = fragment
+        .direct_children("n")
+        .filter_map(|child| child.attr("id").map(|id| (id, child)))
+        .collect();
+    let bonds: Vec<_> = fragment
+        .direct_children("b")
+        .filter_map(|bond| Some((bond.attr("B")?, bond.attr("E")?)))
+        .collect();
+
+    for (external_id, external) in nested_nodes
+        .iter()
+        .filter(|(_, child)| child.attr("NodeType") == Some("ExternalConnectionPoint"))
+    {
+        if let Some(point) = parse_xy(external.attr("p")) {
+            return Some(point);
+        }
+        let anchor_id = bonds.iter().find_map(|(begin, end)| {
+            if begin == external_id {
+                Some(*end)
+            } else if end == external_id {
+                Some(*begin)
+            } else {
+                None
+            }
+        })?;
+        let anchor = nested_nodes.get(anchor_id)?;
+        let anchor_point = parse_xy(anchor.attr("p"))?;
+        let preceding_point = bonds.iter().find_map(|(begin, end)| {
+            let other_id = if begin == &anchor_id && end != external_id {
+                Some(*end)
+            } else if end == &anchor_id && begin != external_id {
+                Some(*begin)
+            } else {
+                None
+            }?;
+            nested_nodes
+                .get(other_id)
+                .and_then(|other| parse_xy(other.attr("p")))
+        })?;
+        let dx = anchor_point[0] - preceding_point[0];
+        let dy = anchor_point[1] - preceding_point[1];
+        let length = dx.hypot(dy);
+        if length <= EPSILON {
+            return None;
+        }
+        let scale = bond_length.max(1.0) / length;
+        return Some([
+            round2(anchor_point[0] + dx * scale),
+            round2(anchor_point[1] + dy * scale),
+        ]);
+    }
+    None
+}
+
+/// Explicit compatibility rule for topology-only output emitted by
+/// `CreationProgram="CDXMLWriter"`. Other CDXML producers must provide `n@p`.
+fn layout_topology_only_cdxmlwriter_fragment(
     node_ids: &[String],
     edges: &[(String, String)],
     bond_length: f64,
