@@ -96,7 +96,7 @@ fn scene_object_selection_coverage(
     }
     match object.object_type.as_str() {
         "text" => selected_coverage(selection.text_objects.iter(), &object.id),
-        "line" | "bracket" | "symbol" | "shape" => {
+        "line" | "bracket" | "symbol" | "shape" | "image" => {
             selected_coverage(selection.arrow_objects.iter(), &object.id)
         }
         "molecule" => molecule_selection_coverage(document, selection, object),
@@ -164,7 +164,7 @@ fn group_selection_coverage(
 fn scene_object_is_selectable(object: &crate::SceneObject) -> bool {
     matches!(
         object.object_type.as_str(),
-        "text" | "line" | "bracket" | "symbol" | "shape" | "molecule" | "group"
+        "text" | "line" | "bracket" | "symbol" | "shape" | "image" | "molecule" | "group"
     )
 }
 
@@ -277,6 +277,9 @@ pub(super) fn scene_object_selection_bounds(
             .map(AxisBounds::from_array)
             .or_else(|| shape_object_selection_bounds(object))
             .or_else(|| object_bbox_selection_bounds(object));
+    }
+    if object.object_type == "image" {
+        return object_bbox_selection_bounds(object);
     }
     if object.object_type == "group" {
         return group_object_selection_bounds(document, object);

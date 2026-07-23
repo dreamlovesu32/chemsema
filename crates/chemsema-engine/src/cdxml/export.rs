@@ -2,6 +2,7 @@ use crate::{
     Bond, ChemSemaDocument, DocumentTextStyle, LabelRun, MoleculeFragment, Node, NodeLabel,
     ObjectPayload, Point, ResourceData, SceneObject,
 };
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::fmt::Write;
@@ -512,11 +513,85 @@ impl<'a> CdxmlDocumentWriter<'a> {
             "line" => self.write_line_object(out, object),
             "curve" => self.write_curve_object(out, object),
             "shape" => self.write_shape_object(out, object),
+            "image" => self.write_image_object(out, object),
             "bracket" | "symbol" => self.write_bracket_object(out, object),
             "text" => self.write_text_object(out, object),
             "group" => self.write_group_object(out, object),
             _ => {}
         }
+    }
+
+    fn write_image_object(&mut self, out: &mut String, object: &SceneObject) {
+        let Some(resource_ref) = object.payload.resource_ref.as_ref() else {
+            return;
+        };
+        let Some(resource) = self.document.resources.get(resource_ref) else {
+            return;
+        };
+        let (attribute, data_base64) = if resource.resource_type == "image" {
+            let Some(image) = resource.data.as_image() else {
+                return;
+            };
+            let attribute = match image.mime_type.as_str() {
+                "image/png" => "PNG",
+                "image/jpeg" => "JPEG",
+                "image/gif" => "GIF",
+                "image/tiff" => "TIFF",
+                "image/bmp" => "BMP",
+                _ => return,
+            };
+            (attribute, image.data_base64)
+        } else if resource.resource_type == "embedded-object" {
+            let ResourceData::Json(value) = &resource.data else {
+                return;
+            };
+            let Some(attribute) = value.get("format").and_then(Value::as_str) else {
+                return;
+            };
+            if !matches!(
+                attribute,
+                "TIFF"
+                    | "EnhancedMetafile"
+                    | "CompressedEnhancedMetafile"
+                    | "WindowsMetafile"
+                    | "CompressedWindowsMetafile"
+                    | "OLEObject"
+                    | "CompressedOLEObject"
+                    | "PDF"
+                    | "MacPICT"
+            ) {
+                return;
+            }
+            let Some(data_base64) = value.get("dataBase64").and_then(Value::as_str) else {
+                return;
+            };
+            (attribute, data_base64.to_string())
+        } else {
+            return;
+        };
+        let Ok(bytes) = BASE64.decode(data_base64.as_bytes()) else {
+            return;
+        };
+        let Some([x, y, width, height]) = object.payload.bbox else {
+            return;
+        };
+        let scale_x = object.transform.scale[0];
+        let scale_y = object.transform.scale[1];
+        let left = object.transform.translate[0] + x * scale_x;
+        let top = object.transform.translate[1] + y * scale_y;
+        let right = left + width * scale_x;
+        let bottom = top + height * scale_y;
+        let mut attrs = vec![
+            ("id", self.alloc_id().to_string()),
+            ("BoundingBox", fmt_bbox([left, top, right, bottom])),
+            ("Z", object.z_index.to_string()),
+            (attribute, encode_hex_bytes(&bytes)),
+        ];
+        if object.transform.rotate.abs() > crate::EPSILON {
+            attrs.push(("RotationAngle", fmt_num(object.transform.rotate)));
+        }
+        write_open_tag(out, 4, "embeddedobject", attrs);
+        out.push_str("</embeddedobject>\n");
     }
 
     fn write_scene_objects(&mut self, out: &mut String, objects: &[&SceneObject]) {
@@ -2751,7 +2826,15 @@ fn fmt_bbox(bbox: [f64; 4]) -> String {
     )
 }
 
-fn write_open_tag(out: &mut String, indent: usize, name: &str, attrs: Vec<(&'static str, String)>) {
+fn encode_hex_bytes(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        write!(&mut out, "{byte:02X}").expect("writing to a string cannot fail");
+    }
+    out
+}
+
+fn write_open_tag(out: &mut String, indent: usize, name: &str, attrs: Vec<(&str, String)>) {
     write_indent(out, indent);
     write!(out, "<{name}").expect("writing tag should not fail");
     for (key, value) in attrs {
@@ -2761,12 +2844,7 @@ fn write_open_tag(out: &mut String, indent: usize, name: &str, attrs: Vec<(&'sta
     out.push_str(">\n");
 }
 
-fn write_empty_tag(
-    out: &mut String,
-    indent: usize,
-    name: &str,
-    attrs: Vec<(&'static str, String)>,
-) {
+fn write_empty_tag(out: &mut String, indent: usize, name: &str, attrs: Vec<(&str, String)>) {
     write_indent(out, indent);
     write!(out, "<{name}").expect("writing tag should not fail");
     for (key, value) in attrs {

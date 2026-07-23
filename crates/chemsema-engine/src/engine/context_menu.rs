@@ -76,7 +76,11 @@ impl Engine {
             if self.selection_is_complete_molecule() {
                 items.extend([separator(), chemical_analysis_submenu()]);
             }
-            items.extend([separator(), item("From SMILES...", "smiles-dialog", "")]);
+            items.extend([
+                separator(),
+                item("Insert Image...", "insert-image", ""),
+                item("From SMILES...", "smiles-dialog", ""),
+            ]);
             return items;
         }
 

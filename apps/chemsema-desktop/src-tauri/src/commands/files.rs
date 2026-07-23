@@ -73,6 +73,48 @@ pub(crate) fn desktop_file_read_path(
     Ok(opened)
 }
 
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct DesktopBinaryFile {
+    file_name: String,
+    mime_type: String,
+    data_base64: String,
+}
+
+#[tauri::command]
+pub(crate) fn desktop_file_read_binary_path(path: String) -> Result<DesktopBinaryFile, String> {
+    const MAX_IMAGE_BYTES: u64 = 64 * 1024 * 1024;
+    let path = PathBuf::from(path);
+    let metadata = fs::metadata(&path)
+        .map_err(|error| format!("Failed to inspect {}: {error}", path.display()))?;
+    if !metadata.is_file() || metadata.len() == 0 || metadata.len() > MAX_IMAGE_BYTES {
+        return Err("Image must be a non-empty file no larger than 64 MiB.".to_string());
+    }
+    let extension = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let mime_type = match extension.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "bmp" => "image/bmp",
+        _ => return Err(format!("Unsupported image extension: .{extension}")),
+    };
+    let bytes =
+        fs::read(&path).map_err(|error| format!("Failed to read {}: {error}", path.display()))?;
+    Ok(DesktopBinaryFile {
+        file_name: path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or("image")
+            .to_string(),
+        mime_type: mime_type.to_string(),
+        data_base64: base64::engine::general_purpose::STANDARD.encode(bytes),
+    })
+}
+
 #[tauri::command]
 pub(crate) fn desktop_file_write_path(
     app: tauri::AppHandle,

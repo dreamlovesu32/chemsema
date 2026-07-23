@@ -816,6 +816,11 @@ impl WasmEngine {
             .map_err(|error| JsValue::from_str(&error))
     }
 
+    #[wasm_bindgen(js_name = clipboardCdxml)]
+    pub fn clipboard_cdxml(&self) -> Option<String> {
+        self.inner.clipboard_cdxml()
+    }
+
     #[wasm_bindgen(js_name = cutSelection)]
     pub fn cut_selection(&mut self) -> bool {
         self.inner.cut_selection()
@@ -830,6 +835,27 @@ impl WasmEngine {
     pub fn paste_clipboard_json(&mut self, json: &str) -> Result<bool, JsValue> {
         self.inner
             .paste_clipboard_json(json)
+            .map_err(|error| JsValue::from_str(&error))
+    }
+
+    #[wasm_bindgen(js_name = pasteDocumentJson)]
+    pub fn paste_document_json(&mut self, json: &str) -> Result<bool, JsValue> {
+        self.inner
+            .paste_document_json(json)
+            .map_err(|error| JsValue::from_str(&error))
+    }
+
+    #[wasm_bindgen(js_name = pasteCdxml)]
+    pub fn paste_cdxml(&mut self, cdxml: &str) -> Result<bool, JsValue> {
+        self.inner
+            .paste_cdxml(cdxml)
+            .map_err(|error| JsValue::from_str(&error))
+    }
+
+    #[wasm_bindgen(js_name = pasteCdx)]
+    pub fn paste_cdx(&mut self, cdx: &[u8]) -> Result<bool, JsValue> {
+        self.inner
+            .paste_cdx(cdx)
             .map_err(|error| JsValue::from_str(&error))
     }
 

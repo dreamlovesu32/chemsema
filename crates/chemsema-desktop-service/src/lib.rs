@@ -1202,6 +1202,10 @@ impl DesktopDocumentService {
         self.session(session_id)?.clipboard_document_json()
     }
 
+    pub fn clipboard_cdxml(&self, session_id: SessionId) -> Result<Option<String>, String> {
+        Ok(self.session(session_id)?.clipboard_cdxml())
+    }
+
     pub fn cut_selection(&mut self, session_id: SessionId) -> Result<bool, String> {
         Ok(self.session_mut(session_id)?.cut_selection())
     }
@@ -1216,6 +1220,22 @@ impl DesktopDocumentService {
         json: &str,
     ) -> Result<bool, String> {
         self.session_mut(session_id)?.paste_clipboard_json(json)
+    }
+
+    pub fn paste_document_json(
+        &mut self,
+        session_id: SessionId,
+        json: &str,
+    ) -> Result<bool, String> {
+        self.session_mut(session_id)?.paste_document_json(json)
+    }
+
+    pub fn paste_cdxml(&mut self, session_id: SessionId, cdxml: &str) -> Result<bool, String> {
+        self.session_mut(session_id)?.paste_cdxml(cdxml)
+    }
+
+    pub fn paste_cdx(&mut self, session_id: SessionId, cdx: &[u8]) -> Result<bool, String> {
+        self.session_mut(session_id)?.paste_cdx(cdx)
     }
 
     pub fn replace_hovered_endpoint_label(

@@ -14,6 +14,7 @@ pub enum RenderRole {
     DocumentText,
     HoverEndpoint,
     HoverLabelGlyph,
+    HoverObjectBox,
     HoverBondCenter,
     HoverArrowCenter,
     HoverArrowHandle,
@@ -201,6 +202,28 @@ pub enum RenderPrimitive {
         )]
         rotate_center: Option<Point>,
     },
+    Image {
+        role: RenderRole,
+        #[serde(rename = "objectId", default, skip_serializing_if = "Option::is_none")]
+        object_id: Option<String>,
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
+        href: String,
+        #[serde(default = "default_opacity", skip_serializing_if = "is_one")]
+        opacity: f64,
+        #[serde(rename = "preserveAspectRatio", default)]
+        preserve_aspect_ratio: bool,
+        #[serde(default, skip_serializing_if = "is_zero")]
+        rotate: f64,
+        #[serde(
+            rename = "rotateCenter",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        rotate_center: Option<Point>,
+    },
     Text {
         role: RenderRole,
         #[serde(rename = "objectId", default, skip_serializing_if = "Option::is_none")]
@@ -263,6 +286,14 @@ pub enum RenderPrimitive {
 
 fn is_zero(value: &f64) -> bool {
     value.abs() <= crate::EPSILON
+}
+
+fn default_opacity() -> f64 {
+    1.0
+}
+
+fn is_one(value: &f64) -> bool {
+    (*value - 1.0).abs() <= crate::EPSILON
 }
 
 pub(super) fn push_line(

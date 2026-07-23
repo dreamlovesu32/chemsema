@@ -279,7 +279,7 @@ fn rotated_scene_object(original: &SceneObject, center: Point, degrees: f64) -> 
             );
             object.transform = crate::Transform::identity();
         }
-        "shape" | "bracket" | "symbol" => {
+        "shape" | "bracket" | "symbol" | "image" => {
             rotate_bbox_based_object(&mut object, original, center, degrees);
         }
         "text" => {
@@ -704,7 +704,11 @@ fn resized_scene_object(
     object
 }
 
-fn translated_scene_object(original: &SceneObject, delta_x: f64, delta_y: f64) -> SceneObject {
+pub(in crate::engine) fn translated_scene_object(
+    original: &SceneObject,
+    delta_x: f64,
+    delta_y: f64,
+) -> SceneObject {
     let mut object = original.clone();
     if original.object_type == "line" {
         translate_line_payload_points(&mut object, delta_x, delta_y);
@@ -867,7 +871,7 @@ fn translate_box(bounds: &mut [f64; 4], delta_x: f64, delta_y: f64) {
 
 fn object_transform_participates_in_render(object: &SceneObject) -> bool {
     match object.object_type.as_str() {
-        "text" | "bracket" | "symbol" => true,
+        "text" | "bracket" | "symbol" | "image" => true,
         "shape" => !shape_uses_absolute_points(object),
         _ => false,
     }

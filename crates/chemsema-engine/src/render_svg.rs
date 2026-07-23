@@ -133,6 +133,7 @@ fn render_primitive_role(primitive: &RenderPrimitive) -> crate::RenderRole {
         | RenderPrimitive::Polyline { role, .. }
         | RenderPrimitive::Path { role, .. }
         | RenderPrimitive::FilledPath { role, .. }
+        | RenderPrimitive::Image { role, .. }
         | RenderPrimitive::Text { role, .. } => *role,
     }
 }
@@ -186,6 +187,28 @@ fn extend_bounds_for_primitive(
         RenderPrimitive::FilledPath { points, .. } => {
             for point in points {
                 extend_bounds_for_point(&mut bounds, *point, 0.0);
+            }
+        }
+        RenderPrimitive::Image {
+            x,
+            y,
+            width,
+            height,
+            rotate,
+            rotate_center,
+            ..
+        } => {
+            let top_left = Point::new(*x, *y);
+            let bottom_right = Point::new(*x + *width, *y + *height);
+            if rotate.abs() > crate::EPSILON {
+                let center =
+                    rotate_center.unwrap_or(Point::new(*x + *width * 0.5, *y + *height * 0.5));
+                for point in rotated_box_points(top_left, bottom_right, center, *rotate) {
+                    extend_bounds_for_point(&mut bounds, point, 0.0);
+                }
+            } else {
+                extend_bounds_for_point(&mut bounds, top_left, 0.0);
+                extend_bounds_for_point(&mut bounds, bottom_right, 0.0);
             }
         }
         RenderPrimitive::Rect {
@@ -538,6 +561,34 @@ fn write_primitive_svg(out: &mut String, defs: &mut SvgDefs, primitive: &RenderP
                 transform
             )
             .expect("write filled path");
+        }
+        RenderPrimitive::Image {
+            x,
+            y,
+            width,
+            height,
+            href,
+            opacity,
+            preserve_aspect_ratio,
+            rotate,
+            rotate_center,
+            ..
+        } => {
+            let center = rotate_center.unwrap_or(Point::new(*x + *width * 0.5, *y + *height * 0.5));
+            let transform = rotate_transform_attr(*rotate, Some(&center));
+            writeln!(
+                out,
+                r#"  <image x="{}" y="{}" width="{}" height="{}" href="{}" opacity="{}" preserveAspectRatio="{}"{} />"#,
+                fmt_num(*x),
+                fmt_num(*y),
+                fmt_num(*width),
+                fmt_num(*height),
+                escape_attr(href),
+                fmt_num(*opacity),
+                if *preserve_aspect_ratio { "xMidYMid meet" } else { "none" },
+                transform
+            )
+            .expect("write image");
         }
         RenderPrimitive::Text {
             x,

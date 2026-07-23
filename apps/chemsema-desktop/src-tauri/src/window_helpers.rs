@@ -1,6 +1,14 @@
 use crate::*;
 
 pub(crate) fn emit_open_paths(app: &tauri::AppHandle, paths: Vec<String>) {
+    emit_open_paths_at(app, paths, None);
+}
+
+pub(crate) fn emit_open_paths_at(
+    app: &tauri::AppHandle,
+    paths: Vec<String>,
+    drop_position_physical: Option<[f64; 2]>,
+) {
     if paths.is_empty() {
         return;
     }
@@ -14,7 +22,13 @@ pub(crate) fn emit_open_paths(app: &tauri::AppHandle, paths: Vec<String>) {
     if let Some(window) = target {
         trace_desktop_event(format!("emit_open_paths target={}", window.label()));
         focus_webview_window(&window);
-        let _ = window.emit(EVENT_DESKTOP_OPEN_PATHS, DesktopOpenPathsPayload { paths });
+        let _ = window.emit(
+            EVENT_DESKTOP_OPEN_PATHS,
+            DesktopOpenPathsPayload {
+                paths,
+                drop_position_physical,
+            },
+        );
         return;
     }
     trace_desktop_event("emit_open_paths queued=no_window");

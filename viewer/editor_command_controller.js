@@ -1,7 +1,43 @@
+let portableClipboardPayload = null;
+
+function portableClipboardHtml(payload) {
+  const fragmentBytes = new TextEncoder().encode(payload.chemsemaFragmentJson || "");
+  let fragmentBinary = "";
+  for (let offset = 0; offset < fragmentBytes.length; offset += 0x8000) {
+    fragmentBinary += String.fromCharCode(...fragmentBytes.subarray(offset, offset + 0x8000));
+  }
+  const fragmentBase64 = btoa(fragmentBinary);
+  const payloadBytes = new TextEncoder().encode(JSON.stringify(payload));
+  let payloadBinary = "";
+  for (let offset = 0; offset < payloadBytes.length; offset += 0x8000) {
+    payloadBinary += String.fromCharCode(...payloadBytes.subarray(offset, offset + 0x8000));
+  }
+  const payloadBase64 = btoa(payloadBinary);
+  const encoded = encodeURIComponent(JSON.stringify(payload))
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  return `<div data-chemsema-clipboard-v1="${encoded}" data-chemsema-payload-base64="${payloadBase64}" data-chemsema-clipboard-base64="${fragmentBase64}"></div>`;
+}
+
+async function writeBrowserClipboard(payload) {
+  portableClipboardPayload = payload;
+  if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
+    return false;
+  }
+  const values = {
+    "text/plain": new Blob([payload.cdxml || ""], { type: "text/plain" }),
+    "text/html": new Blob([portableClipboardHtml(payload)], { type: "text/html" }),
+  };
+  await navigator.clipboard.write([new ClipboardItem(values)]);
+  return true;
+}
+
 export function createEditorCommandController(options) {
-  async function writeNativeClipboardFromSelection(fragmentJson = null, documentJson = undefined) {
+  async function writeClipboardFromSelection(fragmentJson = null, documentJson = undefined) {
     const state = options.state();
-    if (!options.desktopFileHost?.available || !state.editorEngine) {
+    if (!state.editorEngine) {
       return false;
     }
     try {
@@ -12,16 +48,22 @@ export function createEditorCommandController(options) {
       if (!resolvedFragmentJson && !resolvedDocumentJson) {
         return false;
       }
-      const cdxml = await state.editorEngine.documentCdxml?.() || null;
+      const cdxml = await state.editorEngine.clipboardCdxml?.() || null;
       const svg = null;
-      await options.desktopFileHost.writeClipboard({
+      const payload = {
         chemsemaFragmentJson: resolvedFragmentJson,
         chemsemaDocumentJson: resolvedDocumentJson,
         renderListJson: resolvedDocumentJson ? null : state.editorEngine.renderListJson?.() || null,
         cdxml,
         svg,
         text: cdxml,
-      });
+      };
+      portableClipboardPayload = payload;
+      if (options.desktopFileHost?.available) {
+        await options.desktopFileHost.writeClipboard(payload);
+      } else {
+        await writeBrowserClipboard(payload);
+      }
       return true;
     } catch (error) {
       console.warn("Failed to write native clipboard", error);
@@ -29,26 +71,92 @@ export function createEditorCommandController(options) {
     return false;
   }
 
-  async function pasteFromNativeClipboard() {
+  async function pasteStructuredPayload(payload, source = "system") {
     const state = options.state();
-    if (!options.desktopFileHost?.available || !state.editorEngine?.pasteClipboardJson) {
+    if (!state.editorEngine?.pasteClipboardJson || !payload) {
       return false;
     }
-    try {
-      const payload = await options.desktopFileHost.readClipboard();
-      if (payload?.chemsemaFragmentJson) {
-        return await executeDocumentCommand(
-          {
-            type: "paste-clipboard",
-            payload: { source: "native" },
-          },
-          () => state.editorEngine.pasteClipboardJson(payload.chemsemaFragmentJson),
-        );
+    const command = { type: "paste-clipboard", payload: { source } };
+    if (payload.chemsemaFragmentJson) {
+      try {
+        const result = await executeDocumentCommand(command, () => (
+          state.editorEngine.pasteClipboardJson(payload.chemsemaFragmentJson)
+        ));
+        if (result?.changed ?? result) {
+          return result;
+        }
+      } catch (error) {
+        console.warn("ChemSema clipboard fragment was not readable", error);
       }
-    } catch (error) {
-      console.warn("Failed to read native clipboard", error);
+    }
+    if (payload.chemsemaDocumentJson && state.editorEngine.pasteDocumentJson) {
+      try {
+        const result = await executeDocumentCommand(command, () => (
+          state.editorEngine.pasteDocumentJson(payload.chemsemaDocumentJson)
+        ));
+        if (result?.changed ?? result) {
+          return result;
+        }
+      } catch (error) {
+        console.warn("ChemSema clipboard document was not readable", error);
+      }
+    }
+    const cdxml = payload.cdxml
+      || (String(payload.text || "").includes("<CDXML") ? payload.text : null);
+    if (cdxml && state.editorEngine.pasteCdxml) {
+      try {
+        const result = await executeDocumentCommand(
+          command,
+          () => state.editorEngine.pasteCdxml(cdxml),
+        );
+        if (result?.changed ?? result) {
+          return result;
+        }
+      } catch (error) {
+        console.warn("Chemical clipboard interchange was not readable", error);
+      }
+    }
+    if (payload.imageDataBase64 && payload.imageMimeType && options.insertClipboardImage) {
+      return options.insertClipboardImage({
+        fileName: "Clipboard image",
+        mimeType: payload.imageMimeType,
+        dataBase64: payload.imageDataBase64,
+        pixelWidth: payload.imagePixelWidth,
+        pixelHeight: payload.imagePixelHeight,
+      });
     }
     return false;
+  }
+
+  async function pasteFromSystemClipboard(eventPayload = null) {
+    try {
+      if (eventPayload) {
+        portableClipboardPayload = eventPayload;
+        const changed = await pasteStructuredPayload(eventPayload, "browser");
+        if (changed?.changed ?? changed) {
+          return changed;
+        }
+      }
+      if (options.desktopFileHost?.available) {
+        const changed = await pasteStructuredPayload(
+          await options.desktopFileHost.readClipboard(),
+          "native",
+        );
+        if (changed?.changed ?? changed) {
+          return changed;
+        }
+      } else if (!eventPayload && navigator.clipboard?.readText) {
+        const text = await navigator.clipboard.readText();
+        const changed = await pasteStructuredPayload({ text }, "browser-text");
+        if (changed?.changed ?? changed) {
+          return changed;
+        }
+      }
+      return pasteStructuredPayload(portableClipboardPayload, "portable");
+    } catch (error) {
+      console.warn("Failed to read system clipboard", error);
+      return pasteStructuredPayload(portableClipboardPayload, "portable");
+    }
   }
 
   async function executeDocumentCommand(command, apply, executeOptions = {}) {
@@ -63,7 +171,7 @@ export function createEditorCommandController(options) {
     return { changed };
   }
 
-  async function runEditorCommand(command) {
+  async function runEditorCommand(command, commandPayload = null) {
     const state = options.state();
     if (!options.isEditingRustDocument()) {
       return false;
@@ -78,7 +186,7 @@ export function createEditorCommandController(options) {
       const fragmentJson = await state.editorEngine.clipboardSelectionJson?.() || null;
       const documentJson = await state.editorEngine.clipboardDocumentJson?.() || null;
       changed = !!(await state.editorEngine.copySelection?.());
-      changed = await writeNativeClipboardFromSelection(fragmentJson, documentJson) || changed;
+      changed = await writeClipboardFromSelection(fragmentJson, documentJson) || changed;
       options.renderEditorOverlay();
       options.refreshCommandAvailability();
       return changed;
@@ -87,10 +195,10 @@ export function createEditorCommandController(options) {
       const documentJson = await state.editorEngine.clipboardDocumentJson?.() || null;
       changed = await executeDocumentCommand("cut-selection", () => state.editorEngine.cutSelection?.());
       if (commandChanged(changed)) {
-        await writeNativeClipboardFromSelection(fragmentJson, documentJson);
+        await writeClipboardFromSelection(fragmentJson, documentJson);
       }
     } else if (command === "paste") {
-      changed = await pasteFromNativeClipboard();
+      changed = await pasteFromSystemClipboard(commandPayload?.clipboardPayload || null);
       if (!commandChanged(changed)) {
         changed = await executeDocumentCommand(
           {
@@ -136,8 +244,11 @@ export function createEditorCommandController(options) {
   }
 
   return {
-    writeNativeClipboardFromSelection,
-    pasteFromNativeClipboard,
+    writeClipboardFromSelection,
+    pasteFromSystemClipboard,
+    writeNativeClipboardFromSelection: writeClipboardFromSelection,
+    pasteFromNativeClipboard: pasteFromSystemClipboard,
+    hasPortableClipboard: () => Boolean(portableClipboardPayload),
     runEditorCommand,
   };
 }

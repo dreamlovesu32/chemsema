@@ -1064,6 +1064,15 @@ pub(crate) fn desktop_engine_clipboard_document_json(
 }
 
 #[tauri::command]
+pub(crate) fn desktop_engine_clipboard_cdxml(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+) -> Result<Option<String>, String> {
+    let service = state.service.lock().map_err(|error| error.to_string())?;
+    service.clipboard_cdxml(session_id)
+}
+
+#[tauri::command]
 pub(crate) fn desktop_engine_cut_selection(
     state: tauri::State<'_, DesktopState>,
     session_id: SessionId,
@@ -1089,6 +1098,36 @@ pub(crate) fn desktop_engine_paste_clipboard_json(
 ) -> Result<bool, String> {
     let mut service = state.service.lock().map_err(|error| error.to_string())?;
     service.paste_clipboard_json(session_id, &json)
+}
+
+#[tauri::command]
+pub(crate) fn desktop_engine_paste_document_json(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    json: String,
+) -> Result<bool, String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.paste_document_json(session_id, &json)
+}
+
+#[tauri::command]
+pub(crate) fn desktop_engine_paste_cdxml(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    cdxml: String,
+) -> Result<bool, String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.paste_cdxml(session_id, &cdxml)
+}
+
+#[tauri::command]
+pub(crate) fn desktop_engine_paste_cdx(
+    state: tauri::State<'_, DesktopState>,
+    session_id: SessionId,
+    cdx: Vec<u8>,
+) -> Result<bool, String> {
+    let mut service = state.service.lock().map_err(|error| error.to_string())?;
+    service.paste_cdx(session_id, &cdx)
 }
 
 #[tauri::command]

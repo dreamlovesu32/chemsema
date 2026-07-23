@@ -1075,9 +1075,127 @@ fn render_scene_object(
         "curve" => render_curve_object(out, document, object),
         "text" => render_text_object(out, document, object),
         "shape" => render_shape_object(out, document, object),
+        "image" => render_image_object(out, document, object),
         "bracket" | "symbol" => render_bracket_object(out, document, object),
         _ => {}
     }
+}
+
+fn render_image_object(
+    out: &mut Vec<RenderPrimitive>,
+    document: &ChemSemaDocument,
+    object: &SceneObject,
+) {
+    let Some(resource_ref) = object.payload.resource_ref.as_ref() else {
+        return;
+    };
+    let Some(resource) = document.resources.get(resource_ref) else {
+        return;
+    };
+    let Some([local_x, local_y, local_width, local_height]) = object.payload.bbox else {
+        return;
+    };
+    let scale_x = object.transform.scale[0];
+    let scale_y = object.transform.scale[1];
+    let x = object.transform.translate[0] + local_x * scale_x;
+    let y = object.transform.translate[1] + local_y * scale_y;
+    let width = local_width * scale_x;
+    let height = local_height * scale_y;
+    if !x.is_finite()
+        || !y.is_finite()
+        || !width.is_finite()
+        || !height.is_finite()
+        || width.abs() <= crate::EPSILON
+        || height.abs() <= crate::EPSILON
+    {
+        return;
+    }
+    let opacity = object
+        .payload
+        .extra
+        .get("opacity")
+        .and_then(JsonValue::as_f64)
+        .unwrap_or(1.0)
+        .clamp(0.0, 1.0);
+    let preserve_aspect_ratio =
+        object.payload.extra.get("fit").and_then(JsonValue::as_str) == Some("contain");
+    let center = Point::new(x + width * 0.5, y + height * 0.5);
+    if resource.resource_type != "image" {
+        let radians = object.transform.rotate.to_radians();
+        let cos = radians.cos();
+        let sin = radians.sin();
+        let rotate_point = |point: Point| {
+            let dx = point.x - center.x;
+            let dy = point.y - center.y;
+            Point::new(
+                center.x + dx * cos - dy * sin,
+                center.y + dx * sin + dy * cos,
+            )
+        };
+        let points = [
+            Point::new(x, y),
+            Point::new(x + width, y),
+            Point::new(x + width, y + height),
+            Point::new(x, y + height),
+        ]
+        .into_iter()
+        .map(rotate_point)
+        .collect();
+        out.push(RenderPrimitive::Polygon {
+            role: RenderRole::DocumentGraphic,
+            object_id: Some(object.id.clone()),
+            node_id: None,
+            bond_id: None,
+            points,
+            fill: "#f3f4f6".to_string(),
+            stroke: "#6b7280".to_string(),
+            stroke_width: 0.75,
+        });
+        let format = match &resource.data {
+            ResourceData::Json(value) => value
+                .get("format")
+                .and_then(JsonValue::as_str)
+                .unwrap_or("object"),
+            _ => "object",
+        };
+        out.push(RenderPrimitive::Text {
+            role: RenderRole::DocumentText,
+            object_id: Some(object.id.clone()),
+            node_id: None,
+            x: center.x,
+            y: center.y,
+            baseline_offset: None,
+            dominant_baseline: Some("central".to_string()),
+            text: format!("Embedded {format}"),
+            font_size: 8.0_f64.min(height.abs() * 0.3).max(3.0),
+            font_family: Some("Arial".to_string()),
+            fill: Some("#4b5563".to_string()),
+            text_anchor: Some("middle".to_string()),
+            line_height: None,
+            preserve_lines: false,
+            box_width: Some(width.abs()),
+            runs: Vec::new(),
+            rotate: object.transform.rotate,
+            rotate_center: Some(center),
+        });
+        return;
+    }
+    let Some(image) = resource.data.as_image() else {
+        return;
+    };
+    out.push(RenderPrimitive::Image {
+        role: RenderRole::DocumentGraphic,
+        object_id: Some(object.id.clone()),
+        x: crate::round2(x),
+        y: crate::round2(y),
+        width: crate::round2(width),
+        height: crate::round2(height),
+        href: format!("data:{};base64,{}", image.mime_type, image.data_base64),
+        opacity,
+        preserve_aspect_ratio,
+        rotate: crate::round2(object.transform.rotate),
+        rotate_center: Some(center),
+    });
 }
 
 fn cdxml_primitive_z_index(
@@ -1156,6 +1274,7 @@ fn primitive_object_id(primitive: &RenderPrimitive) -> Option<&str> {
         | RenderPrimitive::Polyline { object_id, .. }
         | RenderPrimitive::Path { object_id, .. }
         | RenderPrimitive::FilledPath { object_id, .. }
+        | RenderPrimitive::Image { object_id, .. }
         | RenderPrimitive::Text { object_id, .. } => object_id.as_deref(),
     }
 }
@@ -1170,6 +1289,7 @@ fn render_primitive_role(primitive: &RenderPrimitive) -> RenderRole {
         | RenderPrimitive::Polyline { role, .. }
         | RenderPrimitive::Path { role, .. }
         | RenderPrimitive::FilledPath { role, .. }
+        | RenderPrimitive::Image { role, .. }
         | RenderPrimitive::Text { role, .. } => *role,
     }
 }

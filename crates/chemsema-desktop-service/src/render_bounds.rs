@@ -73,6 +73,7 @@ pub(crate) fn render_primitive_role(primitive: &RenderPrimitive) -> RenderRole {
         | RenderPrimitive::Polyline { role, .. }
         | RenderPrimitive::Path { role, .. }
         | RenderPrimitive::FilledPath { role, .. }
+        | RenderPrimitive::Image { role, .. }
         | RenderPrimitive::Text { role, .. } => *role,
     }
 }

@@ -1167,6 +1167,7 @@ mod tests {
         let payload = OleObjectPayload {
             chemsema_fragment_json: Some("{\"nodes\":[],\"bonds\":[]}".to_string()),
             chemsema_document_json: serde_json::to_string(&document).unwrap(),
+            document_was_supplied: true,
             render_list_json: Some(stale_full_document_render_list),
             cdxml: None,
             svg: String::new(),
@@ -1228,6 +1229,7 @@ mod tests {
         let payload = OleObjectPayload {
             chemsema_fragment_json: None,
             chemsema_document_json: serde_json::to_string(&document).unwrap(),
+            document_was_supplied: true,
             render_list_json: Some(render_list_json),
             cdxml: None,
             svg: r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 400"></svg>"#
@@ -1265,6 +1267,7 @@ mod tests {
         let payload = OleObjectPayload {
             chemsema_fragment_json: Some("{\"nodes\":[],\"bonds\":[]}".to_string()),
             chemsema_document_json: serde_json::to_string(&document).unwrap(),
+            document_was_supplied: true,
             render_list_json: None,
             cdxml: None,
             svg: String::new(),

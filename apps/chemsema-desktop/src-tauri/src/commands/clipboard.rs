@@ -9,8 +9,10 @@ pub(crate) fn desktop_clipboard_write(
 }
 
 #[tauri::command]
-pub(crate) fn desktop_clipboard_read() -> Result<NativeClipboardReadPayload, String> {
-    native_clipboard_read()
+pub(crate) fn desktop_clipboard_read(
+    app: tauri::AppHandle,
+) -> Result<NativeClipboardReadPayload, String> {
+    native_clipboard_read(&app)
 }
 
 #[cfg(target_os = "windows")]
@@ -180,11 +182,15 @@ fn native_clipboard_write(
 }
 
 #[cfg(target_os = "windows")]
-fn native_clipboard_read() -> Result<NativeClipboardReadPayload, String> {
+fn native_clipboard_read(app: &tauri::AppHandle) -> Result<NativeClipboardReadPayload, String> {
     use windows_sys::Win32::System::DataExchange::{
         GetClipboardData, IsClipboardFormatAvailable, OpenClipboard, RegisterClipboardFormatW,
     };
     use windows_sys::Win32::System::Memory::{GlobalLock, GlobalSize, GlobalUnlock};
+
+    let ole_payload = native_clipboard_needs_ole_bridge()
+        .then(|| native_office_ole_clipboard_read(app))
+        .flatten();
 
     unsafe {
         if OpenClipboard(std::ptr::null_mut()) == 0 {
@@ -216,19 +222,259 @@ fn native_clipboard_read() -> Result<NativeClipboardReadPayload, String> {
         }
     };
 
-    Ok(NativeClipboardReadPayload {
-        chemsema_fragment_json: read_registered(FORMAT_CHEMSEMA_FRAGMENT)?,
+    let clipboard_image = unsafe {
+        let png_format = RegisterClipboardFormatW(wide_null("PNG").as_ptr());
+        if png_format != 0 && IsClipboardFormatAvailable(png_format) != 0 {
+            let bytes = read_clipboard_bytes(
+                GetClipboardData(png_format),
+                GlobalLock,
+                GlobalSize,
+                GlobalUnlock,
+            )?;
+            png_dimensions(&bytes).map(|(width, height)| ("image/png", bytes, width, height))
+        } else if IsClipboardFormatAvailable(8) != 0 {
+            let dib =
+                read_clipboard_bytes(GetClipboardData(8), GlobalLock, GlobalSize, GlobalUnlock)?;
+            dib_to_bmp(&dib).map(|(bytes, width, height)| ("image/bmp", bytes, width, height))
+        } else {
+            None
+        }
+    };
+    let (image_mime_type, image_data_base64, image_pixel_width, image_pixel_height) =
+        if let Some((mime_type, bytes, width, height)) = clipboard_image {
+            if bytes.len() <= 64 * 1024 * 1024 {
+                (
+                    Some(mime_type.to_string()),
+                    Some(base64::engine::general_purpose::STANDARD.encode(bytes)),
+                    Some(width),
+                    Some(height),
+                )
+            } else {
+                (None, None, None, None)
+            }
+        } else {
+            (None, None, None, None)
+        };
+
+    let html = read_registered(FORMAT_HTML)?;
+    let html_payload = html
+        .as_deref()
+        .and_then(chemsema_payload_from_clipboard_html);
+    let html_fragment = html
+        .as_deref()
+        .and_then(chemsema_fragment_from_clipboard_html);
+    let mut payload = NativeClipboardReadPayload {
+        chemsema_fragment_json: read_registered(FORMAT_CHEMSEMA_FRAGMENT)?.or(html_fragment),
         chemsema_document_json: read_registered(FORMAT_CHEMSEMA_DOCUMENT_JSON)?,
-        cdxml: read_registered(FORMAT_CHEMDRAW_INTERCHANGE)?
+        cdxml: read_registered(FORMAT_CHEMDRAW_INTERCHANGE)
+            .ok()
+            .flatten()
             .or(read_registered(FORMAT_CDXML_MIME)?),
         svg: read_registered(FORMAT_SVG_MIME)?.or(read_registered(FORMAT_SVG)?),
         text,
-    })
+        image_mime_type,
+        image_data_base64,
+        image_pixel_width,
+        image_pixel_height,
+    };
+    if let Some(html) = html_payload {
+        payload.chemsema_fragment_json = payload
+            .chemsema_fragment_json
+            .or(html.chemsema_fragment_json);
+        payload.chemsema_document_json = payload
+            .chemsema_document_json
+            .or(html.chemsema_document_json);
+        payload.cdxml = payload.cdxml.or(html.cdxml);
+        payload.svg = payload.svg.or(html.svg);
+        payload.text = payload.text.or(html.text);
+    }
+    if let Some(ole) = ole_payload {
+        payload.chemsema_fragment_json = payload
+            .chemsema_fragment_json
+            .or(ole.chemsema_fragment_json);
+        payload.chemsema_document_json = payload
+            .chemsema_document_json
+            .or(ole.chemsema_document_json);
+        payload.cdxml = payload.cdxml.or(ole.cdxml);
+        payload.svg = payload.svg.or(ole.svg);
+        payload.text = payload.text.or(ole.text);
+    }
+    Ok(payload)
+}
+
+#[cfg(target_os = "windows")]
+fn chemsema_fragment_from_clipboard_html(html: &str) -> Option<String> {
+    const MARKER: &str = "data-chemsema-clipboard-base64=";
+    let tail = html.split_once(MARKER)?.1.trim_start();
+    let quote = tail.chars().next()?;
+    if quote != '"' && quote != '\'' {
+        return None;
+    }
+    let encoded = tail[quote.len_utf8()..].split_once(quote)?.0;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(encoded)
+        .ok()?;
+    String::from_utf8(bytes)
+        .ok()
+        .filter(|value| !value.is_empty())
+}
+
+#[cfg(target_os = "windows")]
+fn chemsema_payload_from_clipboard_html(html: &str) -> Option<NativeClipboardReadPayload> {
+    const MARKER: &str = "data-chemsema-payload-base64=";
+    let tail = html.split_once(MARKER)?.1.trim_start();
+    let quote = tail.chars().next()?;
+    if quote != '"' && quote != '\'' {
+        return None;
+    }
+    let encoded = tail[quote.len_utf8()..].split_once(quote)?.0;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(encoded)
+        .ok()?;
+    serde_json::from_slice(&bytes).ok()
+}
+
+#[cfg(target_os = "windows")]
+fn native_clipboard_needs_ole_bridge() -> bool {
+    use windows_sys::Win32::System::DataExchange::{
+        IsClipboardFormatAvailable, RegisterClipboardFormatW,
+    };
+    let available = |name: &str| unsafe {
+        let format = RegisterClipboardFormatW(wide_null(name).as_ptr());
+        format != 0 && IsClipboardFormatAvailable(format) != 0
+    };
+    let has_direct_structure = [
+        FORMAT_CHEMSEMA_FRAGMENT,
+        FORMAT_CHEMSEMA_DOCUMENT_JSON,
+        FORMAT_CDXML_MIME,
+        FORMAT_HTML,
+    ]
+    .into_iter()
+    .any(available);
+    !has_direct_structure
+        && [
+            FORMAT_CHEMDRAW_INTERCHANGE,
+            FORMAT_EMBEDDED_OBJECT,
+            FORMAT_EMBED_SOURCE,
+        ]
+        .into_iter()
+        .any(available)
 }
 
 #[cfg(not(target_os = "windows"))]
-fn native_clipboard_read() -> Result<NativeClipboardReadPayload, String> {
+fn native_clipboard_read(_app: &tauri::AppHandle) -> Result<NativeClipboardReadPayload, String> {
     Err("Native clipboard is only implemented on Windows.".to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn native_office_ole_clipboard_read(app: &tauri::AppHandle) -> Option<NativeClipboardReadPayload> {
+    use std::os::windows::process::CommandExt;
+
+    let adjacent = std::env::current_exe()
+        .ok()?
+        .with_file_name("chemsema-office.exe");
+    let mut candidates = vec![adjacent];
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        candidates.push(resource_dir.join("chemsema-office.exe"));
+    }
+    let office_exe = candidates.into_iter().find(|path| path.exists())?;
+    let output_path = std::env::temp_dir().join(format!(
+        "chemsema-office-clipboard-read-{}-{}.json",
+        std::process::id(),
+        current_timestamp_ms()
+    ));
+    let status = std::process::Command::new(office_exe)
+        .arg("--read-clipboard-payload")
+        .arg(&output_path)
+        .creation_flags(CREATE_NO_WINDOW_FLAG)
+        .status()
+        .ok()?;
+    if !status.success() {
+        let _ = fs::remove_file(output_path);
+        return None;
+    }
+    let result = fs::read_to_string(&output_path)
+        .ok()
+        .and_then(|json| serde_json::from_str(&json).ok());
+    let _ = fs::remove_file(output_path);
+    result
+}
+
+#[cfg(target_os = "windows")]
+unsafe fn read_clipboard_bytes(
+    handle: *mut std::ffi::c_void,
+    global_lock: unsafe extern "system" fn(*mut std::ffi::c_void) -> *mut std::ffi::c_void,
+    global_size: unsafe extern "system" fn(*mut std::ffi::c_void) -> usize,
+    global_unlock: unsafe extern "system" fn(*mut std::ffi::c_void) -> i32,
+) -> Result<Vec<u8>, String> {
+    if handle.is_null() {
+        return Err("Clipboard image handle is empty.".to_string());
+    }
+    let size = global_size(handle);
+    if size == 0 || size > 64 * 1024 * 1024 {
+        return Err("Clipboard image is empty or exceeds 64 MiB.".to_string());
+    }
+    let source = global_lock(handle) as *const u8;
+    if source.is_null() {
+        return Err("Failed to lock clipboard image.".to_string());
+    }
+    let bytes = std::slice::from_raw_parts(source, size).to_vec();
+    global_unlock(handle);
+    Ok(bytes)
+}
+
+#[cfg(target_os = "windows")]
+fn png_dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
+    if bytes.get(..8) != Some(b"\x89PNG\r\n\x1a\n") {
+        return None;
+    }
+    Some((
+        u32::from_be_bytes(bytes.get(16..20)?.try_into().ok()?),
+        u32::from_be_bytes(bytes.get(20..24)?.try_into().ok()?),
+    ))
+}
+
+#[cfg(target_os = "windows")]
+fn dib_to_bmp(dib: &[u8]) -> Option<(Vec<u8>, u32, u32)> {
+    let header_size = u32::from_le_bytes(dib.get(0..4)?.try_into().ok()?) as usize;
+    if header_size < 40 || header_size > dib.len() {
+        return None;
+    }
+    let width = i32::from_le_bytes(dib.get(4..8)?.try_into().ok()?).unsigned_abs();
+    let height = i32::from_le_bytes(dib.get(8..12)?.try_into().ok()?).unsigned_abs();
+    let bit_count = u16::from_le_bytes(dib.get(14..16)?.try_into().ok()?);
+    let compression = u32::from_le_bytes(dib.get(16..20)?.try_into().ok()?);
+    let colors_used = u32::from_le_bytes(dib.get(32..36)?.try_into().ok()?) as usize;
+    if width == 0 || height == 0 || width > 32_768 || height > 32_768 {
+        return None;
+    }
+    let palette_entries = if colors_used > 0 {
+        colors_used
+    } else if bit_count <= 8 {
+        1usize.checked_shl(u32::from(bit_count))?
+    } else {
+        0
+    };
+    let external_masks = if header_size == 40 && compression == 3 {
+        12
+    } else {
+        0
+    };
+    let pixel_offset = 14usize
+        .checked_add(header_size)?
+        .checked_add(external_masks)?
+        .checked_add(palette_entries.checked_mul(4)?)?;
+    if pixel_offset > 14 + dib.len() {
+        return None;
+    }
+    let file_size = 14usize.checked_add(dib.len())?;
+    let mut bmp = Vec::with_capacity(file_size);
+    bmp.extend_from_slice(b"BM");
+    bmp.extend_from_slice(&(file_size as u32).to_le_bytes());
+    bmp.extend_from_slice(&[0; 4]);
+    bmp.extend_from_slice(&(pixel_offset as u32).to_le_bytes());
+    bmp.extend_from_slice(dib);
+    Some((bmp, width, height))
 }
 
 #[cfg(target_os = "windows")]
@@ -240,6 +486,33 @@ impl Drop for ClipboardCloseGuard {
         unsafe {
             windows_sys::Win32::System::DataExchange::CloseClipboard();
         }
+    }
+}
+
+#[cfg(all(test, target_os = "windows"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn portable_html_payload_recovers_all_structured_fallbacks() {
+        let json = serde_json::json!({
+            "chemsemaFragmentJson": "{\"nodes\":[],\"bonds\":[]}",
+            "chemsemaDocumentJson": "{\"format\":{\"name\":\"chemsema\",\"version\":\"0.1\"}}",
+            "cdxml": "<CDXML></CDXML>",
+            "text": "<CDXML></CDXML>"
+        })
+        .to_string();
+        let encoded = base64::engine::general_purpose::STANDARD.encode(json.as_bytes());
+        let html = format!(
+            "Version:0.9\r\n<html><body><div data-chemsema-payload-base64=\"{encoded}\"></div></body></html>"
+        );
+        let payload =
+            chemsema_payload_from_clipboard_html(&html).expect("portable payload should decode");
+        assert_eq!(
+            payload.chemsema_fragment_json.as_deref(),
+            Some("{\"nodes\":[],\"bonds\":[]}")
+        );
+        assert_eq!(payload.cdxml.as_deref(), Some("<CDXML></CDXML>"));
     }
 }
 

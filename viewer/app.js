@@ -13,7 +13,7 @@ import { createSmilesDialogHost } from "./smiles_dialog_host.js";
 import { createTransientNotificationHost } from "./transient_notification_host.js";
 import { createInchiHost } from "./inchi_host.js";
 import { createDesktopFileHost, normalizeDesktopPath } from "./desktop_file_host.js";
-import { createEngineHost } from "./engine_host.js?v=20260629-local-text-commit";
+import { createEngineHost } from "./engine_host.js?v=20260723-native-images";
 import { bindEditorControls, openColorDialog } from "./editor_bindings.js?v=20260627-browser-drop-tabs";
 import { createDocumentFlow } from "./document_flow.js";
 import { createBrowserDocumentTabs } from "./browser_document_tabs.js";
@@ -29,7 +29,7 @@ import {
   normalizeDisplayColor,
 } from "./render_support.js";
 import { createSceneRenderer } from "./scene_renderer.js";
-import { createEditorOverlayRenderer } from "./editor_overlay.js?v=20260627-hover-scale";
+import { createEditorOverlayRenderer } from "./editor_overlay.js?v=20260723-image-focus";
 import { createEditorSelectionState } from "./editor_selection_state.js";
 import { createEditorDocumentRenderer } from "./editor_document_renderer.js";
 import { createEditorToolbarHost } from "./editor_toolbar_host.js";
@@ -201,6 +201,7 @@ const {
   documentStyleMenu,
   zoomInput,
   openFileInput,
+  imageFileInput,
   textEditorLayer,
 } = createAppDomRefs();
 let canvasContextMenuHost = null;
@@ -313,6 +314,7 @@ toggleTexts?.addEventListener("change", () => renderDocument());
 const documentTabs = [];
 let activeDocumentTabId = null;
 let activeTextEditor = null;
+let pendingImageInsertWorldPoint = null;
 let activeTitlebarTabDrag = null;
 let detachingDocumentTabId = null;
 let suppressNextDocumentTabClick = false;
@@ -2052,6 +2054,7 @@ const editorCommandController = createEditorCommandController({
   refreshCommandAvailability,
   activateEditorTool,
   commandEngine,
+  insertClipboardImage: (image) => insertImagePayload(image, null, 0, "clipboard"),
 });
 const writeNativeClipboardFromSelection = (...args) => editorCommandController.writeNativeClipboardFromSelection(...args);
 const pasteFromNativeClipboard = (...args) => editorCommandController.pasteFromNativeClipboard(...args);
@@ -2061,6 +2064,7 @@ canvasContextMenuHost = createCanvasContextMenuHost({
   state: () => state,
   editorState: () => editorState,
   desktopFileHost,
+  hasPortableClipboard: () => editorCommandController.hasPortableClipboard(),
   colorHost,
   objectSettingsHost,
   numericDialogHost,
@@ -2084,6 +2088,7 @@ canvasContextMenuHost = createCanvasContextMenuHost({
   selectedSceneObjects,
   cssColorToHex,
   openTextEditorAt,
+  openImageFilePickerAt,
   renderEditorOverlay,
   refreshCommandAvailability,
   confirmRepeatUnitUngroup: confirmRepeatUnitUngroupIfNeeded,
@@ -3469,6 +3474,7 @@ const documentFlow = createDocumentFlow({
   engineHost,
   desktopFileHost,
   openFileInput,
+  imageFileInput,
   viewerTitle,
   viewerStats,
   viewerSvg,
@@ -3559,6 +3565,152 @@ function openDroppedDocumentFilesInTabs(...args) { return browserDocumentTabs.op
 function chooseAndOpenDocumentTab(...args) { return browserDocumentTabs.chooseAndOpenDocumentTab(...args); }
 function confirmApplyDocumentStylePreset(...args) { return browserDocumentTabs.confirmApplyDocumentStylePreset(...args); }
 
+function imageMimeTypeFromName(name, fallback = "") {
+  const normalized = String(fallback || "").toLowerCase();
+  if (["image/png", "image/jpeg", "image/gif", "image/bmp"].includes(normalized)) {
+    return normalized;
+  }
+  const extension = String(name || "").split(".").pop()?.toLowerCase();
+  return {
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    gif: "image/gif",
+    bmp: "image/bmp",
+  }[extension] || "";
+}
+
+function blobDataBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error || new Error("Failed to read image."));
+    reader.onload = () => {
+      const value = String(reader.result || "");
+      const comma = value.indexOf(",");
+      if (comma < 0) {
+        reject(new Error("Image data is not a valid data URL."));
+        return;
+      }
+      resolve(value.slice(comma + 1));
+    };
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function decodedImageDimensions(blob) {
+  if (typeof createImageBitmap === "function") {
+    const bitmap = await createImageBitmap(blob);
+    try {
+      return { width: bitmap.width, height: bitmap.height };
+    } finally {
+      bitmap.close?.();
+    }
+  }
+  const url = URL.createObjectURL(blob);
+  try {
+    const image = new Image();
+    image.src = url;
+    await image.decode();
+    return { width: image.naturalWidth, height: image.naturalHeight };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+function droppedImageCenter(clientPoint, index) {
+  const base = clientPoint?.worldPoint
+    && Number.isFinite(clientPoint.worldPoint.x)
+    && Number.isFinite(clientPoint.worldPoint.y)
+    ? clientPoint.worldPoint
+    : clientPoint && Number.isFinite(clientPoint.clientX) && Number.isFinite(clientPoint.clientY)
+      ? svgPointFromEvent(clientPoint)
+      : (() => {
+        const box = activeViewBox();
+        return { x: box.x + box.width * 0.5, y: box.y + box.height * 0.5 };
+      })();
+  return { x: base.x + index * 12, y: base.y + index * 12 };
+}
+
+function openImageFilePickerAt(worldPoint = null) {
+  pendingImageInsertWorldPoint = worldPoint
+    && Number.isFinite(worldPoint.x)
+    && Number.isFinite(worldPoint.y)
+    ? { x: worldPoint.x, y: worldPoint.y }
+    : null;
+  imageFileInput.value = "";
+  imageFileInput.click();
+}
+
+function consumeImageInsertWorldPoint() {
+  const point = pendingImageInsertWorldPoint;
+  pendingImageInsertWorldPoint = null;
+  return point;
+}
+
+async function insertImagePayload(image, clientPoint, index = 0, source = "image-import") {
+  if (!isEditingRustDocument()) {
+    throw new Error("Images can only be inserted into an editable document.");
+  }
+  const mimeType = imageMimeTypeFromName(image.fileName, image.mimeType);
+  if (!mimeType) {
+    throw new Error(`Unsupported image type: ${image.fileName || "image"}`);
+  }
+  const blob = image.blob || await fetch(`data:${mimeType};base64,${image.dataBase64}`).then((response) => response.blob());
+  if (!blob.size || blob.size > 64 * 1024 * 1024) {
+    throw new Error(`${image.fileName || "Image"} exceeds the 64 MiB image limit.`);
+  }
+  const dimensions = await decodedImageDimensions(blob).catch(() => null);
+  if (!dimensions?.width || !dimensions?.height) {
+    throw new Error(`${image.fileName || "Image"} cannot be decoded by the current renderer.`);
+  }
+  const dataBase64 = image.dataBase64 || await blobDataBase64(blob);
+  const naturalWidthPt = dimensions.width * 0.75;
+  const naturalHeightPt = dimensions.height * 0.75;
+  const maxInitialSidePt = 320;
+  const initialScale = Math.min(1, maxInitialSidePt / Math.max(naturalWidthPt, naturalHeightPt));
+  const center = droppedImageCenter(clientPoint, index);
+  const result = await commandEngine.executeCommand({
+    type: "add-image",
+    mimeType,
+    dataBase64,
+    pixelWidth: dimensions.width,
+    pixelHeight: dimensions.height,
+    position: center,
+    width: Math.max(1, naturalWidthPt * initialScale),
+    height: Math.max(1, naturalHeightPt * initialScale),
+    sourceName: image.fileName || null,
+  }, { source, label: "Insert image" });
+  if (!result?.changed) {
+    throw new Error(`Failed to insert ${image.fileName || "image"}.`);
+  }
+  activateEditorTool("select");
+  renderDocumentChange(result);
+  return result;
+}
+
+async function insertDroppedImageFiles(files, clientPoint, source = "file-drop") {
+  let index = 0;
+  for (const file of files) {
+    await insertImagePayload({
+      fileName: file.name,
+      mimeType: file.type,
+      blob: file,
+    }, clientPoint, index++, source);
+  }
+}
+
+async function insertDroppedImagePaths(paths, clientPoint, source = "file-drop") {
+  let index = 0;
+  for (const path of paths) {
+    const file = await desktopFileHost.readBinaryPath(path);
+    await insertImagePayload({
+      fileName: file.fileName,
+      mimeType: file.mimeType,
+      dataBase64: file.dataBase64,
+    }, clientPoint, index++, source);
+  }
+}
+
 ensureTextSymbolPalette();
 
 bindEditorControls({
@@ -3567,6 +3719,9 @@ bindEditorControls({
   desktopFileHost,
   colorHost,
   openFileInput,
+  imageFileInput,
+  openImageFilePicker: () => openImageFilePickerAt(null),
+  consumeImageInsertWorldPoint,
   zoomInput,
   secondaryToolbar,
   documentStyleButton,
@@ -3580,6 +3735,8 @@ bindEditorControls({
   openDocumentFileInTab,
   openDroppedDocumentFileInTab,
   openDroppedDocumentFilesInTabs,
+  insertDroppedImageFiles,
+  insertDroppedImagePaths,
   getZoomPercent,
   setTextFontSize: (size) => {
     const fontSize = normalizeToolbarFontSize(Math.max(5, Math.min(288, size)));

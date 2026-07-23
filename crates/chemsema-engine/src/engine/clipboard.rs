@@ -8,15 +8,21 @@ const CLIPBOARD_PASTE_OFFSET_PT: f64 = 9.921_259_842_519_685;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) struct ClipboardContent {
+    #[serde(default)]
     nodes: Vec<Node>,
+    #[serde(default)]
     bonds: Vec<Bond>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    scene_objects: Vec<SceneObject>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    resources: BTreeMap<String, Resource>,
 }
 
 impl Engine {
     pub fn has_clipboard(&self) -> bool {
         self.clipboard
             .as_ref()
-            .is_some_and(|content| !content.nodes.is_empty())
+            .is_some_and(|content| !content.nodes.is_empty() || !content.scene_objects.is_empty())
     }
 
     pub fn copy_selection(&mut self) -> bool {
@@ -37,6 +43,11 @@ impl Engine {
         self.document_from_selection()
             .map(|document| serde_json::to_string(&document).map_err(|error| error.to_string()))
             .transpose()
+    }
+
+    pub fn clipboard_cdxml(&self) -> Option<String> {
+        self.document_from_selection()
+            .map(|document| crate::document_to_cdxml(&document))
     }
 
     pub fn cut_selection(&mut self) -> bool {
@@ -65,14 +76,53 @@ impl Engine {
         Ok(self.paste_clipboard())
     }
 
+    pub fn paste_document_json(&mut self, json: &str) -> Result<bool, String> {
+        let mut source = Engine::new();
+        source.load_document_json(json)?;
+        self.paste_external_document(source)
+    }
+
+    pub fn paste_cdxml(&mut self, cdxml: &str) -> Result<bool, String> {
+        let mut source = Engine::new();
+        source.load_cdxml_document(cdxml)?;
+        self.paste_external_document(source)
+    }
+
+    pub fn paste_cdx(&mut self, cdx: &[u8]) -> Result<bool, String> {
+        let mut source = Engine::new();
+        source.load_cdx_document(cdx)?;
+        self.paste_external_document(source)
+    }
+
+    fn paste_external_document(&mut self, mut source: Engine) -> Result<bool, String> {
+        if !source.select_all() {
+            return Ok(false);
+        }
+        let Some(document) = source.document_from_selection() else {
+            return Ok(false);
+        };
+        let mut resources = BTreeMap::new();
+        for object in &document.objects {
+            collect_scene_object_resources(object, &document.resources, &mut resources);
+        }
+        let content = ClipboardContent {
+            nodes: Vec::new(),
+            bonds: Vec::new(),
+            scene_objects: document.objects,
+            resources,
+        };
+        self.clipboard = Some(content);
+        Ok(self.paste_clipboard())
+    }
+
     fn paste_clipboard_untracked(&mut self) -> bool {
         let Some(content) = self.clipboard.clone() else {
             return false;
         };
-        if content.nodes.is_empty() {
+        if content.nodes.is_empty() && content.scene_objects.is_empty() {
             return false;
         }
-        if self.state.document.editable_fragment().is_none() {
+        if !content.nodes.is_empty() && self.state.document.editable_fragment().is_none() {
             return false;
         }
         self.push_undo_snapshot();
@@ -105,22 +155,52 @@ impl Engine {
             bonds_to_insert.push(next);
         }
 
-        let stroke_width = self.options.bond_stroke_world_pt().value();
-        let Some(mut entry) = self.state.document.editable_fragment_mut() else {
-            self.undo_stack.pop();
-            return false;
-        };
-        entry.fragment.nodes.extend(nodes_to_insert);
-        entry.fragment.bonds.extend(bonds_to_insert);
+        if !nodes_to_insert.is_empty() {
+            let stroke_width = self.options.bond_stroke_world_pt().value();
+            let Some(mut entry) = self.state.document.editable_fragment_mut() else {
+                self.undo_stack.pop();
+                return false;
+            };
+            entry.fragment.nodes.extend(nodes_to_insert);
+            entry.fragment.bonds.extend(bonds_to_insert);
 
-        let object_translate = entry.object.transform.translate;
-        refresh_attached_node_label_geometry_for_all_nodes(
-            entry.fragment,
-            object_translate,
-            stroke_width,
-        );
-        entry.update_bounds();
+            let object_translate = entry.object.transform.translate;
+            refresh_attached_node_label_geometry_for_all_nodes(
+                entry.fragment,
+                object_translate,
+                stroke_width,
+            );
+            entry.update_bounds();
+        }
+
+        let mut resource_id_map = BTreeMap::new();
+        for (source_id, resource) in &content.resources {
+            let target_id = self.next_id("res");
+            self.state
+                .document
+                .resources
+                .insert(target_id.clone(), resource.clone());
+            resource_id_map.insert(source_id.clone(), target_id);
+        }
+        let mut pasted_scene_ids = Vec::new();
+        let mut pasted_molecule_ids = Vec::new();
+        for source in &content.scene_objects {
+            let mut object = super::select::drag::translated_scene_object(
+                source,
+                CLIPBOARD_PASTE_OFFSET_PT,
+                CLIPBOARD_PASTE_OFFSET_PT,
+            );
+            remap_clipboard_scene_object(self, &mut object, &resource_id_map);
+            if object.object_type == "molecule" {
+                pasted_molecule_ids.push(object.id.clone());
+            } else {
+                pasted_scene_ids.push(object.id.clone());
+            }
+            self.state.document.objects.push(object);
+        }
         self.state.selection = SelectionState {
+            arrow_objects: pasted_scene_ids,
+            molecule_objects: pasted_molecule_ids,
             nodes: pasted_node_ids,
             bonds: pasted_bond_ids,
             ..SelectionState::default()
@@ -133,7 +213,7 @@ impl Engine {
         if self.state.selection.is_empty() {
             return None;
         }
-        let entry = self.state.document.editable_fragment()?;
+        let entry = self.state.document.editable_fragment();
         let mut node_ids: BTreeSet<String> = self.state.selection.nodes.iter().cloned().collect();
         node_ids.extend(self.state.selection.label_nodes.iter().cloned());
 
@@ -144,37 +224,107 @@ impl Engine {
             .iter()
             .map(String::as_str)
             .collect();
-        for bond in &entry.fragment.bonds {
-            if selected_bonds.contains(bond.id.as_str()) {
-                node_ids.insert(bond.begin.clone());
-                node_ids.insert(bond.end.clone());
+        if let Some(entry) = entry.as_ref() {
+            for bond in &entry.fragment.bonds {
+                if selected_bonds.contains(bond.id.as_str()) {
+                    node_ids.insert(bond.begin.clone());
+                    node_ids.insert(bond.end.clone());
+                }
             }
         }
 
-        let nodes: Vec<Node> = entry
-            .fragment
-            .nodes
+        let selected_molecule_objects: BTreeSet<&str> = self
+            .state
+            .selection
+            .molecule_objects
             .iter()
-            .filter(|node| node_ids.contains(&node.id))
-            .cloned()
+            .map(String::as_str)
             .collect();
-        if nodes.is_empty() {
+        let fully_selected_molecule_ids: BTreeSet<String> = self
+            .state
+            .document
+            .editable_fragments()
+            .into_iter()
+            .filter(|candidate| {
+                selected_molecule_objects.contains(candidate.object.id.as_str())
+                    && candidate
+                        .fragment
+                        .nodes
+                        .iter()
+                        .all(|node| node_ids.contains(&node.id))
+                    && candidate
+                        .fragment
+                        .bonds
+                        .iter()
+                        .all(|bond| selected_bonds.contains(bond.id.as_str()))
+            })
+            .map(|candidate| candidate.object.id.clone())
+            .collect();
+        let active_molecule_is_complete = entry
+            .as_ref()
+            .is_some_and(|entry| fully_selected_molecule_ids.contains(entry.object.id.as_str()));
+
+        let nodes: Vec<Node> = entry
+            .as_ref()
+            .filter(|_| !active_molecule_is_complete)
+            .map(|entry| {
+                entry
+                    .fragment
+                    .nodes
+                    .iter()
+                    .filter(|node| node_ids.contains(&node.id))
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let bonds: Vec<Bond> = entry
+            .as_ref()
+            .filter(|_| !active_molecule_is_complete)
+            .map(|entry| {
+                entry
+                    .fragment
+                    .bonds
+                    .iter()
+                    .filter(|bond| {
+                        selected_bonds.contains(bond.id.as_str())
+                            && node_ids.contains(&bond.begin)
+                            && node_ids.contains(&bond.end)
+                    })
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let mut selected_scene_ids: BTreeSet<&str> = self
+            .state
+            .selection
+            .arrow_objects
+            .iter()
+            .map(String::as_str)
+            .collect();
+        selected_scene_ids.extend(fully_selected_molecule_ids.iter().map(String::as_str));
+        let mut scene_objects = Vec::new();
+        let mut resources = BTreeMap::new();
+        for object in &self.state.document.objects {
+            collect_clipboard_scene_objects(
+                object,
+                &selected_scene_ids,
+                &self.state.document.resources,
+                &mut scene_objects,
+                &mut resources,
+            );
+        }
+        if nodes.is_empty() && scene_objects.is_empty() {
             return None;
         }
 
-        let bonds: Vec<Bond> = entry
-            .fragment
-            .bonds
-            .iter()
-            .filter(|bond| {
-                selected_bonds.contains(bond.id.as_str())
-                    && node_ids.contains(&bond.begin)
-                    && node_ids.contains(&bond.end)
-            })
-            .cloned()
-            .collect();
-
-        Some(ClipboardContent { nodes, bonds })
+        Some(ClipboardContent {
+            nodes,
+            bonds,
+            scene_objects,
+            resources,
+        })
     }
 
     fn document_from_selection(&self) -> Option<ChemSemaDocument> {
@@ -339,11 +489,59 @@ fn visible_root_object_is_selected_for_clipboard(
     }
     match object.object_type.as_str() {
         "text" => selected_text.contains(object.id.as_str()),
-        "line" | "bracket" | "symbol" | "shape" | "group" => {
+        "line" | "bracket" | "symbol" | "shape" | "image" | "group" => {
             selected_graphics.contains(object.id.as_str())
         }
         "molecule" => selected_molecules.contains(object.id.as_str()),
         _ => true,
+    }
+}
+
+fn collect_clipboard_scene_objects(
+    object: &SceneObject,
+    selected_ids: &BTreeSet<&str>,
+    document_resources: &BTreeMap<String, Resource>,
+    out: &mut Vec<SceneObject>,
+    resources: &mut BTreeMap<String, Resource>,
+) {
+    if selected_ids.contains(object.id.as_str()) {
+        collect_scene_object_resources(object, document_resources, resources);
+        out.push(object.clone());
+        return;
+    }
+    for child in &object.children {
+        collect_clipboard_scene_objects(child, selected_ids, document_resources, out, resources);
+    }
+}
+
+fn collect_scene_object_resources(
+    object: &SceneObject,
+    document_resources: &BTreeMap<String, Resource>,
+    resources: &mut BTreeMap<String, Resource>,
+) {
+    if let Some(resource_id) = object.payload.resource_ref.as_ref() {
+        if let Some(resource) = document_resources.get(resource_id) {
+            resources.insert(resource_id.clone(), resource.clone());
+        }
+    }
+    for child in &object.children {
+        collect_scene_object_resources(child, document_resources, resources);
+    }
+}
+
+fn remap_clipboard_scene_object(
+    engine: &mut Engine,
+    object: &mut SceneObject,
+    resource_id_map: &BTreeMap<String, String>,
+) {
+    object.id = engine.next_id("object");
+    if let Some(resource_id) = object.payload.resource_ref.as_mut() {
+        if let Some(target_id) = resource_id_map.get(resource_id) {
+            *resource_id = target_id.clone();
+        }
+    }
+    for child in &mut object.children {
+        remap_clipboard_scene_object(engine, child, resource_id_map);
     }
 }
 

@@ -137,6 +137,7 @@ Each scene object shares a common envelope:
 - `line`
 - `bracket`
 - `shape`
+- `image`
 - `group`
 
 Other graphical primitives can be added later.
@@ -151,12 +152,13 @@ types:
 - `line`: straight/curved stroke objects, including arrows
 - `bracket`: bracket-like graphical objects
 - `shape`: simple filled or stroked regions
+- `image`: placed raster image backed by an explicit image resource
 - `group`: logical grouping and shared transform
 
 This split is intentional.
 
 - `molecule` owns chemistry semantics
-- `text`, `line`, `bracket`, and `shape` are document graphics
+- `text`, `line`, `bracket`, `shape`, and `image` are document graphics
 - `group` owns containment and transform only
 
 Important: labels that belong to a `molecule` are molecule-owned structure labels.
@@ -250,9 +252,10 @@ describe either:
 
 `resources` hold reusable content blobs shared by scene objects.
 
-Version `0.1` defines one resource type explicitly:
+Version `0.1` defines two resource types explicitly:
 
 - `molecule_fragment2d`
+- `image`
 
 Example:
 
@@ -267,6 +270,59 @@ Example:
 ```
 
 This keeps molecule objects small and makes repeated references possible.
+
+An `image` resource stores validated raster bytes and decoded pixel dimensions:
+
+```json
+"image_a": {
+  "type": "image",
+  "encoding": "base64",
+  "data": {
+    "mimeType": "image/png",
+    "dataBase64": "iVBORw0KGgo...",
+    "pixelWidth": 640,
+    "pixelHeight": 480,
+    "sourceName": "scheme.png"
+  }
+}
+```
+
+Native insertion accepts PNG, JPEG, GIF, and BMP. Payload bytes, MIME signature,
+declared dimensions, byte size, and pixel count are validated before insertion.
+
+## Image Object
+
+An image object places a raster resource in the scene. Its local `bbox` defines
+the displayed rectangle. Edge resize handles stretch one axis; corner handles
+preserve aspect ratio. Rotation, movement, grouping, stacking, locking,
+visibility, copy/paste, deletion, and undo use the normal scene-object rules.
+
+```json
+{
+  "id": "obj_image_1",
+  "type": "image",
+  "visible": true,
+  "locked": false,
+  "zIndex": 30,
+  "transform": {
+    "translate": [120, 80],
+    "rotate": 15,
+    "scale": [1, 1]
+  },
+  "meta": { "kind": "image" },
+  "payload": {
+    "resourceRef": "image_a",
+    "bbox": [0, 0, 160, 120],
+    "fit": "stretch",
+    "opacity": 1
+  }
+}
+```
+
+CDX/CDXML raster payloads map to this object without changing their bytes.
+Unsupported compound payloads such as OLE, EMF, WMF, TIFF, PDF, or PICT remain
+opaque resources and render a sized diagnostic placeholder instead of silently
+disappearing. Their original bytes remain authoritative for round-trip export.
 
 ## Molecule Object
 
@@ -951,7 +1007,7 @@ Rules:
 Later versions may add:
 
 - multiple pages
-- embedded binary assets
+- native decoding for opaque compound embedded assets
 - native reaction graph semantics
 - query chemistry semantics
 - editing history

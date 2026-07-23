@@ -284,6 +284,38 @@ fn main() {
                     "rotateCenter": rotate_center,
                 }));
             }
+            RenderPrimitive::Image {
+                role,
+                object_id,
+                x,
+                y,
+                width,
+                height,
+                href,
+                opacity,
+                preserve_aspect_ratio,
+                rotate,
+                rotate_center,
+            } => {
+                if role != RenderRole::DocumentGraphic
+                    || !matches_filter(&filters, object_id.as_ref(), None)
+                {
+                    continue;
+                }
+                out.push(json!({
+                    "kind": "image",
+                    "objectId": object_id,
+                    "x": x,
+                    "y": y,
+                    "width": width,
+                    "height": height,
+                    "href": href,
+                    "opacity": opacity,
+                    "preserveAspectRatio": preserve_aspect_ratio,
+                    "rotate": rotate,
+                    "rotateCenter": rotate_center,
+                }));
+            }
             RenderPrimitive::Text { .. } => {}
         }
     }

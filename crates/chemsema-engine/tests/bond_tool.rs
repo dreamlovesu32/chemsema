@@ -570,6 +570,7 @@ fn primitive_object_id(primitive: &RenderPrimitive) -> Option<&str> {
         | RenderPrimitive::Polyline { object_id, .. }
         | RenderPrimitive::Path { object_id, .. }
         | RenderPrimitive::FilledPath { object_id, .. }
+        | RenderPrimitive::Image { object_id, .. }
         | RenderPrimitive::Text { object_id, .. } => object_id.as_deref(),
     }
 }
@@ -2610,6 +2611,76 @@ fn select_all_clipboard_document_json_keeps_all_molecule_objects() {
 }
 
 #[test]
+fn external_document_paste_keeps_every_molecule_object() {
+    let mut source = Engine::new();
+    load_two_molecule_document_with_duplicate_local_ids(&mut source);
+    let source_json = source
+        .document_json()
+        .expect("source document should serialize");
+
+    let mut target = Engine::new();
+    let baseline_molecules = target.state().document.editable_fragments().len();
+    assert!(target
+        .paste_document_json(&source_json)
+        .expect("external document should paste"));
+    assert_eq!(
+        target.state().document.editable_fragments().len(),
+        baseline_molecules + 2,
+        "cross-tab paste must preserve every molecule object instead of flattening into one fragment"
+    );
+    assert_eq!(target.state().selection.molecule_objects.len(), 2);
+}
+
+#[test]
+fn portable_fragment_keeps_every_fully_selected_molecule() {
+    let mut source = Engine::new();
+    load_two_molecule_document_with_duplicate_local_ids(&mut source);
+    assert!(source.select_all());
+    let fragment_json = source
+        .clipboard_selection_json()
+        .expect("portable fragment should serialize")
+        .expect("select all should produce a portable fragment");
+
+    let mut target = Engine::new();
+    let baseline_molecules = target.state().document.editable_fragments().len();
+    assert!(target
+        .paste_clipboard_json(&fragment_json)
+        .expect("portable fragment should paste"));
+    assert_eq!(
+        target.state().document.editable_fragments().len(),
+        baseline_molecules + 2
+    );
+    assert_eq!(target.state().selection.molecule_objects.len(), 2);
+}
+
+#[test]
+fn cdxml_clipboard_pastes_as_editable_structure() {
+    let cdxml = r#"<CDXML BoundingBox="0 0 100 60"><page><fragment>
+        <n id="1" p="20 30"/><n id="2" p="50 30"/>
+        <b id="3" B="1" E="2" Order="1"/>
+    </fragment></page></CDXML>"#;
+    let mut target = Engine::new();
+    assert!(target
+        .paste_cdxml(cdxml)
+        .expect("ChemDraw CDXML clipboard should paste"));
+    let fragments = target.state().document.editable_fragments();
+    assert_eq!(
+        fragments
+            .iter()
+            .map(|entry| entry.fragment.nodes.len())
+            .sum::<usize>(),
+        2
+    );
+    assert_eq!(
+        fragments
+            .iter()
+            .map(|entry| entry.fragment.bonds.len())
+            .sum::<usize>(),
+        1
+    );
+}
+
+#[test]
 fn single_molecule_clipboard_document_json_does_not_expand_duplicate_local_ids() {
     let mut engine = Engine::new();
     load_two_molecule_document_with_duplicate_local_ids(&mut engine);
@@ -3550,6 +3621,10 @@ fn engine_provides_context_menu_and_numeric_dialog_schemas() {
         item.get("command").and_then(serde_json::Value::as_str) == Some("smiles-dialog")
             && item.get("label").and_then(serde_json::Value::as_str) == Some("From SMILES...")
     }));
+    assert!(canvas_menu.as_array().unwrap().iter().any(|item| {
+        item.get("command").and_then(serde_json::Value::as_str) == Some("insert-image")
+            && item.get("label").and_then(serde_json::Value::as_str) == Some("Insert Image...")
+    }));
 
     engine.set_tool_state(bond_tool());
     click(&mut engine, px(300.0), px(260.0));
@@ -3564,6 +3639,7 @@ fn engine_provides_context_menu_and_numeric_dialog_schemas() {
         .collect::<Vec<_>>();
     assert!(labels.contains(&"Bond Type"));
     assert!(labels.contains(&"Object Settings..."));
+    assert!(!labels.contains(&"Insert Image..."));
 
     let scale: serde_json::Value =
         serde_json::from_str(&engine.selection_numeric_dialog_json("scale")).unwrap();

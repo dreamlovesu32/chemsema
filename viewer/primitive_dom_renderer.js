@@ -223,6 +223,34 @@ export function renderCorePrimitive(svgRoot, primitive, options = {}) {
     svgRoot.appendChild(makeSvgNode("polygon", attrs));
     return;
   }
+  if (primitive.kind === "image") {
+    const href = String(primitive.href || "");
+    if (!/^data:image\/(?:png|jpeg|gif|bmp);base64,/i.test(href)) {
+      return;
+    }
+    const attrs = {
+      x: primitive.x,
+      y: primitive.y,
+      width: primitive.width,
+      height: primitive.height,
+      href,
+      opacity: Number.isFinite(Number(primitive.opacity)) ? primitive.opacity : 1,
+      preserveAspectRatio: primitive.preserveAspectRatio || primitive.preserve_aspect_ratio
+        ? "xMidYMid meet"
+        : "none",
+      "data-role": primitive.role || undefined,
+      ...primitiveIdentityAttrs(primitive, options),
+    };
+    const transform = primitiveRotateTransform(primitive, {
+      x: Number(primitive.x || 0) + Number(primitive.width || 0) * 0.5,
+      y: Number(primitive.y || 0) + Number(primitive.height || 0) * 0.5,
+    });
+    if (transform) {
+      attrs.transform = transform;
+    }
+    svgRoot.appendChild(makeSvgNode("image", attrs));
+    return;
+  }
   if (primitive.kind === "rect") {
     if (primitive.role === "document-knockout" && !options.labelDebugMode) {
       return;

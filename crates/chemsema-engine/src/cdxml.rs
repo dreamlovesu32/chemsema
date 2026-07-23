@@ -16,10 +16,10 @@ pub(crate) mod xml;
 use self::colors::CdxmlColorTable;
 pub use self::export::document_to_cdxml;
 use self::import_objects::{
-    append_bracket_objects, append_curve_objects, append_line_objects,
-    append_orbital_shape_objects, append_shape_objects, append_synthesized_bond_query_text_objects,
-    append_synthesized_enhanced_stereo_text_objects, append_table_shape_objects,
-    append_text_objects, append_tlc_plate_shape_objects,
+    append_bracket_objects, append_curve_objects, append_embedded_image_objects,
+    append_line_objects, append_orbital_shape_objects, append_shape_objects,
+    append_synthesized_bond_query_text_objects, append_synthesized_enhanced_stereo_text_objects,
+    append_table_shape_objects, append_text_objects, append_tlc_plate_shape_objects,
 };
 use self::text_runs::{label_display_runs, label_display_runs_from_source_runs, label_source_run};
 pub(crate) use self::xml::parse_xml_tree;
@@ -340,6 +340,7 @@ pub fn parse_cdxml_document(cdxml: &str, title: Option<&str>) -> Result<ChemSema
     append_orbital_shape_objects(&root, &mut objects, &mut styles, defaults, &colors);
     append_table_shape_objects(&root, &mut objects, &mut styles, defaults, &colors);
     append_tlc_plate_shape_objects(&root, &mut objects, &mut styles, defaults, &colors);
+    append_embedded_image_objects(&root, &mut objects, &mut resources);
     append_bracket_objects(&root, &mut objects, defaults, &colors);
     append_text_objects(
         &root,

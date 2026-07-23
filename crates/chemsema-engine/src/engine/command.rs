@@ -339,6 +339,21 @@ pub enum EditorCommand {
         #[serde(flatten)]
         content: TextCommandContent,
     },
+    AddImage {
+        #[serde(alias = "mimeType")]
+        mime_type: String,
+        #[serde(alias = "dataBase64")]
+        data_base64: String,
+        #[serde(alias = "pixelWidth")]
+        pixel_width: u32,
+        #[serde(alias = "pixelHeight")]
+        pixel_height: u32,
+        position: Point,
+        width: f64,
+        height: f64,
+        #[serde(default, alias = "sourceName", skip_serializing_if = "Option::is_none")]
+        source_name: Option<String>,
+    },
     SetTextRuns {
         #[serde(alias = "objectId")]
         object_id: String,

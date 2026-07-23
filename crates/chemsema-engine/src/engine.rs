@@ -9,6 +9,7 @@ mod context_menu;
 mod context_styles;
 mod delete;
 mod groups;
+mod images;
 mod links;
 mod orbitals;
 mod palettes;
@@ -125,6 +126,7 @@ fn render_primitive_role(primitive: &RenderPrimitive) -> RenderRole {
         | RenderPrimitive::Polyline { role, .. }
         | RenderPrimitive::Path { role, .. }
         | RenderPrimitive::FilledPath { role, .. }
+        | RenderPrimitive::Image { role, .. }
         | RenderPrimitive::Text { role, .. } => *role,
     }
 }
@@ -179,6 +181,7 @@ fn render_primitive_role_mut(primitive: &mut RenderPrimitive) -> &mut RenderRole
         | RenderPrimitive::Polyline { role, .. }
         | RenderPrimitive::Path { role, .. }
         | RenderPrimitive::FilledPath { role, .. }
+        | RenderPrimitive::Image { role, .. }
         | RenderPrimitive::Text { role, .. } => role,
     }
 }
@@ -217,7 +220,9 @@ fn preview_primitive_ids(
             bond_id,
             ..
         } => (object_id.as_deref(), node_id.as_deref(), bond_id.as_deref()),
-        RenderPrimitive::Ellipse { object_id, .. } => (object_id.as_deref(), None, None),
+        RenderPrimitive::Ellipse { object_id, .. } | RenderPrimitive::Image { object_id, .. } => {
+            (object_id.as_deref(), None, None)
+        }
     }
 }
 
@@ -805,6 +810,32 @@ impl Engine {
                 .arrow_objects
                 .contains(&hover.object_id)
             {
+                let hovered_image_bounds = self
+                    .state
+                    .document
+                    .find_scene_object(&hover.object_id)
+                    .filter(|object| object.object_type == "image")
+                    .and_then(|object| {
+                        select::object_selection_bounds_for_render(&self.state.document, object)
+                    });
+                if let Some(bounds) = hovered_image_bounds {
+                    out.push(RenderPrimitive::Rect {
+                        role: RenderRole::HoverObjectBox,
+                        object_id: Some(hover.object_id.clone()),
+                        node_id: None,
+                        x: bounds[0],
+                        y: bounds[1],
+                        width: bounds[2] - bounds[0],
+                        height: bounds[3] - bounds[1],
+                        fill: None,
+                        stroke: Some("rgba(47,111,237,0.76)".to_string()),
+                        stroke_width: HOVER_STROKE_WIDTH,
+                        rx: None,
+                        ry: None,
+                        dash_array: Vec::new(),
+                        fill_gradient: None,
+                    });
+                }
                 for handle in &hover.handles {
                     out.push(RenderPrimitive::Circle {
                         role: RenderRole::HoverArrowHandle,
@@ -2255,6 +2286,27 @@ impl Engine {
                 .with_command(command.clone(), |engine| {
                     engine.add_text_direct(position, content)
                 }),
+            EditorCommand::AddImage {
+                mime_type,
+                data_base64,
+                pixel_width,
+                pixel_height,
+                position,
+                width,
+                height,
+                source_name,
+            } => self.with_command(command.clone(), |engine| {
+                engine.add_image_direct(
+                    &mime_type,
+                    &data_base64,
+                    pixel_width,
+                    pixel_height,
+                    position,
+                    width,
+                    height,
+                    source_name.as_deref(),
+                )
+            }),
             EditorCommand::SetTextRuns { object_id, content } => self
                 .with_command(command.clone(), |engine| {
                     engine.set_text_runs_direct(&object_id, content)
@@ -4576,6 +4628,7 @@ fn editor_command_type_name(command: &EditorCommand) -> &'static str {
         EditorCommand::AddSymbol { .. } => "add-symbol",
         EditorCommand::AddElement { .. } => "add-element",
         EditorCommand::AddText { .. } => "add-text",
+        EditorCommand::AddImage { .. } => "add-image",
         EditorCommand::SetTextRuns { .. } => "set-text-runs",
         EditorCommand::SetNodeLabelRuns { .. } => "set-node-label-runs",
         EditorCommand::SetNodeCharge { .. } => "set-node-charge",

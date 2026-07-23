@@ -76,6 +76,13 @@ fn primitive_bbox(primitive: &RenderPrimitive) -> Option<[f64; 4]> {
             let width = box_width.unwrap_or((*font_size * text.len() as f64 * 0.5).max(*font_size));
             Some([*x, *y - *font_size, *x + width, *y + *font_size * 0.3])
         }
+        RenderPrimitive::Image {
+            x,
+            y,
+            width,
+            height,
+            ..
+        } => Some([*x, *y, *x + *width, *y + *height]),
     }
 }
 
@@ -114,6 +121,7 @@ fn main() {
             | RenderPrimitive::Polyline { role, .. }
             | RenderPrimitive::Path { role, .. }
             | RenderPrimitive::FilledPath { role, .. }
+            | RenderPrimitive::Image { role, .. }
             | RenderPrimitive::Text { role, .. } => *role,
         };
         *counts.entry(format!("{role:?}")).or_default() += 1;

@@ -182,6 +182,12 @@ export class DesktopFileHost {
     }
   }
 
+  async readBinaryPath(path) {
+    return this.invoke("desktop_file_read_binary_path", {
+      path: requireDesktopPath(path, "read image"),
+    });
+  }
+
   async writePath(path, content, format = null) {
     return this.invoke("desktop_file_write_path", { path: requireDesktopPath(path, "save"), content, format });
   }
@@ -246,7 +252,7 @@ export class DesktopFileHost {
     const unlisten = await this.listen("chemsema-desktop-open-paths", (event) => {
       const paths = openPathsFromDesktopPayload(event?.payload);
       void this.traceEvent("desktopFileHost.openPaths.event", { payload: event?.payload, paths });
-      handler(paths);
+      handler(paths, event?.payload || null);
     });
     this.unlisteners.push(unlisten);
   }

@@ -39,6 +39,7 @@ export class WasmEngine {
     chainToolIconSvg(stroke_width: number): string;
     clearInteraction(): void;
     clearSelection(): boolean;
+    clipboardCdxml(): string | undefined;
     clipboardDocumentJson(): string | undefined;
     clipboardSelectionJson(): string | undefined;
     colorDialogPaletteJson(current_color: string, custom_colors_json: string): string;
@@ -79,8 +80,11 @@ export class WasmEngine {
     constructor();
     objectSettingsDialogJson(): string;
     orbitalToolIconSvg(template: string, style: string, phase: string): string;
+    pasteCdx(cdx: Uint8Array): boolean;
+    pasteCdxml(cdxml: string): boolean;
     pasteClipboard(): boolean;
     pasteClipboardJson(json: string): boolean;
+    pasteDocumentJson(json: string): boolean;
     pendingGraphicObjectId(): string;
     pointerDown(x: number, y: number, alt_key: boolean): void;
     pointerMove(x: number, y: number, alt_key: boolean): void;
@@ -178,6 +182,7 @@ export interface InitOutput {
     readonly wasmengine_chainToolIconSvg: (a: number, b: number) => [number, number];
     readonly wasmengine_clearInteraction: (a: number) => void;
     readonly wasmengine_clearSelection: (a: number) => number;
+    readonly wasmengine_clipboardCdxml: (a: number) => [number, number];
     readonly wasmengine_clipboardDocumentJson: (a: number) => [number, number, number, number];
     readonly wasmengine_clipboardSelectionJson: (a: number) => [number, number, number, number];
     readonly wasmengine_colorDialogPaletteJson: (a: number, b: number, c: number, d: number, e: number) => [number, number];
@@ -218,8 +223,11 @@ export interface InitOutput {
     readonly wasmengine_new: () => number;
     readonly wasmengine_objectSettingsDialogJson: (a: number) => [number, number];
     readonly wasmengine_orbitalToolIconSvg: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number];
+    readonly wasmengine_pasteCdx: (a: number, b: number, c: number) => [number, number, number];
+    readonly wasmengine_pasteCdxml: (a: number, b: number, c: number) => [number, number, number];
     readonly wasmengine_pasteClipboard: (a: number) => number;
     readonly wasmengine_pasteClipboardJson: (a: number, b: number, c: number) => [number, number, number];
+    readonly wasmengine_pasteDocumentJson: (a: number, b: number, c: number) => [number, number, number];
     readonly wasmengine_pendingGraphicObjectId: (a: number) => [number, number];
     readonly wasmengine_pointerDown: (a: number, b: number, c: number, d: number) => void;
     readonly wasmengine_pointerMove: (a: number, b: number, c: number, d: number) => void;

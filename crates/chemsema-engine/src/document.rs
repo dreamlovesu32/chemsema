@@ -3,7 +3,7 @@ use crate::{
     DEFAULT_MOLECULE_LABEL_FONT_SIZE_PT, DEFAULT_PAGE_HEIGHT_PT, DEFAULT_PAGE_WIDTH_PT,
     DEFAULT_TEXT_BLOCK_PADDING_PT, DEFAULT_TEXT_FONT_SIZE_PT, DEFAULT_TEXT_LINE_HEIGHT_PT, EPSILON,
 };
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
@@ -1752,12 +1752,49 @@ pub struct Resource {
     pub meta: Value,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum ResourceData {
     Fragment(MoleculeFragment),
     Text(String),
     Json(Value),
+}
+
+impl<'de> Deserialize<'de> for ResourceData {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = Value::deserialize(deserializer)?;
+        if let Value::String(text) = value {
+            return Ok(Self::Text(text));
+        }
+        let is_fragment = value.as_object().is_some_and(|object| {
+            object
+                .get("schema")
+                .and_then(Value::as_str)
+                .is_some_and(|schema| schema.starts_with("chemsema.molecule.fragment"))
+                || (object.get("nodes").is_some_and(Value::is_array)
+                    && object.get("bonds").is_some_and(Value::is_array))
+        });
+        if is_fragment {
+            if let Ok(fragment) = serde_json::from_value(value.clone()) {
+                return Ok(Self::Fragment(fragment));
+            }
+        }
+        Ok(Self::Json(value))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageResourceData {
+    pub mime_type: String,
+    pub data_base64: String,
+    pub pixel_width: u32,
+    pub pixel_height: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_name: Option<String>,
 }
 
 impl ResourceData {
@@ -1778,6 +1815,13 @@ impl ResourceData {
     pub fn as_text(&self) -> Option<&str> {
         match self {
             Self::Text(text) => Some(text.as_str()),
+            _ => None,
+        }
+    }
+
+    pub fn as_image(&self) -> Option<ImageResourceData> {
+        match self {
+            Self::Json(value) => serde_json::from_value(value.clone()).ok(),
             _ => None,
         }
     }

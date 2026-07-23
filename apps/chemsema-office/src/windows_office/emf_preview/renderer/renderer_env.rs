@@ -186,6 +186,7 @@ pub(super) fn preview_primitive_object_id(primitive: &RenderPrimitive) -> Option
         | RenderPrimitive::Polyline { object_id, .. }
         | RenderPrimitive::Path { object_id, .. }
         | RenderPrimitive::FilledPath { object_id, .. }
+        | RenderPrimitive::Image { object_id, .. }
         | RenderPrimitive::Text { object_id, .. } => object_id.as_deref(),
     }
 }

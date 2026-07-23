@@ -210,6 +210,28 @@ fn cdx_value_type(cdx_type: &str) -> &'static str {
     }
 }
 
+fn encode_hex_bytes(data: &[u8]) -> String {
+    let mut out = String::with_capacity(data.len() * 2);
+    for byte in data {
+        write!(&mut out, "{byte:02X}").expect("writing to a string cannot fail");
+    }
+    out
+}
+
+fn decode_hex_bytes(value: &str) -> Option<Vec<u8>> {
+    let compact: String = value
+        .chars()
+        .filter(|character| !character.is_ascii_whitespace())
+        .collect();
+    if compact.len() % 2 != 0 {
+        return None;
+    }
+    (0..compact.len())
+        .step_by(2)
+        .map(|offset| u8::from_str_radix(&compact[offset..offset + 2], 16).ok())
+        .collect()
+}
+
 fn decode_official_lexical(cdx_type: &str, data: &[u8]) -> Option<String> {
     Some(match cdx_type {
         "CDXString" => parse_cdx_string(data, None).text,
@@ -235,6 +257,7 @@ fn decode_official_lexical(cdx_type: &str, data: &[u8]) -> Option<String> {
         "CDXDate" => decode_cdx_date(data)?,
         "CDXRepresentsProperty" => decode_represents_property(data)?,
         "CDXGenericList" => decode_generic_list(data)?,
+        "Unformatted" => encode_hex_bytes(data),
         _ => return None,
     })
 }
@@ -264,6 +287,7 @@ fn encode_official_lexical(cdx_type: &str, value: &str) -> Option<Vec<u8>> {
         "CDXDate" => encode_cdx_date(value)?,
         "CDXRepresentsProperty" => encode_represents_property(value)?,
         "CDXGenericList" => encode_generic_list(value)?,
+        "Unformatted" => decode_hex_bytes(value)?,
         _ => return None,
     })
 }
@@ -1079,6 +1103,7 @@ fn decode_property(
     let schema = property_schema(tag)?;
     let value = match schema.kind {
         PropertyKind::String => parse_cdx_string(data, font_table).text,
+        PropertyKind::Binary => encode_hex_bytes(data),
         PropertyKind::Point2D => decode_point2d(data)?,
         PropertyKind::Point3D => decode_point3d(data)?,
         PropertyKind::Rectangle => decode_rectangle(data)?,
@@ -1089,7 +1114,6 @@ fn decode_property(
         PropertyKind::UInt16 => read_u16_lossy(data)?.to_string(),
         PropertyKind::LineHeightInt16 => decode_line_height(read_i16(data)? as i64),
         PropertyKind::LineHeightUInt16 => decode_line_height(read_u16(data)? as i64),
-        PropertyKind::Int32 => read_i32(data)?.to_string(),
         PropertyKind::Fixed16_16 => fmt_num(read_i32(data)? as f64 / 65536.0),
         PropertyKind::UInt32 => read_u32(data)?.to_string(),
         PropertyKind::Float64 => read_f64(data)?.to_string(),
@@ -1121,6 +1145,7 @@ struct PropertySchema {
 #[derive(Clone, Copy)]
 enum PropertyKind {
     String,
+    Binary,
     Point2D,
     Point3D,
     Rectangle,
@@ -1131,7 +1156,6 @@ enum PropertyKind {
     UInt16,
     LineHeightInt16,
     LineHeightUInt16,
-    Int32,
     Fixed16_16,
     UInt32,
     Float64,
@@ -1184,7 +1208,7 @@ fn property_schema(tag: u16) -> Option<PropertySchema> {
         0x0201 => ("xyz", PropertyKind::Point3D),
         0x0202 => ("extent", PropertyKind::Point2D),
         0x0204 => ("BoundingBox", PropertyKind::Rectangle),
-        0x0205 => ("RotationAngle", PropertyKind::Int32),
+        0x0205 => ("RotationAngle", PropertyKind::Fixed16_16),
         0x0207 => ("Head3D", PropertyKind::Point3D),
         0x0208 => ("Tail3D", PropertyKind::Point3D),
         0x0209 => ("TopLeft", PropertyKind::Point2D),
@@ -1289,8 +1313,17 @@ fn property_schema(tag: u16) -> Option<PropertySchema> {
         0x0A3C => ("CornerRadius", PropertyKind::Int16),
         0x0A3E => ("ArrowSource", PropertyKind::UInt16),
         0x0A3F => ("ArrowTarget", PropertyKind::UInt16),
-        0x0A70 => ("PNG", PropertyKind::String),
-        0x0A71 => ("JPEG", PropertyKind::String),
+        0x0A60 => ("Edition", PropertyKind::Binary),
+        0x0A61 => ("EditionAlias", PropertyKind::Binary),
+        0x0A62 => ("MacPICT", PropertyKind::Binary),
+        0x0A63 => ("WindowsMetafile", PropertyKind::Binary),
+        0x0A64 => ("OLEObject", PropertyKind::Binary),
+        0x0A65 => ("EnhancedMetafile", PropertyKind::Binary),
+        0x0A6E => ("GIF", PropertyKind::Binary),
+        0x0A6F => ("TIFF", PropertyKind::Binary),
+        0x0A70 => ("PNG", PropertyKind::Binary),
+        0x0A71 => ("JPEG", PropertyKind::Binary),
+        0x0A72 => ("BMP", PropertyKind::Binary),
         0x0AB1 => ("Tail", PropertyKind::Coordinate),
         0x0B00 => ("TextFrame", PropertyKind::Rectangle),
         0x0B80 => ("GeometricFeature", PropertyKind::Int8),
@@ -1453,6 +1486,7 @@ fn encode_property(name: &str, value: &str) -> Option<(u16, Vec<u8>)> {
     };
     let bytes = match schema.kind {
         PropertyKind::String => encode_plain_cdx_string(value),
+        PropertyKind::Binary => decode_hex_bytes(value)?,
         PropertyKind::Point2D => encode_point2d(value)?,
         PropertyKind::Point3D => encode_point3d(value)?,
         PropertyKind::Rectangle => encode_rectangle(value)?,
@@ -1463,7 +1497,6 @@ fn encode_property(name: &str, value: &str) -> Option<(u16, Vec<u8>)> {
         PropertyKind::UInt16 => value.parse::<u16>().ok()?.to_le_bytes().to_vec(),
         PropertyKind::LineHeightInt16 => encode_line_height(value, false)?,
         PropertyKind::LineHeightUInt16 => encode_line_height(value, true)?,
-        PropertyKind::Int32 => value.parse::<i32>().ok()?.to_le_bytes().to_vec(),
         PropertyKind::Fixed16_16 => ((value.parse::<f64>().ok()? * 65536.0).round() as i32)
             .to_le_bytes()
             .to_vec(),

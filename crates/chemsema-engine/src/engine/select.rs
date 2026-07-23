@@ -33,7 +33,7 @@ mod arrange;
 #[path = "select/arrows.rs"]
 mod arrows;
 #[path = "select/drag.rs"]
-mod drag;
+pub(super) mod drag;
 #[path = "select/geometry.rs"]
 mod geometry;
 #[path = "select/render.rs"]
@@ -44,6 +44,14 @@ use self::arrows::*;
 use self::drag::*;
 use self::geometry::*;
 use self::render::*;
+
+pub(super) fn object_selection_bounds_for_render(
+    document: &crate::ChemSemaDocument,
+    object: &crate::SceneObject,
+) -> Option<[f64; 4]> {
+    scene_object_selection_bounds(document, object)
+        .map(|bounds| [bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y])
+}
 
 fn selection_state_has_items(selection: &SelectionState) -> bool {
     selection.region
@@ -203,6 +211,7 @@ pub(super) struct SelectionMoveDrag {
     text_originals: Vec<TextMoveOriginal>,
     mode: SelectionMoveMode,
     preserve_selection_after_drag: bool,
+    clear_selection_after_drag: bool,
     undo_pushed: bool,
     changed: bool,
 }
@@ -598,6 +607,16 @@ impl Engine {
     ) -> bool {
         let mut preserve_selection_after_drag = true;
         let direct_hit = self.select_hit_at_point(point);
+        let clear_selection_after_drag = direct_hit.as_ref().is_some_and(|hit| match hit {
+            SelectHit::ArrowObject { object_id } => self
+                .state
+                .document
+                .find_scene_object(object_id)
+                .is_some_and(|object| object.object_type == "image"),
+            _ => false,
+        }) && !direct_hit
+            .as_ref()
+            .is_some_and(|hit| selection_contains_hit(&self.state.selection, hit));
         if self.state.selection.is_empty() || !self.selection_contains_point(point) {
             let Some(hit) = direct_hit else {
                 return false;
@@ -614,8 +633,11 @@ impl Engine {
             add_hit_to_selection(&mut selection, hit);
             self.state.selection = selection;
         }
-        let Some(drag) = self.build_selection_move_drag(point, preserve_selection_after_drag)
-        else {
+        let Some(drag) = self.build_selection_move_drag(
+            point,
+            preserve_selection_after_drag,
+            clear_selection_after_drag,
+        ) else {
             return false;
         };
         self.drag = None;
@@ -667,7 +689,8 @@ impl Engine {
         }
         let previous_selection = self.state.selection.clone();
         self.state.selection = selection_from_command_targets(&self.state.document, targets);
-        let Some(mut drag) = self.build_selection_move_drag(Point::new(0.0, 0.0), true) else {
+        let Some(mut drag) = self.build_selection_move_drag(Point::new(0.0, 0.0), true, false)
+        else {
             self.state.selection = previous_selection;
             return false;
         };
@@ -854,8 +877,15 @@ impl Engine {
             .selection_drag
             .as_ref()
             .is_some_and(|drag| drag.changed);
+        let clear_selection_after_drag = self
+            .selection_drag
+            .as_ref()
+            .is_some_and(|drag| drag.clear_selection_after_drag);
         self.selection_drag = None;
         if changed {
+            if clear_selection_after_drag {
+                self.state.selection = SelectionState::default();
+            }
             clear_select_hover_overlay(self);
         } else {
             self.hover_select_target(point);
@@ -973,7 +1003,7 @@ impl Engine {
         if delta_x.abs() <= crate::EPSILON && delta_y.abs() <= crate::EPSILON {
             return false;
         }
-        let Some(drag) = self.build_selection_move_drag(Point::new(0.0, 0.0), true) else {
+        let Some(drag) = self.build_selection_move_drag(Point::new(0.0, 0.0), true, false) else {
             return false;
         };
         self.push_undo_snapshot();
@@ -1404,7 +1434,7 @@ impl Engine {
             }
             match object.object_type.as_str() {
                 "text" => selection.text_objects.push(object.id.clone()),
-                "line" | "bracket" | "symbol" | "shape" | "group" => {
+                "line" | "bracket" | "symbol" | "shape" | "image" | "group" => {
                     selection.arrow_objects.push(object.id.clone())
                 }
                 _ => {}
@@ -1521,6 +1551,19 @@ impl Engine {
         self.state.overlay.hover_endpoint = None;
         self.state.overlay.preview = None;
         self.pointer_bond_target = None;
+        if let Some((object_id, bounds)) = self.image_hover_at_point(point) {
+            if !self.state.selection.arrow_objects.contains(&object_id) {
+                self.state.overlay.hover_arrow = Some(crate::HoverArrow {
+                    object_id,
+                    center: Point::new(
+                        (bounds.min_x + bounds.max_x) * 0.5,
+                        (bounds.min_y + bounds.max_y) * 0.5,
+                    ),
+                    handles: Vec::new(),
+                });
+            }
+            return;
+        }
         if let Some(hover_shape) = self
             .bracket_hover_at_point(point)
             .or_else(|| self.shape_hover_at_point(point))
@@ -1607,6 +1650,18 @@ impl Engine {
         self.chemistry_select_hit_at_point(point)
     }
 
+    fn image_hover_at_point(&self, point: Point) -> Option<(String, AxisBounds)> {
+        let mut objects = self.state.document.scene_objects();
+        objects.sort_by(|a, b| b.z_index.cmp(&a.z_index).then_with(|| b.id.cmp(&a.id)));
+        objects.into_iter().find_map(|object| {
+            if object.object_type != "image" || !object.visible || object.locked {
+                return None;
+            }
+            let bounds = scene_object_selection_bounds(&self.state.document, object)?;
+            point_in_bounds(point, bounds).then(|| (object.id.clone(), bounds))
+        })
+    }
+
     fn component_select_hit_at_point(&self, point: Point) -> Option<SelectHit> {
         self.chemistry_select_hit_at_point(point)
             .or_else(|| self.graphic_select_hit_at_point(point))
@@ -1639,8 +1694,10 @@ impl Engine {
         let mut objects = self.state.document.scene_objects();
         objects.sort_by(|a, b| b.z_index.cmp(&a.z_index).then_with(|| b.id.cmp(&a.id)));
         for object in objects {
-            if !matches!(object.object_type.as_str(), "bracket" | "symbol" | "shape")
-                || !object.visible
+            if !matches!(
+                object.object_type.as_str(),
+                "bracket" | "symbol" | "shape" | "image"
+            ) || !object.visible
             {
                 continue;
             }
@@ -1714,8 +1771,10 @@ impl Engine {
             }
         }
         for object in self.state.document.scene_objects() {
-            if !matches!(object.object_type.as_str(), "bracket" | "symbol" | "shape")
-                || !object.visible
+            if !matches!(
+                object.object_type.as_str(),
+                "bracket" | "symbol" | "shape" | "image"
+            ) || !object.visible
             {
                 continue;
             }
@@ -1912,6 +1971,7 @@ impl Engine {
         &self,
         start: Point,
         preserve_selection_after_drag: bool,
+        clear_selection_after_drag: bool,
     ) -> Option<SelectionMoveDrag> {
         if self.state.selection.is_empty() {
             return None;
@@ -1969,6 +2029,7 @@ impl Engine {
             text_originals,
             mode,
             preserve_selection_after_drag,
+            clear_selection_after_drag,
             undo_pushed: false,
             changed: false,
         })

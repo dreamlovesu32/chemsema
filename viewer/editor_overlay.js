@@ -640,6 +640,7 @@ export function createEditorOverlayRenderer(options) {
         const classByRole = {
           "hover-text-box": "editor-text-box-focus",
           "hover-label-glyph": "editor-label-glyph-focus",
+          "hover-object-box": "editor-selection-box",
         };
         if (hideSelectionOverlayDuringGesture && primitive.role?.startsWith("selection-")) {
           continue;

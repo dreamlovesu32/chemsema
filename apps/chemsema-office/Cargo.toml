@@ -9,6 +9,7 @@ repository.workspace = true
 homepage.workspace = true
 
 [dependencies]
+base64 = "0.22"
 chemsema-engine = { path = "../../crates/chemsema-engine" }
 resvg = "0.45"
 serde = { version = "1.0", features = ["derive"] }

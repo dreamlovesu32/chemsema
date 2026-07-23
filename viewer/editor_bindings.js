@@ -56,6 +56,7 @@ export function bindEditorControls(options) {
   bindCommandButtons(options);
   bindFileInput(options);
   bindBrowserFileDrop(options);
+  bindBrowserImagePaste(options);
   bindZoomInput(options);
   bindKeyboard(options);
   bindDesktopCommands(options);
@@ -70,6 +71,14 @@ function bindCommandButtons(options) {
       const command = button.dataset.command;
       if (command === "open") {
         await runSafe(options.chooseAndOpenDocumentTab, "Open failed", "Failed to open document");
+        return;
+      }
+      if (command === "insert-image") {
+        if (options.openImageFilePicker) {
+          options.openImageFilePicker();
+        } else {
+          options.imageFileInput?.click();
+        }
         return;
       }
       if (command === "new") {
@@ -198,9 +207,19 @@ function bindDesktopCommands(options) {
   };
 
   options.desktopFileHost.listenMenu(runCommand);
-  options.desktopFileHost.listenOpenPaths(async (paths) => {
+  options.desktopFileHost.listenOpenPaths(async (paths, payload) => {
     await options.desktopFileHost?.traceEvent?.("editorBindings.openPaths.begin", { paths });
-    for (const path of paths) {
+    const imagePaths = paths.filter((path) => isImageFileName(path));
+    const documentPaths = paths.filter((path) => !isImageFileName(path));
+    if (imagePaths.length && options.insertDroppedImagePaths) {
+      const physical = payload?.dropPositionPhysical;
+      const ratio = Math.max(1, Number(window.devicePixelRatio) || 1);
+      await options.insertDroppedImagePaths(imagePaths, physical ? {
+        clientX: Number(physical[0]) / ratio,
+        clientY: Number(physical[1]) / ratio,
+      } : null);
+    }
+    for (const path of documentPaths) {
       if (path) {
         await runSafe(() => options.openDocumentPathInTab(path), "Open failed", "Failed to open dropped document");
       }
@@ -219,6 +238,27 @@ function bindFileInput(options) {
       console.error("Failed to open document", error);
       window.alert?.(`Open failed: ${error.message || error}`);
     }
+  });
+  options.imageFileInput?.addEventListener("change", async () => {
+    const worldPoint = options.consumeImageInsertWorldPoint?.() || null;
+    const files = Array.from(options.imageFileInput.files || []).filter((file) => isImageFile(file));
+    options.imageFileInput.value = "";
+    if (!files.length) {
+      return;
+    }
+    try {
+      await options.insertDroppedImageFiles?.(
+        files,
+        worldPoint ? { worldPoint } : null,
+        "file-picker",
+      );
+    } catch (error) {
+      console.error("Failed to insert image", error);
+      window.alert?.(`Image insert failed: ${error.message || error}`);
+    }
+  });
+  options.imageFileInput?.addEventListener("cancel", () => {
+    options.consumeImageInsertWorldPoint?.();
   });
 }
 
@@ -291,14 +331,30 @@ function bindBrowserFileDrop(options) {
     if (!files.length) {
       return;
     }
+    const imageFiles = files.filter((file) => isImageFile(file));
+    const documentFiles = files.filter((file) => !isImageFile(file));
+    if (imageFiles.length && options.insertDroppedImageFiles) {
+      try {
+        await options.insertDroppedImageFiles(imageFiles, {
+          clientX: event.clientX,
+          clientY: event.clientY,
+        });
+      } catch (error) {
+        console.error("Failed to insert dropped images", error);
+        window.alert?.(`Image insert failed: ${error.message || error}`);
+      }
+    }
+    if (!documentFiles.length) {
+      return;
+    }
     if (openDroppedFiles) {
       try {
-        await openDroppedFiles(files);
+        await openDroppedFiles(documentFiles);
       } catch (error) {
         if (!options.isAbortError(error)) {
           console.error("Failed to open dropped documents", error);
           void options.desktopFileHost?.traceEvent?.("editorBindings.browserDrop.error", {
-            fileNames: files.map((file) => file.name || null),
+            fileNames: documentFiles.map((file) => file.name || null),
             error,
           });
           window.alert?.(`Open failed: ${error.message || error}`);
@@ -306,7 +362,7 @@ function bindBrowserFileDrop(options) {
       }
       return;
     }
-    for (const file of files) {
+    for (const file of documentFiles) {
       try {
         await openDroppedFile(file);
       } catch (error) {
@@ -324,6 +380,94 @@ function bindBrowserFileDrop(options) {
   for (const target of bindTargets) {
     target.addEventListener("drop", handleDrop, captureOptions);
   }
+}
+
+function isImageFileName(value) {
+  return /\.(?:png|jpe?g|gif|bmp)$/i.test(String(value || ""));
+}
+
+function isImageFile(file) {
+  return /^(?:image\/(?:png|jpeg|gif|bmp))$/i.test(String(file?.type || ""))
+    || isImageFileName(file?.name);
+}
+
+function bindBrowserImagePaste(options) {
+  if (options.desktopFileHost?.available) {
+    return;
+  }
+  document.addEventListener("paste", async (event) => {
+    const target = event.target;
+    if (options.getActiveTextEditor()?.root?.contains?.(target)
+      || target instanceof HTMLInputElement
+      || target instanceof HTMLSelectElement
+      || target instanceof HTMLTextAreaElement) {
+      return;
+    }
+    const files = Array.from(event.clipboardData?.items || [])
+      .filter((item) => item.kind === "file" && /^image\//i.test(item.type || ""))
+      .map((item) => item.getAsFile?.())
+      .filter((file) => file && isImageFile(file));
+    if (files.length && options.insertDroppedImageFiles) {
+      event.preventDefault();
+      try {
+        await options.insertDroppedImageFiles(files, null);
+      } catch (error) {
+        console.error("Failed to paste image", error);
+        window.alert?.(`Image paste failed: ${error.message || error}`);
+      }
+      return;
+    }
+    if (options.isEditingRustDocument()) {
+      event.preventDefault();
+      await options.runEditorCommand("paste", {
+        clipboardPayload: structuredClipboardPayload(event.clipboardData),
+      });
+    }
+  });
+}
+
+function structuredClipboardPayload(clipboardData) {
+  if (!clipboardData) {
+    return null;
+  }
+  const custom = clipboardData.getData("application/x-chemsema-fragment+json");
+  if (custom) {
+    return { chemsemaFragmentJson: custom };
+  }
+  const html = clipboardData.getData("text/html");
+  const payloadBase64Match = html.match(/data-chemsema-payload-base64=(?:"([^"]+)"|'([^']+)')/i);
+  if (payloadBase64Match) {
+    try {
+      const bytes = Uint8Array.from(atob(payloadBase64Match[1] || payloadBase64Match[2]), (value) => value.charCodeAt(0));
+      return JSON.parse(new TextDecoder().decode(bytes));
+    } catch (error) {
+      console.warn("Failed to decode ChemSema clipboard payload", error);
+    }
+  }
+  const base64Match = html.match(/data-chemsema-clipboard-base64=(?:"([^"]+)"|'([^']+)')/i);
+  if (base64Match) {
+    try {
+      const bytes = Uint8Array.from(atob(base64Match[1] || base64Match[2]), (value) => value.charCodeAt(0));
+      return { chemsemaFragmentJson: new TextDecoder().decode(bytes) };
+    } catch (error) {
+      console.warn("Failed to decode ChemSema clipboard fragment", error);
+    }
+  }
+  const match = html.match(/data-chemsema-clipboard-v1=(?:"([^"]+)"|'([^']+)')/i);
+  if (match) {
+    try {
+      const encoded = (match[1] || match[2])
+        .replace(/&quot;/g, "\"")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&amp;/g, "&");
+      return JSON.parse(decodeURIComponent(encoded));
+    } catch (error) {
+      console.warn("Failed to decode ChemSema clipboard HTML", error);
+    }
+  }
+  const text = clipboardData.getData("text/plain");
+  return text ? { text } : null;
 }
 
 function bindZoomInput(options) {
@@ -354,6 +498,9 @@ function bindKeyboard(options) {
     }
     const command = keyboardCommand(event);
     if (command && options.isEditingRustDocument()) {
+      if (command === "paste" && !options.desktopFileHost?.available) {
+        return;
+      }
       event.preventDefault();
       await options.runEditorCommand(command);
       return;

@@ -19,8 +19,11 @@ const USE_NATIVE_MENU: bool = false;
 const EVENT_DESKTOP_MENU: &str = "chemsema-desktop-menu";
 const EVENT_DESKTOP_OPEN_PATHS: &str = "chemsema-desktop-open-paths";
 const FORMAT_CHEMSEMA_FRAGMENT: &str = "ChemSema Clipboard Fragment";
+const FORMAT_HTML: &str = "HTML Format";
 const FORMAT_CHEMSEMA_DOCUMENT_JSON: &str = "ChemSema Document JSON";
 const FORMAT_CHEMDRAW_INTERCHANGE: &str = "ChemDraw Interchange Format";
+const FORMAT_EMBEDDED_OBJECT: &str = "Embedded Object";
+const FORMAT_EMBED_SOURCE: &str = "Embed Source";
 const FORMAT_CDXML_MIME: &str = "chemical/x-cdxml";
 const FORMAT_SVG_MIME: &str = "image/svg+xml";
 const FORMAT_SVG: &str = "SVG";
@@ -82,7 +85,7 @@ impl DesktopState {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct DesktopMenuPayload {
     command: String,
@@ -92,6 +95,8 @@ struct DesktopMenuPayload {
 #[serde(rename_all = "camelCase")]
 struct DesktopOpenPathsPayload {
     paths: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    drop_position_physical: Option<[f64; 2]>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -123,7 +128,7 @@ struct OleEditNotifyPayload {
     thread_id: u32,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct NativeClipboardReadPayload {
     chemsema_fragment_json: Option<String>,
@@ -131,6 +136,10 @@ struct NativeClipboardReadPayload {
     cdxml: Option<String>,
     svg: Option<String>,
     text: Option<String>,
+    image_mime_type: Option<String>,
+    image_data_base64: Option<String>,
+    image_pixel_width: Option<u32>,
+    image_pixel_height: Option<u32>,
 }
 
 mod commands;
@@ -264,9 +273,13 @@ pub fn run() {
             desktop_engine_has_clipboard,
             desktop_engine_clipboard_selection_json,
             desktop_engine_clipboard_document_json,
+            desktop_engine_clipboard_cdxml,
             desktop_engine_cut_selection,
             desktop_engine_paste_clipboard,
             desktop_engine_paste_clipboard_json,
+            desktop_engine_paste_document_json,
+            desktop_engine_paste_cdxml,
+            desktop_engine_paste_cdx,
             desktop_engine_replace_hovered_endpoint_label,
             desktop_engine_begin_text_edit,
             desktop_engine_apply_text_edit,
@@ -279,6 +292,7 @@ pub fn run() {
             desktop_file_choose_save,
             desktop_file_choose_export_save,
             desktop_file_read_path,
+            desktop_file_read_binary_path,
             desktop_file_write_path,
             desktop_file_write_transient_path,
             desktop_file_write_ole_edit_payload,
@@ -304,15 +318,16 @@ pub fn run() {
             handle_native_menu_event(app, event.id().as_ref());
         })
         .on_window_event(|window, event| {
-            if let WindowEvent::DragDrop(DragDropEvent::Drop { paths, .. }) = event {
+            if let WindowEvent::DragDrop(DragDropEvent::Drop { paths, position }) = event {
                 trace_desktop_event(format!("window.drag_drop.drop paths={paths:?}"));
                 let app = window.app_handle();
-                emit_open_paths(
+                emit_open_paths_at(
                     app,
                     paths
                         .iter()
                         .map(|path| path.to_string_lossy().to_string())
                         .collect(),
+                    Some([position.x, position.y]),
                 );
             }
         })

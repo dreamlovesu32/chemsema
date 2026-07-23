@@ -26,6 +26,13 @@ export function createAppDomRefs(rootDocument = document) {
   openFileInput.className = "visually-hidden";
   rootDocument.body.appendChild(openFileInput);
 
+  const imageFileInput = rootDocument.createElement("input");
+  imageFileInput.type = "file";
+  imageFileInput.accept = ".png,.jpg,.jpeg,.gif,.bmp,image/png,image/jpeg,image/gif,image/bmp";
+  imageFileInput.multiple = true;
+  imageFileInput.className = "visually-hidden";
+  rootDocument.body.appendChild(imageFileInput);
+
   const textEditorLayer = rootDocument.createElement("div");
   textEditorLayer.className = "text-editor-layer";
   viewerContainer?.appendChild(textEditorLayer);
@@ -50,6 +57,7 @@ export function createAppDomRefs(rootDocument = document) {
     documentStyleMenu,
     zoomInput,
     openFileInput,
+    imageFileInput,
     textEditorLayer,
   };
 }

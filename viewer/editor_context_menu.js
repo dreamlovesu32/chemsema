@@ -21,12 +21,21 @@ export function createCanvasContextMenuHost(options) {
     } catch (error) {
       console.warn("Failed to inspect engine clipboard", error);
     }
+    if (options.hasPortableClipboard?.()) {
+      return true;
+    }
     if (!options.desktopFileHost?.available || !state.editorEngine.pasteClipboardJson) {
       return false;
     }
     try {
       const payload = await options.desktopFileHost.readClipboard();
-      return Boolean(payload?.chemsemaFragmentJson);
+      return Boolean(
+        payload?.chemsemaFragmentJson
+        || payload?.chemsemaDocumentJson
+        || payload?.cdxml
+        || String(payload?.text || "").includes("<CDXML")
+        || payload?.imageDataBase64,
+      );
     } catch (error) {
       console.warn("Failed to inspect native clipboard", error);
       return false;
@@ -281,6 +290,10 @@ export function createCanvasContextMenuHost(options) {
     };
     if (["cut", "copy", "paste", "delete", "select-all"].includes(command)) {
       changed = await options.runEditorCommand(command);
+    } else if (command === "insert-image") {
+      options.openImageFilePickerAt?.(activeContextMenuState?.point || null);
+      await finishTemporaryContextSelection();
+      return;
     } else if (command === "order") {
       changed = await executeDocumentCommand(
         { type: "apply-selection-order", payload: { command: value } },

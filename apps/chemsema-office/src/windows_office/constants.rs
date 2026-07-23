@@ -20,6 +20,7 @@ pub(crate) const CLIPBOARD_FORMAT_EMBEDDED_OBJECT: &str = "Embedded Object";
 pub(crate) const CLIPBOARD_FORMAT_EMBED_SOURCE: &str = "Embed Source";
 pub(crate) const CLIPBOARD_FORMAT_OBJECT_DESCRIPTOR: &str = "Object Descriptor";
 pub(crate) const CLIPBOARD_FORMAT_RTF: &str = "Rich Text Format";
+pub(crate) const CLIPBOARD_FORMAT_HTML: &str = "HTML Format";
 pub(crate) const FORMAT_CHEMSEMA_FRAGMENT: &str = "ChemSema Clipboard Fragment";
 pub(crate) const FORMAT_CHEMSEMA_NATIVE: &str = "ChemSema Native Document";
 pub(crate) const FORMAT_CHEMSEMA_DOCUMENT_JSON: &str = "ChemSema Document JSON";

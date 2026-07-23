@@ -155,6 +155,41 @@ pub fn render_primitive_bounds(primitive: &RenderPrimitive) -> Option<[f64; 4]> 
             ..
         } => point_list_bounds(points, *stroke_width * 0.5),
         RenderPrimitive::FilledPath { points, .. } => point_list_bounds(points, 0.0),
+        RenderPrimitive::Image {
+            x,
+            y,
+            width,
+            height,
+            rotate,
+            rotate_center,
+            ..
+        } => {
+            let corners = [
+                Point::new(*x, *y),
+                Point::new(*x + *width, *y),
+                Point::new(*x + *width, *y + *height),
+                Point::new(*x, *y + *height),
+            ];
+            if rotate.abs() <= crate::EPSILON {
+                return point_list_bounds(&corners, 0.0);
+            }
+            let center = rotate_center.unwrap_or(Point::new(*x + *width * 0.5, *y + *height * 0.5));
+            let radians = rotate.to_radians();
+            let cos = radians.cos();
+            let sin = radians.sin();
+            let rotated: Vec<Point> = corners
+                .into_iter()
+                .map(|point| {
+                    let dx = point.x - center.x;
+                    let dy = point.y - center.y;
+                    Point::new(
+                        center.x + dx * cos - dy * sin,
+                        center.y + dx * sin + dy * cos,
+                    )
+                })
+                .collect();
+            point_list_bounds(&rotated, 0.0)
+        }
         RenderPrimitive::Rect {
             x,
             y,

@@ -298,6 +298,7 @@ fn render_primitive_object_id(primitive: &RenderPrimitive) -> Option<&str> {
         | RenderPrimitive::Polyline { object_id, .. }
         | RenderPrimitive::Path { object_id, .. }
         | RenderPrimitive::FilledPath { object_id, .. }
+        | RenderPrimitive::Image { object_id, .. }
         | RenderPrimitive::Text { object_id, .. } => object_id.as_deref(),
     }
 }
@@ -2408,6 +2409,13 @@ fn primitive_points(primitive: &RenderPrimitive) -> Vec<Point> {
             Point::new(center.x - rx, center.y - ry),
             Point::new(center.x + rx, center.y + ry),
         ],
+        RenderPrimitive::Image {
+            x,
+            y,
+            width,
+            height,
+            ..
+        } => vec![Point::new(*x, *y), Point::new(*x + *width, *y + *height)],
         RenderPrimitive::Text { x, y, .. } => vec![Point::new(*x, *y)],
     }
 }
@@ -2538,6 +2546,25 @@ fn primitive_signature(primitive: &RenderPrimitive, offset_x: f64, offset_y: f64
         } => format!(
             "filled-path:{role:?}:{}:{d}:{fill}:{fill_rule:?}",
             points_sig(points, offset_x, offset_y),
+        ),
+        RenderPrimitive::Image {
+            role,
+            x,
+            y,
+            width,
+            height,
+            opacity,
+            preserve_aspect_ratio,
+            rotate,
+            ..
+        } => format!(
+            "image:{role:?}:{}:{}:{}:{}:{}:{preserve_aspect_ratio}:{}",
+            num_sig(*x - offset_x),
+            num_sig(*y - offset_y),
+            num_sig(*width),
+            num_sig(*height),
+            num_sig(*opacity),
+            num_sig(*rotate),
         ),
         RenderPrimitive::Text {
             role,

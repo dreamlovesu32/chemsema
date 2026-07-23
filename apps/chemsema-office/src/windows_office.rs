@@ -1,4 +1,4 @@
-﻿use std::collections::BTreeMap;
+use std::collections::BTreeMap;
 use std::env;
 use std::ffi::c_void;
 use std::io::{Cursor, Read, Write};
@@ -14,6 +14,7 @@ use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, SystemTime};
 
+use base64::Engine as _;
 use chemsema_engine::PT_PER_CM;
 use windows_sys::core::GUID;
 use windows_sys::Win32::Foundation::{
@@ -34,9 +35,9 @@ use windows_sys::Win32::System::Console::FreeConsole;
 use windows_sys::Win32::System::DataExchange::RegisterClipboardFormatW;
 use windows_sys::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock};
 use windows_sys::Win32::System::Ole::{
-    CreateOleAdviseHolder, OleCreateFromData, OleFlushClipboard, OleInitialize, OleRegEnumVerbs,
-    OleRegGetMiscStatus, OleRegGetUserType, OleSave, OleSetClipboard, OleUninitialize,
-    ReleaseStgMedium, CF_ENHMETAFILE, CF_METAFILEPICT, OBJECTDESCRIPTOR,
+    CreateOleAdviseHolder, OleCreateFromData, OleFlushClipboard, OleGetClipboard, OleInitialize,
+    OleRegEnumVerbs, OleRegGetMiscStatus, OleRegGetUserType, OleSave, OleSetClipboard,
+    OleUninitialize, ReleaseStgMedium, CF_ENHMETAFILE, CF_METAFILEPICT, OBJECTDESCRIPTOR,
     OLEMISC_RENDERINGISDEVICEINDEPENDENT, OLEMISC_SETCLIENTSITEFIRST, OLERENDER_FORMAT,
 };
 use windows_sys::Win32::System::Registry::{
@@ -111,6 +112,15 @@ pub fn run() -> Result<(), String> {
                 "--copy-clipboard-payload requires a JSON payload path.".to_string()
             })?;
             copy_clipboard_payload(PathBuf::from(payload_path))
+        }
+        "--read-clipboard-payload" => {
+            unsafe {
+                FreeConsole();
+            }
+            let output_path = args.next().ok_or_else(|| {
+                "--read-clipboard-payload requires an output JSON path.".to_string()
+            })?;
+            read_clipboard_payload(PathBuf::from(output_path))
         }
         "--write-word-docx-payload" => {
             let payload_path = args.next().ok_or_else(|| {
@@ -330,7 +340,7 @@ fn print_registration() -> Result<(), String> {
     Ok(())
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ClipboardPayload {
     chemsema_fragment_json: Option<String>,
@@ -345,6 +355,7 @@ struct ClipboardPayload {
 struct OleObjectPayload {
     chemsema_fragment_json: Option<String>,
     chemsema_document_json: String,
+    document_was_supplied: bool,
     render_list_json: Option<String>,
     cdxml: Option<String>,
     svg: String,
@@ -360,6 +371,7 @@ impl OleObjectPayload {
         Self {
             chemsema_fragment_json: None,
             chemsema_document_json,
+            document_was_supplied: false,
             render_list_json: None,
             cdxml: None,
             svg: String::from_utf8(ole_preview_svg_stream_payload()).unwrap_or_default(),
@@ -372,6 +384,10 @@ impl OleObjectPayload {
         let fallback = Self::blank();
         let cdxml = payload.cdxml.filter(|value| !value.trim().is_empty());
         let supplied_svg = payload.svg.filter(|value| !value.trim().is_empty());
+        let document_was_supplied = payload
+            .chemsema_document_json
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty());
         let document_json = payload
             .chemsema_document_json
             .filter(|value| !value.trim().is_empty())
@@ -384,6 +400,7 @@ impl OleObjectPayload {
         Self {
             chemsema_fragment_json: payload.chemsema_fragment_json,
             chemsema_document_json: document_json,
+            document_was_supplied,
             render_list_json: payload
                 .render_list_json
                 .filter(|value| !value.trim().is_empty()),
@@ -405,6 +422,19 @@ impl OleObjectPayload {
             cx: DEFAULT_OBJECT_WIDTH_HIMETRIC,
             cy: DEFAULT_OBJECT_HEIGHT_HIMETRIC,
         })
+    }
+
+    fn clipboard_payload(&self) -> ClipboardPayload {
+        ClipboardPayload {
+            chemsema_fragment_json: self.chemsema_fragment_json.clone(),
+            chemsema_document_json: self
+                .document_was_supplied
+                .then(|| self.chemsema_document_json.clone()),
+            render_list_json: self.render_list_json.clone(),
+            cdxml: self.cdxml.clone(),
+            svg: self.svg_was_supplied.then(|| self.svg.clone()),
+            text: self.text.clone(),
+        }
     }
 }
 
@@ -443,6 +473,43 @@ fn copy_clipboard_payload(payload_path: PathBuf) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+fn read_clipboard_payload(output_path: PathBuf) -> Result<(), String> {
+    unsafe {
+        let hr = OleInitialize(null());
+        if !hresult_succeeded(hr) {
+            return Err(format!("OleInitialize failed: 0x{:08X}", hr as u32));
+        }
+        let mut data_object = null_mut();
+        let clipboard_hr = OleGetClipboard(&mut data_object);
+        let result = if hresult_succeeded(clipboard_hr) && !data_object.is_null() {
+            payload_from_data_object(data_object)
+                .map(|payload| payload.clipboard_payload())
+                .and_then(|payload| {
+                    serde_json::to_vec(&payload)
+                        .map_err(|error| format!("Failed to serialize clipboard payload: {error}"))
+                })
+                .and_then(|json| {
+                    std::fs::write(&output_path, json).map_err(|error| {
+                        format!(
+                            "Failed to write clipboard payload {}: {error}",
+                            output_path.display()
+                        )
+                    })
+                })
+        } else {
+            Err(format!(
+                "OleGetClipboard failed: 0x{:08X}",
+                clipboard_hr as u32
+            ))
+        };
+        if !data_object.is_null() {
+            com_release(data_object);
+        }
+        OleUninitialize();
+        result
+    }
 }
 
 fn read_ole_object_payload(payload_path: &PathBuf) -> Result<OleObjectPayload, String> {
@@ -3143,6 +3210,8 @@ fn known_clipboard_format_name(format: u16) -> &'static str {
         CLIPBOARD_FORMAT_OBJECT_DESCRIPTOR
     } else if format == clipboard_format(CLIPBOARD_FORMAT_RTF) {
         CLIPBOARD_FORMAT_RTF
+    } else if format == clipboard_format(CLIPBOARD_FORMAT_HTML) {
+        CLIPBOARD_FORMAT_HTML
     } else if format == clipboard_format(FORMAT_CHEMSEMA_NATIVE) {
         FORMAT_CHEMSEMA_NATIVE
     } else if format == CF_ENHMETAFILE {
@@ -3230,6 +3299,16 @@ fn ole_clipboard_formats(payload: &OleObjectPayload, _extent: SIZE) -> Vec<FORMA
             TYMED_HGLOBAL as u32,
         );
     }
+    if payload.chemsema_fragment_json.is_some() {
+        push_format(
+            &mut formats,
+            clipboard_format(CLIPBOARD_FORMAT_HTML),
+            TYMED_HGLOBAL as u32,
+        );
+    }
+    if payload.text.is_some() {
+        push_format(&mut formats, CF_UNICODETEXT_FORMAT, TYMED_HGLOBAL as u32);
+    }
     push_format(&mut formats, CF_ENHMETAFILE, TYMED_ENHMF as u32);
 
     formats.retain(|format| format.cfFormat != 0);
@@ -3314,6 +3393,9 @@ unsafe fn write_clipboard_format_to_medium(
             Err(hr) => hr,
         };
     }
+    if format.cfFormat == clipboard_format(CLIPBOARD_FORMAT_HTML) {
+        return hglobal_text_medium(&clipboard_html(payload), false, medium);
+    }
     if format.cfFormat == clipboard_format(FORMAT_CHEMSEMA_FRAGMENT) {
         return payload
             .chemsema_fragment_json
@@ -3355,6 +3437,34 @@ unsafe fn write_clipboard_format_to_medium(
     DV_E_FORMATETC
 }
 
+fn clipboard_html(payload: &OleObjectPayload) -> String {
+    let fragment_json = payload.chemsema_fragment_json.as_deref().unwrap_or("");
+    let encoded = base64::engine::general_purpose::STANDARD.encode(fragment_json.as_bytes());
+    let portable_json =
+        serde_json::to_vec(&payload.clipboard_payload()).unwrap_or_else(|_| b"{}".to_vec());
+    let payload_encoded = base64::engine::general_purpose::STANDARD.encode(portable_json);
+    let fragment = format!(
+        "<div data-chemsema-payload-base64=\"{payload_encoded}\" data-chemsema-clipboard-base64=\"{encoded}\"></div>"
+    );
+    let prefix = "<html><body><!--StartFragment-->";
+    let suffix = "<!--EndFragment--></body></html>";
+    let header_template = concat!(
+        "Version:0.9\r\n",
+        "StartHTML:0000000000\r\n",
+        "EndHTML:0000000000\r\n",
+        "StartFragment:0000000000\r\n",
+        "EndFragment:0000000000\r\n"
+    );
+    let start_html = header_template.len();
+    let start_fragment = start_html + prefix.len();
+    let end_fragment = start_fragment + fragment.len();
+    let end_html = end_fragment + suffix.len();
+    let header = format!(
+        "Version:0.9\r\nStartHTML:{start_html:010}\r\nEndHTML:{end_html:010}\r\nStartFragment:{start_fragment:010}\r\nEndFragment:{end_fragment:010}\r\n"
+    );
+    format!("{header}{prefix}{fragment}{suffix}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3366,6 +3476,7 @@ mod tests {
             chemsema_fragment_json: Some("{\"nodes\":[],\"bonds\":[]}".to_string()),
             chemsema_document_json:
                 "{\"document\":{\"name\":\"chemsema\"},\"objects\":[],\"resources\":{}}".to_string(),
+            document_was_supplied: true,
             render_list_json: None,
             cdxml: Some("<CDXML></CDXML>".to_string()),
             svg: "<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>".to_string(),
@@ -3400,10 +3511,8 @@ mod tests {
             !format_names.contains(FORMAT_SVG),
             "Word's default Paste prefers SVG as a plain image instead of embedding the OLE object"
         );
-        assert!(
-            !format_names.contains("CF_UNICODETEXT"),
-            "Word's default Paste may choose plain text instead of embedding the OLE object"
-        );
+        assert!(format_names.contains("CF_UNICODETEXT"));
+        assert!(format_names.contains(CLIPBOARD_FORMAT_HTML));
     }
 
     #[test]
@@ -3434,12 +3543,39 @@ mod tests {
     }
 
     #[test]
+    fn clipboard_html_carries_the_complete_portable_payload() {
+        let payload = OleObjectPayload::from_clipboard(ClipboardPayload {
+            chemsema_fragment_json: Some("{\"nodes\":[],\"bonds\":[]}".to_string()),
+            chemsema_document_json: Some(
+                serde_json::to_string(&chemsema_engine::ChemSemaDocument::blank()).unwrap(),
+            ),
+            render_list_json: None,
+            cdxml: Some("<CDXML></CDXML>".to_string()),
+            svg: None,
+            text: Some("<CDXML></CDXML>".to_string()),
+        });
+        let html = clipboard_html(&payload);
+        let marker = "data-chemsema-payload-base64=\"";
+        let tail = html.split_once(marker).expect("payload marker").1;
+        let encoded = tail.split_once('"').expect("payload terminator").0;
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(encoded)
+            .expect("payload base64");
+        let portable: ClipboardPayload =
+            serde_json::from_slice(&decoded).expect("portable payload json");
+        assert!(portable.chemsema_fragment_json.is_some());
+        assert!(portable.chemsema_document_json.is_some());
+        assert_eq!(portable.cdxml.as_deref(), Some("<CDXML></CDXML>"));
+    }
+
+    #[test]
     fn word_docx_uses_natural_orig_size_and_fitted_display_extent() {
         let document_json = serde_json::to_string(&chemsema_engine::ChemSemaDocument::blank())
             .expect("blank document should serialize");
         let payload = OleObjectPayload {
             chemsema_fragment_json: None,
             chemsema_document_json: document_json,
+            document_was_supplied: true,
             render_list_json: None,
             cdxml: None,
             svg: r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 400"></svg>"#
@@ -3485,6 +3621,7 @@ mod tests {
         let payload = OleObjectPayload {
             chemsema_fragment_json: None,
             chemsema_document_json: document_json,
+            document_was_supplied: true,
             render_list_json: None,
             cdxml: None,
             svg: r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 400"></svg>"#
@@ -4033,6 +4170,7 @@ unsafe fn payload_from_data_object(data_object: *mut c_void) -> Result<OleObject
         )
     {
         payload.chemsema_document_json = document;
+        payload.document_was_supplied = true;
         populated = true;
     }
     if let Some(fragment) =
@@ -4041,11 +4179,7 @@ unsafe fn payload_from_data_object(data_object: *mut c_void) -> Result<OleObject
         payload.chemsema_fragment_json = Some(fragment);
         populated = true;
     }
-    if let Some(cdxml) =
-        text_payload_from_data_object(data_object, FORMAT_CHEMDRAW_INTERCHANGE, false)?.or(
-            text_payload_from_data_object(data_object, FORMAT_CDXML_MIME, false)?,
-        )
-    {
+    if let Some(cdxml) = chemical_payload_from_data_object(data_object)? {
         if payload.text.is_none() {
             payload.text = Some(cdxml.clone());
         }
@@ -4073,6 +4207,68 @@ unsafe fn payload_from_data_object(data_object: *mut c_void) -> Result<OleObject
     }
 }
 
+unsafe fn chemical_payload_from_data_object(
+    data_object: *mut c_void,
+) -> Result<Option<String>, String> {
+    for format_name in [FORMAT_CHEMDRAW_INTERCHANGE, FORMAT_CDXML_MIME] {
+        let Some(bytes) =
+            bytes_payload_from_data_object_by_id(data_object, clipboard_format(format_name))?
+        else {
+            continue;
+        };
+        if bytes.starts_with(b"VjCD0100") {
+            return chemsema_engine::cdx_to_cdxml(&bytes).map(Some);
+        }
+        let end = bytes
+            .iter()
+            .position(|value| *value == 0)
+            .unwrap_or(bytes.len());
+        if let Ok(text) = String::from_utf8(bytes[..end].to_vec()) {
+            if text.contains("<CDXML") {
+                return Ok(Some(text));
+            }
+        }
+    }
+    Ok(None)
+}
+
+unsafe fn bytes_payload_from_data_object_by_id(
+    data_object: *mut c_void,
+    cf_format: u16,
+) -> Result<Option<Vec<u8>>, String> {
+    if data_object.is_null() || cf_format == 0 {
+        return Ok(None);
+    }
+    let get_data = (*(*(data_object.cast::<*const DataObjectVtbl>()))).get_data;
+    let format = FORMATETC {
+        cfFormat: cf_format,
+        ptd: null_mut(),
+        dwAspect: DVASPECT_CONTENT,
+        lindex: -1,
+        tymed: TYMED_HGLOBAL as u32,
+    };
+    let mut medium = STGMEDIUM::default();
+    let hr = get_data(data_object, &format, &mut medium);
+    if !hresult_succeeded(hr) {
+        return Ok(None);
+    }
+    let result = if medium.tymed == TYMED_HGLOBAL as u32 && !medium.u.hGlobal.is_null() {
+        let size = GlobalSize(medium.u.hGlobal);
+        let source = GlobalLock(medium.u.hGlobal);
+        if size == 0 || source.is_null() {
+            Ok(None)
+        } else {
+            let bytes = std::slice::from_raw_parts(source.cast::<u8>(), size).to_vec();
+            GlobalUnlock(medium.u.hGlobal);
+            Ok(Some(bytes))
+        }
+    } else {
+        Ok(None)
+    };
+    ReleaseStgMedium(&mut medium);
+    result
+}
+
 unsafe fn payload_from_storage(storage: *mut c_void) -> Result<OleObjectPayload, String> {
     if storage.is_null() {
         return Err("IStorage pointer was null.".to_string());
@@ -4086,14 +4282,24 @@ unsafe fn payload_from_storage(storage: *mut c_void) -> Result<OleObjectPayload,
     }) {
         payload.chemsema_document_json = document;
         populated = true;
-    } else if let Ok(document) =
-        storage_read_stream(storage, OLE_STREAM_CONTENTS).and_then(|bytes| {
-            String::from_utf8(bytes)
-                .map_err(|error| format!("CONTENTS stream is not UTF-8: {error}"))
-        })
-    {
-        payload.chemsema_document_json = document;
-        populated = true;
+    } else if let Ok(contents) = storage_read_stream(storage, OLE_STREAM_CONTENTS) {
+        if contents.starts_with(b"VjCD0100") {
+            if let Ok(cdxml) = chemsema_engine::cdx_to_cdxml(&contents) {
+                payload.text = Some(cdxml.clone());
+                payload.cdxml = Some(cdxml);
+                populated = true;
+            }
+        } else if let Ok(text) = String::from_utf8(contents) {
+            if text.contains("<CDXML") {
+                payload.text = Some(text.clone());
+                payload.cdxml = Some(text);
+                populated = true;
+            } else if chemsema_engine::parse_document_json(&text).is_ok() {
+                payload.chemsema_document_json = text;
+                payload.document_was_supplied = true;
+                populated = true;
+            }
+        }
     }
     if let Ok(svg) = storage_read_stream(storage, OLE_STREAM_PREVIEW_SVG).and_then(|bytes| {
         String::from_utf8(bytes)
@@ -4929,6 +5135,7 @@ fn print_help() {
     println!("  chemsema-office.exe --print-registration");
     println!("  chemsema-office.exe --self-test");
     println!("  chemsema-office.exe --copy-clipboard-payload <payload.json>");
+    println!("  chemsema-office.exe --read-clipboard-payload <output.json>");
     println!("  chemsema-office.exe --write-word-docx-payload <payload.json> <output.docx>");
     println!("  chemsema-office.exe --write-emf-payload <payload.json> <output.emf>");
     println!("  chemsema-office.exe --write-preview-bounds-payload <payload.json> <output.json>");

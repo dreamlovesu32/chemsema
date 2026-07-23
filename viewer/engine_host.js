@@ -7,7 +7,7 @@ class WasmEngineHost {
   }
 
   async initialize() {
-    await initializeChemSemaEngine(new URL("./engine/chemsema_engine_bg.wasm?v=20260627-bracket-hit-cursor", import.meta.url));
+    await initializeChemSemaEngine(new URL("./engine/chemsema_engine_bg.wasm?v=20260723-native-images", import.meta.url));
     return this;
   }
 
@@ -1331,6 +1331,11 @@ class TauriEngineSession {
     return this.invoke("desktop_engine_clipboard_document_json", { sessionId: this.sessionId });
   }
 
+  async clipboardCdxml() {
+    await this.ready();
+    return this.invoke("desktop_engine_clipboard_cdxml", { sessionId: this.sessionId });
+  }
+
   cutSelection() {
     return this.invokeMutation("desktop_engine_cut_selection");
   }
@@ -1341,6 +1346,18 @@ class TauriEngineSession {
 
   pasteClipboardJson(json) {
     return this.invokeMutation("desktop_engine_paste_clipboard_json", { json });
+  }
+
+  pasteDocumentJson(json) {
+    return this.invokeMutation("desktop_engine_paste_document_json", { json });
+  }
+
+  pasteCdxml(cdxml) {
+    return this.invokeMutation("desktop_engine_paste_cdxml", { cdxml });
+  }
+
+  pasteCdx(cdx) {
+    return this.invokeMutation("desktop_engine_paste_cdx", { cdx: Array.from(cdx || []) });
   }
 
   replaceHoveredEndpointLabel(label) {

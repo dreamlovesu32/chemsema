@@ -445,6 +445,18 @@ export class WasmEngine {
     /**
      * @returns {string | undefined}
      */
+    clipboardCdxml() {
+        const ret = wasm.wasmengine_clipboardCdxml(this.__wbg_ptr);
+        let v1;
+        if (ret[0] !== 0) {
+            v1 = getStringFromWasm0(ret[0], ret[1]).slice();
+            wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        }
+        return v1;
+    }
+    /**
+     * @returns {string | undefined}
+     */
     clipboardDocumentJson() {
         const ret = wasm.wasmengine_clipboardDocumentJson(this.__wbg_ptr);
         if (ret[3]) {
@@ -997,6 +1009,32 @@ export class WasmEngine {
         }
     }
     /**
+     * @param {Uint8Array} cdx
+     * @returns {boolean}
+     */
+    pasteCdx(cdx) {
+        const ptr0 = passArray8ToWasm0(cdx, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmengine_pasteCdx(this.__wbg_ptr, ptr0, len0);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return ret[0] !== 0;
+    }
+    /**
+     * @param {string} cdxml
+     * @returns {boolean}
+     */
+    pasteCdxml(cdxml) {
+        const ptr0 = passStringToWasm0(cdxml, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmengine_pasteCdxml(this.__wbg_ptr, ptr0, len0);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return ret[0] !== 0;
+    }
+    /**
      * @returns {boolean}
      */
     pasteClipboard() {
@@ -1011,6 +1049,19 @@ export class WasmEngine {
         const ptr0 = passStringToWasm0(json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
         const ret = wasm.wasmengine_pasteClipboardJson(this.__wbg_ptr, ptr0, len0);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return ret[0] !== 0;
+    }
+    /**
+     * @param {string} json
+     * @returns {boolean}
+     */
+    pasteDocumentJson(json) {
+        const ptr0 = passStringToWasm0(json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmengine_pasteDocumentJson(this.__wbg_ptr, ptr0, len0);
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }

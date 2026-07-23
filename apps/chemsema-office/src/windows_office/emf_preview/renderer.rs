@@ -519,7 +519,7 @@ unsafe fn begin_high_resolution_vector_scope(dc: HDC, record_scale: f64) -> i32 
 
 fn preview_primitive_record_scale(primitive: &RenderPrimitive) -> f64 {
     match primitive {
-        RenderPrimitive::Text { .. } => 1.0,
+        RenderPrimitive::Text { .. } | RenderPrimitive::Image { .. } => 1.0,
         RenderPrimitive::Line {
             role, object_id, ..
         }
@@ -605,6 +605,117 @@ fn render_svg_preview_bitmap(svg: &str) -> Option<SvgPreviewBitmap> {
     })
 }
 
+#[allow(clippy::too_many_arguments)]
+unsafe fn draw_preview_image(
+    dc: HDC,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    href: &str,
+    opacity: f64,
+    preserve_aspect_ratio: bool,
+    rotate: f64,
+    rotate_center: Option<CorePoint>,
+    transform: &PreviewTransform,
+) -> bool {
+    if !href.starts_with("data:image/")
+        || width.abs() <= f64::EPSILON
+        || height.abs() <= f64::EPSILON
+    {
+        return false;
+    }
+    let center = rotate_center.unwrap_or(CorePoint {
+        x: x + width * 0.5,
+        y: y + height * 0.5,
+    });
+    let radians = rotate.to_radians();
+    let cos = radians.cos();
+    let sin = radians.sin();
+    let rotate_point = |point: CorePoint| {
+        let dx = point.x - center.x;
+        let dy = point.y - center.y;
+        CorePoint {
+            x: center.x + dx * cos - dy * sin,
+            y: center.y + dx * sin + dy * cos,
+        }
+    };
+    let corners = [
+        rotate_point(CorePoint { x, y }),
+        rotate_point(CorePoint { x: x + width, y }),
+        rotate_point(CorePoint {
+            x: x + width,
+            y: y + height,
+        }),
+        rotate_point(CorePoint { x, y: y + height }),
+    ];
+    let min_x = corners
+        .iter()
+        .map(|point| point.x)
+        .fold(f64::INFINITY, f64::min);
+    let min_y = corners
+        .iter()
+        .map(|point| point.y)
+        .fold(f64::INFINITY, f64::min);
+    let max_x = corners
+        .iter()
+        .map(|point| point.x)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let max_y = corners
+        .iter()
+        .map(|point| point.y)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let bounds_width = (max_x - min_x).max(0.01);
+    let bounds_height = (max_y - min_y).max(0.01);
+    let preserve = if preserve_aspect_ratio {
+        "xMidYMid meet"
+    } else {
+        "none"
+    };
+    let svg = format!(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="{bounds_width}" height="{bounds_height}" viewBox="{min_x} {min_y} {bounds_width} {bounds_height}"><image x="{x}" y="{y}" width="{width}" height="{height}" href="{href}" opacity="{}" preserveAspectRatio="{preserve}" transform="rotate({rotate} {} {})"/></svg>"#,
+        opacity.clamp(0.0, 1.0),
+        center.x,
+        center.y,
+    );
+    let Some(bitmap) = render_svg_preview_bitmap(&svg) else {
+        return false;
+    };
+    let top_left = transform.xy(min_x, min_y);
+    let bottom_right = transform.xy(max_x, max_y);
+    let mut info = BITMAPINFO {
+        bmiHeader: BITMAPINFOHEADER {
+            biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+            biWidth: bitmap.width,
+            biHeight: -bitmap.height,
+            biPlanes: 1,
+            biBitCount: 32,
+            biCompression: BI_RGB,
+            biSizeImage: 0,
+            biXPelsPerMeter: 0,
+            biYPelsPerMeter: 0,
+            biClrUsed: 0,
+            biClrImportant: 0,
+        },
+        bmiColors: zeroed(),
+    };
+    StretchDIBits(
+        dc,
+        top_left.x,
+        top_left.y,
+        (bottom_right.x - top_left.x).max(1),
+        (bottom_right.y - top_left.y).max(1),
+        0,
+        0,
+        bitmap.width,
+        bitmap.height,
+        bitmap.bgra.as_ptr().cast::<c_void>(),
+        &mut info,
+        DIB_RGB_COLORS,
+        SRCCOPY,
+    ) != 0
+}
+
 unsafe fn draw_svg_preview(dc: HDC, bounds: &RECT, payload: &OleObjectPayload) -> bool {
     let Some(bitmap) = render_svg_preview_bitmap(&payload.svg) else {
         return false;
@@ -676,6 +787,7 @@ pub(super) fn office_preview_primitive_visible(primitive: &RenderPrimitive) -> b
         | RenderPrimitive::Polyline { role, .. }
         | RenderPrimitive::Path { role, .. }
         | RenderPrimitive::FilledPath { role, .. }
+        | RenderPrimitive::Image { role, .. }
         | RenderPrimitive::Text { role, .. } => role,
     };
     match role {
@@ -1010,6 +1122,32 @@ unsafe fn draw_preview_primitive(
             SelectObject(dc, old_brush);
             delete_preview_pen(pen);
         }
+        RenderPrimitive::Image {
+            x,
+            y,
+            width,
+            height,
+            href,
+            opacity,
+            preserve_aspect_ratio,
+            rotate,
+            rotate_center,
+            ..
+        } => {
+            let _ = draw_preview_image(
+                dc,
+                *x,
+                *y,
+                *width,
+                *height,
+                href,
+                *opacity,
+                *preserve_aspect_ratio,
+                *rotate,
+                *rotate_center,
+                transform,
+            );
+        }
         RenderPrimitive::Text {
             x,
             y,
@@ -1249,6 +1387,7 @@ unsafe fn draw_gdiplus_primitive(
             &[],
             transform,
         ),
+        RenderPrimitive::Image { .. } => false,
         RenderPrimitive::Text {
             x,
             y,
