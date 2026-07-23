@@ -1,0 +1,449 @@
+use super::*;
+
+pub(super) fn normalize_node(
+    node: &XmlNode,
+    origin: [f64; 2],
+    node_positions: &BTreeMap<String, [f64; 2]>,
+    colors: &CdxmlColorTable,
+    fonts: &BTreeMap<String, String>,
+    defaults: CdxmlDefaults,
+) -> Option<Node> {
+    let id = node.attr("id")?.to_string();
+    let position = parse_xy(node.attr("p")).or_else(|| node_positions.get(id.as_str()).copied())?;
+    let local_position = [
+        round2(position[0] - origin[0]),
+        round2(position[1] - origin[1]),
+    ];
+    let atomic_number = parse_u8(node.attr("Element")).unwrap_or(6);
+    let charge = parse_i32(node.attr("Charge")).unwrap_or(0);
+    let node_type = node.attr("NodeType").unwrap_or("");
+    let mut label = node_label(node, origin, colors, fonts, defaults);
+    if let Some(label) = &mut label {
+        if label.position.is_none() {
+            label.position = Some(local_position);
+        }
+    }
+    if label.is_none() && atomic_number != 6 {
+        let element = element_symbol(atomic_number);
+        let generated_text = match charge {
+            0 => element.to_string(),
+            1 => format!("{element}+"),
+            -1 => format!("{element}-"),
+            value if value > 1 => format!("{element}{value}+"),
+            value => format!("{element}{}-", value.unsigned_abs()),
+        };
+        let mut generated =
+            crate::engine::make_periodic_element_node_label(&generated_text, local_position);
+        generated.font_size = Some(defaults.label_size);
+        generated.font_family = Some(
+            fonts
+                .get(&defaults.label_font.to_string())
+                .cloned()
+                .unwrap_or_else(|| "Arial".to_string()),
+        );
+        for run in &mut generated.runs {
+            run.font_size = Some(defaults.label_size);
+            run.font_family = generated.font_family.clone();
+        }
+        let inherited_spacing = imported_document_text_style(
+            defaults.label_font,
+            defaults.label_face,
+            defaults.label_size,
+            defaults.color,
+            colors,
+            fonts,
+            defaults
+                .label_line_height
+                .or(defaults.line_height)
+                .unwrap_or(CdxmlLineHeight::Variable),
+        );
+        generated.line_height = Some(inherited_spacing.line_height);
+        generated.line_height_mode = inherited_spacing.line_height_mode;
+        generated.line_advances.clear();
+        generated.meta = json!({
+            "implicitHydrogenLabel": {
+                "source": "cdxml-generated",
+                "userEdited": false,
+            }
+        });
+        label = Some(generated);
+    }
+    let is_bullet_carbon = atomic_number == 6
+        && label
+            .as_ref()
+            .is_some_and(imported_cdxml_bullet_carbon_node_label);
+    let radical = cdxml_atom_radical(node.attr("Radical"));
+    let radical_count = radical.electron_count();
+    let explicit_num_hydrogens = parse_u8(node.attr("NumHydrogens"));
+    let mut meta = json!({
+        "import": {
+            "cdxml": {
+                "z": parse_i32(node.attr("Z")),
+                "nodeType": empty_as_null(node.attr("NodeType")),
+                "geometry": empty_as_null(node.attr("Geometry")),
+                "bondOrdering": empty_as_null(node.attr("BondOrdering")),
+                "hDot": parse_cdxml_bool(node.attr("HDot")).unwrap_or(false),
+                "hDash": parse_cdxml_bool(node.attr("HDash")).unwrap_or(false),
+                "attachments": empty_as_null(node.attr("Attachments")),
+                "enhancedStereoType": empty_as_null(node.attr("EnhancedStereoType")),
+                "enhancedStereoGroupNum": empty_as_null(node.attr("EnhancedStereoGroupNum")),
+                "elementList": empty_as_null(node.attr("ElementList")),
+                "labelDisplay": empty_as_null(node.attr("LabelDisplay")),
+                "explicitNumHydrogens": explicit_num_hydrogens,
+                "implicitHydrogens": empty_as_null(node.attr("ImplicitHydrogens")),
+                "restrictImplicitHydrogens": parse_cdxml_bool(node.attr("ImplicitHydrogens")).unwrap_or(false),
+                "generatedPosition": node.attr("p").is_none(),
+            }
+        }
+    });
+    if radical_count != 0 {
+        meta["radicalCount"] = json!(radical_count);
+    }
+    Some(Node {
+        id,
+        element: element_symbol(atomic_number).to_string(),
+        atomic_number,
+        position: local_position,
+        charge,
+        num_hydrogens: explicit_num_hydrogens.unwrap_or(0),
+        is_external_connection_point: node_type == "ExternalConnectionPoint",
+        is_placeholder: matches!(
+            node_type,
+            "Fragment" | "Nickname" | "GenericNickname" | "Unspecified"
+        ) && !is_bullet_carbon,
+        label,
+        atom_properties: crate::AtomProperties {
+            isotope_mass: parse_i16(node.attr("Isotope")),
+            isotopic_abundance: cdxml_isotopic_abundance(node.attr("IsotopicAbundance")),
+            radical,
+            atom_number: nonempty_string(node.attr("AtomNumber")),
+            show_atom_number: node
+                .attr("ShowAtomNumber")
+                .and_then(|value| parse_cdxml_bool(Some(value))),
+            cip_stereo: nonempty_string(node.attr("AS"))
+                .filter(|value| !matches!(value.as_str(), "N" | "U")),
+            show_atom_stereo: node
+                .attr("ShowAtomStereo")
+                .and_then(|value| parse_cdxml_bool(Some(value))),
+            atom_number_position: None,
+            stereo_position: None,
+        },
+        meta,
+    })
+}
+
+pub(super) fn cdxml_atom_radical(value: Option<&str>) -> crate::AtomRadical {
+    match value.unwrap_or("").trim().to_ascii_lowercase().as_str() {
+        "singlet" | "divalentsinglet" => crate::AtomRadical::Singlet,
+        "doublet" | "monovalent" | "radical" => crate::AtomRadical::Doublet,
+        "triplet" | "divalent" | "divalenttriplet" => crate::AtomRadical::Triplet,
+        _ => crate::AtomRadical::None,
+    }
+}
+
+pub(super) fn cdxml_isotopic_abundance(value: Option<&str>) -> crate::IsotopicAbundance {
+    match value.unwrap_or("").trim().to_ascii_lowercase().as_str() {
+        "any" => crate::IsotopicAbundance::Any,
+        "natural" => crate::IsotopicAbundance::Natural,
+        "enriched" => crate::IsotopicAbundance::Enriched,
+        "deficient" => crate::IsotopicAbundance::Deficient,
+        "nonnatural" | "non-natural" => crate::IsotopicAbundance::Nonnatural,
+        _ => crate::IsotopicAbundance::Unspecified,
+    }
+}
+
+pub(super) fn imported_cdxml_bullet_carbon_node_label(label: &NodeLabel) -> bool {
+    label.attachment.as_deref() == Some("node")
+        && label.source_text.as_deref().unwrap_or(label.text.as_str()) == "•"
+        && label.meta.pointer("/import/cdxml/boundingBox").is_some()
+        && label.meta.pointer("/import/cdxml/textPosition").is_some()
+}
+
+pub(super) fn node_label(
+    node: &XmlNode,
+    origin: [f64; 2],
+    colors: &CdxmlColorTable,
+    fonts: &BTreeMap<String, String>,
+    defaults: CdxmlDefaults,
+) -> Option<NodeLabel> {
+    let text_el = node.direct_children("t").next()?;
+    let text = text_el
+        .attr("UTF8Text")
+        .map(ToString::to_string)
+        .unwrap_or_else(|| text_el.full_text())
+        .trim()
+        .to_string();
+    if text.is_empty() {
+        return None;
+    }
+    let bbox = parse_bbox(text_el.attr("BoundingBox"));
+    let explicit_interpret_chemically = parse_cdxml_bool(text_el.attr("InterpretChemically"))
+        .or_else(|| parse_cdxml_bool(node.attr("InterpretChemically")));
+    let parent_face = parse_u32(text_el.attr("face")).unwrap_or(defaults.label_face);
+    let interpret_chemically = explicit_interpret_chemically
+        .or(defaults.interpret_chemically)
+        // A text child of a node is an atom/fragment label by construction.
+        // Face controls its appearance; absent semantic settings still use
+        // ChemDraw's normal chemically interpreted node-label behavior.
+        .unwrap_or(true);
+    let default_label_font = defaults.label_font.to_string();
+    let parent_font = text_el
+        .attr("font")
+        .or_else(|| {
+            text_el
+                .direct_children("s")
+                .find_map(|run| run.attr("font"))
+        })
+        .unwrap_or(default_label_font.as_str());
+    let parent_color = text_el
+        .attr("color")
+        .or_else(|| {
+            text_el
+                .direct_children("s")
+                .find_map(|run| run.attr("color"))
+        })
+        .unwrap_or("0");
+    let parent_size = parse_f64(text_el.attr("size")).unwrap_or_else(|| {
+        text_el
+            .direct_children("s")
+            .find_map(|run| parse_f64(run.attr("size")))
+            .unwrap_or(defaults.label_size)
+    });
+    let mut source_runs: Vec<LabelRun> = text_el
+        .direct_children("s")
+        .filter_map(|run| {
+            let run_text = run.full_text();
+            (!run_text.is_empty()).then(|| {
+                label_source_run(
+                    &run_text,
+                    parse_u32(run.attr("face")).unwrap_or(parent_face),
+                    run.attr("font").unwrap_or(parent_font),
+                    run.attr("color").unwrap_or(parent_color),
+                    parse_f64(run.attr("size")).unwrap_or(parent_size),
+                    colors,
+                    fonts,
+                )
+            })
+        })
+        .collect();
+    let (text, wrapped_source_runs) =
+        if text_el.attr("WordWrapWidth").is_some() || text_el.attr("LineStarts").is_some() {
+            apply_cdxml_line_starts(&text, source_runs, text_el.attr("LineStarts"))
+        } else {
+            (text, source_runs)
+        };
+    source_runs = wrapped_source_runs;
+    let runs = label_display_runs_from_source_runs(&source_runs);
+    let line_runs = if text.contains('\n') {
+        split_label_runs_by_line(&runs)
+    } else {
+        Vec::new()
+    };
+    let text_position = parse_xy(text_el.attr("p")).or_else(|| parse_xy(node.attr("p")));
+    let local_node_position = parse_xy(node.attr("p"))
+        .map(|point| [round2(point[0] - origin[0]), round2(point[1] - origin[1])]);
+    let label_display = node.attr("LabelDisplay");
+    let label_justification = text_el
+        .attr("LabelJustification")
+        .or_else(|| text_el.attr("Justification"))
+        .or(Some(defaults.label_justification.as_cdxml()));
+    let inferred_align = infer_cdxml_label_align(
+        label_display,
+        label_justification,
+        text_el.attr("LabelAlignment"),
+    );
+    let is_centered = inferred_align == "center";
+    let layout = is_centered.then(|| "attached-group-center".to_string());
+    let line_spacing =
+        resolved_cdxml_label_line_spacing(text_el, defaults, parent_size, &runs, &line_runs);
+    Some(NodeLabel {
+        text: text.clone(),
+        source_text: Some(text.clone()),
+        position: local_node_position,
+        box_field: None,
+        runs: if line_runs.is_empty() {
+            runs
+        } else {
+            Vec::new()
+        },
+        line_runs,
+        lines: if text.contains('\n') {
+            text.lines().map(ToString::to_string).collect()
+        } else {
+            Vec::new()
+        },
+        align: Some(inferred_align.to_string()),
+        layout,
+        attachment: Some("node".to_string()),
+        anchor: Some(
+            match inferred_align {
+                "center" => "middle",
+                "right" => "end",
+                _ => "start",
+            }
+            .to_string(),
+        ),
+        font_family: Some(
+            fonts
+                .get(parent_font)
+                .cloned()
+                .unwrap_or_else(|| "Arial".to_string()),
+        ),
+        fill: Some(colors.resolve(Some(parent_color))),
+        font_size: Some(parent_size),
+        line_height: Some(round2(line_spacing.line_height)),
+        line_height_mode: line_spacing.mode.to_string(),
+        line_advances: line_spacing
+            .line_advances
+            .iter()
+            .copied()
+            .map(round2)
+            .collect(),
+        glyph_polygons: Vec::new(),
+        glyph_clip_polygons: Vec::new(),
+        box_value: None,
+        meta: json!({
+            "import": {
+                "cdxml": {
+                    "textPosition": text_position,
+                    "boundingBox": bbox,
+                    "labelDisplay": empty_as_null(label_display),
+                    "labelAlignment": empty_as_null(text_el.attr("LabelAlignment")),
+                    "labelJustification": empty_as_null(text_el.attr("LabelJustification")),
+                    "justification": empty_as_null(text_el.attr("Justification")),
+                    "lineHeight": empty_as_null(text_el.attr("LineHeight")),
+                    "labelLineHeight": empty_as_null(text_el.attr("LabelLineHeight")),
+                    "wordWrapWidth": empty_as_null(text_el.attr("WordWrapWidth")),
+                    "lineStarts": empty_as_null(text_el.attr("LineStarts")),
+                    "resolvedLineHeight": round2(line_spacing.line_height),
+                    "interpretChemically": interpret_chemically,
+                    "interpretChemicallyExplicit": explicit_interpret_chemically.is_some(),
+                    "marginWidth": defaults.margin_width,
+                    "naturalOutsetPt": defaults.margin_width,
+                    "circleRadiusPt": defaults.margin_width * 2.0,
+                }
+            },
+            "defaultChemical": interpret_chemically,
+            "implicitHydrogenLabel": {
+                "source": "cdxml",
+                "userEdited": true,
+            },
+            "sourceRuns": source_runs,
+        }),
+    })
+}
+
+pub(super) fn split_label_runs_by_line(runs: &[LabelRun]) -> Vec<Vec<LabelRun>> {
+    let mut lines = vec![Vec::new()];
+    for run in runs {
+        let parts: Vec<&str> = run.text.split('\n').collect();
+        for (index, part) in parts.iter().enumerate() {
+            if !part.is_empty() {
+                let mut part_run = run.clone();
+                part_run.text = (*part).to_string();
+                lines.last_mut().expect("line run bucket").push(part_run);
+            }
+            if index + 1 < parts.len() {
+                lines.push(Vec::new());
+            }
+        }
+    }
+    lines
+}
+
+pub(super) fn apply_cdxml_line_starts(
+    text: &str,
+    runs: Vec<LabelRun>,
+    line_starts: Option<&str>,
+) -> (String, Vec<LabelRun>) {
+    if line_starts.is_none() {
+        return (text.to_string(), runs);
+    }
+    // CDXML stores zero-based offsets into the authored styled-text stream.
+    // End-of-line characters are part of that stream and therefore advance
+    // subsequent offsets even though they normalize to a single rendered LF.
+    // The final offset may be the end-of-text sentinel.
+    let raw_len = runs
+        .iter()
+        .map(|run| run.text.len())
+        .sum::<usize>()
+        .max(text.len());
+    let starts: BTreeSet<usize> = line_starts
+        .into_iter()
+        .flat_map(str::split_whitespace)
+        .filter_map(|value| value.parse::<usize>().ok())
+        .filter(|offset| *offset > 0 && *offset < raw_len)
+        .collect();
+    let source_runs = if runs.is_empty() {
+        vec![LabelRun {
+            text: text.to_string(),
+            ..LabelRun::default()
+        }]
+    } else {
+        runs
+    };
+    let mut offset = 0usize;
+    let mut output_ends_with_newline = false;
+    let mut previous_was_carriage_return = false;
+    let mut wrapped_runs = Vec::with_capacity(source_runs.len() + starts.len());
+    for run in source_runs {
+        let mut current = run.clone();
+        current.text.clear();
+        for character in run.text.chars() {
+            let is_newline = matches!(character, '\r' | '\n');
+            if starts.contains(&offset) && !output_ends_with_newline && !is_newline {
+                current.text.push('\n');
+            }
+            if is_newline {
+                if character != '\n' || !previous_was_carriage_return {
+                    current.text.push('\n');
+                }
+                output_ends_with_newline = true;
+            } else {
+                current.text.push(character);
+                output_ends_with_newline = false;
+            }
+            previous_was_carriage_return = character == '\r';
+            offset += character.len_utf8();
+        }
+        if !current.text.is_empty() {
+            wrapped_runs.push(current);
+        }
+    }
+
+    let text = wrapped_runs
+        .iter()
+        .map(|run| run.text.as_str())
+        .collect::<String>();
+    (text, wrapped_runs)
+}
+
+pub(super) fn attr_eq_ignore_ascii_case(value: Option<&str>, expected: &str) -> bool {
+    value.is_some_and(|value| value.eq_ignore_ascii_case(expected))
+}
+
+pub(super) fn infer_cdxml_label_align(
+    label_display: Option<&str>,
+    label_justification: Option<&str>,
+    label_alignment: Option<&str>,
+) -> &'static str {
+    if attr_eq_ignore_ascii_case(label_display, "Center") {
+        "center"
+    } else if attr_eq_ignore_ascii_case(label_display, "Right") {
+        "right"
+    } else if attr_eq_ignore_ascii_case(label_display, "Left") {
+        "left"
+    } else if attr_eq_ignore_ascii_case(label_alignment, "Center") {
+        "center"
+    } else if attr_eq_ignore_ascii_case(label_alignment, "Right") {
+        "right"
+    } else if attr_eq_ignore_ascii_case(label_alignment, "Left") {
+        "left"
+    } else if attr_eq_ignore_ascii_case(label_justification, "Center") {
+        "center"
+    } else if attr_eq_ignore_ascii_case(label_justification, "Right") {
+        "right"
+    } else {
+        "left"
+    }
+}

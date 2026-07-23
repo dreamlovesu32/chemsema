@@ -181,10 +181,9 @@ fn insert_bond_margin_silhouettes(
     let mut with_silhouettes = Vec::with_capacity(primitives.len() * 2);
     for primitive in primitives {
         if primitive.role() == RenderRole::DocumentBond {
-            if let (Some(object_id), Some(bond_id)) = (
-                primitive_object_id(&primitive),
-                primitive_bond_id(&primitive),
-            ) {
+            if let (Some(object_id), Some(bond_id)) =
+                (primitive.object_id(), primitive_bond_id(&primitive))
+            {
                 let key = (Some(object_id.to_string()), bond_id.to_string());
                 if prepared_bond_keys.insert(key.clone()) {
                     if let Some(info) = bonds.get(&key) {
@@ -1250,21 +1249,6 @@ fn primitive_node_id(primitive: &RenderPrimitive) -> Option<&str> {
         | RenderPrimitive::FilledPath { node_id, .. }
         | RenderPrimitive::Text { node_id, .. } => node_id.as_deref(),
         _ => None,
-    }
-}
-
-fn primitive_object_id(primitive: &RenderPrimitive) -> Option<&str> {
-    match primitive {
-        RenderPrimitive::Line { object_id, .. }
-        | RenderPrimitive::Circle { object_id, .. }
-        | RenderPrimitive::Polygon { object_id, .. }
-        | RenderPrimitive::Rect { object_id, .. }
-        | RenderPrimitive::Ellipse { object_id, .. }
-        | RenderPrimitive::Polyline { object_id, .. }
-        | RenderPrimitive::Path { object_id, .. }
-        | RenderPrimitive::FilledPath { object_id, .. }
-        | RenderPrimitive::Image { object_id, .. }
-        | RenderPrimitive::Text { object_id, .. } => object_id.as_deref(),
     }
 }
 

@@ -21,25 +21,10 @@
       "owner": "CLI command transaction runner",
       "reason": "The function owns one transaction lifecycle: load, execute, scope-check, report, and persist."
     },
-    "crates/chemsema-engine/src/cdx.rs:$file": {
-      "lines": 2060,
-      "owner": "CDX binary codec",
-      "reason": "The module is a single binary-format boundary and shares one official tag/type registry."
-    },
-    "crates/chemsema-engine/src/cdxml.rs:$file": {
-      "lines": 2343,
-      "owner": "CDXML document normalization",
-      "reason": "The module composes dedicated import/export submodules while retaining document-level normalization and compatibility rules."
-    },
     "crates/chemsema-engine/src/cdxml.rs:parse_cdxml_document": {
       "lines": 225,
       "owner": "CDXML document parser",
       "reason": "One ordered document parse pipeline preserves table, page, object, normalization, and verification precedence."
-    },
-    "crates/chemsema-engine/src/cdxml/export.rs:$file": {
-      "lines": 2415,
-      "owner": "CDXML serializer",
-      "reason": "One serializer module owns shared ID tables, source ordering, and official field emission."
     },
     "crates/chemsema-engine/src/cdxml/export.rs:write_line_object": {
       "lines": 219,
@@ -51,27 +36,17 @@
       "owner": "CDXML graphic serialization",
       "reason": "The exhaustive graphic writer maps one normalized shape payload to the official Graphic attributes."
     },
-    "crates/chemsema-engine/src/cdxml/import_objects.rs:$file": {
-      "lines": 2458,
-      "owner": "CDXML object importer",
-      "reason": "One object-import boundary shares source-order, ID remapping, and unmodeled-field preservation."
-    },
-    "crates/chemsema-engine/src/cdxml/import_objects.rs:append_line_objects": {
+    "crates/chemsema-engine/src/cdxml/import_lines.rs:append_line_objects": {
       "lines": 214,
       "owner": "CDXML line/arrow import",
       "reason": "The function resolves the interdependent ArrowType, endpoint, curve, and style fields as one official-field rule."
     },
-    "crates/chemsema-engine/src/cdxml/import_objects.rs:append_bracket_objects": {
+    "crates/chemsema-engine/src/cdxml/import_brackets.rs:append_bracket_objects": {
       "lines": 286,
       "owner": "CDXML bracket import",
       "reason": "Bracket geometry, attachments, repeat semantics, and linked labels are one source-order-sensitive import transaction."
     },
-    "crates/chemsema-engine/src/engine.rs:$file": {
-      "lines": 3638,
-      "owner": "Engine composition root",
-      "reason": "The file owns Engine state and delegates domain behavior to twenty focused engine submodules; tests and imports are excluded from this fingerprint."
-    },
-    "crates/chemsema-engine/src/engine.rs:execute_command": {
+    "crates/chemsema-engine/src/engine/command_runtime.rs:execute_command": {
       "lines": 347,
       "owner": "Exhaustive editor command dispatcher",
       "reason": "Immediate and creation command families are already separated; the remaining body is an exhaustive variant-to-domain dispatch with shared completion semantics."
@@ -106,12 +81,7 @@
       "owner": "Atom property rendering",
       "reason": "The function renders one ordered atom-property layer so charge, radical, query, map, and diagnostic placement share the same anchor."
     },
-    "crates/chemsema-engine/src/render_objects/graphics.rs:$file": {
-      "lines": 2399,
-      "owner": "Non-molecule graphic rendering",
-      "reason": "The module is the single normalized renderer for shape, curve, bracket, orbital, and TLC graphics."
-    },
-    "crates/chemsema-engine/src/render_objects/graphics.rs:render_orbital_shape_object": {
+    "crates/chemsema-engine/src/render_objects/graphics/orbitals.rs:render_orbital_shape_object": {
       "lines": 205,
       "owner": "Orbital renderer",
       "reason": "Orbital template, phase, fill, outline, and rotation are one geometry rule with shared axes."
@@ -126,10 +96,15 @@
       "owner": "Bond contact and label retreat",
       "reason": "The function applies one ordered geometry pipeline for endpoint retreat, contact joins, crossings, and primitive emission."
     },
-    "viewer/app.js:$file": {
-      "lines": 3226,
-      "owner": "Viewer composition root",
-      "reason": "The file wires focused lifecycle, document, viewport, toolbar, pointer, overlay, text, and tab hosts; host implementations live in separate modules."
+    "apps/chemsema-office/src/windows_office/emf_preview/renderer/bonds.rs:preview_bond_stroke_line": {
+      "lines": 210,
+      "owner": "Office bond stroke projection",
+      "reason": "The function is one ordered bond-style projection table whose branches share endpoint, width, and presentation-mode precedence."
+    },
+    "apps/chemsema-office/src/windows_office/emf_preview/renderer/gdiplus.rs:draw_gdiplus_primitive": {
+      "lines": 234,
+      "owner": "Office GDI+ primitive renderer",
+      "reason": "One exhaustive primitive dispatch keeps the Office vector surface's transforms, clipping, and style precedence consistent."
     },
     "viewer/editor_overlay.js:renderEditorOverlay": {
       "lines": 228,

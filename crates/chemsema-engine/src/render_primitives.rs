@@ -285,6 +285,21 @@ pub enum RenderPrimitive {
 }
 
 impl RenderPrimitive {
+    pub fn object_id(&self) -> Option<&str> {
+        match self {
+            Self::Line { object_id, .. }
+            | Self::Circle { object_id, .. }
+            | Self::Polygon { object_id, .. }
+            | Self::Rect { object_id, .. }
+            | Self::Ellipse { object_id, .. }
+            | Self::Polyline { object_id, .. }
+            | Self::Path { object_id, .. }
+            | Self::FilledPath { object_id, .. }
+            | Self::Image { object_id, .. }
+            | Self::Text { object_id, .. } => object_id.as_deref(),
+        }
+    }
+
     pub fn role(&self) -> RenderRole {
         *self.role_ref()
     }

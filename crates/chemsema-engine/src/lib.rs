@@ -17,6 +17,7 @@ mod render_svg;
 mod repeating_units;
 mod sdf;
 mod symbols;
+mod tool_parsing;
 mod units;
 
 pub use abbreviation::*;
@@ -36,6 +37,7 @@ pub use render_svg::*;
 pub use repeating_units::*;
 pub use sdf::*;
 pub use symbols::*;
+pub use tool_parsing::*;
 pub use units::*;
 
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]

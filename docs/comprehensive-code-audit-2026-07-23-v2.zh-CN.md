@@ -1,5 +1,19 @@
 # ChemSema 全面代码复核（2026-07-23，清理完成版）
 
+## 2026-07-23 大文件拆分补充
+
+本轮继续把复核中确认混合多类职责的文件拆成组合入口和领域子模块，测试文件也使用同一规则：
+
+- Office：剪贴板、OLE、注册、服务、存储、桌面启动和 EMF 预览分别归属独立模块；EMF 又按 bond、GDI+、path、surface、text 分层。
+- CDX/CDXML：二进制 schema/编解码/交换、XML 导入对象族、导出映射/资源/XML writer 分开。
+- Engine：命令、文档命令、历史、指针、键编辑、渲染状态、TLC 和 I/O 分开。
+- 图形渲染：括号、曲线、轨道、基础形状和表格分开。
+- Viewer：标签页状态、文档读取、图片导入、文本编辑、画布预览和运行时状态从 `app.js` 的组合入口分离。
+- 浏览器交互门禁：编辑场景和大文档场景分开，入口只负责启动、排序和结果汇总。
+- Rust 集成测试：`bond_tool` 与 `render_document` 按行为域拆成子测试模块；fixture 路径仍由各测试模块显式引用。
+
+拆分后重新扩大审计源目录，并把跨 Office/engine 与 desktop/wasm 的重复规则归并为单一内核实现。当前核心契约审计为 `errors=0 warnings=0 review=0`，不再存在失效的架构复核指纹。
+
 ## 结论
 
 本轮已把上版报告中可机械证明的错误全部清完。核心契约门禁现在为：
@@ -7,7 +21,7 @@
 | 级别 | 数量 | 结论 |
 | --- | ---: | --- |
 | Error | 0 | 发布阻断项已清零 |
-| Warning | 0 | 30 项规模提示均已完成带指纹的所有权复核 |
+| Warning | 0 | 25 项规模提示均已完成带指纹的所有权复核 |
 | Review | 0 | fallback 候选已逐项分类并清零 |
 
 完整机器明细见 [核心契约自动审查](core-contract-audit-2026-07-23-v2.zh-CN.md)。
@@ -62,9 +76,9 @@ Curve 生命周期、图片导入与编辑、选择/旋转/缩放/复制/剪切/
 
 审查器现在按“生产逻辑行”检查文件职责，Rust 测试模块不再重复算入生产文件；JavaScript host factory 的具名内部规则会独立审查，不再同时重复计入外层工厂体积。
 
-30 项规模提示均已写入 [架构复核账本](architecture-review-ledger.json)。每项记录精确生产逻辑行数、职责所有者和保留同一边界的理由；源代码只要增减一行，原 warning 就会恢复，同时产生账本失配 warning。因此这不是放宽阈值或静默忽略。
+25 项规模提示均已写入 [架构复核账本](architecture-review-ledger.json)。每项记录精确生产逻辑行数、职责所有者和保留同一边界的理由；源代码只要增减一行，原 warning 就会恢复，同时产生账本失配 warning。因此这不是放宽阈值或静默忽略。
 
-状态：Error、Warning、Review 全部清零，30 项架构复核指纹有效。
+状态：Error、Warning、Review 全部清零，25 项架构复核指纹有效。
 
 ### 6. 前端回归
 
@@ -80,7 +94,7 @@ GUI 回归现覆盖：
 
 ### 7. 自动门禁
 
-`npm run audit:core-contracts` 会在 error 非零时失败。当前结果为 `errors=0 warnings=0 review=0`，并验证 30 项架构所有权指纹；没有降低 error 阈值，也没有把已证实错误改成 warning。
+`npm run audit:core-contracts` 会在 error 非零时失败。当前结果为 `errors=0 warnings=0 review=0`，并验证 25 项架构所有权指纹；没有降低 error 阈值，也没有把已证实错误改成 warning。
 
 架构统计作了两项精度修正：
 

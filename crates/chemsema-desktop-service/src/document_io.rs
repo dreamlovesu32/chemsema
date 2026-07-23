@@ -147,7 +147,7 @@ fn decode_document_text(bytes: &[u8], format: &str, path: &Path) -> Result<Strin
         Err(utf8_error) if format == "cdxml" => {
             // Real-world ChemDraw XML sometimes declares UTF-8 while carrying
             // one or two legacy Windows-1252 punctuation bytes. Preserve a
-            // strict UTF-8 path first, then use the narrow legacy fallback.
+            // strict UTF-8 path first, then use the narrow Windows-1252 compatibility branch.
             let (text, _, had_errors) = WINDOWS_1252.decode(bytes);
             if had_errors {
                 Err(format!(

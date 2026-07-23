@@ -1,0 +1,108 @@
+use super::*;
+
+pub(super) fn merge_interchange_tree(
+    generated: &mut crate::cdxml::xml::XmlNode,
+    source: &crate::InterchangeObject,
+) {
+    for property in source.properties.values() {
+        generated
+            .attrs
+            .entry(property.name.clone())
+            .or_insert_with(|| property.value.clone());
+    }
+    if generated.text.is_empty() && !source.text.is_empty() {
+        generated.text = source.text.clone();
+    }
+
+    let mut remaining = std::mem::take(&mut generated.children);
+    let mut ordered = Vec::with_capacity(remaining.len().max(source.children.len()));
+    for source_child in &source.children {
+        let exact = remaining
+            .iter()
+            .position(|child| interchange_xml_exact_match(source_child, child));
+        let match_index = exact.or_else(|| {
+            remaining
+                .iter()
+                .position(|child| source_child.name == child.name)
+        });
+        if let Some(index) = match_index {
+            let mut child = remaining.remove(index);
+            merge_interchange_tree(&mut child, source_child);
+            ordered.push(child);
+        } else if !is_regenerated_table(&source_child.name) {
+            ordered.push(xml_from_interchange(source_child));
+        }
+    }
+    ordered.append(&mut remaining);
+    generated.children = ordered;
+}
+
+pub(super) fn interchange_xml_exact_match(
+    source: &crate::InterchangeObject,
+    generated: &crate::cdxml::xml::XmlNode,
+) -> bool {
+    source.name == generated.name
+        && match (&source.id, generated.attr("id")) {
+            (Some(source_id), Some(generated_id)) => source_id == generated_id,
+            (None, None) => true,
+            _ => false,
+        }
+}
+
+pub(super) fn is_regenerated_table(name: &str) -> bool {
+    matches!(name, "fonttable" | "colortable")
+}
+
+pub(super) fn xml_from_interchange(
+    source: &crate::InterchangeObject,
+) -> crate::cdxml::xml::XmlNode {
+    crate::cdxml::xml::XmlNode {
+        name: source.name.clone(),
+        attrs: source
+            .properties
+            .iter()
+            .map(|(_, property)| (property.name.clone(), property.value.clone()))
+            .collect(),
+        text: source.text.clone(),
+        children: source.children.iter().map(xml_from_interchange).collect(),
+    }
+}
+
+pub(super) fn serialize_cdxml_tree(root: &crate::cdxml::xml::XmlNode) -> String {
+    let mut out = String::from(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>\n<!DOCTYPE CDXML SYSTEM \"https://static.chemistry.revvitycloud.com/cdxml/CDXML.dtd\" >\n",
+    );
+    write_xml_node(root, &mut out, 0);
+    out.push('\n');
+    out
+}
+
+pub(super) fn write_xml_node(node: &crate::cdxml::xml::XmlNode, out: &mut String, indent: usize) {
+    for _ in 0..indent {
+        out.push(' ');
+    }
+    out.push('<');
+    out.push_str(&node.name);
+    for (name, value) in &node.attrs {
+        write!(out, " {}=\"{}\"", name, xml_escape_attr(value)).expect("write XML attribute");
+    }
+    if node.children.is_empty() && node.text.is_empty() {
+        out.push_str(" />");
+        return;
+    }
+    out.push('>');
+    if !node.text.is_empty() {
+        out.push_str(&xml_escape_text(&node.text));
+    }
+    if !node.children.is_empty() {
+        out.push('\n');
+        for child in &node.children {
+            write_xml_node(child, out, indent + 2);
+            out.push('\n');
+        }
+        for _ in 0..indent {
+            out.push(' ');
+        }
+    }
+    write!(out, "</{}>", node.name).expect("write XML end tag");
+}

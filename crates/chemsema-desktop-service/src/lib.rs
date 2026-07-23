@@ -1,8 +1,9 @@
 use chemsema_engine::{
-    cdx_to_cdxml, cdxml_to_cdx, ArrowCurve, ArrowEndpointStyle, ArrowHeadSize, ArrowNoGo,
-    ArrowVariant, BondVariant, BracketKind, Engine, OrbitalPhase, OrbitalStyle, OrbitalTemplate,
-    Point, PointerEvent, RenderBoundsScope, RenderPrimitive, RenderRole, ShapeKind, ShapeStyle,
-    TextEditLayoutRequest, TextEditSession, Tool, ToolState, WorldPoint, WorldPt,
+    cdx_to_cdxml, cdxml_to_cdx, parse_bond_tool_value, parse_bracket_tool_value, ArrowCurve,
+    ArrowEndpointStyle, ArrowHeadSize, ArrowNoGo, ArrowVariant, BondVariant, BracketKind, Engine,
+    OrbitalPhase, OrbitalStyle, OrbitalTemplate, Point, PointerEvent, RenderBoundsScope,
+    RenderPrimitive, RenderRole, ShapeKind, ShapeStyle, TextEditLayoutRequest, TextEditSession,
+    Tool, ToolState, WorldPoint, WorldPt,
 };
 use encoding_rs::WINDOWS_1252;
 use flate2::read::GzDecoder;

@@ -176,21 +176,6 @@ pub(super) fn preview_env_node_id_filter() -> Option<std::collections::BTreeSet<
     }
 }
 
-pub(super) fn preview_primitive_object_id(primitive: &RenderPrimitive) -> Option<&str> {
-    match primitive {
-        RenderPrimitive::Line { object_id, .. }
-        | RenderPrimitive::Circle { object_id, .. }
-        | RenderPrimitive::Polygon { object_id, .. }
-        | RenderPrimitive::Rect { object_id, .. }
-        | RenderPrimitive::Ellipse { object_id, .. }
-        | RenderPrimitive::Polyline { object_id, .. }
-        | RenderPrimitive::Path { object_id, .. }
-        | RenderPrimitive::FilledPath { object_id, .. }
-        | RenderPrimitive::Image { object_id, .. }
-        | RenderPrimitive::Text { object_id, .. } => object_id.as_deref(),
-    }
-}
-
 pub(super) fn preview_primitive_node_id(primitive: &RenderPrimitive) -> Option<&str> {
     match primitive {
         RenderPrimitive::Circle { node_id, .. }

@@ -1,6 +1,6 @@
 # ChemSema 核心契约自动审查
 
-生成时间：`2026-07-23T09:09:17.037Z`
+生成时间：`2026-07-23T10:10:15.134Z`
 
 本报告只把可机械证明的问题列为 error；需要结合设计文档判断的候选项列为 review。
 文档规定的默认值不是 fallback；未知类型静默跳过、失败后改走另一套语义、吞异常才是禁止的 fallback。
@@ -10,7 +10,7 @@
 - Error: 0
 - Warning: 0
 - Review: 0
-- Verified architecture reviews: 30
+- Verified architecture reviews: 25
 
 ## 对象能力矩阵
 

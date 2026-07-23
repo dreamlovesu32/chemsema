@@ -15,8 +15,12 @@ const architectureReviewLedger = JSON.parse(
 const verifiedArchitectureReviews = [];
 
 const SOURCE_ROOTS = [
+  "crates/chemsema-chemistry/src",
   "crates/chemsema-engine/src",
   "crates/chemsema-cli/src",
+  "crates/chemsema-desktop-service/src",
+  "crates/chemsema-inchi/src",
+  "apps/chemsema-office/src",
   "apps/chemsema-desktop/src-tauri/src",
   "viewer",
 ];

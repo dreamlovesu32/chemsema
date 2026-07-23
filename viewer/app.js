@@ -7,6 +7,7 @@ import {
 import { createAppDomRefs } from "./app_dom.js";
 import { registerChemSemaDebug } from "./app_debug.js";
 import { createColorHost } from "./color_host.js";
+import { createCanvasPreviewHost } from "./canvas_preview_host.js";
 import { createObjectSettingsHost } from "./object_settings_host.js";
 import { createNumericDialogHost } from "./numeric_dialog_host.js";
 import { createAtomPropertyDialogHost } from "./atom_property_dialog_host.js";
@@ -14,14 +15,17 @@ import { createSmilesDialogHost } from "./smiles_dialog_host.js";
 import { createTransientNotificationHost } from "./transient_notification_host.js";
 import { createUiActionRunner } from "./ui_action_runner.js";
 import { createInchiHost } from "./inchi_host.js";
+import { createImageImportHost } from "./image_import_host.js";
 import { createDesktopFileHost, normalizeDesktopPath } from "./desktop_file_host.js";
 import { createEngineHost } from "./engine_host.js?v=20260723-native-images";
 import { bindEditorControls, openColorDialog } from "./editor_bindings.js?v=20260627-browser-drop-tabs";
 import { createDocumentFlow } from "./document_flow.js";
 import { createBrowserDocumentTabs } from "./browser_document_tabs.js";
 import { createDocumentTabInteractions } from "./document_tab_interactions.js";
+import { createDocumentTabStateHost } from "./document_tab_state_host.js";
 import { createAppWindowLifecycleHost } from "./app_window_lifecycle.js";
 import { pointDistance } from "./geometry.js";
+import { createBracketHitGeometry } from "./bracket_hit_geometry.js";
 import {
   normalizeToolbarFontSize,
   syncPrimaryChromeIcons,
@@ -35,6 +39,9 @@ import { createSceneRenderer } from "./scene_renderer.js";
 import { createEditorOverlayRenderer } from "./editor_overlay.js?v=20260723-image-focus";
 import { createEditorSelectionState } from "./editor_selection_state.js";
 import { createEditorDocumentRenderer } from "./editor_document_renderer.js";
+import { createEditorReadHost } from "./editor_read_host.js";
+import { createEditorRuntimeHost } from "./editor_runtime_host.js";
+import { createEditorStateRuntimeHost } from "./editor_state_runtime_host.js";
 import { createEditorToolbarHost } from "./editor_toolbar_host.js";
 import { createEditorViewportHost } from "./editor_viewport_host.js";
 import { createEditorPointerController } from "./editor_pointer_controller.js?v=20260629-deep-stability";
@@ -57,6 +64,9 @@ import {
   editorSourceRunsFromSession as createEditorSourceRunsFromSession,
 } from "./text_editor_render.js";
 import { createTextEditorController } from "./text_editor_controller.js";
+import { createTextEditorLayoutHost } from "./text_editor_layout_host.js";
+import { createTextEditCommitHost } from "./text_edit_commit_host.js";
+import { createTextEditActionHost } from "./text_edit_action_host.js";
 import {
   primitiveStrokeWidthValue,
   renderCorePrimitive,
@@ -75,6 +85,23 @@ import {
   displayMetrics,
   mapLengthArray,
 } from "./units.js";
+
+const {
+  rotatePointAround,
+  pointToSegmentDistance,
+  bracketPairLip,
+  bracketPairDepth,
+  bracketStrokeHitPadding,
+  bracketSideHandleX,
+  squareBracketSideLocalHit,
+  roundBracketSidePolyline,
+  cubicPoint,
+  appendCubicSamples,
+  curlyBracketSidePolyline,
+  pointToPolylineDistance,
+  bracketSideLocalHit,
+  bracketPairLocalHit,
+} = createBracketHitGeometry({ pointDistance });
 
 const SAMPLE_FILES = [];
 
@@ -330,6 +357,14 @@ let activeDocumentTabId = null;
 let activeTextEditor = null;
 let pendingImageInsertWorldPoint = null;
 let documentTabInteractions = null;
+let documentTabStateHost = null;
+let textEditorLayoutHost = null;
+let textEditCommitHost = null;
+let editorRuntimeHost = null;
+let textEditActionHost = null;
+let textEditorController = null;
+let canvasPreviewHost = null;
+let editorStateRuntimeHost = null;
 const editorEngineReadCache = {
   engine: null,
   revision: null,
@@ -374,7 +409,6 @@ if (viewerTitle) {
     characterData: true,
     subtree: true,
   });
-  syncWindowTitle();
 }
 
 const editorState = {
@@ -458,324 +492,6 @@ const TAB_STATE_KEYS = [
   "zoomHandoffs",
 ];
 
-function activeDocumentTab() {
-  return documentTabs.find((tab) => tab.id === activeDocumentTabId) || null;
-}
-
-function createDocumentTab(title = "Untitled") {
-  return {
-    id: `doc-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-    title,
-    zoomPercent: 100,
-    currentPath: null,
-    currentFileName: null,
-    currentFilePath: null,
-    savedDocumentJson: null,
-    savedRevision: null,
-    oleSyncedDocumentJson: null,
-    oleSyncedRevision: null,
-    currentDocument: null,
-    editorEngine: null,
-    documentEngine: null,
-    coreRenderList: null,
-    runtimeViewBox: null,
-    lastEditFocusPoint: null,
-    activeBracketDragStart: null,
-    zoomHandoffs: [],
-  };
-}
-
-function ensureDocumentTab() {
-  if (activeDocumentTab()) {
-    return activeDocumentTab();
-  }
-  const tab = createDocumentTab();
-  documentTabs.push(tab);
-  activeDocumentTabId = tab.id;
-  return tab;
-}
-
-function saveActiveDocumentTabState() {
-  const tab = activeDocumentTab();
-  if (!tab) {
-    return;
-  }
-  for (const key of TAB_STATE_KEYS) {
-    tab[key] = state[key];
-  }
-  tab.zoomPercent = getZoomPercent();
-  tab.title = documentTitleFromState();
-  syncWindowTitle();
-}
-
-async function restoreDocumentTabState(tab) {
-  for (const key of TAB_STATE_KEYS) {
-    state[key] = tab[key];
-  }
-  setStoredZoomPercent(Number(tab.zoomPercent || 100));
-  activeSelectionGesture = null;
-  textEditorLayer.replaceChildren();
-  activeTextEditor = null;
-  await syncEngineToolState();
-  syncZoomControl();
-  renderSecondaryToolbar();
-  renderDocument();
-  renderDocumentTabs();
-  syncWindowTitle();
-}
-
-function documentTitleFromState() {
-  const fileName = state.currentFileName || fileNameFromPath(state.currentPath) || fileNameFromPath(state.currentFilePath);
-  if (fileName) {
-    return fileName;
-  }
-  const title = String(state.currentDocument?.document?.title || "").trim();
-  return title || "Untitled";
-}
-
-function documentTitleWithDirtyMarker(title, dirty) {
-  return dirty ? `${title || "Untitled"} *` : title || "Untitled";
-}
-
-function currentDocumentSaveFingerprint() {
-  return state.currentDocument ? JSON.stringify(state.currentDocument) : null;
-}
-
-function currentDocumentRevision() {
-  const revision = state.editorEngine?.revision?.();
-  return Number.isFinite(Number(revision)) ? Number(revision) : null;
-}
-
-function markCurrentDocumentSaved() {
-  state.savedDocumentJson = null;
-  state.savedRevision = currentDocumentRevision();
-  const tab = activeDocumentTab();
-  if (tab) {
-    tab.savedDocumentJson = state.savedDocumentJson;
-    tab.savedRevision = state.savedRevision;
-  }
-  refreshCommandAvailability();
-  renderDocumentTabs();
-  syncWindowTitle();
-}
-
-function activeTextEditorIsDirty() {
-  return Boolean(activeTextEditor?.hasUserEdited);
-}
-
-function activeTextEditorIsNewTextObject() {
-  const target = activeTextEditor?.session?.target;
-  if (target?.kind !== "text-object") {
-    return false;
-  }
-  return !(target.objectId || target.object_id);
-}
-
-function activeTextEditorHasVisibleText() {
-  const text = String(activeTextEditor?.plainText || "");
-  return text.trim().length > 0;
-}
-
-async function closeActiveTextEditorForToolAction() {
-  if (!activeTextEditor) {
-    return false;
-  }
-  const shouldCommit = !activeTextEditorIsNewTextObject() || activeTextEditorHasVisibleText();
-  return finishActiveTextEditor(shouldCommit);
-}
-
-function currentDocumentIsDirty() {
-  if (activeTextEditorIsDirty()) {
-    return true;
-  }
-  const revision = currentDocumentRevision();
-  if (revision != null && state.savedRevision != null) {
-    return revision !== state.savedRevision;
-  }
-  const fingerprint = currentDocumentSaveFingerprint();
-  return !!fingerprint && state.savedDocumentJson != null && fingerprint !== state.savedDocumentJson;
-}
-
-function canSaveCurrentDocument() {
-  return currentDocumentIsDirty();
-}
-
-function isOleEditFilePath(path) {
-  const fileName = fileNameFromPath(path).toLowerCase();
-  return fileName.startsWith("chemsema-ole-edit-") && fileName.endsWith(".ccjs");
-}
-
-function markCurrentDocumentOfficeSynced() {
-  state.oleSyncedDocumentJson = currentDocumentSaveFingerprint();
-  state.oleSyncedRevision = currentDocumentRevision();
-  const tab = activeDocumentTab();
-  if (tab) {
-    tab.oleSyncedDocumentJson = state.oleSyncedDocumentJson;
-    tab.oleSyncedRevision = state.oleSyncedRevision;
-  }
-}
-
-function tabDocumentFingerprint(tab) {
-  return tab?.currentDocument ? JSON.stringify(tab.currentDocument) : null;
-}
-
-function tabDocumentRevision(tab) {
-  try {
-    const revision = tab?.editorEngine?.revision?.();
-    return Number.isFinite(Number(revision)) ? Number(revision) : null;
-  } catch {
-    return null;
-  }
-}
-
-function documentTabIsDirty(tab) {
-  if (!tab) {
-    return false;
-  }
-  if (tab.id === activeDocumentTabId && activeTextEditorIsDirty()) {
-    return true;
-  }
-  const revision = tabDocumentRevision(tab);
-  if (revision != null && tab.savedRevision != null) {
-    return revision !== tab.savedRevision;
-  }
-  const fingerprint = tabDocumentFingerprint(tab);
-  return !!fingerprint && tab.savedDocumentJson != null && fingerprint !== tab.savedDocumentJson;
-}
-
-async function buildOleEditPayloadForTab(tab) {
-  const rawDocumentJson = await tab?.editorEngine?.documentJson?.();
-  const documentJson = rawDocumentJson
-    ? `${String(rawDocumentJson).trimEnd()}\n`
-    : tab?.currentDocument
-      ? `${JSON.stringify(tab.currentDocument, null, 2)}\n`
-      : null;
-  if (!documentJson || !String(documentJson).trim()) {
-    return null;
-  }
-  let cdxml = null;
-  try {
-    cdxml = await tab.editorEngine?.documentCdxml?.() || null;
-  } catch (error) {
-    console.warn("Failed to build OLE edit CDXML payload", error);
-  }
-  return {
-    chemsemaFragmentJson: null,
-    chemsemaDocumentJson: documentJson,
-    renderListJson: tab.editorEngine?.renderListJson?.() || null,
-    cdxml,
-    svg: null,
-    text: cdxml,
-  };
-}
-
-async function syncOleEditDocumentTabToOffice(tab, options = {}) {
-  if (
-    !(desktopFileHost?.writeOleEditPayload || desktopFileHost?.writeTransientPath)
-    || !tab?.currentFilePath
-    || !isOleEditFilePath(tab.currentFilePath)
-  ) {
-    return false;
-  }
-  if (!tab.currentDocument) {
-    return false;
-  }
-  const fingerprint = tabDocumentFingerprint(tab);
-  const revision = tabDocumentRevision(tab);
-  if (
-    !options.force
-    && tab.oleSyncedDocumentJson === fingerprint
-    && (revision == null || tab.oleSyncedRevision === revision)
-  ) {
-    return false;
-  }
-  const payload = await buildOleEditPayloadForTab(tab);
-  if (!payload) {
-    return false;
-  }
-  if (desktopFileHost.writeOleEditPayload) {
-    await desktopFileHost.writeOleEditPayload(tab.currentFilePath, payload);
-  } else {
-    await desktopFileHost.writeTransientPath(tab.currentFilePath, payload.chemsemaDocumentJson);
-  }
-  tab.oleSyncedDocumentJson = fingerprint;
-  tab.oleSyncedRevision = revision;
-  if (options.markSaved) {
-    tab.savedDocumentJson = fingerprint;
-    tab.savedRevision = revision;
-  }
-  if (tab.id === activeDocumentTabId) {
-    state.oleSyncedDocumentJson = tab.oleSyncedDocumentJson;
-    state.oleSyncedRevision = tab.oleSyncedRevision;
-    if (options.markSaved) {
-      state.savedDocumentJson = tab.savedDocumentJson;
-      state.savedRevision = tab.savedRevision;
-    }
-  }
-  refreshCommandAvailability();
-  return true;
-}
-
-async function autoSaveAllOleEditDocumentTabs() {
-  await finishActiveTextEditor(true);
-  if (state.editorEngine) {
-    await syncDocumentFromEngine();
-  }
-  saveActiveDocumentTabState();
-  for (const tab of documentTabs) {
-    await syncOleEditDocumentTabToOffice(tab, { force: true });
-  }
-}
-
-async function handleDocumentCommandCommitted(event) {
-  if (event.deferDocumentSync) {
-    renderDocumentTabs();
-    syncWindowTitle();
-    refreshCommandAvailability();
-    scheduleDeferredDocumentSync();
-    console.debug?.("[chemsema] document command committed", {
-      type: event.commandType,
-      revision: event.revision,
-      source: event.source,
-      deferredSync: true,
-    });
-    return;
-  }
-  saveActiveDocumentTabState();
-  const tab = activeDocumentTab();
-  if (tab) {
-    await syncOleEditDocumentTabToOffice(tab);
-  }
-  renderDocumentTabs();
-  syncWindowTitle();
-  refreshCommandAvailability();
-  console.debug?.("[chemsema] document command committed", {
-    type: event.commandType,
-    revision: event.revision,
-    source: event.source,
-  });
-}
-
-function fileNameFromPath(path) {
-  return String(path || "").split(/[\\/]/).filter(Boolean).pop() || "";
-}
-
-function normalizedFilePathKey(path) {
-  const value = String(path || "").trim();
-  if (!value) {
-    return "";
-  }
-  return value.replace(/\\/g, "/").replace(/\/+/g, "/").toLowerCase();
-}
-
-function documentTabForFilePath(path) {
-  const key = normalizedFilePathKey(path);
-  if (!key) {
-    return null;
-  }
-  return documentTabs.find((tab) => normalizedFilePathKey(tab.currentFilePath) === key) || null;
-}
-
 function escapeHtml(value) {
   return String(value || "")
     .replace(/&/g, "&amp;")
@@ -784,99 +500,62 @@ function escapeHtml(value) {
     .replace(/"/g, "&quot;");
 }
 
-function updateActiveDocumentTabTitle() {
-  const tab = activeDocumentTab();
-  if (!tab) {
-    return;
-  }
-  const nextTitle = documentTitleFromState();
-  if (tab.title !== nextTitle) {
-    tab.title = nextTitle;
-    renderDocumentTabs();
-  }
-}
+documentTabStateHost = createDocumentTabStateHost({
+  state,
+  documentTabs,
+  documentTabsRoot,
+  tabStateKeys: TAB_STATE_KEYS,
+  getActiveDocumentTabId: () => activeDocumentTabId,
+  setActiveDocumentTabId: (value) => { activeDocumentTabId = value; },
+  getActiveTextEditor: () => activeTextEditor,
+  setActiveTextEditor: (value) => { activeTextEditor = value; },
+  setActiveSelectionGesture: (value) => { activeSelectionGesture = value; },
+  getDocumentTabInteractions: () => documentTabInteractions,
+  textEditorLayer,
+  getZoomPercent: (...args) => getZoomPercent(...args),
+  setStoredZoomPercent: (...args) => setStoredZoomPercent(...args),
+  syncWindowTitle: (...args) => syncWindowTitle(...args),
+  syncEngineToolState: (...args) => syncEngineToolState(...args),
+  syncZoomControl: (...args) => syncZoomControl(...args),
+  renderSecondaryToolbar: (...args) => renderSecondaryToolbar(...args),
+  renderDocument: (...args) => renderDocument(...args),
+  refreshCommandAvailability: (...args) => refreshCommandAvailability(...args),
+  finishActiveTextEditor: (...args) => finishActiveTextEditor(...args),
+  desktopFileHost,
+  syncDocumentFromEngine: (...args) => syncDocumentFromEngine(...args),
+  scheduleDeferredDocumentSync: (...args) => scheduleDeferredDocumentSync(...args),
+  confirmCloseDocumentTab: (...args) => confirmCloseDocumentTab(...args),
+  resetEditorEngine: (...args) => resetEditorEngine(...args),
+  fitView: (...args) => fitView(...args),
+  escapeHtml,
+});
 
-function renderDocumentTabs() {
-  if (!documentTabsRoot) {
-    return;
-  }
-  documentTabsRoot.innerHTML = documentTabs.map((tab) => {
-    const active = tab.id === activeDocumentTabId;
-    const baseTitle = tab.title || "Untitled";
-    const title = escapeHtml(documentTitleWithDirtyMarker(baseTitle, documentTabIsDirty(tab)));
-    const dragging = documentTabInteractions?.isDetaching(tab.id);
-    return `
-      <div class="document-tab${active ? " is-active" : ""}${dragging ? " is-dragging" : ""}" role="tab" tabindex="0" aria-selected="${active ? "true" : "false"}" data-document-tab-id="${tab.id}" title="${title}">
-        <span class="document-tab-title">${title}</span>
-        <button class="document-tab-close" type="button" data-document-tab-close="${tab.id}" aria-label="Close ${title}" title="Close">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10"/><path d="M17 7 7 17"/></svg>
-        </button>
-      </div>
-    `;
-  }).join("");
-}
-
-async function activateDocumentTab(tabId) {
-  if (tabId === activeDocumentTabId) {
-    return;
-  }
-  const nextTab = documentTabs.find((tab) => tab.id === tabId);
-  if (!nextTab) {
-    return;
-  }
-  await finishActiveTextEditor(true);
-  saveActiveDocumentTabState();
-  activeDocumentTabId = nextTab.id;
-  await restoreDocumentTabState(nextTab);
-}
-
-async function closeDocumentTab(tabId, options = {}) {
-  const activeTabIdBeforeClose = activeDocumentTabId;
-  let index = documentTabs.findIndex((tab) => tab.id === tabId);
-  if (index < 0) {
-    return false;
-  }
-  if (!options.skipUnsavedPrompt && !await confirmCloseDocumentTab(tabId)) {
-    return false;
-  }
-  index = documentTabs.findIndex((tab) => tab.id === tabId);
-  if (index < 0) {
-    return true;
-  }
-  const closing = documentTabs[index];
-  const wasActive = closing.id === activeDocumentTabId;
-  if (wasActive) {
-    await finishActiveTextEditor(true);
-    saveActiveDocumentTabState();
-  }
-  await syncOleEditDocumentTabToOffice(closing, { force: true });
-  await closing.editorEngine?.free?.();
-  await closing.documentEngine?.free?.();
-  documentTabs.splice(index, 1);
-  if (!documentTabs.length) {
-    const tab = createDocumentTab();
-    documentTabs.push(tab);
-    activeDocumentTabId = tab.id;
-    await restoreDocumentTabState(tab);
-    await resetEditorEngine();
-    renderDocument();
-    fitView();
-    saveActiveDocumentTabState();
-    renderDocumentTabs();
-    return true;
-  }
-  if (wasActive) {
-    const previousActiveTab = activeTabIdBeforeClose !== tabId
-      ? documentTabs.find((tab) => tab.id === activeTabIdBeforeClose)
-      : null;
-    const nextTab = previousActiveTab || documentTabs[Math.max(0, Math.min(index, documentTabs.length - 1))];
-    activeDocumentTabId = nextTab.id;
-    await restoreDocumentTabState(nextTab);
-  } else {
-    renderDocumentTabs();
-  }
-  return true;
-}
+function activeDocumentTab(...args) { return documentTabStateHost.activeDocumentTab(...args); }
+function createDocumentTab(...args) { return documentTabStateHost.createDocumentTab(...args); }
+function ensureDocumentTab(...args) { return documentTabStateHost.ensureDocumentTab(...args); }
+function saveActiveDocumentTabState(...args) { return documentTabStateHost.saveActiveDocumentTabState(...args); }
+function restoreDocumentTabState(...args) { return documentTabStateHost.restoreDocumentTabState(...args); }
+function documentTitleFromState(...args) { return documentTabStateHost.documentTitleFromState(...args); }
+function documentTitleWithDirtyMarker(...args) { return documentTabStateHost.documentTitleWithDirtyMarker(...args); }
+function currentDocumentSaveFingerprint(...args) { return documentTabStateHost.currentDocumentSaveFingerprint(...args); }
+function currentDocumentRevision(...args) { return documentTabStateHost.currentDocumentRevision(...args); }
+function markCurrentDocumentSaved(...args) { return documentTabStateHost.markCurrentDocumentSaved(...args); }
+function activeTextEditorIsDirty(...args) { return documentTabStateHost.activeTextEditorIsDirty(...args); }
+function closeActiveTextEditorForToolAction(...args) { return documentTabStateHost.closeActiveTextEditorForToolAction(...args); }
+function currentDocumentIsDirty(...args) { return documentTabStateHost.currentDocumentIsDirty(...args); }
+function canSaveCurrentDocument(...args) { return documentTabStateHost.canSaveCurrentDocument(...args); }
+function isOleEditFilePath(...args) { return documentTabStateHost.isOleEditFilePath(...args); }
+function markCurrentDocumentOfficeSynced(...args) { return documentTabStateHost.markCurrentDocumentOfficeSynced(...args); }
+function documentTabIsDirty(...args) { return documentTabStateHost.documentTabIsDirty(...args); }
+function syncOleEditDocumentTabToOffice(...args) { return documentTabStateHost.syncOleEditDocumentTabToOffice(...args); }
+function autoSaveAllOleEditDocumentTabs(...args) { return documentTabStateHost.autoSaveAllOleEditDocumentTabs(...args); }
+function handleDocumentCommandCommitted(...args) { return documentTabStateHost.handleDocumentCommandCommitted(...args); }
+function fileNameFromPath(...args) { return documentTabStateHost.fileNameFromPath(...args); }
+function documentTabForFilePath(...args) { return documentTabStateHost.documentTabForFilePath(...args); }
+function updateActiveDocumentTabTitle(...args) { return documentTabStateHost.updateActiveDocumentTabTitle(...args); }
+function renderDocumentTabs(...args) { return documentTabStateHost.renderDocumentTabs(...args); }
+function activateDocumentTab(...args) { return documentTabStateHost.activateDocumentTab(...args); }
+function closeDocumentTab(...args) { return documentTabStateHost.closeDocumentTab(...args); }
 
 documentTabInteractions = createDocumentTabInteractions({
   root: documentTabsRoot,
@@ -888,6 +567,7 @@ documentTabInteractions = createDocumentTabInteractions({
   detachDocumentTab: (...args) => detachDocumentTab(...args),
 });
 documentTabInteractions.bind();
+syncWindowTitle();
 
 const appWindowLifecycleHost = createAppWindowLifecycleHost({
   state,
@@ -1116,6 +796,40 @@ function applyEditorRootFontFamily(root, fontFamily) {
   root.style.fontFamily = editorCssFontFamily(rawFontFamily);
 }
 
+const editorReadHost = createEditorReadHost({
+  state,
+  editorEngineReadCache,
+  parseEngineJson,
+  isEditingRustDocument,
+  renderBoundsFromEngine,
+  renderListFromEngine,
+  resetDocumentEngine: (...args) => resetDocumentEngine(...args),
+  maybeAutoExpandEditorViewport: (...args) => maybeAutoExpandEditorViewport(...args),
+  isDocumentPreviewPrimitive: (...args) => isDocumentPreviewPrimitive(...args),
+  primitivesForObject,
+});
+const {
+  currentEditableFragmentData,
+  worldPointForFragmentPosition,
+  worldPointForFragmentNode,
+  selectionZoomCenterWorld,
+  editorEngineRevision,
+  currentEditorEngineReadCache,
+  currentEditorEngineState,
+  currentEditorDocumentData,
+  currentEditorRenderList,
+  currentEditorInteractionRenderList,
+  currentEditorRenderBounds,
+  currentRenderBounds,
+  syncCoreRenderListFromCurrentDocument,
+  syncEditorRenderListFromEngine,
+  syncEditorSelectionRenderListFromEngine,
+  currentEditorOverlayRenderList,
+  currentSelectionItemCount,
+  freshestPreviewSelection,
+  corePrimitivesForObject,
+} = editorReadHost;
+
 const editorViewportHost = createEditorViewportHost({
   state,
   viewerSvg,
@@ -1175,207 +889,6 @@ function handleViewerWheel(...args) { return editorViewportHost.handleViewerWhee
 function fitView(...args) { return editorViewportHost.fitView(...args); }
 function getZoomPercent(...args) { return editorViewportHost.getZoomPercent(...args); }
 function setStoredZoomPercent(...args) { return editorViewportHost.setStoredZoomPercent(...args); }
-function currentEditableFragmentData() {
-  const documentData = state.currentDocument;
-  if (!documentData?.objects || !documentData?.resources) {
-    return null;
-  }
-  const object = documentData.objects.find((candidate) => candidate.type === "molecule" || candidate.object_type === "molecule");
-  const resourceRef = object?.payload?.resourceRef || object?.payload?.resource_ref;
-  const fragment = resourceRef ? documentData.resources?.[resourceRef]?.data : null;
-  if (!object || !fragment?.nodes || !fragment?.bonds) {
-    return null;
-  }
-  return { object, fragment };
-}
-
-function worldPointForFragmentPosition(object, position) {
-  if (!Array.isArray(position) || position.length < 2) {
-    return null;
-  }
-  const translate = object?.transform?.translate || [0, 0];
-  return {
-    x: Number(translate[0] || 0) + Number(position[0] || 0),
-    y: Number(translate[1] || 0) + Number(position[1] || 0),
-  };
-}
-
-function worldPointForFragmentNode(object, node) {
-  return worldPointForFragmentPosition(object, node?.position);
-}
-
-function selectionZoomCenterWorld() {
-  const engineState = currentEditorEngineState();
-  const selection = engineState?.selection;
-  if (!selection || (!selection.nodes?.length && !selection.bonds?.length)) {
-    return null;
-  }
-  const entry = currentEditableFragmentData();
-  if (!entry) {
-    return null;
-  }
-  const nodeById = new Map(entry.fragment.nodes.map((node) => [node.id, node]));
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  let hasPoint = false;
-
-  function includePoint(point) {
-    if (!point) {
-      return;
-    }
-    minX = Math.min(minX, point.x);
-    minY = Math.min(minY, point.y);
-    maxX = Math.max(maxX, point.x);
-    maxY = Math.max(maxY, point.y);
-    hasPoint = true;
-  }
-
-  function worldPointForNode(node) {
-    return worldPointForFragmentNode(entry.object, node);
-  }
-
-  for (const nodeId of selection.nodes || []) {
-    includePoint(worldPointForNode(nodeById.get(nodeId)));
-  }
-
-  for (const bondId of selection.bonds || []) {
-    const bond = entry.fragment.bonds.find((candidate) => candidate.id === bondId);
-    if (!bond) {
-      continue;
-    }
-    includePoint(worldPointForNode(nodeById.get(bond.begin)));
-    includePoint(worldPointForNode(nodeById.get(bond.end)));
-  }
-
-  if (!hasPoint) {
-    return null;
-  }
-  return {
-    x: (minX + maxX) / 2,
-    y: (minY + maxY) / 2,
-  };
-}
-
-function editorEngineRevision(engine) {
-  if (!engine?.revision) {
-    return 0;
-  }
-  return Number(engine.revision()) || 0;
-}
-
-function currentEditorEngineReadCache() {
-  const engine = state.editorEngine;
-  if (!engine) {
-    return null;
-  }
-  const revision = editorEngineRevision(engine);
-  const canTrustRevision = typeof engine.revision === "function";
-  const stateJson = canTrustRevision ? null : engine.stateJson?.() || "";
-  if (
-    editorEngineReadCache.engine !== engine
-    || editorEngineReadCache.revision !== revision
-    || (!canTrustRevision && editorEngineReadCache.stateJson !== stateJson)
-  ) {
-    editorEngineReadCache.engine = engine;
-    editorEngineReadCache.revision = revision;
-    editorEngineReadCache.stateJson = stateJson;
-    editorEngineReadCache.parsedState = undefined;
-    editorEngineReadCache.renderListJson = null;
-    editorEngineReadCache.renderList = null;
-    editorEngineReadCache.interactionRenderListJson = null;
-    editorEngineReadCache.interactionRenderList = null;
-    editorEngineReadCache.documentJson = null;
-    editorEngineReadCache.parsedDocument = undefined;
-    editorEngineReadCache.boundsJsonByScope = new Map();
-    editorEngineReadCache.boundsByScope = new Map();
-  }
-  return editorEngineReadCache;
-}
-
-function currentEditorEngineState() {
-  const cache = currentEditorEngineReadCache();
-  if (!cache) {
-    return null;
-  }
-  if (cache.stateJson === null) {
-    cache.stateJson = state.editorEngine.stateJson?.() || "";
-  }
-  if (cache.parsedState === undefined) {
-    cache.parsedState = parseEngineJson(cache.stateJson, null);
-  }
-  return cache.parsedState;
-}
-
-function currentEditorDocumentData() {
-  if (!isEditingRustDocument()) {
-    return state.currentDocument;
-  }
-  const cache = currentEditorEngineReadCache();
-  if (!cache) {
-    return state.currentDocument;
-  }
-  if (cache.documentJson === null) {
-    cache.documentJson = state.editorEngine.documentJson?.() || "";
-  }
-  if (cache.parsedDocument === undefined) {
-    cache.parsedDocument = parseEngineJson(cache.documentJson, null);
-  }
-  return cache.parsedDocument || state.currentDocument;
-}
-
-function currentEditorRenderList() {
-  const cache = currentEditorEngineReadCache();
-  if (!cache) {
-    return [];
-  }
-  if (!cache.renderList) {
-    if (window.__chemsemaDebug?.renderStats) {
-      window.__chemsemaDebug.renderStats.renderListJsonCount += 1;
-      if (window.__chemsemaDebug.renderStats.captureRenderListStacks) {
-        window.__chemsemaDebug.renderStats.lastRenderListJsonStack = new Error().stack || "";
-      }
-    }
-    cache.renderListJson = state.editorEngine.renderListJson?.() || "[]";
-    cache.renderList = parseEngineJson(cache.renderListJson, []) || [];
-  }
-  return cache.renderList;
-}
-
-function currentEditorInteractionRenderList() {
-  const cache = currentEditorEngineReadCache();
-  if (!cache) {
-    return [];
-  }
-  if (!cache.interactionRenderList) {
-    cache.interactionRenderListJson = state.editorEngine.interactionRenderListJson?.() || "[]";
-    cache.interactionRenderList = parseEngineJson(cache.interactionRenderListJson, []) || [];
-  }
-  return cache.interactionRenderList;
-}
-
-function currentEditorRenderBounds(scope = "all") {
-  const cache = currentEditorEngineReadCache();
-  if (!cache) {
-    return null;
-  }
-  if (!cache.boundsByScope.has(scope)) {
-    const json = scope === "selection" && state.editorEngine.selectionBoundsJson
-      ? state.editorEngine.selectionBoundsJson()
-      : state.editorEngine.renderBoundsJson?.(scope);
-    cache.boundsJsonByScope.set(scope, json || "null");
-    cache.boundsByScope.set(scope, parseEngineJson(json || "null", null));
-  }
-  return cache.boundsByScope.get(scope);
-}
-
-function currentRenderBounds(scope = "all") {
-  if (isEditingRustDocument()) {
-    return currentEditorRenderBounds(scope);
-  }
-  return renderBoundsFromEngine(state.documentEngine, scope);
-}
 
 function pointInAxisBounds(point, bounds, padding = 0) {
   return Boolean(point && bounds
@@ -1432,85 +945,6 @@ function currentSelectionHandleZoneContainsPoint(point) {
   });
 }
 
-async function syncCoreRenderListFromCurrentDocument() {
-  state.coreRenderList = null;
-  if (!state.currentDocument) {
-    return;
-  }
-  if (state.currentPath) {
-    if (!state.documentEngine) {
-      await resetDocumentEngine();
-    }
-    await state.documentEngine.ready?.();
-    await state.documentEngine.loadDocumentJson(JSON.stringify(state.currentDocument));
-    state.coreRenderList = renderListFromEngine(state.documentEngine);
-    return;
-  }
-  if (state.editorEngine) {
-    state.coreRenderList = currentEditorRenderList();
-  }
-}
-
-function syncEditorRenderListFromEngine(options = {}) {
-  if (!state.editorEngine) {
-    return [];
-  }
-  const autoExpand = options.autoExpand ?? true;
-  state.coreRenderList = currentEditorRenderList();
-  if (autoExpand) {
-    maybeAutoExpandEditorViewport(state.coreRenderList || []);
-  }
-  return state.coreRenderList || [];
-}
-
-function syncEditorSelectionRenderListFromEngine() {
-  return currentEditorInteractionRenderList();
-}
-
-function currentEditorOverlayRenderList() {
-  const renderList = currentEditorInteractionRenderList();
-  return (renderList || []).filter((primitive) => !isDocumentPreviewPrimitive(primitive));
-}
-
-function currentSelectionItemCount(selection = currentEditorEngineState()?.selection) {
-  if (!selection) {
-    return 0;
-  }
-  return (selection.nodes?.length || 0)
-    + (selection.bonds?.length || 0)
-    + (selection.labelNodes?.length || selection.label_nodes?.length || 0)
-    + (selection.textObjects?.length || selection.text_objects?.length || 0)
-    + (selection.arrowObjects?.length || selection.arrow_objects?.length || 0);
-}
-
-function freshestPreviewSelection(cachedSelection = null) {
-  const currentSelection = parseEngineJson(state.editorEngine?.stateJson?.() || "", null)?.selection || null;
-  if (!cachedSelection) {
-    return currentSelection;
-  }
-  if (!currentSelection) {
-    return cachedSelection;
-  }
-  const cachedObjectIds = new Set([
-    ...(cachedSelection.textObjects || cachedSelection.text_objects || []),
-    ...(cachedSelection.arrowObjects || cachedSelection.arrow_objects || []),
-  ]);
-  const currentObjectIds = [
-    ...(currentSelection.textObjects || currentSelection.text_objects || []),
-    ...(currentSelection.arrowObjects || currentSelection.arrow_objects || []),
-  ];
-  if (currentObjectIds.some((objectId) => !cachedObjectIds.has(objectId))) {
-    return currentSelection;
-  }
-  return currentSelectionItemCount(currentSelection) > currentSelectionItemCount(cachedSelection)
-    ? currentSelection
-    : cachedSelection;
-}
-
-function corePrimitivesForObject(objectId) {
-  return primitivesForObject(state.coreRenderList, objectId);
-}
-
 const sceneRenderer = createSceneRenderer({
   labelDebugMode: LABEL_DEBUG_MODE,
   toggleMolecules: () => !(toggleMolecules && !toggleMolecules.checked),
@@ -1558,176 +992,6 @@ function currentDocumentBoundsContainsPoint(point, paddingPx = 0) {
     return true;
   }
   return pointInAxisBounds(point, bounds, screenPxToWorld(paddingPx));
-}
-
-function rotatePointAround(point, center, degrees) {
-  const radians = degrees * Math.PI / 180;
-  const cos = Math.cos(radians);
-  const sin = Math.sin(radians);
-  const dx = point.x - center.x;
-  const dy = point.y - center.y;
-  return {
-    x: center.x + dx * cos - dy * sin,
-    y: center.y + dx * sin + dy * cos,
-  };
-}
-
-function pointToSegmentDistance(point, start, end) {
-  const dx = end.x - start.x;
-  const dy = end.y - start.y;
-  const lengthSq = dx * dx + dy * dy;
-  if (lengthSq <= 1e-9) {
-    return pointDistance(point, start);
-  }
-  const t = Math.max(0, Math.min(1, (((point.x - start.x) * dx) + ((point.y - start.y) * dy)) / lengthSq));
-  return pointDistance(point, {
-    x: start.x + dx * t,
-    y: start.y + dy * t,
-  });
-}
-
-function bracketPairLip(width, height) {
-  return Math.max(0, Math.min(height * 0.07248, width * 0.22));
-}
-
-function bracketPairDepth(width, height, kind) {
-  if (kind === "curly") {
-    return Math.max(0, Math.min(height * 0.14423, width * 0.24));
-  }
-  return Math.max(0, Math.min(height * (1 - Math.sqrt(3) * 0.5), width * 0.22));
-}
-
-function bracketStrokeHitPadding(object) {
-  const strokeWidth = Number(object?.payload?.strokeWidth ?? object?.payload?.extra?.strokeWidth ?? 1);
-  return Number.isFinite(strokeWidth) && strokeWidth > 0 ? strokeWidth * 0.5 : 0.5;
-}
-
-function bracketSideHandleX(kind, side, width) {
-  if (kind === "round") {
-    return side === "right" ? 0 : width;
-  }
-  return side === "right" ? width : 0;
-}
-
-function squareBracketSideLocalHit(point, x, y, width, height, side, pad) {
-  const right = x + width;
-  const bottom = y + height;
-  if (side === "right") {
-    return pointToSegmentDistance(point, { x: right, y }, { x: right, y: bottom }) <= pad
-      || pointToSegmentDistance(point, { x, y }, { x: right, y }) <= pad
-      || pointToSegmentDistance(point, { x, y: bottom }, { x: right, y: bottom }) <= pad;
-  }
-  return pointToSegmentDistance(point, { x, y }, { x, y: bottom }) <= pad
-    || pointToSegmentDistance(point, { x, y }, { x: right, y }) <= pad
-    || pointToSegmentDistance(point, { x, y: bottom }, { x: right, y: bottom }) <= pad;
-}
-
-function roundBracketSidePolyline(x, y, width, height, side) {
-  const chordHalf = height * 0.5;
-  const base = Math.sqrt(Math.max(0, height * height - chordHalf * chordHalf));
-  const sampleCount = 24;
-  const points = [];
-  for (let index = 0; index <= sampleCount; index += 1) {
-    const t = index / sampleCount;
-    const dy = (t - 0.5) * height;
-    const sagitta = Math.max(0, Math.sqrt(Math.max(0, height * height - dy * dy)) - base);
-    const clampedSagitta = Math.min(width, sagitta);
-    points.push({
-      x: side === "right" ? x + clampedSagitta : x + width - clampedSagitta,
-      y: y + height * t,
-    });
-  }
-  return points;
-}
-
-function cubicPoint(p0, p1, p2, p3, t) {
-  const mt = 1 - t;
-  const mt2 = mt * mt;
-  const t2 = t * t;
-  return {
-    x: p0.x * mt2 * mt + p1.x * 3 * mt2 * t + p2.x * 3 * mt * t2 + p3.x * t2 * t,
-    y: p0.y * mt2 * mt + p1.y * 3 * mt2 * t + p2.y * 3 * mt * t2 + p3.y * t2 * t,
-  };
-}
-
-function appendCubicSamples(points, p0, p1, p2, p3) {
-  const sampleCount = 8;
-  const start = points.length ? 1 : 0;
-  for (let index = start; index <= sampleCount; index += 1) {
-    points.push(cubicPoint(p0, p1, p2, p3, index / sampleCount));
-  }
-}
-
-function curlyBracketSidePolyline(x, y, width, height, side) {
-  const right = x + width;
-  const bottom = y + height;
-  const halfDepth = width * 0.5;
-  const middle = y + height * 0.5;
-  const cLarge = height * 0.039805;
-  const cSmall = height * 0.032308;
-  const topInner = y + halfDepth;
-  const bottomInner = bottom - halfDepth;
-  const points = [];
-  if (side === "right") {
-    const re = x;
-    const rm = x + halfDepth;
-    appendCubicSamples(points, { x: re, y: bottom }, { x: re + cLarge, y: bottom }, { x: rm, y: bottom - cSmall }, { x: rm, y: bottomInner });
-    appendCubicSamples(points, { x: rm, y: bottomInner }, { x: rm, y: bottomInner }, { x: rm, y: middle + halfDepth }, { x: rm, y: middle + halfDepth });
-    appendCubicSamples(points, { x: rm, y: middle + halfDepth }, { x: rm, y: middle + halfDepth - cLarge }, { x: rm + cSmall, y: middle }, { x: right, y: middle });
-    appendCubicSamples(points, { x: right, y: middle }, { x: rm + cSmall, y: middle }, { x: rm, y: middle - halfDepth + cLarge }, { x: rm, y: middle - halfDepth });
-    appendCubicSamples(points, { x: rm, y: middle - halfDepth }, { x: rm, y: middle - halfDepth }, { x: rm, y: y + cSmall }, { x: re + cLarge, y });
-    appendCubicSamples(points, { x: re + cLarge, y }, { x: re, y }, { x: re, y }, { x: re, y });
-    return points;
-  }
-  const le = right;
-  const lm = x + halfDepth;
-  appendCubicSamples(points, { x: le, y }, { x: le - cLarge, y }, { x: lm, y: y + cSmall }, { x: lm, y: topInner });
-  appendCubicSamples(points, { x: lm, y: topInner }, { x: lm, y: topInner }, { x: lm, y: middle - halfDepth }, { x: lm, y: middle - halfDepth });
-  appendCubicSamples(points, { x: lm, y: middle - halfDepth }, { x: lm, y: middle - halfDepth + cLarge }, { x: lm - cSmall, y: middle }, { x, y: middle });
-  appendCubicSamples(points, { x, y: middle }, { x: lm - cSmall, y: middle }, { x: lm, y: middle + halfDepth - cLarge }, { x: lm, y: middle + halfDepth });
-  appendCubicSamples(points, { x: lm, y: middle + halfDepth }, { x: lm, y: middle + halfDepth }, { x: lm, y: bottom - cSmall }, { x: le - cLarge, y: bottom });
-  appendCubicSamples(points, { x: le - cLarge, y: bottom }, { x: le, y: bottom }, { x: le, y: bottom }, { x: le, y: bottom });
-  return points;
-}
-
-function pointToPolylineDistance(point, points) {
-  let distance = Infinity;
-  for (let index = 1; index < points.length; index += 1) {
-    distance = Math.min(distance, pointToSegmentDistance(point, points[index - 1], points[index]));
-  }
-  return distance;
-}
-
-function bracketSideLocalHit(point, x, y, width, height, kind, side, pad) {
-  if (width <= 0 || height <= 0) {
-    return false;
-  }
-  if (kind === "square") {
-    return squareBracketSideLocalHit(point, x, y, width, height, side, pad);
-  }
-  const points = kind === "curly"
-    ? curlyBracketSidePolyline(x, y, width, height, side)
-    : roundBracketSidePolyline(x, y, width, height, side);
-  return pointToPolylineDistance(point, points) <= pad;
-}
-
-function bracketPairLocalHit(point, x, y, width, height, kind, pad) {
-  const right = x + width;
-  const bottom = y + height;
-  if (kind === "square") {
-    const lip = bracketPairLip(width, height);
-    return pointToSegmentDistance(point, { x, y }, { x, y: bottom }) <= pad
-      || pointToSegmentDistance(point, { x: right, y }, { x: right, y: bottom }) <= pad
-      || pointToSegmentDistance(point, { x, y }, { x: x + lip, y }) <= pad
-      || pointToSegmentDistance(point, { x, y: bottom }, { x: x + lip, y: bottom }) <= pad
-      || pointToSegmentDistance(point, { x: right - lip, y }, { x: right, y }) <= pad
-      || pointToSegmentDistance(point, { x: right - lip, y: bottom }, { x: right, y: bottom }) <= pad;
-  }
-  const depth = bracketPairDepth(width, height, kind);
-  const leftX = kind === "round" ? x - depth : x;
-  const rightX = kind === "round" ? right : right - depth;
-  return bracketSideLocalHit(point, leftX, y, depth, height, kind, "left", pad)
-    || bracketSideLocalHit(point, rightX, y, depth, height, kind, "right", pad);
 }
 
 function shouldHidePrimitiveForActiveEndpointEditor(primitive) {
@@ -1871,85 +1135,26 @@ function applyDocumentObjectPreviewTransform(...args) { return editorDocumentRen
 function applyDocumentBondCreationPreview(...args) { return editorDocumentRenderer.applyDocumentBondCreationPreview(...args); }
 function hideDocumentDiagnosticsForPreview(...args) { return editorDocumentRenderer.hideDocumentDiagnosticsForPreview(...args); }
 function resetDocumentRenderState(...args) { return editorDocumentRenderer.resetDocumentRenderState(...args); }
-function renderEditorOverlay(renderList = null) {
-  const objectEditPreviewActive = activeGestureUsesObjectEditPreview();
-  const effectiveRenderList = objectEditPreviewActive && !renderList
-    ? currentEditorInteractionRenderList()
-    : renderList;
-  syncObjectEditPreviewHiddenElements(objectEditPreviewActive ? effectiveRenderList || [] : []);
-  editorOverlayRenderer.renderEditorOverlay(effectiveRenderList);
-}
 
-function syncCanvasDragPreviewViewport() {
-  canvasDragPreviewSvg.style.left = "0";
-  canvasDragPreviewSvg.style.top = "0";
-  canvasDragPreviewSvg.style.width = "100vw";
-  canvasDragPreviewSvg.style.height = "100vh";
-  canvasDragPreviewSvg.setAttribute("viewBox", `0 0 ${window.innerWidth} ${window.innerHeight}`);
-}
+canvasPreviewHost = createCanvasPreviewHost({
+  activeGestureUsesObjectEditPreview,
+  currentEditorInteractionRenderList,
+  syncObjectEditPreviewHiddenElements,
+  editorOverlayRenderer,
+  canvasDragPreviewSvg,
+  window,
+  makeSvgNode,
+  viewerSvg,
+  renderCorePrimitive,
+  corePrimitiveRenderOptions,
+});
+function renderEditorOverlay(...args) { return canvasPreviewHost.renderEditorOverlay(...args); }
+function syncCanvasDragPreviewViewport(...args) { return canvasPreviewHost.syncCanvasDragPreviewViewport(...args); }
+function clearCanvasDragPreview(...args) { return canvasPreviewHost.clearCanvasDragPreview(...args); }
+function screenPointFromSvgMatrix(...args) { return canvasPreviewHost.screenPointFromSvgMatrix(...args); }
+function canvasScreenFeedbackPrimitiveNode(...args) { return canvasPreviewHost.canvasScreenFeedbackPrimitiveNode(...args); }
+function renderCanvasDragPreview(...args) { return canvasPreviewHost.renderCanvasDragPreview(...args); }
 
-function clearCanvasDragPreview() {
-  const hadPreview = canvasDragPreviewSvg.childElementCount > 0
-    || canvasDragPreviewSvg.hasAttribute("viewBox");
-  canvasDragPreviewSvg.replaceChildren();
-  canvasDragPreviewSvg.removeAttribute("viewBox");
-  return hadPreview;
-}
-
-function screenPointFromSvgMatrix(point, matrix) {
-  return {
-    x: Number(point?.x || 0) * matrix.a + Number(point?.y || 0) * matrix.c + matrix.e,
-    y: Number(point?.x || 0) * matrix.b + Number(point?.y || 0) * matrix.d + matrix.f,
-  };
-}
-
-function canvasScreenFeedbackPrimitiveNode(primitive, matrix) {
-  if (!matrix || primitive?.kind !== "circle" || !primitive.center) {
-    return null;
-  }
-  if (primitive.role !== "preview-end" && primitive.role !== "hover-endpoint") {
-    return null;
-  }
-  const center = screenPointFromSvgMatrix(primitive.center, matrix);
-  const scale = Math.hypot(matrix.a || 0, matrix.b || 0);
-  const radius = Number(primitive.radius || 0) * scale;
-  return makeSvgNode("circle", {
-    cx: center.x,
-    cy: center.y,
-    r: radius,
-    class: "editor-endpoint-halo",
-    "data-role": primitive.role,
-  });
-}
-
-function renderCanvasDragPreview(renderList = []) {
-  canvasDragPreviewSvg.replaceChildren();
-  if (!renderList?.length) {
-    return;
-  }
-  syncCanvasDragPreviewViewport();
-  const matrix = viewerSvg.getScreenCTM?.();
-  const target = matrix
-    ? makeSvgNode("g", {
-        transform: `matrix(${matrix.a} ${matrix.b} ${matrix.c} ${matrix.d} ${matrix.e} ${matrix.f})`,
-      })
-    : canvasDragPreviewSvg;
-  const screenFeedbackNodes = [];
-  for (const primitive of renderList) {
-    const feedbackNode = canvasScreenFeedbackPrimitiveNode(primitive, matrix);
-    if (feedbackNode) {
-      screenFeedbackNodes.push(feedbackNode);
-      continue;
-    }
-    renderCorePrimitive(target, primitive, corePrimitiveRenderOptions());
-  }
-  if (target !== canvasDragPreviewSvg) {
-    canvasDragPreviewSvg.appendChild(target);
-  }
-  for (const node of screenFeedbackNodes) {
-    canvasDragPreviewSvg.appendChild(node);
-  }
-}
 const currentSelectionRotateHandle = (...args) => editorOverlayRenderer.currentSelectionRotateHandle(...args);
 const selectionResizeHandleHit = (...args) => editorOverlayRenderer.selectionResizeHandleHit(...args);
 const selectionResizePivot = (...args) => editorOverlayRenderer.selectionResizePivot(...args);
@@ -2157,195 +1362,49 @@ function scheduleDeferredDocumentSync() {
   }, 3000);
 }
 
-async function renderSelectionOnlyUpdate(point, syncCursor = syncSelectCursorForPoint, options = {}) {
-  const renderList = options.useInteractionList === false
-    ? currentEditorRenderList()
-    : syncEditorSelectionRenderListFromEngine();
-  renderEditorOverlay(renderList);
-  if (point && typeof syncCursor === "function") {
-    await syncCursor(point);
-  }
-  if (options.deferEngineReads) {
-    return;
-  }
-  syncSelectionChemistrySummary();
-  refreshCommandAvailability();
-}
-
-async function selectClickTarget(point, additive = false) {
-  if (!additive && !currentDocumentBoundsContainsPoint(point, DOCUMENT_BOUNDS_HIT_PAD_SCREEN_PX)) {
-    await state.editorEngine.clearSelection?.();
-    invalidateEditorEngineReadCache();
-    return;
-  }
-  await state.editorEngine.selectAtPoint(point.x, point.y, additive);
-}
-
-function formatSelectionSummaryMass(value, digits) {
-  const numeric = Number(value);
-  return Number.isFinite(numeric) ? numeric.toFixed(digits) : "";
-}
-
-function clampMassDigits(value) {
-  const numeric = Math.trunc(Number(value));
-  if (!Number.isFinite(numeric)) {
-    return 2;
-  }
-  return Math.max(0, Math.min(8, numeric));
-}
-
-function setMassDigits(value) {
-  const next = clampMassDigits(value);
-  if (editorState.massDigits === next) {
-    return;
-  }
-  editorState.massDigits = next;
-  syncSelectionChemistrySummary();
-}
-
-function massPrecisionIcon(direction) {
-  const path = direction === "up"
-    ? "M6 9 12 3l6 6"
-    : "M6 5l6 6 6-6";
-  return `<svg viewBox="0 0 24 14" aria-hidden="true"><path d="${path}"/></svg>`;
-}
-
-function makeMassPrecisionControl() {
-  const control = document.createElement("span");
-  control.className = "selection-mass-precision";
-  const value = document.createElement("span");
-  value.className = "selection-mass-precision-value";
-  value.textContent = String(clampMassDigits(editorState.massDigits));
-  const buttons = document.createElement("span");
-  buttons.className = "selection-mass-precision-buttons";
-  const increase = document.createElement("button");
-  increase.className = "selection-mass-precision-button";
-  increase.type = "button";
-  increase.title = "Increase mass decimals";
-  increase.setAttribute("aria-label", "Increase mass decimals");
-  increase.innerHTML = massPrecisionIcon("up");
-  increase.addEventListener("click", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    setMassDigits(editorState.massDigits + 1);
-  });
-  const decrease = document.createElement("button");
-  decrease.className = "selection-mass-precision-button";
-  decrease.type = "button";
-  decrease.title = "Decrease mass decimals";
-  decrease.setAttribute("aria-label", "Decrease mass decimals");
-  decrease.innerHTML = massPrecisionIcon("down");
-  decrease.addEventListener("click", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    setMassDigits(editorState.massDigits - 1);
-  });
-  buttons.append(increase, decrease);
-  control.append(value, buttons);
-  return control;
-}
-
-function makeSelectionSummaryItem(label, value, accessory = null) {
-  const item = document.createElement("span");
-  item.className = "selection-chemistry-summary-item";
-  const labelNode = document.createElement("span");
-  labelNode.className = "selection-chemistry-summary-label";
-  labelNode.textContent = label;
-  const valueNode = document.createElement("span");
-  valueNode.className = "selection-chemistry-summary-value";
-  valueNode.textContent = value;
-  item.append(labelNode, valueNode);
-  if (accessory) {
-    item.append(accessory);
-  }
-  return item;
-}
-
-function appendFormulaText(container, formula) {
-  const parts = String(formula || "").match(/[A-Z][a-z]?|\d+/g) || [];
-  for (const part of parts) {
-    const node = document.createElement(/^\d+$/.test(part) ? "sub" : "span");
-    node.textContent = part;
-    container.append(node);
-  }
-}
-
-function syncSelectionChemistrySummary() {
-  if (!selectionChemistrySummary) {
-    return;
-  }
-  selectionChemistrySummary.replaceChildren();
-  const summary = isEditingRustDocument()
-    ? parseEngineJson(state.editorEngine?.selectionChemistrySummaryJson?.(), null)
-    : null;
-  if (!summary?.formula) {
-    return;
-  }
-  const formula = document.createElement("span");
-  formula.className = "selection-chemistry-summary-item selection-chemistry-summary-formula";
-  appendFormulaText(formula, summary.formula);
-  editorState.massDigits = clampMassDigits(editorState.massDigits);
-  const formulaWeight = formatSelectionSummaryMass(summary.formulaWeight, editorState.massDigits);
-  const exactMass = formatSelectionSummaryMass(summary.exactMass, editorState.massDigits);
-  selectionChemistrySummary.append(formula);
-  selectionChemistrySummary.append(makeMassPrecisionControl());
-  if (formulaWeight) {
-    selectionChemistrySummary.append(makeSelectionSummaryItem("Formula Weight", formulaWeight));
-  }
-  if (exactMass) {
-    selectionChemistrySummary.append(makeSelectionSummaryItem("Exact Mass", exactMass));
-  }
-}
-
-async function resetEditorEngine() {
-  await finishActiveTextEditor(false);
-  await state.editorEngine?.free?.();
-  state.editorEngine = engineHost.createEngineSession();
-  await state.editorEngine.ready?.();
-  syncTextSymbolPaletteFromEngine();
-  commandEngine.resetRevision();
-  state.runtimeViewBox = defaultEditorViewBox();
-  state.lastEditFocusPoint = null;
-  clearZoomHandoffs();
-  state.currentFileName = null;
-  state.currentFilePath = null;
-  state.savedDocumentJson = null;
-  state.savedRevision = null;
-  await syncEngineToolState();
-  await syncDocumentFromEngine();
-  renderSecondaryToolbar();
-  markCurrentDocumentSaved();
-}
-
-async function resetDocumentEngine() {
-  await state.documentEngine?.free?.();
-  state.documentEngine = engineHost.createEngineSession();
-  await state.documentEngine.ready?.();
-}
-
-function refreshCommandAvailability() {
-  const undoButton = document.querySelector('[data-command="undo"]');
-  const redoButton = document.querySelector('[data-command="redo"]');
-  const saveButtons = document.querySelectorAll('[data-command="save"]');
-  if (undoButton) {
-    undoButton.disabled = !state.editorEngine?.canUndo?.();
-  }
-  if (redoButton) {
-    redoButton.disabled = !state.editorEngine?.canRedo?.();
-  }
-  for (const saveButton of saveButtons) {
-    saveButton.disabled = !canSaveCurrentDocument();
-  }
-  void updateCanvasContextMenuAvailability();
-}
-
-function uniformValue(values) {
-  const normalized = values.filter((value) => value != null && value !== "");
-  if (!normalized.length) {
-    return null;
-  }
-  return normalized.every((value) => value === normalized[0]) ? normalized[0] : null;
-}
+editorStateRuntimeHost = createEditorStateRuntimeHost({
+  state,
+  editorState,
+  document,
+  selectionChemistrySummary,
+  isEditingRustDocument,
+  parseEngineJson,
+  renderDocumentPrimitiveChange,
+  currentEditorRenderList,
+  currentEditorInteractionRenderList,
+  syncEditorSelectionRenderListFromEngine,
+  currentDocumentBoundsContainsPoint,
+  documentBoundsHitPadScreenPx: DOCUMENT_BOUNDS_HIT_PAD_SCREEN_PX,
+  invalidateEditorEngineReadCache,
+  renderEditorOverlay,
+  syncSelectCursorForPoint: (...args) => syncSelectCursorForPoint(...args),
+  finishActiveTextEditor,
+  engineHost,
+  syncTextSymbolPaletteFromEngine,
+  commandEngine,
+  defaultEditorViewBox,
+  clearZoomHandoffs,
+  syncEngineToolState,
+  syncDocumentFromEngine,
+  renderSecondaryToolbar,
+  markCurrentDocumentSaved,
+  canSaveCurrentDocument,
+  updateCanvasContextMenuAvailability,
+});
+function renderSelectionOnlyUpdate(...args) { return editorStateRuntimeHost.renderSelectionOnlyUpdate(...args); }
+function selectClickTarget(...args) { return editorStateRuntimeHost.selectClickTarget(...args); }
+function formatSelectionSummaryMass(...args) { return editorStateRuntimeHost.formatSelectionSummaryMass(...args); }
+function clampMassDigits(...args) { return editorStateRuntimeHost.clampMassDigits(...args); }
+function setMassDigits(...args) { return editorStateRuntimeHost.setMassDigits(...args); }
+function massPrecisionIcon(...args) { return editorStateRuntimeHost.massPrecisionIcon(...args); }
+function makeMassPrecisionControl(...args) { return editorStateRuntimeHost.makeMassPrecisionControl(...args); }
+function makeSelectionSummaryItem(...args) { return editorStateRuntimeHost.makeSelectionSummaryItem(...args); }
+function appendFormulaText(...args) { return editorStateRuntimeHost.appendFormulaText(...args); }
+function syncSelectionChemistrySummary(...args) { return editorStateRuntimeHost.syncSelectionChemistrySummary(...args); }
+function resetEditorEngine(...args) { return editorStateRuntimeHost.resetEditorEngine(...args); }
+function resetDocumentEngine(...args) { return editorStateRuntimeHost.resetDocumentEngine(...args); }
+function refreshCommandAvailability(...args) { return editorStateRuntimeHost.refreshCommandAvailability(...args); }
+function uniformValue(...args) { return editorStateRuntimeHost.uniformValue(...args); }
 
 async function activateEditorTool(nextTool) {
   const activation = activateEditorToolNow(nextTool);
@@ -2600,6 +1659,43 @@ async function syncArrowAwareCursorForPoint(point) {
   setCanvasCursorStyle(overSelection ? "grab" : "default");
 }
 
+textEditActionHost = createTextEditActionHost({
+  getActiveTextEditor: () => activeTextEditor,
+  editorState,
+  syncTextEditorSize: (...args) => syncTextEditorSize(...args),
+  positionActiveTextEditor: (...args) => positionActiveTextEditor(...args),
+  getTextEditorController: () => textEditorController,
+  normalizeEditorSelectionOffsetsModel,
+  state,
+  focusActiveTextEditor: (...args) => focusActiveTextEditor(...args),
+  syncEngineToolState: (...args) => syncEngineToolState(...args),
+  renderSecondaryToolbar: (...args) => renderSecondaryToolbar(...args),
+  syncCanvasCursor: (...args) => syncCanvasCursor(...args),
+  setCanvasPointerShieldActive: (value) => { canvasPointerShieldActive = value; },
+  canvasPointerShield,
+  clearCanvasDragPreview,
+  syncViewerSvgPointerEventMode: (...args) => syncViewerSvgPointerEventMode(...args),
+  syncEditorPrimaryToolButtons: (...args) => syncEditorPrimaryToolButtons(...args),
+});
+function applyTextAlignment(...args) { return textEditActionHost.applyTextAlignment(...args); }
+function currentEditorSelectionOffsets(...args) { return textEditActionHost.currentEditorSelectionOffsets(...args); }
+function restoreEditorSelectionOffsets(...args) { return textEditActionHost.restoreEditorSelectionOffsets(...args); }
+function normalizeEditorSelectionOffsets(...args) { return textEditActionHost.normalizeEditorSelectionOffsets(...args); }
+function setActiveEditorSelection(...args) { return textEditActionHost.setActiveEditorSelection(...args); }
+function renderActiveTextEditorFromModel(...args) { return textEditActionHost.renderActiveTextEditorFromModel(...args); }
+function syncPendingEditorStyleWithSelection(...args) { return textEditActionHost.syncPendingEditorStyleWithSelection(...args); }
+function handleTextEditorBeforeInput(...args) { return textEditActionHost.handleTextEditorBeforeInput(...args); }
+function applyTextFormatCommand(...args) { return textEditActionHost.applyTextFormatCommand(...args); }
+function applyTextScript(...args) { return textEditActionHost.applyTextScript(...args); }
+function applyTextInlineStyle(...args) { return textEditActionHost.applyTextInlineStyle(...args); }
+function applyChemicalFormat(...args) { return textEditActionHost.applyChemicalFormat(...args); }
+function insertTextAtSelection(...args) { return textEditActionHost.insertTextAtSelection(...args); }
+function insertTextSymbol(...args) { return textEditActionHost.insertTextSymbol(...args); }
+function insertElementSymbol(...args) { return textEditActionHost.insertElementSymbol(...args); }
+function setElementPlacementActive(...args) { return textEditActionHost.setElementPlacementActive(...args); }
+function handleQuickPaletteModeChange(...args) { return textEditActionHost.handleQuickPaletteModeChange(...args); }
+function selectElementFromQuickPalette(...args) { return textEditActionHost.selectElementFromQuickPalette(...args); }
+
 const editorToolbarHost = createEditorToolbarHost({
   state,
   editorState,
@@ -2618,7 +1714,63 @@ function currentElementPalette(...args) { return editorToolbarHost.currentElemen
 function syncTextSymbolPaletteFromEngine(...args) { return editorToolbarHost.syncTextSymbolPaletteFromEngine(...args); }
 function ensureTextSymbolPalette(...args) { return editorToolbarHost.ensureTextSymbolPalette(...args); }
 function syncEditorPrimaryToolButtons(...args) { return editorToolbarHost.syncPrimaryToolButtons(...args); }
-const textEditorController = createTextEditorController({
+
+textEditorLayoutHost = createTextEditorLayoutHost({
+  getActiveTextEditor: () => activeTextEditor,
+  editorState,
+  routeEditorPointerEvents: (...args) => routeEditorPointerEvents(...args),
+  state,
+  svgPointFromEvent: (...args) => svgPointFromEvent(...args),
+  currentEditorRenderList,
+  renderEditorOverlay,
+  openTextEditorAt: (...args) => openTextEditorAt(...args),
+  createEditorSourceRunsFromSession,
+  normalizeEditorSourceRuns: (...args) => normalizeEditorSourceRuns(...args),
+  editorRootFontFamily,
+  cssColorToHex: (...args) => cssColorToHex(...args),
+  renderSecondaryToolbar,
+  worldToLayerPoint,
+  getSharedGlyphProfiles: () => sharedGlyphProfiles,
+  zoomScale,
+  textLength,
+  setActiveEditorSelection: (...args) => setActiveEditorSelection(...args),
+  renderActiveTextEditorFromModel: (...args) => renderActiveTextEditorFromModel(...args),
+  currentEditorSelectionOffsets: (...args) => currentEditorSelectionOffsets(...args),
+  document,
+});
+
+function commandResultForTextEditorTarget(...args) { return textEditorLayoutHost.commandResultForTextEditorTarget(...args); }
+function textEditPrimitiveNodeId(...args) { return textEditorLayoutHost.textEditPrimitiveNodeId(...args); }
+function textEditPrimitiveObjectId(...args) { return textEditorLayoutHost.textEditPrimitiveObjectId(...args); }
+function textEditHoverPrimitiveFromRenderList(...args) { return textEditorLayoutHost.textEditHoverPrimitiveFromRenderList(...args); }
+function activeTextEditorTargetMatchesHoverPrimitive(...args) { return textEditorLayoutHost.activeTextEditorTargetMatchesHoverPrimitive(...args); }
+function updateTextToolHoverFromPointerEvent(...args) { return textEditorLayoutHost.updateTextToolHoverFromPointerEvent(...args); }
+function openHoveredTextEditTargetFromPointerEvent(...args) { return textEditorLayoutHost.openHoveredTextEditTargetFromPointerEvent(...args); }
+function editorSourceRunsFromSession(...args) { return textEditorLayoutHost.editorSourceRunsFromSession(...args); }
+function editorRootBaseStyle(...args) { return textEditorLayoutHost.editorRootBaseStyle(...args); }
+function syncTextToolbarStateFromSession(...args) { return textEditorLayoutHost.syncTextToolbarStateFromSession(...args); }
+function positionActiveTextEditor(...args) { return textEditorLayoutHost.positionActiveTextEditor(...args); }
+function syncEditorVisualMetrics(...args) { return textEditorLayoutHost.syncEditorVisualMetrics(...args); }
+function syncTextEditorSize(...args) { return textEditorLayoutHost.syncTextEditorSize(...args); }
+function defaultTextEditorLineHeight(...args) { return textEditorLayoutHost.defaultTextEditorLineHeight(...args); }
+function editorDisplayScale(...args) { return textEditorLayoutHost.editorDisplayScale(...args); }
+function editorGlyphProfiles(...args) { return textEditorLayoutHost.editorGlyphProfiles(...args); }
+function editorGlyphLayoutConfig(...args) { return textEditorLayoutHost.editorGlyphLayoutConfig(...args); }
+function buildEditorTextLayout(...args) { return textEditorLayoutHost.buildEditorTextLayout(...args); }
+function placeCaretAtEnd(...args) { return textEditorLayoutHost.placeCaretAtEnd(...args); }
+function selectAllEditorText(...args) { return textEditorLayoutHost.selectAllEditorText(...args); }
+function captureEditorCaretOffset(...args) { return textEditorLayoutHost.captureEditorCaretOffset(...args); }
+function restoreEditorCaretOffset(...args) { return textEditorLayoutHost.restoreEditorCaretOffset(...args); }
+function updateCustomEditorChrome(...args) { return textEditorLayoutHost.updateCustomEditorChrome(...args); }
+function renderEditorSelectionSegments(...args) { return textEditorLayoutHost.renderEditorSelectionSegments(...args); }
+function positionHiddenEditorInput(...args) { return textEditorLayoutHost.positionHiddenEditorInput(...args); }
+function measureEditorCaretRect(...args) { return textEditorLayoutHost.measureEditorCaretRect(...args); }
+function buildEditorCaretLayout(...args) { return textEditorLayoutHost.buildEditorCaretLayout(...args); }
+function editorLineIndexForOffset(...args) { return textEditorLayoutHost.editorLineIndexForOffset(...args); }
+function nearestOffsetOnLine(...args) { return textEditorLayoutHost.nearestOffsetOnLine(...args); }
+function editorOffsetFromPointerEvent(...args) { return textEditorLayoutHost.editorOffsetFromPointerEvent(...args); }
+
+textEditorController = createTextEditorController({
   getActiveEditor: () => activeTextEditor,
   setActiveEditor: (editor) => {
     activeTextEditor = editor;
@@ -2732,395 +1884,6 @@ function openTextEditorSession(session) {
   }
 }
 
-function commandResultForTextEditorTarget(target) {
-  if (!target) {
-    return null;
-  }
-  if (target.kind === "text-object") {
-    const objectId = target.objectId || target.object_id || null;
-    return objectId ? { changed: true, targets: { objects: [objectId] } } : null;
-  }
-  if (target.kind === "endpoint-label") {
-    const nodeId = target.nodeId || target.node_id || null;
-    return nodeId ? { changed: true, targets: { nodes: [nodeId] } } : null;
-  }
-  return null;
-}
-
-function textEditPrimitiveNodeId(primitive) {
-  return primitive?.nodeId || primitive?.node_id || null;
-}
-
-function textEditPrimitiveObjectId(primitive) {
-  return primitive?.objectId || primitive?.object_id || null;
-}
-
-function textEditHoverPrimitiveFromRenderList(renderList) {
-  const hoverRoles = new Set(["hover-text-box", "hover-label-glyph", "hover-endpoint"]);
-  return (renderList || []).find((primitive) => hoverRoles.has(primitive?.role)) || null;
-}
-
-function activeTextEditorTargetMatchesHoverPrimitive(primitive) {
-  const target = activeTextEditor?.session?.target;
-  if (!target || !primitive) {
-    return false;
-  }
-  const role = primitive.role;
-  if (role === "hover-text-box" || role === "hover-label-glyph") {
-    const objectId = textEditPrimitiveObjectId(primitive);
-    if (target.kind === "text-object" && objectId) {
-      return objectId === (target.objectId || target.object_id || null);
-    }
-    const nodeId = textEditPrimitiveNodeId(primitive);
-    if (target.kind === "endpoint-label" && nodeId) {
-      return nodeId === (target.nodeId || target.node_id || null);
-    }
-    return false;
-  }
-  if (role === "hover-endpoint" && target.kind === "endpoint-label" && primitive.center) {
-    const dx = Number(primitive.center.x) - Number(target.x);
-    const dy = Number(primitive.center.y) - Number(target.y);
-    return Math.hypot(dx, dy) <= 0.001;
-  }
-  return false;
-}
-
-async function updateTextToolHoverFromPointerEvent(event) {
-  if (!routeEditorPointerEvents() || editorState.activeTool !== "text" || !state.editorEngine?.pointerMove) {
-    return null;
-  }
-  const point = svgPointFromEvent(event);
-  await state.editorEngine.pointerMove(point.x, point.y, event.altKey);
-  const renderList = currentEditorRenderList();
-  renderEditorOverlay(renderList);
-  positionActiveTextEditor();
-  return textEditHoverPrimitiveFromRenderList(renderList);
-}
-
-async function openHoveredTextEditTargetFromPointerEvent(event) {
-  const hoverPrimitive = await updateTextToolHoverFromPointerEvent(event);
-  if (!hoverPrimitive || activeTextEditorTargetMatchesHoverPrimitive(hoverPrimitive)) {
-    return false;
-  }
-  event.preventDefault();
-  event.stopPropagation();
-  await openTextEditorAt(svgPointFromEvent(event));
-  return true;
-}
-
-function editorSourceRunsFromSession(session, root) {
-  return createEditorSourceRunsFromSession(session, root, {
-    defaultFontFamily: editorState.textFontFamily,
-    defaultFontSize: editorState.textFontSize,
-    defaultTextColor: editorState.textColor,
-    normalizeRuns: normalizeEditorSourceRuns,
-    baseStyle: editorRootBaseStyle,
-  });
-}
-
-function editorRootBaseStyle(root) {
-  const baseFontSize = Number.parseFloat(root?.dataset?.baseFontSize || `${editorState.textFontSize}`)
-    || editorState.textFontSize;
-  return {
-    fontFamily: editorRootFontFamily(root),
-    fontSize: baseFontSize,
-    fill: cssColorToHex(root.style.color || editorState.textColor),
-    fontWeight: 400,
-    fontStyle: "normal",
-    underline: false,
-    outline: false,
-    shadow: false,
-    script: root.dataset.defaultChemical === "true" ? "chemical" : "normal",
-  };
-}
-
-function syncTextToolbarStateFromSession(session) {
-  const firstRun = Array.isArray(session.sourceRuns) ? session.sourceRuns[0] : null;
-  editorState.textFontFamily = firstRun?.fontFamily || session.fontFamily || editorState.textFontFamily;
-  const fontSize = Number(firstRun?.fontSize || session.fontSize);
-  if (Number.isFinite(fontSize) && fontSize > 0) {
-    editorState.textFontSize = fontSize;
-  }
-  editorState.textColor = firstRun?.fill || session.fill || editorState.textColor;
-  editorState.textAlign = session.align || "left";
-  editorState.textScript = firstRun?.script || (session.defaultChemical ? "chemical" : "normal");
-  editorState.textBold = Number(firstRun?.fontWeight || 400) >= 600;
-  editorState.textItalic = firstRun?.fontStyle === "italic";
-  editorState.textUnderline = Boolean(firstRun?.underline);
-  editorState.textOutline = Boolean(firstRun?.outline);
-  editorState.textShadow = Boolean(firstRun?.shadow);
-  renderSecondaryToolbar();
-}
-
-function positionActiveTextEditor() {
-  if (!activeTextEditor?.root) {
-    return;
-  }
-  const { target } = activeTextEditor.session;
-  const point = worldToLayerPoint({ x: target.x, y: target.y });
-  if (!point) {
-    return;
-  }
-  const root = activeTextEditor.root;
-  const align = root.style.textAlign || "left";
-  const anchorOffset = activeTextEditor.layout?.anchorOffset || { x: 0, y: 0 };
-  const scale = editorDisplayScale();
-  root.style.left = `${point.x}px`;
-  root.style.top = `${point.y}px`;
-  root.style.transform = `translate(${-anchorOffset.x * scale}px, ${-anchorOffset.y * scale}px) scale(${scale})`;
-  root.dataset.anchor = align === "right"
-    ? "end"
-    : align === "center"
-      ? "middle"
-      : "start";
-}
-
-function syncEditorVisualMetrics() {
-  if (!activeTextEditor?.root) {
-    return;
-  }
-  const root = activeTextEditor.root;
-  const baseFontSize = Number.parseFloat(root.dataset.baseFontSize || `${editorState.textFontSize}`)
-    || editorState.textFontSize;
-  const baseLineHeight = Number.parseFloat(root.dataset.baseLineHeight || `${defaultTextEditorLineHeight(baseFontSize)}`)
-    || defaultTextEditorLineHeight(baseFontSize);
-  root.style.fontSize = `${baseFontSize}px`;
-  root.style.lineHeight = `${baseLineHeight}px`;
-  root.style.minHeight = `${baseLineHeight}px`;
-}
-
-function syncTextEditorSize() {
-  if (!activeTextEditor?.root) {
-    return;
-  }
-  syncEditorVisualMetrics();
-  const root = activeTextEditor.root;
-  const display = activeTextEditor.display || root;
-  const layout = activeTextEditor.layout;
-  const width = Math.max(8, Math.ceil(Number(layout?.width || 0)));
-  const height = Math.max(
-    Number.parseFloat(root.style.minHeight || "15"),
-    Math.ceil(Number(layout?.height || 0) || 0),
-  );
-  root.dataset.renderWidth = String(width);
-  root.dataset.renderOffsetX = "0";
-  root.dataset.renderOffsetY = "0";
-  activeTextEditor.renderOffset = { x: 0, y: 0 };
-  root.style.width = `${width}px`;
-  root.style.height = `${height}px`;
-  display.style.width = `${width}px`;
-  display.style.height = `${height}px`;
-  const svg = display.querySelector?.('svg[data-editor-text-svg="true"]');
-  if (svg) {
-    svg.setAttribute("width", String(width));
-    svg.setAttribute("height", String(height));
-    svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-  }
-  updateCustomEditorChrome();
-  positionActiveTextEditor();
-}
-
-function defaultTextEditorLineHeight(fontSize) {
-  const size = Number(fontSize || editorState.textFontSize) || editorState.textFontSize;
-  return Math.max(size, size * 1.05);
-}
-
-function editorDisplayScale() {
-  return Math.max(0.01, zoomScale());
-}
-
-function editorGlyphProfiles() {
-  if (!sharedGlyphProfiles) {
-    throw new Error("Shared glyph profiles have not loaded yet");
-  }
-  return sharedGlyphProfiles;
-}
-
-function editorGlyphLayoutConfig() {
-  return editorGlyphProfiles().layout;
-}
-
-function buildEditorTextLayout() {
-  return activeTextEditor?.layout || null;
-}
-
-function placeCaretAtEnd(element) {
-  if (!activeTextEditor) {
-    return;
-  }
-  const offset = textLength(activeTextEditor.plainText);
-  setActiveEditorSelection({ anchor: offset, focus: offset }, false);
-  renderActiveTextEditorFromModel();
-}
-
-function selectAllEditorText(element) {
-  if (!activeTextEditor) {
-    return;
-  }
-  setActiveEditorSelection({ anchor: 0, focus: textLength(activeTextEditor.plainText) }, false);
-  renderActiveTextEditorFromModel();
-}
-
-function captureEditorCaretOffset(root) {
-  const selectionOffsets = currentEditorSelectionOffsets();
-  if (!selectionOffsets || !selectionOffsets.collapsed) {
-    return null;
-  }
-  return selectionOffsets.anchor;
-}
-
-function restoreEditorCaretOffset(root, offset) {
-  if (!Number.isFinite(offset)) {
-    placeCaretAtEnd(root);
-    return;
-  }
-  setActiveEditorSelection({ anchor: offset, focus: offset }, true);
-}
-
-function updateCustomEditorChrome() {
-  if (!activeTextEditor?.root || !activeTextEditor.display || !activeTextEditor.caret || !activeTextEditor.input) {
-    return;
-  }
-  const selection = currentEditorSelectionOffsets();
-  const caret = activeTextEditor.caret;
-  const selectionLayer = activeTextEditor.selectionLayer;
-  const input = activeTextEditor.input;
-  if (selectionLayer) {
-    selectionLayer.replaceChildren();
-  }
-  if (!selection || !selection.collapsed) {
-    caret.style.display = "none";
-    renderEditorSelectionSegments(selection, selectionLayer);
-    const focusRect = measureEditorCaretRect(selection?.focus ?? textLength(activeTextEditor.plainText));
-    positionHiddenEditorInput(focusRect);
-    return;
-  }
-  const caretRect = measureEditorCaretRect(selection.focus);
-  if (!caretRect) {
-    caret.style.display = "none";
-    positionHiddenEditorInput(null);
-    return;
-  }
-  caret.style.display = "block";
-  caret.style.left = `${caretRect.x}px`;
-  caret.style.top = `${caretRect.y}px`;
-  caret.style.height = `${caretRect.height}px`;
-  positionHiddenEditorInput(caretRect);
-}
-
-function renderEditorSelectionSegments(selection, selectionLayer) {
-  if (!selection || selection.collapsed || !selectionLayer) {
-    return;
-  }
-  const layout = buildEditorTextLayout();
-  if (!layout) {
-    return;
-  }
-  for (const segment of layout.selectionRects || []) {
-    const node = document.createElement("div");
-    node.className = "text-editor-selection-segment";
-    node.style.left = `${segment.x}px`;
-    node.style.top = `${segment.y}px`;
-    node.style.width = `${Math.max(1, segment.width)}px`;
-    node.style.height = `${Math.max(1, segment.height)}px`;
-    selectionLayer.appendChild(node);
-  }
-}
-
-function positionHiddenEditorInput(caretRect) {
-  if (!activeTextEditor?.input) {
-    return;
-  }
-  const input = activeTextEditor.input;
-  if (!caretRect) {
-    input.style.left = "0px";
-    input.style.top = "0px";
-    return;
-  }
-  input.style.left = `${caretRect.x}px`;
-  input.style.top = `${caretRect.y}px`;
-  input.style.height = `${Math.max(1, caretRect.height)}px`;
-}
-
-function measureEditorCaretRect(offset) {
-  const layout = buildEditorTextLayout();
-  if (!layout) {
-    return null;
-  }
-  const caret = layout.caretPositions?.find((entry) => entry.offset === offset)
-    || layout.caretPositions?.[Math.max(0, Math.min((layout.caretPositions?.length || 1) - 1, offset))];
-  if (!caret) {
-    return null;
-  }
-  return {
-    x: caret.x,
-    y: caret.y,
-    width: 0,
-    height: caret.height,
-  };
-}
-
-function buildEditorCaretLayout() {
-  const layout = buildEditorTextLayout();
-  if (!layout) {
-    return null;
-  }
-  return layout;
-}
-
-function editorLineIndexForOffset(offset) {
-  const layout = buildEditorCaretLayout();
-  if (!layout) {
-    return -1;
-  }
-  for (let index = 0; index < layout.lines.length; index += 1) {
-    const line = layout.lines[index];
-    if (line.caretOffsets?.some((entry) => entry.offset === offset)) {
-      return index;
-    }
-  }
-  return layout.lines.length - 1;
-}
-
-function nearestOffsetOnLine(line, targetX) {
-  if (!line?.caretOffsets?.length) {
-    return 0;
-  }
-  return line.caretOffsets.reduce((best, entry) => {
-    const bestDistance = Math.abs(best.x - targetX);
-    const nextDistance = Math.abs(entry.x - targetX);
-    if (nextDistance < bestDistance) {
-      return entry;
-    }
-    return best;
-  }).offset;
-}
-
-function editorOffsetFromPointerEvent(event) {
-  const layout = buildEditorCaretLayout();
-  if (!activeTextEditor?.display || !layout) {
-    return 0;
-  }
-  const rect = activeTextEditor.display.getBoundingClientRect();
-  const scale = editorDisplayScale();
-  const localX = (event.clientX - rect.left) / scale;
-  const localY = (event.clientY - rect.top) / scale;
-  let line = layout.lines[0];
-  let bestDistance = Number.POSITIVE_INFINITY;
-  for (const candidate of layout.lines) {
-    const centerY = candidate.y + candidate.height * 0.5;
-    const distance = Math.abs(centerY - localY);
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      line = candidate;
-    }
-  }
-  if (!line) {
-    return 0;
-  }
-  return nearestOffsetOnLine(line, localX);
-}
-
 function handleTextEditorPointerDown(event) {
   textEditorController.handleTextEditorPointerDown(event);
 }
@@ -3137,245 +1900,32 @@ function handleTextEditorKeyDown(event) {
   textEditorController.handleTextEditorKeyDown(event);
 }
 
-async function finishActiveTextEditor(commit = true) {
-  if (!activeTextEditor) {
-    return false;
-  }
-  const { root, session, input } = activeTextEditor;
-  const activeTextTargetResult = commandResultForTextEditorTarget(session?.target);
-  input?.blur?.();
-  const selection = window.getSelection?.();
-  selection?.removeAllRanges?.();
-  const nextSession = buildCommittedTextSession(session, root);
-  const bracketLabelObjectId = activeTextEditor?.bracketLabelObjectId || null;
-  textEditorLayer.replaceChildren();
-  activeTextEditor = null;
-  if (!commit) {
-    if (activeTextTargetResult) {
-      renderDocumentChange(activeTextTargetResult);
-    } else {
-      renderEditorOverlay(currentEditorRenderList());
-    }
-    return false;
-  }
-  const engineSessionJson = JSON.stringify(editorSessionToEngineSession(nextSession));
-  const result = await commandEngine.executeEngineCommand(
-    {
-      type: bracketLabelObjectId ? "apply-bracket-label-text" : "apply-text-edit",
-      payload: {
-        target: nextSession.target || null,
-        bracketObjectId: bracketLabelObjectId,
-      },
-    },
-    () => bracketLabelObjectId
-      ? state.editorEngine?.applyBracketLabelText?.(bracketLabelObjectId, engineSessionJson)
-      : state.editorEngine?.applyTextEdit?.(engineSessionJson),
-  );
-  renderDocumentChange(result);
-  return Boolean(result.changed);
-}
-
-function buildCommittedTextSession(session, root) {
-  const sourceRuns = normalizeEditorSourceRuns(
-    activeTextEditor?.sourceRuns || [],
-    editorRootBaseStyle(root),
-  );
-  const anchorOffset = activeTextEditor?.layout?.anchorOffset || { x: 0, y: 0 };
-  const baseFontSize = Number.parseFloat(root.dataset.baseFontSize || `${editorState.textFontSize}`)
-    || editorState.textFontSize;
-  const baseLineHeight = Number.parseFloat(root.dataset.baseLineHeight || `${defaultTextEditorLineHeight(baseFontSize)}`)
-    || defaultTextEditorLineHeight(baseFontSize);
-  return {
-    ...session,
-    text: runsPlainText(sourceRuns),
-    sourceRuns,
-    fontFamily: editorRootFontFamily(root),
-    fontSize: baseFontSize,
-    fill: cssColorToHex(root.style.color || editorState.textColor),
-    align: root.style.textAlign || editorState.textAlign,
-    lineHeight: baseLineHeight,
-    anchorOffset: session.target?.kind === "endpoint-label"
-      ? [anchorOffset.x, anchorOffset.y]
-      : undefined,
-    defaultChemical: root.dataset.defaultChemical === "true",
-  };
-}
-
-function normalizeEditorSourceRuns(runs, defaultStyle) {
-  return normalizeEditorSourceRunsModel(runs, defaultStyle, cssColorToHex);
-}
-
-function cssColorToHex(color) {
-  if (!color) {
-    return "#000000";
-  }
-  if (/^#[0-9a-fA-F]{6}$/.test(color)) {
-    return color.toLowerCase();
-  }
-  if (/^#[0-9a-fA-F]{3}$/.test(color)) {
-    return `#${color[1]}${color[1]}${color[2]}${color[2]}${color[3]}${color[3]}`.toLowerCase();
-  }
-  const match = color.match(/\d+/g);
-  if (!match || match.length < 3) {
-    return color;
-  }
-  return `#${match.slice(0, 3).map((value) => Number(value).toString(16).padStart(2, "0")).join("")}`;
-}
-
-async function applySelectionColor(color) {
-  const normalized = cssColorToHex(color);
-  editorState.selectionColor = normalized;
-  if (activeTextEditor) {
-    applyTextInlineStyle({ color: normalized });
-    return true;
-  }
-  if (!isEditingRustDocument() || !state.editorEngine?.applyColorToSelection) {
-    return false;
-  }
-  const result = await commandEngine.executeEngineCommand(
-    {
-      type: "apply-selection-color",
-      payload: { color: normalized },
-    },
-    () => state.editorEngine.applyColorToSelection(normalized),
-  );
-  const changed = !!result.changed;
-  if (!changed) {
-    return false;
-  }
-  renderDocumentChange(result);
-  return true;
-}
-
-function applyTextAlignment(align) {
-  if (!activeTextEditor?.root) {
-    return;
-  }
-  activeTextEditor.root.style.textAlign = align === "justify" ? "justify" : align;
-  syncTextEditorSize();
-  positionActiveTextEditor();
-}
-
-function currentEditorSelectionOffsets() {
-  return textEditorController.currentEditorSelectionOffsets();
-}
-
-function restoreEditorSelectionOffsets(selectionOffsets) {
-  setActiveEditorSelection(selectionOffsets, false);
-}
-
-function normalizeEditorSelectionOffsets(selectionOffsets) {
-  if (!activeTextEditor) {
-    return null;
-  }
-  return normalizeEditorSelectionOffsetsModel(activeTextEditor.plainText, selectionOffsets);
-}
-
-function setActiveEditorSelection(selectionOffsets, syncDom = true) {
-  return textEditorController.setActiveEditorSelection(selectionOffsets, syncDom);
-}
-
-function renderActiveTextEditorFromModel(selectionOffsets = null) {
-  textEditorController.renderActiveTextEditorFromModel(selectionOffsets);
-}
-
-function syncPendingEditorStyleWithSelection() {
-  textEditorController.syncPendingEditorStyleWithSelection();
-}
-
-function handleTextEditorBeforeInput(event, root) {
-  textEditorController.handleTextEditorBeforeInput(event, root);
-}
-
-function applyTextFormatCommand(command) {
-  textEditorController.applyTextFormatCommand(command);
-}
-
-function applyTextScript(script) {
-  textEditorController.applyTextScript(script);
-}
-
-function applyTextInlineStyle(styles) {
-  textEditorController.applyTextInlineStyle(styles);
-}
-
-function applyChemicalFormat() {
-  textEditorController.applyChemicalFormat();
-}
-
-function insertTextAtSelection(text) {
-  textEditorController.insertTextAtSelection(text);
-}
-
-function insertTextSymbol(character) {
-  const symbol = String(character || "");
-  if (!symbol) {
-    return;
-  }
-  if (activeTextEditor) {
-    textEditorController.insertTextAtSelection(symbol);
-    focusActiveTextEditor();
-    return;
-  }
-  state.pendingTextSymbol = symbol;
-  editorState.activeTool = "text";
-  editorState.secondaryToolbarTool = "text";
-  void syncEngineToolState();
-  renderSecondaryToolbar();
-  syncCanvasCursor();
-}
-
-function insertElementSymbol(symbol) {
-  const text = String(symbol || "");
-  if (!text) {
-    return;
-  }
-  if (activeTextEditor) {
-    textEditorController.insertTextAtSelection(text);
-    focusActiveTextEditor();
-  }
-}
-
-function setElementPlacementActive(active) {
-  const nextActive = Boolean(active) && !activeTextEditor;
-  canvasPointerShieldActive = false;
-  canvasPointerShield.classList.remove("is-active");
-  clearCanvasDragPreview();
-  syncViewerSvgPointerEventMode();
-  if (editorState.elementPlacementActive === nextActive) {
-    return;
-  }
-  editorState.elementPlacementActive = nextActive;
-  syncEditorPrimaryToolButtons();
-  syncCanvasCursor();
-}
-
-function handleQuickPaletteModeChange({ open, mode, keepElementPlacement = false } = {}) {
-  setElementPlacementActive((open && mode === "element") || keepElementPlacement);
-  void syncEngineToolState();
-}
-
-async function selectElementFromQuickPalette(symbol, atomicNumber = null) {
-  const normalizedSymbol = String(symbol || "");
-  if (!normalizedSymbol) {
-    return false;
-  }
-  const nextAtomicNumber = Number(atomicNumber) || editorState.elementAtomicNumber || 15;
-  const changed = editorState.elementSymbol !== normalizedSymbol
-    || editorState.elementAtomicNumber !== nextAtomicNumber;
-  editorState.elementSymbol = normalizedSymbol;
-  editorState.elementAtomicNumber = nextAtomicNumber;
-  if (activeTextEditor) {
-    insertElementSymbol(normalizedSymbol);
-  } else {
-    setElementPlacementActive(true);
-  }
-  await syncEngineToolState();
-  renderSecondaryToolbar();
-  syncCanvasCursor();
-  focusActiveTextEditor();
-  return changed;
-}
+textEditCommitHost = createTextEditCommitHost({
+  getActiveTextEditor: () => activeTextEditor,
+  setActiveTextEditor: (value) => { activeTextEditor = value; },
+  textEditorLayer,
+  commandResultForTextEditorTarget,
+  window,
+  renderDocumentChange,
+  renderEditorOverlay,
+  currentEditorRenderList,
+  editorSessionToEngineSession,
+  commandEngine,
+  state,
+  editorRootBaseStyle,
+  editorState,
+  defaultTextEditorLineHeight,
+  runsPlainText,
+  editorRootFontFamily,
+  normalizeEditorSourceRunsModel,
+  applyTextInlineStyle: (...args) => applyTextInlineStyle(...args),
+  isEditingRustDocument,
+});
+function finishActiveTextEditor(...args) { return textEditCommitHost.finishActiveTextEditor(...args); }
+function buildCommittedTextSession(...args) { return textEditCommitHost.buildCommittedTextSession(...args); }
+function normalizeEditorSourceRuns(...args) { return textEditCommitHost.normalizeEditorSourceRuns(...args); }
+function cssColorToHex(...args) { return textEditCommitHost.cssColorToHex(...args); }
+function applySelectionColor(...args) { return textEditCommitHost.applySelectionColor(...args); }
 
 const documentFlow = createDocumentFlow({
   state,
@@ -3473,151 +2023,70 @@ function openDroppedDocumentFilesInTabs(...args) { return browserDocumentTabs.op
 function chooseAndOpenDocumentTab(...args) { return browserDocumentTabs.chooseAndOpenDocumentTab(...args); }
 function confirmApplyDocumentStylePreset(...args) { return browserDocumentTabs.confirmApplyDocumentStylePreset(...args); }
 
-function imageMimeTypeFromName(name, declaredMimeType = "") {
-  const normalized = String(declaredMimeType || "").toLowerCase();
-  if (["image/png", "image/jpeg", "image/gif", "image/bmp"].includes(normalized)) {
-    return normalized;
-  }
-  const extension = String(name || "").split(".").pop()?.toLowerCase();
-  return {
-    png: "image/png",
-    jpg: "image/jpeg",
-    jpeg: "image/jpeg",
-    gif: "image/gif",
-    bmp: "image/bmp",
-  }[extension] || "";
-}
+const imageImportHost = createImageImportHost({
+  svgPointFromEvent: (...args) => svgPointFromEvent(...args),
+  activeViewBox: (...args) => activeViewBox(...args),
+  getPendingImageInsertWorldPoint: () => pendingImageInsertWorldPoint,
+  setPendingImageInsertWorldPoint: (value) => { pendingImageInsertWorldPoint = value; },
+  imageFileInput,
+  isEditingRustDocument,
+  commandEngine,
+  activateEditorTool,
+  renderDocumentChange,
+  desktopFileHost,
+});
+function openImageFilePickerAt(...args) { return imageImportHost.openImageFilePickerAt(...args); }
+function consumeImageInsertWorldPoint(...args) { return imageImportHost.consumeImageInsertWorldPoint(...args); }
+function insertDroppedImageFiles(...args) { return imageImportHost.insertDroppedImageFiles(...args); }
+function insertDroppedImagePaths(...args) { return imageImportHost.insertDroppedImagePaths(...args); }
 
-function blobDataBase64(blob) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(reader.error || new Error("Failed to read image."));
-    reader.onload = () => {
-      const value = String(reader.result || "");
-      const comma = value.indexOf(",");
-      if (comma < 0) {
-        reject(new Error("Image data is not a valid data URL."));
-        return;
-      }
-      resolve(value.slice(comma + 1));
-    };
-    reader.readAsDataURL(blob);
-  });
-}
-
-async function decodedImageDimensions(blob) {
-  if (typeof createImageBitmap === "function") {
-    const bitmap = await createImageBitmap(blob);
-    try {
-      return { width: bitmap.width, height: bitmap.height };
-    } finally {
-      bitmap.close?.();
-    }
-  }
-  const url = URL.createObjectURL(blob);
-  try {
-    const image = new Image();
-    image.src = url;
-    await image.decode();
-    return { width: image.naturalWidth, height: image.naturalHeight };
-  } finally {
-    URL.revokeObjectURL(url);
-  }
-}
-
-function droppedImageCenter(clientPoint, index) {
-  const base = clientPoint?.worldPoint
-    && Number.isFinite(clientPoint.worldPoint.x)
-    && Number.isFinite(clientPoint.worldPoint.y)
-    ? clientPoint.worldPoint
-    : clientPoint && Number.isFinite(clientPoint.clientX) && Number.isFinite(clientPoint.clientY)
-      ? svgPointFromEvent(clientPoint)
-      : (() => {
-        const box = activeViewBox();
-        return { x: box.x + box.width * 0.5, y: box.y + box.height * 0.5 };
-      })();
-  return { x: base.x + index * 12, y: base.y + index * 12 };
-}
-
-function openImageFilePickerAt(worldPoint = null) {
-  pendingImageInsertWorldPoint = worldPoint
-    && Number.isFinite(worldPoint.x)
-    && Number.isFinite(worldPoint.y)
-    ? { x: worldPoint.x, y: worldPoint.y }
-    : null;
-  imageFileInput.value = "";
-  imageFileInput.click();
-}
-
-function consumeImageInsertWorldPoint() {
-  const point = pendingImageInsertWorldPoint;
-  pendingImageInsertWorldPoint = null;
-  return point;
-}
-
-async function insertImagePayload(image, clientPoint, index = 0, source = "image-import") {
-  if (!isEditingRustDocument()) {
-    throw new Error("Images can only be inserted into an editable document.");
-  }
-  const mimeType = imageMimeTypeFromName(image.fileName, image.mimeType);
-  if (!mimeType) {
-    throw new Error(`Unsupported image type: ${image.fileName || "image"}`);
-  }
-  const blob = image.blob || await fetch(`data:${mimeType};base64,${image.dataBase64}`).then((response) => response.blob());
-  if (!blob.size || blob.size > 64 * 1024 * 1024) {
-    throw new Error(`${image.fileName || "Image"} exceeds the 64 MiB image limit.`);
-  }
-  const dimensions = await decodedImageDimensions(blob);
-  if (!dimensions?.width || !dimensions?.height) {
-    throw new Error(`${image.fileName || "Image"} cannot be decoded by the current renderer.`);
-  }
-  const dataBase64 = image.dataBase64 || await blobDataBase64(blob);
-  const naturalWidthPt = dimensions.width * 0.75;
-  const naturalHeightPt = dimensions.height * 0.75;
-  const maxInitialSidePt = 320;
-  const initialScale = Math.min(1, maxInitialSidePt / Math.max(naturalWidthPt, naturalHeightPt));
-  const center = droppedImageCenter(clientPoint, index);
-  const result = await commandEngine.executeCommand({
-    type: "add-image",
-    mimeType,
-    dataBase64,
-    pixelWidth: dimensions.width,
-    pixelHeight: dimensions.height,
-    position: center,
-    width: Math.max(1, naturalWidthPt * initialScale),
-    height: Math.max(1, naturalHeightPt * initialScale),
-    sourceName: image.fileName || null,
-  }, { source, label: "Insert image" });
-  if (!result?.changed) {
-    throw new Error(`Failed to insert ${image.fileName || "image"}.`);
-  }
-  activateEditorTool("select");
-  renderDocumentChange(result);
-  return result;
-}
-
-async function insertDroppedImageFiles(files, clientPoint, source = "file-drop") {
-  let index = 0;
-  for (const file of files) {
-    await insertImagePayload({
-      fileName: file.name,
-      mimeType: file.type,
-      blob: file,
-    }, clientPoint, index++, source);
-  }
-}
-
-async function insertDroppedImagePaths(paths, clientPoint, source = "file-drop") {
-  let index = 0;
-  for (const path of paths) {
-    const file = await desktopFileHost.readBinaryPath(path);
-    await insertImagePayload({
-      fileName: file.fileName,
-      mimeType: file.mimeType,
-      dataBase64: file.dataBase64,
-    }, clientPoint, index++, source);
-  }
-}
+editorRuntimeHost = createEditorRuntimeHost({
+  viewerSvg,
+  DOMPoint,
+  activeViewBox,
+  state,
+  BOND_STROKE,
+  isEditingRustDocument,
+  editorState,
+  getCanvasPointerShieldActive: () => canvasPointerShieldActive,
+  viewportScale,
+  commandEngine,
+  renderDocumentChange,
+  BRACKET_LABEL_OFFSET_X,
+  BRACKET_LABEL_OFFSET_Y,
+  sceneRenderer,
+  resetDocumentRenderState,
+  applyViewerViewport,
+  normalizeDisplayColor,
+  CHEMDRAW_PAGE_BACKGROUND,
+  makeSvgNode,
+  rebuildDocumentPrimitiveIndex,
+  syncViewerStats,
+  renderEditorOverlay,
+  positionActiveTextEditor,
+  ensureDocumentTab,
+  renderDocumentTabs,
+  desktopFileHost,
+  loadDetachedDocumentPayload,
+  takeBrowserPendingDocument,
+  loadBrowserPendingDocumentPayload,
+  openDocumentPath,
+  saveActiveDocumentTabState,
+  openDocumentPathInTab,
+  loadAndRender,
+});
+function svgPointFromEvent(...args) { return editorRuntimeHost.svgPointFromEvent(...args); }
+function editorBondStrokeWidth(...args) { return editorRuntimeHost.editorBondStrokeWidth(...args); }
+function routeEditorPointerEvents(...args) { return editorRuntimeHost.routeEditorPointerEvents(...args); }
+function activeToolUsesContainerPointerEvents(...args) { return editorRuntimeHost.activeToolUsesContainerPointerEvents(...args); }
+function syncViewerSvgPointerEventMode(...args) { return editorRuntimeHost.syncViewerSvgPointerEventMode(...args); }
+function screenPxToWorld(...args) { return editorRuntimeHost.screenPxToWorld(...args); }
+function applySelectionArrangeCommand(...args) { return editorRuntimeHost.applySelectionArrangeCommand(...args); }
+function applyArrowOptionsToSelection(...args) { return editorRuntimeHost.applyArrowOptionsToSelection(...args); }
+function bracketLabelAnchorPoint(...args) { return editorRuntimeHost.bracketLabelAnchorPoint(...args); }
+function handleViewerContainerPointerEvent(...args) { return editorRuntimeHost.handleViewerContainerPointerEvent(...args); }
+function renderDocument(...args) { return editorRuntimeHost.renderDocument(...args); }
+function loadInitialDocumentTabs(...args) { return editorRuntimeHost.loadInitialDocumentTabs(...args); }
 
 ensureTextSymbolPalette();
 
@@ -3696,152 +2165,6 @@ syncCanvasCursor();
 syncViewerSvgPointerEventMode();
 bindBrowserBeforeUnloadGuard();
 
-function svgPointFromEvent(event) {
-  const screenMatrix = viewerSvg.getScreenCTM?.();
-  if (screenMatrix) {
-    const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(screenMatrix.inverse());
-    return { x: point.x, y: point.y };
-  }
-  const rect = viewerSvg.getBoundingClientRect();
-  const viewBox = viewerSvg.viewBox.baseVal;
-  const activeBox = activeViewBox();
-  const width = viewBox?.width || rect.width || activeBox.width;
-  const height = viewBox?.height || rect.height || activeBox.height;
-  return {
-    x: (event.clientX - rect.left) * (width / Math.max(1, rect.width)) + (viewBox?.x || 0),
-    y: (event.clientY - rect.top) * (height / Math.max(1, rect.height)) + (viewBox?.y || 0),
-  };
-}
-
-function editorBondStrokeWidth() {
-  const style = state.currentDocument?.styles?.style_molecule_default;
-  return Number(style?.strokeWidth || style?.stroke_width || BOND_STROKE);
-}
-
-function routeEditorPointerEvents() {
-  return isEditingRustDocument()
-    && (editorState.elementPlacementActive
-      || editorState.activeTool === "bond"
-      || editorState.activeTool === "delete"
-      || editorState.activeTool === "arrow"
-      || editorState.activeTool === "bracket"
-      || editorState.activeTool === "symbol"
-      || editorState.activeTool === "element"
-      || editorState.activeTool === "select"
-      || editorState.activeTool === "text"
-      || editorState.activeTool === "shape"
-      || editorState.activeTool === "tlc-plate"
-      || editorState.activeTool === "orbital"
-      || editorState.activeTool === "templates"
-      || editorState.activeTool === "chain");
-}
-
-function activeToolUsesContainerPointerEvents() {
-  return editorState.activeTool === "bond"
-    || editorState.activeTool === "arrow"
-    || editorState.activeTool === "bracket"
-    || editorState.activeTool === "symbol"
-    || editorState.activeTool === "element"
-    || editorState.activeTool === "select"
-    || editorState.activeTool === "shape"
-    || editorState.activeTool === "tlc-plate"
-    || editorState.activeTool === "orbital"
-    || editorState.activeTool === "templates"
-    || editorState.activeTool === "chain";
-}
-
-function syncViewerSvgPointerEventMode() {
-  viewerSvg?.classList.toggle(
-    "is-pointer-capture-disabled",
-    canvasPointerShieldActive || activeToolUsesContainerPointerEvents(),
-  );
-}
-
-function screenPxToWorld(px) {
-  return px / Math.max(1, viewportScale());
-}
-
-async function applySelectionArrangeCommand(command) {
-  if (!isEditingRustDocument() || editorState.activeTool !== "select") {
-    return false;
-  }
-  const result = await commandEngine.executeEngineCommand(
-    {
-      type: "apply-selection-arrange",
-      payload: { command },
-    },
-    () => state.editorEngine.applySelectionArrangeCommand?.(command),
-  );
-  const changed = !!result.changed;
-  if (!changed) {
-    return false;
-  }
-  renderDocumentChange(result);
-  return true;
-}
-
-async function applyArrowOptionsToSelection() {
-  if (!isEditingRustDocument()) {
-    return false;
-  }
-  const result = await commandEngine.executeEngineCommand(
-    {
-      type: "apply-arrow-style",
-      payload: {
-        changes: {
-          variant: editorState.arrowType,
-          headSize: editorState.arrowHeadSize,
-          curve: editorState.arrowCurve,
-          headStyle: editorState.arrowHeadStyle,
-          tailStyle: editorState.arrowTailStyle,
-          noGo: editorState.arrowNoGo,
-          bold: editorState.arrowBold,
-        },
-      },
-    },
-    () => state.editorEngine.applyArrowEndpointOptionsToSelection
-      ? state.editorEngine.applyArrowEndpointOptionsToSelection(
-        editorState.arrowType,
-        editorState.arrowHeadSize,
-        editorState.arrowCurve,
-        editorState.arrowHeadStyle,
-        editorState.arrowTailStyle,
-        editorState.arrowNoGo,
-        editorState.arrowBold,
-      )
-      : state.editorEngine.applyArrowOptionsToSelection?.(
-        editorState.arrowType,
-        editorState.arrowHeadSize,
-        editorState.arrowHead,
-        editorState.arrowTail,
-        editorState.arrowBold,
-      ),
-  );
-  const changed = !!result.changed;
-  if (changed) {
-    renderDocumentChange(result);
-  }
-  return changed;
-}
-
-function bracketLabelAnchorPoint(start, end) {
-  const right = Math.max(start.x, end.x);
-  const bottom = Math.max(start.y, end.y);
-  return {
-    x: right + BRACKET_LABEL_OFFSET_X,
-    y: bottom + BRACKET_LABEL_OFFSET_Y,
-  };
-}
-
-function handleViewerContainerPointerEvent(handler) {
-  return (event) => {
-    if (event.target === viewerSvg || viewerSvg?.contains?.(event.target)) {
-      return;
-    }
-    void handler(event);
-  };
-}
-
 viewerSvg?.addEventListener("pointermove", editorPointerController.handleEditorPointerMove);
 viewerSvg?.addEventListener("pointerdown", editorPointerController.handleEditorPointerDown);
 viewerSvg?.addEventListener("pointerup", editorPointerController.handleEditorPointerUp);
@@ -3897,81 +2220,7 @@ window.addEventListener("resize", () => {
   applyViewerViewport({ centerWorld });
 });
 
-function renderDocument() {
-  const documentData = state.currentDocument;
-  if (!documentData) {
-    return;
-  }
-  if (window.__chemsemaDebug?.renderStats) {
-    window.__chemsemaDebug.renderStats.documentRenderCount += 1;
-  }
-
-  const page = documentData.document.page;
-  const viewBox = activeViewBox();
-  viewerSvg.innerHTML = "";
-  resetDocumentRenderState();
-  applyViewerViewport();
-  const pageBackground = normalizeDisplayColor(page.background, CHEMDRAW_PAGE_BACKGROUND);
-  viewerSvg.style.setProperty("--chemsema-page-bg", pageBackground);
-  viewerSvg.appendChild(makeSvgNode("rect", {
-    x: viewBox.x,
-    y: viewBox.y,
-    width: viewBox.width,
-    height: viewBox.height,
-    fill: pageBackground,
-    "data-layer": "page-background",
-  }));
-  const documentLayer = makeSvgNode("g", {
-    "data-layer": "document-content",
-    "pointer-events": "none",
-  });
-  viewerSvg.appendChild(documentLayer);
-
-  if (!sceneRenderer.renderCorePrimitiveList(documentLayer, documentData)) {
-    const visibleObjects = sceneRenderer.buildRenderList(documentData);
-
-    for (const object of visibleObjects) {
-      sceneRenderer.renderSceneObject(documentLayer, object, documentData);
-    }
-  }
-  rebuildDocumentPrimitiveIndex(documentLayer);
-
-  syncViewerStats();
-  renderEditorOverlay();
-  positionActiveTextEditor();
-}
-
 watchDisplayMetrics();
-
-async function loadInitialDocumentTabs() {
-  ensureDocumentTab();
-  renderDocumentTabs();
-  const detachedDocument = await desktopFileHost?.takeDetachedDocument?.();
-  if (detachedDocument) {
-    await loadDetachedDocumentPayload(detachedDocument);
-    return;
-  }
-  const browserPendingDocument = await takeBrowserPendingDocument();
-  if (browserPendingDocument) {
-    await loadBrowserPendingDocumentPayload(browserPendingDocument);
-    return;
-  }
-  const pendingStartupPaths = await desktopFileHost?.takeStartupOpenPaths?.();
-  const startupPaths = Array.isArray(pendingStartupPaths) ? pendingStartupPaths : [];
-  const [firstPath, ...extraPaths] = startupPaths;
-  if (firstPath) {
-    await openDocumentPath(firstPath);
-    saveActiveDocumentTabState();
-    renderDocumentTabs();
-    for (const path of extraPaths) {
-      await openDocumentPathInTab(path);
-    }
-    return;
-  }
-  await loadAndRender();
-  saveActiveDocumentTabState();
-  renderDocumentTabs();
-}
 
 try {
   await appRuntimeReady;
