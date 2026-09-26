@@ -831,29 +831,33 @@ fn isotope_mass_is_encoded_by_authored_label(node: &Node) -> bool {
         return false;
     };
     if node.atomic_number == 1
-        && matches!((isotope_mass, authored_text.as_str()), (2, "D") | (3, "T"))
+        && matches!(
+            (isotope_mass, authored_element_prefix(&authored_text)),
+            (2, Some("D")) | (3, Some("T"))
+        )
     {
         return true;
     }
     let Some(after_mass) = authored_text.strip_prefix(&isotope_mass.to_string()) else {
         return false;
     };
-    let mut element = String::new();
-    let mut characters = after_mass.chars();
-    let Some(first) = characters
-        .next()
-        .filter(|character| character.is_ascii_uppercase())
-    else {
-        return false;
-    };
-    element.push(first);
-    if let Some(second) = characters
-        .next()
-        .filter(|character| character.is_ascii_lowercase())
-    {
-        element.push(second);
+    authored_element_prefix(after_mass) == Some(node.element.trim())
+}
+
+// Isotope notation belongs to the leading element token, independently of
+// following counts, charges or electron marks. Token boundaries distinguish
+// hydrogen aliases D/T from element names such as Dy, Ti and Th.
+fn authored_element_prefix(text: &str) -> Option<&str> {
+    let bytes = text.as_bytes();
+    if !bytes.first().is_some_and(u8::is_ascii_uppercase) {
+        return None;
     }
-    element == node.element.trim()
+    let length = if bytes.get(1).is_some_and(u8::is_ascii_lowercase) {
+        2
+    } else {
+        1
+    };
+    Some(&text[..length])
 }
 
 fn render_fragment_atom_properties(
@@ -962,11 +966,18 @@ fn render_fragment_atom_properties(
         crate::node_attached_electron_symbols(node)
             .iter()
             .any(|symbol| {
+                // A representing symbol is still drawn when its contribution
+                // to an already-authored radical count is zero.
                 symbol
-                    .get("radicalDelta")
-                    .and_then(JsonValue::as_i64)
-                    .unwrap_or(0)
-                    > 0
+                    .get("kind")
+                    .and_then(JsonValue::as_str)
+                    .and_then(crate::electron_symbol_chemistry)
+                    .is_some_and(|chemistry| chemistry.radical_delta > 0)
+                    || symbol
+                        .get("radicalDelta")
+                        .and_then(JsonValue::as_i64)
+                        .unwrap_or(0)
+                        > 0
             });
     let automatic_label_encodes_radical = node.label.as_ref().is_some_and(|label| {
         label

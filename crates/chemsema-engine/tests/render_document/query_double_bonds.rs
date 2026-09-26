@@ -1769,7 +1769,7 @@ fn parse_cdxml_renders_acs_dashed_bond_patterns_like_chemdraw() {
 
     assert_eq!(
         document_bond_polygon_count_for_object(&primitives, "obj_mol_001"),
-        8
+        6
     );
     assert_eq!(
         document_knockout_count_for_object(&primitives, "obj_mol_001"),
@@ -1777,7 +1777,7 @@ fn parse_cdxml_renders_acs_dashed_bond_patterns_like_chemdraw() {
     );
     assert_eq!(
         document_bond_polygon_count_for_object(&primitives, "obj_mol_002"),
-        9
+        7
     );
     assert_eq!(
         document_knockout_count_for_object(&primitives, "obj_mol_002"),
@@ -1785,7 +1785,7 @@ fn parse_cdxml_renders_acs_dashed_bond_patterns_like_chemdraw() {
     );
     assert_eq!(
         document_bond_polygon_count_for_object(&primitives, "obj_mol_003"),
-        16
+        12
     );
     assert_eq!(
         document_knockout_count_for_object(&primitives, "obj_mol_003"),
@@ -1793,26 +1793,29 @@ fn parse_cdxml_renders_acs_dashed_bond_patterns_like_chemdraw() {
     );
 
     let single_segments = document_bond_axis_intervals_for_object(&primitives, "obj_mol_001");
-    assert_eq!(single_segments.len(), 8, "{single_segments:?}");
+    assert_eq!(single_segments.len(), 6, "{single_segments:?}");
     assert!(
-        (single_segments[0].0 - 0.0).abs() < 0.01 && (single_segments[0].1 - 2.4).abs() < 0.01,
+        (single_segments[0].0 - 0.0).abs() < 0.01
+            && (single_segments[0].1 - 36.0 / 11.0).abs() < 0.01,
         "{single_segments:?}"
     );
     assert!(
-        (single_segments[1].0 - 4.8).abs() < 0.01 && (single_segments[1].1 - 7.2).abs() < 0.01,
+        (single_segments[1].0 - 72.0 / 11.0).abs() < 0.01
+            && (single_segments[1].1 - 108.0 / 11.0).abs() < 0.01,
         "{single_segments:?}"
     );
     assert!(
-        (single_segments[7].0 - 33.6).abs() < 0.01 && (single_segments[7].1 - 36.0).abs() < 0.01,
+        (single_segments[5].0 - 360.0 / 11.0).abs() < 0.01
+            && (single_segments[5].1 - 36.0).abs() < 0.01,
         "{single_segments:?}"
     );
     let solid_dash_lengths = document_bond_axis_lengths_for_object(&primitives, "obj_mol_002");
     assert!(
         solid_dash_lengths
             .iter()
-            .filter(|length| (**length - 2.4).abs() < 0.01)
+            .filter(|length| (**length - 36.0 / 11.0).abs() < 0.01)
             .count()
-            == 8
+            == 6
             && solid_dash_lengths.iter().any(|length| *length > 35.0),
         "{solid_dash_lengths:?}"
     );
@@ -1820,7 +1823,7 @@ fn parse_cdxml_renders_acs_dashed_bond_patterns_like_chemdraw() {
     assert!(
         double_dash_lengths
             .iter()
-            .all(|length| (*length - 2.4).abs() < 0.01),
+            .all(|length| (*length - 36.0 / 11.0).abs() < 0.01),
         "{double_dash_lengths:?}"
     );
 }

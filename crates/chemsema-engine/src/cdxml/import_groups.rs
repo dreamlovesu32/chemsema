@@ -296,8 +296,19 @@ pub(super) fn object_matches_cdxml_node(
 ) -> bool {
     match node.name.as_str() {
         "fragment" => {
-            source_id.is_some()
-                && object.meta.get("fragmentId").and_then(Value::as_str) == source_id
+            (source_id.is_some()
+                && object.meta.get("fragmentId").and_then(Value::as_str) == source_id)
+                || node
+                    .children
+                    .iter()
+                    .filter(|child| !child.is("n"))
+                    .any(|child| {
+                        // A fragment can also contain independently drawn captions and
+                        // graphics. They belong to its surrounding group even when the
+                        // fragment has no atoms and therefore no molecule scene object.
+                        // Do not descend into atom-owned nickname definitions.
+                        object_matches_cdxml_node(object, child, child.attr("id"))
+                    })
         }
         "graphic" | "arrow" => {
             source_id.is_some()
@@ -323,6 +334,33 @@ pub(super) fn object_matches_cdxml_node(
         "spectrum" => {
             source_id.is_some()
                 && object.meta.get("spectrumId").and_then(Value::as_str) == source_id
+        }
+        "embeddedobject" => {
+            source_id.is_some()
+                && object
+                    .meta
+                    .pointer("/import/cdxml/id")
+                    .and_then(Value::as_str)
+                    == source_id
+        }
+        "bioshape" | "table" | "tlcplate" | "gepplate" | "plasmidmap" => {
+            let key = match node.name.as_str() {
+                "bioshape" => "bioShapeId",
+                "table" => "tableId",
+                "tlcplate" => "tlcPlateId",
+                "gepplate" => "gelPlateId",
+                "plasmidmap" => "plasmidMapId",
+                _ => unreachable!(),
+            };
+            source_id.is_some() && object.meta.get(key).and_then(Value::as_str) == source_id
+        }
+        "geometry" | "constraint" => {
+            source_id.is_some()
+                && object
+                    .meta
+                    .pointer("/import/cdxml/sourceId")
+                    .and_then(Value::as_str)
+                    == source_id
         }
         _ => false,
     }

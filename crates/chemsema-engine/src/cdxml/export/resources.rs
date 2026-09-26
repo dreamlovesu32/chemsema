@@ -100,7 +100,7 @@ pub(super) fn collect_document_colors(document: &ChemSemaDocument, colors: &mut 
             colors.ensure(color);
         }
     }
-    for object in &document.objects {
+    for object in document.scene_objects() {
         if let Some(style) = object_style(document, object) {
             for key in ["stroke", "fill", "color"] {
                 if let Some(color) = style_nullable_string_value(style, key) {
@@ -185,7 +185,7 @@ pub(super) fn collect_document_fonts(document: &ChemSemaDocument, fonts: &mut Cd
             fonts.ensure(&font_family);
         }
     }
-    for object in &document.objects {
+    for object in document.scene_objects() {
         if object.object_type == "text" {
             if let Some(runs) = object
                 .payload

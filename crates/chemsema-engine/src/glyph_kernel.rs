@@ -1137,7 +1137,12 @@ fn lookup_glyph_outline(
         manifest
             .families
             .get(resolved_family)
-            .and_then(|family| family.faces.get(glyph_face_key(font_weight, italic)))
+            .and_then(|family| {
+                family
+                    .faces
+                    .get(glyph_face_key(font_weight, italic))
+                    .or_else(|| family.faces.get("regular"))
+            })
             .and_then(|face| face.glyphs.get(key))
             .or_else(|| {
                 // This is the same explicit glyph-substitution chain used by the
@@ -2379,6 +2384,28 @@ mod tests {
             bounds[3] = bounds[3].max(next[3]);
         }
         bounds
+    }
+
+    #[test]
+    fn symbol_font_legacy_characters_keep_their_own_metrics() {
+        for character in ['D', 'a', '´', '¹', '±'] {
+            let private = char::from_u32(0xF000 + character as u32).unwrap();
+            let regular = lookup_glyph_outline("Symbol", 400, false, character).unwrap();
+            let encoded = lookup_glyph_outline("Symbol", 400, false, private).unwrap();
+            assert_eq!(regular.bounds_em, encoded.bounds_em);
+            assert_eq!(regular.advance_em, encoded.advance_em);
+            let advance = lookup_nominal_text_advance_em("Symbol", 400, false, character).unwrap();
+            assert!((advance - regular.advance_em).abs() < 1e-7);
+            // Symbol has one face. Synthesized emphasis must not switch its
+            // layout metrics to an unrelated Unicode font.
+            for (weight, italic) in [(700, false), (400, true), (700, true)] {
+                let emphasized = lookup_glyph_outline("Symbol", weight, italic, character).unwrap();
+                assert_eq!(emphasized.advance_em, regular.advance_em);
+            }
+        }
+        let symbol = lookup_nominal_text_advance_em("Symbol", 400, false, '¹').unwrap();
+        let arial = lookup_nominal_text_advance_em("Arial", 400, false, '¹').unwrap();
+        assert!((symbol - arial).abs() > 0.1);
     }
 
     #[test]

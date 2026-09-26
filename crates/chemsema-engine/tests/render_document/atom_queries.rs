@@ -242,6 +242,43 @@ fn authored_isotope_prefixes_replace_generated_mass_annotations() {
 }
 
 #[test]
+fn isotope_aliases_with_adornments_do_not_repeat_mass_annotations() {
+    for (mass, alias) in [(2, "D"), (3, "T")] {
+        for suffix in ["", "•", "+", "-", "2", "•+", "2-"] {
+            let cdxml = format!(
+                r#"<CDXML><page id="1"><fragment id="2"><n id="3" p="20 20" Element="1" Isotope="{mass}" NumHydrogens="0"><t p="20 24"><s font="3" size="10">{alias}</s><s font="3" size="10" face="64">{suffix}</s></t></n></fragment></page></CDXML>"#
+            );
+            let document = parse_cdxml_document(&cdxml, None).unwrap();
+            let generated = render_document(&document).into_iter().any(|p| {
+                matches!(
+                    p, RenderPrimitive::Text { text, .. } if text == mass.to_string()
+                )
+            });
+            assert!(!generated, "{alias}{suffix} already encodes mass {mass}");
+        }
+    }
+    for (mass, text) in [
+        (2, "Dy"),
+        (3, "Th"),
+        (3, "Ti"),
+        (2, "T•"),
+        (3, "D+"),
+        (3, "HT"),
+    ] {
+        let cdxml = format!(
+            r#"<CDXML><page id="1"><fragment id="2"><n id="3" p="20 20" Element="1" Isotope="{mass}" NumHydrogens="0"><t p="20 24"><s font="3" size="10">{text}</s></t></n></fragment></page></CDXML>"#
+        );
+        let document = parse_cdxml_document(&cdxml, None).unwrap();
+        assert!(
+            render_document(&document).into_iter().any(|p| matches!(
+                p, RenderPrimitive::Text { text, .. } if text == mass.to_string()
+            )),
+            "{text} does not encode hydrogen mass {mass}"
+        );
+    }
+}
+
+#[test]
 fn atom_query_uses_symbol_star_size_and_connection_opposite_placement() {
     for (neighbor, expected_side) in [
         ([110.0, 80.0], "left"),

@@ -14,7 +14,7 @@ pub(super) fn encode_cdx_string(node: &crate::cdxml::xml::XmlNode) -> Vec<u8> {
     let mut text = String::new();
     let mut starts = Vec::new();
     for run in &runs {
-        starts.push(text.chars().count() as u16);
+        starts.push(text.len() as u16);
         text.push_str(&run.full_text());
     }
     if runs.is_empty() {

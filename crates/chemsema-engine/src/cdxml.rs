@@ -46,7 +46,7 @@ use self::import_objects::{
     append_orbital_shape_objects, append_plasmid_map_objects, append_shape_objects,
     append_spectrum_objects, append_synthesized_enhanced_stereo_text_objects,
     append_table_shape_objects, append_text_objects, append_tlc_plate_shape_objects,
-    associate_table_cell_contents, cdxml_bracket_side_anchor_x,
+    associate_table_cell_contents, cdxml_bracket_side_anchor_x, cdxml_symbol_kind,
     import_reactions_and_stoichiometry_grids, parse_cdxml_curve_points, validate_bio_shape_nodes,
 };
 pub(crate) use self::import_scaling::normalize_cdxml_document_for_editing;
@@ -60,7 +60,7 @@ pub use self::template_library::{
     template_library_palette_json, TemplateGridLayout,
 };
 use self::text_runs::{
-    label_display_runs, label_display_runs_from_source_runs, label_source_run, CdxmlFontRunState,
+    label_display_runs_from_source_runs, label_source_run, CdxmlFontRunState,
 };
 use self::xml::descendants;
 pub(crate) use self::xml::parse_xml_tree;
@@ -369,22 +369,30 @@ pub fn parse_cdxml_document(cdxml: &str, title: Option<&str>) -> Result<ChemSema
     let defaults = cdxml_defaults(&root);
     let colors = CdxmlColorTable::from_cdxml(&root);
     let fonts = cdxml_font_table(&root);
-    let represented_atom_attributes = descendants(&root)
-        .into_iter()
-        .filter(|node| node.is("represent"))
-        .filter_map(|node| {
-            let object_id = node.attr("object")?;
-            let attribute = node.attr("attribute")?.trim().to_ascii_lowercase();
-            matches!(attribute.as_str(), "charge" | "radical")
-                .then(|| (object_id.to_string(), attribute))
-        })
-        .fold(
-            BTreeMap::<String, BTreeSet<String>>::new(),
-            |mut by_node, (node_id, attribute)| {
-                by_node.entry(node_id).or_default().insert(attribute);
-                by_node
-            },
-        );
+    let mut represented_atom_attributes = BTreeMap::<String, BTreeSet<String>>::new();
+    for owner in descendants(&root) {
+        let chemistry = owner.attr("SymbolType")
+            .and_then(cdxml_symbol_kind)
+            .and_then(crate::electron_symbol_chemistry);
+        for reference in owner.direct_children("represent") {
+            let (Some(object_id), Some(attribute)) = (reference.attr("object"), reference.attr("attribute")) else {
+                continue;
+            };
+            let attribute = attribute.trim().to_ascii_lowercase();
+            if !matches!(attribute.as_str(), "charge" | "radical") { continue; }
+            let represented = represented_atom_attributes.entry(object_id.to_string()).or_default();
+            // A compound electron symbol can visually represent both fields
+            // through one CDXML link. Use the shared symbol chemistry before
+            // deciding whether an additional automatic atom label is needed.
+            for candidate in ["charge", "radical"] {
+                if attribute == candidate
+                    || chemistry.is_some_and(|value| value.represents_attribute(&attribute, candidate))
+                {
+                    represented.insert(candidate.to_string());
+                }
+            }
+        }
+    }
     let mut styles = default_cdxml_styles(defaults);
     let mut resources = BTreeMap::new();
     let mut objects = Vec::new();
@@ -1613,5 +1621,82 @@ mod interchange_tests {
         assert_eq!(constraint.display.text_override.as_deref(), Some("custom"));
         let saved = document_to_cdxml(&document);
         assert!(saved.contains(">custom</s>"), "{saved}");
+    }
+
+    #[test]
+    fn caption_chemical_counts_keep_context_across_styled_runs() {
+        // Locally checked against ChemDraw: closing groups and an element
+        // before a chemical run trigger a count; whitespace and digits do not.
+        for (prefix, expected) in [
+            ("N", "subscript"),
+            ("(OH)", "subscript"),
+            ("[Fe(CN)6]", "subscript"),
+            ("{CH2}", "subscript"),
+            ("word ", "normal"),
+            ("123", "normal"),
+        ] {
+            let source = format!(r#"<CDXML><fonttable><font id="3" name="Arial"/></fonttable><page id="1"><t id="2" p="20 20"><s font="3" size="10" face="0">{prefix}</s><s size="10" face="97">2</s><s size="10" face="0">X</s></t></page></CDXML>"#);
+            let document = parse_cdxml_document(&source, None).expect("caption parses");
+            let caption = document.scene_objects().into_iter()
+                .find(|object| object.kind() == crate::SceneObjectKind::Text)
+                .expect("caption");
+            let runs: Vec<LabelRun> = serde_json::from_value(caption.payload.extra["runs"].clone()).unwrap();
+            assert_eq!(runs.len(), 3, "{prefix}");
+            assert_eq!(runs[0].text, prefix);
+            assert_eq!(runs[0].script.as_deref(), Some("normal"));
+            assert_eq!(runs[1].text, "2");
+            assert_eq!(runs[1].script.as_deref(), Some(expected), "{prefix}");
+            assert_eq!(runs[1].font_weight, Some(700));
+            assert_eq!(runs[1].font_family.as_deref(), Some("Arial"));
+            assert_eq!(runs[2].text, "X");
+            assert_eq!(runs[2].script.as_deref(), Some("normal"));
+        }
+    }
+
+    #[test]
+    fn compound_electron_symbols_do_not_duplicate_an_automatic_carbon_label() {
+        for (symbol, charge) in [("RadicalCation", 1), ("RadicalAnion", -1)] {
+            for attribute in ["Charge", "Radical"] {
+                let source = format!(r#"<CDXML><page id="1"><fragment id="2"><n id="3" p="20 20" Charge="{charge}" Radical="Doublet"/><n id="4" p="40 20"/><b id="5" B="3" E="4"/></fragment><graphic id="6" GraphicType="Symbol" SymbolType="{symbol}" BoundingBox="22 20 26 20"><represent object="3" attribute="{attribute}"/></graphic></page></CDXML>"#);
+                let document = parse_cdxml_document(&source, None).unwrap();
+                let node = document.resources.values()
+                    .filter_map(|resource| resource.data.as_fragment())
+                    .flat_map(|fragment| &fragment.nodes)
+                    .find(|node| node.id == "3").unwrap();
+                assert!(node.label.is_none(), "{symbol}/{attribute}: {:?}", node.label);
+                assert_eq!(node.charge, charge);
+                assert_eq!(crate::node_radical_count(node), 1);
+            }
+        }
+        // A charge-only symbol does not represent the separate radical.
+        let source = r#"<CDXML><page id="1"><fragment id="2"><n id="3" p="20 20" Charge="1" Radical="Doublet"/><n id="4" p="40 20"/><b id="5" B="3" E="4"/></fragment><graphic id="6" GraphicType="Symbol" SymbolType="Plus" BoundingBox="22 20 26 20"><represent object="3" attribute="Charge"/></graphic></page></CDXML>"#;
+        let document = parse_cdxml_document(source, None).unwrap();
+        let node = document.resources.values()
+            .filter_map(|resource| resource.data.as_fragment())
+            .flat_map(|fragment| &fragment.nodes)
+            .find(|node| node.id == "3").unwrap();
+        assert!(node.label.as_ref().is_some_and(|label| label.text.contains('•')));
+    }
+
+    #[test]
+    fn independent_captions_inside_fragments_survive_without_duplicating_atom_labels() {
+        let source = r#"<CDXML><page id="1"><fragment id="2"><n id="3" p="20 20" Element="8"><t id="4" p="16 24"><s>O</s></t></n><n id="5" p="40 20"/><b id="6" B="3" E="5"/><t id="7" p="50 24"><s>+</s></t><group id="8"><t id="9" p="60 24"><s>caption</s></t></group></fragment></page></CDXML>"#;
+        let document = parse_cdxml_document(source, None).unwrap();
+        let texts = document.scene_objects().into_iter()
+            .filter(|object| object.kind() == crate::SceneObjectKind::Text)
+            .map(|object| object.payload.extra["text"].as_str().unwrap().to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(texts, ["+", "caption"]);
+        let exported = document_to_cdxml(&document);
+        let tree = parse_xml_tree(&exported).unwrap();
+        for expected in ["O", "+", "caption"] {
+            assert_eq!(descendants(&tree).into_iter()
+                .filter(|node| node.is("t") && node.direct_children("s")
+                    .map(|run| run.full_text()).collect::<String>() == expected).count(), 1,
+                "{expected}: {exported}");
+        }
+        let reopened = parse_cdxml_document(&exported, None).unwrap();
+        assert_eq!(reopened.scene_objects().into_iter()
+            .filter(|object| object.kind() == crate::SceneObjectKind::Text).count(), 2);
     }
 }

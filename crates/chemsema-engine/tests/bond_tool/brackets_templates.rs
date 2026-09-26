@@ -516,6 +516,37 @@ fn click_on_blank_canvas_creates_up_right_single_bond() {
 }
 
 #[test]
+fn object_settings_accept_and_display_zero_margin() {
+    let mut engine = Engine::new();
+    engine
+        .load_cdxml_document(
+            r#"<CDXML MarginWidth="1.6"><page id="1"><fragment id="2">
+        <n id="3" p="10 10"/><n id="4" p="40 10"/><b id="5" B="3" E="4"/>
+        </fragment></page></CDXML>"#,
+        )
+        .unwrap();
+    engine.select_at_point(Point::new(25.0, 10.0), false);
+    assert!(engine
+        .apply_object_settings_dialog_json(r#"{"unit":"pt","values":{"marginWidth":0}}"#)
+        .unwrap());
+    let dialog: serde_json::Value =
+        serde_json::from_str(&engine.object_settings_dialog_json()).unwrap();
+    let margin = dialog["fields"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|f| f["key"] == "marginWidth")
+        .expect("zero margin stays visible");
+    assert_eq!(margin["value"], 0.0);
+    assert!(engine
+        .apply_object_settings_dialog_json(r#"{"unit":"pt","values":{"marginWidth":-1}}"#)
+        .is_err());
+    assert!(engine
+        .apply_object_settings_dialog_json(r#"{"unit":"pt","values":{"lineWidth":0}}"#)
+        .is_err());
+}
+
+#[test]
 fn acs_document_1996_preset_sets_new_bond_metrics() {
     let mut engine = Engine::new();
     engine.set_document_style_preset("acs-document-1996");

@@ -63,7 +63,7 @@ pub(crate) fn infer_display_scripts(source_runs: &[LabelRun]) -> Vec<&'static st
             index += 1;
         } else if start > 0
             && (characters[start - 1].value.is_ascii_alphabetic()
-                || characters[start - 1].value == ')')
+                || matches!(characters[start - 1].value, ')' | ']' | '}'))
         {
             scripts[start..index].fill("subscript");
         }
@@ -103,6 +103,20 @@ mod tests {
             text: text.to_string(),
             script: Some(script.to_string()),
             ..LabelRun::default()
+        }
+    }
+
+    #[test]
+    fn chemical_counts_use_neighbors_across_normal_and_chemical_runs() {
+        for prefix in ["N", "(OH)", "[Fe(CN)6]", "{CH2}"] {
+            let mut expected = vec!["authored"; prefix.chars().count()];
+            expected.extend(["subscript", "subscript"]);
+            assert_eq!(
+                infer_display_scripts(&[run(prefix, "normal"), run("12", "chemical")]),
+                expected,
+            );
+            let explicit = infer_display_scripts(&[run(prefix, "normal"), run("12", "superscript")]);
+            assert!(explicit.iter().all(|script| *script == "authored"));
         }
     }
 

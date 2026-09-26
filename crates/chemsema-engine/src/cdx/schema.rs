@@ -176,6 +176,10 @@ pub(super) fn property_schema(tag: u16) -> Option<PropertySchema> {
         0x0A63 => ("WindowsMetafile", PropertyKind::Binary),
         0x0A64 => ("OLEObject", PropertyKind::Binary),
         0x0A65 => ("EnhancedMetafile", PropertyKind::Binary),
+        // Modern ChemDraw compressed EMF fields, confirmed by local CDX /
+        // CDXML round trips. CDX stores zlib bytes; CDXML stores base64.
+        0x0A69 => ("CompressedEnhancedMetafile", PropertyKind::Base64Binary),
+        0x0A6D => ("UncompressedEnhancedMetafileSize", PropertyKind::UInt32),
         0x0A6E => ("GIF", PropertyKind::Binary),
         0x0A6F => ("TIFF", PropertyKind::Binary),
         0x0A70 => ("PNG", PropertyKind::Binary),
@@ -348,6 +352,8 @@ pub(super) fn property_tag(name: &str) -> Option<u16> {
         "CornerRadius" => 0x0A3C,
         "ArrowSource" => 0x0A3E,
         "ArrowTarget" => 0x0A3F,
+        "CompressedEnhancedMetafile" => 0x0A69,
+        "UncompressedEnhancedMetafileSize" => 0x0A6D,
         "BioShapeType" => 0x0AC0,
         "EnzymeReceptorSize" => 0x0AC1,
         "NeckWidth" => 0x0AC2,
@@ -397,6 +403,7 @@ pub(super) fn encode_property(name: &str, value: &str) -> Option<(u16, Vec<u8>)>
     let bytes = match schema.kind {
         PropertyKind::String => encode_plain_cdx_string(value),
         PropertyKind::Binary => decode_hex_bytes(value)?,
+        PropertyKind::Base64Binary => BASE64.decode(value.split_whitespace().collect::<String>()).ok()?,
         PropertyKind::Point2D => encode_point2d(value)?,
         PropertyKind::Point3D => encode_point3d(value)?,
         PropertyKind::Rectangle => encode_rectangle(value)?,
@@ -417,7 +424,7 @@ pub(super) fn encode_property(name: &str, value: &str) -> Option<(u16, Vec<u8>)>
             if yes(value) {
                 Vec::new()
             } else {
-                return None;
+                vec![0]
             }
         }
         PropertyKind::BondOrder => encode_bond_order(value)?,

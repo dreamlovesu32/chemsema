@@ -14,6 +14,7 @@ const edgePath = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.
 const tmpDir = join(rootDir, "tmp", "gui-regression");
 const guiCase = process.env.CHEMSEMA_GUI_CASE || "";
 const exactTieOnly = guiCase === "exact-tie-double";
+const filledCurveOnly = guiCase === "filled-curve";
 const selectionSummaryOnly = guiCase === "selection-summary";
 const chemicalPropertyOnly = guiCase === "chemical-property";
 const annotationOnly = guiCase === "annotation";
@@ -1097,6 +1098,19 @@ async function verifyOpenButton(context, errors, fixturePath) {
   }
 }
 
+async function verifyFilledCurveRendering(page) {
+  const svg = await page.evaluate(() => {
+    const engine = window.__chemsemaDebug.state.editorEngine;
+    engine.loadDocumentCdxml(`<CDXML><colortable><color r="1" g="1" b="1"/>
+      <color r="1" g="0.5" b="0"/></colortable><page id="1">
+      <curve id="2" CurveType="129" color="3"
+        CurvePoints="0 0 10 10 20 10 30 20 40 10 50 0"/>
+    </page></CDXML>`);
+    return engine.documentSvg();
+  });
+  assert.match(svg, /<path[^>]+fill="#ff8000"[^>]+stroke="none"/);
+}
+
 async function verifyZoomAndStyleMenu(page) {
   await page.locator("#zoom-input").selectOption("150");
   const zoom = await page.locator("#zoom-input").inputValue();
@@ -1300,7 +1314,7 @@ try {
   await installBrowserMocks(context);
   const errors = [];
 
-  if (!selectionSummaryOnly && !chemicalPropertyOnly && !annotationOnly && !documentLayoutOnly && !logicalObjectsOnly) {
+  if (!selectionSummaryOnly && !chemicalPropertyOnly && !annotationOnly && !documentLayoutOnly && !logicalObjectsOnly && !filledCurveOnly) {
     const fixturePath = await createOpenFixture(context, errors);
     await verifyOpenButton(context, errors, fixturePath);
 
@@ -1309,7 +1323,11 @@ try {
     await exactTiePage.close();
   }
 
-  if (selectionSummaryOnly) {
+  if (filledCurveOnly) {
+    const page = await openViewer(context, errors);
+    await verifyFilledCurveRendering(page);
+    await page.close();
+  } else if (selectionSummaryOnly) {
     const page = await openViewer(context, errors);
     await verifySelectionOverlayConsistency(page);
     await page.close();
@@ -1371,7 +1389,9 @@ try {
   }
 
   assert.equal(errors.length, 0, `GUI regression saw console/page errors:\n${errors.join("\n")}`);
-  console.log(selectionSummaryOnly
+  console.log(filledCurveOnly
+    ? "[gui-regression] ok (filled CDXML curve)"
+    : selectionSummaryOnly
     ? "[gui-regression] ok (selection summary and minimum selection box)"
     : chemicalPropertyOnly
       ? "[gui-regression] ok (ChemicalProperty context menu and kernel dialog)"

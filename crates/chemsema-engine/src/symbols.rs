@@ -37,6 +37,17 @@ pub struct ElectronSymbolChemistry {
     pub requires_hydrogen_removal: bool,
 }
 
+impl ElectronSymbolChemistry {
+    pub(crate) fn represents_attribute(self, declared: &str, attribute: &str) -> bool {
+        let declared = declared.trim();
+        declared.eq_ignore_ascii_case(attribute)
+            || ((declared.eq_ignore_ascii_case("charge")
+                || declared.eq_ignore_ascii_case("radical"))
+                && ((attribute.eq_ignore_ascii_case("charge") && self.charge_delta != 0)
+                    || (attribute.eq_ignore_ascii_case("radical") && self.radical_delta != 0)))
+    }
+}
+
 #[derive(Debug, Clone)]
 struct SymbolAttachment {
     symbol_object_id: String,
@@ -171,7 +182,7 @@ fn detect_symbol_attachments(document: &ChemSemaDocument) -> Vec<SymbolAttachmen
         return Vec::new();
     }
     let mut out = Vec::new();
-    for object in &document.objects {
+    for object in document.scene_objects() {
         if object.object_type != "symbol" || !object.visible {
             continue;
         }
@@ -252,8 +263,8 @@ fn refresh_atom_symbol_links(
         return false;
     }
     let candidates = document
-        .objects
-        .iter()
+        .scene_objects()
+        .into_iter()
         .filter(|object| {
             object.object_type == "symbol"
                 && object.visible
@@ -356,13 +367,13 @@ fn refresh_symbol_object_attachment_payloads(
         by_id.insert(attachment.symbol_object_id.as_str(), attachment);
     }
     let mut changed = false;
-    for object in &mut document.objects {
+    for (id, attachment) in by_id {
+        let Some(object) = document.find_scene_object_mut(id) else {
+            continue;
+        };
         if object.object_type != "symbol" {
             continue;
         }
-        let Some(attachment) = by_id.get(object.id.as_str()) else {
-            continue;
-        };
         changed |= set_payload_value(
             object,
             "chemicalRole",
@@ -646,7 +657,7 @@ fn attachment_represents_attribute(attachment: &SymbolAttachment, attribute: &st
     attachment
         .represent_attribute
         .as_deref()
-        .is_some_and(|value| value.eq_ignore_ascii_case(attribute))
+        .is_some_and(|value| attachment.chemistry.represents_attribute(value, attribute))
 }
 
 fn supported_hetero_hydrogens(

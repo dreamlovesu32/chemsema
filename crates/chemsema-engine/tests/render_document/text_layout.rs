@@ -1062,7 +1062,7 @@ fn parse_cdxml_recognizes_fractional_dashed_double_bond() {
         .collect();
     assert!(
         lengths.iter().any(|length| *length > 18.0)
-            && lengths.iter().any(|length| *length > 2.0 && *length < 3.0),
+            && lengths.iter().filter(|length| (**length - 24.0 / 7.0).abs() < 0.01).count() == 4,
         "Display2=\"Dash\" should use the same evenly distributed black segments as dashed bonds: {lengths:?}"
     );
     assert!(

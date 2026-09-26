@@ -495,10 +495,6 @@ pub(in crate::cdxml) fn append_text_objects_recursive(
         false
     } else {
         skip_text
-            || (node.is("fragment")
-                && node
-                    .attr("id")
-                    .is_some_and(|id| display_fragment_ids.contains(id)))
             || (node.is("n")
                 && node.attr("Element").is_some()
                 && node
@@ -612,9 +608,16 @@ pub(in crate::cdxml) fn append_text_objects_recursive(
         }
     }
     for child in &node.children {
+        // Only text owned by an atom is handled by the molecule-label path.
+        // A displayed fragment can also contain independent captions (for
+        // example a reaction '+'); those must remain scene text objects.
+        let child_skip_text = next_skip_text
+            || (node.is("fragment")
+                && node.attr("id").is_some_and(|id| display_fragment_ids.contains(id))
+                && child.is("n"));
         append_text_objects_recursive(
             child,
-            next_skip_text,
+            child_skip_text,
             inside_native_annotation
                 || node.is("constraint")
                 || (node.is("graphic") && node.attr("GraphicType") == Some("Symbol"))
@@ -705,15 +708,15 @@ pub(super) fn text_object(
             .unwrap_or(defaults.caption_size)
     });
     let mut font_state = CdxmlFontRunState::default();
-    let runs: Vec<LabelRun> = node
+    let source_runs: Vec<LabelRun> = node
         .direct_children("s")
-        .flat_map(|run| {
+        .filter_map(|run| {
             let run_text = run.full_text();
             if run_text.is_empty() {
-                Vec::new()
+                None
             } else {
                 let font_id = font_state.resolve(run.attr("font"));
-                label_display_runs(
+                Some(label_source_run(
                     &run_text,
                     parse_u32(run.attr("face")).unwrap_or(face),
                     font_id,
@@ -721,10 +724,14 @@ pub(super) fn text_object(
                     parse_f64(run.attr("size")).unwrap_or(font_size),
                     colors,
                     fonts,
-                )
+                ))
             }
         })
         .collect();
+    // Chemical digits and charge marks depend on adjacent authored text,
+    // including text in a different font/style run. Use the same whole-string
+    // inference as attached atom labels rather than expanding each run alone.
+    let runs = label_display_runs_from_source_runs(&source_runs);
     let font_family = runs
         .first()
         .and_then(|run| run.font_family.clone())

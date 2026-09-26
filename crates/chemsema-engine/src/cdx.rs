@@ -296,6 +296,18 @@ impl<'a> CdxReader<'a> {
             });
             self.apply_property(&mut node, tag, data)?;
         }
+        // UTF8Text is itself a styled CDXString, with its own byte offsets.
+        // ChemDraw uses it in preference to the platform-encoded Text mirror.
+        // Resolve after all properties so file order cannot change the result.
+        if node.name == "t" {
+            if let Some(property) = node.properties.iter().rev().find(|p| p.tag == 0x0709) {
+                let unicode = parse_cdx_string(&property.data, None);
+                node.text = Some(unicode.text);
+                if !unicode.runs.is_empty() {
+                    node.text_runs = unicode.runs;
+                }
+            }
+        }
         Ok(node)
     }
 
@@ -706,8 +718,19 @@ impl<'a> CdxWriter<'a> {
                 if written_properties.contains(&prop_tag) {
                     continue;
                 }
+                if node.name == "embeddedobject"
+                    && node.attr("EnhancedMetafile").is_some()
+                    && matches!(prop_tag, 0x0A69 | 0x0A6D)
+                {
+                    // Export normalized this compressed container to plain EMF.
+                    // Do not revive its old compressed mirror from interchange.
+                    continue;
+                }
                 let encoded = (!property.value.is_empty())
                     .then(|| {
+                        if matches!(property_schema(prop_tag).map(|s| s.kind), Some(PropertyKind::Base64Binary)) {
+                            return encode_property(&property.name, &property.value).map(|(_, bytes)| bytes);
+                        }
                         property
                             .cdx_type
                             .as_deref()
@@ -801,6 +824,9 @@ impl<'a> CdxWriter<'a> {
             };
             let bytes = (!property.value.is_empty())
                 .then(|| {
+                    if matches!(property_schema(prop_tag).map(|s| s.kind), Some(PropertyKind::Base64Binary)) {
+                        return encode_property(&property.name, &property.value).map(|(_, bytes)| bytes);
+                    }
                     property
                         .cdx_type
                         .as_deref()
@@ -949,6 +975,7 @@ struct PropertySchema {
 enum PropertyKind {
     String,
     Binary,
+    Base64Binary,
     Point2D,
     Point3D,
     Rectangle,
@@ -1250,23 +1277,76 @@ const ORBITAL_TYPE: &[(i16, &str)] = &[
     (6, "dz2Plus"),
     (7, "dz2Minus"),
     (8, "dxy"),
-    (256, "sFilled"),
-    (257, "ovalFilled"),
-    (258, "lobeFilled"),
-    (259, "pFilled"),
-    (260, "hybridPlusFilled"),
-    (261, "hybridMinusFilled"),
-    (262, "dz2PlusFilled"),
-    (263, "dz2MinusFilled"),
-    (264, "dxyFilled"),
-    (512, "sShaded"),
-    (513, "ovalShaded"),
-    (514, "lobeShaded"),
+    (256, "sShaded"),
+    (257, "ovalShaded"),
+    (258, "lobeShaded"),
+    (512, "sFilled"),
+    (513, "ovalFilled"),
+    (514, "lobeFilled"),
+    (515, "pFilled"),
+    (516, "hybridPlusFilled"),
+    (517, "hybridMinusFilled"),
+    (518, "dz2PlusFilled"),
+    (519, "dz2MinusFilled"),
+    (520, "dxyFilled"),
 ];
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn compressed_emf_cdx_import_preserves_bytes_and_exposes_a_preview() {
+        let fixtures: serde_json::Value = serde_json::from_str(include_str!(
+            "../tests/fixtures/embedded_object_previews.json"
+        )).unwrap();
+        let fixture = fixtures["fixtures"].as_array().unwrap().iter()
+            .find(|f| f["format"] == "CompressedEnhancedMetafile").unwrap();
+        let compressed = BASE64.decode(fixture["dataBase64"].as_str().unwrap()).unwrap();
+        let size = fixture["uncompressedSize"].as_u64().unwrap() as u32;
+        for reverse_order in [false, true] {
+            for invalid_size in [false, true] {
+                let mut cdx = CDX_HEADER.to_vec();
+                for (tag, id) in [(0x8000, 1), (0x8001, 2), (0x8009, 3)] {
+                    write_u16(&mut cdx, tag);
+                    write_u32(&mut cdx, id);
+                }
+                write_property(&mut cdx, 0x0204, &encode_rectangle("10 20 40 60").unwrap());
+                let size_bytes = (size + u32::from(invalid_size)).to_le_bytes();
+                let mut fields = [(0x0A69, compressed.as_slice()), (0x0A6D, size_bytes.as_slice())];
+                if reverse_order { fields.reverse(); }
+                for (tag, bytes) in fields { write_property(&mut cdx, tag, bytes); }
+                cdx.extend_from_slice(&[0; 8]);
+
+                let document = parse_cdx_document(&cdx, None).expect("compressed image imports");
+                let resource = document.resources.values()
+                    .find_map(|resource| resource.data.as_embedded_object()).expect("image retained");
+                assert_eq!(BASE64.decode(&resource.data_base64).unwrap(), compressed);
+                if invalid_size {
+                    assert_eq!(resource.preview_status, crate::EmbeddedPreviewStatus::DecodeError);
+                    assert!(resource.preview.is_none());
+                    continue;
+                }
+                assert_eq!(resource.preview_status, crate::EmbeddedPreviewStatus::Decoded);
+                let preview = resource.preview.as_ref().unwrap();
+                assert_eq!((preview.pixel_width, preview.pixel_height), (2, 3));
+                let source = &document.interchange["cdx"].root.children[0].children[0];
+                assert_eq!(source.properties["CompressedEnhancedMetafile"].value, BASE64.encode(&compressed));
+                let exported = document_to_cdx(&document).expect("image exports");
+                let tree = CdxReader::new(&exported).read().unwrap();
+                fn check(node: &CdxNode) {
+                    assert!(!node.properties.iter().any(|p| matches!(p.tag, 0x0A69 | 0x0A6D)));
+                    for child in &node.children { check(child); }
+                }
+                check(&tree);
+                let reopened = parse_cdx_document(&exported, None).unwrap();
+                let restored = reopened.resources.values()
+                    .find_map(|r| r.data.as_embedded_object()).unwrap();
+                assert_eq!(restored.preview_status, crate::EmbeddedPreviewStatus::Decoded);
+                assert_eq!(restored.format, "EnhancedMetafile");
+            }
+        }
+    }
 
     #[test]
     fn cdx_string_ffff_style_components_remain_inherited() {
@@ -2056,6 +2136,115 @@ mod tests {
                 Some(("SupersededBy", "203".to_string()))
             );
         }
+    }
+
+    #[test]
+    fn implied_boolean_payload_overrides_presence_in_both_decode_paths() {
+        // The empty legacy representation still means true. ChemDraw's
+        // modern one-byte representation must preserve an explicit false.
+        for (payload, expected) in [(vec![], "yes"), (vec![0], "no"), (vec![1], "yes")] {
+            for tag in [0x0424, 0x0427, 0x0819, 0x0900, 0x0A39, 0x0A3A] {
+                assert_eq!(decode_property(tag, &payload, None).unwrap().1, expected);
+            }
+            assert_eq!(
+                decode_official_lexical("CDXBooleanImplied", &payload).unwrap(),
+                expected
+            );
+            let mut bytes = CDX_HEADER.to_vec();
+            write_u16(&mut bytes, 0x8000);
+            write_u32(&mut bytes, 1);
+            for tag in [0x0442, 0x0443] {
+                write_u16(&mut bytes, tag);
+                write_u16(&mut bytes, payload.len() as u16);
+                bytes.extend_from_slice(&payload);
+            }
+            write_u16(&mut bytes, 0);
+            let xml = cdx_to_cdxml(&bytes).unwrap();
+            assert!(xml.contains(&format!("ShowTerminalCarbonLabels=\"{expected}\"")));
+            assert!(xml.contains(&format!("ShowNonTerminalCarbonLabels=\"{expected}\"")));
+        }
+    }
+
+    #[test]
+    fn cdx_styled_unicode_uses_byte_offsets_and_unicode_mirror_styles() {
+        let styled = crate::cdxml::parse_xml_tree(
+            r#"<t><s font="3" size="10">Aα</s><s font="7" size="10" face="64">β</s><s font="3" size="10">Z</s></t>"#,
+        ).unwrap();
+        let payload = encode_cdx_string(&styled);
+        // Header is count + three 10-byte runs; UTF-8 alpha occupies two bytes.
+        assert_eq!(u16::from_le_bytes([payload[12], payload[13]]), 3);
+        assert_eq!(u16::from_le_bytes([payload[22], payload[23]]), 5);
+        let parsed = parse_cdx_string(&payload, None);
+        assert_eq!(parsed.text, "AαβZ");
+        assert_eq!(
+            parsed.runs.iter().map(|r| r.start).collect::<Vec<_>>(),
+            [0, 2, 3]
+        );
+        for unicode_first in [false, true] {
+            let mut bytes = CDX_HEADER.to_vec();
+            write_u16(&mut bytes, 0x8000);
+            write_u32(&mut bytes, 1);
+            write_u16(&mut bytes, 0x8006);
+            write_u32(&mut bytes, 2);
+            let legacy = encode_plain_cdx_string("legacy text");
+            let entries = if unicode_first {
+                [(0x0709, &payload), (0x0700, &legacy)]
+            } else {
+                [(0x0700, &legacy), (0x0709, &payload)]
+            };
+            for (tag, data) in entries {
+                write_property(&mut bytes, tag, data);
+            }
+            write_u16(&mut bytes, 0);
+            write_u16(&mut bytes, 0);
+            let tree = CdxReader::new(&bytes).read().unwrap();
+            assert_eq!(tree.children[0].text.as_deref(), Some("AαβZ"));
+            let xml = CdxmlWriter::new().write(&tree);
+            assert!(xml.contains(">Aα</s>"));
+            assert!(xml.contains("face=\"64\" color=\"0\">β</s>"));
+            assert!(xml.contains(">Z</s>"));
+            assert!(!xml.contains("legacy text"));
+        }
+    }
+
+    #[test]
+    fn cdx_orbital_shading_and_fill_bits_match_chemdraw() {
+        let bases = [
+            "s",
+            "oval",
+            "lobe",
+            "p",
+            "hybridPlus",
+            "hybridMinus",
+            "dz2Plus",
+            "dz2Minus",
+            "dxy",
+        ];
+        for (shape, base) in bases.into_iter().enumerate() {
+            for (bits, suffix) in [(0, ""), (0x100, "Shaded"), (0x200, "Filled")] {
+                if bits == 0x100 && shape > 2 {
+                    continue;
+                }
+                let name = format!("{base}{suffix}");
+                let raw = ((shape as u16) | bits).to_le_bytes().to_vec();
+                assert_eq!(decode_property(0x0A05, &raw, None).unwrap().1, name);
+                assert_eq!(encode_property("OrbitalType", &name).unwrap().1, raw);
+            }
+        }
+    }
+
+    #[test]
+    fn explicit_false_implied_boolean_survives_nested_override_roundtrip() {
+        let xml = r#"<CDXML ShowTerminalCarbonLabels="yes"><page id="1"><fragment id="2"><n id="3" p="0 0" ShowTerminalCarbonLabels="no"/></fragment></page></CDXML>"#;
+        let first = cdxml_to_cdx(xml).unwrap();
+        let decoded = cdx_to_cdxml(&first).unwrap();
+        assert!(decoded.contains("ShowTerminalCarbonLabels=\"yes\""));
+        assert!(decoded.contains("ShowTerminalCarbonLabels=\"no\""));
+        assert_eq!(
+            cdx_to_cdxml(&cdxml_to_cdx(&decoded).unwrap()).unwrap(),
+            decoded
+        );
+        assert_eq!(encode_property("Closed", "no").unwrap().1, vec![0]);
     }
 
     #[test]

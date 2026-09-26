@@ -472,7 +472,7 @@ pub(super) fn height_of(bbox: [f64; 4]) -> f64 {
     bbox[3] - bbox[1]
 }
 
-pub(super) fn cdxml_symbol_kind(symbol_type: &str) -> Option<&'static str> {
+pub(in crate::cdxml) fn cdxml_symbol_kind(symbol_type: &str) -> Option<&'static str> {
     Some(match symbol_type {
         "DoubleDagger" => "double-dagger",
         "Dagger" => "dagger",

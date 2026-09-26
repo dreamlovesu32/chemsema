@@ -89,6 +89,22 @@ fn render_cdxml_closed_curve_uses_outer_guides_for_the_closing_cubic() {
 }
 
 #[test]
+fn filled_closed_curve_paints_its_interior_before_the_outline() {
+    let cdxml = r##"<CDXML><colortable><color r="1" g="1" b="1"/>
+      <color r="1" g="0.5" b="0"/></colortable><page id="1">
+      <curve id="2" CurveType="129" color="3"
+        CurvePoints="0 0 10 10 20 10 30 20 40 10 50 0"/>
+    </page></CDXML>"##;
+    let document = parse_cdxml_document(cdxml, None).unwrap();
+    let primitives = render_document(&document);
+    assert!(matches!(
+        primitives.as_slice(),
+        [RenderPrimitive::FilledPath { fill, .. }, RenderPrimitive::Path { stroke, .. }]
+            if fill == "#ff8000" && stroke == fill
+    ));
+}
+
+#[test]
 fn render_cdxml_curve_keeps_half_arrow_side_at_both_endpoints() {
     let cdxml = r##"<?xml version="1.0" encoding="UTF-8"?>
 <CDXML LineWidth="1">

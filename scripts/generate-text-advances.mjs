@@ -90,6 +90,14 @@ for (const [familyName, family] of Object.entries(outlines.families)) {
       const glyph = font.charToGlyph(character);
       advances[character] = Number((glyph.advanceWidth / font.unitsPerEm).toFixed(8));
     }
+    if (face.symbolEncoded) {
+      for (const [character, advance] of Object.entries(advances)) {
+        const code = character.codePointAt(0);
+        if (code >= 0xf020 && code <= 0xf0ff) {
+          advances[String.fromCodePoint(code - 0xf000)] = advance;
+        }
+      }
+    }
     faces[faceName] = {
       sourceFont: face.sourceFont,
       advances,

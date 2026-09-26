@@ -156,7 +156,9 @@ pub(super) fn target_bounds_fast(
     target: &TargetSelector,
 ) -> Option<[f64; 4]> {
     match target {
-        TargetSelector::All => document_fast_bounds(document),
+        // A whole-document crop must include rendered text and other ink that
+        // can extend beyond authored object boxes.
+        TargetSelector::All => None,
         TargetSelector::Bounds(bounds) => Some(*bounds),
         TargetSelector::Selection(targets) => {
             let mut out = None;
@@ -190,19 +192,6 @@ pub(super) fn target_bounds_fast(
             None
         }
     }
-}
-
-pub(super) fn document_fast_bounds(document: &ChemSemaDocument) -> Option<[f64; 4]> {
-    let mut out = None;
-    for object in &document.objects {
-        if !object.visible {
-            continue;
-        }
-        if let Some(bounds) = scene_object_fast_bounds(document, object) {
-            include_bounds(&mut out, bounds);
-        }
-    }
-    out
 }
 
 pub(super) fn scene_object_fast_bounds(

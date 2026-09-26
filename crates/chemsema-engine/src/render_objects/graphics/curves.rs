@@ -64,6 +64,23 @@ pub(crate) fn render_curve_object(
         ));
         rendered_points.extend([closing_control_1, closing_control_2]);
     }
+    let curve_type = payload_number(&object.payload, "curveType").unwrap_or(0.0) as i32;
+    if curve_type & 0x0080 != 0 {
+        out.push(RenderPrimitive::FilledPath {
+            role: RenderRole::DocumentGraphic,
+            object_id: Some(object.id.clone()),
+            node_id: None,
+            bond_id: None,
+            d: d.clone(),
+            points: rendered_points.clone(),
+            fill: stroke.clone(),
+            fill_rule: None,
+            clip_path_d: None,
+            clip_rule: None,
+            rotate: object.transform.rotate,
+            rotate_center: None,
+        });
+    }
     out.push(RenderPrimitive::Path {
         role: RenderRole::DocumentGraphic,
         object_id: Some(object.id.clone()),

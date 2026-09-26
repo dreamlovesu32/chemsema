@@ -621,7 +621,10 @@ fn curved_arrow_arc(
         major,
         minor,
         start_angle: sin.atan2(cos),
-        sweep: -sweep_degrees.to_radians(),
+        // ChemDraw's Curve sign describes the turn on the page. A mirrored
+        // ellipse basis reverses the parameter angle, so its sweep must also
+        // reverse to keep the same geometric turn and reach the authored end.
+        sweep: -sweep_degrees.to_radians() * det.signum(),
     })
 }
 
@@ -1301,12 +1304,26 @@ fn render_solid_arrow_line(
         unit.scaled(-arrow_endpoint_shaft_trim(head_style, arrow_head).min(length * 0.45)),
     );
     if start_shaft.distance(end_shaft) > crate::EPSILON {
+        // ChemDraw starts a straight solid arrow's dash pattern at its head
+        // side, including lines with neither endpoint decorated. Reversing
+        // only the shaft preserves the semantic endpoints and head geometry.
+        let shaft_points = if dash_array.is_empty() {
+            vec![start_shaft, end_shaft]
+        } else {
+            vec![end_shaft, start_shaft]
+        };
+        // Dash lengths use ChemDraw's 1/20 pt drawing grid. Keeping the
+        // unquantized spacing accumulates a visible phase error on long lines.
+        let shaft_dashes = dash_array
+            .iter()
+            .map(|length| (length * 20.0).round().max(1.0) / 20.0)
+            .collect();
         push_polyline(
             out,
-            vec![start_shaft, end_shaft],
+            shaft_points,
             stroke,
             line_width,
-            dash_array.to_vec(),
+            shaft_dashes,
             Some("butt".to_string()),
             Some("miter".to_string()),
             RenderRole::DocumentGraphic,
@@ -2051,6 +2068,24 @@ mod tests {
         assert!(points
             .windows(2)
             .all(|pair| pair[0].distance(pair[1]) < 6.0));
+    }
+
+    #[test]
+    fn mirrored_ellipse_curve_reaches_the_authored_lower_endpoint() {
+        let geometry = ArrowArcGeometry {
+            center: Point::new(100.0, 100.0),
+            major_axis_end: Point::new(0.0, 100.0),
+            minor_axis_end: Point::new(100.0, 200.0),
+        };
+        let points = curved_arrow_points(Point::new(29.2893219, 29.2893219), 90.0, geometry);
+        let middle = points[points.len() / 2];
+        let end = points.last().unwrap();
+        assert!(
+            (middle.x - 0.0).abs() < 0.01,
+            "arc should bulge left: {middle:?}"
+        );
+        assert!((end.x - 29.2893219).abs() < 0.01);
+        assert!((end.y - 170.7106781).abs() < 0.01);
     }
 
     #[test]

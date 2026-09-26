@@ -36,8 +36,10 @@
 `Uncompressed...Size` 时必须与实际解压长度完全一致。
 三种 `Compressed...` CDXML 属性使用 ChemDraw 的可换行 base64 wire encoding；
 未压缩复合载荷和常规位图属性使用十六进制。导入和导出按属性名选择唯一编码，不做猜测。
-CDX 的二进制属性本身不使用 CDXML 压缩包装；导出 CDX 前必须校验并解压为对应的
-`EnhancedMetafile`、`WindowsMetafile` 或 `OLEObject` 二进制属性。
+现代 ChemDraw CDX 也会保存压缩 EMF：`0x0A69` 是 zlib 字节，`0x0A6D` 是
+未压缩长度。导入时映射到同一压缩容器流程，转换为 CDXML 时使用 base64；原始
+压缩字节仍由资源保留。当前导出 CDX 统一校验并解压为对应的 `EnhancedMetafile`、
+`WindowsMetafile` 或 `OLEObject` 二进制属性，不从 interchange 再写回已替换的压缩镜像。
 
 共同上限为：源/解压字节 64 MiB、单边 32768 px、总像素一亿。DIB 只接受明确的
 BITMAPINFOHEADER 大小、合法 planes/bit depth/compression 和可证明的像素区长度。

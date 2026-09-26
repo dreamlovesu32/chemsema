@@ -1008,7 +1008,7 @@ fn render_document_preserves_dashed_double_line_styles() {
     let polygons = object_bond_polygons(&primitives);
     let knockouts = object_knockout_polygons(&primitives);
 
-    assert_eq!(polygons.len(), 14);
+    assert_eq!(polygons.len(), 12);
     assert!(polygons.iter().all(|points| points.len() == 4));
     assert!(knockouts.is_empty(), "{knockouts:?}");
     let lengths: Vec<_> = polygons
@@ -1018,7 +1018,7 @@ fn render_document_preserves_dashed_double_line_styles() {
     assert!(
         lengths
             .iter()
-            .all(|length| (*length - 36.0 / 13.0).abs() < 0.01),
+            .all(|length| (*length - 36.0 / 11.0).abs() < 0.01),
         "{lengths:?}"
     );
     assert!(!primitives.iter().any(|primitive| matches!(
@@ -1233,7 +1233,7 @@ fn render_document_emits_equal_length_cross_segments_for_bold_dashed_bond() {
     let polygons = object_bond_polygons(&primitives);
     let knockouts = object_knockout_polygons(&primitives);
 
-    assert_eq!(polygons.len(), 6);
+    assert_eq!(polygons.len(), 5);
     assert!(polygons.iter().all(|points| points.len() == 4));
     assert!(knockouts.is_empty(), "{knockouts:?}");
     let black_segments: Vec<_> = polygons
@@ -1248,7 +1248,7 @@ fn render_document_emits_equal_length_cross_segments_for_bold_dashed_bond() {
         "{black_segments:?}"
     );
     assert!(
-        (first_black - 30.0 / 11.0).abs() < 0.02,
+        (first_black - 30.0 / 9.0).abs() < 0.02,
         "{black_segments:?}"
     );
     assert!(!primitives.iter().any(|primitive| matches!(

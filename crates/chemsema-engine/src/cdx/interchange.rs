@@ -60,6 +60,12 @@ pub(super) fn unique_property_storage_name(
 }
 
 pub(super) fn official_property_info(tag: u16) -> Option<(String, String)> {
+    // These modern fields are missing from the bundled historical SDK table.
+    // Keep their typed names in interchange as well as in the display adapter.
+    if matches!(tag, 0x0A69 | 0x0A6D) {
+        let schema = property_schema(tag)?;
+        return Some((schema.name.to_string(), if tag == 0x0A69 { "Unformatted" } else { "UINT32" }.to_string()));
+    }
     static SCHEMA: OnceLock<serde_json::Value> = OnceLock::new();
     let schema = SCHEMA.get_or_init(|| {
         serde_json::from_str(include_str!("../../schemas/cdx-cdxml-official-v1.json"))
@@ -167,7 +173,7 @@ pub(super) fn decode_official_lexical(cdx_type: &str, data: &[u8]) -> Option<Str
     Some(match cdx_type {
         "CDXString" => parse_cdx_string(data, None).text,
         "CDXBoolean" => bool_from_bytes(data),
-        "CDXBooleanImplied" => "yes".to_string(),
+        "CDXBooleanImplied" => bool_from_bytes(data),
         "INT8" => read_i8(data)?.to_string(),
         "UINT8" => read_u8(data)?.to_string(),
         "INT16" => read_i16(data)?.to_string(),
@@ -198,6 +204,7 @@ pub(super) fn encode_official_lexical(cdx_type: &str, value: &str) -> Option<Vec
         "CDXString" => encode_plain_cdx_string(value),
         "CDXBoolean" => vec![if yes(value) { 1 } else { 0 }],
         "CDXBooleanImplied" if yes(value) => Vec::new(),
+        "CDXBooleanImplied" => vec![0],
         "INT8" => vec![value.parse::<i8>().ok()? as u8],
         "UINT8" => vec![value.parse::<u8>().ok()?],
         "INT16" => value.parse::<i16>().ok()?.to_le_bytes().to_vec(),

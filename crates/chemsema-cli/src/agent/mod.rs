@@ -282,21 +282,19 @@ pub(crate) fn write_document_png_output(
     height: Option<u32>,
 ) -> Result<u64, String> {
     let document = engine_document(engine)?;
-    let bounds = target_bounds(&document, &TargetSelector::All)?;
+    // Whole-document exports must use the ink that will actually be written.
+    // Fast scene bounds can end at an authored text box even when glyphs extend
+    // beyond it, clipping first or last lines in imported ChemDraw diagrams.
+    let primitives = render_document(&document);
+    let bounds = render_primitives_bounds(primitives.iter())
+        .ok_or_else(|| "No visible render primitives found for document.".to_string())?;
     let view_box = expanded_view_box(bounds, CropExpansion::uniform_abs(0.0));
-    let render = capture_render_primitives(&document, &TargetSelector::All, view_box, false)?;
     let mut raster = RasterOptions::default();
     if let Some(scale) = scale {
         raster.scale = scale;
     }
     raster.width = width;
     raster.height = height;
-    let output = write_capture_output(
-        &render.primitives,
-        view_box,
-        output,
-        CaptureFormat::Png,
-        raster,
-    )?;
+    let output = write_capture_output(&primitives, view_box, output, CaptureFormat::Png, raster)?;
     Ok(output.bytes)
 }

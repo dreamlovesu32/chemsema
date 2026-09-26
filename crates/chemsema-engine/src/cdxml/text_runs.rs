@@ -79,23 +79,6 @@ fn split_cdxml_font_family_style(name: &str) -> (String, bool, bool) {
     (name.to_string(), false, false)
 }
 
-pub(super) fn label_display_runs(
-    text: &str,
-    face: u32,
-    font_id: &str,
-    color_id: &str,
-    font_size: f64,
-    colors: &CdxmlColorTable,
-    fonts: &BTreeMap<String, String>,
-) -> Vec<LabelRun> {
-    let source = label_source_run(text, face, font_id, color_id, font_size, colors, fonts);
-    if source.script.as_deref() == Some("chemical") {
-        expand_cdxml_chemical_run(&source)
-    } else {
-        vec![source]
-    }
-}
-
 pub(super) fn label_display_runs_from_source_runs(source_runs: &[LabelRun]) -> Vec<LabelRun> {
     expand_cdxml_mixed_runs(source_runs)
 }
@@ -128,10 +111,12 @@ fn decode_cdxml_face(face: u32) -> CdxmlFace {
     }
 }
 
+#[cfg(test)]
 fn expand_cdxml_chemical_run(base: &LabelRun) -> Vec<LabelRun> {
     expand_cdxml_chemical_runs(std::slice::from_ref(base))
 }
 
+#[cfg(test)]
 fn expand_cdxml_chemical_runs(base_runs: &[LabelRun]) -> Vec<LabelRun> {
     expand_cdxml_mixed_runs(base_runs)
 }

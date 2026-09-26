@@ -166,7 +166,6 @@ pub(super) fn export_cdxml_defaults(document: &ChemSemaDocument) -> CdxmlDefault
             continue;
         };
         if let Some(bond) = fragment.bonds.first() {
-            defaults.line_width = bond.stroke_width;
             if let Some(value) = bond.bold_width {
                 defaults.bold_width = value;
             }

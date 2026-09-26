@@ -716,6 +716,47 @@ fn derives_png_height_from_fixed_width() {
 }
 
 #[test]
+fn whole_document_png_fits_text_outside_its_authored_box() {
+    let mut engine = Engine::new();
+    engine
+        .load_cdxml_document(
+            r#"<CDXML CaptionFont="3" CaptionSize="10"><fonttable><font id="3" charset="iso-8859-1" name="Arial"/></fonttable><page id="1"><fragment id="2"><n id="3" p="100 100"/><n id="4" p="120 100"/><b id="5" B="3" E="4"/></fragment><t id="6" p="110 150" BoundingBox="80 150 140 152" CaptionJustification="Center"><s font="3" size="10">First line
+Second line</s></t></page></CDXML>"#,
+        )
+        .expect("import multiline text");
+    let document = engine_document(&engine).expect("document");
+    let ink = render_primitives_bounds(render_document(&document).iter()).expect("ink bounds");
+    let molecule_bounds = document
+        .objects
+        .iter()
+        .find(|object| object.object_type == "molecule")
+        .and_then(|object| scene_object_fast_bounds(&document, object))
+        .expect("molecule bounds");
+    assert!(
+        ink[3] > molecule_bounds[3],
+        "caption extends below the molecule"
+    );
+    assert_eq!(target_bounds(&document, &TargetSelector::All).unwrap(), ink);
+
+    let output = temp_path("multiline-text-export.png");
+    write_document_png_output(&engine, output.to_str().unwrap(), None, None, None)
+        .expect("export PNG");
+    let png = fs::read(&output).expect("read PNG");
+    let actual_width = u32::from_be_bytes(png[16..20].try_into().unwrap());
+    let actual_height = u32::from_be_bytes(png[20..24].try_into().unwrap());
+    let expected = pixel_size_for_view_box(
+        expanded_view_box(ink, CropExpansion::uniform_abs(0.0)),
+        RasterOptions::default(),
+    )
+    .expect("expected PNG size");
+    assert_eq!(
+        (actual_width, actual_height),
+        (expected.width, expected.height)
+    );
+    fs::remove_file(output).ok();
+}
+
+#[test]
 fn png_capture_renders_svg_text() {
     let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 30"><text x="5" y="22" font-size="22" font-family="sans-serif" fill="#000000">CN</text></svg>"##;
     let pixmap = render_svg_png_pixmap(

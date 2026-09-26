@@ -2686,7 +2686,7 @@ pub(crate) fn normalize_fragment_label_payloads(document: &mut ChemSemaDocument)
         .defaults
         .get("marginWidth")
         .copied()
-        .filter(|value| value.is_finite() && *value > EPSILON)
+        .filter(|value| value.is_finite() && *value >= 0.0)
         .unwrap_or(crate::DEFAULT_BOND_MARGIN_WIDTH_PT.value());
     let line_width = document
         .style

@@ -156,17 +156,24 @@ Additional rules:
 - The shaft must end at the notch. It must not continue to the tip or enter ordinary bond contact at the acceptor end; the donor end still follows ordinary main-bond contact rules.
 - This geometry depends only on `LineWidth` and visible bond length, not on `BoldWidth`, font settings, or nominal `BondLength`. It comes from silent ChemDraw SVG measurements across directions, `5–100pt` bond lengths, and four `LineWidth/BoldWidth` combinations.
 
+
+`MarginWidth = 0` is a valid authored setting. Preserve it through normalization, editor defaults, object settings, and export; only missing or invalid margins fall back to the default.
+
 ## Ordinary Dashed Bonds
 
 - The body of an ordinary dashed bond is still a standard rectangular main bond.
 - White cut segments are placed at equal intervals along the main axis.
 - Contact uses the body rectangle.
 - Black segment length may vary according to dash rules; ordinary dashed bonds do not require strictly equal black segments like the hash family.
-- When a dashed main line receives an endpoint contact profile, remove that
-  profile's inward axial extent from the equal black/gap interval domain. The
-  first and last black stripes absorb the contact miter; interior black and
-  white intervals remain equal. Do not compute the dash rhythm on the original
-  centerline and then paste a disconnected endpoint cap over it.
+- With visible axis length `L` and authored `HashSpacing` `h`, the black stripe
+  count is `floor(L / (2.6 * h)) + 1`. Divide the axis into `2 * count - 1`
+  equal black/gap intervals, beginning and ending in black. Independent probes
+  cover three spacings, five lengths, three line widths and count transitions.
+- Endpoint contact profiles shape the first and last black stripes without
+  changing the interval domain. Their inward or outward extent must not shift
+  interior gaps. Nine joined-bond probes preserve this phase across lengths
+  and junction angles; the endpoint profile remains part of the terminal
+  stripe rather than a disconnected cap.
 - `Display="Dash"` remains the losslessly preserved and exported source style.
   However, when and only when both endpoints of a single bond are
   `NodeType="Fragment"` nodes with a direct child `<fragment>`, ChemDraw draws
@@ -178,6 +185,18 @@ Additional rules:
   `Display`, internal connection style, attachment index, and completed
   connection mapping. Removing the direct child fragment from either endpoint
   consistently restored the same outer bond as 15 dashed segments.
+
+### Dashed Graphic Lines And Straight Solid Arrows
+
+Non-bond straight lines represented by solid-arrow geometry use a repeating
+stroke pattern. Its phase begins at the Head side of the trimmed shaft and
+runs toward Tail, including when neither endpoint has an arrowhead. Dash
+lengths are rounded to the nearest 1/20 pt drawing unit; retaining fractional
+spacing accumulates visible phase drift on long lines. This changes only the
+shaft's rendering order, not its semantic endpoints or arrowhead geometry.
+Independent ChemDraw probes cover three lengths, both directions, all four
+head/tail combinations, and eight fractional spacing values. This rule does
+not replace the ordinary dashed-bond interval allocation above.
 
 ## Hash Bonds
 
@@ -654,3 +673,11 @@ Suggested test layers:
 - bond geometry / intersection helpers
 - render primitive definitions and push helpers
 - legacy mol render compatibility layer
+
+## Represented Electron Symbols And Groups
+
+- A CDXML `represent` link is a representation of an atom attribute, not an instruction to add it twice. A radical-ion symbol can represent both charge and radical through either field. Import and subsequent chemistry refresh use the same `ElectronSymbolChemistry::represents_attribute` rule.
+- Symbol chemistry traverses nested scene groups. Moving a symbol into a group must preserve its atom link, charge, radical count, and attachment metadata across reloads.
+- Drawing must distinguish a symbol's meaning from its effective increment. A radical symbol with a zero increment still supplies the visible radical mark; do not add a second atom annotation. A lone pair does not suppress an unpaired-electron annotation.
+- Group import includes embedded images, supported special objects, and independent graphics or captions inside fragments. Atom-owned hidden nickname definitions are excluded from this group-child traversal.
+- Regression coverage: `tests/cdxml_groups.rs` checks nested ownership, native/CDXML round trips, represented compound symbols, repeated loads, and the lone-pair distinction.

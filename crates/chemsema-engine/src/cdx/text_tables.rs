@@ -100,14 +100,33 @@ pub(super) fn parse_cdx_string(data: &[u8], font_table: Option<&FontTable>) -> P
                 });
                 offset += 10;
             }
-            return ParsedText {
-                text: decode_text(
-                    &data[run_bytes..],
-                    runs.first().map(|run| run.font),
+            let bytes = &data[run_bytes..];
+            if runs.is_empty() {
+                return ParsedText {
+                    text: decode_text(bytes, None, font_table),
+                    runs,
+                };
+            }
+            // CDX style starts count encoded bytes, not Unicode scalars.
+            // Decode each span with its own font and convert the boundary
+            // once to the character offsets used by CdxmlWriter.
+            runs.sort_by_key(|run| run.start);
+            let mut text = decode_text(&bytes[..runs[0].start.min(bytes.len())], None, font_table);
+            for index in 0..runs.len() {
+                let start = runs[index].start.min(bytes.len());
+                let end = runs
+                    .get(index + 1)
+                    .map(|r| r.start.min(bytes.len()))
+                    .unwrap_or(bytes.len())
+                    .max(start);
+                runs[index].start = text.chars().count();
+                text.push_str(&decode_text(
+                    &bytes[start..end],
+                    Some(runs[index].font),
                     font_table,
-                ),
-                runs,
-            };
+                ));
+            }
+            return ParsedText { text, runs };
         }
     }
     ParsedText {
@@ -188,6 +207,7 @@ pub(super) fn decode_property(
     let value = match schema.kind {
         PropertyKind::String => parse_cdx_string(data, font_table).text,
         PropertyKind::Binary => encode_hex_bytes(data),
+        PropertyKind::Base64Binary => BASE64.encode(data),
         PropertyKind::Point2D => decode_point2d(data)?,
         PropertyKind::Point3D => decode_point3d(data)?,
         PropertyKind::Rectangle => decode_rectangle(data)?,
@@ -202,7 +222,9 @@ pub(super) fn decode_property(
         PropertyKind::UInt32 => read_u32(data)?.to_string(),
         PropertyKind::Float64 => read_f64(data)?.to_string(),
         PropertyKind::Boolean => bool_from_bytes(data),
-        PropertyKind::BooleanImplied => "yes".to_string(),
+        // Legacy implied booleans have no payload. Modern ChemDraw also
+        // writes explicit bytes, including zero to override an inherited flag.
+        PropertyKind::BooleanImplied => bool_from_bytes(data),
         PropertyKind::BondOrder => decode_bond_order(data)?,
         // CDX stores BondSpacing in tenths of a percent.  Preserve that
         // fractional digit: rounding here changes the distance between the

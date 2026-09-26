@@ -3672,7 +3672,8 @@ impl<'a> CdxmlDocumentWriter<'a> {
             .pointer("/import/cdxml/defaults/captionLineHeight")
             .and_then(Value::as_str);
         let should_materialize_caption_line_height = object.meta.pointer("/import/cdxml").is_none()
-            || (imported_cdxml_object_attr(object, "lineHeight").is_some()
+            || (imported_cdxml_object_attr(object, "lineHeight")
+                .is_some_and(|value| value != "auto")
                 && inherited_caption_line_height.is_none());
         if imported_cdxml_object_attr(object, "captionLineHeight").is_none()
             && should_materialize_caption_line_height

@@ -643,6 +643,129 @@ fn modern_arrow_wins_over_same_identity_legacy_graphic_representation() {
 }
 
 #[test]
+fn zero_label_margin_survives_normalization_editing_defaults_and_round_trip() {
+    fn source(margin: f64) -> String {
+        format!(
+            r#"<CDXML MarginWidth="{margin}" LineWidth="0.6" LabelFont="3" LabelSize="10">
+          <fonttable><font id="3" name="Arial"/></fonttable><page id="1"><fragment id="2">
+            <n id="3" p="50 70"/><n id="4" p="50 100" NodeType="GenericNickname" NumHydrogens="0">
+              <t p="46.39 103.9"><s font="3" size="10">R</s></t></n>
+            <b id="5" B="3" E="4"/>
+          </fragment></page></CDXML>"#
+        )
+    }
+    fn end_y(document: &ChemSemaDocument) -> f64 {
+        render_document(document)
+            .iter()
+            .filter_map(|p| match p {
+                RenderPrimitive::Polygon {
+                    role: RenderRole::DocumentBond,
+                    points,
+                    ..
+                } => Some(points.iter().map(|p| p.y).fold(f64::NEG_INFINITY, f64::max)),
+                _ => None,
+            })
+            .fold(f64::NEG_INFINITY, f64::max)
+    }
+    let zero = parse_cdxml_document(&source(0.0), None).unwrap();
+    let half = parse_cdxml_document(&source(0.5), None).unwrap();
+    // ChemDraw's independent zero/half-point margin exports move this endpoint
+    // by half a point. Zero must not silently restore the two-point default.
+    assert!((end_y(&zero) - end_y(&half) - 0.5).abs() < 0.03);
+    let exported = document_to_cdxml(&zero);
+    let reopened = parse_cdxml_document(&exported, None).unwrap();
+    assert!((end_y(&zero) - end_y(&reopened)).abs() < 0.01);
+    let mut engine = Engine::new();
+    engine.load_cdxml_document(&source(0.0)).unwrap();
+    assert_eq!(engine.options().margin_width, 0.0);
+    assert!((end_y(&zero) - end_y(&engine.state().document)).abs() < 0.01);
+}
+
+#[test]
+fn straight_solid_arrow_dashes_start_at_the_head_side() {
+    // Independent ChemDraw probes use three lengths, both directions and
+    // all four endpoint combinations. The dash phase always starts at Head3D.
+    for length in [30.0, 33.3, 73.7] {
+        for direction in [-1.0, 1.0] {
+            for (head, tail) in [
+                ("None", "None"),
+                ("Full", "None"),
+                ("None", "Full"),
+                ("Full", "Full"),
+            ] {
+                let head_x = 100.0 + direction * length;
+                let cdxml = format!(
+                    r#"<CDXML HashSpacing="2.5" LineWidth="1.15"><page id="1">
+                    <arrow id="2" Head3D="{head_x} 20 0" Tail3D="100 20 0"
+                    LineType="Dashed" ArrowheadType="Solid" ArrowheadHead="{head}" ArrowheadTail="{tail}"
+                    HeadSize="1000" ArrowheadCenterSize="875" ArrowheadWidth="250"/>
+                    </page></CDXML>"#
+                );
+                let document = parse_cdxml_document(&cdxml, None).unwrap();
+                let primitives = render_document(&document);
+                let points = primitives
+                    .iter()
+                    .find_map(|primitive| match primitive {
+                        RenderPrimitive::Polyline {
+                            points, dash_array, ..
+                        } if !dash_array.is_empty() => Some(points),
+                        _ => None,
+                    })
+                    .expect("dashed shaft");
+                assert!(
+                    (points[0].x - points[1].x) * direction > 0.0,
+                    "{length} {direction} {head} {tail}"
+                );
+                assert_close(points[0].y, 20.0);
+                assert_close(points[1].y, 20.0);
+                if head == "None" {
+                    assert_close(points[0].x, head_x);
+                }
+                if tail == "None" {
+                    assert_close(points[1].x, 100.0);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn straight_solid_arrow_dash_lengths_use_the_drawing_grid() {
+    // SVG stroke-dasharray values from independent ChemDraw exports are
+    // 24, 25, 25, 45, 49, 51, 100 and 101 in 1/20 pt drawing units.
+    for (spacing, expected) in [
+        (1.202, 1.2),
+        (1.248, 1.25),
+        (1.252, 1.25),
+        (2.268, 2.25),
+        (2.468, 2.45),
+        (2.532, 2.55),
+        (4.988, 5.0),
+        (5.052, 5.05),
+    ] {
+        let cdxml = format!(
+            r#"<CDXML HashSpacing="{spacing}"><page id="1">
+            <arrow id="2" Head3D="700 20 0" Tail3D="20 20 0" LineType="Dashed"
+            ArrowheadType="Solid" ArrowheadHead="None" HeadSize="1000"/>
+            </page></CDXML>"#
+        );
+        let document = parse_cdxml_document(&cdxml, None).unwrap();
+        let primitives = render_document(&document);
+        let dashes = primitives
+            .iter()
+            .find_map(|primitive| match primitive {
+                RenderPrimitive::Polyline { dash_array, .. } if !dash_array.is_empty() => {
+                    Some(dash_array)
+                }
+                _ => None,
+            })
+            .expect("dashed shaft");
+        assert_eq!(dashes.len(), 1);
+        assert_close(dashes[0], expected);
+    }
+}
+
+#[test]
 fn cdxml_arrow_head_dimensions_are_relative_to_line_width() {
     let cdxml = r#"<?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd" >

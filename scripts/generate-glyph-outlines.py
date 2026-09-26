@@ -214,6 +214,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--glyph-profiles", default=str(DEFAULT_GLYPH_PROFILES))
     parser.add_argument("--output", default=str(DEFAULT_OUTPUT))
+    parser.add_argument("--family", action="append", choices=FONT_FACES,
+                        help="Regenerate only these families, retaining other output entries")
     return parser.parse_args()
 
 
@@ -262,6 +264,23 @@ def glyph_outline(ttfont: TTFont, ch: str, cmap: dict[int, str]) -> dict:
         ],
         "commands": commands,
     }
+
+
+def font_character_map(ttfont: TTFont) -> tuple[dict[int, str], bool]:
+    cmap = ttfont.getBestCmap()
+    if cmap is not None:
+        return cmap, False
+    # Windows symbol faces use cmap platform 3, encoding 0, with the legacy
+    # byte repertoire located at U+F000..U+F0FF. GDI/ChemDraw also accepts the
+    # corresponding low-byte characters; derive both from the font itself.
+    symbol = next((table.cmap for table in ttfont['cmap'].tables
+                   if table.platformID == 3 and table.platEncID == 0), None)
+    if symbol is None:
+        return {}, False
+    mapped = dict(symbol)
+    mapped.update({code-0xF000: glyph for code, glyph in symbol.items()
+                   if 0xF020 <= code <= 0xF0FF})
+    return mapped, True
 
 
 def glyph_kerning(ttfont: TTFont, chars: list[str], cmap: dict[int, str]) -> dict:
@@ -319,8 +338,12 @@ def main() -> None:
     # Final explicit character substitution when supported families do not
     # contain a requested codepoint.
     chars.append("□")
-    families = {}
+    output = Path(args.output)
+    families = (json.loads(output.read_text(encoding='utf-8'))['families']
+                if args.family and output.exists() else {})
     for family, faces in FONT_FACES.items():
+        if args.family and family not in args.family:
+            continue
         generated_faces = {}
         for face, source in faces.items():
             path = Path(source)
@@ -328,13 +351,15 @@ def main() -> None:
                 print(f"skip missing font face {family}/{face}: {path}")
                 continue
             ttfont = TTFont(str(path), fontNumber=0)
-            if ttfont.getBestCmap() is None:
+            cmap, symbol_encoded = font_character_map(ttfont)
+            if not cmap:
                 print(f"skip unsupported font face {family}/{face}: no Unicode cmap")
                 continue
-            cmap = ttfont.getBestCmap()
+            face_chars = sorted(set(chars) | ({chr(code) for code in cmap if code >= 0x20}
+                                             if symbol_encoded else set()), key=ord)
             glyphs = {}
             missing = 0
-            for ch in chars:
+            for ch in face_chars:
                 try:
                     glyphs[ch] = glyph_outline(ttfont, ch, cmap)
                 except Exception:  # noqa: BLE001
@@ -344,9 +369,11 @@ def main() -> None:
             generated_faces[face] = {
                 "sourceFont": path.name,
                 "glyphs": glyphs,
-                "kerning": glyph_kerning(ttfont, chars, cmap),
+                "kerning": glyph_kerning(ttfont, face_chars, cmap),
                 "labelAnchorMetrics": gdi_label_anchor_metrics(family, face, ttfont),
             }
+            if symbol_encoded:
+                generated_faces[face]['symbolEncoded'] = True
         if generated_faces:
             families[family] = {"faces": generated_faces}
 

@@ -241,7 +241,9 @@ fn chemdraw_dashed_bond_stripe_count(
 ) -> usize {
     let stripe_length = stripe_length.max(EPSILON);
     let target_gap_length = target_gap_length.max(EPSILON);
-    let period = stripe_length + target_gap_length;
+    // Independent ChemDraw probes use a 1.3 scale for chemical dash spacing.
+    // Hash strokes and non-bond graphic dashes have separate rules.
+    let period = (stripe_length + target_gap_length) * 1.3;
     // ChemDraw derives the count from the clipped visible length, then divides
     // that length into equal black/gap intervals which start and end in black.
     (((length + EPSILON) / period).floor() as usize + 1).max(1)
@@ -294,67 +296,14 @@ pub(super) fn dashed_bond_segment_polygons_with_profiles(
     if length <= EPSILON {
         return Vec::new();
     }
-    let unit = direction.normalized();
-    let start_inset = endpoint_profile_inward_extent(start_profile, start, unit);
-    let end_inset = endpoint_profile_inward_extent(end_profile, end, Vector::new(-unit.x, -unit.y));
     dashed_segment_polygons_for_gap_intervals_with_profiles(
         start,
         end,
         stroke_width * 0.5,
-        &chemdraw_dashed_bond_gap_intervals_with_endpoint_insets(
-            length,
-            stripe_length,
-            target_gap_length,
-            start_inset,
-            end_inset,
-        ),
+        &chemdraw_dashed_bond_gap_intervals(length, stripe_length, target_gap_length),
         start_profile,
         end_profile,
     )
-}
-
-fn endpoint_profile_inward_extent(
-    profile: Option<&[Point]>,
-    endpoint: Point,
-    inward: Vector,
-) -> f64 {
-    profile
-        .into_iter()
-        .flatten()
-        .map(|point| {
-            vector_dot(
-                Vector::new(point.x - endpoint.x, point.y - endpoint.y),
-                inward,
-            )
-        })
-        .fold(0.0, f64::max)
-}
-
-fn chemdraw_dashed_bond_gap_intervals_with_endpoint_insets(
-    length: f64,
-    stripe_length: f64,
-    target_gap_length: f64,
-    start_inset: f64,
-    end_inset: f64,
-) -> Vec<(f64, f64)> {
-    if start_inset <= EPSILON && end_inset <= EPSILON {
-        return chemdraw_dashed_bond_gap_intervals(length, stripe_length, target_gap_length);
-    }
-    let usable_length = (length - start_inset - end_inset).max(0.0);
-    let stripe_count =
-        chemdraw_dashed_bond_stripe_count(usable_length, stripe_length, target_gap_length);
-    if stripe_count <= 1 {
-        return Vec::new();
-    }
-    let interval_length = usable_length / (stripe_count * 2 - 1) as f64;
-    (0..stripe_count - 1)
-        .map(|index| {
-            (
-                start_inset + (index * 2 + 1) as f64 * interval_length,
-                start_inset + (index * 2 + 2) as f64 * interval_length,
-            )
-        })
-        .collect()
 }
 
 pub(super) fn hash_bond_segment_polygons(
@@ -1433,7 +1382,7 @@ pub(super) fn bond_stereo_kind(bond: &Bond) -> Option<BondStereoKind> {
 #[cfg(test)]
 mod tests {
     use super::{
-        chemdraw_dashed_bond_gap_intervals_with_endpoint_insets,
+        chemdraw_dashed_bond_stripe_count, dashed_bond_segment_polygons_with_profiles,
         hash_contact_retreat_distance_for_bond, hashed_wedge_gap_intervals,
         line_pattern_dash_array_for_bond, triple_bond_offset_distance_for_bond,
     };
@@ -1551,13 +1500,59 @@ mod tests {
     }
 
     #[test]
-    fn dashed_bond_endpoint_miters_are_absorbed_by_terminal_stripes() {
-        let gaps =
-            chemdraw_dashed_bond_gap_intervals_with_endpoint_insets(14.4, 2.5, 2.5, 1.2, 1.2);
-        assert_eq!(gaps.len(), 2, "{gaps:?}");
-        assert!((gaps[0].0 - 3.6).abs() < 1.0e-9, "{gaps:?}");
-        assert!((gaps[0].1 - 6.0).abs() < 1.0e-9, "{gaps:?}");
-        assert!((gaps[1].0 - 8.4).abs() < 1.0e-9, "{gaps:?}");
-        assert!((gaps[1].1 - 10.8).abs() < 1.0e-9, "{gaps:?}");
+    fn chemical_dash_counts_match_independent_chemdraw_spacing_probes() {
+        for (spacing, counts) in [
+            (1.0, [10, 20, 39, 97, 193]),
+            (2.49, [4, 8, 16, 39, 78]),
+            (4.0, [3, 5, 10, 25, 49]),
+        ] {
+            for (length, count) in [25.0, 50.0, 100.0, 250.0, 500.0].into_iter().zip(counts) {
+                assert_eq!(
+                    chemdraw_dashed_bond_stripe_count(length, spacing, spacing),
+                    count
+                );
+            }
+        }
+        for (length, count) in [
+            (2.59, 1),
+            (2.61, 2),
+            (5.19, 2),
+            (5.21, 3),
+            (7.79, 3),
+            (7.81, 4),
+        ] {
+            assert_eq!(chemdraw_dashed_bond_stripe_count(length, 1.0, 1.0), count);
+        }
+    }
+
+    #[test]
+    fn dashed_bond_endpoint_miters_leave_interior_dash_positions_unchanged() {
+        let start = Point::new(0.0, 0.0);
+        let end = Point::new(14.4, 0.0);
+        let start_profile = [
+            Point::new(1.2, -0.3),
+            Point::new(-1.2, 0.0),
+            Point::new(1.2, 0.3),
+        ];
+        let end_profile = [
+            Point::new(13.2, -0.3),
+            Point::new(15.6, 0.0),
+            Point::new(13.2, 0.3),
+        ];
+        let stripes = dashed_bond_segment_polygons_with_profiles(
+            start,
+            end,
+            0.6,
+            &[2.5, 2.5],
+            Some(&start_profile),
+            Some(&end_profile),
+        );
+        assert_eq!(stripes.len(), 3);
+        let middle = &stripes[1];
+        let left = middle.iter().map(|p| p.x).fold(f64::INFINITY, f64::min);
+        let right = middle.iter().map(|p| p.x).fold(f64::NEG_INFINITY, f64::max);
+        // Nine independent joined-bond probes retain the full-axis interval domain.
+        assert!((left - 5.76).abs() < 1.0e-9, "{stripes:?}");
+        assert!((right - 8.64).abs() < 1.0e-9, "{stripes:?}");
     }
 }

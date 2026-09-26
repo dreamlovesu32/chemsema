@@ -137,7 +137,7 @@ impl Engine {
             .iter()
             .filter_map(|bond| self.bond_length_value(bond))
             .collect::<Vec<_>>();
-        if let Some(value) = object_setting_field_value(bond_lengths) {
+        if let Some(value) = object_setting_field_value(bond_lengths, false) {
             fields.push(object_settings_dialog_field(
                 "bondLength",
                 "Bond Length",
@@ -155,7 +155,7 @@ impl Engine {
                 .iter()
                 .filter_map(|object| self.graphic_stroke_width_value(object)),
         );
-        if let Some(value) = object_setting_field_value(line_widths) {
+        if let Some(value) = object_setting_field_value(line_widths, false) {
             fields.push(object_settings_dialog_field(
                 "lineWidth",
                 "Line Width",
@@ -169,7 +169,7 @@ impl Engine {
             .filter(|bond| bond_uses_bold_width(bond))
             .map(|bond| bond.bold_width.unwrap_or(self.options.bold_bond_width))
             .collect::<Vec<_>>();
-        if let Some(value) = object_setting_field_value(bold_widths) {
+        if let Some(value) = object_setting_field_value(bold_widths, false) {
             fields.push(object_settings_dialog_field(
                 "boldWidth",
                 "Bold Width",
@@ -183,7 +183,7 @@ impl Engine {
             .filter(|bond| bond.order >= 2)
             .map(|bond| bond.bond_spacing.unwrap_or(self.options.bond_spacing))
             .collect::<Vec<_>>();
-        if let Some(value) = object_setting_field_value(bond_spacings) {
+        if let Some(value) = object_setting_field_value(bond_spacings, false) {
             fields.push(object_settings_dialog_field(
                 "bondSpacing",
                 "Double Spacing",
@@ -196,7 +196,7 @@ impl Engine {
             .iter()
             .map(|bond| bond.margin_width.unwrap_or(self.options.margin_width))
             .collect::<Vec<_>>();
-        if let Some(value) = object_setting_field_value(margin_widths) {
+        if let Some(value) = object_setting_field_value(margin_widths, true) {
             fields.push(object_settings_dialog_field(
                 "marginWidth",
                 "Margin Width",
@@ -210,7 +210,7 @@ impl Engine {
             .filter(|bond| bond_uses_hash_spacing(bond))
             .map(|bond| bond.hash_spacing.unwrap_or(self.options.hash_spacing))
             .collect::<Vec<_>>();
-        if let Some(value) = object_setting_field_value(hash_spacings) {
+        if let Some(value) = object_setting_field_value(hash_spacings, false) {
             fields.push(object_settings_dialog_field(
                 "hashSpacing",
                 "Hash Spacing",
@@ -500,8 +500,16 @@ fn parse_object_setting(
         .get(key)
         .and_then(JsonValue::as_f64)
         .ok_or_else(|| format!("{key} must be a number."))?;
-    if !value.is_finite() || value <= 0.0 {
-        return Err(format!("{key} must be greater than 0."));
+    let allows_zero = key == "marginWidth";
+    if !value.is_finite() || value < 0.0 || (!allows_zero && value == 0.0) {
+        return Err(format!(
+            "{key} must be {} 0.",
+            if allows_zero {
+                "greater than or equal to"
+            } else {
+                "greater than"
+            }
+        ));
     }
     if is_length && unit != "pt" {
         Ok(value * crate::PT_PER_CM)
@@ -562,10 +570,13 @@ struct ObjectSettingFieldValue {
     mixed: bool,
 }
 
-fn object_setting_field_value(values: Vec<f64>) -> Option<ObjectSettingFieldValue> {
+fn object_setting_field_value(
+    values: Vec<f64>,
+    allows_zero: bool,
+) -> Option<ObjectSettingFieldValue> {
     let values = values
         .into_iter()
-        .filter(|value| value.is_finite() && *value > 0.0)
+        .filter(|value| value.is_finite() && (*value > 0.0 || (allows_zero && *value == 0.0)))
         .collect::<Vec<_>>();
     let first = *values.first()?;
     let mixed = values
@@ -859,7 +870,7 @@ fn apply_document_style_defaults(options: &mut EditorOptions, defaults: &BTreeMa
             "wedgeWidth" if *value > crate::EPSILON => options.wedge_width = *value,
             "hashSpacing" if *value > crate::EPSILON => options.hash_spacing = *value,
             "bondSpacing" if *value > crate::EPSILON => options.bond_spacing = *value,
-            "marginWidth" if *value > crate::EPSILON => options.margin_width = *value,
+            "marginWidth" if value.is_finite() => options.margin_width = *value,
             "graphicLineWidth" if *value > crate::EPSILON => options.graphic_stroke_width = *value,
             _ => {}
         }
